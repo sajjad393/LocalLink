@@ -1,0 +1,32 @@
+abstract interface class AdminRepositoryContract {
+  Future<void> logout();
+  Future<Map<String, dynamic>> summary();
+  Future<Map<String, dynamic>> runtimeDiagnostics();
+  Future<Map<String, dynamic>> network();
+  Future<Map<String, dynamic>> settings();
+  Future<Map<String, dynamic>> privacyPolicy();
+  Future<Map<String, dynamic>> userNetworkPolicy(String id);
+  Future<Map<String, dynamic>> deviceNetworkPolicy(String id);
+  Future<Map<String, dynamic>> updateUserNetworkPolicy(String id, {required String? wifiRadioPolicy});
+  Future<Map<String, dynamic>> updateDeviceNetworkPolicy(String id, {required String? wifiRadioPolicy});
+  Future<List<Map<String, dynamic>>> users({String query});
+  Future<List<Map<String, dynamic>>> devices();
+  Future<List<Map<String, dynamic>>> groups();
+  Future<List<Map<String, dynamic>>> calls();
+  Future<List<Map<String, dynamic>>> logs();
+  Future<List<Map<String, dynamic>>> securityEvents();
+  Future<List<Map<String, dynamic>>> sessions();
+  Future<List<Map<String, dynamic>>> adminSessions();
+  Future<List<Map<String, dynamic>>> transfers();
+  Future<List<Map<String, dynamic>>> recoveryRequests();
+  Future<void> rename(String id, String name);
+  Future<void> revoke(String id);
+  Future<void> setUserStatus(String id, String status);
+  Future<void> revokeSession(String id);
+  Future<void> revokeAdminSession(String id);
+  Future<Map<String, dynamic>> backup();
+  Future<Map<String, dynamic>> approveRecovery(String id);
+  Future<Map<String, dynamic>> reissueRecovery(String id);
+  Future<void> rejectRecovery(String id, String reason);
+  Future<Map<String, dynamic>> updateSettings({int? dashboardRefreshSeconds, int? securityAlertThreshold});
+}

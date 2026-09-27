@@ -1,0 +1,66 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+android {
+    namespace "com.sajjad.locallink"
+    compileSdk flutter.compileSdkVersion
+
+    defaultConfig {
+        applicationId "com.sajjad.locallink"
+        minSdkVersion flutter.minSdkVersion
+        targetSdk flutter.targetSdkVersion
+        versionCode flutter.versionCode
+        versionName flutter.versionName
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    testOptions { unitTests.returnDefaultValues = true }
+
+    signingConfigs {
+        release {
+            def storeFilePath = System.getenv("LOCLINK_RELEASE_STORE_FILE")
+            def storePasswordValue = System.getenv("LOCLINK_RELEASE_STORE_PASSWORD")
+            def keyAliasValue = System.getenv("LOCLINK_RELEASE_KEY_ALIAS")
+            def keyPasswordValue = System.getenv("LOCLINK_RELEASE_KEY_PASSWORD")
+            if (storeFilePath && storePasswordValue && keyAliasValue && keyPasswordValue) {
+                storeFile file(storeFilePath)
+                storePassword storePasswordValue
+                keyAlias keyAliasValue
+                keyPassword keyPasswordValue
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            if (System.getenv("LOCLINK_RELEASE_STORE_FILE") &&
+                    System.getenv("LOCLINK_RELEASE_STORE_PASSWORD") &&
+                    System.getenv("LOCLINK_RELEASE_KEY_ALIAS") &&
+                    System.getenv("LOCLINK_RELEASE_KEY_PASSWORD")) {
+                signingConfig signingConfigs.release
+            }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    testImplementation "junit:junit:4.13.2"
+}
+
+flutter {
+    source "../.."
+}

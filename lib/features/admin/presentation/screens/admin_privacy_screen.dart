@@ -1,0 +1,8 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:locallink/features/admin/bloc/admin_bloc.dart';
+
+class AdminPrivacyScreen extends StatelessWidget {
+  const AdminPrivacyScreen({super.key});
+  @override Widget build(BuildContext context)=>BlocBuilder<AdminBloc,AdminState>(builder:(context,state){final p=state.privacyData??const {};final items=<MapEntry<String,bool>>[MapEntry('Passwords exposed',p['passwords_exposed']==true),MapEntry('Private encryption keys exposed',p['private_keys_exposed']==true),MapEntry('Private message bodies exposed',p['private_message_bodies_exposed']==true),MapEntry('Private call audio exposed',p['private_call_audio_exposed']==true),MapEntry('Decrypted call media exposed',p['decrypted_call_media_exposed']==true),MapEntry('Private file contents exposed',p['private_file_contents_exposed']==true),MapEntry('Administrative actions audited',p['administrative_actions_audited']==true),MapEntry('Server-side role checks',p['server_side_role_checks']==true)];return RefreshIndicator(onRefresh:()=>context.read<AdminBloc>().load(),child:ListView(padding:const EdgeInsets.all(16),children:[const Text('Privacy & Access Control',style:TextStyle(fontSize:22,fontWeight:FontWeight.w700)),const SizedBox(height:8),const Text('These controls define the administrator visibility boundary. A false exposure flag means the data is not returned to the Admin Panel.'),const SizedBox(height:16),...items.map((item)=>Card(child:ListTile(leading:Icon(item.value?Icons.check_circle:Icons.block),title:Text(item.key),trailing:Text(item.value?'YES':'NO',style:const TextStyle(fontWeight:FontWeight.w700)))))]));});
+}

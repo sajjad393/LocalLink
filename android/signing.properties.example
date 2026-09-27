@@ -1,0 +1,6 @@
+# Export these environment variables for a signed release build.
+# Never commit a keystore or signing secrets.
+# LOCLINK_RELEASE_STORE_FILE=/absolute/path/to/locallink-release.jks
+# LOCLINK_RELEASE_STORE_PASSWORD=<secret>
+# LOCLINK_RELEASE_KEY_ALIAS=locallink
+# LOCLINK_RELEASE_KEY_PASSWORD=<secret>
