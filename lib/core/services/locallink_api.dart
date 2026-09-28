@@ -255,7 +255,7 @@ class LocalLinkApi {
 
 
   Future<PairingInfo> pairingInfo() async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/pairing/info')).timeout(const Duration(seconds: 6));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/pairing/info')).timeout(const Duration(seconds: 6));
     if (response.statusCode != 200) throw Exception(_error(response));
     return PairingInfo.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
   }
@@ -268,7 +268,7 @@ class LocalLinkApi {
     String? pairingCode,
   }) async {
     final id = deviceId ?? store.deviceId ?? store.generateDeviceId();
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('$baseUrl/api/v1/auth/register'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -305,7 +305,7 @@ class LocalLinkApi {
     String? pairingCode,
   }) async {
     final id = deviceId ?? store.deviceId ?? store.generateDeviceId();
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('$baseUrl/api/v1/auth/login'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -335,13 +335,13 @@ class LocalLinkApi {
   }
 
   Future<LocalAccount> authMe() async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/auth/me'), headers: _headers()).timeout(const Duration(seconds: 6));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/auth/me'), headers: _headers()).timeout(const Duration(seconds: 6));
     if (response.statusCode != 200) throw Exception(_error(response));
     return LocalAccount.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
   }
 
   Future<void> logoutAccount() async {
-    final response = await httpClient.post(Uri.parse('$baseUrl/api/v1/auth/logout'), headers: _headers()).timeout(const Duration(seconds: 6));
+    final response = await await http.post(Uri.parse('$baseUrl/api/v1/auth/logout'), headers: _headers()).timeout(const Duration(seconds: 6));
     if (response.statusCode != 200) throw Exception(_error(response));
   }
 
@@ -381,7 +381,7 @@ class LocalLinkApi {
   }
 
   Future<LocalProfile> getProfile({bool downloadAvatar = true}) async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/profile'), headers: _headers()).timeout(const Duration(seconds: 8));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/profile'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
     final profile = LocalProfile.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
     var result = profile;
@@ -424,14 +424,14 @@ class LocalLinkApi {
   Future<LocalProfile?> directoryByUserId(String userId) async => _directorySingle('/api/v1/directory/user/${Uri.encodeComponent(userId)}');
 
   Future<LocalProfile?> _directorySingle(String path) async {
-    final response = await httpClient.get(Uri.parse('$baseUrl$path'), headers: _headers()).timeout(const Duration(seconds: 8));
+    final response = await http.get(Uri.parse('$baseUrl$path'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode == 404) return null;
     if (response.statusCode != 200) throw Exception(_error(response));
     return LocalProfile.fromJson(Map<String,dynamic>.from(jsonDecode(response.body) as Map));
   }
 
   Future<List<LocalProfile>> _directoryList(String path) async {
-    final response = await httpClient.get(Uri.parse('$baseUrl$path'), headers: _headers()).timeout(const Duration(seconds: 8));
+    final response = await http.get(Uri.parse('$baseUrl$path'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
     final decoded = jsonDecode(response.body);
     final rows = decoded is List ? decoded : (decoded is Map && decoded['profiles'] is List ? decoded['profiles'] as List : const []);
@@ -457,7 +457,7 @@ class LocalLinkApi {
   }
 
   Future<LocalProfile> _cacheProfileAvatar(LocalProfile profile) async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/profile/avatar'), headers: _headers()).timeout(const Duration(seconds: 12));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/profile/avatar'), headers: _headers()).timeout(const Duration(seconds: 12));
     if (response.statusCode != 200) throw Exception(_error(response));
     final base = await store.profileAvatarPath();
     final path = '$base${_avatarExtensionFromContentType(response.headers['content-type'])}';
@@ -545,28 +545,28 @@ class LocalLinkApi {
   }
 
   Future<Map<String, String>> identityKeys() async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/device-keys'), headers: _headers()).timeout(const Duration(seconds: 8));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/device-keys'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
     final raw = jsonDecode(response.body) as List;
     return {for (final e in raw) if (e is Map && e['peer_id'] != null && e['public_key'] != null) e['peer_id'].toString(): e['public_key'].toString()};
   }
 
   Future<List<IdentityKeyRecord>> identityKeyRecords() async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/device-keys'), headers: _headers()).timeout(const Duration(seconds: 8));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/device-keys'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
     final raw = jsonDecode(response.body) as List;
     return raw.whereType<Map>().map((e) => IdentityKeyRecord.fromJson(Map<String, dynamic>.from(e))).where((e) => e.peerId.isNotEmpty && e.publicKey.isNotEmpty).toList();
   }
 
   Future<List<Map<String, dynamic>>> identityKeyHistory() async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/device-key/history'), headers: _headers()).timeout(const Duration(seconds: 8));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/device-key/history'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
     final raw = jsonDecode(response.body) as List;
     return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   Future<List<Map<String, dynamic>>> allIdentityKeyHistory() async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/device-keys/history'), headers: _headers()).timeout(const Duration(seconds: 10));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/device-keys/history'), headers: _headers()).timeout(const Duration(seconds: 10));
     if (response.statusCode != 200) throw Exception(_error(response));
     final raw = jsonDecode(response.body) as List;
     return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
@@ -574,7 +574,7 @@ class LocalLinkApi {
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<Map<String, dynamic>> rotateIdentityKey(String publicKey, {String? idempotencyKey}) async {
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('$baseUrl/api/v1/device-key/rotate'),
       headers: {..._headers(), 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
       body: jsonEncode({'public_key': publicKey}),
@@ -585,14 +585,14 @@ class LocalLinkApi {
 
   Future<PairingInfo> probePairingInfo(String server) async {
     final normalized = normalizeServerAddress(server);
-    final response = await httpClient.get(Uri.parse('$normalized/api/v1/pairing/info')).timeout(const Duration(seconds: 6));
+    final response = await http.get(Uri.parse('$normalized/api/v1/pairing/info')).timeout(const Duration(seconds: 6));
     if (response.statusCode != 200) throw Exception(_error(response));
     return PairingInfo.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
   }
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<AccountTransferStart> startAccountTransfer({String? idempotencyKey}) async {
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('$baseUrl/api/v1/account/transfer/start'),
       headers: {..._headers(), 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
     ).timeout(const Duration(seconds: 8));
@@ -601,7 +601,7 @@ class LocalLinkApi {
   }
 
   Future<void> cancelAccountTransfer(String transferId) async {
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('$baseUrl/api/v1/account/transfer/cancel'),
       headers: {..._headers(), 'Content-Type': 'application/json'},
       body: jsonEncode({'transfer_id': transferId}),
@@ -619,7 +619,7 @@ class LocalLinkApi {
     bool revokeSourceDevice = true,
     String? idempotencyKey,
   }) async {
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('${normalizeServerAddress(server)}/api/v1/account/transfer/complete'),
       headers: {'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
       body: jsonEncode({
@@ -639,7 +639,7 @@ class LocalLinkApi {
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<AccountRecoveryStart> createAccountRecovery({required String username, String password = '', String recoveryCode = '', required String deviceId, required String deviceName, required String identityPublicKey, String? idempotencyKey}) async {
     final server = normalizeServerAddress(store.serverAddress ?? '');
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('$server/api/v1/account/recovery/request'),
       headers: {'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
       body: jsonEncode({'username': username.trim().toLowerCase(), if (password.isNotEmpty) 'password': password, if (recoveryCode.isNotEmpty) 'recovery_code': recoveryCode.trim(), 'device_id': deviceId, 'device_name': deviceName.trim(), 'platform': 'android', 'identity_public_key': identityPublicKey}),
@@ -650,7 +650,7 @@ class LocalLinkApi {
 
   Future<AccountRecoveryState> accountRecoveryStatus({required String server, required String requestId, required String requestSecret}) async {
     final base = normalizeServerAddress(server);
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('$base/api/v1/account/recovery/status'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({'request_id': requestId, 'request_secret': requestSecret}),
@@ -662,7 +662,7 @@ class LocalLinkApi {
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<AccountRecoveryResult> completeAccountRecovery({required String server, required String requestId, required String requestSecret, required String recoveryCredential, required String deviceId, required String deviceName, required String identityPublicKey, String? idempotencyKey}) async {
     final base = normalizeServerAddress(server);
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('$base/api/v1/account/recovery/complete'),
       headers: {'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
       body: jsonEncode({'request_id': requestId, 'request_secret': requestSecret, 'recovery_credential': recoveryCredential.trim(), 'device_id': deviceId, 'device_name': deviceName.trim(), 'platform': 'android', 'identity_public_key': identityPublicKey}),
@@ -672,7 +672,7 @@ class LocalLinkApi {
   }
 
   Future<RecoveryCodeStatus> recoveryCodeStatus() async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/account/recovery-code/status'), headers: _headers()).timeout(const Duration(seconds: 8));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/account/recovery-code/status'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
     return RecoveryCodeStatus.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
   }
@@ -681,7 +681,7 @@ class LocalLinkApi {
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<String> rotateRecoveryCode({String? idempotencyKey}) async {
-    final response = await httpClient.post(Uri.parse('$baseUrl/api/v1/account/recovery-code/rotate'), headers: {..._headers(), 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()}).timeout(const Duration(seconds: 8));
+    final response = await await http.post(Uri.parse('$baseUrl/api/v1/account/recovery-code/rotate'), headers: {..._headers(), 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()}).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
     final code = (jsonDecode(response.body) as Map)['recovery_code']?.toString() ?? '';
     if (code.isEmpty) throw Exception('Server returned no recovery code');
@@ -689,12 +689,12 @@ class LocalLinkApi {
   }
 
   Future<void> disableRecoveryCode() async {
-    final response = await httpClient.post(Uri.parse('$baseUrl/api/v1/account/recovery-code/disable'), headers: _headers()).timeout(const Duration(seconds: 8));
+    final response = await await http.post(Uri.parse('$baseUrl/api/v1/account/recovery-code/disable'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
   }
 
   Future<AccountRestoreManifest> accountRestoreManifest() async {
-    final response = await httpClient.get(
+    final response = await http.get(
       Uri.parse('$baseUrl/api/v1/account/restore/manifest'),
       headers: _headers(),
     ).timeout(const Duration(seconds: 10));
@@ -706,13 +706,13 @@ class LocalLinkApi {
     final params = <String, String>{'scope': scope, 'limit': '$limit'};
     if (cursor != null && cursor.isNotEmpty) params['cursor'] = cursor;
     final uri = Uri.parse('$baseUrl/api/v1/account/restore/data').replace(queryParameters: params);
-    final response = await httpClient.get(uri, headers: _headers()).timeout(const Duration(seconds: 20));
+    final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) throw Exception(_error(response));
     return AccountRestorePage.fromJson(scope, Map<String, dynamic>.from(jsonDecode(response.body) as Map));
   }
 
   Future<CryptoBackupEnvelope> getCryptoBackup() async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/account/crypto-backup'), headers: _headers()).timeout(const Duration(seconds: 10));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/account/crypto-backup'), headers: _headers()).timeout(const Duration(seconds: 10));
     if (response.statusCode != 200) throw Exception(_error(response));
     return CryptoBackupEnvelope.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
   }
@@ -744,7 +744,7 @@ class LocalLinkApi {
       );
 
   Future<void> revokeAccountDevice(String deviceId) async {
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('$baseUrl/api/v1/account/devices/revoke'),
       headers: {..._headers(), 'Content-Type': 'application/json'},
       body: jsonEncode({'device_id': deviceId}),
@@ -825,7 +825,7 @@ class LocalLinkApi {
           final params = <String, String>{'limit': '$limit'};
           if (cursor != null) params['cursor'] = cursor;
           final uri = Uri.parse('$baseUrl/api/v1/groups').replace(queryParameters: params);
-          final response = await httpClient.get(uri, headers: _headers()).timeout(const Duration(seconds: 5));
+          final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 5));
           if (response.statusCode != 200) throw Exception(_error(response));
           return _pageJson(response.body);
         },
@@ -834,21 +834,21 @@ class LocalLinkApi {
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<LocalGroup> createGroup(String name, List<String> memberIds, {String? idempotencyKey}) async {
-    final response = await httpClient.post(Uri.parse('$baseUrl/api/v1/groups'), headers:{..._headers(),'Content-Type':'application/json','Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()}, body:jsonEncode({'name':name.trim(),'member_ids':memberIds})).timeout(const Duration(seconds:8));
+    final response = await await http.post(Uri.parse('$baseUrl/api/v1/groups'), headers:{..._headers(),'Content-Type':'application/json','Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()}, body:jsonEncode({'name':name.trim(),'member_ids':memberIds})).timeout(const Duration(seconds:8));
     if (response.statusCode != 201) throw Exception(_error(response));
     return LocalGroup.fromJson(jsonDecode(response.body) as Map<String,dynamic>);
   }
 
   Future<List<GroupMember>> groupMembers(String groupId) async {
     final uri=Uri.parse('$baseUrl/api/v1/groups/members').replace(queryParameters:{'group_id':groupId});
-    final response=await httpClient.get(uri,headers:_headers()).timeout(const Duration(seconds:5));
+    final response=await http.get(uri,headers:_headers()).timeout(const Duration(seconds:5));
     if(response.statusCode!=200) throw Exception(_error(response));
     return (jsonDecode(response.body) as List).map((e)=>GroupMember.fromJson(Map<String,dynamic>.from(e as Map))).toList();
   }
 
   Future<bool> addGroupMember(String groupId, String deviceId) async {
     final uri = Uri.parse('$baseUrl/api/v1/groups/members').replace(queryParameters: {'group_id': groupId});
-    final response = await httpClient.post(uri, headers: {..._headers(), 'Content-Type': 'application/json'}, body: jsonEncode({'device_id': deviceId})).timeout(const Duration(seconds: 5));
+    final response = await await http.post(uri, headers: {..._headers(), 'Content-Type': 'application/json'}, body: jsonEncode({'device_id': deviceId})).timeout(const Duration(seconds: 5));
     if (response.statusCode != 200 && response.statusCode != 201) throw Exception(_error(response));
     return response.statusCode == 201;
   }
@@ -863,7 +863,7 @@ class LocalLinkApi {
     final id = groupId.trim();
     if (id.isEmpty) throw const FormatException('Group ID is required');
     final uri = Uri.parse('$baseUrl/api/v1/groups/keys').replace(queryParameters: {'group_id': id});
-    final response = await httpClient.get(uri, headers: _headers()).timeout(const Duration(seconds: 8));
+    final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
     final raw = jsonDecode(response.body) as List;
     return raw.whereType<Map>().map((e) => GroupKeyEnvelope.fromJson(Map<String, dynamic>.from(e))).toList();
@@ -875,7 +875,7 @@ class LocalLinkApi {
     required List<Map<String, String>> envelopes,
     String? idempotencyKey,
   }) async {
-    final response = await httpClient.post(
+    final response = await await http.post(
       Uri.parse('$baseUrl/api/v1/groups/keys'),
       headers: {..._headers(), 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
       body: jsonEncode({
@@ -892,7 +892,7 @@ class LocalLinkApi {
           final params = <String, String>{'group_id': groupId, 'limit': '$limit'};
           if (cursor != null) params['cursor'] = cursor;
           final uri = Uri.parse('$baseUrl/api/v1/group-messages').replace(queryParameters: params);
-          final response = await httpClient.get(uri, headers: _headers()).timeout(const Duration(seconds: 8));
+          final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 8));
           if (response.statusCode != 200) throw Exception(_error(response));
           return _pageJson(response.body);
         },
@@ -903,13 +903,13 @@ class LocalLinkApi {
 
   Future<GroupMessage> createGroupMessage(String groupId, String body, {String? id, String? createdAt, List<String> attachmentIds = const []}) async {
     final effectiveCreatedAt = createdAt ?? DateTime.now().toUtc().toIso8601String();
-    final response=await httpClient.post(Uri.parse('$baseUrl/api/v1/group-messages'),headers:{..._headers(),'Content-Type':'application/json'},body:jsonEncode({'id':id,'group_id':groupId,'body':body,'created_at':effectiveCreatedAt, if (attachmentIds.isNotEmpty) 'attachment_ids': attachmentIds})).timeout(const Duration(seconds:8));
+    final response=await await http.post(Uri.parse('$baseUrl/api/v1/group-messages'),headers:{..._headers(),'Content-Type':'application/json'},body:jsonEncode({'id':id,'group_id':groupId,'body':body,'created_at':effectiveCreatedAt, if (attachmentIds.isNotEmpty) 'attachment_ids': attachmentIds})).timeout(const Duration(seconds:8));
     if(response.statusCode!=200&&response.statusCode!=201) throw Exception(_error(response));
     return GroupMessage.fromJson(jsonDecode(response.body) as Map<String,dynamic>);
   }
 
   Future<ServerStatus> status() async {
-    final response = await httpClient.get(Uri.parse('$baseUrl/api/v1/status'), headers: _headers()).timeout(const Duration(seconds: 4));
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/status'), headers: _headers()).timeout(const Duration(seconds: 4));
     if (response.statusCode != 200) throw Exception(_error(response));
     return ServerStatus.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }

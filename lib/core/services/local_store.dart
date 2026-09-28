@@ -394,19 +394,17 @@ class LocalStore {
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_directory_profiles_device ON directory_profiles(device_id)');
     await db.execute(
-        'CREATE TABLE IF NOT EXISTS contacts (user_id TEXT PRIMARY KEY, device_id TEXT NOT NULL DEFAULT '
-        ', added_at TEXT NOT NULL)');
+        "CREATE TABLE IF NOT EXISTS contacts (user_id TEXT PRIMARY KEY, device_id TEXT NOT NULL DEFAULT '', added_at TEXT NOT NULL)");
     await db.execute(
         'CREATE TABLE IF NOT EXISTS blocked_users (user_id TEXT PRIMARY KEY, blocked_at TEXT NOT NULL)');
     await db.execute(
-        'CREATE TABLE IF NOT EXISTS directory_sync_state (peer_id TEXT PRIMARY KEY, last_sync_at TEXT NOT NULL DEFAULT '
-        ', last_profile_version INTEGER NOT NULL DEFAULT 0)');
+        "CREATE TABLE IF NOT EXISTS directory_sync_state (peer_id TEXT PRIMARY KEY, last_sync_at TEXT NOT NULL DEFAULT '', last_profile_version INTEGER NOT NULL DEFAULT 0)");
     await db.execute(
         'CREATE TABLE IF NOT EXISTS directory_seen (sync_id TEXT PRIMARY KEY, seen_at TEXT NOT NULL)');
     final cols = await db.rawQuery('PRAGMA table_info(profile_cache)');
     final names = {for (final c in cols) c['name']?.toString() ?? ''};
     final additions = <String, String>{
-      'phone_number': 'TEXT NOT NULL DEFAULT ' '',
+      'phone_number': "TEXT NOT NULL DEFAULT ''",
       'profile_version': 'INTEGER NOT NULL DEFAULT 0',
       'phone_visibility': "TEXT NOT NULL DEFAULT 'contacts'",
       'discoverable_by_phone': 'INTEGER NOT NULL DEFAULT 1',
