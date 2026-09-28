@@ -16,6 +16,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
+import androidx.core.app.RemoteInput
 
 /**
  * Android notification presentation boundary for messages and system events.
@@ -242,31 +243,31 @@ object LocalLinkNotificationManager {
         val image = loadImage(imagePath)
         if (image != null && visibility == 1) {
             builder.setStyle(
-                Notification.BigPictureStyle()
+                NotificationCompat.BigPictureStyle()
                     .bigPicture(image)
                     .setSummaryText(summary)
             )
         } else {
             builder.setStyle(
-                Notification.BigTextStyle()
+                NotificationCompat.BigTextStyle()
                     .bigText(body)
                     .setSummaryText(summary)
             )
         }
 
-        val replyAction = Notification.Action.Builder(
-            Icon.createWithResource(context, android.R.drawable.ic_menu_send),
+        val replyAction = NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_send,
             "Reply",
             replyPending,
         ).addRemoteInput(
-            android.app.RemoteInput.Builder(REMOTE_INPUT_KEY)
+            RemoteInput.Builder(REMOTE_INPUT_KEY)
                 .setLabel("Reply")
                 .setAllowFreeFormInput(true)
                 .build()
         ).build()
 
-        val readAction = Notification.Action.Builder(
-            Icon.createWithResource(context, android.R.drawable.ic_menu_view),
+        val readAction = NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_view,
             "Mark read",
             readPending,
         ).build()

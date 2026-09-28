@@ -484,7 +484,7 @@ class MainActivity : FlutterActivity() {
         remoteVideoTextureEntry = null
     }
 
-    private fun configureTransport(call: MethodChannel.MethodCall, result: MethodChannel.Result) {
+    private fun configureTransport(call: MethodCall, result: MethodChannel.Result) {
         val id = call.argument<String>("device_id")?.trim().orEmpty()
         if (id.isEmpty()) { result.error("INVALID_DEVICE", "device_id is required", null); return }
         val keys = mapOfStrings(call.argument<Map<*, *>>("peer_keys"))
@@ -492,7 +492,7 @@ class MainActivity : FlutterActivity() {
         result.success(null)
     }
 
-    private fun sendFileTransport(call: MethodChannel.MethodCall, result: MethodChannel.Result) {
+    private fun sendFileTransport(call: MethodCall, result: MethodChannel.Result) {
         val target=call.argument<String>("recipient_id")?.trim().orEmpty(); val path=call.argument<String>("file_path")?.trim().orEmpty(); val fileId=call.argument<String>("file_id")?.trim().orEmpty(); val messageId=call.argument<String>("message_id")?.trim().orEmpty(); val name=call.argument<String>("file_name")?.trim() ?: "attachment"; val type=call.argument<String>("content_type")?.trim() ?: "application/octet-stream"
         if(target.isEmpty()||path.isEmpty()||fileId.isEmpty()||messageId.isEmpty()){result.error("INVALID_FILE","recipient_id, file_path, file_id and message_id are required",null);return}
         LocalLinkTransportService.sendFile(target,path,fileId,messageId,name,type){ok,error->runOnUiThread{if(ok)result.success(null) else result.error("FILE_SEND_FAILED",error,null)}}

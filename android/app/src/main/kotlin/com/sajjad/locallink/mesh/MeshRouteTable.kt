@@ -117,6 +117,20 @@ class MeshRouteTable(
         return removed
     }
 
+    /** Removes all routes that rely on the provided next-hop peer. */
+    fun removeVia(nextHopNodeId: String): List<String> {
+        if (!MeshIdPolicy.isValid(nextHopNodeId)) return emptyList()
+        val affected = mutableListOf<String>()
+        for ((destination, destinationRoutes) in routes.entries) {
+            val removed = destinationRoutes.remove(nextHopNodeId)
+            if (removed != null) {
+                affected.add(destination)
+                if (destinationRoutes.isEmpty()) routes.remove(destination, destinationRoutes)
+            }
+        }
+        return affected
+    }
+
     fun invalidateVia(nextHopNodeId: String): List<String> = transitionVia(nextHopNodeId, MeshRouteState.INVALID)
 
     fun markStaleVia(nextHopNodeId: String): List<String> = transitionVia(nextHopNodeId, MeshRouteState.STALE)

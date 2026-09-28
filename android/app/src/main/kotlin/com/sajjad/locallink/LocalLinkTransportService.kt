@@ -1975,8 +1975,8 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun meshQueueStats(): Pair<Int, Long> {
-        val files = meshQueueDir.listFiles { file -> file.extension == "json" } ?: return 0 to 0L
-        return files.size to files.sumOf { it.length() }
+        val files = meshQueueDir.listFiles { file -> file.extension == "json" } ?: return Pair(0, 0L)
+        return Pair(files.size, files.sumOf { it.length() })
     }
 
     private fun meshTopologySnapshot(): Map<String, Any?> {
@@ -2000,8 +2000,8 @@ class LocalLinkTransportService : Service() {
             "device_id" to transportDeviceId,
             "node_id" to transportDeviceId,
             "transport_active" to transportRunning,
-            "transport_connected" to transportRunning && transportPeers.isNotEmpty(),
-            "lan_active" to transportRunning && lanServer != null,
+            "transport_connected" to (transportRunning && transportPeers.isNotEmpty()),
+            "lan_active" to (transportRunning && lanServer != null),
             "wifi_direct_peer_count" to peers.count { it["transport"] == MeshTransportPolicy.WIFI_DIRECT },
             "group_owner" to transportGroupOwner,
             "peer_count" to peers.size,
@@ -2019,7 +2019,16 @@ class LocalLinkTransportService : Service() {
             "service_uptime_ms" to (System.currentTimeMillis()-startedAt),
             "routes" to routeTable.snapshot(),
             "recovering_routes" to routeRecovery.snapshot(),
-            "outgoing_transfers" to outgoingTransfers.values.map{mapOf("transfer_id" to it.transferId,"recipient_id" to it.recipientId,"size" to it.size,"total_chunks" to it.totalChunks,"acked_chunks" to (it.totalChunks-missingChunkCount(it)),"retry_attempts" to (outgoingRetryCounts[it.transferId] ?: 0))},
+            "outgoing_transfers" to outgoingTransfers.values.map {
+                mapOf(
+                    "transfer_id" to it.transferId,
+                    "recipient_id" to it.recipientId,
+                    "size" to it.size,
+                    "total_chunks" to it.totalChunks,
+                    "acked_chunks" to (it.totalChunks - missingChunkCount(it)),
+                    "retry_attempts" to (outgoingRetryCounts[it.transferId] ?: 0),
+                )
+            },
             "incoming_transfers" to incomingFiles.values.map{mapOf("transfer_id" to it.transferId,"sender_id" to it.senderId,"total_chunks" to it.totalChunks,"received_chunks" to it.received.count{b->b})},
             "peers" to peers.map { peer ->
                 val nodeId = peer["peer_id"].toString()
