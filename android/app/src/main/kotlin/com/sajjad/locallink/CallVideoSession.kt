@@ -302,7 +302,7 @@ class CallVideoSession(
     private fun sendCodecConfig(format: MediaFormat) {
         val c0 = bufferBytes(format.getByteBuffer("csd-0"))
         val c1 = bufferBytes(format.getByteBuffer("csd-1"))
-        if (c0.isNullOrEmpty() || c1.isNullOrEmpty()) return
+        if (c0 == null || c1 == null || c0.isEmpty() || c1.isEmpty()) return
         sendCodecConfig(c0, c1)
     }
 

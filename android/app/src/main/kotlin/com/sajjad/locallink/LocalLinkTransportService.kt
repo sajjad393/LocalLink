@@ -46,15 +46,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import org.json.JSONArray
 import org.json.JSONObject
-import com.sajjad.locallink.mesh.MeshPacket
-import com.sajjad.locallink.mesh.MeshPeerRegistry
-import com.sajjad.locallink.mesh.MeshRouteResult
-import com.sajjad.locallink.mesh.MeshRouter
-import com.sajjad.locallink.mesh.MeshTransport
-import com.sajjad.locallink.mesh.MeshRoute
-import com.sajjad.locallink.mesh.MeshRouteTable
-import com.sajjad.locallink.mesh.MeshTransportPolicy
-import com.sajjad.locallink.mesh.MeshTransportSessionKeyPolicy
+import com.sajjad.locallink.mesh.*
 
 /**
  * Service-owned LocalLink peer transport. The Activity owns Flutter and Wi-Fi Direct
@@ -1817,30 +1809,30 @@ class LocalLinkTransportService : Service() {
                         ))
                         continue
                     }
-                    val packet = refreshedPacket
-                    if (!validTransportId(target) || packet.destinationNodeId != target) {
+                    val readyPacket = refreshedPacket
+                    if (!validTransportId(target) || readyPacket.destinationNodeId != target) {
                         file.delete(); continue
                     }
-                    if (packet.packetId != packetId || !MeshLimits.hasValidHopBudget(packet.ttl, packet.hopCount, meshPacketTtl) || !MeshLimits.isWithinPacketLifetime(packet.createdAt, now)) {
+                    if (readyPacket.packetId != packetId || !MeshLimits.hasValidHopBudget(readyPacket.ttl, readyPacket.hopCount, meshPacketTtl) || !MeshLimits.isWithinPacketLifetime(readyPacket.createdAt, now)) {
                         file.delete()
-                        transportEvent("mesh_dropped", mapOf("target_id" to target, "packet_id" to packet.packetId, "reason" to "hop_or_age_invalid"))
+                        transportEvent("mesh_dropped", mapOf("target_id" to target, "packet_id" to readyPacket.packetId, "reason" to "hop_or_age_invalid"))
                         continue
                     }
-                    val result = meshRouter.route(packet, allowQueue = false)
+                    val result = meshRouter.route(readyPacket, allowQueue = false)
                     if (result == MeshRouteResult.FORWARDED || result == MeshRouteResult.LOCAL_DELIVERY) {
                         file.delete()
-                        transportEvent("mesh_forwarded", mapOf("target_id" to target, "packet_id" to packet.packetId))
+                        transportEvent("mesh_forwarded", mapOf("target_id" to target, "packet_id" to readyPacket.packetId))
                     } else {
                         val attempts = record.optInt("attempts", 0) + 1
                         if (attempts >= 30) {
                             file.delete()
-                            transportEvent("mesh_retry_exhausted", mapOf("target_id" to target, "packet_id" to packet.packetId, "attempts" to attempts))
+                            transportEvent("mesh_retry_exhausted", mapOf("target_id" to target, "packet_id" to readyPacket.packetId, "attempts" to attempts))
                             continue
                         }
                         val delay = (1000L shl attempts.coerceAtMost(6)).coerceAtMost(60_000L)
-                        record.put("packet_id", packet.packetId).put("attempts", attempts).put("retry_after", now + delay)
+                        record.put("packet_id", readyPacket.packetId).put("attempts", attempts).put("retry_after", now + delay)
                         file.writeText(record.toString(), Charsets.UTF_8)
-                        transportEvent("mesh_retry_scheduled", mapOf("target_id" to target, "packet_id" to packet.packetId, "attempts" to attempts, "retry_after_ms" to delay))
+                        transportEvent("mesh_retry_scheduled", mapOf("target_id" to target, "packet_id" to readyPacket.packetId, "attempts" to attempts, "retry_after_ms" to delay))
                     }
                 } catch (_: Exception) {
                     file.delete()

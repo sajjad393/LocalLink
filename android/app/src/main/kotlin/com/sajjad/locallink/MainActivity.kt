@@ -23,6 +23,7 @@ import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
@@ -527,11 +528,12 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun dispatchCallNotificationIntent(intent: Intent?) {
-        val action = when (intent?.action) {
+        val safeIntent = intent ?: return
+        val action = when (safeIntent.action) {
             CallNotificationManager.ACTION_OPEN -> "open"
             CallNotificationManager.ACTION_ACCEPT -> "accept"
             CallNotificationManager.ACTION_REJECT -> "reject"
-            else -> intent?.getStringExtra(CallNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
+            else -> safeIntent.getStringExtra(CallNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
         }
         if (action.isBlank()) return
         if (Build.VERSION.SDK_INT >= 27 && action == "open") {
@@ -540,8 +542,8 @@ class MainActivity : FlutterActivity() {
             return
         }
         if (action != "accept" && action != "reject") return
-        val callId = intent?.getStringExtra(CallNotificationManager.EXTRA_CALL_ID)?.trim().orEmpty()
-        val callerId = intent?.getStringExtra(CallNotificationManager.EXTRA_CALLER_ID)?.trim().orEmpty()
+        val callId = safeIntent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID)?.trim().orEmpty()
+        val callerId = safeIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_ID)?.trim().orEmpty()
         if (callId.isBlank() || callerId.isBlank()) return
         val event = mapOf(
             "action" to action,
@@ -553,20 +555,21 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun dispatchNotificationIntent(intent: Intent?) {
-        val action = intent?.getStringExtra(LocalLinkNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
-        val nativeAction = when (intent?.action) {
+        val safeIntent = intent ?: return
+        val action = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
+        val nativeAction = when (safeIntent.action) {
             LocalLinkNotificationManager.ACTION_OPEN -> "open"
             LocalLinkNotificationManager.ACTION_REPLY -> "reply"
             LocalLinkNotificationManager.ACTION_MARK_READ -> "mark_read"
             else -> ""
         }
         if (action.isBlank() || action != nativeAction) return
-        val conversationType = intent.getStringExtra(LocalLinkNotificationManager.EXTRA_CONVERSATION_TYPE)?.trim().orEmpty()
-        val conversationId = intent.getStringExtra(LocalLinkNotificationManager.EXTRA_CONVERSATION_ID)?.trim().orEmpty()
-        val messageId = intent.getStringExtra(LocalLinkNotificationManager.EXTRA_MESSAGE_ID)?.trim().orEmpty()
-        val senderId = intent.getStringExtra(LocalLinkNotificationManager.EXTRA_SENDER_ID)?.trim().orEmpty()
-        val recipientId = intent.getStringExtra(LocalLinkNotificationManager.EXTRA_RECIPIENT_ID)?.trim().orEmpty()
-        val notificationId = intent.getIntExtra(LocalLinkNotificationManager.EXTRA_NOTIFICATION_ID, 0)
+        val conversationType = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_CONVERSATION_TYPE)?.trim().orEmpty()
+        val conversationId = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_CONVERSATION_ID)?.trim().orEmpty()
+        val messageId = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_MESSAGE_ID)?.trim().orEmpty()
+        val senderId = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_SENDER_ID)?.trim().orEmpty()
+        val recipientId = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_RECIPIENT_ID)?.trim().orEmpty()
+        val notificationId = safeIntent.getIntExtra(LocalLinkNotificationManager.EXTRA_NOTIFICATION_ID, 0)
         if (conversationType !in setOf("direct", "group") || conversationId.isBlank() || messageId.isBlank() || senderId.isBlank() || recipientId.isBlank() || notificationId <= 0) return
         val event = mutableMapOf<String, Any?>(
             "action" to action,
@@ -577,8 +580,8 @@ class MainActivity : FlutterActivity() {
             "sender_id" to senderId,
             "recipient_id" to recipientId,
         )
-        intent.getStringExtra(LocalLinkNotificationManager.EXTRA_ATTACHMENT_ID)?.takeIf { it.isNotBlank() }?.let { event["attachment_id"] = it }
-        intent.getStringExtra(LocalLinkNotificationManager.EXTRA_REPLY_TEXT)?.takeIf { it.isNotBlank() }?.let { event["reply_text"] = it }
+        safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_ATTACHMENT_ID)?.takeIf { it.isNotBlank() }?.let { event["attachment_id"] = it }
+        safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_REPLY_TEXT)?.takeIf { it.isNotBlank() }?.let { event["reply_text"] = it }
         val sink = notificationEventSink
         if (sink != null) sink.success(event) else pendingNotificationActions.add(event)
     }

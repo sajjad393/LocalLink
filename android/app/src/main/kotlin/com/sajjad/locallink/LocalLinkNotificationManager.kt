@@ -15,6 +15,7 @@ import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.app.NotificationCompat
 
 /**
  * Android notification presentation boundary for messages and system events.
@@ -196,10 +197,10 @@ object LocalLinkNotificationManager {
         )
 
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(context, MESSAGE_CHANNEL_ID)
+            NotificationCompat.Builder(context, MESSAGE_CHANNEL_ID)
         } else {
             @Suppress("DEPRECATION")
-            Notification.Builder(context)
+            NotificationCompat.Builder(context)
         }
             .setSmallIcon(android.R.drawable.ic_dialog_email)
             .setContentTitle(title.ifBlank { "LocalLink" })
@@ -293,10 +294,10 @@ object LocalLinkNotificationManager {
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(context, MESSAGE_CHANNEL_ID)
+            NotificationCompat.Builder(context, MESSAGE_CHANNEL_ID)
         } else {
             @Suppress("DEPRECATION")
-            Notification.Builder(context)
+            NotificationCompat.Builder(context)
         }
             .setSmallIcon(android.R.drawable.ic_dialog_email)
             .setContentTitle(title.ifBlank { "LocalLink" })
@@ -324,10 +325,10 @@ object LocalLinkNotificationManager {
         ) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(context, SYSTEM_CHANNEL_ID)
+            NotificationCompat.Builder(context, SYSTEM_CHANNEL_ID)
         } else {
             @Suppress("DEPRECATION")
-            Notification.Builder(context)
+            NotificationCompat.Builder(context)
         }
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
