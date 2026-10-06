@@ -3,11 +3,10 @@ import 'package:locallink/features/calls/data/services/local_route_resolver.dart
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 
 class _FakeTransport implements PeerTransportContract {
-  bool started;
+  bool started = true;
   Map<String, dynamic> topologyValue;
   Object? topologyError;
   _FakeTransport({
-    this.started = true,
     this.topologyValue = const {},
     this.topologyError,
   });
@@ -68,11 +67,14 @@ class _FakeTransport implements PeerTransportContract {
 }
 
 void main() {
-  test('AVAILABLE peer is treated as a usable LAN route', () async {
+  test('authenticated AVAILABLE peer is treated as a usable LAN route',
+      () async {
     final transport = _FakeTransport(topologyValue: {
       'peers': [
         {
           'node_id': 'android-b',
+          'direct': true,
+          'authenticated': true,
           'state': 'AVAILABLE',
           'transport': 'lan',
           'last_seen_at': DateTime.now().millisecondsSinceEpoch
@@ -88,6 +90,8 @@ void main() {
       'peers': [
         {
           'node_id': 'android-b',
+          'direct': true,
+          'authenticated': true,
           'state': 'CONNECTED',
           'transport': 'wifi_direct',
           'last_seen_at': DateTime.now().millisecondsSinceEpoch
@@ -118,6 +122,8 @@ void main() {
       'peers': [
         {
           'node_id': 'android-b',
+          'direct': true,
+          'authenticated': true,
           'state': '',
           'transport': 'lan',
           'last_seen_at': DateTime.now().millisecondsSinceEpoch

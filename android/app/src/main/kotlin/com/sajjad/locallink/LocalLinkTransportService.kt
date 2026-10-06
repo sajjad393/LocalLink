@@ -1988,6 +1988,7 @@ class LocalLinkTransportService : Service() {
                 "peer_id" to peer.peerId,
                 "node_id" to peer.peerId,
                 "direct" to true,
+                "authenticated" to true,
                 "transport" to peer.transportName,
                 "active_transport" to peer.transportName,
                 "available_transports" to links.map { it.transportName }.distinct().sorted(),

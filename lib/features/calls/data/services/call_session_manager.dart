@@ -22,11 +22,12 @@ import 'package:locallink/features/calls/data/transport/call_transport.dart';
 import 'package:locallink/features/calls/data/transport/call_transport_factory.dart';
 import 'package:locallink/features/calls/data/transport/call_transport_mode.dart';
 import 'package:locallink/features/calls/data/transport/call_transport_selection_policy.dart';
-import 'package:locallink/features/calls/data/services/local_route_resolver.dart';
 import 'package:locallink/features/calls/data/services/call_preflight_exception.dart';
 import 'package:locallink/core/security/identity_trust_service.dart';
 import 'package:locallink/features/calls/domain/call_gateway.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
+import 'package:locallink/features/connectivity/domain/local_route.dart';
+import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 
 final class CallSessionManager implements CallGateway {
   final LocalStore store;
@@ -37,20 +38,24 @@ final class CallSessionManager implements CallGateway {
   final CallNotificationPlatformService notificationPlatform;
   final CallMediaPlatformService mediaPlatform;
   final IdentityTrustService identityTrust;
+  final LocalRoutePolicyService routePolicy;
 
   final _sessionController = StreamController<CallSession?>.broadcast();
   final _historyController = StreamController<List<CallRecord>>.broadcast();
   StreamSubscription<Map<String, dynamic>>? _nativeSub;
   StreamSubscription<CallNotificationAction>? _notificationActionSub;
+  StreamSubscription<LocalRouteResult>? _routeSub;
   Timer? _ringTimer;
   Timer? _statsTimer;
   Timer? _heartbeatTimer;
   Timer? _meshRouteRecoveryTimer;
+  Timer? _routeWaitTimer;
   CallSession? _session;
   CallTransport? _transport;
   late final CallTransportFactory transportFactory;
-  late final LocalRouteResolver routeResolver;
   bool _disposed = false;
+  bool _inviteInFlight = false;
+  DateTime? _lastInviteAttemptAt;
   int _recoveryAttempts = 0;
   int _meshRouteRecoveryAttempts = 0;
   int _presentationRevision = 0;
@@ -71,8 +76,9 @@ final class CallSessionManager implements CallGateway {
     required this.notificationPlatform,
     required this.mediaPlatform,
     IdentityTrustService? identityTrust,
-  }) : identityTrust = identityTrust ?? const IdentityTrustService() {
-    routeResolver = LocalRouteResolver(directTransport);
+    LocalRoutePolicyService? routePolicy,
+  })  : identityTrust = identityTrust ?? const IdentityTrustService(),
+        routePolicy = routePolicy ?? LocalRoutePolicyService(directTransport) {
     transportFactory = CallTransportFactory(
       mesh: directTransport,
       media: mediaPlatform,
@@ -86,6 +92,7 @@ final class CallSessionManager implements CallGateway {
         .listen((action) => unawaited(_handleNotificationAction(action)));
     _nativeSub ??=
         transportFactory.nativeMesh.events.listen(_handleNativeTransportEvent);
+    _routeSub ??= routePolicy.routeChanges.listen(_handleRouteChange);
     unawaited(_synchronizeIncomingPresentation());
     unawaited(syncHistory());
   }
@@ -142,25 +149,13 @@ final class CallSessionManager implements CallGateway {
       );
     }
 
-    final route = await routeResolver.resolve(device.id);
-    AppLogger.info(
-      'CALL_PRECHECK',
-      detail: 'peer=${device.id} route=${route.kind.name} state=${route.transportState.name}',
-    );
-    if (!route.isAvailable) {
-      throw const CallPreflightException(
-        CallPreflightCode.noLocalRoute,
-        'This user is not reachable on the local network',
-      );
-    }
     if (!await identityTrust.canEstablishLocalCall(device.id)) {
       throw const CallPreflightException(
         CallPreflightCode.identityUnavailable,
         'This user identity is not trusted for local calling',
       );
     }
-    final mode = CallTransportSelectionPolicy.select(
-        localRouteAvailable: route.isAvailable);
+    final mode = CallTransportSelectionPolicy.select(localRouteAvailable: true);
     final id = _newCallId();
     final now = DateTime.now();
     final session = CallSession(
@@ -168,7 +163,7 @@ final class CallSessionManager implements CallGateway {
       peerId: device.id,
       peerName: device.name,
       direction: CallDirection.outgoing,
-      state: CallState.ringing,
+      state: CallState.connecting,
       startedAt: now,
       speakerOn: true,
       directMode: true,
@@ -177,19 +172,11 @@ final class CallSessionManager implements CallGateway {
       supportedMediaCodecs: await _supportedMediaCodecs(),
     );
     _setSession(session);
+    _inviteInFlight = false;
+    _lastInviteAttemptAt = null;
     await _persistSession();
-    _startRingTimer(outgoing: true);
-    _startHeartbeatTimer();
-    await _sendSignal({
-      'type': 'call_invite',
-      'call_id': id,
-      'recipient_id': device.id,
-      'created_at': now.toUtc().toIso8601String(),
-      'transport_mode': mode.wireName,
-      'mesh_call': true,
-      'direct': true,
-      'supported_media_codecs': session.supportedMediaCodecs,
-    });
+    _startRouteWaitTimer();
+    await _trySendPendingInvite();
   }
 
   Future<void> acceptIncoming() async {
@@ -250,6 +237,21 @@ final class CallSessionManager implements CallGateway {
     if (session == null || session.isFinished) return;
     _cancelCallTimers();
     _meshRouteRecoveryTimer?.cancel();
+    if (session.direction == CallDirection.outgoing &&
+        session.state == CallState.connecting) {
+      if (_lastInviteAttemptAt != null) {
+        try {
+          await _sendSignal({
+            'type': 'call_end',
+            'call_id': session.id,
+            'recipient_id': session.peerId,
+            'reason': reason,
+          });
+        } catch (_) {}
+      }
+      await _finishLocal(CallState.canceled, reason, notifyServer: false);
+      return;
+    }
     _setSession(session.copyWith(state: CallState.ending, reason: reason));
     await _sendSignal({
       'type': 'call_end',
@@ -316,6 +318,7 @@ final class CallSessionManager implements CallGateway {
     _cancelCallTimers();
     await _nativeSub?.cancel();
     await _notificationActionSub?.cancel();
+    await _routeSub?.cancel();
     _nativeSub = null;
     _notificationActionSub = null;
     _presentationRevision++;
@@ -333,7 +336,7 @@ final class CallSessionManager implements CallGateway {
   }
 
   Future<bool> _hasLocalRouteTo(String peerId) async =>
-      (await routeResolver.resolve(peerId)).isAvailable;
+      (await routePolicy.resolve(peerId)).isAvailable;
 
 
   Future<void> _handleLocalCallSignal(Map<String, dynamic> msg) async {
@@ -625,7 +628,95 @@ final class CallSessionManager implements CallGateway {
         msg['recipient_id']?.toString() != selfId) return;
     if (msg['status']?.toString() != 'ringing') return;
     AppLogger.info('CALL_INVITE_ACK_RECEIVED', detail: 'call=${session.id}');
+    _stopRouteWaitTimer();
     _setSession(session.copyWith(state: CallState.ringing, signalingConnected: true));
+    _startRingTimer(outgoing: true);
+    await _persistSession();
+  }
+
+  void _handleRouteChange(LocalRouteResult route) {
+    final session = _session;
+    if (_disposed ||
+        !route.isAvailable ||
+        session == null ||
+        session.isFinished ||
+        session.direction != CallDirection.outgoing ||
+        session.state != CallState.connecting ||
+        route.peerId != session.peerId) {
+      return;
+    }
+    unawaited(_trySendPendingInvite());
+  }
+
+  Future<void> _trySendPendingInvite() async {
+    final session = _session;
+    if (_disposed ||
+        _inviteInFlight ||
+        session == null ||
+        session.isFinished ||
+        session.direction != CallDirection.outgoing ||
+        session.state != CallState.connecting) {
+      return;
+    }
+    final now = DateTime.now();
+    final lastAttempt = _lastInviteAttemptAt;
+    if (lastAttempt != null &&
+        now.difference(lastAttempt) < const Duration(seconds: 5)) {
+      return;
+    }
+    LocalRouteResult route;
+    try {
+      route = await routePolicy.resolve(session.peerId);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'CALL_ROUTE_RESOLUTION_FAILED',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+    if (!route.isAvailable) {
+      AppLogger.info(
+        'CALL_WAITING_FOR_ROUTE',
+        detail: 'state=${route.transportState.name}',
+      );
+      return;
+    }
+    _inviteInFlight = true;
+    _lastInviteAttemptAt = now;
+    try {
+      await _sendSignal({
+        'type': 'call_invite',
+        'call_id': session.id,
+        'recipient_id': session.peerId,
+        'created_at': now.toUtc().toIso8601String(),
+        'transport_mode': session.transportMode.wireName,
+        'mesh_call': true,
+        'direct': true,
+        'supported_media_codecs': session.supportedMediaCodecs,
+      });
+      AppLogger.info('CALL_INVITE_SENT', detail: 'transport=${route.kind.name}');
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'CALL_INVITE_SEND_FAILED',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    } finally {
+      _inviteInFlight = false;
+    }
+  }
+
+  void _startRouteWaitTimer() {
+    _routeWaitTimer ??= Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => unawaited(_trySendPendingInvite()),
+    );
+  }
+
+  void _stopRouteWaitTimer() {
+    _routeWaitTimer?.cancel();
+    _routeWaitTimer = null;
   }
 
   Future<void> _handleState(Map<String, dynamic> msg) async {
@@ -901,6 +992,7 @@ final class CallSessionManager implements CallGateway {
     _statsTimer?.cancel();
     _heartbeatTimer?.cancel();
     _meshRouteRecoveryTimer?.cancel();
+    _stopRouteWaitTimer();
     _ringTimer = null;
     _statsTimer = null;
     _heartbeatTimer = null;

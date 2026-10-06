@@ -45,6 +45,9 @@ before relying on regression results.
 
 ## Phase 1 — Establish the shared route policy
 
+**Status:** Implemented in code and covered by focused unit tests. Physical-device
+validation is still required before this phase is complete.
+
 - Add `LocalRoutePolicyService` under connectivity.
 - Consume native transport topology/events and Wi-Fi Direct connection events.
 - Maintain a route state per peer: `searching`, `connecting`, `connected`, or
@@ -60,6 +63,9 @@ is selected ahead of Wi-Fi Direct and mesh routes.
 
 ## Phase 2 — Use the policy for reliable messaging
 
+**Status:** The shared-policy integration is implemented. Integration and
+physical-device verification are still required.
+
 - Use the shared policy before attempting direct delivery.
 - Keep messages queued when no route exists and flush them when a route appears.
 - Retain recipient-acknowledgement-only delivery status.
@@ -70,6 +76,9 @@ once when a valid route appears, with delivered status set only by recipient
 acknowledgement.
 
 ## Phase 3 — Use the policy for calls
+
+**Status:** The waiting and invite-acknowledgement flow is implemented. Integration
+and physical-device verification are still required.
 
 - Use the same shared policy as messaging.
 - If no route exists, show cancellable `connecting/waiting` instead of rejecting
@@ -83,6 +92,10 @@ acknowledgement.
 reaches the recipient, and use the same route priority as messaging.
 
 ## Phase 4 — Automate Wi-Fi Direct fallback
+
+**Status:** Automatic discovery and safe single-peer connection are implemented.
+Multiple nearby peers remain a diagnostic/manual-selection case until discovery
+can provide a verified LocalLink device ID.
 
 - When LAN cannot reach a target peer, start Wi-Fi Direct discovery automatically.
 - Establish the Wi-Fi Direct group/connection without normal-flow manual

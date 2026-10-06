@@ -29,6 +29,8 @@ import 'package:locallink/features/connectivity/data/services/wifi_radio_control
 import 'package:locallink/features/connectivity/data/repositories/mesh_repository.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_transport_service.dart';
+import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
+import 'package:locallink/features/connectivity/data/services/wifi_direct_fallback_service.dart';
 import 'package:locallink/features/files/data/repositories/file_transfer_repository.dart';
 import 'package:locallink/features/files/data/services/file_transfer_service.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
@@ -99,6 +101,11 @@ class AppDependencies {
     );
     meshRepository = MeshRepository(transport: directTransport);
     mesh = MeshBloc(repository: meshRepository);
+    wifiDirectFallback = WifiDirectFallbackService(connectivityRepository);
+    routePolicy = LocalRoutePolicyService(
+      directTransport,
+      onRouteUnavailable: wifiDirectFallback.requestRoute,
+    );
     authentication = AuthenticationRepository(api: api, store: store, connectivity: connectivityRepository);
     recoveryRepository = RecoveryRepository(api: api, store: store, crypto: crypto, connectivity: connectivityRepository);
     final restorationService = AccountRestorationService(store, api, crypto);
@@ -127,6 +134,7 @@ class AppDependencies {
       ringtone: callRingtone,
       notificationPlatform: callNotificationPlatform,
       mediaPlatform: callMediaPlatform,
+      routePolicy: routePolicy,
     );
     calls = CallBloc(service: callService, repository: callRepository);
     messaging = ReliableMessagingService(
@@ -137,6 +145,7 @@ class AppDependencies {
       connectivityRepository,
       directTransport,
       crypto,
+      routePolicy: routePolicy,
     );
     messagingRepository = MessagingRepository(store: store, service: messaging);
     notifications = LocalLinkNotificationService(
@@ -161,6 +170,8 @@ class AppDependencies {
   late final ConnectivityBloc connectivity;
   late final MeshRepositoryContract meshRepository;
   late final MeshBloc mesh;
+  late final WifiDirectFallbackService wifiDirectFallback;
+  late final LocalRoutePolicyService routePolicy;
   late final AuthenticationRepositoryContract authentication;
   late final RecoveryRepositoryContract recoveryRepository;
   late final AccountRestorationRepositoryContract restoreService;
@@ -196,6 +207,8 @@ class AppDependencies {
     await connectivity.start();
     viewMode.setServerConnected(socket.isConnected);
     await mesh.start();
+    await wifiDirectFallback.start();
+    await routePolicy.start();
     await directoryRepository.start();
     messaging.start();
     groupMessagingService.start();
@@ -207,13 +220,15 @@ class AppDependencies {
 
 
   Future<void> dispose() async {
-    await connectivity.close();
-    await mesh.close();
     await directoryRepository.dispose();
     await messaging.dispose();
     await groupMessagingService.dispose();
     await notifications.dispose();
     await calls.close();
+    await routePolicy.dispose();
+    await wifiDirectFallback.dispose();
+    await mesh.close();
+    await connectivity.close();
     await callNotificationPlatform.dispose();
     await callRingtone.dispose();
     await presence.dispose();

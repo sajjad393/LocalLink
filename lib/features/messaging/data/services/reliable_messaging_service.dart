@@ -12,6 +12,8 @@ import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/services/websocket_service.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
+import 'package:locallink/features/connectivity/domain/local_route.dart';
+import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 
 class ReliableMessagingService {
@@ -22,6 +24,7 @@ class ReliableMessagingService {
   final ConnectivityRepositoryContract connectivity;
   final PeerTransportContract directTransport;
   final IdentityCryptoService crypto;
+  final LocalRoutePolicyService? routePolicy;
 
   final _incoming = StreamController<Message>.broadcast();
   final _reactionIncoming = StreamController<MessageReaction>.broadcast();
@@ -31,6 +34,7 @@ class ReliableMessagingService {
   StreamSubscription? _connectionSub;
   StreamSubscription? _directSub;
   StreamSubscription? _wifiSub;
+  StreamSubscription<LocalRouteResult>? _routeSub;
 
   Timer? _retryTimer;
   DateTime? _lastPeriodicSyncAt;
@@ -52,7 +56,7 @@ class ReliableMessagingService {
       this.connectivity,
       this.directTransport,
       this.crypto,
-      );
+      {this.routePolicy});
 
   Stream<Message> get incoming => _incoming.stream;
   Stream<MessageReaction> get reactionIncoming => _reactionIncoming.stream;
@@ -95,6 +99,24 @@ class ReliableMessagingService {
 
         unawaited(
           _configureDirectTransport(),
+        );
+      },
+    );
+
+    _routeSub ??= routePolicy?.routeChanges.listen(
+      (route) {
+        if (!route.isAvailable || store.internetOnly) return;
+        AppLogger.info(
+          'MESSAGE_ROUTE_AVAILABLE',
+          detail: 'transport=${route.kind.name}',
+        );
+        unawaited(flush());
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        AppLogger.error(
+          'MESSAGE_ROUTE_STREAM_ERROR',
+          error: error,
+          stackTrace: stackTrace,
         );
       },
     );
@@ -651,7 +673,8 @@ class ReliableMessagingService {
           continue;
         }
 
-        if (status == 'direct_delivered' && !socket.isConnected) {
+        if (status == 'direct_delivered') {
+          await store.removeOutbox(id);
           continue;
         }
 
@@ -659,8 +682,9 @@ class ReliableMessagingService {
 
         final pending = await store.pendingAttachments(id);
 
+        final localRoute = await _localRouteFor(recipientId);
         final canUseDirect =
-            !store.internetOnly && !socket.isConnected && directTransport.isStarted;
+            !store.internetOnly && localRoute?.isAvailable == true;
 
         // ------------------------------------------------------------------
         // DIRECT / WI-FI TRANSPORT
@@ -671,7 +695,7 @@ class ReliableMessagingService {
             detail:
                 'socketReady=${socket.isConnected} '
                 'internetOnly=${store.internetOnly} '
-                'directStarted=${directTransport.isStarted}',
+                'route=${localRoute?.kind.name ?? 'none'}',
           );
           AppLogger.info(
             'MESSAGE_DIRECT_TRANSPORT_SELECTED',
@@ -765,7 +789,7 @@ class ReliableMessagingService {
             detail:
                 'socketReady=${socket.isConnected} '
                 'internetOnly=${store.internetOnly} '
-                'directStarted=${directTransport.isStarted}',
+                'route=${localRoute?.kind.name ?? 'none'}',
           );
           AppLogger.warning(
             'MESSAGE_SOCKET_SEND_SKIPPED_NOT_CONNECTED',
@@ -1946,11 +1970,36 @@ class ReliableMessagingService {
     await _connectionSub?.cancel();
     await _directSub?.cancel();
     await _wifiSub?.cancel();
+    await _routeSub?.cancel();
 
     await _reactionIncoming.close();
     await directTransport.dispose();
 
     await _incoming.close();
+  }
+
+  Future<LocalRouteResult?> _localRouteFor(String recipientId) async {
+    if (store.internetOnly || !directTransport.isStarted) return null;
+    final policy = routePolicy;
+    if (policy == null) {
+      // Preserve compatibility for callers that have not yet migrated to the
+      // application-scoped policy service.
+      return LocalRouteResult(
+        kind: LocalRouteKind.mesh,
+        peerId: recipientId,
+        transportState: LocalTransportState.available,
+      );
+    }
+    try {
+      return await policy.resolve(recipientId);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'MESSAGE_ROUTE_RESOLUTION_FAILED',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return null;
+    }
   }
 
   String _newId() {

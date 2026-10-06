@@ -1,5 +1,6 @@
 /// A nearby Android Wi-Fi Direct peer.
 class WifiDirectPeer {
+  static const availableStatus = 3;
   final String name;
   final String address;
   final int status;
@@ -9,6 +10,8 @@ class WifiDirectPeer {
     required this.address,
     required this.status,
   });
+
+  bool get isAvailable => status == availableStatus;
 
   factory WifiDirectPeer.fromMap(Map<dynamic, dynamic> map) => WifiDirectPeer(
         name: map['name']?.toString() ?? 'Unknown device',
