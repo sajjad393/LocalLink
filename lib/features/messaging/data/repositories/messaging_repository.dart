@@ -1,6 +1,7 @@
 import 'package:locallink/features/messaging/domain/messaging_repository_contract.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/message.dart';
+import 'package:locallink/core/models/message_reaction.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/messaging/data/services/reliable_messaging_service.dart';
 
@@ -22,6 +23,15 @@ final class MessagingRepository implements MessagingRepositoryContract {
 
   @override
   Future<List<Message>> history(String otherDeviceId) => service.history(otherDeviceId);
+
+  @override
+  Stream<MessageReaction> get reactionIncoming => service.reactionIncoming;
+
+  @override
+  Future<void> react(String recipientId, String messageId, String emoji) => service.sendReaction(recipientId, messageId, emoji);
+
+  @override
+  Future<List<MessageReaction>> reactions(String messageId) => service.reactions(messageId);
 
   @override
   Future<void> send(

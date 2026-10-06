@@ -11,7 +11,6 @@ import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/models/sensitive_identity_bundle.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
-import 'package:locallink/features/groups/data/services/group_crypto_service.dart';
 
 class ServiceRestoreProgress {
   final String phase;
@@ -30,11 +29,10 @@ class AccountRestorationService {
   final LocalStore store;
   final LocalLinkApi api;
   final IdentityCryptoService crypto;
-  final GroupCryptoService groupCrypto;
   final AesGcm _aes = AesGcm.with256bits();
   final Hmac _hmac = Hmac.sha256();
 
-  AccountRestorationService(this.store, this.api, this.crypto, this.groupCrypto);
+  AccountRestorationService(this.store, this.api, this.crypto);
 
   String _encodeUrl(List<int> bytes) => base64UrlEncode(bytes).replaceAll('=', '');
 
@@ -223,7 +221,6 @@ class AccountRestorationService {
       cursor = page.hasMore ? page.nextCursor : null;
       if (page.hasMore && (cursor == null || cursor.isEmpty)) throw StateError('Server returned a paginated restore page without a cursor');
     } while (cursor != null && cursor.isNotEmpty);
-    await _decryptRestoredMessages();
   }
 
   Future<void> _restoreGroupMessages(void Function(ServiceRestoreProgress) onProgress, int step, int total) async {
@@ -232,14 +229,11 @@ class AccountRestorationService {
     do {
       final page = await api.accountRestoreData(scope: 'group_messages', cursor: cursor, limit: 200);
       for (final message in page.groupMessages) {
-        await groupCrypto.syncGroupKeys(message.groupId);
-        final plaintext = await groupCrypto.decryptGroupMessage(message);
-        if (plaintext == null) continue;
         await store.saveGroupMessage({
           'id': message.id,
           'group_id': message.groupId,
           'sender_id': message.senderId,
-          'body': plaintext,
+          'body': message.body,
           'created_at': message.createdAt,
           'server_seq': message.serverSeq,
           'attachments': message.attachments.map((a) => a.toJson()).toList(),
@@ -284,56 +278,4 @@ class AccountRestorationService {
     } while (cursor != null && cursor.isNotEmpty);
   }
 
-  Future<void> _decryptRestoredMessages() async {
-    try {
-      final imported = await crypto.importedIdentityKeyContexts();
-      if (imported.isEmpty) return;
-      await crypto.cachePeerIdentityHistory(await api.allIdentityKeyHistory());
-      final peerHistory = await crypto.cachedPeerIdentityHistory();
-      final peerCurrent = await crypto.cachedPeerPublicKeys();
-      final participantIds = imported.keys.toSet();
-      final messages = await store.messagesForParticipants(participantIds);
-      for (final message in messages) {
-        if (!message.body.startsWith('e2e:v2:')) continue;
-        final others = <String>{message.senderId, message.recipientId}..removeAll(participantIds);
-        if (others.isEmpty) continue;
-        final peerId = others.first;
-        final candidates = <int, String>{};
-        final historical = peerHistory[peerId] ?? {};
-        candidates.addAll(historical);
-        final current = peerCurrent[peerId];
-        if (current != null && current.isNotEmpty) {
-          var syntheticVersion = 1;
-          while (candidates.containsKey(syntheticVersion)) {
-            syntheticVersion++;
-          }
-          candidates[syntheticVersion] = current;
-        }
-        final body = await crypto.decryptMessageWithIdentityContexts(
-          senderId: message.senderId,
-          recipientId: message.recipientId,
-          messageId: message.id,
-          createdAt: message.createdAt.toUtc().toIso8601String(),
-          value: message.body,
-          peerKeysByVersion: candidates,
-        );
-        if (body != null && body != message.body) {
-          await store.saveMessage(Message(
-            id: message.id,
-            senderId: message.senderId,
-            recipientId: message.recipientId,
-            body: body,
-            createdAt: message.createdAt,
-            status: message.status,
-            deliveredAt: message.deliveredAt,
-            serverSeq: message.serverSeq,
-            attachments: message.attachments,
-          ));
-        }
-      }
-    } catch (_) {
-      // Restoration remains useful even when historical E2EE decryption is not
-      // possible (for example, no encrypted key backup or missing peer history).
-    }
-  }
 }

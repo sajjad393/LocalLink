@@ -1,4 +1,3 @@
-import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/features/calls/data/platform/call_media_platform_service.dart';
 import 'package:locallink/features/calls/data/platform/call_audio_platform_service.dart';
 import 'package:locallink/features/calls/data/transport/call_transport.dart';
@@ -16,19 +15,21 @@ final class CallTransportFactory {
     required this.mesh,
     required CallMediaPlatformService media,
     required CallAudioPlatformService audio,
-    required IdentityCryptoService crypto,
-  }) : nativeMesh = NativeMeshCallTransport(mesh: mesh, media: media, audio: audio, crypto: crypto);
+  }) : nativeMesh = NativeMeshCallTransport(mesh: mesh, media: media, audio: audio);
 
-  CallTransport resolve({required CallTransportMode requested}) {
-    switch (requested) {
-      case CallTransportMode.offlineMesh:
-        if (!mesh.isStarted) throw StateError('local mesh transport is unavailable');
-        return nativeMesh;
-      case CallTransportMode.auto:
-        if (!mesh.isStarted) throw StateError('no local LAN, Wi-Fi Direct, or mesh route is available');
-        return nativeMesh;
+  Future<void> ensureReady() async {
+    if (mesh.isStarted) return;
+    try {
+      await mesh.resume();
+    } catch (error) {
+      throw StateError('local native transport could not be resumed: $error');
+    }
+    if (!mesh.isStarted) {
+      throw StateError('local native transport is unavailable');
     }
   }
+
+  CallTransport resolve({required CallTransportMode requested}) => nativeMesh;
 
   Future<void> dispose() async => nativeMesh.dispose();
 }

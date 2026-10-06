@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
-
+import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 
 class CallHeader extends StatelessWidget {
@@ -16,14 +16,25 @@ class CallHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = session.peerName.isEmpty ? '?' : session.peerName[0].toUpperCase();
+    final statusColor = switch (session.state) {
+      CallState.connected => Theme.of(context).colorScheme.primary,
+      CallState.reconnecting => Theme.of(context).colorScheme.tertiary,
+      CallState.failed || CallState.rejected => Theme.of(context).colorScheme.error,
+      _ => Theme.of(context).colorScheme.onSurfaceVariant,
+    };
+
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        CircleAvatar(radius: 46, child: Text(initials)),
-        const SizedBox(height: 18),
-        Text(session.peerName, style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 8),
-        Text(statusText),
+        AccountAvatar(name: session.peerName, radius: 52),
+        const SizedBox(height: LocalLinkSpacing.lg),
+        Text(
+          session.peerName.isEmpty ? 'LocalLink user' : session.peerName,
+          style: Theme.of(context).textTheme.headlineSmall,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: LocalLinkSpacing.xs),
+        Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.w600)),
       ],
     );
   }

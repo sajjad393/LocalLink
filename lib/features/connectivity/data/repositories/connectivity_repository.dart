@@ -52,6 +52,9 @@ class ConnectivityRepository implements ConnectivityRepositoryContract {
   Future<bool> isWifiDirectSupported() => wifiDirect.isSupported();
 
   @override
+  Future<bool> isWifiDirectPermissionGranted() => wifiDirect.hasPermission();
+
+  @override
   Future<void> requestWifiDirectEnable() => wifiDirect.requestEnable();
 
   @override
@@ -107,10 +110,13 @@ class ConnectivityRepository implements ConnectivityRepositoryContract {
   @override
   Future<ConnectivitySnapshot> refresh() async {
     final wifiSupported = await isWifiDirectSupported();
-    final wifiConnection = await wifiDirectConnectionInfo().catchError(
-      (_) => const WifiDirectConnection(connected: false, groupOwner: false),
-    );
-    final peers = wifiSupported
+    final wifiPermissionGranted = wifiSupported && await isWifiDirectPermissionGranted();
+    final wifiConnection = wifiPermissionGranted
+        ? await wifiDirectConnectionInfo().catchError(
+            (_) => const WifiDirectConnection(connected: false, groupOwner: false),
+          )
+        : const WifiDirectConnection(connected: false, groupOwner: false);
+    final peers = wifiPermissionGranted
         ? await wifiDirectPeers().catchError((_) => const <WifiDirectPeer>[])
         : const <WifiDirectPeer>[];
     final topology = await this.topology().catchError(

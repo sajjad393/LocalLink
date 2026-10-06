@@ -20,6 +20,8 @@ import android.view.Surface
 import android.database.Cursor
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.media.MediaRecorder
+import android.media.MediaPlayer
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -41,6 +43,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private val channelName = "locallink/files"
+    private val voiceNotesChannelName = "locallink/voice_notes"
     private val wifiChannelName = "locallink/wifi_direct"
     private val wifiEventsName = "locallink/wifi_direct_events"
     private val transportChannelName = "locallink/wifi_direct_transport"
@@ -51,7 +54,12 @@ class MainActivity : FlutterActivity() {
     private val callNotificationEventsName = "locallink/call_notification_actions"
     private val wifiRadioChannelName = "locallink/wifi_radio"
     private val requestCode = 4931
+    private val wifiPermissionRequestCode = 7742
     private var pendingResult: MethodChannel.Result? = null
+    private var pendingWifiPermissionResult: MethodChannel.Result? = null
+    private var voiceRecorder: MediaRecorder? = null
+    private var voiceRecordingPath: String? = null
+    private var voicePlayer: MediaPlayer? = null
     private lateinit var wifiManager: WifiP2pManager
     private lateinit var wifiChannel: WifiP2pManager.Channel
     private var wifiP2pEnabled = false
@@ -103,11 +111,12 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, wifiChannelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "isSupported" -> result.success(packageManager.hasSystemFeature("android.hardware.wifi.direct"))
+                "hasPermission" -> result.success(hasWifiPermission())
                 "isEnabled" -> {
                     if (!hasWifiPermission()) { result.error("PERMISSION", "Nearby Wi-Fi permission is required", null); return@setMethodCallHandler }
                     result.success(wifiP2pEnabled)
                 }
-                "requestEnable" -> { requestWifiPermission(); result.success(null) }
+                "requestEnable" -> requestWifiPermission(result)
                 "discoverPeers" -> discoverPeers(result)
                 "getPeers" -> result.success(peerDevices.map { peerMap(it) })
                 "connect" -> connectPeer(call.argument<String>("address"), result)
@@ -139,7 +148,20 @@ class MainActivity : FlutterActivity() {
                     }
                     "sendFile" -> sendFileTransport(call, result)
                     "cancelFile" -> { LocalLinkTransportService.cancelFile(call.argument<String>("file_id")?.trim().orEmpty()); result.success(null) }
-                    "topology" -> result.success(LocalLinkTransportService.topology())
+                    "topology" -> Thread({
+                        try {
+                            val topology = LocalLinkTransportService.topology()
+                            runOnUiThread { result.success(topology) }
+                        } catch (error: Exception) {
+                            runOnUiThread {
+                                result.error(
+                                    "TOPOLOGY_FAILED",
+                                    error.message ?: "Could not read local transport topology",
+                                    null,
+                                )
+                            }
+                        }
+                    }, "locallink-topology").start()
                     "flushQueue" -> { LocalLinkTransportService.flushQueue(); result.success(null) }
                     "resume" -> { requestConnectionInfo(); result.success(null) }
                     "clearStorage" -> { LocalLinkTransportService.clearStorage(); result.success(null) }
@@ -386,13 +408,12 @@ class MainActivity : FlutterActivity() {
                     "start" -> {
                         val callId = call.argument<String>("call_id")?.trim().orEmpty()
                         val peerId = call.argument<String>("peer_id")?.trim().orEmpty()
-                        val mediaKey = call.argument<String>("media_key")?.trim().orEmpty()
                         val codec = call.argument<String>("codec")?.trim()?.lowercase().orEmpty()
-                        if (callId.isEmpty() || peerId.isEmpty() || mediaKey.isEmpty()) {
-                            result.error("INVALID_CALL_MEDIA", "call_id, peer_id and media_key are required", null)
+                        if (callId.isEmpty() || peerId.isEmpty()) {
+                            result.error("INVALID_CALL_MEDIA", "call_id and peer_id are required", null)
                             return@setMethodCallHandler
                         }
-                        LocalLinkTransportService.startCallMedia(callId, peerId, mediaKey, codec)
+                        LocalLinkTransportService.startCallMedia(callId, peerId, codec)
                         result.success(null)
                     }
                     "stop" -> {
@@ -408,13 +429,12 @@ class MainActivity : FlutterActivity() {
                     "video_start" -> {
                         val callId = call.argument<String>("call_id")?.trim().orEmpty()
                         val peerId = call.argument<String>("peer_id")?.trim().orEmpty()
-                        val mediaKey = call.argument<String>("media_key")?.trim().orEmpty()
-                        if (callId.isEmpty() || peerId.isEmpty() || mediaKey.isEmpty()) {
-                            result.error("INVALID_CALL_VIDEO", "call_id, peer_id and media_key are required", null)
+                        if (callId.isEmpty() || peerId.isEmpty()) {
+                            result.error("INVALID_CALL_VIDEO", "call_id and peer_id are required", null)
                             return@setMethodCallHandler
                         }
                         ensureCallVideoTextures()
-                        LocalLinkTransportService.startCallVideo(callId, peerId, mediaKey)
+                        LocalLinkTransportService.startCallVideo(callId, peerId)
                         result.success(mapOf(
                             "local_texture_id" to localVideoTextureEntry!!.id(),
                             "remote_texture_id" to remoteVideoTextureEntry!!.id(),
@@ -436,6 +456,20 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) { result.error("CALL_MEDIA_ERROR", e.message, null) }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, voiceNotesChannelName).setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "record_start" -> startVoiceRecording(result)
+                    "record_stop" -> stopVoiceRecording(result)
+                    "record_cancel" -> { cancelVoiceRecording(); result.success(null) }
+                    "play" -> playVoiceNote(call.argument<String>("path"), result)
+                    "pause" -> { voicePlayer?.pause(); result.success(null) }
+                    "stop" -> { voicePlayer?.stop(); voicePlayer?.release(); voicePlayer = null; result.success(null) }
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) { result.error("VOICE_NOTE_ERROR", e.message, null) }
         }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
@@ -484,6 +518,60 @@ class MainActivity : FlutterActivity() {
         remoteVideoTextureEntry = null
     }
 
+    private fun startVoiceRecording(result: MethodChannel.Result) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7812)
+            result.error("PERMISSION", "Microphone permission is required", null)
+            return
+        }
+        if (voiceRecorder != null) { result.error("RECORDING_ACTIVE", "A voice note is already recording", null); return }
+        val file = File(cacheDir, "voice_${UUID.randomUUID()}.m4a")
+        val recorder = MediaRecorder(this)
+        recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+        recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+        recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+        recorder.setAudioSamplingRate(44100)
+        recorder.setAudioEncodingBitRate(96000)
+        recorder.setOutputFile(file.absolutePath)
+        recorder.prepare()
+        recorder.start()
+        voiceRecorder = recorder
+        voiceRecordingPath = file.absolutePath
+        result.success(mapOf("path" to file.absolutePath, "name" to file.name, "size" to 0))
+    }
+
+    private fun stopVoiceRecording(result: MethodChannel.Result) {
+        val recorder = voiceRecorder ?: run { result.error("NO_RECORDING", "No voice note is recording", null); return }
+        val path = voiceRecordingPath
+        try { recorder.stop() } finally { recorder.release(); voiceRecorder = null; voiceRecordingPath = null }
+        val file = path?.let { File(it) } ?: throw IllegalStateException("Voice recording path is unavailable")
+        if (!file.exists() || file.length() <= 0L) { file.delete(); throw IllegalStateException("Voice recording is empty") }
+        result.success(mapOf("path" to file.absolutePath, "name" to file.name, "size" to file.length().toInt()))
+    }
+
+    private fun cancelVoiceRecording() {
+        val recorder = voiceRecorder
+        val path = voiceRecordingPath
+        try { recorder?.stop() } catch (_: Exception) {}
+        try { recorder?.release() } catch (_: Exception) {}
+        voiceRecorder = null
+        voiceRecordingPath = null
+        if (!path.isNullOrEmpty()) File(path).delete()
+    }
+
+    private fun playVoiceNote(path: String?, result: MethodChannel.Result) {
+        val target = path?.trim().orEmpty()
+        if (target.isEmpty() || !File(target).exists()) { result.error("AUDIO_FILE", "Voice note is unavailable", null); return }
+        voicePlayer?.stop(); voicePlayer?.release()
+        val player = MediaPlayer()
+        player.setDataSource(target)
+        player.setOnCompletionListener { it.release(); if (voicePlayer === it) voicePlayer = null }
+        player.prepare()
+        player.start()
+        voicePlayer = player
+        result.success(player.duration)
+    }
+
     private fun configureTransport(call: MethodCall, result: MethodChannel.Result) {
         val id = call.argument<String>("device_id")?.trim().orEmpty()
         if (id.isEmpty()) { result.error("INVALID_DEVICE", "device_id is required", null); return }
@@ -506,6 +594,26 @@ class MainActivity : FlutterActivity() {
         setIntent(intent)
         dispatchCallNotificationIntent(intent)
         dispatchNotificationIntent(intent)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != wifiPermissionRequestCode) return
+
+        val result = pendingWifiPermissionResult
+        pendingWifiPermissionResult = null
+
+        if (hasWifiPermission()) {
+            result?.success(null)
+            requestPeers()
+            requestConnectionInfo()
+        } else {
+            result?.error(
+                "PERMISSION_DENIED",
+                "Nearby Wi-Fi permission is required for Wi-Fi Direct",
+                null,
+            )
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -586,11 +694,34 @@ class MainActivity : FlutterActivity() {
         if (sink != null) sink.success(event) else pendingNotificationActions.add(event)
     }
 
-    private fun requestWifiPermission() {
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            val permissions=buildList{if(!hasWifiPermission())add(Manifest.permission.NEARBY_WIFI_DEVICES)}
-            if(permissions.isNotEmpty())requestPermissions(permissions.toTypedArray(),7742)
-        } else if(android.os.Build.VERSION.SDK_INT>=23&&!hasWifiPermission())requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),7742)
+    private fun requestWifiPermission(result: MethodChannel.Result) {
+        if (hasWifiPermission()) {
+            result.success(null)
+            requestPeers()
+            requestConnectionInfo()
+            return
+        }
+
+        if (pendingWifiPermissionResult != null) {
+            result.error("PERMISSION_REQUEST_ACTIVE", "A Wi-Fi permission request is already in progress", null)
+            return
+        }
+
+        val permissions = if (Build.VERSION.SDK_INT >= 33) {
+            arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES)
+        } else if (Build.VERSION.SDK_INT >= 23) {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        } else {
+            emptyArray()
+        }
+
+        if (permissions.isEmpty()) {
+            result.success(null)
+            return
+        }
+
+        pendingWifiPermissionResult = result
+        requestPermissions(permissions, wifiPermissionRequestCode)
     }
     private fun hasWifiPermission():Boolean=if(android.os.Build.VERSION.SDK_INT>=33)checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)==PackageManager.PERMISSION_GRANTED else checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
     private fun registerWifiReceiver(){if(wifiReceiverRegistered)return;val filter=IntentFilter().apply{addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)};if(Build.VERSION.SDK_INT>=33)registerReceiver(wifiReceiver,filter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(wifiReceiver,filter);wifiReceiverRegistered=true}
@@ -620,8 +751,17 @@ class MainActivity : FlutterActivity() {
         notificationEventSink = null
         pendingNotificationActions.clear()
         releaseCallVideoTextures()
+        try { voiceRecorder?.stop() } catch (_: Exception) {}
+        try { voiceRecorder?.release() } catch (_: Exception) {}
+        voiceRecorder = null
+        voiceRecordingPath?.let { File(it).delete() }
+        voiceRecordingPath = null
+        try { voicePlayer?.stop() } catch (_: Exception) {}
+        try { voicePlayer?.release() } catch (_: Exception) {}
+        voicePlayer = null
         LocalLinkTransportService.setEventListener(null)
         transportEventSink=null
+        pendingWifiPermissionResult = null
         unregisterWifiReceiver()
         super.onDestroy()
     }

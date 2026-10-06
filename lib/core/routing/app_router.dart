@@ -10,11 +10,15 @@ class AppRouter {
   final AppDependencies dependencies;
   final Future<void> Function() onSaved;
   final Future<void> Function() onReset;
+  final ThemeMode Function() getThemeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
 
   const AppRouter({
     required this.dependencies,
     required this.onSaved,
     required this.onReset,
+    required this.getThemeMode,
+    required this.onThemeModeChanged,
   });
 
   Route<dynamic> onGenerateRoute(RouteSettings settings) {
@@ -43,6 +47,8 @@ class AppRouter {
             notifications: dependencies.notifications,
             viewMode: dependencies.viewMode,
             adminCapability: dependencies.adminCapability,
+            themeMode: getThemeMode(),
+            onThemeModeChanged: onThemeModeChanged,
           ),
         );
       case AppRoutes.welcome:
@@ -52,11 +58,8 @@ class AppRouter {
           builder: (_) => WelcomeScreen(
             api: dependencies.api,
             store: dependencies.store,
-            crypto: dependencies.crypto,
             accountRepository: dependencies.account,
             authentication: dependencies.authentication,
-            connectivity: dependencies.connectivityRepository,
-            connectivityController: dependencies.connectivity,
             onSaved: onSaved,
             recoveryRepository: dependencies.recoveryRepository,
             transferRepository: dependencies.transferRepository,

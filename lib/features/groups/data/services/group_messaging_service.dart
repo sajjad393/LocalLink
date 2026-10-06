@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:convert';
+import 'package:locallink/core/models/message_reaction.dart';
 
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/group.dart';
@@ -7,23 +9,24 @@ import 'package:locallink/features/files/domain/file_transfer_repository_contrac
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/services/websocket_service.dart';
-import 'package:locallink/features/groups/data/services/group_crypto_service.dart';
 
 class GroupMessagingService {
   final LocalStore store;
   final LocalLinkApi api;
   final WebSocketService socket;
   final FileTransferRepositoryContract files;
-  final GroupCryptoService groupCrypto;
   final _incoming = StreamController<GroupMessage>.broadcast();
+  final _reactionIncoming = StreamController<MessageReaction>.broadcast();
+  static const _reactionPrefix = 'llrx:v1:';
   StreamSubscription? _socketSub;
   StreamSubscription? _connectionSub;
   Timer? _retryTimer;
   bool _flushing = false;
 
-  GroupMessagingService(this.store, this.api, this.socket, this.files, this.groupCrypto);
+  GroupMessagingService(this.store, this.api, this.socket, this.files);
 
   Stream<GroupMessage> get incoming => _incoming.stream;
+  Stream<MessageReaction> get reactionIncoming => _reactionIncoming.stream;
 
   void start() {
     _socketSub ??= socket.messages.listen(_onMessage);
@@ -38,17 +41,32 @@ class GroupMessagingService {
   Future<List<GroupMessage>> history(String groupId) async {
     final local = (await store.groupMessages(groupId)).map((e) => GroupMessage.fromJson(e)).toList();
     try {
-      await groupCrypto.syncGroupKeys(groupId);
       final remote = await api.groupMessages(groupId);
       for (final m in remote) {
-        final plaintext = await groupCrypto.decryptGroupMessage(m);
-        if (plaintext == null) continue;
-        await store.saveGroupMessage(_messageMap(m.copyWith(body: plaintext)));
+        if (await _consumeReaction(m)) continue;
+        await store.saveGroupMessage(_messageMap(m));
       }
       return (await store.groupMessages(groupId)).map((e) => GroupMessage.fromJson(e)).toList();
     } catch (_) {
       return local;
     }
+  }
+
+  Future<void> sendReaction(String groupId, String messageId, String emoji) async {
+    final normalized = emoji.trim();
+    if (normalized.isEmpty || messageId.trim().isEmpty) throw const FormatException('Reaction is required');
+    final id = _newId();
+    final createdAt = DateTime.now().toUtc().toIso8601String();
+    final payload = jsonEncode({'message_id': messageId, 'emoji': normalized, 'reactor_id': store.deviceId, 'created_at': createdAt});
+    await store.addGroupOutbox({'id': id, 'group_id': groupId, 'body': '$_reactionPrefix$payload', 'created_at': createdAt, 'status': 'queued'});
+    await store.saveGroupMessageReaction(messageId: messageId, reactorId: store.deviceId ?? '', emoji: normalized, createdAt: createdAt);
+    _reactionIncoming.add(MessageReaction(messageId: messageId, reactorId: store.deviceId ?? '', emoji: normalized, createdAt: DateTime.parse(createdAt).toLocal()));
+    await flush();
+  }
+
+  Future<List<MessageReaction>> reactions(String messageId) async {
+    final rows = await store.groupMessageReactions(messageId);
+    return rows.map((row) => MessageReaction.fromJson(row)).toList(growable: false);
   }
 
   Future<GroupMessage> send(
@@ -99,14 +117,7 @@ class GroupMessagingService {
         final createdAt = item['created_at']?.toString() ?? '';
         if (id.isEmpty || groupId.isEmpty || createdAt.isEmpty) continue;
 
-        final group = await store.groupById(groupId);
-        if (group == null) continue;
-        final encryptedBody = await groupCrypto.encryptGroupMessage(
-          group: group,
-          messageId: id,
-          createdAt: createdAt,
-          plaintext: item['body']?.toString() ?? '',
-        );
+        final body = item['body']?.toString() ?? '';
 
         final pending = await store.pendingGroupAttachments(id);
         final remoteIds = <String>[];
@@ -124,7 +135,7 @@ class GroupMessagingService {
               contentType: attachment['content_type'].toString(),
               size: int.tryParse(attachment['size'].toString()) ?? 0,
             );
-            final uploaded = await files.uploadE2eForGroupMessage(picked, groupId: groupId, messageId: id, createdAt: createdAt, clientFileId: attachment['id']?.toString() ?? '', operationId: id);
+            final uploaded = await files.uploadForGroupMessage(picked, groupId: groupId, messageId: id, createdAt: createdAt, clientFileId: attachment['id']?.toString() ?? '', operationId: id);
             await store.setPendingGroupRemoteFile(attachment['id'].toString(), uploaded.id);
             remoteIds.add(uploaded.id);
           } catch (_) {
@@ -138,7 +149,7 @@ class GroupMessagingService {
           'type': 'send_group_message',
           'id': id,
           'group_id': groupId,
-          'body': encryptedBody,
+          'body': body,
           'created_at': createdAt,
           if (remoteIds.isNotEmpty) 'attachment_ids': remoteIds,
         }, durable: true);
@@ -147,6 +158,22 @@ class GroupMessagingService {
     } finally {
       _flushing = false;
     }
+  }
+
+  Future<bool> _consumeReaction(GroupMessage message) async {
+    if (!message.body.startsWith(_reactionPrefix)) return false;
+    try {
+      final payload = jsonDecode(message.body.substring(_reactionPrefix.length));
+      if (payload is! Map) return true;
+      final messageId = payload['message_id']?.toString() ?? '';
+      final emoji = payload['emoji']?.toString() ?? '';
+      final reactorId = payload['reactor_id']?.toString() ?? message.senderId;
+      final createdAt = payload['created_at']?.toString() ?? message.createdAt;
+      if (messageId.isEmpty || emoji.isEmpty || reactorId != message.senderId) return true;
+      await store.saveGroupMessageReaction(messageId: messageId, reactorId: reactorId, emoji: emoji, createdAt: createdAt);
+      _reactionIncoming.add(MessageReaction(messageId: messageId, reactorId: reactorId, emoji: emoji, createdAt: DateTime.tryParse(createdAt)?.toLocal() ?? DateTime.now()));
+    } catch (_) {}
+    return true;
   }
 
   Future<void> _onMessage(Map<String, dynamic> data) async {
@@ -164,9 +191,9 @@ class GroupMessagingService {
       final base = GroupMessage.fromJson(data);
       final localRows = await store.groupMessages(base.groupId);
       final existing = localRows.map(GroupMessage.fromJson).where((m) => m.id == id).cast<GroupMessage?>().firstOrNull;
-      if (existing == null) {
-        final plaintext = await groupCrypto.decryptGroupMessage(base);
-        if (plaintext == null) return;
+      if (existing == null && await _consumeReaction(base)) {
+        await store.removeGroupOutbox(id);
+        return;
       }
       final attachments = <Attachment>[];
       for (var i = 0; i < base.attachments.length; i++) {
@@ -177,7 +204,7 @@ class GroupMessagingService {
         id: base.id,
         groupId: base.groupId,
         senderId: base.senderId,
-        body: existing?.body ?? (await groupCrypto.decryptGroupMessage(base))!,
+        body: existing?.body ?? base.body,
         createdAt: base.createdAt,
         serverSeq: base.serverSeq,
         attachments: attachments,
@@ -192,14 +219,11 @@ class GroupMessagingService {
     if (type != 'group_message') return;
     try {
       final message = GroupMessage.fromJson(data);
-      await groupCrypto.syncGroupKeys(message.groupId);
-      final plaintext = await groupCrypto.decryptGroupMessage(message, requireCurrent: true);
-      if (plaintext == null) return;
-      final decrypted = message.copyWith(body: plaintext);
+      if (await _consumeReaction(message)) return;
       if (await store.isBlockedPeer(message.senderId)) return;
       final existed = (await store.groupMessages(message.groupId)).any((m) => m['id']?.toString() == message.id);
-      await store.saveGroupMessage(_messageMap(decrypted));
-      if (!existed) _incoming.add(decrypted);
+      await store.saveGroupMessage(_messageMap(message));
+      if (!existed) _incoming.add(message);
     } catch (_) {}
   }
 
@@ -207,6 +231,7 @@ class GroupMessagingService {
     _retryTimer?.cancel();
     await _socketSub?.cancel();
     await _connectionSub?.cancel();
+    await _reactionIncoming.close();
     await _incoming.close();
   }
 

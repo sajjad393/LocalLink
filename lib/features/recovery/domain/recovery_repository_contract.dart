@@ -7,6 +7,7 @@ import 'package:locallink/features/connectivity/data/models/discovered_server.da
 abstract interface class RecoveryRepositoryContract {
   Future<PairingInfo> verifyServer(String address);
   Future<void> trustServer(PairingInfo info);
+  Future<String> prepareForRecovery({required String deviceName});
   bool isServerTrusted(PairingInfo info);
   String normalizeServerAddress(String address);
   Future<AccountRecoveryStart> createRecovery({required String username, required String password, required String deviceId, required String deviceName, required String identityPublicKey});

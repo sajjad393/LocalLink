@@ -30,7 +30,7 @@ final class FileTransferRepository implements FileTransferRepositoryContract {
       );
 
   @override
-  Future<Attachment> uploadE2eForMessage(
+  Future<Attachment> uploadForMessage(
     PickedFile file, {
     required String recipientId,
     required String messageId,
@@ -39,7 +39,7 @@ final class FileTransferRepository implements FileTransferRepositoryContract {
     String? operationId,
     void Function(TransferProgress progress)? onProgress,
   }) =>
-      service.uploadE2eForMessage(file,
+      service.uploadForMessage(file,
           recipientId: recipientId,
           messageId: messageId,
           createdAt: createdAt,
@@ -48,7 +48,7 @@ final class FileTransferRepository implements FileTransferRepositoryContract {
           onProgress: onProgress);
 
   @override
-  Future<Attachment> uploadE2eForGroupMessage(
+  Future<Attachment> uploadForGroupMessage(
     PickedFile file, {
     required String groupId,
     required String messageId,
@@ -57,7 +57,7 @@ final class FileTransferRepository implements FileTransferRepositoryContract {
     String? operationId,
     void Function(TransferProgress progress)? onProgress,
   }) =>
-      service.uploadE2eForGroupMessage(file,
+      service.uploadForGroupMessage(file,
           groupId: groupId,
           messageId: messageId,
           createdAt: createdAt,

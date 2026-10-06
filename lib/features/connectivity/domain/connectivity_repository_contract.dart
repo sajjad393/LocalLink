@@ -14,6 +14,7 @@ abstract interface class ConnectivityRepositoryContract {
 
   Future<List<DiscoveredServer>> discoverServers({Duration timeout});
   Future<bool> isWifiDirectSupported();
+  Future<bool> isWifiDirectPermissionGranted();
   Future<void> requestWifiDirectEnable();
   Future<void> startWifiDirectDiscovery();
   Future<List<WifiDirectPeer>> wifiDirectPeers();

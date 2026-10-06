@@ -13,9 +13,6 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/security/security_policy.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 import 'package:locallink/features/files/data/models/file_transfer_models.dart';
-import 'package:locallink/features/files/data/services/attachment_crypto_service.dart';
-import 'package:locallink/features/groups/data/services/group_crypto_service.dart';
-import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/security/sensitive_file_protection_service.dart';
 
 class FileTransferService {
@@ -24,20 +21,12 @@ class FileTransferService {
   final ConnectivityRepositoryContract? connectivity;
   final Map<String, http.Client> _activeClients = {};
   final Set<String> _cancelledTransfers = {};
-  final IdentityCryptoService crypto;
-  final GroupCryptoService? groupCrypto;
-  final AttachmentCryptoService attachmentCrypto;
   final SensitiveFileProtectionService sensitiveFiles;
 
   FileTransferService(this.store,
       {this.connectivity,
-      IdentityCryptoService? crypto,
-      this.groupCrypto,
-      AttachmentCryptoService? attachmentCrypto,
       SensitiveFileProtectionService? sensitiveFiles})
-      : crypto = crypto ?? IdentityCryptoService(),
-        attachmentCrypto = attachmentCrypto ?? AttachmentCryptoService(),
-        sensitiveFiles = sensitiveFiles ?? SensitiveFileProtectionService();
+      : sensitiveFiles = sensitiveFiles ?? SensitiveFileProtectionService();
 
   String get baseUrl =>
       SecurityPolicy.normalizeServerAddress(store.serverAddress ?? '');
@@ -128,7 +117,7 @@ class FileTransferService {
     }
   }
 
-  Future<Attachment> uploadE2eForMessage(
+  Future<Attachment> uploadForMessage(
     PickedFile file, {
     required String recipientId,
     required String messageId,
@@ -136,37 +125,9 @@ class FileTransferService {
     required String clientFileId,
     String? transferId,
     void Function(TransferProgress progress)? onProgress,
-  }) async {
-    final senderId = store.deviceId?.trim() ?? '';
-    if (senderId.isEmpty ||
-        recipientId.trim().isEmpty ||
-        messageId.trim().isEmpty ||
-        createdAt.trim().isEmpty) {
-      throw const FormatException(
-          'direct E2E attachment identity metadata is required');
-    }
-    final peerKeys = await crypto.cachedPeerPublicKeys();
-    final peerPublic = peerKeys[recipientId];
-    if (peerPublic == null || peerPublic.isEmpty)
-      throw StateError('recipient identity key is unavailable');
-    final shared = await crypto.deriveSharedKey(recipientId, peerPublic);
-    return _uploadEncrypted(
-      file,
-      baseKey: shared,
-      scope: 'direct',
-      keyVersion: crypto.keyVersion,
-      senderId: senderId,
-      recipientId: recipientId,
-      groupId: '',
-      messageId: messageId,
-      createdAt: createdAt,
-      clientFileId: clientFileId,
-      transferId: transferId,
-      onProgress: onProgress,
-    );
-  }
+  }) => upload(file, clientFileId: clientFileId, transferId: transferId, onProgress: onProgress);
 
-  Future<Attachment> uploadE2eForGroupMessage(
+  Future<Attachment> uploadForGroupMessage(
     PickedFile file, {
     required String groupId,
     required String messageId,
@@ -174,182 +135,7 @@ class FileTransferService {
     required String clientFileId,
     String? transferId,
     void Function(TransferProgress progress)? onProgress,
-  }) async {
-    final senderId = store.deviceId?.trim() ?? '';
-    final groupService = groupCrypto;
-    if (senderId.isEmpty || groupService == null)
-      throw StateError('group E2E attachment dependencies are unavailable');
-    final group = await store.groupById(groupId);
-    if (group == null) throw StateError('group not found');
-    final version = await groupService.ensureCurrentKey(group);
-    final groupKey = await groupService.keyForVersion(groupId, version);
-    if (groupKey == null) throw StateError('current group key is unavailable');
-    return _uploadEncrypted(
-      file,
-      baseKey: groupKey,
-      scope: 'group',
-      keyVersion: version,
-      senderId: senderId,
-      recipientId: '',
-      groupId: groupId,
-      messageId: messageId,
-      createdAt: createdAt,
-      clientFileId: clientFileId,
-      transferId: transferId,
-      onProgress: onProgress,
-    );
-  }
-
-  Future<Attachment> _uploadEncrypted(
-    PickedFile file, {
-    required String baseKey,
-    required String scope,
-    required int keyVersion,
-    required String senderId,
-    required String recipientId,
-    required String groupId,
-    required String messageId,
-    required String createdAt,
-    required String clientFileId,
-    String? transferId,
-    void Function(TransferProgress progress)? onProgress,
-  }) async {
-    final bytes = await File(file.path).readAsBytes();
-    final size = bytes.length;
-    final sha = await attachmentCrypto.sha256Hex(bytes);
-    var width = 0;
-    var height = 0;
-    var isImage = file.contentType.toLowerCase().startsWith('image/');
-    if (isImage) {
-      try {
-        final codec = await ui.instantiateImageCodec(bytes,
-            targetWidth: 320, targetHeight: 320);
-        final frame = await codec.getNextFrame();
-        width = frame.image.width;
-        height = frame.image.height;
-        codec.dispose();
-      } catch (_) {
-        isImage = false;
-      }
-    }
-    final encrypted = await attachmentCrypto.encrypt(
-      plaintext: bytes,
-      baseKey: baseKey,
-      scope: scope,
-      keyVersion: keyVersion,
-      senderId: senderId,
-      recipientId: recipientId,
-      groupId: groupId,
-      messageId: messageId,
-      fileId: clientFileId,
-      originalName: file.name,
-      contentType: file.contentType,
-      size: size,
-      sha256: sha,
-    );
-    AttachmentCryptoResult? encryptedThumb;
-    if (isImage) {
-      try {
-        final codec = await ui.instantiateImageCodec(bytes,
-            targetWidth: 320, targetHeight: 320);
-        final frame = await codec.getNextFrame();
-        final data =
-            await frame.image.toByteData(format: ui.ImageByteFormat.png);
-        codec.dispose();
-        if (data != null) {
-          encryptedThumb = await attachmentCrypto.encrypt(
-            plaintext: data.buffer.asUint8List(),
-            baseKey: baseKey,
-            scope: scope,
-            keyVersion: keyVersion,
-            senderId: senderId,
-            recipientId: recipientId,
-            groupId: groupId,
-            messageId: messageId,
-            fileId: clientFileId,
-            originalName: file.name,
-            contentType: file.contentType,
-            size: size,
-            sha256: sha,
-            purpose: 'thumbnail',
-          );
-        }
-      } catch (_) {}
-    }
-    final req =
-        http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/files'));
-    req.headers.addAll(_headers());
-    req.headers.addAll({
-      'X-Client-File-ID': clientFileId,
-      'X-File-Crypto-Version': AttachmentCryptoService.cryptoVersion,
-      'X-File-E2E-Scope': scope,
-      'X-File-Key-Version': keyVersion.toString(),
-      'X-File-Original-Name': file.name,
-      'X-File-Content-Type': file.contentType,
-      'X-File-Plaintext-Size': size.toString(),
-      'X-File-Plaintext-SHA256': sha,
-      'X-File-Width': width.toString(),
-      'X-File-Height': height.toString(),
-      'X-File-Is-Image': isImage.toString(),
-      'X-File-Nonce': encrypted.nonce,
-      'X-File-Mac': encrypted.mac,
-    });
-    req.files.add(http.MultipartFile.fromBytes('file', encrypted.ciphertext,
-        filename: 'encrypted.bin'));
-    if (encryptedThumb != null) {
-      req.headers['X-File-Thumbnail-Nonce'] = encryptedThumb.nonce;
-      req.headers['X-File-Thumbnail-Mac'] = encryptedThumb.mac;
-      req.files.add(http.MultipartFile.fromBytes(
-          'thumbnail', encryptedThumb.ciphertext,
-          filename: 'encrypted-thumb.bin'));
-    }
-    final streamedRequest = http.StreamedRequest(req.method, req.url);
-    streamedRequest.headers.addAll(req.headers);
-    streamedRequest.contentLength = req.contentLength;
-    final finalized = req.finalize();
-    var sent = 0;
-    final pump = finalized.listen((chunk) {
-      sent += chunk.length;
-      streamedRequest.sink.add(chunk);
-      onProgress?.call(TransferProgress(
-          operationId: transferId ?? clientFileId,
-          direction: FileTransferDirection.upload,
-          completed: sent,
-          total: req.contentLength,
-          status: FileTransferStatus.running));
-    },
-        onError: streamedRequest.sink.addError,
-        onDone: streamedRequest.sink.close,
-        cancelOnError: true);
-    final client = http.Client();
-    if (transferId != null && transferId.isNotEmpty)
-      _activeClients[transferId] = client;
-    try {
-      final response = await client
-          .send(streamedRequest)
-          .timeout(const Duration(minutes: 3));
-      await pump.asFuture<void>().catchError((_) {});
-      final body = await response.stream.bytesToString();
-      if (response.statusCode != 200 && response.statusCode != 201)
-        throw Exception(_errorBody(body, response.statusCode));
-      final payload = jsonDecode(body) as Map<String, dynamic>;
-      final attachment = Attachment.fromJson(
-          Map<String, dynamic>.from(payload['file'] as Map));
-      if (attachment.cryptoVersion != AttachmentCryptoService.cryptoVersion ||
-          attachment.cryptoScope != scope ||
-          attachment.cryptoKeyVersion != keyVersion ||
-          attachment.cryptoNonce != encrypted.nonce ||
-          attachment.cryptoMac != encrypted.mac) {
-        throw StateError(
-            'server returned inconsistent E2E attachment metadata');
-      }
-      return attachment;
-    } finally {
-      _activeClients.remove(transferId);
-      await pump.cancel();
-      client.close();
-    }
-  }
+  }) => upload(file, clientFileId: clientFileId, transferId: transferId, onProgress: onProgress);
 
   Future<String> downloadForMessage(
     String messageId,
@@ -404,96 +190,7 @@ class FileTransferService {
     required String createdAt,
     String? transferId,
     void Function(TransferProgress progress)? onProgress,
-  }) async {
-    if (attachment.cryptoVersion.isEmpty) {
-      return download(attachment,
-          transferId: transferId, onProgress: onProgress);
-    }
-    if (attachment.cryptoVersion != AttachmentCryptoService.cryptoVersion)
-      throw StateError('unsupported attachment crypto version');
-    final relative = attachment.downloadUrl;
-    if (relative == null || relative.isEmpty)
-      throw StateError('encrypted attachment download URL is missing');
-    final ciphertext = await _downloadBytes(relative,
-        transferId: transferId,
-        onProgress: onProgress,
-        expectedSize: attachment.size);
-    final target = await _attachmentTargetPath(attachment, false);
-    final temp =
-        File('$target${SensitiveFileProtectionService.plaintextPartSuffix}');
-    try {
-      final baseKeys = <String>[];
-      if (attachment.cryptoScope == 'group') {
-        final groupService = groupCrypto;
-        if (groupService == null)
-          throw StateError('group crypto service unavailable');
-        final key = await groupService.keyForVersion(
-            groupId, attachment.cryptoKeyVersion);
-        if (key == null) throw StateError('group key version is unavailable');
-        baseKeys.add(key);
-      } else {
-        if (senderId.isEmpty || recipientId.isEmpty)
-          throw StateError('direct attachment participants are missing');
-        final peerKeys = await crypto.cachedPeerPublicKeys();
-        final history = await crypto.cachedPeerIdentityHistory();
-        final candidates = <String>{};
-        final current = peerKeys[senderId];
-        if (current != null) candidates.add(current);
-        candidates.addAll(history[senderId]?.values ?? const <String>[]);
-        final localVersions = await crypto.availableKeyVersions();
-        for (final peerKey in candidates) {
-          for (final localVersion in localVersions) {
-            try {
-              baseKeys.add(await crypto.deriveSharedKey(senderId, peerKey,
-                  selfKeyVersion: localVersion));
-            } catch (_) {}
-          }
-        }
-      }
-      List<int>? plain;
-      final nonce = attachment.cryptoNonce;
-      final mac = attachment.cryptoMac;
-      if (nonce == null || mac == null) {
-        throw StateError('attachment authentication metadata missing');
-      }
-      for (final base in baseKeys) {
-        try {
-          plain = await attachmentCrypto.decrypt(
-            ciphertext: ciphertext,
-            baseKey: base,
-            scope: attachment.cryptoScope,
-            keyVersion: attachment.cryptoKeyVersion,
-            senderId: senderId,
-            recipientId: recipientId,
-            groupId: groupId,
-            messageId: messageId,
-            fileId: attachment.id,
-            originalName: attachment.originalName,
-            contentType: attachment.contentType,
-            size: attachment.size,
-            sha256: attachment.sha256,
-            nonce: nonce,
-            mac: mac,
-          );
-          break;
-        } catch (_) {}
-      }
-      if (plain == null) throw StateError('attachment decryption failed');
-      if (plain.length != attachment.size ||
-          await attachmentCrypto.sha256Hex(plain) !=
-              attachment.sha256.toLowerCase()) {
-        throw StateError('attachment plaintext integrity check failed');
-      }
-      final protectedTarget = '$target.enc';
-      await temp.writeAsBytes(plain, flush: true);
-      await sensitiveFiles.protectFile(temp.path, protectedTarget);
-      await temp.delete();
-      return protectedTarget;
-    } catch (_) {
-      if (await temp.exists()) await temp.delete();
-      rethrow;
-    }
-  }
+  }) => download(attachment, transferId: transferId, onProgress: onProgress);
 
   Future<List<int>> _downloadBytes(String relative,
       {String? transferId,
@@ -516,7 +213,7 @@ class FileTransferService {
       await for (final chunk in response.stream) {
         received += chunk.length;
         if (received > expectedSize + 1024 * 1024)
-          throw StateError('encrypted download exceeds expected bounds');
+          throw StateError('download exceeds expected bounds');
         buffer.addAll(chunk);
         onProgress?.call(TransferProgress(
             operationId: transferId ?? 'untracked-download',
@@ -638,7 +335,7 @@ class FileTransferService {
           received += chunk.length;
           final hardLimit = math.max(attachment.size + 2 * 1024 * 1024, total);
           if (received > hardLimit)
-            throw StateError('encrypted download exceeds expected bounds');
+            throw StateError('download exceeds expected bounds');
           sink.add(chunk);
           onProgress?.call(TransferProgress(
             operationId: transferId ?? 'untracked-download',

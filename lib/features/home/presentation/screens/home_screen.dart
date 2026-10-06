@@ -1,40 +1,40 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
+
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
+import 'package:locallink/core/state/app_view_mode.dart';
+import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
+import 'package:locallink/core/widgets/local_link_state_view.dart';
+import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
+import 'package:locallink/core/widgets/messenger_section_header.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
-import 'package:locallink/features/account/presentation/screens/account_center_screen.dart';
-import 'package:locallink/features/account/presentation/screens/devices_screen.dart';
-import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
-import 'package:locallink/features/admin/presentation/screens/admin_login_screen.dart';
+import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
+import 'package:locallink/features/calls/data/services/call_preflight_exception.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/calls/presentation/screens/calls_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
+import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
+import 'package:locallink/features/directory/presentation/contacts_screen.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/groups/domain/group_messaging_repository_contract.dart';
 import 'package:locallink/features/groups/domain/group_repository_contract.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
 import 'package:locallink/features/groups/presentation/widgets/create_group_dialog.dart';
-import 'package:locallink/features/groups/presentation/widgets/group_list_tile.dart';
-import 'package:locallink/features/home/domain/home_repository_contract.dart';
 import 'package:locallink/features/home/bloc/home_bloc.dart';
-import 'package:locallink/features/messaging/domain/messaging_repository_contract.dart';
+import 'package:locallink/features/home/domain/home_repository_contract.dart';
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
+import 'package:locallink/features/messaging/domain/messaging_repository_contract.dart';
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
+import 'package:locallink/features/home/presentation/screens/messenger_settings_screen.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
-import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
-import 'package:locallink/features/directory/presentation/contacts_screen.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
-import 'package:locallink/features/notifications/presentation/screens/notification_settings_screen.dart';
-import 'package:locallink/core/state/app_view_mode.dart';
 
 class HomeScreen extends StatefulWidget {
   final LocalLinkApi api;
@@ -57,6 +57,8 @@ class HomeScreen extends StatefulWidget {
   final LocalLinkNotificationService notifications;
   final AppViewModeCubit viewMode;
   final AdminCapabilityService adminCapability;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
 
   const HomeScreen({
     super.key,
@@ -80,6 +82,8 @@ class HomeScreen extends StatefulWidget {
     required this.notifications,
     required this.viewMode,
     required this.adminCapability,
+    required this.themeMode,
+    required this.onThemeModeChanged,
   });
 
   @override
@@ -87,11 +91,17 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late final HomeBloc _controller = HomeBloc(repository: widget.homeRepository);
+  late final HomeBloc _controller = HomeBloc(
+    repository: widget.homeRepository,
+    onServerSyncUnavailable: widget.connectivityController.discoverWifiDirect,
+  );
+  int _index = 0;
+  late ThemeMode _themeMode;
 
   @override
   void initState() {
     super.initState();
+    _themeMode = widget.themeMode;
     _controller.start();
   }
 
@@ -99,6 +109,54 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _controller.close();
     super.dispose();
+  }
+
+  Future<void> _openChat(Device device) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          controller:
+              ChatBloc(repository: widget.messagingRepository, device: device),
+          files: widget.files,
+          notifications: widget.notifications,
+          onStartCall: (peer) async {
+            await widget.calls.startCall(peer);
+            if (!context.mounted) return;
+            final session = widget.calls.session;
+            if (session == null) return;
+            await Navigator.push<void>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CallScreen(
+                    controller: widget.calls, initialSession: session),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _call(Device device) async {
+    try {
+      await widget.calls.startCall(device);
+      if (!mounted) return;
+      final session = widget.calls.session;
+      if (session == null) return;
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              CallScreen(controller: widget.calls, initialSession: session),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_cleanError(error))),
+      );
+    }
   }
 
   Future<void> _createGroup() async {
@@ -109,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted || result == null) return;
     final group = await _controller.createGroup(result.name, result.memberIds);
     if (!mounted || group == null) return;
-    await Navigator.push(
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => GroupChatScreen(
@@ -124,218 +182,182 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _openChat(Device device) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          controller:
-              ChatBloc(repository: widget.messagingRepository, device: device),
-          files: widget.files,
-          notifications: widget.notifications,
-          onStartCall: (peer) async {
-            await widget.calls.startCall(peer);
-            if (!context.mounted) return;
-            final session = widget.calls.session;
-            if (session == null) return;
-            await Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => CallScreen(
-                        controller: widget.calls, initialSession: session)));
-          },
-        ),
-      ),
-    );
+  String _cleanError(Object error) {
+    if (error is CallPreflightException) return error.userMessage;
+    return error.toString().replaceFirst('Exception: ', '').trim();
   }
 
-  Future<void> _call(Device device) async {
-    try {
-      await widget.calls.startCall(device);
-      if (!mounted) return;
-      final session = widget.calls.session;
-      if (session == null) return;
-      await Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (_) => CallScreen(
-                  controller: widget.calls, initialSession: session)));
-    } catch (error) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(error.toString().replaceFirst('Exception: ', ''))));
-    }
+  String _deviceSubtitle(Device device) {
+    if (device.wifiDirectConnected) return 'Available · Wi-Fi Direct';
+    if (device.serverConnected || device.lanAvailable)
+      return 'Available · Local Wi-Fi';
+    if (device.meshAvailable) return 'Available · Nearby mesh';
+    if (device.networkStatus == DeviceNetworkStatus.unknown)
+      return 'Status unavailable';
+    return 'Offline';
   }
 
-  Future<void> _openAdmin() async {
-    if (!mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AdminLoginScreen(
-          api: widget.api,
-          viewMode: widget.viewMode,
-          adminCapability: widget.adminCapability,
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _chatsTab() {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('LocalLink'),
+        title: const Text('Chats'),
         actions: [
-          Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ConnectionStatusIndicator(
-                  controller: widget.connectivityController)),
+          ConnectionStatusIndicator(controller: widget.connectivityController),
           IconButton(
-            tooltip: 'Account center',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AccountCenterScreen(
-                  accountRepository: widget.accountRepository,
-                  identityRepository: widget.identityRepository,
-                  api: widget.api,
-                  store: widget.store,
-                  crypto: widget.crypto,
-                  restoreService: widget.restoreService,
-                  transferRepository: widget.transferRepository,
-                  adminRepositoryFactory: widget.adminRepositoryFactory,
-                  directoryRepository: widget.directoryRepository,
-                  viewMode: widget.viewMode,
-                  adminCapability: widget.adminCapability,
-                  connectivityController: widget.connectivityController,
-                ),
-              ),
-            ),
-            icon: const Icon(Icons.account_circle_outlined),
-          ),
-          IconButton(
-              onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => CallsScreen(
-                          controller: widget.calls,
-                          selfId: widget.store.deviceId!))),
-              icon: const Icon(Icons.history)),
-          IconButton(
-              tooltip: 'Contacts',
-              onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => ContactsScreen(
-                          directory: widget.directoryRepository,
-                          connectivity: widget.connectivityController,
-                          messaging: widget.messagingRepository,
-                          files: widget.files,
-                          calls: widget.calls,
-                          crypto: widget.crypto,
-                          notifications: widget.notifications))),
-              icon: const Icon(Icons.contacts_outlined)),
-          IconButton(
-              onPressed: _controller.load, icon: const Icon(Icons.refresh)),
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              if (value == 'reset') await widget.onReset();
-              if (value == 'devices') {
-                await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => DevicesScreen(
-                            accountRepository: widget.accountRepository,
-                            identityRepository: widget.identityRepository,
-                            api: widget.api,
-                            store: widget.store,
-                            crypto: widget.crypto,
-                            restoreService: widget.restoreService)));
-              }
-              if (value == 'admin') await _openAdmin();
-              if (value == 'notifications') {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => NotificationSettingsScreen(
-                      notifications: widget.notifications,
-                    ),
-                  ),
-                );
-              }
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'devices', child: Text('Trusted devices')),
-              PopupMenuItem(value: 'admin', child: Text('Admin panel')),
-              PopupMenuItem(
-                  value: 'notifications', child: Text('Notifications')),
-              PopupMenuItem(value: 'reset', child: Text('Reset setup')),
-            ],
+            tooltip: 'Settings',
+            onPressed: () => setState(() => _index = 3),
+            icon: const Icon(Icons.settings_outlined),
           ),
         ],
       ),
-      body: LocalLinkBlocBuilder(
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'New conversation',
+        onPressed: () => setState(() => _index = 2),
+        child: const Icon(Icons.chat_rounded),
+      ),
+      body: LocalLinkBlocBuilder<HomeBloc, HomeState>(
         bloc: _controller,
         builder: (context, state) {
-          if (_controller.loading)
-            return const Center(child: CircularProgressIndicator());
+          if (state.loading && state.devices.isEmpty && state.groups.isEmpty) {
+            return const LocalLinkLoadingView(
+                message: 'Loading your conversations…');
+          }
           return RefreshIndicator(
             onRefresh: _controller.load,
             child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 96),
               children: [
-                if (_controller.error != null)
-                  ListTile(
-                      leading: const Icon(Icons.error_outline),
-                      title: Text(_controller.error!)),
-                ListTile(
-                    leading: const Icon(Icons.group_add),
-                    title: const Text('Create group'),
-                    onTap: _createGroup),
-                if (_controller.groups.isNotEmpty) ...[
-                  const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
-                      child: Text('Groups',
-                          style: TextStyle(fontWeight: FontWeight.bold))),
-                  ..._controller.groups.map((group) => GroupListTile(
-                      group: group,
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => GroupChatScreen(
-                                  group: group,
-                                  localDeviceId: widget.store.deviceId ?? '',
-                                  messaging: widget.groupMessaging,
-                                  groups: widget.groupRepository,
-                                  files: widget.files,
-                                  notifications: widget.notifications))))),
-                ],
-                if (_controller.devices.isEmpty && _controller.error == null)
-                  const Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Center(
-                          child: Text(
-                              'No other devices are registered yet. Open LocalLink on another phone.'))),
-                ..._controller.devices.map(
-                  (device) => ListTile(
-                    leading: CircleAvatar(
-                        child: Text(device.name.isEmpty
-                            ? '?'
-                            : device.name[0].toUpperCase())),
-                    title: Row(children: [
-                      Expanded(child: Text(device.name)),
-                      Text(device.networkStatus.name)
-                    ]),
-                    trailing: IconButton(
-                        icon: const Icon(Icons.call),
-                        onPressed: () => _call(device)),
-                    onTap: () => _openChat(device),
-                  ),
+                if (state.error != null)
+                  LocalLinkInlineError(
+                      message: state.error!, onRetry: _controller.load),
+                MessengerSectionHeader(
+                  title: 'Conversations',
+                  actionLabel: state.devices.isNotEmpty ? 'People' : null,
+                  onAction: state.devices.isNotEmpty
+                      ? () => setState(() => _index = 2)
+                      : null,
                 ),
+                if (state.devices.isEmpty && state.groups.isEmpty)
+                  const SizedBox(
+                    height: 420,
+                    child: LocalLinkEmptyView(
+                      icon: Icons.forum_outlined,
+                      title: 'No conversations yet',
+                      message:
+                          'Find a nearby person or create a group to start chatting.',
+                    ),
+                  )
+                else ...[
+                  ...state.groups.map(
+                    (group) => MessengerConversationTile(
+                      title: group.name,
+                      subtitle: 'Group conversation',
+                      group: group,
+                      onTap: () => Navigator.push<void>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => GroupChatScreen(
+                            group: group,
+                            localDeviceId: widget.store.deviceId ?? '',
+                            messaging: widget.groupMessaging,
+                            groups: widget.groupRepository,
+                            files: widget.files,
+                            notifications: widget.notifications,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  ...state.devices.map(
+                    (device) => MessengerConversationTile(
+                      title:
+                          device.name.isEmpty ? 'LocalLink user' : device.name,
+                      subtitle: _deviceSubtitle(device),
+                      device: device,
+                      onTap: () => _openChat(device),
+                      onCall: () => _call(device),
+                    ),
+                  ),
+                ],
               ],
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _callsTab() => CallsScreen(
+      controller: widget.calls, selfId: widget.store.deviceId ?? '');
+
+  Widget _contactsTab() => ContactsScreen(
+        directory: widget.directoryRepository,
+        connectivity: widget.connectivityController,
+        messaging: widget.messagingRepository,
+        files: widget.files,
+        calls: widget.calls,
+        crypto: widget.crypto,
+        notifications: widget.notifications,
+      );
+
+  void _changeThemeMode(ThemeMode mode) {
+    setState(() => _themeMode = mode);
+    widget.onThemeModeChanged(mode);
+  }
+
+  Widget _settingsTab() => MessengerSettingsScreen(
+        api: widget.api,
+        store: widget.store,
+        crypto: widget.crypto,
+        accountRepository: widget.accountRepository,
+        identityRepository: widget.identityRepository,
+        restoreService: widget.restoreService,
+        transferRepository: widget.transferRepository,
+        directoryRepository: widget.directoryRepository,
+        adminRepositoryFactory: widget.adminRepositoryFactory,
+        viewMode: widget.viewMode,
+        adminCapability: widget.adminCapability,
+        connectivityController: widget.connectivityController,
+        notifications: widget.notifications,
+        onReset: widget.onReset,
+        themeMode: _themeMode,
+        onThemeModeChanged: _changeThemeMode,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _index,
+        children: [
+          _chatsTab(),
+          _callsTab(),
+          _contactsTab(),
+          _settingsTab(),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: (value) => setState(() => _index = value),
+        destinations: const [
+          NavigationDestination(
+              icon: Icon(Icons.chat_bubble_outline),
+              selectedIcon: Icon(Icons.chat_bubble),
+              label: 'Chats'),
+          NavigationDestination(
+              icon: Icon(Icons.call_outlined),
+              selectedIcon: Icon(Icons.call),
+              label: 'Calls'),
+          NavigationDestination(
+              icon: Icon(Icons.people_outline),
+              selectedIcon: Icon(Icons.people),
+              label: 'People'),
+          NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: 'Settings'),
+        ],
       ),
     );
   }

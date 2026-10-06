@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/message.dart';
+import 'package:locallink/core/models/message_reaction.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
@@ -12,7 +13,6 @@ import 'package:locallink/core/services/websocket_service.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
-import 'package:locallink/features/groups/data/services/group_crypto_service.dart';
 
 class ReliableMessagingService {
   final LocalStore store;
@@ -22,9 +22,10 @@ class ReliableMessagingService {
   final ConnectivityRepositoryContract connectivity;
   final PeerTransportContract directTransport;
   final IdentityCryptoService crypto;
-  final GroupCryptoService groupCrypto;
 
   final _incoming = StreamController<Message>.broadcast();
+  final _reactionIncoming = StreamController<MessageReaction>.broadcast();
+  static const _reactionPrefix = 'llrx:v1:';
 
   StreamSubscription? _socketSub;
   StreamSubscription? _connectionSub;
@@ -32,6 +33,9 @@ class ReliableMessagingService {
   StreamSubscription? _wifiSub;
 
   Timer? _retryTimer;
+  DateTime? _lastPeriodicSyncAt;
+  DateTime? _lastIdentityKeySyncAt;
+  DateTime? _messageRateLimitedUntil;
 
   bool _syncing = false;
   bool _flushing = false;
@@ -48,10 +52,10 @@ class ReliableMessagingService {
       this.connectivity,
       this.directTransport,
       this.crypto,
-      this.groupCrypto,
       );
 
   Stream<Message> get incoming => _incoming.stream;
+  Stream<MessageReaction> get reactionIncoming => _reactionIncoming.stream;
 
   void start() {
     AppLogger.info(
@@ -107,6 +111,7 @@ class ReliableMessagingService {
         );
 
         if (connected) {
+          _lastPeriodicSyncAt = DateTime.now().toUtc();
           await synchronize();
           await flush();
         }
@@ -121,7 +126,7 @@ class ReliableMessagingService {
     );
 
     _retryTimer ??= Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(seconds: 15),
           (_) async {
         AppLogger.info(
           'MESSAGE_RETRY_TICK',
@@ -130,12 +135,20 @@ class ReliableMessagingService {
               'direct=${directTransport.isStarted}',
         );
 
-        if (socket.isConnected) {
-          await synchronize();
+        if (!directTransport.isStarted) {
+          await _configureDirectTransport();
         }
 
-        await _configureDirectTransport();
         await flush();
+
+        if (socket.isConnected) {
+          final now = DateTime.now().toUtc();
+          final last = _lastPeriodicSyncAt;
+          if (last == null || now.difference(last) >= const Duration(seconds: 60)) {
+            _lastPeriodicSyncAt = now;
+            await synchronize();
+          }
+        }
       },
     );
 
@@ -144,6 +157,7 @@ class ReliableMessagingService {
         'MESSAGE_INITIAL_SYNC',
       );
 
+      _lastPeriodicSyncAt = DateTime.now().toUtc();
       unawaited(
         synchronize().then(
               (_) => flush(),
@@ -162,6 +176,23 @@ class ReliableMessagingService {
         ),
       );
     }
+  }
+
+  Future<void> sendReaction(String recipientId, String messageId, String emoji) async {
+    final normalized = emoji.trim();
+    if (normalized.isEmpty || messageId.trim().isEmpty) throw const FormatException('Reaction is required');
+    final id = _newId();
+    final createdAt = DateTime.now().toUtc().toIso8601String();
+    final payload = jsonEncode({'message_id': messageId, 'emoji': normalized, 'reactor_id': store.deviceId, 'created_at': createdAt});
+    await store.addOutbox({'id': id, 'recipient_id': recipientId, 'body': '$_reactionPrefix$payload', 'created_at': createdAt, 'status': 'queued'});
+    await store.saveMessageReaction(messageId: messageId, reactorId: store.deviceId ?? '', emoji: normalized, createdAt: createdAt);
+    _reactionIncoming.add(MessageReaction(messageId: messageId, reactorId: store.deviceId ?? '', emoji: normalized, createdAt: DateTime.parse(createdAt).toLocal()));
+    await flush();
+  }
+
+  Future<List<MessageReaction>> reactions(String messageId) async {
+    final rows = await store.messageReactions(messageId);
+    return rows.map((row) => MessageReaction.fromJson(row)).toList(growable: false);
   }
 
   Future<void> send(
@@ -323,13 +354,16 @@ class ReliableMessagingService {
     );
 
     try {
-      await api.putIdentityKey(
-        await crypto.publicKey(),
-      );
-
-      AppLogger.info(
-        'MESSAGE_IDENTITY_KEY_SYNCED',
-      );
+      final now = DateTime.now().toUtc();
+      final identitySyncDue = _lastIdentityKeySyncAt == null ||
+          now.difference(_lastIdentityKeySyncAt!) >= const Duration(minutes: 10);
+      if (identitySyncDue) {
+        await api.putIdentityKey(
+          await crypto.publicKey(),
+        );
+        _lastIdentityKeySyncAt = now;
+        AppLogger.info('MESSAGE_IDENTITY_KEY_SYNCED');
+      }
 
       await refreshPeerKeys();
 
@@ -383,41 +417,15 @@ class ReliableMessagingService {
           }
         }
 
-        final groupKeySync = <String>{};
-
         for (final groupMessage in page.groupMessages) {
-          if (groupKeySync.add(groupMessage.groupId)) {
-            await groupCrypto.syncGroupKeys(
-              groupMessage.groupId,
-            );
-          }
-
-          final plaintext =
-          await groupCrypto.decryptGroupMessage(
-            groupMessage,
-          );
-
-          if (plaintext == null) {
-            AppLogger.warning(
-              'GROUP_MESSAGE_DECRYPT_FAILED',
-              detail:
-              'id=${groupMessage.id} '
-                  'group=${_shortId(groupMessage.groupId)}',
-            );
-            continue;
-          }
-
           await store.saveGroupMessage({
             'id': groupMessage.id,
             'group_id': groupMessage.groupId,
             'sender_id': groupMessage.senderId,
-            'body': plaintext,
+            'body': groupMessage.body,
             'created_at': groupMessage.createdAt,
             'server_seq': groupMessage.serverSeq,
-            'attachments':
-            groupMessage.attachments
-                .map((a) => a.toJson())
-                .toList(),
+            'attachments': groupMessage.attachments.map((a) => a.toJson()).toList(),
           });
         }
 
@@ -432,7 +440,7 @@ class ReliableMessagingService {
           );
 
           final message =
-          await _decryptMessageModel(networkMessage);
+          await _resolveMessage(networkMessage);
 
           if (message == null) {
             AppLogger.warning(
@@ -441,6 +449,9 @@ class ReliableMessagingService {
               'id=${networkMessage.id} '
                   'sender=${_shortId(networkMessage.senderId)}',
             );
+            continue;
+          }
+          if (await _consumeReaction(message)) {
             continue;
           }
 
@@ -589,6 +600,14 @@ class ReliableMessagingService {
     }
 
     _flushing = true;
+    var peerKeysRefreshedThisFlush = false;
+    final messageCooldown = _messageRateLimitedUntil;
+    if (messageCooldown != null && DateTime.now().toUtc().isBefore(messageCooldown)) {
+      _flushing = false;
+      AppLogger.info('MESSAGE_FLUSH_RATE_LIMIT_COOLDOWN', detail: 'until=$messageCooldown');
+      return;
+    }
+    _messageRateLimitedUntil = null;
 
     AppLogger.info(
       'MESSAGE_FLUSH_START',
@@ -598,7 +617,7 @@ class ReliableMessagingService {
     );
 
     try {
-      final items = await store.outbox();
+      final items = await store.outbox(pendingOnly: true);
 
       AppLogger.info(
         'MESSAGE_OUTBOX_READ',
@@ -609,6 +628,10 @@ class ReliableMessagingService {
         final id = item['id'].toString();
 
         final status = item['status']?.toString() ?? 'queued';
+        if (!store.isOutboxRetryEligible(item)) {
+          AppLogger.info('MESSAGE_RETRY_BACKOFF_SKIP', detail: 'id=$id attempt=${item['attempt_count'] ?? 0}');
+          continue;
+        }
 
         AppLogger.info(
           'MESSAGE_FLUSH_ITEM',
@@ -637,12 +660,19 @@ class ReliableMessagingService {
         final pending = await store.pendingAttachments(id);
 
         final canUseDirect =
-            !socket.isConnected && directTransport.isStarted;
+            !store.internetOnly && !socket.isConnected && directTransport.isStarted;
 
         // ------------------------------------------------------------------
         // DIRECT / WI-FI TRANSPORT
         // ------------------------------------------------------------------
         if (canUseDirect) {
+          AppLogger.warning(
+            'MESSAGE_ROUTE_SELECTED_DIRECT',
+            detail:
+                'socketReady=${socket.isConnected} '
+                'internetOnly=${store.internetOnly} '
+                'directStarted=${directTransport.isStarted}',
+          );
           AppLogger.info(
             'MESSAGE_DIRECT_TRANSPORT_SELECTED',
             detail:
@@ -684,51 +714,9 @@ class ReliableMessagingService {
               });
             }
 
-            final publicKeys = await crypto.cachedPeerPublicKeys();
+            final body = item['body']?.toString() ?? '';
 
-            final derived = await crypto.derivePeerKeys(
-              publicKeys,
-            );
-
-            final shared = derived[recipientId];
-
-            if (shared == null) {
-              AppLogger.error(
-                'MESSAGE_DIRECT_ENCRYPTION_KEY_MISSING',
-                detail:
-                'id=$id '
-                    'recipient=${_shortId(recipientId)}',
-              );
-
-              throw StateError(
-                'peer encryption key unavailable',
-              );
-            }
-
-            var encryptedBody =
-            await store.outboxNetworkBody(id);
-
-            encryptedBody ??= await crypto.encryptMessage(
-              senderId: store.deviceId!,
-              recipientId: recipientId,
-              messageId: id,
-              createdAt: item['created_at']?.toString() ?? '',
-              plaintext: item['body']?.toString() ?? '',
-              sharedKey: shared,
-            );
-
-            await store.setOutboxNetworkBody(
-              id,
-              encryptedBody,
-            );
-
-            // IMPORTANT:
             // directTransport.send() currently returns void.
-            // Therefore DO NOT do:
-            //
-            // final sent = await directTransport.send(...);
-            //
-            // because `sent` would have type void.
             await directTransport.send(
               recipientId: recipientId,
               payload: {
@@ -736,7 +724,7 @@ class ReliableMessagingService {
                 'id': id,
                 'sender_id': store.deviceId,
                 'recipient_id': recipientId,
-                'body': encryptedBody,
+                'body': body,
                 'created_at': item['created_at'],
                 if (attachments.isNotEmpty)
                   'attachments': attachments,
@@ -773,6 +761,13 @@ class ReliableMessagingService {
         // ------------------------------------------------------------------
         if (!socket.isConnected) {
           AppLogger.warning(
+            'MESSAGE_ROUTE_UNAVAILABLE',
+            detail:
+                'socketReady=${socket.isConnected} '
+                'internetOnly=${store.internetOnly} '
+                'directStarted=${directTransport.isStarted}',
+          );
+          AppLogger.warning(
             'MESSAGE_SOCKET_SEND_SKIPPED_NOT_CONNECTED',
             detail: 'id=$id',
           );
@@ -780,6 +775,13 @@ class ReliableMessagingService {
           continue;
         }
 
+        AppLogger.warning(
+          'MESSAGE_ROUTE_SELECTED_SERVER',
+          detail:
+              'socketReady=${socket.isConnected} '
+              'internetOnly=${store.internetOnly} '
+              'directStarted=${directTransport.isStarted}',
+        );
         AppLogger.info(
           'MESSAGE_SERVER_TRANSPORT_SELECTED',
           detail:
@@ -810,7 +812,7 @@ class ReliableMessagingService {
                   0,
             );
 
-            final uploaded = await files.uploadE2eForMessage(
+            final uploaded = await files.uploadForMessage(
               picked,
               recipientId: recipientId,
               messageId: id,
@@ -852,41 +854,8 @@ class ReliableMessagingService {
           continue;
         }
 
-        final publicKeys = await crypto.cachedPeerPublicKeys();
-
-        final derived = await crypto.derivePeerKeys(
-          publicKeys,
-        );
-
-        final shared = derived[recipientId];
-
-        if (shared == null) {
-          AppLogger.error(
-            'MESSAGE_SERVER_ENCRYPTION_KEY_MISSING',
-            detail:
-            'id=$id '
-                'recipient=${_shortId(recipientId)}',
-          );
-
-          continue;
-        }
-
-        var encryptedBody =
-        await store.outboxNetworkBody(id);
-
-        encryptedBody ??= await crypto.encryptMessage(
-          senderId: store.deviceId!,
-          recipientId: recipientId,
-          messageId: id,
-          createdAt: item['created_at']?.toString() ?? '',
-          plaintext: item['body']?.toString() ?? '',
-          sharedKey: shared,
-        );
-
-        await store.setOutboxNetworkBody(
-          id,
-          encryptedBody,
-        );
+        final body = item['body']?.toString() ?? '';
+        await store.setOutboxNetworkBody(id, body);
 
         // socket.send() DOES return bool, so this is valid.
         final sent = socket.send(
@@ -894,7 +863,8 @@ class ReliableMessagingService {
             'type': 'send_message',
             'id': id,
             'recipient_id': recipientId,
-            'body': encryptedBody,
+            'body': body,
+            'created_at': item['created_at'],
             if (remoteIds.isNotEmpty)
               'attachment_ids': remoteIds,
           },
@@ -933,484 +903,46 @@ class ReliableMessagingService {
     }
   }
 
-  Future<Message?> _decryptMessageModel(
-      Message message,
-      ) async {
-    AppLogger.info(
-      'MESSAGE_DECRYPT_START',
-      detail:
-      'id=${message.id} '
-          'sender=${_shortId(message.senderId)} '
-          'recipient=${_shortId(message.recipientId)}',
-    );
-
-    if (message.senderId == store.deviceId) {
-      final local =
-      await store.messageById(message.id);
-
-      if (local != null) {
-        AppLogger.info(
-          'MESSAGE_DECRYPT_SELF_SUCCESS',
-          detail: 'id=${message.id}',
-        );
-
-        return Message(
-          id: local.id,
-          senderId: local.senderId,
-          recipientId: local.recipientId,
-          body: local.body,
-          createdAt: local.createdAt,
-          status: message.status,
-          deliveredAt:
-          message.deliveredAt ??
-              local.deliveredAt,
-          serverSeq:
-          message.serverSeq >
-              local.serverSeq
-              ? message.serverSeq
-              : local.serverSeq,
-          attachments:
-          message.attachments.isNotEmpty
-              ? message.attachments
-              : local.attachments,
-        );
-      }
-
-      AppLogger.warning(
-        'MESSAGE_SELF_LOCAL_COPY_MISSING',
-        detail: 'id=${message.id}',
-      );
-
-      return null;
-    }
-
-    final peerPublic =
-    (await crypto.cachedPeerPublicKeys())[
-    message.senderId];
-
-    if (peerPublic == null) {
-      AppLogger.error(
-        'MESSAGE_DECRYPT_PEER_KEY_MISSING',
-        detail:
-        'id=${message.id} '
-            'sender=${_shortId(message.senderId)}',
-      );
-
-      return null;
-    }
-
-    final shared =
-    await crypto.deriveSharedKey(
-      message.senderId,
-      peerPublic,
-    );
-
-    var body =
-    await crypto.decryptMessage(
-      senderId: message.senderId,
-      recipientId: message.recipientId,
-      messageId: message.id,
-      createdAt:
-      message.createdAt
-          .toUtc()
-          .toIso8601String(),
-      value: message.body,
-      sharedKey: shared,
-    );
-
-    if (body != null) {
-      AppLogger.info(
-        'MESSAGE_DECRYPT_SUCCESS',
-        detail: 'id=${message.id} method=primary',
-      );
-    }
-
-    if (body == null &&
-        message.body.startsWith('e2e:v2:')) {
-      AppLogger.warning(
-        'MESSAGE_DECRYPT_PRIMARY_FAILED',
-        detail:
-        'id=${message.id} trying=identity_history',
-      );
-
-      final history =
-      await crypto.cachedPeerIdentityHistory();
-
-      final candidates =
-          history[message.senderId] ??
-              {1: peerPublic};
-
-      body =
-      await crypto.decryptMessageWithHistory(
-        senderId: message.senderId,
-        recipientId: message.recipientId,
-        messageId: message.id,
-        createdAt:
-        message.createdAt
-            .toUtc()
-            .toIso8601String(),
-        value: message.body,
-        peerKeysByVersion: candidates,
-      );
-
-      if (body != null) {
-        AppLogger.info(
-          'MESSAGE_DECRYPT_SUCCESS',
-          detail:
-          'id=${message.id} '
-              'method=identity_history',
-        );
-      }
-    }
-
-    if (body == null &&
-        message.body.startsWith('e2e:v2:')) {
-      AppLogger.warning(
-        'MESSAGE_DECRYPT_HISTORY_FAILED',
-        detail:
-        'id=${message.id} '
-            'trying=identity_contexts',
-      );
-
-      final publicKeys =
-      await crypto.cachedPeerPublicKeys();
-
-      final history =
-      await crypto.cachedPeerIdentityHistory();
-
-      final senderCandidates =
-      <int, String>{};
-
-      senderCandidates.addAll(
-        history[message.senderId] ??
-            const {},
-      );
-
-      if (publicKeys[message.senderId] != null) {
-        senderCandidates[1] =
-        publicKeys[message.senderId]!;
-      }
-
-      final recipientCandidates =
-      <int, String>{};
-
-      recipientCandidates.addAll(
-        history[message.recipientId] ??
-            const {},
-      );
-
-      if (publicKeys[message.recipientId] != null) {
-        recipientCandidates[1] =
-        publicKeys[message.recipientId]!;
-      }
-
-      final importedSelfIsSender =
-      (await crypto
-          .importedIdentityKeyContexts())
-          .containsKey(message.senderId);
-
-      final importedCandidates =
-      importedSelfIsSender
-          ? recipientCandidates
-          : senderCandidates;
-
-      body =
-      await crypto
-          .decryptMessageWithIdentityContexts(
-        senderId: message.senderId,
-        recipientId: message.recipientId,
-        messageId: message.id,
-        createdAt:
-        message.createdAt
-            .toUtc()
-            .toIso8601String(),
-        value: message.body,
-        peerKeysByVersion:
-        importedCandidates,
-      );
-
-      if (body != null) {
-        AppLogger.info(
-          'MESSAGE_DECRYPT_SUCCESS',
-          detail:
-          'id=${message.id} '
-              'method=identity_contexts',
-        );
-      }
-    }
-
-    if (body == null) {
-      if (!message.body.startsWith('e2e:v1:')) {
-        AppLogger.warning(
-          'MESSAGE_DECRYPT_PLAINTEXT_FALLBACK',
-          detail: 'id=${message.id}',
-        );
-
-        return message;
-      }
-
-      AppLogger.error(
-        'MESSAGE_DECRYPT_FAILED',
-        detail:
-        'id=${message.id} '
-            'reason=all_decryption_methods_failed',
-      );
-
-      return null;
-    }
-
+  Future<Message?> _resolveMessage(Message message) async {
+    if (message.senderId != store.deviceId) return message;
+    final local = await store.messageById(message.id);
+    if (local == null) return message;
     return Message(
-      id: message.id,
-      senderId: message.senderId,
-      recipientId: message.recipientId,
-      body: body,
-      createdAt: message.createdAt,
+      id: local.id,
+      senderId: local.senderId,
+      recipientId: local.recipientId,
+      body: local.body,
+      createdAt: local.createdAt,
       status: message.status,
-      deliveredAt: message.deliveredAt,
-      serverSeq: message.serverSeq,
-      attachments: message.attachments,
+      deliveredAt: message.deliveredAt ?? local.deliveredAt,
+      serverSeq: message.serverSeq > local.serverSeq ? message.serverSeq : local.serverSeq,
+      attachments: message.attachments.isNotEmpty ? message.attachments : local.attachments,
     );
   }
 
-  Future<Message?> _decryptNetworkMessage(
-      Map<String, dynamic> data,
-      ) async {
-    final id = data['id']?.toString() ?? '';
-
-    AppLogger.info(
-      'NETWORK_MESSAGE_DECRYPT_START',
-      detail:
-      'id=$id '
-          'type=${data['type']?.toString() ?? 'unknown'} '
-          'sender=${_shortId(data['sender_id']?.toString())}',
-    );
-
+  Future<Message?> _resolveNetworkPayload(Map<String, dynamic> data) async {
     try {
-      final message =
-      Message.fromJson(data);
-
-      AppLogger.info(
-        'NETWORK_MESSAGE_PARSED',
-        detail:
-        'id=${message.id} '
-            'sender=${_shortId(message.senderId)} '
-            'recipient=${_shortId(message.recipientId)}',
-      );
-
-      if (message.senderId == store.deviceId) {
-        final local =
-        await store.messageById(message.id);
-
-        if (local == null) {
-          AppLogger.warning(
-            'NETWORK_SELF_MESSAGE_LOCAL_COPY_MISSING',
-            detail: 'id=${message.id}',
-          );
-
-          return null;
-        }
-
-        AppLogger.info(
-          'NETWORK_SELF_MESSAGE_RESOLVED',
-          detail: 'id=${message.id}',
-        );
-
-        return Message(
-          id: local.id,
-          senderId: local.senderId,
-          recipientId: local.recipientId,
-          body: local.body,
-          createdAt: local.createdAt,
-          status: message.status,
-          deliveredAt:
-          message.deliveredAt ??
-              local.deliveredAt,
-          serverSeq:
-          message.serverSeq >
-              local.serverSeq
-              ? message.serverSeq
-              : local.serverSeq,
-          attachments:
-          message.attachments.isNotEmpty
-              ? message.attachments
-              : local.attachments,
-        );
-      }
-
-      final peerPublic =
-      (await crypto.cachedPeerPublicKeys())[
-      message.senderId];
-
-      if (peerPublic == null) {
-        AppLogger.error(
-          'NETWORK_MESSAGE_PEER_KEY_MISSING',
-          detail:
-          'id=${message.id} '
-              'sender=${_shortId(message.senderId)}',
-        );
-
-        return null;
-      }
-
-      final key =
-      await crypto.deriveSharedKey(
-        message.senderId,
-        peerPublic,
-      );
-
-      var body =
-      await crypto.decryptMessage(
-        senderId: message.senderId,
-        recipientId: store.deviceId!,
-        messageId: message.id,
-        createdAt:
-        message.createdAt
-            .toUtc()
-            .toIso8601String(),
-        value: message.body,
-        sharedKey: key,
-      );
-
-      if (body != null) {
-        AppLogger.info(
-          'NETWORK_MESSAGE_DECRYPT_SUCCESS',
-          detail:
-          'id=${message.id} '
-              'method=primary',
-        );
-      }
-
-      if (body == null &&
-          message.body.startsWith('e2e:v2:')) {
-        AppLogger.warning(
-          'NETWORK_MESSAGE_PRIMARY_DECRYPT_FAILED',
-          detail:
-          'id=${message.id} '
-              'trying=history',
-        );
-
-        final history =
-        await crypto.cachedPeerIdentityHistory();
-
-        final candidates =
-            history[message.senderId] ??
-                {1: peerPublic};
-
-        body =
-        await crypto.decryptMessageWithHistory(
-          senderId: message.senderId,
-          recipientId: store.deviceId!,
-          messageId: message.id,
-          createdAt:
-          message.createdAt
-              .toUtc()
-              .toIso8601String(),
-          value: message.body,
-          peerKeysByVersion: candidates,
-        );
-
-        if (body != null) {
-          AppLogger.info(
-            'NETWORK_MESSAGE_DECRYPT_SUCCESS',
-            detail:
-            'id=${message.id} '
-                'method=history',
-          );
-        }
-      }
-
-      if (body == null &&
-          message.body.startsWith('e2e:v2:')) {
-        AppLogger.warning(
-          'NETWORK_MESSAGE_HISTORY_DECRYPT_FAILED',
-          detail:
-          'id=${message.id} '
-              'trying=identity_contexts',
-        );
-
-        final publicKeys =
-        await crypto.cachedPeerPublicKeys();
-
-        final history =
-        await crypto.cachedPeerIdentityHistory();
-
-        final candidates =
-        <int, String>{};
-
-        candidates.addAll(
-          history[message.senderId] ??
-              const {},
-        );
-
-        if (publicKeys[message.senderId] !=
-            null) {
-          candidates[1] =
-          publicKeys[message.senderId]!;
-        }
-
-        body =
-        await crypto
-            .decryptMessageWithIdentityContexts(
-          senderId: message.senderId,
-          recipientId: store.deviceId!,
-          messageId: message.id,
-          createdAt:
-          message.createdAt
-              .toUtc()
-              .toIso8601String(),
-          value: message.body,
-          peerKeysByVersion: candidates,
-        );
-
-        if (body != null) {
-          AppLogger.info(
-            'NETWORK_MESSAGE_DECRYPT_SUCCESS',
-            detail:
-            'id=${message.id} '
-                'method=identity_contexts',
-          );
-        }
-      }
-
-      if (body == null) {
-        AppLogger.error(
-          'NETWORK_MESSAGE_DECRYPT_FAILED',
-          detail:
-          'id=${message.id} '
-              'reason=all_methods_failed',
-        );
-
-        return null;
-      }
-
-      AppLogger.info(
-        'NETWORK_MESSAGE_READY',
-        detail:
-        'id=${message.id} '
-            'recipient=${_shortId(message.recipientId)}',
-      );
-
-      return Message(
-        id: message.id,
-        senderId: message.senderId,
-        recipientId: message.recipientId,
-        body: body,
-        createdAt: message.createdAt,
-        status: message.status,
-        deliveredAt: message.deliveredAt,
-        serverSeq: message.serverSeq,
-        attachments: message.attachments,
-      );
+      return _resolveMessage(Message.fromJson(data));
     } catch (error, stackTrace) {
-      AppLogger.error(
-        'NETWORK_MESSAGE_DECRYPT_EXCEPTION',
-        error: error,
-        stackTrace: stackTrace,
-        detail: 'id=$id',
-      );
-
+      AppLogger.error('NETWORK_MESSAGE_PARSE_EXCEPTION', error: error, stackTrace: stackTrace);
       return null;
     }
+  }
+
+  Future<bool> _consumeReaction(Message message) async {
+    if (!message.body.startsWith(_reactionPrefix)) return false;
+    try {
+      final payload = jsonDecode(message.body.substring(_reactionPrefix.length));
+      if (payload is! Map) return true;
+      final messageId = payload['message_id']?.toString() ?? '';
+      final emoji = payload['emoji']?.toString() ?? '';
+      final reactorId = payload['reactor_id']?.toString() ?? message.senderId;
+      final createdAt = payload['created_at']?.toString() ?? message.createdAt.toUtc().toIso8601String();
+      if (messageId.isEmpty || emoji.isEmpty || reactorId != message.senderId) return true;
+      await store.saveMessageReaction(messageId: messageId, reactorId: reactorId, emoji: emoji, createdAt: createdAt);
+      _reactionIncoming.add(MessageReaction(messageId: messageId, reactorId: reactorId, emoji: emoji, createdAt: DateTime.tryParse(createdAt)?.toLocal() ?? DateTime.now()));
+    } catch (_) {}
+    return true;
   }
 
   Future<void> _handleSocketMessage(
@@ -1432,15 +964,30 @@ class ReliableMessagingService {
     );
 
     if (type == 'error') {
+      AppLogger.warning(
+        'MESSAGE_SERVER_ERROR_EVENT',
+        detail:
+        'id=${id ?? ''} error=${data['error']?.toString() ?? 'unknown'}',
+      );
       if (id != null && id.isNotEmpty) {
-        await store.updateOutboxStatus(
-          id,
-          'queued',
-        );
-
-        AppLogger.warning(
-          'MESSAGE_SERVER_ERROR_EVENT',
-          detail: 'id=$id',
+        final errorText = data['error']?.toString().toLowerCase() ?? '';
+        final errorCode = data['error_code']?.toString().toUpperCase() ?? '';
+        if (errorCode == 'MESSAGE_RATE_LIMITED') {
+          final retryAfter = int.tryParse(data['retry_after']?.toString() ?? '') ?? 30;
+          _messageRateLimitedUntil = DateTime.now().toUtc().add(
+            Duration(seconds: retryAfter.clamp(1, 300)),
+          );
+        }
+        final permanent = errorCode == 'RECIPIENT_NOT_FOUND' ||
+            errorCode == 'SENDER_ID_MISMATCH' ||
+            errorText.contains('timestamp is invalid') ||
+            errorText.contains('too far in the future') ||
+            errorText.contains('recipient device not found') ||
+            errorText.contains('sender_id does not match');
+        await store.updateOutboxStatus(id, permanent ? 'failed' : 'queued');
+        AppLogger.info(
+          'MESSAGE_ERROR_CLASSIFIED',
+          detail: 'id=$id permanent=$permanent code=$errorCode',
         );
       }
 
@@ -1480,11 +1027,11 @@ class ReliableMessagingService {
       await store.messageExists(id);
 
       final base =
-      await _decryptNetworkMessage(data);
+      await _resolveNetworkPayload(data);
 
       if (base == null) {
         AppLogger.error(
-          'MESSAGE_ACK_DECRYPT_FAILED',
+          'MESSAGE_ACK_PAYLOAD_FAILED',
           detail: 'id=$id',
         );
 
@@ -1512,8 +1059,11 @@ class ReliableMessagingService {
 
       await store.updateOutboxStatus(
         id,
-        data['status']?.toString() ??
-            'sent',
+        'server_accepted',
+      );
+      AppLogger.info(
+        'MESSAGE_SERVER_ACCEPTED',
+        detail: 'id=$id',
       );
 
       await store.saveMessage(
@@ -1564,6 +1114,7 @@ class ReliableMessagingService {
         id,
         status,
       );
+      AppLogger.info('MESSAGE_DELIVERY_STATE_UPDATED', detail: 'id=$id status=$status');
 
       await store.updateMessageStatus(
         id,
@@ -1610,14 +1161,17 @@ class ReliableMessagingService {
       );
 
       final message =
-      await _decryptNetworkMessage(data);
+      await _resolveNetworkPayload(data);
 
       if (message == null) {
         AppLogger.error(
-          'MESSAGE_INCOMING_DROPPED_AFTER_DECRYPT',
+          'MESSAGE_INCOMING_DROPPED_AFTER_PARSE',
           detail: 'id=${id ?? ''}',
         );
 
+        return;
+      }
+      if (await _consumeReaction(message)) {
         return;
       }
 
@@ -1693,15 +1247,28 @@ class ReliableMessagingService {
     }
 
     try {
-      final info =
-      await connectivity
-          .wifiDirectConnectionInfo();
+      final wifiPermissionGranted =
+          await connectivity.isWifiDirectPermissionGranted();
+      var connected = false;
+      var groupOwner = false;
+      String? groupOwnerAddress;
+      if (wifiPermissionGranted) {
+        final info = await connectivity.wifiDirectConnectionInfo();
+        connected = info.connected;
+        groupOwner = info.groupOwner;
+        groupOwnerAddress = info.groupOwnerAddress;
+      } else {
+        AppLogger.info(
+          'DIRECT_TRANSPORT_WIFI_PERMISSION_UNAVAILABLE_LAN_ONLY',
+        );
+      }
 
       AppLogger.info(
         'DIRECT_TRANSPORT_INFO',
         detail:
-        'connected=${info.connected} '
-            'groupOwner=${info.groupOwner}',
+        'connected=$connected '
+            'groupOwner=$groupOwner '
+            'wifiPermission=$wifiPermissionGranted',
       );
 
       final publicKeys =
@@ -1714,17 +1281,16 @@ class ReliableMessagingService {
 
       await directTransport.configure(
         deviceId: store.deviceId!,
-        connected: info.connected,
-        groupOwner: info.groupOwner,
-        groupOwnerAddress:
-        info.groupOwnerAddress,
+        connected: connected,
+        groupOwner: groupOwner,
+        groupOwnerAddress: groupOwnerAddress,
         peerKeys: keys,
       );
 
       AppLogger.info(
         'DIRECT_TRANSPORT_CONFIGURED',
         detail:
-        'connected=${info.connected} '
+        'connected=$connected '
             'keys=${keys.length}',
       );
     } catch (error, stackTrace) {
@@ -2000,26 +1566,29 @@ class ReliableMessagingService {
       // ----------------------------------------------------------------------
       if (type == 'direct_message') {
         AppLogger.info(
-          'DIRECT_MESSAGE_DECRYPT_START',
+          'DIRECT_MESSAGE_PAYLOAD_START',
           detail:
           'id=${data['id']?.toString() ?? ''}',
         );
 
         final decrypted =
-        await _decryptNetworkMessage(data);
+        await _resolveNetworkPayload(data);
 
         if (decrypted == null) {
           AppLogger.error(
-            'DIRECT_MESSAGE_DECRYPT_FAILED',
+            'DIRECT_MESSAGE_PAYLOAD_FAILED',
             detail:
             'id=${data['id']?.toString() ?? ''}',
           );
 
           return;
         }
+        if (await _consumeReaction(decrypted)) {
+          return;
+        }
 
         AppLogger.info(
-          'DIRECT_MESSAGE_DECRYPT_SUCCESS',
+          'DIRECT_MESSAGE_PAYLOAD_SUCCESS',
           detail:
           'id=${decrypted.id}',
         );
@@ -2029,16 +1598,26 @@ class ReliableMessagingService {
         // --------------------------------------------------------------------
         // MESSAGE VALIDATION
         // --------------------------------------------------------------------
-        if (message.id.isEmpty ||
-            message.senderId.isEmpty ||
-            message.recipientId != store.deviceId ||
-            await store.isBlockedPeer(
-              message.senderId,
-            )) {
+        final hasMessageId = message.id.isNotEmpty;
+        final hasSenderId = message.senderId.isNotEmpty;
+        final recipientMatchesLocalDevice =
+            message.recipientId == store.deviceId;
+        final senderBlocked = hasMessageId &&
+                hasSenderId &&
+                recipientMatchesLocalDevice
+            ? await store.isBlockedPeer(message.senderId)
+            : false;
+        if (!hasMessageId ||
+            !hasSenderId ||
+            !recipientMatchesLocalDevice ||
+            senderBlocked) {
           AppLogger.warning(
             'DIRECT_MESSAGE_VALIDATION_FAILED',
             detail:
-            'id=${message.id}',
+                'hasMessageId=$hasMessageId '
+                'hasSenderId=$hasSenderId '
+                'recipientMatchesLocalDevice=$recipientMatchesLocalDevice '
+                'senderBlocked=$senderBlocked',
           );
 
           return;
@@ -2319,9 +1898,7 @@ class ReliableMessagingService {
 
       for (final networkMessage in remote) {
         final message =
-        await _decryptMessageModel(
-          networkMessage,
-        );
+        await _resolveMessage(networkMessage);
 
         if (message != null &&
             !await store.isBlockedPeer(
@@ -2370,6 +1947,7 @@ class ReliableMessagingService {
     await _directSub?.cancel();
     await _wifiSub?.cancel();
 
+    await _reactionIncoming.close();
     await directTransport.dispose();
 
     await _incoming.close();

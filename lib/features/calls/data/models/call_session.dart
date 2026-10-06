@@ -177,8 +177,9 @@ class CallSession {
         return 'ringing';
       case CallState.connected:
       case CallState.reconnecting:
-      case CallState.ending:
         return 'connected';
+      case CallState.ending:
+        return 'ended';
       case CallState.rejected:
         return 'rejected';
       case CallState.missed:
@@ -187,7 +188,6 @@ class CallSession {
         return 'canceled';
       case CallState.failed:
         return 'failed';
-      case CallState.ending:
       case CallState.ended:
         return 'ended';
     }

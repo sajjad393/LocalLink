@@ -1,17 +1,17 @@
 import 'package:flutter/services.dart';
 
 /// Android bridge for LAN-routed call media. Audio and video are handled by the
-/// native transport service so relay phones never receive the endpoint media key.
+/// native transport service using the local transport/session security provided by the native networking layer.
 class CallMediaPlatformService {
   static const MethodChannel _channel = MethodChannel('locallink/call_media');
 
-  Future<void> start({required String callId, required String peerId, required String mediaKey, String codec = 'auto'}) async {
-    await _channel.invokeMethod('start', {'call_id': callId, 'peer_id': peerId, 'media_key': mediaKey, 'codec': codec});
+  Future<void> start({required String callId, required String peerId, String codec = 'auto'}) async {
+    await _channel.invokeMethod('start', {'call_id': callId, 'peer_id': peerId, 'codec': codec});
   }
 
-  Future<Map<String, dynamic>> startVideo({required String callId, required String peerId, required String mediaKey}) async {
+  Future<Map<String, dynamic>> startVideo({required String callId, required String peerId}) async {
     final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>('video_start', {
-      'call_id': callId, 'peer_id': peerId, 'media_key': mediaKey,
+      'call_id': callId, 'peer_id': peerId,
     }) ?? const {};
     return Map<String, dynamic>.from(raw);
   }

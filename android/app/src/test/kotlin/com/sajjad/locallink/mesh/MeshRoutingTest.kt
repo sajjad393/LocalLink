@@ -207,7 +207,7 @@ class MeshRoutingTest {
             sourceNodeId = "A",
             destinationNodeId = "D",
             type = "call_media",
-            payload = JSONObject().put("call_id", "call-1").put("sequence", 7).put("audio_enc", "ciphertext"),
+            payload = JSONObject().put("call_id", "call-1").put("sequence", 7).put("audio", "pcm"),
             ttl = 8,
             packetId = "media-7",
             createdAt = 100L,
@@ -219,7 +219,7 @@ class MeshRoutingTest {
         assertEquals("B", forwarded.nextHopNodeId)
         assertEquals(7, forwarded.ttl)
         assertEquals(1, forwarded.hopCount)
-        assertEquals("ciphertext", forwarded.payload.optString("audio_enc"))
+        assertEquals("ciphertext", forwarded.payload.optString("audio"))
         assertEquals(packet.originAuthInput(), forwarded.originAuthInput())
     }
 
@@ -317,7 +317,7 @@ class MeshRoutingTest {
             sourceNodeId = "A",
             destinationNodeId = "D",
             type = "call_video_frame",
-            payload = JSONObject().put("call_id", "call-1").put("sequence", 42).put("timestamp_ms", 1000L).put("video_enc", "ciphertext"),
+            payload = JSONObject().put("call_id", "call-1").put("sequence", 42).put("timestamp_ms", 1000L).put("video", "base64-data"),
             ttl = 8,
             packetId = "video-42",
             createdAt = 1000L,

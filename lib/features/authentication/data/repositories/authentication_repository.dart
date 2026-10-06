@@ -22,28 +22,44 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
   String? get serverAddress => _store.serverAddress;
 
   @override
-  String normalizeServerAddress(String value) => LocalLinkApi.normalizeServerAddress(value);
+  String normalizeServerAddress(String value) {
+    return LocalLinkApi.normalizeServerAddress(value);
+  }
 
+  @override
+  String generateUniqueDeviceName() {
+    final deviceId = _store.deviceId ?? _store.generateDeviceId();
+    final suffix = deviceId.length > 8 ? deviceId.substring(deviceId.length - 8) : deviceId;
+    return 'My Android Phone ($suffix)';
+  }
+
+  @override
   Future<List<DiscoveredServer>> discoverServers({
     Duration timeout = const Duration(seconds: 3),
-  }) => _connectivity.discoverServers(timeout: timeout);
+  }) {
+    return _connectivity.discoverServers(timeout: timeout);
+  }
 
+  @override
   Future<PairingInfo> verifyServer({
     required String address,
     required String deviceName,
   }) async {
     final normalized = LocalLinkApi.normalizeServerAddress(address);
+
     await _store.saveConfiguration(
       server: normalized,
       id: _store.deviceId ?? _store.generateDeviceId(),
       name: deviceName.trim().isEmpty ? 'My Android Phone' : deviceName.trim(),
     );
+
     return _api.pairingInfo();
   }
 
   @override
   bool isServerTrusted(PairingInfo info) {
     final pinned = _store.serverFingerprint;
+
     return pinned != null &&
         pinned.isNotEmpty &&
         pinned.toUpperCase() == info.fingerprint.toUpperCase() &&
@@ -53,41 +69,116 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
   @override
   String? serverIdentityError(PairingInfo info) {
     final pinned = _store.serverFingerprint;
+
     if (pinned != null &&
         pinned.isNotEmpty &&
         pinned.toUpperCase() != info.fingerprint.toUpperCase()) {
-      return 'Server identity changed. Review and explicitly trust the new server before continuing.';
+      return 'LocalLink server identity changed. Connection was blocked for safety.';
     }
+
     return null;
   }
 
   @override
-  Future<void> trustServer(PairingInfo info) => _store.trustServer(
-        serverId: info.serverId,
-        fingerprint: info.fingerprint,
-      );
+  Future<void> trustServer(PairingInfo info) {
+    return _store.trustServer(
+      serverId: info.serverId,
+      fingerprint: info.fingerprint,
+    );
+  }
 
+  @override
+  Future<void> prepareForAuthentication({
+    required String deviceName,
+  }) async {
+    final name = deviceName.trim().isEmpty ? 'My Android Phone' : deviceName.trim();
+    final savedServer = _store.serverAddress?.trim() ?? '';
+
+    final candidates = <String>{};
+    if (savedServer.isNotEmpty) {
+      candidates.add(savedServer);
+    }
+
+    try {
+      final discovered = await discoverServers();
+      candidates.addAll(discovered.map((server) => server.address));
+    } catch (_) {}
+
+    if (candidates.isEmpty) {
+      throw StateError('No LocalLink server is available on the local network.');
+    }
+
+    Object? lastError;
+    for (final candidate in candidates) {
+      try {
+        final info = await verifyServer(address: candidate, deviceName: name);
+        final identityError = serverIdentityError(info);
+        if (identityError != null) {
+          lastError = StateError(identityError);
+          continue;
+        }
+
+        // First-contact trust is automatic so the authentication UI never
+        // exposes server identity/setup controls. Existing pinned trust is
+        // still checked and a changed fingerprint is rejected above.
+        if (!isServerTrusted(info)) {
+          await trustServer(info);
+        }
+
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw StateError(
+      lastError?.toString().replaceFirst('Exception: ', '') ??
+          'LocalLink server could not be verified.',
+    );
+  }
+
+  @override
   Future<AuthResult> register({
     required String username,
     required String password,
     required String deviceName,
     String? pairingCode,
-  }) => _api.registerAccount(
-        username: username,
-        password: password,
-        deviceName: deviceName,
-        pairingCode: pairingCode,
-      );
+  }) {
+    return _api.registerAccount(
+      username: username,
+      password: password,
+      deviceName: deviceName,
+      pairingCode: pairingCode,
+    );
+  }
 
+  @override
   Future<AuthResult> login({
     required String username,
     required String password,
     required String deviceName,
     String? pairingCode,
-  }) => _api.loginAccount(
-        username: username,
-        password: password,
-        deviceName: deviceName,
-        pairingCode: pairingCode,
-      );
+  }) {
+    return _api.loginAccount(
+      username: username,
+      password: password,
+      deviceName: deviceName,
+      pairingCode: pairingCode,
+    );
+  }
+
+  @override
+  Future<AuthResult> reEnrollDevice({
+    required String username,
+    required String password,
+    required String deviceName,
+    required String pairingCode,
+  }) {
+    return _api.reEnrollDevice(
+      username: username,
+      password: password,
+      deviceName: deviceName,
+      pairingCode: pairingCode,
+    );
+  }
 }

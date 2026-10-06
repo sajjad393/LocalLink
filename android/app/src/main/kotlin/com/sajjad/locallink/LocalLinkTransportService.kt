@@ -16,6 +16,7 @@ import android.media.MediaRecorder
 import android.media.AudioFocusRequest
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import android.net.wifi.WifiManager
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -91,7 +92,7 @@ class LocalLinkTransportService : Service() {
         fun updateConnection(context:Context,connected:Boolean,owner:Boolean,address:String?){instance?.startOrStopTransportForConnection(connected,owner,address)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_CONNECTION;putExtra("connected",connected);putExtra("group_owner",owner);putExtra("group_owner_address",address)})}
         fun resume(context:Context,connected:Boolean,owner:Boolean,address:String?){instance?.resumeTransport(connected,owner,address)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_RESUME;putExtra("connected",connected);putExtra("group_owner",owner);putExtra("group_owner_address",address)})}
         fun send(recipientId:String,payload:Map<String,Any?>)=instance?.sendTransportInternal(recipientId,payload)?:false
-        fun startCallMedia(callId:String, peerId:String, mediaKey:String, codec:String?) = instance?.startCallMediaInternal(callId, peerId, mediaKey, codec)
+        fun startCallMedia(callId:String, peerId:String, codec:String?) = instance?.startCallMediaInternal(callId, peerId, codec)
             ?: throw IllegalStateException("transport service is not running")
         fun stopCallMedia(callId:String) { instance?.stopCallMediaInternal(callId) }
         fun setCallMediaMuted(callId:String, muted:Boolean) { instance?.setCallMediaMutedInternal(callId, muted) }
@@ -99,7 +100,7 @@ class LocalLinkTransportService : Service() {
         fun currentDeviceId(): String? = instance?.transportDeviceId
         fun configureCallVideoSurfaces(preview: android.view.Surface, remote: android.view.Surface) { instance?.configureCallVideoSurfacesInternal(preview, remote) }
         fun clearCallVideoSurfaces() { instance?.clearCallVideoSurfacesInternal() }
-        fun startCallVideo(callId:String, peerId:String, mediaKey:String) { instance?.startCallVideoInternal(callId, peerId, mediaKey) ?: throw IllegalStateException("transport service is not running") }
+        fun startCallVideo(callId:String, peerId:String) { instance?.startCallVideoInternal(callId, peerId) ?: throw IllegalStateException("transport service is not running") }
         fun stopCallVideo(callId:String) { instance?.stopCallVideoInternal(callId) }
         fun setCallVideoEnabled(callId:String, enabled:Boolean) { instance?.setCallVideoEnabledInternal(callId, enabled) }
         fun switchCallCamera(callId:String) { instance?.switchCallCameraInternal(callId) }
@@ -122,6 +123,7 @@ class LocalLinkTransportService : Service() {
     private var lanServer: ServerSocket? = null
     private var lanDiscoverySocket: DatagramSocket? = null
     private var lanDiscoveryThread: Thread? = null
+    private var lanMulticastLock: WifiManager.MulticastLock? = null
     private var transportRunning = false
     private var transportGroupOwner = false
     private var transportGroupOwnerAddress: String? = null
@@ -275,10 +277,39 @@ class LocalLinkTransportService : Service() {
 
     private fun startLanTransport() {
         if (!transportRunning) return
+        if (!acquireLanMulticastLock()) return
         ensureLanServer()
         if (lanDiscoveryThread?.isAlive != true) {
             lanDiscoveryThread = Thread { runLanDiscovery() }.also { it.start() }
         }
+    }
+
+    private fun acquireLanMulticastLock(): Boolean {
+        if (lanMulticastLock?.isHeld == true) return true
+        return try {
+            val wifiManager = getSystemService(Context.WIFI_SERVICE) as WifiManager
+            lanMulticastLock = wifiManager.createMulticastLock("LocalLinkLanDiscovery").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            true
+        } catch (error: SecurityException) {
+            transportEvent(
+                "error",
+                mapOf(
+                    "transport" to MeshTransportPolicy.LAN,
+                    "operation" to "multicast_lock",
+                    "error" to (error.message ?: "multicast permission denied"),
+                ),
+            )
+            false
+        }
+    }
+
+    private fun releaseLanMulticastLock() {
+        val lock = lanMulticastLock ?: return
+        if (lock.isHeld) lock.release()
+        lanMulticastLock = null
     }
 
     private fun ensureLanServer() {
@@ -969,14 +1000,11 @@ class LocalLinkTransportService : Service() {
      * only the call endpoints hold the media key. Relays therefore see routing
      * metadata but never plaintext audio.
      */
-    private fun startCallMediaInternal(callId:String, peerId:String, mediaKey:String, codec:String?) {
+    private fun startCallMediaInternal(callId:String, peerId:String, codec:String?) {
         require(callId.length in 1..128) { "invalid call id" }
         require(peerId.length in 1..128) { "invalid peer id" }
-        require(mediaKey.isNotBlank()) { "media key is required" }
         stopCallMediaInternal("")
-        val keyBytes = decodeUrlKey(mediaKey)
-        if (keyBytes.size != 32) throw IllegalArgumentException("invalid call media key")
-        val session = CallMediaSession(callId, peerId, keyBytes, codec?.trim()?.lowercase().orEmpty())
+        val session = CallMediaSession(callId, peerId, codec?.trim()?.lowercase().orEmpty())
         synchronized(callMediaLock) { callMedia = session }
         session.start()
         transportEvent("call_media_started", mapOf("call_id" to callId, "peer_id" to peerId, "sample_rate" to CALL_SAMPLE_RATE, "frame_ms" to CALL_FRAME_MS, "codec" to session.codec))
@@ -1008,19 +1036,16 @@ class LocalLinkTransportService : Service() {
         callVideoRemoteSurface = null
     }
 
-    private fun startCallVideoInternal(callId:String, peerId:String, mediaKey:String) {
+    private fun startCallVideoInternal(callId:String, peerId:String) {
         require(callId.length in 1..128) { "invalid call id" }
         require(peerId.length in 1..128) { "invalid peer id" }
         val preview = callVideoPreviewSurface ?: throw IllegalStateException("local video surface is not configured")
         val remote = callVideoRemoteSurface ?: throw IllegalStateException("remote video surface is not configured")
         stopCallVideoInternal("")
-        val keyBytes = decodeUrlKey(mediaKey)
-        if (keyBytes.size != 32) throw IllegalArgumentException("invalid call media key")
         val session = CallVideoSession(
             context = this,
             callId = callId,
             peerId = peerId,
-            mediaKey = keyBytes,
             previewSurface = preview,
             remoteSurface = remote,
             sendPacket = { packet -> sendCallMediaPacket(peerId, callId, packet) },
@@ -1054,7 +1079,7 @@ class LocalLinkTransportService : Service() {
         val current = callVideo ?: return
         val payload = packet.payload
         if (payload.optString("call_id") != current.callId || packet.sourceNodeId != current.peerId) return
-        val encoded = payload.optString("config_enc").trim()
+        val encoded = payload.optString("config").trim()
         if (encoded.isBlank()) return
         if (current.onIncomingConfig(encoded, payload.optInt("width", 640), payload.optInt("height", 360), packet.sourceNodeId, packet.destinationNodeId)) {
             transportEvent("call_video_config_received", mapOf("call_id" to current.callId, "peer_id" to current.peerId))
@@ -1071,7 +1096,7 @@ class LocalLinkTransportService : Service() {
         if (sequence < 0L || sequence > Long.MAX_VALUE - 1L) return
         val timestamp = payload.optLong("timestamp_ms", 0L)
         if (timestamp <= 0L || kotlin.math.abs(System.currentTimeMillis() - timestamp) > 120_000L) return
-        val encoded = payload.optString("video_enc").trim()
+        val encoded = payload.optString("video").trim()
         if (encoded.isBlank()) return
         if (current.onIncomingFrame(sequence, timestamp, encoded, packet.sourceNodeId, packet.destinationNodeId)) {
             transportEvent("call_video_received", mapOf("call_id" to current.callId, "sequence" to sequence, "key_frame" to payload.optBoolean("key_frame", false), "hop_count" to packet.hopCount))
@@ -1106,12 +1131,15 @@ class LocalLinkTransportService : Service() {
         val codec = payload.optString("codec").trim().lowercase()
         if (sampleRate !in 8_000..48_000 || frameMs !in 5..60 || ttl !in 0..32) return
         if (sampleRate != CALL_SAMPLE_RATE || frameMs != CALL_FRAME_MS || codec != current.codec) return
-        val encrypted = payload.optString("encrypted_payload").trim().ifBlank { payload.optString("audio_enc").trim() }
-        if (encrypted.isBlank()) return
-        val aad = "locallink-call-media-v1|${packet.sourceNodeId}|$selfId|${current.callId}|$sequence|$timestamp|$codec|$sampleRate|$frameMs"
+        val encoded = payload.optString("audio_payload").trim()
+        if (encoded.isBlank()) return
         val replayKey = "${current.callId}\u0000${packet.sourceNodeId}\u0000$sequence"
         if (callMediaRecent.putIfAbsent(replayKey, now) != null) return
-        val audio = decryptCallAudio(encrypted, current.keyBytes, aad) ?: run {
+        val audio = try { Base64.decode(encoded, Base64.DEFAULT) } catch (_:Exception) {
+            callMediaRecent.remove(replayKey, now)
+            return
+        }
+        if (audio.isEmpty()) {
             callMediaRecent.remove(replayKey, now)
             return
         }
@@ -1123,35 +1151,9 @@ class LocalLinkTransportService : Service() {
         transportEvent("call_media_received", mapOf("call_id" to current.callId, "sequence" to sequence, "bytes" to audio.size, "hop_count" to packet.hopCount, "codec" to codec))
     }
 
-    private fun encryptCallAudio(data:ByteArray, key:ByteArray, aad:String):String {
-        val iv = ByteArray(12).also(random::nextBytes)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(derivedKeyBytes(key, "locallink-call-media-aes-v1"), "AES"), GCMParameterSpec(128, iv))
-        cipher.updateAAD(aad.toByteArray(Charsets.UTF_8))
-        return Base64.encodeToString(iv + cipher.doFinal(data), Base64.NO_WRAP)
-    }
-
-    private fun decryptCallAudio(encoded:String, key:ByteArray, aad:String):ByteArray? = try {
-        val all = Base64.decode(encoded, Base64.DEFAULT)
-        if (all.size < 28) return null
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(derivedKeyBytes(key, "locallink-call-media-aes-v1"), "AES"), GCMParameterSpec(128, all.copyOfRange(0,12)))
-        cipher.updateAAD(aad.toByteArray(Charsets.UTF_8))
-        cipher.doFinal(all.copyOfRange(12, all.size))
-    } catch (_:Exception) { null }
-
-    private fun derivedKeyBytes(key:ByteArray, label:String):ByteArray = MessageDigestDigest.sha256((label + "|").toByteArray(Charsets.UTF_8) + key)
-
-    private fun decodeUrlKey(value:String):ByteArray = try {
-        var v=value
-        while(v.length % 4 != 0) v += "="
-        Base64.decode(v, Base64.URL_SAFE or Base64.NO_WRAP)
-    } catch (_:Exception) { ByteArray(0) }
-
     private inner class CallMediaSession(
         val callId:String,
         val peerId:String,
-        val keyBytes:ByteArray,
         val requestedCodec:String,
     ) {
         val codec:String = if (requestedCodec == "opus" && CallOpusCodec.isSupported(CALL_SAMPLE_RATE, 1)) "opus" else "pcm_s16le"
@@ -1281,9 +1283,8 @@ class LocalLinkTransportService : Service() {
                     if (encodedAudio == null || encodedAudio.isEmpty()) { dropped.incrementAndGet(); continue }
                     val seq=sequence.getAndIncrement()
                     val ts=System.currentTimeMillis()
-                    val aad="locallink-call-media-v1|${transportDeviceId}|$peerId|$callId|$seq|$ts|$codec|${CALL_SAMPLE_RATE}|${CALL_FRAME_MS}"
-                    val enc=encryptCallAudio(encodedAudio,keyBytes,aad)
-                    val payload=JSONObject().put("type","call_media").put("sender_id",transportDeviceId).put("recipient_id",peerId).put("call_id",callId).put("sequence",seq).put("timestamp_ms",ts).put("sample_rate",CALL_SAMPLE_RATE).put("frame_ms",CALL_FRAME_MS).put("codec",codec).put("ttl",8).put("encrypted_payload",enc)
+                    val encoded=Base64.encodeToString(encodedAudio, Base64.NO_WRAP)
+                    val payload=JSONObject().put("type","call_media").put("sender_id",transportDeviceId).put("recipient_id",peerId).put("call_id",callId).put("sequence",seq).put("timestamp_ms",ts).put("sample_rate",CALL_SAMPLE_RATE).put("frame_ms",CALL_FRAME_MS).put("codec",codec).put("ttl",8).put("audio_payload",encoded)
                     if(sendCallMediaPacket(peerId,callId,payload)) sent.incrementAndGet() else dropped.incrementAndGet()
                 } catch (_:InterruptedException) { break } catch (_:Exception) { dropped.incrementAndGet(); if(!running.get()) break }
             }
@@ -2083,18 +2084,10 @@ class LocalLinkTransportService : Service() {
             if(System.currentTimeMillis()<cancelledUntil) return
             cancelledIncomingTransfers.remove(transferId,cancelledUntil)
         }
-        val encryptedData = payload.optString("data_enc", "")
-        if (encryptedData.isEmpty()) return
-        if (payload.optString("crypto_version") != DirectFileSecurity.CRYPTO_VERSION) return
+        val encodedData = payload.optString("data", "")
+        if (encodedData.isEmpty()) return
         if (!validContentType(contentType)) return
-        val originKey = peerKeys[originSenderId] ?: return
-        val context = DirectFileSecurity.FileChunkContext(transferId, originSenderId, self, fileId, messageId, fileName, contentType, size, sha, totalChunks)
-        val fileKey = DirectFileSecurity.deriveFileKey(originKey, context)
-        val aad = DirectFileSecurity.chunkAad(context, index)
-        val auth = payload.optString("file_auth", "")
-        val expectedAuth = DirectFileSecurity.authTag(fileKey, aad, encryptedData)
-        if (!MessageDigest.isEqual(auth.toByteArray(Charsets.UTF_8), expectedAuth.toByteArray(Charsets.UTF_8))) return
-        val data = DirectFileSecurity.decryptChunk(encryptedData, fileKey, aad) ?: return
+        val data = try { Base64.decode(encodedData, Base64.DEFAULT) } catch (_:Exception) { return }
         synchronized(incomingFiles) {
             if (incomingFiles.size >= DirectFileTransferPolicy.MAX_ACTIVE_INCOMING_TRANSFERS && !incomingFiles.containsKey(transferId)) return
             if (transferId.isNotEmpty() && size >= 0L) {
@@ -2351,6 +2344,7 @@ class LocalLinkTransportService : Service() {
         lanServer = null
         try { lanDiscoverySocket?.close() } catch (_: Exception) {}
         lanDiscoverySocket = null
+        releaseLanMulticastLock()
         lanDiscoveryThread?.interrupt()
         lanDiscoveryThread = null
         lanEndpoints.clear()
@@ -2484,7 +2478,7 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun persistOutgoingTransfer(t:OutgoingFileTransfer){
-        atomicWriteText(outgoingMetaFile(t.transferId), JSONObject().put("crypto_version",DirectFileSecurity.CRYPTO_VERSION).put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("sender_id",t.senderId).put("recipient_id",t.recipientId).put("file_path",t.filePath).put("file_name",t.fileName).put("content_type",t.contentType).put("size",t.size).put("sha256",t.sha256).put("total_chunks",t.totalChunks).put("acknowledged",bitsetEncode(t.acknowledged)).put("updated_at",t.updatedAt).toString())
+        atomicWriteText(outgoingMetaFile(t.transferId), JSONObject().put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("sender_id",t.senderId).put("recipient_id",t.recipientId).put("file_path",t.filePath).put("file_name",t.fileName).put("content_type",t.contentType).put("size",t.size).put("sha256",t.sha256).put("total_chunks",t.totalChunks).put("acknowledged",bitsetEncode(t.acknowledged)).put("updated_at",t.updatedAt).toString())
 }
     private fun deleteOutgoingMeta(t:OutgoingFileTransfer){try{outgoingMetaFile(t.transferId).delete()}catch(_:Exception){}}
     private fun restoreOutgoingTransfers(){
@@ -2501,8 +2495,7 @@ class LocalLinkTransportService : Service() {
             val size=j.optLong("size",-1)
             val sha=j.optString("sha256").lowercase()
             val updatedAt=j.optLong("updated_at",f.lastModified())
-            if(j.optString("crypto_version") != DirectFileSecurity.CRYPTO_VERSION ||
-                !validFileTransferId(transferId) || !validFileTransferId(fileId) || !validFileTransferId(messageId) ||
+            if(!validFileTransferId(transferId) || !validFileTransferId(fileId) || !validFileTransferId(messageId) ||
                 !validTransportId(senderId) || !validTransportId(recipientId) ||
                 !DirectFileTransferPolicy.validTransferSize(size) || sha.length!=64 ||
                 total != DirectFileTransferPolicy.expectedChunks(size) ||
@@ -2518,7 +2511,7 @@ class LocalLinkTransportService : Service() {
 
     private fun persistIncomingTransfer(t:IncomingFileTransfer){
         val m=File(t.path.removeSuffix(".part")+".meta.json")
-        atomicWriteText(m, JSONObject().put("crypto_version",DirectFileSecurity.CRYPTO_VERSION).put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("sender_id",t.senderId).put("file_name",t.fileName).put("content_type",t.contentType).put("size",t.size).put("sha256",t.sha256).put("total_chunks",t.totalChunks).put("path",t.path).put("received",bitsetEncode(t.received)).put("updated_at",t.updatedAt).toString())
+        atomicWriteText(m, JSONObject().put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("sender_id",t.senderId).put("file_name",t.fileName).put("content_type",t.contentType).put("size",t.size).put("sha256",t.sha256).put("total_chunks",t.totalChunks).put("path",t.path).put("received",bitsetEncode(t.received)).put("updated_at",t.updatedAt).toString())
 }
     private fun deleteIncomingMeta(t:IncomingFileTransfer){try{File(t.path.removeSuffix(".part")+".meta.json").delete()}catch(_:Exception){}}
     private fun isInsideDirectory(file: File, directory: File): Boolean {
@@ -2540,8 +2533,7 @@ class LocalLinkTransportService : Service() {
             val senderId=j.optString("sender_id")
             val size=j.optLong("size",-1)
             val sha=j.optString("sha256").lowercase()
-            if(j.optString("crypto_version") != DirectFileSecurity.CRYPTO_VERSION ||
-                !validFileTransferId(transferId) || !validFileTransferId(fileId) || !validFileTransferId(messageId) ||
+            if(!validFileTransferId(transferId) || !validFileTransferId(fileId) || !validFileTransferId(messageId) ||
                 !validTransportId(senderId) || !DirectFileTransferPolicy.validTransferSize(size) || sha.length!=64 ||
                 total != DirectFileTransferPolicy.expectedChunks(size)) { f.delete(); return@forEach }
             val part=File(j.optString("path"))
@@ -2574,8 +2566,6 @@ class LocalLinkTransportService : Service() {
                 transportEvent("file_cancelled",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"file_id" to t.fileId));return
             }
             val f=File(t.filePath)
-            val key=peerKeys[t.recipientId]
-            if(key==null){ transportEvent("file_waiting_for_key",mapOf("transfer_id" to t.transferId,"recipient_id" to t.recipientId));return }
             if(!f.isFile||f.length()!=t.size||sha256File(f)!=t.sha256){
                 deleteOutgoingMeta(t);outgoingTransfers.remove(t.transferId);outgoingRetryCounts.remove(t.transferId)
                 transportEvent("file_failed",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"reason" to "source_changed_or_missing"));return
@@ -2593,15 +2583,13 @@ class LocalLinkTransportService : Service() {
                     val n=input.read(buf);if(n<=0)break
                     if(onlyMissing&&t.acknowledged[idx]){idx++;continue}
                     val data=if(n==buf.size)buf else buf.copyOf(n)
-                    val context=DirectFileSecurity.FileChunkContext(t.transferId,t.senderId,t.recipientId,t.fileId,t.messageId,t.fileName,t.contentType,t.size,t.sha256,t.totalChunks)
-                    val fileKey=DirectFileSecurity.deriveFileKey(key,context);val aad=DirectFileSecurity.chunkAad(context,idx);val enc=DirectFileSecurity.encryptChunk(data,fileKey,aad)
-                    val payload=JSONObject().put("type","direct_file_chunk").put("crypto_version",DirectFileSecurity.CRYPTO_VERSION).put("sender_id",t.senderId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("file_name",t.fileName).put("content_type",t.contentType).put("size",t.size).put("sha256",t.sha256).put("chunk_index",idx).put("total_chunks",t.totalChunks).put("data_enc",enc).put("file_auth",DirectFileSecurity.authTag(fileKey,aad,enc))
+                    val payload=JSONObject().put("type","direct_file_chunk").put("sender_id",t.senderId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("file_name",t.fileName).put("content_type",t.contentType).put("size",t.size).put("sha256",t.sha256).put("chunk_index",idx).put("total_chunks",t.totalChunks).put("data",Base64.encodeToString(data, Base64.NO_WRAP))
                     if(!sendRoutedPayload(t.recipientId,payload))break
                     sentAny=true;idx++
                 }
             }
             if(t.size==0L&&!t.acknowledged[0]){
-                val context=DirectFileSecurity.FileChunkContext(t.transferId,t.senderId,t.recipientId,t.fileId,t.messageId,t.fileName,t.contentType,0L,t.sha256,1);val fileKey=DirectFileSecurity.deriveFileKey(key,context);val aad=DirectFileSecurity.chunkAad(context,0);val enc=DirectFileSecurity.encryptChunk(ByteArray(0),fileKey,aad);val p=JSONObject().put("type","direct_file_chunk").put("crypto_version",DirectFileSecurity.CRYPTO_VERSION).put("sender_id",t.senderId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("file_name",t.fileName).put("content_type",t.contentType).put("size",0).put("sha256",t.sha256).put("chunk_index",0).put("total_chunks",1).put("data_enc",enc).put("file_auth",DirectFileSecurity.authTag(fileKey,aad,enc));sendRoutedPayload(t.recipientId,p);sentAny=true
+                val p=JSONObject().put("type","direct_file_chunk").put("sender_id",t.senderId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("file_name",t.fileName).put("content_type",t.contentType).put("size",0).put("sha256",t.sha256).put("chunk_index",0).put("total_chunks",1).put("data","");sendRoutedPayload(t.recipientId,p);sentAny=true
             }
             if(!sentAny) transportEvent("file_retry_scheduled",mapOf("transfer_id" to t.transferId,"attempt" to attempt))
             t.updatedAt=System.currentTimeMillis();persistOutgoingTransfer(t)
@@ -2619,7 +2607,7 @@ class LocalLinkTransportService : Service() {
             deleteOutgoingMeta(outgoing)
             outgoingRetryCounts.remove(outgoing.transferId)
             outgoingSendInFlight.remove(outgoing.transferId)
-            try { sendRoutedPayload(outgoing.recipientId,JSONObject().put("type","direct_file_cancel").put("crypto_version",DirectFileSecurity.CRYPTO_VERSION).put("sender_id",outgoing.senderId).put("recipient_id",outgoing.recipientId).put("transfer_id",outgoing.transferId).put("file_id",outgoing.fileId).put("message_id",outgoing.messageId).put("sha256",outgoing.sha256)) } catch (_:Exception) {}
+            try { sendRoutedPayload(outgoing.recipientId,JSONObject().put("type","direct_file_cancel").put("sender_id",outgoing.senderId).put("recipient_id",outgoing.recipientId).put("transfer_id",outgoing.transferId).put("file_id",outgoing.fileId).put("message_id",outgoing.messageId).put("sha256",outgoing.sha256)) } catch (_:Exception) {}
         }
         val incoming=incomingFiles.remove(id)
         incoming?.let { try { it.file.close() } catch (_:Exception) {}; try { File(it.path).delete() } catch (_:Exception) {}; deleteIncomingMeta(it) }
@@ -2630,7 +2618,7 @@ class LocalLinkTransportService : Service() {
     private fun handleFileCancel(p:JSONObject){
         val id=p.optString("transfer_id").trim()
         val self=transportDeviceId?:return
-        if(!validFileTransferId(id)||p.optString("crypto_version")!=DirectFileSecurity.CRYPTO_VERSION||p.optString("recipient_id")!=self) return
+        if(!validFileTransferId(id)||p.optString("recipient_id")!=self) return
         val t=incomingFiles[id]?:return
         if(p.optString("sender_id")!=t.senderId||p.optString("file_id")!=t.fileId||p.optString("message_id")!=t.messageId||p.optString("sha256")!=t.sha256) return
         incomingFiles.remove(id)
@@ -2644,7 +2632,7 @@ class LocalLinkTransportService : Service() {
     private fun handleFileProgress(p:JSONObject){
         val id=p.optString("transfer_id")
         val t=outgoingTransfers[id]?:return
-        if(p.optString("crypto_version")!=DirectFileSecurity.CRYPTO_VERSION||p.optString("sender_id")!=t.recipientId||p.optString("sha256")!=t.sha256||p.optInt("total_chunks",-1)!=t.totalChunks)return
+        if(p.optString("sender_id")!=t.recipientId||p.optString("sha256")!=t.sha256||p.optInt("total_chunks",-1)!=t.totalChunks)return
         val bits=bitsetDecode(p.optString("received_chunks"),t.totalChunks)
         for(i in bits.indices)if(bits[i])t.acknowledged[i]=true
         if(bits.any{it}) outgoingRetryCounts[t.transferId]=0
@@ -2655,10 +2643,10 @@ class LocalLinkTransportService : Service() {
     private fun handleFileResumeRequest(p:JSONObject){
         val id=p.optString("transfer_id")
         val t=incomingFiles[id]?:return
-        if(p.optString("crypto_version")!=DirectFileSecurity.CRYPTO_VERSION||p.optString("sender_id")!=t.senderId||p.optString("recipient_id")!=transportDeviceId||p.optString("sha256")!=t.sha256||p.optInt("total_chunks",-1)!=t.totalChunks)return
-        sendRoutedPayload(t.senderId,JSONObject().put("type","direct_file_progress").put("crypto_version",DirectFileSecurity.CRYPTO_VERSION).put("sender_id",transportDeviceId).put("recipient_id",t.senderId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("received_chunks",bitsetEncode(t.received)).put("total_chunks",t.totalChunks))
+        if(p.optString("sender_id")!=t.senderId||p.optString("recipient_id")!=transportDeviceId||p.optString("sha256")!=t.sha256||p.optInt("total_chunks",-1)!=t.totalChunks)return
+        sendRoutedPayload(t.senderId,JSONObject().put("type","direct_file_progress").put("sender_id",transportDeviceId).put("recipient_id",t.senderId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("received_chunks",bitsetEncode(t.received)).put("total_chunks",t.totalChunks))
     }
-    private fun sendResumeRequests(){for(t in outgoingTransfers.values.toList())try{sendRoutedPayload(t.recipientId,JSONObject().put("type","direct_file_resume_request").put("crypto_version",DirectFileSecurity.CRYPTO_VERSION).put("sender_id",transportDeviceId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("total_chunks",t.totalChunks))}catch(_:Exception){}}
+    private fun sendResumeRequests(){for(t in outgoingTransfers.values.toList())try{sendRoutedPayload(t.recipientId,JSONObject().put("type","direct_file_resume_request").put("sender_id",transportDeviceId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("total_chunks",t.totalChunks))}catch(_:Exception){}}
 
     override fun onDestroy(){stopCallVideoInternal("");stopCallMediaInternal("");meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();running=false;if(instance===this)instance=null;super.onDestroy()}
 }

@@ -16,28 +16,23 @@ import android.os.HandlerThread
 import android.util.Base64
 import android.view.Surface
 import java.nio.ByteBuffer
-import java.security.MessageDigest
-import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 import org.json.JSONObject
 
 /**
  * Native camera/video endpoint for a LocalLink call.
  *
- * Camera -> MediaCodec(H.264) -> E2E AES-GCM -> MeshRouter callback.
- * MeshRouter callback -> E2E decrypt -> MediaCodec(H.264 decoder) -> Flutter SurfaceTexture.
+ * Camera -> MediaCodec(H.264) -> Base64 wire payload -> MeshRouter callback.
+ * MeshRouter callback -> Base64 decode -> MediaCodec(H.264 decoder) -> Flutter SurfaceTexture.
  *
- * Relays never receive this class's key and therefore never see plaintext video.
+ * Application-level video encryption/decryption is intentionally disabled;
+ * transport security remains provided by the LocalLink mesh transport.
  */
 class CallVideoSession(
     private val context: Context,
     val callId: String,
     val peerId: String,
-    mediaKey: ByteArray,
     private val previewSurface: Surface,
     private val remoteSurface: Surface,
     private val sendPacket: (JSONObject) -> Boolean,
@@ -62,8 +57,6 @@ class CallVideoSession(
     private val sentBytes = AtomicLong(0)
     private val receivedBytes = AtomicLong(0)
     private val keyframes = AtomicLong(0)
-    private val random = SecureRandom()
-    private val keyBytes = deriveKey(mediaKey)
 
     private var encoder: MediaCodec? = null
     private var decoder: MediaCodec? = null
@@ -151,9 +144,7 @@ class CallVideoSession(
     fun onIncomingConfig(encoded: String, width: Int, height: Int, sourceId: String, destinationId: String): Boolean {
         if (!running.get() || encoded.isBlank()) return false
         return try {
-            val encrypted = Base64.decode(encoded, Base64.DEFAULT)
-            val aad = "locallink-call-video-config-v1|$sourceId|$destinationId|$callId"
-            val plain = decrypt(encrypted, aad) ?: return false
+            val plain = Base64.decode(encoded, Base64.DEFAULT)
             val json = JSONObject(String(plain, Charsets.UTF_8))
             val encoded0 = json.optString("csd_0").trim()
             val encoded1 = json.optString("csd_1").trim()
@@ -172,9 +163,7 @@ class CallVideoSession(
         if (!running.get() || encoded.isBlank()) return false
         return try {
             if (!decoderConfigured) return false
-            val encrypted = Base64.decode(encoded, Base64.DEFAULT)
-            val aad = aadFor(sourceId, destinationId, sequenceNumber, timestampMs)
-            val data = decrypt(encrypted, aad) ?: run { droppedFrames.incrementAndGet(); return false }
+            val data = Base64.decode(encoded, Base64.DEFAULT)
             val codec = decoder ?: return false
             val inputIndex = codec.dequeueInputBuffer(5_000)
             if (inputIndex < 0) { droppedFrames.incrementAndGet(); return false }
@@ -314,9 +303,10 @@ class CallVideoSession(
     private fun sendCodecConfig(c0: ByteArray, c1: ByteArray) {
         codecConfig0 = c0
         codecConfig1 = c1
-        val aad = "locallink-call-video-config-v1|${transportSender()}|$peerId|$callId"
-        val joined = JSONObject().put("csd_0", Base64.encodeToString(c0, Base64.NO_WRAP)).put("csd_1", Base64.encodeToString(c1, Base64.NO_WRAP)).toString().toByteArray(Charsets.UTF_8)
-        val enc = encrypt(joined, aad) ?: return
+        val encoded = Base64.encodeToString(
+            JSONObject().put("csd_0", Base64.encodeToString(c0, Base64.NO_WRAP)).put("csd_1", Base64.encodeToString(c1, Base64.NO_WRAP)).toString().toByteArray(Charsets.UTF_8),
+            Base64.NO_WRAP,
+        )
         val packet = JSONObject()
             .put("type", "call_video_config")
             .put("sender_id", transportSender())
@@ -324,16 +314,15 @@ class CallVideoSession(
             .put("call_id", callId)
             .put("width", WIDTH)
             .put("height", HEIGHT)
-            .put("config_enc", enc)
+            .put("config", encoded)
         if (sendPacket(packet)) event("call_video_config_sent", mapOf("call_id" to callId, "peer_id" to peerId))
     }
 
     private fun sendVideoFrame(data: ByteArray, timestampMs: Long, keyFrame: Boolean) {
         if (!enabled.get()) return
         val seq = sequence.getAndIncrement()
-        val aad = aadFor(transportSender(), peerId, seq, timestampMs)
-        val enc = encrypt(data, aad) ?: return
-        if (enc.toByteArray(Charsets.UTF_8).size > MAX_PACKET_BYTES) { droppedFrames.incrementAndGet(); return }
+        val encoded = Base64.encodeToString(data, Base64.NO_WRAP)
+        if (encoded.toByteArray(Charsets.UTF_8).size > MAX_PACKET_BYTES) { droppedFrames.incrementAndGet(); return }
         val packet = JSONObject()
             .put("type", "call_video_frame")
             .put("sender_id", transportSender())
@@ -342,7 +331,7 @@ class CallVideoSession(
             .put("sequence", seq)
             .put("timestamp_ms", timestampMs)
             .put("key_frame", keyFrame)
-            .put("video_enc", enc)
+            .put("video", encoded)
         if (sendPacket(packet)) {
             sentFrames.incrementAndGet()
             sentBytes.addAndGet(data.size.toLong())
@@ -374,32 +363,7 @@ class CallVideoSession(
         }
     }
 
-    private fun encrypt(data: ByteArray, aad: String): String? = try {
-        val iv = ByteArray(12).also(random::nextBytes)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyBytes, "AES"), GCMParameterSpec(128, iv))
-        cipher.updateAAD(aad.toByteArray(Charsets.UTF_8))
-        Base64.encodeToString(iv + cipher.doFinal(data), Base64.NO_WRAP)
-    } catch (_: Exception) { null }
-
-    private fun decrypt(data: ByteArray, aad: String): ByteArray? = try {
-        if (data.size < 28) return null
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"), GCMParameterSpec(128, data.copyOfRange(0, 12)))
-        cipher.updateAAD(aad.toByteArray(Charsets.UTF_8))
-        cipher.doFinal(data.copyOfRange(12, data.size))
-    } catch (_: Exception) { null }
-
-    private fun aadFor(sourceId: String, destinationId: String, sequenceNumber: Long, timestampMs: Long): String =
-        "locallink-call-video-v1|$sourceId|$destinationId|$callId|$sequenceNumber|$timestampMs"
-
     private fun transportSender(): String = LocalLinkTransportService.currentDeviceId() ?: ""
-
-    private fun deriveKey(input: ByteArray): ByteArray {
-        val digest = MessageDigest.getInstance("SHA-256")
-        digest.update("locallink-call-video-aes-v1".toByteArray(Charsets.UTF_8))
-        return digest.digest(input).copyOf(32)
-    }
 
     private fun bufferBytes(buffer: ByteBuffer?): ByteArray? {
         if (buffer == null) return null

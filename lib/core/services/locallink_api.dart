@@ -191,33 +191,6 @@ class IdentityKeyRecord {
     keyVersion: int.tryParse(json['key_version']?.toString() ?? '') ?? 1,
   );
 }
-class GroupKeyEnvelope {
-  final String groupId;
-  final int keyVersion;
-  final String senderId;
-  final String recipientId;
-  final String envelope;
-  final String createdAt;
-
-  const GroupKeyEnvelope({
-    required this.groupId,
-    required this.keyVersion,
-    required this.senderId,
-    required this.recipientId,
-    required this.envelope,
-    required this.createdAt,
-  });
-
-  factory GroupKeyEnvelope.fromJson(Map<String, dynamic> json) => GroupKeyEnvelope(
-        groupId: json['group_id']?.toString() ?? '',
-        keyVersion: int.tryParse(json['key_version']?.toString() ?? '') ?? 0,
-        senderId: json['sender_id']?.toString() ?? '',
-        recipientId: json['recipient_id']?.toString() ?? '',
-        envelope: json['envelope']?.toString() ?? '',
-        createdAt: json['created_at']?.toString() ?? '',
-      );
-}
-
 class LocalLinkApi {
   String _newIdempotencyKey() {
     final random = Random.secure();
@@ -259,6 +232,82 @@ class LocalLinkApi {
     if (response.statusCode != 200) throw Exception(_error(response));
     return PairingInfo.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
   }
+
+  Future<AuthResult> reEnrollDevice({
+  required String username,
+  required String password,
+  required String deviceName,
+  required String pairingCode,
+}) async {
+  final newDeviceId = store.generateDeviceId();
+
+  final response = await http
+      .post(
+        Uri.parse('$baseUrl/api/v1/auth/login'),
+        headers: const {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'username': username.trim().toLowerCase(),
+          'password': password,
+          'device_id': newDeviceId,
+          'device_name': deviceName.trim(),
+          'platform': 'android',
+          'pairing_code': pairingCode.trim(),
+        }),
+      )
+      .timeout(const Duration(seconds: 10));
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception(_error(response));
+  }
+
+  final payload =
+      Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+
+  final account = LocalAccount.fromJson(
+    Map<String, dynamic>.from(payload['account'] as Map),
+  );
+
+  final device = Device.fromJson(
+    Map<String, dynamic>.from(payload['device'] as Map),
+  );
+
+  final token = payload['token']?.toString() ?? '';
+
+  if (token.isEmpty) {
+    throw Exception('Server returned an empty authentication token.');
+  }
+
+  final expiresAt = payload['expires_at']?.toString() ?? '';
+
+  if (expiresAt.isEmpty) {
+    throw Exception('Server returned no token expiry.');
+  }
+
+  final server = store.serverAddress;
+
+  if (server == null || server.trim().isEmpty) {
+    throw Exception('Server address is not configured.');
+  }
+
+  await store.saveConfiguration(
+    server: server,
+    id: device.id,
+    name: device.name,
+    token: token,
+    accountId: account.id,
+    username: account.username,
+  );
+
+  return AuthResult(
+    account: account,
+    device: device,
+    expiresAt: expiresAt,
+    recoveryCode: '',
+  );
+}
+  
 
   Future<AuthResult> registerAccount({
     required String username,
@@ -857,34 +906,6 @@ class LocalLinkApi {
     final uri = Uri.parse('$baseUrl/api/v1/groups/members').replace(queryParameters: {'group_id': groupId, 'device_id': deviceId});
     final response = await httpClient.delete(uri, headers: _headers()).timeout(const Duration(seconds: 5));
     if (response.statusCode != 200) throw Exception(_error(response));
-  }
-
-  Future<List<GroupKeyEnvelope>> groupKeyEnvelopes(String groupId) async {
-    final id = groupId.trim();
-    if (id.isEmpty) throw const FormatException('Group ID is required');
-    final uri = Uri.parse('$baseUrl/api/v1/groups/keys').replace(queryParameters: {'group_id': id});
-    final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 8));
-    if (response.statusCode != 200) throw Exception(_error(response));
-    final raw = jsonDecode(response.body) as List;
-    return raw.whereType<Map>().map((e) => GroupKeyEnvelope.fromJson(Map<String, dynamic>.from(e))).toList();
-  }
-
-  Future<void> distributeGroupKeyEnvelopes({
-    required String groupId,
-    required int keyVersion,
-    required List<Map<String, String>> envelopes,
-    String? idempotencyKey,
-  }) async {
-    final response = await await http.post(
-      Uri.parse('$baseUrl/api/v1/groups/keys'),
-      headers: {..._headers(), 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
-      body: jsonEncode({
-        'group_id': groupId,
-        'key_version': keyVersion,
-        'envelopes': envelopes,
-      }),
-    ).timeout(const Duration(seconds: 10));
-    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(_error(response));
   }
 
   Future<List<GroupMessage>> groupMessages(String groupId) => _fetchAllPaged<GroupMessage>(

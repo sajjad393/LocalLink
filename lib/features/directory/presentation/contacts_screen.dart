@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
+import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/local_link_state_view.dart';
+import 'package:locallink/core/widgets/messenger_section_header.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
@@ -41,6 +46,8 @@ class ContactsScreen extends StatefulWidget {
 
 class _ContactsScreenState extends State<ContactsScreen> {
   late final ContactsBloc bloc;
+  final _searchController = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
@@ -61,14 +68,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Future<void> _chat(DirectoryProfile p) async {
     if (p.deviceId.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This contact is not currently available.')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This person is not currently available.')));
       return;
     }
-
     final device = _device(p);
     await Navigator.push<void>(
       context,
@@ -81,15 +83,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             await widget.calls.startCall(device);
             final session = widget.calls.session;
             if (session != null && context.mounted) {
-              await Navigator.push<void>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CallScreen(
-                    controller: widget.calls,
-                    initialSession: session,
-                  ),
-                ),
-              );
+              await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => CallScreen(controller: widget.calls, initialSession: session)));
             }
           },
         ),
@@ -100,19 +94,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Future<void> _addContact() async {
     await Navigator.push<void>(
       context,
-      MaterialPageRoute(
-        builder: (_) => AddContactScreen(
-          repository: widget.directory,
-          crypto: widget.crypto,
-          onStartChat: _chat,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => AddContactScreen(repository: widget.directory, crypto: widget.crypto, onStartChat: _chat)),
     );
     await bloc.load();
   }
 
   @override
   void dispose() {
+    _searchController.dispose();
     bloc.close();
     super.dispose();
   }
@@ -121,82 +110,83 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Contacts'),
+        title: const Text('People'),
         actions: [
           IconButton(
-            tooltip: 'Nearby Devices',
-            onPressed: () => Navigator.push<void>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => NearbyDevicesScreen(connectivity: widget.connectivity),
-              ),
-            ),
+            tooltip: 'Nearby',
+            onPressed: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => NearbyDevicesScreen(connectivity: widget.connectivity))),
             icon: const Icon(Icons.wifi_find),
           ),
-          IconButton(
-            tooltip: 'Add Contact',
-            onPressed: _addContact,
-            icon: const Icon(Icons.person_add_alt_1),
-          ),
+          IconButton(tooltip: 'Add contact', onPressed: _addContact, icon: const Icon(Icons.person_add_alt_1)),
         ],
       ),
       body: StreamBuilder<List<DirectoryProfile>>(
         stream: bloc.stream,
         initialData: bloc.state,
         builder: (context, snapshot) {
-          final contacts = snapshot.data ?? const <DirectoryProfile>[];
+          final all = snapshot.data ?? const <DirectoryProfile>[];
+          final query = _query.trim().toLowerCase();
+          final contacts = query.isEmpty
+              ? all
+              : all.where((profile) {
+                  final title = profile.displayName.isEmpty ? profile.username : profile.displayName;
+                  return title.toLowerCase().contains(query) || profile.username.toLowerCase().contains(query);
+                }).toList();
+
           return RefreshIndicator(
             onRefresh: bloc.load,
-            child: contacts.isEmpty
-                ? ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: const [
-                      SizedBox(height: 180),
-                      Center(child: Text('No contacts yet')),
-                    ],
-                  )
-                : ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: contacts.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final profile = contacts[index];
-                      final title = profile.displayName.isEmpty
-                          ? profile.username
-                          : profile.displayName;
-                      return ListTile(
-                        leading: CircleAvatar(
-                          child: Text(
-                            title.isEmpty ? '?' : title[0].toUpperCase(),
-                          ),
-                        ),
-                        title: Text(title),
-                        subtitle: Text(
-                          '@${profile.username}${profile.phoneNumber.isEmpty ? '' : ' • ${profile.phoneNumber}'}',
-                        ),
-                        onTap: () => _chat(profile),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (value) async {
-                            if (value == 'remove') {
-                              await bloc.remove(profile.userId);
-                            } else if (value == 'block') {
-                              await bloc.block(profile.userId);
-                            }
-                          },
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(
-                              value: 'remove',
-                              child: Text('Remove contact'),
-                            ),
-                            PopupMenuItem(
-                              value: 'block',
-                              child: Text('Block user'),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: LocalLinkSpacing.xxl),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, LocalLinkSpacing.md, LocalLinkSpacing.lg, 0),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _query = value),
+                    decoration: const InputDecoration(
+                      hintText: 'Search people',
+                      prefixIcon: Icon(Icons.search),
+                      suffixIcon: Icon(Icons.tune_outlined),
+                    ),
                   ),
+                ),
+                const MessengerSectionHeader(title: 'Your contacts'),
+                if (contacts.isEmpty)
+                  SizedBox(
+                    height: 420,
+                    child: LocalLinkEmptyView(
+                      icon: Icons.people_outline,
+                      title: query.isEmpty ? 'No contacts yet' : 'No people found',
+                      message: query.isEmpty ? 'Add a contact or discover nearby LocalLink phones.' : 'Try another name or username.',
+                      actionLabel: query.isEmpty ? 'Add contact' : null,
+                      onAction: query.isEmpty ? _addContact : null,
+                    ),
+                  )
+                else
+                  ...contacts.map((profile) {
+                    final title = profile.displayName.isEmpty ? profile.username : profile.displayName;
+                    return ListTile(
+                      minVerticalPadding: LocalLinkSpacing.sm,
+                      leading: AccountAvatar(name: title, radius: 24),
+                      title: Text(title, style: Theme.of(context).textTheme.titleSmall),
+                      subtitle: Text('@${profile.username}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      trailing: PopupMenuButton<String>(
+                        tooltip: 'More',
+                        onSelected: (value) async {
+                          if (value == 'remove') await bloc.remove(profile.userId);
+                          if (value == 'block') await bloc.block(profile.userId);
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'remove', child: Text('Remove contact')),
+                          PopupMenuItem(value: 'block', child: Text('Block person')),
+                        ],
+                      ),
+                      onTap: () => _chat(profile),
+                    );
+                  }),
+              ],
+            ),
           );
         },
       ),

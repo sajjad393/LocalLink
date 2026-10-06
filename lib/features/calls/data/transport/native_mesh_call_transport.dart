@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/security/identity_trust_service.dart';
 import 'package:locallink/features/calls/data/platform/call_audio_platform_service.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
@@ -13,14 +12,12 @@ final class NativeMeshCallTransport implements CallTransport {
   final PeerTransportContract mesh;
   final CallMediaPlatformService media;
   final CallAudioPlatformService audio;
-  final IdentityCryptoService crypto;
   final IdentityTrustService identityTrust;
 
   NativeMeshCallTransport({
     required this.mesh,
     required this.media,
     required this.audio,
-    required this.crypto,
     IdentityTrustService? identityTrust,
   }) : identityTrust = identityTrust ?? const IdentityTrustService();
 
@@ -58,7 +55,12 @@ final class NativeMeshCallTransport implements CallTransport {
 
   @override
   Future<void> sendControl({required String recipientId, required Map<String, dynamic> payload}) async {
-    if (!mesh.isStarted) throw StateError('local mesh transport is unavailable');
+    if (!mesh.isStarted) {
+      try {
+        await mesh.resume();
+      } catch (_) {}
+    }
+    if (!mesh.isStarted) throw StateError('local native transport is unavailable');
     await mesh.send(recipientId: recipientId, payload: {
       ...payload,
       'direct': true,
@@ -68,25 +70,20 @@ final class NativeMeshCallTransport implements CallTransport {
 
   @override
   Future<void> start(CallSession session) async {
-    if (!mesh.isStarted) throw StateError('local mesh transport is unavailable');
+    if (!mesh.isStarted) {
+      try {
+        await mesh.resume();
+      } catch (_) {}
+    }
+    if (!mesh.isStarted) throw StateError('local native transport is unavailable');
     if (!await identityTrust.canEstablishLocalCall(session.peerId)) {
       throw StateError('Peer identity is changed or revoked; local call is blocked');
     }
-    final publicKeys = await crypto.cachedPeerPublicKeys();
-    final publicKey = publicKeys[session.peerId];
-    if (publicKey == null || publicKey.isEmpty) {
-      throw StateError('Peer identity key is unavailable for this call');
-    }
-    final mediaKey = await crypto.deriveCallMediaKey(
-      peerId: session.peerId,
-      peerPublicKey: publicKey,
-      callId: session.id,
-    );
     _callId = session.id;
     _active = true;
     try {
       await audio.setSpeakerphoneOn(session.speakerOn);
-      await media.start(callId: session.id, peerId: session.peerId, mediaKey: mediaKey, codec: session.mediaCodec);
+      await media.start(callId: session.id, peerId: session.peerId, codec: session.mediaCodec);
     } catch (_) {
       _active = false;
       _callId = null;
@@ -111,17 +108,7 @@ final class NativeMeshCallTransport implements CallTransport {
     if (!await identityTrust.canEstablishLocalCall(session.peerId)) {
       throw StateError('Peer identity is changed or revoked; local video is blocked');
     }
-    final publicKeys = await crypto.cachedPeerPublicKeys();
-    final publicKey = publicKeys[session.peerId];
-    if (publicKey == null || publicKey.isEmpty) {
-      throw StateError('Peer identity key is unavailable for this call');
-    }
-    final mediaKey = await crypto.deriveCallMediaKey(
-      peerId: session.peerId,
-      peerPublicKey: publicKey,
-      callId: session.id,
-    );
-    return media.startVideo(callId: session.id, peerId: session.peerId, mediaKey: mediaKey);
+    return media.startVideo(callId: session.id, peerId: session.peerId);
   }
 
   @override

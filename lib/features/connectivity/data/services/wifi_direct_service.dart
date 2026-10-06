@@ -18,6 +18,9 @@ class WifiDirectService {
 
   Future<bool> isSupported() async =>
       await _channel.invokeMethod<bool>('isSupported') ?? false;
+
+  Future<bool> hasPermission() async =>
+      await _channel.invokeMethod<bool>('hasPermission') ?? false;
   Future<bool> isEnabled() async =>
       await _channel.invokeMethod<bool>('isEnabled') ?? false;
   Future<void> requestEnable() => _channel.invokeMethod('requestEnable');

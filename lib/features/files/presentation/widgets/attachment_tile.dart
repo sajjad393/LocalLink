@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:async';
+import 'package:flutter/services.dart';
 
 import 'package:flutter/material.dart';
 import 'package:locallink/core/models/attachment.dart';
@@ -30,6 +32,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
   String? _localPath;
   String? _displayPath;
   String? _activeOperation;
+  bool _playing = false;
+  int _audioDurationMs = 0;
+  Timer? _audioTimer;
 
   @override
   void initState() {
@@ -127,12 +132,34 @@ class _AttachmentTileState extends State<AttachmentTile> {
     if (mounted) setState(() => _activeOperation = null);
   }
 
+  Future<void> _toggleAudio() async {
+    if (_displayPath == null) { await _download(); return; }
+    try {
+      const channel = MethodChannel('locallink/voice_notes');
+      if (_playing) {
+        await channel.invokeMethod('pause');
+        _audioTimer?.cancel();
+        if (mounted) setState(() => _playing = false);
+      } else {
+        final duration = await channel.invokeMethod<int>('play', {'path': _displayPath});
+        _audioTimer?.cancel();
+        final durationMs = duration ?? 0;
+        if (mounted) setState(() { _playing = true; _audioDurationMs = durationMs; });
+        if (durationMs > 0) { _audioTimer = Timer(Duration(milliseconds: durationMs), () { if (mounted) setState(() => _playing = false); }); }
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))));
+    }
+  }
+
   @override
   void dispose() {
     final view = _displayPath;
     if (view != null && view.isNotEmpty) {
       widget.transfer.deleteLocalFile(view);
     }
+    _audioTimer?.cancel();
+    if (_playing) { const MethodChannel('locallink/voice_notes').invokeMethod('stop'); }
     _controller.close();
     super.dispose();
   }
@@ -162,6 +189,16 @@ class _AttachmentTileState extends State<AttachmentTile> {
 
           final progress = _progress;
           final running = progress?.status == FileTransferStatus.running;
+          if (widget.attachment.contentType.startsWith('audio/')) {
+            return Card(
+              child: ListTile(
+                leading: CircleAvatar(child: Icon(_playing ? Icons.pause_rounded : Icons.mic_none_rounded)),
+                title: Text(widget.attachment.originalName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(_audioDurationMs > 0 ? '${(_audioDurationMs / 1000).ceil()} sec' : _sizeLabel(widget.attachment.size)),
+                trailing: IconButton(tooltip: _playing ? 'Pause voice note' : (_displayPath == null ? 'Download voice note' : 'Play voice note'), onPressed: running ? _cancel : _toggleAudio, icon: Icon(running ? Icons.close : (_playing ? Icons.pause : (_displayPath == null ? Icons.download : Icons.play_arrow)))),
+              ),
+            );
+          }
           return Container(
             margin: const EdgeInsets.only(top: 8),
             padding: const EdgeInsets.all(10),

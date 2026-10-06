@@ -9,7 +9,7 @@ import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/call_quality.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/local_store.dart';
-import 'package:locallink/core/services/identity_crypto_service.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/data/models/call_notification_action.dart';
 import 'package:locallink/features/calls/data/platform/call_audio_platform_service.dart';
@@ -22,6 +22,9 @@ import 'package:locallink/features/calls/data/transport/call_transport.dart';
 import 'package:locallink/features/calls/data/transport/call_transport_factory.dart';
 import 'package:locallink/features/calls/data/transport/call_transport_mode.dart';
 import 'package:locallink/features/calls/data/transport/call_transport_selection_policy.dart';
+import 'package:locallink/features/calls/data/services/local_route_resolver.dart';
+import 'package:locallink/features/calls/data/services/call_preflight_exception.dart';
+import 'package:locallink/core/security/identity_trust_service.dart';
 import 'package:locallink/features/calls/domain/call_gateway.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 
@@ -33,7 +36,7 @@ final class CallSessionManager implements CallGateway {
   final CallRingtoneService ringtone;
   final CallNotificationPlatformService notificationPlatform;
   final CallMediaPlatformService mediaPlatform;
-  final IdentityCryptoService crypto;
+  final IdentityTrustService identityTrust;
 
   final _sessionController = StreamController<CallSession?>.broadcast();
   final _historyController = StreamController<List<CallRecord>>.broadcast();
@@ -46,6 +49,7 @@ final class CallSessionManager implements CallGateway {
   CallSession? _session;
   CallTransport? _transport;
   late final CallTransportFactory transportFactory;
+  late final LocalRouteResolver routeResolver;
   bool _disposed = false;
   int _recoveryAttempts = 0;
   int _meshRouteRecoveryAttempts = 0;
@@ -66,13 +70,13 @@ final class CallSessionManager implements CallGateway {
     required this.ringtone,
     required this.notificationPlatform,
     required this.mediaPlatform,
-    required this.crypto,
-  }) {
+    IdentityTrustService? identityTrust,
+  }) : identityTrust = identityTrust ?? const IdentityTrustService() {
+    routeResolver = LocalRouteResolver(directTransport);
     transportFactory = CallTransportFactory(
       mesh: directTransport,
       media: mediaPlatform,
       audio: audioPlatform,
-      crypto: crypto,
     );
   }
 
@@ -116,16 +120,47 @@ final class CallSessionManager implements CallGateway {
   }
 
   Future<void> startCall(Device device) async {
-    if (await store.isBlockedPeer(device.id))
-      throw Exception('This user is blocked');
-    if (_session != null && !_session!.isFinished)
-      throw Exception('Another call is already active');
-    if (!directTransport.isStarted)
-      throw Exception('Local mesh transport is unavailable');
+    if (await store.isBlockedPeer(device.id)) {
+      throw const CallPreflightException(
+        CallPreflightCode.peerBlocked,
+        'This user is blocked',
+      );
+    }
+    if (_session != null && !_session!.isFinished) {
+      throw const CallPreflightException(
+        CallPreflightCode.activeCall,
+        'Another call is already active',
+      );
+    }
 
-    final localRouteAvailable = await _hasLocalRouteTo(device.id);
+    try {
+      await transportFactory.ensureReady();
+    } catch (_) {
+      throw const CallPreflightException(
+        CallPreflightCode.transportUnavailable,
+        'Local calling service is unavailable',
+      );
+    }
+
+    final route = await routeResolver.resolve(device.id);
+    AppLogger.info(
+      'CALL_PRECHECK',
+      detail: 'peer=${device.id} route=${route.kind.name} state=${route.transportState.name}',
+    );
+    if (!route.isAvailable) {
+      throw const CallPreflightException(
+        CallPreflightCode.noLocalRoute,
+        'This user is not reachable on the local network',
+      );
+    }
+    if (!await identityTrust.canEstablishLocalCall(device.id)) {
+      throw const CallPreflightException(
+        CallPreflightCode.identityUnavailable,
+        'This user identity is not trusted for local calling',
+      );
+    }
     final mode = CallTransportSelectionPolicy.select(
-        localRouteAvailable: localRouteAvailable);
+        localRouteAvailable: route.isAvailable);
     final id = _newCallId();
     final now = DateTime.now();
     final session = CallSession(
@@ -138,6 +173,7 @@ final class CallSessionManager implements CallGateway {
       speakerOn: true,
       directMode: true,
       transportMode: mode,
+      signalingConnected: false,
       supportedMediaCodecs: await _supportedMediaCodecs(),
     );
     _setSession(session);
@@ -296,49 +332,9 @@ final class CallSessionManager implements CallGateway {
     await _sessionController.close();
   }
 
-  Future<bool> _hasLocalRouteTo(String peerId) async {
-    if (!directTransport.isStarted) return false;
-    try {
-      final topology = await directTransport.topology();
-      final now = DateTime.now().millisecondsSinceEpoch;
+  Future<bool> _hasLocalRouteTo(String peerId) async =>
+      (await routeResolver.resolve(peerId)).isAvailable;
 
-      final peersRaw = topology['peers'] ?? topology['mesh_peers'];
-      if (peersRaw is List) {
-        for (final raw in peersRaw.whereType<Map>()) {
-          final peer = Map<String, dynamic>.from(raw);
-          final id = (peer['node_id'] ?? peer['peer_id'])?.toString().trim();
-          final state = peer['state']?.toString().trim().toUpperCase();
-          if (id == peerId &&
-              (state == null ||
-                  state.isEmpty ||
-                  state == 'CONNECTED' ||
-                  state == 'DISCOVERED')) {
-            return true;
-          }
-        }
-      }
-
-      final routesRaw = topology['routes'];
-      if (routesRaw is List) {
-        for (final raw in routesRaw.whereType<Map>()) {
-          final route = Map<String, dynamic>.from(raw);
-          final destination = (route['destination'] ??
-                  route['destination_node_id'] ??
-                  route['destination_id'])
-              ?.toString()
-              .trim();
-          final state = route['state']?.toString().trim().toUpperCase();
-          final expiresAt = (route['expires_at'] as num?)?.toInt();
-          final active = state == null || state.isEmpty || state == 'ACTIVE';
-          final notExpired = expiresAt == null || expiresAt > now;
-          if (destination == peerId && active && notExpired) return true;
-        }
-      }
-    } catch (_) {
-      // A topology read failure is treated as no local route.
-    }
-    return false;
-  }
 
   Future<void> _handleLocalCallSignal(Map<String, dynamic> msg) async {
     if (_disposed) return;
@@ -453,6 +449,12 @@ final class CallSessionManager implements CallGateway {
     ));
     await _persistSession();
     _startRingTimer(outgoing: false);
+    unawaited(_sendSignal({
+      'type': 'call_invite_ack',
+      'call_id': callId,
+      'recipient_id': peerId,
+      'status': 'ringing',
+    }));
   }
 
   Future<void> _handleNotificationAction(CallNotificationAction action) async {
@@ -614,13 +616,16 @@ final class CallSessionManager implements CallGateway {
 
   Future<void> _handleInviteAck(Map<String, dynamic> msg) async {
     final session = _session;
+    final selfId = store.deviceId;
     if (session == null ||
+        selfId == null ||
         session.id != msg['call_id']?.toString() ||
         session.direction != CallDirection.outgoing ||
-        msg['sender_id']?.toString() != store.deviceId ||
-        msg['recipient_id']?.toString() != session.peerId) return;
+        msg['sender_id']?.toString() != session.peerId ||
+        msg['recipient_id']?.toString() != selfId) return;
     if (msg['status']?.toString() != 'ringing') return;
-    _setSession(session.copyWith(state: CallState.ringing));
+    AppLogger.info('CALL_INVITE_ACK_RECEIVED', detail: 'call=${session.id}');
+    _setSession(session.copyWith(state: CallState.ringing, signalingConnected: true));
   }
 
   Future<void> _handleState(Map<String, dynamic> msg) async {
@@ -633,6 +638,7 @@ final class CallSessionManager implements CallGateway {
     if (status == 'connected') {
       if (session.direction == CallDirection.outgoing &&
           session.state != CallState.connected) {
+        await transportFactory.ensureReady();
         if (_transport == null) {
           _transport =
               transportFactory.resolve(requested: session.transportMode);
@@ -680,8 +686,8 @@ final class CallSessionManager implements CallGateway {
   Future<void> _sendSignal(Map<String, dynamic> msg) async {
     final recipient = msg['recipient_id']?.toString().trim();
     if (recipient == null || recipient.isEmpty) return;
-    if (!directTransport.isStarted)
-      throw StateError('local mesh transport is unavailable');
+    await transportFactory.ensureReady();
+    AppLogger.info('CALL_SIGNAL_SEND', detail: 'type=${msg['type']} call=${msg['call_id'] ?? ''}');
     await transportFactory.nativeMesh
         .sendControl(recipientId: recipient, payload: {
       ...msg,

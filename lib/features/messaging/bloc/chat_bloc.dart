@@ -5,6 +5,7 @@ import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/core/models/message_reaction.dart';
 import 'package:locallink/features/messaging/domain/messaging_repository_contract.dart';
 
 final class ChatState extends Equatable {
@@ -12,6 +13,7 @@ final class ChatState extends Equatable {
   final String localDeviceId;
   final List<Message> messages;
   final List<PickedFile> pendingAttachments;
+  final Map<String, List<MessageReaction>> reactions;
   final bool isLoading, isSending;
   final String? error;
   const ChatState(
@@ -19,6 +21,7 @@ final class ChatState extends Equatable {
       required this.localDeviceId,
       this.messages = const [],
       this.pendingAttachments = const [],
+      this.reactions = const {},
       this.isLoading = true,
       this.isSending = false,
       this.error});
@@ -26,6 +29,7 @@ final class ChatState extends Equatable {
           {Device? device,
           List<Message>? messages,
           List<PickedFile>? pendingAttachments,
+          Map<String, List<MessageReaction>>? reactions,
           bool? isLoading,
           bool? isSending,
           String? error,
@@ -35,6 +39,7 @@ final class ChatState extends Equatable {
           localDeviceId: localDeviceId,
           messages: messages ?? this.messages,
           pendingAttachments: pendingAttachments ?? this.pendingAttachments,
+          reactions: reactions ?? this.reactions,
           isLoading: isLoading ?? this.isLoading,
           isSending: isSending ?? this.isSending,
           error: clearError ? null : (error ?? this.error));
@@ -44,6 +49,7 @@ final class ChatState extends Equatable {
         localDeviceId,
         messages,
         pendingAttachments,
+        reactions,
         isLoading,
         isSending,
         error
@@ -54,11 +60,13 @@ final class ChatBloc extends Cubit<ChatState> {
   final MessagingRepositoryContract repository;
   final String localDeviceId;
   late final StreamSubscription<Message> _subscription;
+  late final StreamSubscription<MessageReaction> _reactionSubscription;
   ChatBloc({required this.repository, required Device device})
       : localDeviceId = repository.localDeviceId,
         super(ChatState(
             device: device, localDeviceId: repository.localDeviceId)) {
     _subscription = repository.incoming.listen(_onIncoming);
+    _reactionSubscription = repository.reactionIncoming.listen(_onReaction);
   }
   Device get device => state.device;
   List<Message> get messages => state.messages;
@@ -66,46 +74,72 @@ final class ChatBloc extends Cubit<ChatState> {
   bool get isLoading => state.isLoading;
   bool get isSending => state.isSending;
   String? get error => state.error;
+  List<MessageReaction> reactionsFor(String messageId) => state.reactions[messageId] ?? const [];
   Future<void> load() async {
+    if (isClosed) return;
     emit(state.copyWith(isLoading: true, clearError: true));
     try {
-      emit(state.copyWith(
-          messages: await repository.history(state.device.id),
-          isLoading: false));
+      final messages = await repository.history(state.device.id);
+      if (isClosed) return;
+      final reactionMap = <String, List<MessageReaction>>{};
+      for (final message in messages) {
+        reactionMap[message.id] = await repository.reactions(message.id);
+      }
+      emit(state.copyWith(messages: messages, reactions: reactionMap, isLoading: false));
     } catch (e) {
-      emit(state.copyWith(error: cleanBlocError(e), isLoading: false));
+      if (!isClosed) emit(state.copyWith(error: cleanBlocError(e), isLoading: false));
     }
   }
 
   void addPendingAttachments(List<PickedFile> files) {
-    if (files.isEmpty) return;
+    if (isClosed || files.isEmpty) return;
     emit(state
         .copyWith(pendingAttachments: [...state.pendingAttachments, ...files]));
   }
 
   void removePendingAttachment(int index) {
-    if (index < 0 || index >= state.pendingAttachments.length) return;
+    if (isClosed || index < 0 || index >= state.pendingAttachments.length) return;
     final next = [...state.pendingAttachments]..removeAt(index);
     emit(state.copyWith(pendingAttachments: next));
   }
 
   Future<void> send(String body) async {
     final text = body.trim();
-    if ((text.isEmpty && state.pendingAttachments.isEmpty) || state.isSending)
-      return;
+    if (isClosed || (text.isEmpty && state.pendingAttachments.isEmpty) || state.isSending) return;
     final attachments = List<PickedFile>.from(state.pendingAttachments);
     emit(state.copyWith(
         pendingAttachments: const [], isSending: true, clearError: true));
     try {
       await repository.send(state.device.id, text, attachments: attachments);
+      if (isClosed) return;
       await load();
     } catch (e) {
-      emit(state.copyWith(
-          pendingAttachments: [...attachments, ...state.pendingAttachments],
-          error: cleanBlocError(e)));
+      if (!isClosed) {
+        emit(state.copyWith(
+            pendingAttachments: [...attachments, ...state.pendingAttachments],
+            error: cleanBlocError(e)));
+      }
     } finally {
-      emit(state.copyWith(isSending: false));
+      if (!isClosed) emit(state.copyWith(isSending: false));
     }
+  }
+
+  Future<void> react(String messageId, String emoji) async {
+    if (isClosed || messageId.isEmpty || emoji.trim().isEmpty) return;
+    try {
+      await repository.react(state.device.id, messageId, emoji);
+    } catch (e) {
+      if (!isClosed) emit(state.copyWith(error: cleanBlocError(e)));
+    }
+  }
+
+  void _onReaction(MessageReaction reaction) {
+    if (isClosed) return;
+    final current = [...(state.reactions[reaction.messageId] ?? const <MessageReaction>[])];
+    final index = current.indexWhere((item) => item.reactorId == reaction.reactorId);
+    if (index >= 0) current[index] = reaction; else current.add(reaction);
+    final next = {...state.reactions, reaction.messageId: current};
+    emit(state.copyWith(reactions: next));
   }
 
   void updatePresence(Map<String, dynamic> event) {
@@ -122,11 +156,11 @@ final class ChatBloc extends Cubit<ChatState> {
       'wifi_direct_connected': event['wifi_direct_connected'] == true,
       'status_updated_at': event['status_updated_at']?.toString() ?? ''
     });
-    emit(state.copyWith(device: d));
+    if (!isClosed) emit(state.copyWith(device: d));
   }
 
   void clearError() {
-    if (state.error != null) emit(state.copyWith(clearError: true));
+    if (!isClosed && state.error != null) emit(state.copyWith(clearError: true));
   }
 
   void _onIncoming(Message m) {
@@ -140,12 +174,13 @@ final class ChatBloc extends Cubit<ChatState> {
       next.add(m);
     else
       next[i] = m;
-    emit(state.copyWith(messages: next));
+    if (!isClosed) emit(state.copyWith(messages: next));
   }
 
   @override
   Future<void> close() async {
     await _subscription.cancel();
+    await _reactionSubscription.cancel();
     return super.close();
   }
 }

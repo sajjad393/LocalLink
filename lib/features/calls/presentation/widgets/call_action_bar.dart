@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
-
-import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart' hide CallState;
+import 'package:locallink/features/calls/data/models/call_session.dart';
 
 class CallActionBar extends StatelessWidget {
   final CallBloc controller;
@@ -17,34 +16,32 @@ class CallActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final incoming = session.direction == CallDirection.incoming &&
-        session.state == CallState.ringing;
+    final colors = Theme.of(context).colorScheme;
+    final incoming = session.direction == CallDirection.incoming && session.state == CallState.ringing;
 
     if (incoming) {
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+        padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.xxl, LocalLinkSpacing.md, LocalLinkSpacing.xxl, LocalLinkSpacing.xxl),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            FloatingActionButton(
-              heroTag: 'reject-call',
-              backgroundColor: Theme.of(context).colorScheme.error,
+            _CallAction(
+              label: 'Decline',
+              icon: Icons.call_end_rounded,
+              background: colors.errorContainer,
+              foreground: colors.onErrorContainer,
               onPressed: () async {
-                try {
-                  await controller.rejectIncoming();
-                } catch (_) {}
+                try { await controller.rejectIncoming(); } catch (_) {}
               },
-              child: const Icon(Icons.call_end),
             ),
-            FloatingActionButton(
-              heroTag: 'accept-call',
-              backgroundColor: Theme.of(context).colorScheme.primary,
+            _CallAction(
+              label: 'Answer',
+              icon: Icons.call_rounded,
+              background: colors.primaryContainer,
+              foreground: colors.onPrimaryContainer,
               onPressed: () async {
-                try {
-                  await controller.acceptIncoming();
-                } catch (_) {}
+                try { await controller.acceptIncoming(); } catch (_) {}
               },
-              child: const Icon(Icons.call),
             ),
           ],
         ),
@@ -53,64 +50,40 @@ class CallActionBar extends StatelessWidget {
 
     if (!session.isFinished) {
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, LocalLinkSpacing.md, LocalLinkSpacing.lg, LocalLinkSpacing.xxl),
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: LocalLinkSpacing.lg,
+          runSpacing: LocalLinkSpacing.md,
           children: [
-            IconButton.filledTonal(
-              iconSize: 28,
-              onPressed: () async {
-                try {
-                  await controller.toggleMute();
-                } catch (_) {}
-              },
-              icon: Icon(session.muted ? Icons.mic_off : Icons.mic),
-              tooltip: 'Mute',
+            _CallIconAction(
+              label: session.muted ? 'Unmute' : 'Mute',
+              icon: session.muted ? Icons.mic_off : Icons.mic,
+              onPressed: () async { try { await controller.toggleMute(); } catch (_) {} },
             ),
-            IconButton.filledTonal(
-              iconSize: 28,
-              onPressed: session.directMode
-                  ? () async {
-                      try {
-                        await controller.toggleVideo();
-                      } catch (_) {}
-                    }
-                  : null,
-              icon: Icon(
-                  session.videoEnabled ? Icons.videocam : Icons.videocam_off),
-              tooltip: 'Video',
+            _CallIconAction(
+              label: session.videoEnabled ? 'Camera off' : 'Camera',
+              icon: session.videoEnabled ? Icons.videocam_off : Icons.videocam,
+              enabled: session.directMode,
+              onPressed: () async { try { await controller.toggleVideo(); } catch (_) {} },
             ),
-            FloatingActionButton(
-              heroTag: 'hangup-call',
-              backgroundColor: Theme.of(context).colorScheme.error,
-              onPressed: () async {
-                try {
-                  await controller.endCall();
-                } catch (_) {}
-              },
-              child: const Icon(Icons.call_end),
+            _CallAction(
+              label: 'End',
+              icon: Icons.call_end_rounded,
+              background: colors.error,
+              foreground: colors.onError,
+              onPressed: () async { try { await controller.endCall(); } catch (_) {} },
             ),
-            IconButton.filledTonal(
-              iconSize: 28,
-              onPressed: () async {
-                try {
-                  await controller.toggleSpeaker();
-                } catch (_) {}
-              },
-              icon: Icon(
-                  session.speakerOn ? Icons.volume_up : Icons.phone_in_talk),
-              tooltip: 'Speaker',
+            _CallIconAction(
+              label: session.speakerOn ? 'Speaker off' : 'Speaker',
+              icon: session.speakerOn ? Icons.volume_up : Icons.phone_in_talk,
+              onPressed: () async { try { await controller.toggleSpeaker(); } catch (_) {} },
             ),
             if (session.directMode && session.videoEnabled)
-              IconButton.filledTonal(
-                iconSize: 28,
-                onPressed: () async {
-                  try {
-                    await controller.switchCamera();
-                  } catch (_) {}
-                },
-                icon: const Icon(Icons.cameraswitch),
-                tooltip: 'Switch camera',
+              _CallIconAction(
+                label: 'Switch camera',
+                icon: Icons.cameraswitch,
+                onPressed: () async { try { await controller.switchCamera(); } catch (_) {} },
               ),
           ],
         ),
@@ -118,11 +91,71 @@ class CallActionBar extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.all(24),
-      child: FilledButton(
-        onPressed: () => Navigator.of(context).maybePop(),
-        child: const Text('Close'),
+      padding: const EdgeInsets.all(LocalLinkSpacing.xxl),
+      child: FilledButton(onPressed: () => Navigator.of(context).maybePop(), child: const Text('Done')),
+    );
+  }
+}
+
+class _CallIconAction extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Future<void> Function() onPressed;
+  final bool enabled;
+
+  const _CallIconAction({required this.label, required this.icon, required this.onPressed, this.enabled = true});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton.filledTonal(
+            iconSize: 26,
+            onPressed: enabled ? () => onPressed() : null,
+            icon: Icon(icon),
+          ),
+          const SizedBox(height: 3),
+          Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color.onSurfaceVariant)),
+        ],
       ),
+    );
+  }
+}
+
+class _CallAction extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color background;
+  final Color foreground;
+  final Future<void> Function() onPressed;
+
+  const _CallAction({
+    required this.label,
+    required this.icon,
+    required this.background,
+    required this.foreground,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton.filled(
+          style: IconButton.styleFrom(backgroundColor: background, foregroundColor: foreground, iconSize: 30),
+          onPressed: () => onPressed(),
+          icon: Icon(icon),
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: Theme.of(context).textTheme.labelSmall),
+      ],
     );
   }
 }

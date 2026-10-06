@@ -12,7 +12,7 @@ abstract interface class FileTransferRepositoryContract {
     void Function(TransferProgress progress)? onProgress,
   });
 
-  Future<Attachment> uploadE2eForMessage(
+  Future<Attachment> uploadForMessage(
     PickedFile file, {
     required String recipientId,
     required String messageId,
@@ -22,7 +22,7 @@ abstract interface class FileTransferRepositoryContract {
     void Function(TransferProgress progress)? onProgress,
   });
 
-  Future<Attachment> uploadE2eForGroupMessage(
+  Future<Attachment> uploadForGroupMessage(
     PickedFile file, {
     required String groupId,
     required String messageId,

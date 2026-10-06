@@ -3,17 +3,14 @@ import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
-import 'package:locallink/features/groups/data/services/group_crypto_service.dart';
 
 final class GroupRepository implements GroupRepositoryContract {
   final LocalLinkApi _api;
   final LocalStore _store;
-  final GroupCryptoService _crypto;
 
-  const GroupRepository({required LocalLinkApi api, required LocalStore store, required GroupCryptoService crypto})
+  const GroupRepository({required LocalLinkApi api, required LocalStore store})
       : _api = api,
-        _store = store,
-        _crypto = crypto;
+        _store = store;
 
   Map<String, dynamic> _groupMap(LocalGroup group) => {
         'id': group.id,
@@ -58,8 +55,7 @@ final class GroupRepository implements GroupRepositoryContract {
 
     final group = await _api.createGroup(normalizedName, normalizedMembers);
     await _store.saveGroup(_groupMap(group));
-    final members = await listMembers(group.id);
-    await _crypto.initializeGroupKey(group, members);
+    await listMembers(group.id);
     return group;
   }
 
@@ -93,11 +89,7 @@ final class GroupRepository implements GroupRepositoryContract {
     if (device.isEmpty) throw const FormatException('Device ID is required');
     final changed = await _api.addGroupMember(group, device);
     if (!changed) return;
-    await _crypto.markRotationPending(group);
-    final localGroup = await _store.groupById(group);
-    if (localGroup == null) throw StateError('group is not available locally');
     await listMembers(group);
-    await _crypto.rotateGroupKey(localGroup);
   }
 
   @override
@@ -107,11 +99,7 @@ final class GroupRepository implements GroupRepositoryContract {
     if (group.isEmpty) throw const FormatException('Group ID is required');
     if (device.isEmpty) throw const FormatException('Device ID is required');
     await _api.removeGroupMember(group, device);
-    await _crypto.markRotationPending(group);
     await _store.deleteGroupMemberLocal(group, device);
-    final localGroup = await _store.groupById(group);
-    if (localGroup == null) throw StateError('group is not available locally');
     await listMembers(group);
-    await _crypto.rotateGroupKey(localGroup);
   }
 }

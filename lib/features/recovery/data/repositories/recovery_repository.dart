@@ -27,6 +27,51 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
   Future<void> trustServer(PairingInfo info) => _store.trustServer(serverId: info.serverId, fingerprint: info.fingerprint);
 
   @override
+  Future<String> prepareForRecovery({required String deviceName}) async {
+    final name = deviceName.trim().isEmpty ? 'My Android Phone' : deviceName.trim();
+    final savedServer = _store.serverAddress?.trim() ?? '';
+    final candidates = <String>{};
+    if (savedServer.isNotEmpty) candidates.add(savedServer);
+
+    try {
+      final discovered = await discoverServers();
+      candidates.addAll(discovered.map((server) => server.address));
+    } catch (_) {}
+
+    if (candidates.isEmpty) {
+      throw StateError('No LocalLink server is available on the local network.');
+    }
+
+    Object? lastError;
+    for (final candidate in candidates) {
+      try {
+        final info = await verifyServer(candidate);
+        final pinned = _store.serverFingerprint;
+        if (pinned != null &&
+            pinned.isNotEmpty &&
+            pinned.toUpperCase() != info.fingerprint.toUpperCase()) {
+          lastError = StateError('LocalLink server identity changed.');
+          continue;
+        }
+        if (!isServerTrusted(info)) {
+          await trustServer(info);
+        }
+        final normalized = normalizeServerAddress(candidate);
+        final id = _store.deviceId ?? _store.generateDeviceId();
+        await saveConfiguration(server: normalized, id: id, name: name);
+        return normalized;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw StateError(
+      lastError?.toString().replaceFirst('Exception: ', '') ??
+          'LocalLink server could not be verified.',
+    );
+  }
+
+  @override
   bool isServerTrusted(PairingInfo info) {
     final id = _store.serverId;
     final fp = _store.serverFingerprint;

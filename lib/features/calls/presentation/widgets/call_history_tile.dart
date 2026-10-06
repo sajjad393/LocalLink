@@ -23,11 +23,18 @@ class CallHistoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final outgoing = call.isOutgoing(selfId);
+    final statusColor = status == 'Missed' || status == 'Failed'
+        ? Theme.of(context).colorScheme.error
+        : Theme.of(context).colorScheme.onSurfaceVariant;
     return ListTile(
-      leading: Icon(outgoing ? Icons.call_made : Icons.call_received),
-      title: Text(title),
-      subtitle: Text('$status • $date'),
-      trailing: duration == null ? null : Text(duration!),
+      leading: CircleAvatar(
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+        child: Icon(outgoing ? Icons.call_made : Icons.call_received),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text('$status • $date', style: TextStyle(color: statusColor)),
+      trailing: duration == null ? const Icon(Icons.chevron_right) : Text(duration!),
     );
   }
 }

@@ -52,6 +52,7 @@ class LocalStore {
   AdminWifiRadioPolicy? _adminDeviceWifiRadioPolicy;
   int _adminUserPolicyVersion = 0;
   int _adminDevicePolicyVersion = 0;
+  bool _internetOnly = false;
   String _adminPolicyUpdatedAt = '';
 
   String? get serverAddress => _serverAddress;
@@ -73,6 +74,7 @@ class LocalStore {
   AdminWifiRadioPolicy? get adminDeviceWifiRadioPolicy =>
       _adminDeviceWifiRadioPolicy;
   String get wifiRadioPolicySource => effectiveNetworkPolicy.wifiRadioSource;
+  bool get internetOnly => _internetOnly;
   int get adminUserPolicyVersion => _adminUserPolicyVersion;
   int get adminDevicePolicyVersion => _adminDevicePolicyVersion;
   String get adminPolicyUpdatedAt => _adminPolicyUpdatedAt;
@@ -105,12 +107,26 @@ class LocalStore {
         if (oldVersion < 17) await _upgradeTo17(db);
         if (oldVersion < 18) await _upgradeTo18(db);
         if (oldVersion < 20) await _upgradeTo20(db);
+        if (oldVersion < 21) await _upgradeTo21(db);
       },
     );
     _databaseOpened = true;
     await _loadSettings();
     await _migrateLegacySharedPreferences();
   }
+
+  Future<String> prepareDeviceReEnrollment() async {
+  // The old device identity must never be reused after revocation.
+  final newDeviceId = generateDeviceId();
+
+  // Remove only authentication/device credentials.
+  await _secureStorage.delete(key: _tokenKey);
+
+  _deviceId = newDeviceId;
+  _deviceToken = null;
+
+  return newDeviceId;
+}
 
   Future<void> _createSchema(Database db) async {
     await db
@@ -131,6 +147,14 @@ class LocalStore {
         'CREATE INDEX idx_messages_conversation ON messages(sender_id, recipient_id, created_at, id)');
     await db.execute(
         'CREATE INDEX idx_messages_server_seq ON messages(server_seq)');
+    await db.execute('''CREATE TABLE message_reactions (
+      message_id TEXT NOT NULL,
+      reactor_id TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(message_id, reactor_id)
+    )''');
+    await db.execute('CREATE INDEX idx_message_reactions_message ON message_reactions(message_id)');
     await db.execute(
         'CREATE TABLE groups (id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_id TEXT NOT NULL, created_at TEXT NOT NULL)');
     await db.execute('''CREATE TABLE group_members (
@@ -153,6 +177,14 @@ class LocalStore {
     )''');
     await db.execute(
         'CREATE INDEX idx_group_messages_group ON group_messages(group_id, server_seq)');
+    await db.execute('''CREATE TABLE group_message_reactions (
+      message_id TEXT NOT NULL,
+      reactor_id TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(message_id, reactor_id)
+    )''');
+    await db.execute('CREATE INDEX idx_group_message_reactions_message ON group_message_reactions(message_id)');
     await db.execute('''CREATE TABLE outbox (
       id TEXT PRIMARY KEY,
       recipient_id TEXT NOT NULL,
@@ -503,6 +535,25 @@ class LocalStore {
     }
   }
 
+  Future<void> _upgradeTo21(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS message_reactions (
+      message_id TEXT NOT NULL,
+      reactor_id TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(message_id, reactor_id)
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_message_reactions_message ON message_reactions(message_id)');
+    await db.execute('''CREATE TABLE IF NOT EXISTS group_message_reactions (
+      message_id TEXT NOT NULL,
+      reactor_id TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(message_id, reactor_id)
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_group_message_reactions_message ON group_message_reactions(message_id)');
+  }
+
   Future<void> _loadSettings() async {
     final rows = await _db.query('settings');
     final values = <String, String>{
@@ -528,6 +579,7 @@ class LocalStore {
     _adminDevicePolicyVersion =
         int.tryParse(values['admin_device_policy_version'] ?? '') ?? 0;
     _adminPolicyUpdatedAt = values['admin_policy_updated_at'] ?? '';
+    _internetOnly = values['internet_only'] == 'true';
   }
 
   Future<void> _migrateLegacySharedPreferences() async {
@@ -610,6 +662,11 @@ class LocalStore {
     await _putSetting('server_fingerprint', _serverFingerprint!);
   }
 
+  Future<void> setInternetOnly(bool enabled) async {
+    _internetOnly = enabled;
+    await _putSetting('internet_only', enabled ? 'true' : 'false');
+  }
+
   Future<void> clearServerTrust() async {
     _serverId = null;
     _serverFingerprint = null;
@@ -677,7 +734,9 @@ class LocalStore {
         'blocked_users',
         'directory_sync_state',
         'directory_seen',
-        'notification_state'
+        'notification_state',
+        'message_reactions',
+        'group_message_reactions'
       ]) {
         await txn.delete(table);
       }
@@ -957,8 +1016,15 @@ class LocalStore {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
 
-  Future<List<Map<String, dynamic>>> outbox() =>
-      _db.query('outbox', orderBy: 'created_at ASC, id ASC');
+  Future<List<Map<String, dynamic>>> outbox({bool pendingOnly = false}) =>
+      pendingOnly
+          ? _db.query(
+              'outbox',
+              where: "status NOT IN (?, ?, ?, ?)",
+              whereArgs: ['failed', 'delivered', 'direct_delivered', 'server_accepted'],
+              orderBy: 'created_at ASC, id ASC',
+            )
+          : _db.query('outbox', orderBy: 'created_at ASC, id ASC');
 
   Future<String?> outboxNetworkBody(String id) async {
     final rows = await _db.query(
@@ -1002,6 +1068,25 @@ class LocalStore {
         "UPDATE outbox SET status='sending',attempt_count=attempt_count+1,last_attempt_at=? WHERE id=?",
         [DateTime.now().toUtc().toIso8601String(), id],
       );
+
+  Future<Map<String, dynamic>?> outboxItem(String id) async {
+    final rows = await _db.query('outbox', where: 'id=?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  bool isOutboxRetryEligible(Map<String, dynamic> item, {DateTime? now}) {
+    final current = now ?? DateTime.now().toUtc();
+    final status = item['status']?.toString() ?? 'queued';
+    if (status == 'failed' || status == 'delivered' || status == 'direct_delivered') return false;
+    final attempts = int.tryParse(item['attempt_count']?.toString() ?? '') ?? 0;
+    final lastRaw = item['last_attempt_at']?.toString();
+    if (lastRaw == null || lastRaw.isEmpty || attempts <= 0) return true;
+    final last = DateTime.tryParse(lastRaw);
+    if (last == null) return true;
+    final backoffExponent = attempts < 0 ? 0 : (attempts > 6 ? 6 : attempts);
+    final seconds = 1 << backoffExponent;
+    return current.difference(last) >= Duration(seconds: seconds);
+  }
 
   Future<void> removeOutbox(String id) async =>
       _db.delete('outbox', where: 'id=?', whereArgs: [id]);
@@ -1235,13 +1320,12 @@ class LocalStore {
     for (var i = 0; i < message.attachments.length; i++) {
       final a = message.attachments[i];
       await _db.rawInsert(
-        '''INSERT INTO message_attachments(message_id,file_id,original_name,content_type,size,sha256,width,height,is_image,download_url,thumbnail_url,local_path,crypto_version,crypto_scope,crypto_key_version,crypto_nonce,crypto_mac,thumbnail_crypto_nonce,thumbnail_crypto_mac,position)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        '''INSERT INTO message_attachments(message_id,file_id,original_name,content_type,size,sha256,width,height,is_image,download_url,thumbnail_url,local_path,position)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(message_id,file_id) DO UPDATE SET
            original_name=excluded.original_name,content_type=excluded.content_type,size=excluded.size,sha256=excluded.sha256,
            width=excluded.width,height=excluded.height,is_image=excluded.is_image,download_url=excluded.download_url,
-           thumbnail_url=excluded.thumbnail_url,local_path=COALESCE(excluded.local_path,message_attachments.local_path),
-           crypto_version=excluded.crypto_version,crypto_scope=excluded.crypto_scope,crypto_key_version=excluded.crypto_key_version,crypto_nonce=excluded.crypto_nonce,crypto_mac=excluded.crypto_mac,thumbnail_crypto_nonce=excluded.thumbnail_crypto_nonce,thumbnail_crypto_mac=excluded.thumbnail_crypto_mac,position=excluded.position''',
+           thumbnail_url=excluded.thumbnail_url,local_path=COALESCE(excluded.local_path,message_attachments.local_path),position=excluded.position''',
         [
           message.id,
           a.id,
@@ -1255,13 +1339,6 @@ class LocalStore {
           a.downloadUrl,
           a.thumbnailUrl,
           a.localPath,
-          a.cryptoVersion,
-          a.cryptoScope,
-          a.cryptoKeyVersion,
-          a.cryptoNonce,
-          a.cryptoMac,
-          a.thumbnailCryptoNonce,
-          a.thumbnailCryptoMac,
           i
         ],
       );
@@ -1283,13 +1360,6 @@ class LocalStore {
               'is_image': r['is_image'] == 1,
               'download_url': r['download_url'],
               'thumbnail_url': r['thumbnail_url'],
-              'crypto_version': r['crypto_version'],
-              'crypto_scope': r['crypto_scope'],
-              'crypto_key_version': r['crypto_key_version'],
-              'crypto_nonce': r['crypto_nonce'],
-              'crypto_mac': r['crypto_mac'],
-              'thumbnail_crypto_nonce': r['thumbnail_crypto_nonce'],
-              'thumbnail_crypto_mac': r['thumbnail_crypto_mac'],
             }, localPath: r['local_path']?.toString()))
         .toList();
   }
@@ -1685,10 +1755,14 @@ class LocalStore {
   String _mergeMessageStatus(String current, String incoming) {
     int rank(String value) {
       switch (value) {
+        case 'failed':
+          return 5;
         case 'delivered':
         case 'direct_delivered':
           return 4;
         case 'sent':
+          return 3;
+        case 'server_accepted':
           return 3;
         case 'sending':
           return 2;
@@ -1727,6 +1801,24 @@ class LocalStore {
     }
     return out;
   }
+
+  Future<void> saveMessageReaction({required String messageId, required String reactorId, required String emoji, required String createdAt}) async {
+    await _db.insert('message_reactions', {
+      'message_id': messageId, 'reactor_id': reactorId, 'emoji': emoji, 'created_at': createdAt,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> messageReactions(String messageId) async =>
+      _db.query('message_reactions', where: 'message_id=?', whereArgs: [messageId], orderBy: 'created_at ASC');
+
+  Future<void> saveGroupMessageReaction({required String messageId, required String reactorId, required String emoji, required String createdAt}) async {
+    await _db.insert('group_message_reactions', {
+      'message_id': messageId, 'reactor_id': reactorId, 'emoji': emoji, 'created_at': createdAt,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> groupMessageReactions(String messageId) async =>
+      _db.query('group_message_reactions', where: 'message_id=?', whereArgs: [messageId], orderBy: 'created_at ASC');
 
   Future<void> saveMessageBody(String id, String body) async {
     if (body.isEmpty) return;
@@ -1895,13 +1987,12 @@ class LocalStore {
       final a =
           Attachment.fromJson(Map<String, dynamic>.from(attachments[i] as Map));
       await _db.rawInsert(
-        '''INSERT INTO group_message_attachments(group_message_id,file_id,original_name,content_type,size,sha256,width,height,is_image,download_url,thumbnail_url,local_path,crypto_version,crypto_scope,crypto_key_version,crypto_nonce,crypto_mac,thumbnail_crypto_nonce,thumbnail_crypto_mac,position)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        '''INSERT INTO group_message_attachments(group_message_id,file_id,original_name,content_type,size,sha256,width,height,is_image,download_url,thumbnail_url,local_path,position)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(group_message_id,file_id) DO UPDATE SET
            original_name=excluded.original_name,content_type=excluded.content_type,size=excluded.size,sha256=excluded.sha256,
            width=excluded.width,height=excluded.height,is_image=excluded.is_image,download_url=excluded.download_url,
-           thumbnail_url=excluded.thumbnail_url,local_path=COALESCE(excluded.local_path,group_message_attachments.local_path),
-           crypto_version=excluded.crypto_version,crypto_scope=excluded.crypto_scope,crypto_key_version=excluded.crypto_key_version,crypto_nonce=excluded.crypto_nonce,crypto_mac=excluded.crypto_mac,thumbnail_crypto_nonce=excluded.thumbnail_crypto_nonce,thumbnail_crypto_mac=excluded.thumbnail_crypto_mac,position=excluded.position''',
+           thumbnail_url=excluded.thumbnail_url,local_path=COALESCE(excluded.local_path,group_message_attachments.local_path),position=excluded.position''',
         [
           gm['id'],
           a.id,
@@ -1915,13 +2006,6 @@ class LocalStore {
           a.downloadUrl,
           a.thumbnailUrl,
           a.localPath,
-          a.cryptoVersion,
-          a.cryptoScope,
-          a.cryptoKeyVersion,
-          a.cryptoNonce,
-          a.cryptoMac,
-          a.thumbnailCryptoNonce,
-          a.thumbnailCryptoMac,
           i
         ],
       );
@@ -1952,14 +2036,7 @@ class LocalStore {
                 'is_image': r['is_image'] == 1,
                 'download_url': r['download_url'],
                 'thumbnail_url': r['thumbnail_url'],
-                'crypto_version': r['crypto_version'],
-                'crypto_scope': r['crypto_scope'],
-                'crypto_key_version': r['crypto_key_version'],
-                'crypto_nonce': r['crypto_nonce'],
-                'crypto_mac': r['crypto_mac'],
-                'thumbnail_crypto_nonce': r['thumbnail_crypto_nonce'],
-                'thumbnail_crypto_mac': r['thumbnail_crypto_mac'],
-              }, localPath: r['local_path']?.toString())
+                            }, localPath: r['local_path']?.toString())
                   .toJson())
           .toList();
       out.add(copy);
@@ -2070,14 +2147,7 @@ class LocalStore {
                 'is_image': r['is_image'] == 1,
                 'download_url': r['download_url'],
                 'thumbnail_url': r['thumbnail_url'],
-                'crypto_version': r['crypto_version'],
-                'crypto_scope': r['crypto_scope'],
-                'crypto_key_version': r['crypto_key_version'],
-                'crypto_nonce': r['crypto_nonce'],
-                'crypto_mac': r['crypto_mac'],
-                'thumbnail_crypto_nonce': r['thumbnail_crypto_nonce'],
-                'thumbnail_crypto_mac': r['thumbnail_crypto_mac'],
-              },
+                            },
               localPath: r['local_path']?.toString(),
             ).toJson(),
           )
@@ -2101,13 +2171,6 @@ class LocalStore {
           'is_image': file.isImage ? 1 : 0,
           'download_url': file.downloadUrl,
           'thumbnail_url': file.thumbnailUrl,
-          'crypto_version': file.cryptoVersion,
-          'crypto_scope': file.cryptoScope,
-          'crypto_key_version': file.cryptoKeyVersion,
-          'crypto_nonce': file.cryptoNonce,
-          'crypto_mac': file.cryptoMac,
-          'thumbnail_crypto_nonce': file.thumbnailCryptoNonce,
-          'thumbnail_crypto_mac': file.thumbnailCryptoMac,
           'restored_at': DateTime.now().toUtc().toIso8601String(),
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
@@ -2128,13 +2191,6 @@ class LocalStore {
               'is_image': r['is_image'] == 1,
               'download_url': r['download_url'],
               'thumbnail_url': r['thumbnail_url'],
-              'crypto_version': r['crypto_version'],
-              'crypto_scope': r['crypto_scope'],
-              'crypto_key_version': r['crypto_key_version'],
-              'crypto_nonce': r['crypto_nonce'],
-              'crypto_mac': r['crypto_mac'],
-              'thumbnail_crypto_nonce': r['thumbnail_crypto_nonce'],
-              'thumbnail_crypto_mac': r['thumbnail_crypto_mac'],
             }))
         .toList();
   }

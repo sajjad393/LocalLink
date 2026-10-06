@@ -33,7 +33,6 @@ import 'package:locallink/features/files/data/repositories/file_transfer_reposit
 import 'package:locallink/features/files/data/services/file_transfer_service.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/groups/data/services/group_messaging_service.dart';
-import 'package:locallink/features/groups/data/services/group_crypto_service.dart';
 import 'package:locallink/features/messaging/data/repositories/messaging_repository.dart';
 import 'package:locallink/features/groups/data/repositories/group_messaging_repository.dart';
 import 'package:locallink/features/groups/data/repositories/group_repository.dart';
@@ -102,16 +101,15 @@ class AppDependencies {
     mesh = MeshBloc(repository: meshRepository);
     authentication = AuthenticationRepository(api: api, store: store, connectivity: connectivityRepository);
     recoveryRepository = RecoveryRepository(api: api, store: store, crypto: crypto, connectivity: connectivityRepository);
-    groupCrypto = GroupCryptoService(store: store, api: api, crypto: crypto, secureStorage: secureStorage);
-    final restorationService = AccountRestorationService(store, api, crypto, groupCrypto);
+    final restorationService = AccountRestorationService(store, api, crypto);
     restoreService = AccountRestorationRepository(service: restorationService);
     transferRepository = AccountTransferRepository(api: api, store: store, crypto: crypto, connectivity: connectivityRepository);
     account = AccountRepository(api: api, store: store);
     identity = IdentityRepository(api: api, store: store, crypto: crypto);
-    final fileTransferService = FileTransferService(store, connectivity: connectivityRepository, crypto: crypto, groupCrypto: groupCrypto);
+    final fileTransferService = FileTransferService(store, connectivity: connectivityRepository);
     files = FileTransferRepository(service: fileTransferService);
-    groupMessagingService = GroupMessagingService(store, api, socket, files, groupCrypto);
-    groupRepository = GroupRepository(api: api, store: store, crypto: groupCrypto);
+    groupMessagingService = GroupMessagingService(store, api, socket, files);
+    groupRepository = GroupRepository(api: api, store: store);
     homeRepository = HomeRepository(api: api, store: store, socket: socket, directTransport: directTransport, groups: groupRepository);
     adminRepositoryFactory = DefaultAdminRepositoryFactory(api: api, httpClient: this.httpClient);
     groupMessagingRepository = GroupMessagingRepository(service: groupMessagingService);
@@ -129,7 +127,6 @@ class AppDependencies {
       ringtone: callRingtone,
       notificationPlatform: callNotificationPlatform,
       mediaPlatform: callMediaPlatform,
-      crypto: crypto,
     );
     calls = CallBloc(service: callService, repository: callRepository);
     messaging = ReliableMessagingService(
@@ -140,7 +137,6 @@ class AppDependencies {
       connectivityRepository,
       directTransport,
       crypto,
-      groupCrypto,
     );
     messagingRepository = MessagingRepository(store: store, service: messaging);
     notifications = LocalLinkNotificationService(
@@ -159,7 +155,6 @@ class AppDependencies {
   final PeerTransportContract directTransport;
   final WifiDirectService wifiDirect;
   final IdentityCryptoService crypto;
-  late final GroupCryptoService groupCrypto;
 
   late final LocalLinkApi api;
   late final ConnectivityRepositoryContract connectivityRepository;

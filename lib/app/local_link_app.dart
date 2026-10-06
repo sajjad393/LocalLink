@@ -24,6 +24,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   final AppDependencies _deps = AppDependencies();
   late final AppRouter _router;
   bool _ready = false;
+  ThemeMode _themeMode = ThemeMode.system;
   bool _configured = false;
   bool _initializing = false;
   String? _startupError;
@@ -41,8 +42,20 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       dependencies: _deps,
       onSaved: _finishOnboarding,
       onReset: _resetAccount,
+      getThemeMode: () => _themeMode,
+      onThemeModeChanged: _setThemeMode,
     );
     _initialize();
+  }
+
+  Future<void> _setThemeMode(ThemeMode mode) async {
+    if (!mounted) return;
+    setState(() => _themeMode = mode);
+    await _deps.store.writeSetting('appearance_theme', switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    });
   }
 
   Future<void> _initialize() async {
@@ -56,6 +69,12 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     }
     try {
       await _deps.store.init();
+      final savedTheme = await _deps.store.readSetting('appearance_theme');
+      _themeMode = switch (savedTheme) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
       await _deps.files.cleanupSensitiveViewCopies();
       await _deps.connectivity.start();
       final configured = await _deps.store.isConfigured();
@@ -266,7 +285,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         debugShowCheckedModeBanner: false,
         theme: LocalLinkTheme.light(),
         darkTheme: LocalLinkTheme.dark(),
-        themeMode: ThemeMode.system,
+        themeMode: _themeMode,
         home: const Scaffold(
           body: Center(child: CircularProgressIndicator()),
         ),
@@ -278,7 +297,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         debugShowCheckedModeBanner: false,
         theme: LocalLinkTheme.light(),
         darkTheme: LocalLinkTheme.dark(),
-        themeMode: ThemeMode.system,
+        themeMode: _themeMode,
         home: Scaffold(
           body: Center(
             child: Padding(
@@ -313,7 +332,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       title: 'LocalLink',
       theme: LocalLinkTheme.light(),
       darkTheme: LocalLinkTheme.dark(),
-      themeMode: ThemeMode.system,
+      themeMode: _themeMode,
       initialRoute: _configured ? AppRoutes.home : AppRoutes.welcome,
       onGenerateRoute: _router.onGenerateRoute,
     );
