@@ -11,7 +11,6 @@ import org.junit.Test
 
 /** Exercises the real Android org.json + MeshPacket codec with deterministic mutations. */
 class MeshPacketFuzzTest {
-    private val key = "phase67-packet-fuzz-key"
 
     @Test
     fun canonicalRoundTripPreservesSecurityInvariantsAcrossFuzzCorpus() {
@@ -34,10 +33,8 @@ class MeshPacketFuzzTest {
                 packetId = "packet-$index",
                 createdAt = 100_000L + index,
             )
-            val signed = unsigned.withOriginAuth(MeshPacketAuthentication.signOrigin(unsigned, key))
-            val parsed = MeshPacket.fromJson(signed.toJson())
+            val parsed = MeshPacket.fromJson(unsigned.toJson())
             assertNotNull(parsed)
-            assertTrue(MeshPacketAuthentication.verifyOrigin(parsed!!, key))
             assertEquals(MeshPacket.PROTOCOL_VERSION, parsed.protocolVersion)
             assertEquals(parsed.pathInvariant(), true)
         }
@@ -55,19 +52,7 @@ class MeshPacketFuzzTest {
             nextHopNodeId = "B",
             packetId = "packet-fuzz-base",
             createdAt = 200_000L,
-        ).withOriginAuth(MeshPacketAuthentication.signOrigin(
-            MeshPacket.new(
-                "A",
-                "D",
-                "direct_message",
-                JSONObject().put("ciphertext", "abc"),
-                8,
-                nextHopNodeId = "B",
-                packetId = "packet-fuzz-base",
-                createdAt = 200_000L,
-            ),
-            key,
-        ))
+        )
 
         repeat(4_000) { index ->
             val candidate = mutate(base.toJson(), rng, index)
@@ -80,44 +65,7 @@ class MeshPacketFuzzTest {
                 assertTrue(parsed.sourceNodeId != parsed.destinationNodeId)
                 assertTrue(MeshLimits.hasValidHopBudget(parsed.ttl, parsed.hopCount))
                 assertTrue(parsed.pathInvariant())
-                assertTrue(MeshPacketAuthentication.isValidOriginAuth(parsed.originAuth.orEmpty()))
             }
-        }
-    }
-
-    @Test
-    fun routeControlFuzzNeverAcceptsTamperedAuthentication() {
-        val rng = Random(0x524f555445L)
-        repeat(3_000) { index ->
-            val unsigned = JSONObject()
-                .put("type", if (index % 2 == 0) "route_advertisement" else "route_withdrawal")
-                .put("route_protocol_version", 2)
-                .put("sender_id", "B")
-                .put("session_id", "session-fuzz")
-                .put("control_sequence", index + 1L)
-                .put("advertisement_sequence", index + 1L)
-                .put("sent_at", 500_000L + index)
-                .put("routes", JSONArray().put(JSONObject()
-                    .put("destination_node_id", "D")
-                    .put("hop_count", 2)
-                    .put("route_version", index + 1L)
-                    .put("path", JSONArray().put("B").put("C").put("D"))))
-                .put("destinations", JSONArray().put("D"))
-
-            val signed = MeshRouteAdvertisementAuthenticator.withAuth(unsigned, "route-fuzz-key")
-            check(MeshRouteAdvertisementAuthenticator.verify(signed, "route-fuzz-key"))
-
-            val mutated = JSONObject(signed.toString())
-            when (rng.nextInt(7)) {
-                0 -> mutated.put("sender_id", "EVIL")
-                1 -> mutated.put("control_sequence", Long.MAX_VALUE)
-                2 -> mutated.put("advertisement_sequence", Long.MAX_VALUE)
-                3 -> mutated.put("sent_at", 0L)
-                4 -> mutated.put("routes", JSONArray())
-                5 -> mutated.put("route_auth", "0".repeat(64))
-                else -> mutated.put("destinations", JSONArray().put("EVIL"))
-            }
-            check(!MeshRouteAdvertisementAuthenticator.verify(mutated, "route-fuzz-key"))
         }
     }
 
@@ -131,25 +79,13 @@ class MeshPacketFuzzTest {
             8,
             packetId = "payload-shape-base",
             createdAt = 300_000L,
-        ).withOriginAuth(MeshPacketAuthentication.signOrigin(
-            MeshPacket.new(
-                "A",
-                "D",
-                "direct_message",
-                JSONObject().put("ciphertext", "abc"),
-                8,
-                packetId = "payload-shape-base",
-                createdAt = 300_000L,
-            ),
-            key,
-        ))
+        )
         val variants = listOf(
             packet.toJson().put("payload", "not-object"),
             packet.toJson().put("ttl", "8"),
             packet.toJson().put("hop_count", "0"),
             packet.toJson().put("mesh_version", 0),
             packet.toJson().put("packet_id", JSONObject()),
-            packet.toJson().put("origin_auth", JSONArray()),
             packet.toJson().put("source_node_id", "A D"),
         )
         variants.forEach { json -> assertNull(runCatching { MeshPacket.fromJson(json) }.getOrNull()) }

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 
 import 'package:locallink/core/models/device.dart';
@@ -91,7 +93,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
             icon: const Icon(Icons.restore_outlined),
           ),
           IconButton(
-            tooltip: 'Encryption identity',
+            tooltip: 'Identity key',
             onPressed: _controller.isLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => CryptoMigrationScreen(identityRepository: widget.identityRepository))),
             icon: const Icon(Icons.vpn_key_outlined),
           ),
@@ -103,7 +105,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
           : _controller.errorMessage != null
               ? RefreshIndicator(
                   onRefresh: _controller.load,
-                  child: ListView(children: [Padding(padding: const EdgeInsets.all(32), child: Center(child: Text(_controller.errorMessage!)))]),
+                  child: ListView(children: [Padding(padding: const EdgeInsets.all(32), child: Center(child: Text(friendlyErrorMessage(_controller.errorMessage))))]),
                 )
               : RefreshIndicator(
                   onRefresh: _controller.load,

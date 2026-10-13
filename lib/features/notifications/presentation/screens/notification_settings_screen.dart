@@ -153,7 +153,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           const SizedBox(height: LocalLinkSpacing.md),
           const LocalLinkInlineInfo(
             icon: Icons.lock_outline,
-            message: 'LocalLink keeps notification content separate from the chat encryption layer.',
+            message: 'LocalLink keeps notification content separate from your chat content.',
           ),
         ],
       ),

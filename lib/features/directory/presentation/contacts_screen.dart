@@ -110,15 +110,31 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('People'),
+        title: const Text('Contacts'),
         actions: [
           IconButton(
             tooltip: 'Nearby',
             onPressed: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => NearbyDevicesScreen(connectivity: widget.connectivity))),
             icon: const Icon(Icons.wifi_find),
           ),
-          IconButton(tooltip: 'Add contact', onPressed: _addContact, icon: const Icon(Icons.person_add_alt_1)),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Add contact',
+        onPressed: _addContact,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Ink(
+          decoration: const BoxDecoration(
+            gradient: LocalLinkBrand.linearGradient,
+            shape: BoxShape.circle,
+          ),
+          child: const SizedBox(
+            width: 56,
+            height: 56,
+            child: Icon(Icons.add, color: Colors.white, size: 28),
+          ),
+        ),
       ),
       body: StreamBuilder<List<DirectoryProfile>>(
         stream: bloc.stream,
@@ -157,6 +173,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     height: 420,
                     child: LocalLinkEmptyView(
                       icon: Icons.people_outline,
+                      lottieAsset: 'assets/animations/empty_inbox.json',
                       title: query.isEmpty ? 'No contacts yet' : 'No people found',
                       message: query.isEmpty ? 'Add a contact or discover nearby LocalLink phones.' : 'Try another name or username.',
                       actionLabel: query.isEmpty ? 'Add contact' : null,

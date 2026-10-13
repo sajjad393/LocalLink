@@ -3,7 +3,11 @@ import 'package:locallink/core/models/group.dart';
 import 'package:locallink/features/groups/domain/group_repository_contract.dart';
 import 'package:locallink/features/groups/bloc/group_members_bloc.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_member_tile.dart';
+import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/error_toast.dart';
+import 'package:locallink/core/widgets/group_avatar.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
+import 'package:locallink/core/widgets/local_link_state_view.dart';
 
 class GroupDetailsScreen extends StatefulWidget {
   final LocalGroup group;
@@ -56,7 +60,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             itemBuilder: (_, index) {
               final device = options[index];
               return ListTile(
-                leading: CircleAvatar(child: Text(device.name.isEmpty ? '?' : device.name[0].toUpperCase())),
+                leading: AccountAvatar(name: device.name, radius: 20),
                 title: Text(device.name),
                 subtitle: Text(device.platform),
                 onTap: () => Navigator.pop(context, device),
@@ -75,7 +79,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       await _controller.addMember(selected);
       _showMessage('${selected.name} added to the group.');
     } catch (e) {
-      _showMessage(e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) showErrorToast(context, error: e);
     }
   }
 
@@ -89,7 +93,14 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         content: Text('Remove $label from this group?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
         ],
       ),
     );
@@ -99,7 +110,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
       await _controller.removeMember(member);
       _showMessage('$label removed.');
     } catch (e) {
-      _showMessage(e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) showErrorToast(context, error: e);
     }
   }
 
@@ -134,25 +145,39 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
         ],
       ),
       body: _controller.isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LocalLinkLoadingView(message: 'Loading members…')
           : RefreshIndicator(
               onRefresh: _controller.load,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 children: [
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const CircleAvatar(radius: 28, child: Icon(Icons.group, size: 30)),
-                    title: Text(widget.group.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-                    subtitle: Text('${_controller.members.length} member${_controller.members.length == 1 ? '' : 's'}'),
+                  Row(
+                    children: [
+                      const GroupAvatar(radius: 28),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.group.name,
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text('${_controller.members.length} member${_controller.members.length == 1 ? '' : 's'}'),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                   if (_controller.error != null)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        _controller.error!,
-                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      padding: const EdgeInsets.only(top: 12),
+                      child: LocalLinkInlineError(
+                        message: friendlyErrorMessage(_controller.error),
+                        onRetry: _controller.load,
                       ),
                     ),
                   if (_controller.isOwner)

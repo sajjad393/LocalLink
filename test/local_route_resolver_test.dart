@@ -20,12 +20,12 @@ class _FakeTransport implements PeerTransportContract {
       required bool connected,
       required bool groupOwner,
       String? groupOwnerAddress,
-      required Map<String, String> peerKeys}) async {
+      required List<String> knownPeers}) async {
     started = true;
   }
 
   @override
-  Future<void> updatePeerKeys(Map<String, String> peerKeys) async {}
+  Future<void> updateKnownPeers(List<String> peerIds) async {}
   @override
   Future<Map<String, dynamic>> topology() async {
     if (topologyError case final error?) throw error;

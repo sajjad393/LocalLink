@@ -584,15 +584,6 @@ class LocalLinkApi {
     await registerDevice(name, pairingCode: pairingCode);
   }
 
-  Future<void> putIdentityKey(String publicKey) async {
-    final response = await httpClient.put(
-      Uri.parse('$baseUrl/api/v1/device-key'),
-      headers: {..._headers(), 'Content-Type': 'application/json'},
-      body: jsonEncode({'public_key': publicKey}),
-    ).timeout(const Duration(seconds: 8));
-    if (response.statusCode != 200) throw Exception(_error(response));
-  }
-
   Future<Map<String, String>> identityKeys() async {
     final response = await http.get(Uri.parse('$baseUrl/api/v1/device-keys'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
@@ -600,22 +591,8 @@ class LocalLinkApi {
     return {for (final e in raw) if (e is Map && e['peer_id'] != null && e['public_key'] != null) e['peer_id'].toString(): e['public_key'].toString()};
   }
 
-  Future<List<IdentityKeyRecord>> identityKeyRecords() async {
-    final response = await http.get(Uri.parse('$baseUrl/api/v1/device-keys'), headers: _headers()).timeout(const Duration(seconds: 8));
-    if (response.statusCode != 200) throw Exception(_error(response));
-    final raw = jsonDecode(response.body) as List;
-    return raw.whereType<Map>().map((e) => IdentityKeyRecord.fromJson(Map<String, dynamic>.from(e))).where((e) => e.peerId.isNotEmpty && e.publicKey.isNotEmpty).toList();
-  }
-
   Future<List<Map<String, dynamic>>> identityKeyHistory() async {
     final response = await http.get(Uri.parse('$baseUrl/api/v1/device-key/history'), headers: _headers()).timeout(const Duration(seconds: 8));
-    if (response.statusCode != 200) throw Exception(_error(response));
-    final raw = jsonDecode(response.body) as List;
-    return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-  }
-
-  Future<List<Map<String, dynamic>>> allIdentityKeyHistory() async {
-    final response = await http.get(Uri.parse('$baseUrl/api/v1/device-keys/history'), headers: _headers()).timeout(const Duration(seconds: 10));
     if (response.statusCode != 200) throw Exception(_error(response));
     final raw = jsonDecode(response.body) as List;
     return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();

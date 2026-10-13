@@ -137,7 +137,7 @@ class MainActivity : FlutterActivity() {
             try {
                 when (call.method) {
                     "configure" -> configureTransport(call, result)
-                    "updatePeerKeys" -> { LocalLinkTransportService.updatePeerKeys(this, mapOfStrings(call.argument<Map<*, *>>("peer_keys"))); result.success(null) }
+                    "updateKnownPeers" -> { LocalLinkTransportService.updateKnownPeers(this, stringList(call.argument<List<*>>("known_peers"))); result.success(null) }
                     "send" -> {
                         val ok = LocalLinkTransportService.send(call.argument<String>("recipient_id")?.trim().orEmpty(), mapToPayload(call.argument<Map<*, *>>("payload")))
                         if (ok) result.success(null) else result.error("PEER_UNAVAILABLE", "peer is not connected", null)
@@ -575,8 +575,8 @@ class MainActivity : FlutterActivity() {
     private fun configureTransport(call: MethodCall, result: MethodChannel.Result) {
         val id = call.argument<String>("device_id")?.trim().orEmpty()
         if (id.isEmpty()) { result.error("INVALID_DEVICE", "device_id is required", null); return }
-        val keys = mapOfStrings(call.argument<Map<*, *>>("peer_keys"))
-        LocalLinkTransportService.configure(this, id, call.argument<Boolean>("connected") == true, call.argument<Boolean>("group_owner") == true, call.argument<String>("group_owner_address")?.trim(), keys)
+        val peers = stringList(call.argument<List<*>>("known_peers"))
+        LocalLinkTransportService.configure(this, id, call.argument<Boolean>("connected") == true, call.argument<Boolean>("group_owner") == true, call.argument<String>("group_owner_address")?.trim(), peers)
         result.success(null)
     }
 
@@ -586,7 +586,7 @@ class MainActivity : FlutterActivity() {
         LocalLinkTransportService.sendFile(target,path,fileId,messageId,name,type){ok,error->runOnUiThread{if(ok)result.success(null) else result.error("FILE_SEND_FAILED",error,null)}}
     }
 
-    private fun mapOfStrings(values: Map<*, *>?): Map<String, String> = buildMap { values?.forEach { (k,v) -> val key=k?.toString()?.trim(); val value=v?.toString()?.trim(); if(!key.isNullOrEmpty()&&!value.isNullOrEmpty()) put(key,value) } }
+    private fun stringList(values: List<*>?): List<String> = values?.mapNotNull { it?.toString()?.trim()?.ifEmpty { null } } ?: emptyList()
     private fun mapToPayload(values: Map<*, *>?): Map<String, Any?> = buildMap { values?.forEach { (k,v) -> if(k!=null&&v!=null) put(k.toString(),v) } }
 
     override fun onNewIntent(intent: Intent) {

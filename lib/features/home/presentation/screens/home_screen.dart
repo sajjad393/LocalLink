@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
@@ -97,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
   );
   int _index = 0;
   late ThemeMode _themeMode;
+  DateTime? _lastBackPressAt;
 
   @override
   void initState() {
@@ -200,6 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _chatsTab() {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const Text('Chats'),
         actions: [
           ConnectionStatusIndicator(controller: widget.connectivityController),
@@ -327,37 +330,63 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: [
-          _chatsTab(),
-          _callsTab(),
-          _contactsTab(),
-          _settingsTab(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline),
-              selectedIcon: Icon(Icons.chat_bubble),
-              label: 'Chats'),
-          NavigationDestination(
-              icon: Icon(Icons.call_outlined),
-              selectedIcon: Icon(Icons.call),
-              label: 'Calls'),
-          NavigationDestination(
-              icon: Icon(Icons.people_outline),
-              selectedIcon: Icon(Icons.people),
-              label: 'People'),
-          NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: 'Settings'),
-        ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        // The dashboard is the logged-in root: a single back press must never
+        // leave the app (or land on the login screen). Require a deliberate
+        // double press within two seconds to exit.
+        if (didPop) return;
+        final now = DateTime.now();
+        final last = _lastBackPressAt;
+        _lastBackPressAt = now;
+        if (last != null &&
+            now.difference(last) < const Duration(seconds: 2)) {
+          SystemNavigator.pop();
+          return;
+        }
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Press back again to exit'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      },
+      child: Scaffold(
+        body: IndexedStack(
+          index: _index,
+          children: [
+            _chatsTab(),
+            _callsTab(),
+            _contactsTab(),
+            _settingsTab(),
+          ],
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: (value) => setState(() => _index = value),
+          destinations: const [
+            NavigationDestination(
+                icon: Icon(Icons.chat_bubble_outline),
+                selectedIcon: Icon(Icons.chat_bubble),
+                label: 'Chats'),
+            NavigationDestination(
+                icon: Icon(Icons.call_outlined),
+                selectedIcon: Icon(Icons.call),
+                label: 'Calls'),
+            NavigationDestination(
+                icon: Icon(Icons.people_outline),
+                selectedIcon: Icon(Icons.people),
+                label: 'People'),
+            NavigationDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: 'Settings'),
+          ],
+        ),
       ),
     );
   }

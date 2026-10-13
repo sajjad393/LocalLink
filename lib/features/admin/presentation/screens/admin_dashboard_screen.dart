@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 
@@ -45,7 +47,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              if (state.error != null) Card(child: ListTile(leading: const Icon(Icons.error_outline), title: Text(state.error!))),
+              if (state.error != null) Card(child: ListTile(leading: const Icon(Icons.error_outline), title: Text(friendlyErrorMessage(state.error)))),
               Card(child: const ListTile(leading: Icon(Icons.lock_outline), title: Text('Privacy boundary'), subtitle: Text('Operational metadata is available. Passwords, private keys, message bodies, call audio and decrypted media are not exposed.'))),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 _metric('Users', summary['users']), _metric('Devices', summary['devices']), _metric('Online', summary['online_devices']),

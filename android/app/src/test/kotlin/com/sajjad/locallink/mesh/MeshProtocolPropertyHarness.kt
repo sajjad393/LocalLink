@@ -25,10 +25,9 @@ object MeshProtocolPropertyHarness {
         run("replay-cache-properties") { fuzzReplayTracker(rng) }
         run("recovery-properties") { fuzzRecoveryTracker(rng) }
         run("route-stability-properties") { fuzzRouteStability(rng) }
-        run("session-key-properties") { fuzzSessionKeys(rng) }
         run("encrypted-boundary-properties") { fuzzEncryptedBoundaries(rng) }
         run("concurrent-state-properties") { fuzzConcurrentState() }
-        println("PHASE 67 JDK PROPERTY HARNESS: PASS (9 scenarios, seed=$SEED, iterations=$ITERATIONS)")
+        println("PHASE 67 JDK PROPERTY HARNESS: PASS (8 scenarios, seed=$SEED, iterations=$ITERATIONS)")
     }
 
     private fun run(name: String, block: () -> Unit) {
@@ -160,18 +159,6 @@ object MeshProtocolPropertyHarness {
                 policy.recordAcceptedChange("D", currentHop, candidateHop, now + i)
                 currentHop = candidateHop
             }
-        }
-    }
-
-    private fun fuzzSessionKeys(rng: Random) {
-        repeat(ITERATIONS) {
-            val shared = "shared-${rng.nextInt(64)}"
-            val epoch = rng.nextInt(10_000).toLong()
-            val a = MeshTransportSessionKeyPolicy.deriveKey(shared, "A", "B", epoch)
-            val b = MeshTransportSessionKeyPolicy.deriveKey(shared, "A", "B", epoch)
-            check(a.contentEquals(b))
-            check(!a.contentEquals(MeshTransportSessionKeyPolicy.deriveKey(shared, "A", "B", epoch + 1L)))
-            check(!a.contentEquals(MeshTransportSessionKeyPolicy.deriveKey(shared, "B", "A", epoch)))
         }
     }
 

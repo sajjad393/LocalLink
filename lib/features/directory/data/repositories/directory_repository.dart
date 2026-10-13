@@ -397,14 +397,6 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     if (profile.userId == store.accountId) return false;
     if (await store.isBlocked(profile.userId)) return false;
 
-    final knownIdentityKey =
-        (await crypto.cachedPeerPublicKeys())[profile.deviceId];
-    if (knownIdentityKey != null &&
-        knownIdentityKey.isNotEmpty &&
-        knownIdentityKey != profile.identityPublicKey) {
-      return false;
-    }
-
     if (!await crypto.verifyDirectoryProfile(
       canonicalPayload: profile.canonical(),
       signature: profile.signature,

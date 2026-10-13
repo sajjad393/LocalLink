@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:crypto/crypto.dart' as crypto;
 import 'package:locallink/core/security/secure_storage_service.dart';
 
 enum IdentityTrustState { unverified, verified, changed, revoked }
@@ -32,36 +31,11 @@ class IdentityTrustService {
 
   String _key(String deviceId) => '$_prefix${base64UrlEncode(utf8.encode(deviceId)).replaceAll('=', '')}';
 
-  String fingerprint(String publicKey) => crypto.sha256.convert(utf8.encode(publicKey)).toString().toUpperCase();
-
   Future<IdentityTrustState> state(String deviceId) async =>
       identityTrustStateFromString(await secureStorage.read(key: _key(deviceId)));
 
-  Future<void> markVerified(String deviceId, {required String expectedFingerprint, required String presentedPublicKey}) async {
-    if (deviceId.trim().isEmpty || expectedFingerprint.trim().isEmpty || presentedPublicKey.trim().isEmpty) {
-      throw const FormatException('identity verification requires complete identity data');
-    }
-    if (fingerprint(presentedPublicKey) != expectedFingerprint.trim().toUpperCase()) {
-      throw const FormatException('identity fingerprint mismatch');
-    }
-    await secureStorage.write(key: _key(deviceId), value: IdentityTrustState.verified.value);
-  }
-
   Future<void> markChanged(String deviceId) async => secureStorage.write(key: _key(deviceId), value: IdentityTrustState.changed.value);
   Future<void> markRevoked(String deviceId) async => secureStorage.write(key: _key(deviceId), value: IdentityTrustState.revoked.value);
-
-  String buildVerificationPayload({required String deviceId, required String publicKey}) =>
-      jsonEncode({'v': 1, 'type': 'locallink_identity_verify', 'device_id': deviceId, 'fingerprint': fingerprint(publicKey)});
-
-  Future<void> verifyQrPayload(String payload, {required String presentedPublicKey}) async {
-    final raw = jsonDecode(payload);
-    if (raw is! Map || raw['v']?.toString() != '1' || raw['type']?.toString() != 'locallink_identity_verify') {
-      throw const FormatException('invalid identity verification QR payload');
-    }
-    final id = raw['device_id']?.toString() ?? '';
-    final expected = raw['fingerprint']?.toString() ?? '';
-    await markVerified(id, expectedFingerprint: expected, presentedPublicKey: presentedPublicKey);
-  }
 
   /// Returns whether an identity may participate in a local call.
   ///

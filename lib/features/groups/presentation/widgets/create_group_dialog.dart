@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/gradient_pill_button.dart';
 import 'package:locallink/core/widgets/local_link_button.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
 
@@ -31,6 +33,17 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
     super.dispose();
   }
 
+  bool get _canCreate => _nameController.text.trim().isNotEmpty;
+
+  void _create() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return;
+    Navigator.pop(
+      context,
+      CreateGroupResult(name: name, memberIds: _selected.toList()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -44,6 +57,7 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
               LocalLinkTextField(
                 controller: _nameController,
                 labelText: 'Group name',
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: LocalLinkSpacing.lg),
               const Align(
@@ -59,6 +73,7 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
                 ...widget.devices.map(
                   (device) => CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
+                    secondary: AccountAvatar(name: device.name, radius: 20),
                     value: _selected.contains(device.id),
                     title: Text(device.name),
                     subtitle: Text(device.platform),
@@ -79,16 +94,9 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
       ),
       actions: [
         LocalLinkButton(variant: LocalLinkButtonVariant.text, expanded: false, onPressed: () => Navigator.pop(context), label: 'Cancel'),
-        LocalLinkButton(expanded: false,
-          onPressed: () {
-            final name = _nameController.text.trim();
-            if (name.isEmpty) return;
-            Navigator.pop(
-              context,
-              CreateGroupResult(name: name, memberIds: _selected.toList()),
-            );
-          },
-          label: 'Create',
+        GradientPillButton(
+          onPressed: _canCreate ? _create : null,
+          child: const Text('Create'),
         ),
       ],
     );

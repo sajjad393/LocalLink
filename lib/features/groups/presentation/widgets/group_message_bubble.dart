@@ -26,7 +26,9 @@ class GroupMessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final maxWidth = MediaQuery.sizeOf(context).width * .82;
-    final bubbleColor = isMine ? colors.primaryContainer : colors.surfaceContainerHighest;
+    // Outgoing = brand blue→cyan gradient pill with white text (matches the
+    // direct-message bubble); incoming = neutral surface.
+    final foreground = isMine ? Colors.white : colors.onSurface;
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -34,7 +36,8 @@ class GroupMessageBubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: LocalLinkSpacing.xs),
         padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.md, LocalLinkSpacing.sm, LocalLinkSpacing.md, LocalLinkSpacing.xs),
         decoration: BoxDecoration(
-          color: bubbleColor,
+          gradient: isMine ? LocalLinkBrand.linearGradient : null,
+          color: isMine ? null : colors.surfaceContainerHighest,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(LocalLinkRadius.chat),
             topRight: const Radius.circular(LocalLinkRadius.chat),
@@ -54,7 +57,10 @@ class GroupMessageBubble extends StatelessWidget {
                 ),
               ),
             if (message.body.isNotEmpty)
-              Align(alignment: Alignment.centerLeft, child: Text(message.body)),
+              Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(message.body,
+                      style: TextStyle(color: foreground))),
             ...message.attachments.map((attachment) => AttachmentTile(
                   attachment: attachment,
                   transfer: files,
@@ -64,7 +70,11 @@ class GroupMessageBubble extends StatelessWidget {
             if (reactions.isNotEmpty)
               Align(alignment: Alignment.centerLeft, child: Wrap(spacing: 4, children: _reactionCounts(context))),
             const SizedBox(height: 3),
-            Text(_time(message.createdAt), style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant)),
+            Text(_time(message.createdAt),
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(color: foreground.withValues(alpha: .62))),
           ],
         ),
       ),

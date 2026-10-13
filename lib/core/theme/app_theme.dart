@@ -22,14 +22,34 @@ class LocalLinkTheme {
     return base.copyWith(
       scaffoldBackgroundColor: scheme.surface,
       textTheme: base.textTheme.copyWith(
-        headlineLarge: LocalLinkTypography.pageTitle,
-        titleLarge: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, height: 1.2),
-        titleMedium: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, height: 1.2),
-        titleSmall: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, height: 1.25),
-        bodyLarge: const TextStyle(fontSize: 16, height: 1.4),
-        bodyMedium: const TextStyle(fontSize: 14, height: 1.4),
-        bodySmall: const TextStyle(fontSize: 12, height: 1.35),
-        labelLarge: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        // Every level must carry an explicit color: colorless replacements
+        // render as opaque white in the light theme (invisible on white
+        // surfaces) while dark mode masks the issue. See theme_audit golden.
+        headlineLarge:
+            LocalLinkTypography.pageTitle.copyWith(color: scheme.onSurface),
+        titleLarge: TextStyle(
+            color: scheme.onSurface,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            height: 1.2),
+        titleMedium: TextStyle(
+            color: scheme.onSurface,
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            height: 1.2),
+        titleSmall: TextStyle(
+            color: scheme.onSurface,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            height: 1.25),
+        bodyLarge:
+            TextStyle(color: scheme.onSurface, fontSize: 16, height: 1.4),
+        bodyMedium:
+            TextStyle(color: scheme.onSurface, fontSize: 14, height: 1.4),
+        bodySmall: TextStyle(
+            color: scheme.onSurfaceVariant, fontSize: 12, height: 1.35),
+        labelLarge: TextStyle(
+            color: scheme.onSurface, fontSize: 14, fontWeight: FontWeight.w700),
       ),
       appBarTheme: AppBarTheme(
         centerTitle: false,

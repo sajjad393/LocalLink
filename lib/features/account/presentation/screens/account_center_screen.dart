@@ -152,7 +152,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                       const Text('Data & security', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                       const SizedBox(height: LocalLinkSpacing.sm),
                       _action(icon: Icons.restore_outlined, title: 'Account data', subtitle: 'Restore information and encrypted backup', onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AccountRestoreScreen(service: widget.restoreService)))),
-                      _action(icon: Icons.vpn_key_outlined, title: 'Encryption identity', subtitle: 'Review encrypted identity migration', onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => CryptoMigrationScreen(identityRepository: widget.identityRepository)))),
+                      _action(icon: Icons.vpn_key_outlined, title: 'Identity key', subtitle: 'Review and rotate the account identity key', onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => CryptoMigrationScreen(identityRepository: widget.identityRepository)))),
                       Card(
                         color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         child: const ListTile(

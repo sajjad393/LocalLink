@@ -80,8 +80,8 @@ final class HomeBloc extends Cubit<HomeState> {
       if (_closed) return;
       _localDiscoveryAttempted = false;
       emit(state.copyWith(
-        devices:
-            devices.where((d) => d.id != repository.localDeviceId).toList(),
+        devices: await _collapseDeviceDuplicates(
+            devices.where((d) => d.id != repository.localDeviceId).toList()),
         groups: groups,
         loading: false,
         clearError: true,
@@ -93,9 +93,9 @@ final class HomeBloc extends Cubit<HomeState> {
         final localGroups = await repository.localGroups();
         if (_closed) return;
         emit(state.copyWith(
-          devices: localDevices
+          devices: await _collapseDeviceDuplicates(localDevices
               .where((d) => d.id != repository.localDeviceId)
-              .toList(),
+              .toList()),
           groups: localGroups,
           error:
               '${localDevices.isEmpty && localGroups.isEmpty ? 'Server sync failed; no saved conversations are available.' : 'Server sync failed; showing saved conversations.'} ${cleanBlocError(e)}',
@@ -184,15 +184,54 @@ final class HomeBloc extends Cubit<HomeState> {
       'status_updated_at': event['status_updated_at']?.toString() ?? '',
     });
     unawaited(repository.cacheDevice(updated));
+    unawaited(_applyDeviceUpdate(updated));
+  }
+
+  Future<void> _applyDeviceUpdate(Device updated) async {
     if (_closed) return;
     final next = [...state.devices];
-    final i = next.indexWhere((d) => d.id == id);
+    final i = next.indexWhere((d) => d.id == updated.id);
     if (i < 0) {
       next.add(updated);
     } else {
       next[i] = updated;
     }
-    emit(state.copyWith(devices: next));
+    final collapsed = await _collapseDeviceDuplicates(next);
+    if (!_closed) emit(state.copyWith(devices: collapsed));
+  }
+
+  /// Collapses multiple devices that belong to the same directory user into a
+  /// single conversation entry, so one user never appears twice. Devices that
+  /// cannot be resolved to a directory user are kept as-is.
+  Future<List<Device>> _collapseDeviceDuplicates(List<Device> devices) async {
+    final byUser = <String, Device>{};
+    final standalone = <Device>[];
+    for (final device in devices) {
+      String? userId;
+      try {
+        userId = await repository.userIdForDevice(device.id);
+      } catch (_) {
+        userId = null;
+      }
+      if (userId == null || userId.isEmpty) {
+        standalone.add(device);
+        continue;
+      }
+      final current = byUser[userId];
+      if (current == null || _isBetterConversationPeer(device, current)) {
+        byUser[userId] = device;
+      }
+    }
+    return [...byUser.values, ...standalone];
+  }
+
+  /// Picks which device should represent a user in the conversation list: an
+  /// online device wins, otherwise the one seen most recently.
+  static bool _isBetterConversationPeer(Device a, Device b) {
+    bool online(Device d) =>
+        d.serverConnected || d.wifiDirectConnected || d.lanAvailable;
+    if (online(a) != online(b)) return online(a);
+    return a.lastSeenAt.compareTo(b.lastSeenAt) > 0;
   }
 
   void expireStalePresence() {

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 
@@ -36,7 +38,7 @@ class NetworkDetailsScreen extends StatelessWidget {
               ),
               if (state.error != null) ...[
                 const SizedBox(height: 12),
-                Text(state.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                Text(friendlyErrorMessage(state.error), style: TextStyle(color: Theme.of(context).colorScheme.error)),
               ],
             ],
           ),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_button.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
@@ -64,7 +66,7 @@ class _AccountRestoreScreenState extends State<AccountRestoreScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              if (_controller.error != null) Card(child: Padding(padding: const EdgeInsets.all(16), child: Text(_controller.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)))),
+              if (_controller.error != null) Card(child: Padding(padding: const EdgeInsets.all(16), child: Text(friendlyErrorMessage(_controller.error), style: TextStyle(color: Theme.of(context).colorScheme.error)))),
               if (m != null) ...[
                 Card(
                   child: Padding(

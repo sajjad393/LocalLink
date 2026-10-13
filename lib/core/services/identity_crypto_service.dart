@@ -34,9 +34,6 @@ class IdentityCryptoService {
   static const _currentVersionStorage = 'locallink_identity_key_version_v2';
   static const _seedPrefix = 'locallink_identity_x25519_seed_v2_';
   static const _publicPrefix = 'locallink_identity_x25519_public_v2_';
-  static const _peerPrefix = 'locallink_peer_pub_v1_';
-  static const _peerVersionPrefix = 'locallink_peer_key_version_v1_';
-  static const _peerHistoryPrefix = 'locallink_peer_history_v1_';
   static const _pendingSeedPrefix = 'locallink_identity_pending_seed_v1_';
   static const _pendingPublicPrefix = 'locallink_identity_pending_public_v1_';
   static const _importedSeedPrefix = 'locallink_imported_identity_seed_v1_';
@@ -49,7 +46,6 @@ class IdentityCryptoService {
   IdentityCryptoService({SecureStorageService? secureStorage})
       : _secure = secureStorage ?? const SecureStorageService();
   final X25519 _x25519 = X25519();
-  final Hmac _hmac = Hmac.sha256();
   final Ed25519 _ed25519 = Ed25519();
   SimpleKeyPair? _keyPair;
   String? _deviceId;
@@ -200,9 +196,6 @@ class IdentityCryptoService {
           key == _currentVersionStorage ||
           key.startsWith(_seedPrefix) ||
           key.startsWith(_publicPrefix) ||
-          key.startsWith(_peerPrefix) ||
-          key.startsWith(_peerVersionPrefix) ||
-          key.startsWith(_peerHistoryPrefix) ||
           key.startsWith(_pendingSeedPrefix) ||
           key.startsWith(_pendingPublicPrefix) ||
           key.startsWith(_importedSeedPrefix) ||
@@ -277,112 +270,6 @@ class IdentityCryptoService {
 
   Future<String> publicKey() async {
     return publicKeyForVersion(_keyVersion);
-  }
-
-  Future<String> deriveSharedKey(
-    String peerId,
-    String peerPublicKey, {
-    int? selfKeyVersion,
-  }) async {
-    final self = _deviceId;
-    if (self == null) throw StateError('identity key is not initialized');
-    final version = selfKeyVersion ?? _keyVersion;
-    final pair = version == _keyVersion ? _keyPair : await _loadKeyPair(version);
-    if (pair == null) throw StateError('identity key is not initialized');
-    final remoteBytes = _decodeUrl(peerPublicKey);
-    if (remoteBytes.length != 32) throw const FormatException('invalid peer identity key');
-    final remote = SimplePublicKey(remoteBytes, type: KeyPairType.x25519);
-    final shared = await _x25519.sharedSecretKey(keyPair: pair, remotePublicKey: remote);
-    final a = self.compareTo(peerId) < 0 ? self : peerId;
-    final b = self.compareTo(peerId) < 0 ? peerId : self;
-    final info = utf8.encode('locallink-peer-e2e-v1|$a|$b');
-    final derived = await Hkdf(hmac: _hmac, outputLength: 32).deriveKey(secretKey: shared, info: info);
-    return _encodeUrl(await derived.extractBytes());
-  }
-
-  Future<List<String>> cachePeerPublicKeys(Map<String, String> keys, {Map<String, int> versions = const {}}) async {
-    final existing = await cachedPeerPublicKeys();
-    final existingVersions = await cachedPeerKeyVersions();
-    final changed = <String>[];
-    for (final entry in keys.entries) {
-      if (entry.key.isEmpty || entry.value.isEmpty) continue;
-      final nextVersion = versions[entry.key] ?? existingVersions[entry.key] ?? 1;
-      final old = existing[entry.key];
-      final oldVersion = existingVersions[entry.key] ?? 1;
-      if (old != null && old != entry.value) {
-        if (nextVersion <= oldVersion) {
-          changed.add(entry.key);
-          continue;
-        }
-      }
-      await _secure.write(key: '$_peerPrefix${_encodeUrl(utf8.encode(entry.key))}', value: entry.value);
-      await _secure.write(key: '$_peerVersionPrefix${_encodeUrl(utf8.encode(entry.key))}', value: nextVersion.toString());
-    }
-    return changed;
-  }
-
-  Future<Map<String, int>> cachedPeerKeyVersions() async {
-    final all = await _secure.readAll();
-    final out = <String, int>{};
-    for (final entry in all.entries) {
-      if (!entry.key.startsWith(_peerVersionPrefix) || entry.value.isEmpty) continue;
-      try {
-        final peer = utf8.decode(_decodeUrl(entry.key.substring(_peerVersionPrefix.length)));
-        final version = int.tryParse(entry.value) ?? 1;
-        out[peer] = version;
-      } catch (_) {}
-    }
-    return out;
-  }
-
-  Future<Map<String, String>> cachedPeerPublicKeys() async {
-    final all = await _secure.readAll();
-    final out = <String, String>{};
-    for (final entry in all.entries) {
-      if (!entry.key.startsWith(_peerPrefix) || entry.value.isEmpty) continue;
-      try {
-        final peer = utf8.decode(_decodeUrl(entry.key.substring(_peerPrefix.length)));
-        out[peer] = entry.value;
-      } catch (_) {}
-    }
-    return out;
-  }
-
-  Future<void> cachePeerIdentityHistory(List<Map<String, dynamic>> records) async {
-    for (final record in records) {
-      final peerId = record['peer_id']?.toString() ?? record['device_id']?.toString() ?? '';
-      final publicKey = record['public_key']?.toString() ?? '';
-      final version = int.tryParse(record['key_version']?.toString() ?? '') ?? 0;
-      if (peerId.isEmpty || publicKey.isEmpty || version < 1) continue;
-      final key = '$_peerHistoryPrefix${_encodeUrl(utf8.encode('$peerId|$version'))}';
-      await _secure.write(key: key, value: publicKey);
-    }
-  }
-
-  Future<Map<String, Map<int, String>>> cachedPeerIdentityHistory() async {
-    final all = await _secure.readAll();
-    final out = <String, Map<int, String>>{};
-    for (final entry in all.entries) {
-      if (!entry.key.startsWith(_peerHistoryPrefix) || entry.value.isEmpty) continue;
-      try {
-        final parts = utf8.decode(_decodeUrl(entry.key.substring(_peerHistoryPrefix.length))).split('|');
-        if (parts.length != 2) continue;
-        final version = int.tryParse(parts[1]);
-        if (version == null || version < 1) continue;
-        out.putIfAbsent(parts[0], () => {})[version] = entry.value;
-      } catch (_) {}
-    }
-    return out;
-  }
-
-  Future<Map<String, String>> derivePeerKeys(Map<String, String> peerPublicKeys) async {
-    final out = <String, String>{};
-    for (final entry in peerPublicKeys.entries) {
-      try {
-        out[entry.key] = await deriveSharedKey(entry.key, entry.value);
-      } catch (_) {}
-    }
-    return out;
   }
 
   String _identityContextKey(String deviceId, int version) =>

@@ -105,7 +105,7 @@ class MeshTtlTest {
         val packet = MeshPacket.new(
             "A", "D", "direct_message", JSONObject(), 8,
             packetId = "parser-budget", createdAt = System.currentTimeMillis(),
-        ).withOriginAuth("0".repeat(64))
+        )
         assertEquals(null, MeshPacket.fromJson(packet.toJson().put("ttl", 8).put("hop_count", 1)))
         assertEquals(null, MeshPacket.fromJson(packet.toJson().put("ttl", 0).put("hop_count", 0)))
         assertEquals(null, MeshPacket.fromJson(packet.toJson().put("ttl", 7).put("hop_count", 1)

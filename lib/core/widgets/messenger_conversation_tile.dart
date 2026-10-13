@@ -5,6 +5,7 @@ import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/device_status_indicator.dart';
+import 'package:locallink/core/widgets/group_avatar.dart';
 
 class MessengerConversationTile extends StatelessWidget {
   final String title;
@@ -35,12 +36,7 @@ class MessengerConversationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final avatar = group != null
-        ? CircleAvatar(
-            radius: 24,
-            backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-            foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
-            child: Icon(fallbackIcon ?? Icons.groups_rounded),
-          )
+        ? GroupAvatar(radius: 24, icon: fallbackIcon ?? Icons.groups_rounded)
         : AccountAvatar(
             name: title,
             localPath: avatarPath ?? '',

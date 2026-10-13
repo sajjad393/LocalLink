@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
@@ -95,7 +97,7 @@ class _RecoveryStatusScreenState extends State<RecoveryStatusScreen> {
                     child: ListTile(
                         leading: const Icon(Icons.cloud_off),
                         title: const Text('Refresh unavailable'),
-                        subtitle: Text(state.error!))),
+                        subtitle: Text(friendlyErrorMessage(state.error)))),
               if (recoveryState != null) ...[
                 const SizedBox(height: 12),
                 Card(

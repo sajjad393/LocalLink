@@ -113,7 +113,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
         const Divider(),
         const ListTile(
             leading: Icon(Icons.fingerprint),
-            title: Text('Identity & encryption'),
+            title: Text('Identity & signing'),
             subtitle: Text(
                 'Identity keys are managed locally and are not shown in your public profile.')),
         const SizedBox(height: 12),

@@ -89,4 +89,7 @@ final class _OfflineHomeRepository implements HomeRepositoryContract {
 
   @override
   Future<void> cacheDevice(Device device) async {}
+
+  @override
+  Future<String?> userIdForDevice(String deviceId) async => null;
 }

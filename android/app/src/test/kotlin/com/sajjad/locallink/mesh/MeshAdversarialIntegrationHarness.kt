@@ -22,7 +22,6 @@ object MeshAdversarialIntegrationHarness {
             "route-table-exhaustion" to ::routeTableExhaustion,
             "duplicate-cache-exhaustion" to ::duplicateCacheExhaustion,
             "packet-replay-window" to ::packetReplayWindow,
-            "session-key-rotation" to ::sessionKeyRotation,
             "multi-hop-resource-pressure" to ::multiHopResourcePressure,
         )
         checks.forEach { (name, check) ->
@@ -153,27 +152,6 @@ object MeshAdversarialIntegrationHarness {
         check(!tracker.restore("A", "stale", 9_000L, 10_500L))
         tracker.cleanup(11_501L)
         check(tracker.size() == 0)
-    }
-
-    private fun sessionKeyRotation() {
-        val shared = "shared-secret-for-test"
-        val oldEpoch = 20L
-        val newEpoch = 21L
-        val oldKey = MeshTransportSessionKeyPolicy.deriveKey(shared, "A", "B", oldEpoch)
-        val newKey = MeshTransportSessionKeyPolicy.deriveKey(shared, "A", "B", newEpoch)
-        check(!oldKey.contentEquals(newKey))
-
-        val plaintext = "active-call-sequence-42".toByteArray(StandardCharsets.UTF_8)
-        val aadOld = "A|B|$oldEpoch".toByteArray(StandardCharsets.UTF_8)
-        val encoded = encrypt(oldKey, plaintext, aadOld)
-        check(decrypt(encoded, oldKey, aadOld).contentEquals(plaintext))
-        check(runCatching { decrypt(encoded, newKey, aadOld) }.isFailure)
-
-        val rotationNow = MeshTransportSessionKeyPolicy.ROTATION_MS * newEpoch + 1L
-        val accepted = MeshTransportSessionKeyPolicy.acceptedEpochs(rotationNow)
-        check(oldEpoch in accepted) { "previous epoch missing grace" }
-        check(newEpoch in accepted) { "current epoch missing" }
-        check(newEpoch + 1L in accepted) { "next epoch missing receive grace" }
     }
 
     private fun multiHopResourcePressure() {

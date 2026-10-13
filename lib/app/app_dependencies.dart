@@ -144,7 +144,6 @@ class AppDependencies {
       files,
       connectivityRepository,
       directTransport,
-      crypto,
       routePolicy: routePolicy,
     );
     messagingRepository = MessagingRepository(store: store, service: messaging);

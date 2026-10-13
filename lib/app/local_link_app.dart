@@ -5,6 +5,7 @@ import 'package:locallink/app/app_dependencies.dart';
 import 'package:locallink/core/routing/app_routes.dart';
 import 'package:locallink/core/routing/app_router.dart';
 import 'package:locallink/core/theme/app_theme.dart';
+import 'package:locallink/core/widgets/local_link_splash.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
@@ -286,9 +287,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         theme: LocalLinkTheme.light(),
         darkTheme: LocalLinkTheme.dark(),
         themeMode: _themeMode,
-        home: const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
+        home: const LocalLinkSplashScreen(),
       );
     }
 

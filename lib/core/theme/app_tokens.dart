@@ -32,6 +32,51 @@ abstract final class LocalLinkSizes {
   static const sendButton = 48.0;
 }
 
+/// Brand identity: the blue→cyan gradient used for the welcome hero, outgoing
+/// message bubbles and primary actions (reference messenger design).
+abstract final class LocalLinkBrand {
+  static const gradientStart = Color(0xFF1E5BFF);
+  static const gradientEnd = Color(0xFF23E0D8);
+
+  static const linearGradient = LinearGradient(
+    colors: [gradientStart, gradientEnd],
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+  );
+
+  static const heroGradient = LinearGradient(
+    colors: [gradientStart, gradientEnd],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
+
+/// Deterministic vivid avatar colors (cyan / purple / blue / pink family from
+/// the reference design) — picked by display name so a contact keeps the same
+/// color everywhere.
+abstract final class LocalLinkAvatarColor {
+  static const _palette = <Color>[
+    Color(0xFF1FD7D4),
+    Color(0xFF7C6BF0),
+    Color(0xFF2F6FF6),
+    Color(0xFFE74BC8),
+    Color(0xFF2BA0F0),
+    Color(0xFF8E58F5),
+    Color(0xFF00A8B5),
+    Color(0xFFD95FA0),
+  ];
+
+  static Color forName(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return _palette[0];
+    var hash = 0;
+    for (final codePoint in trimmed.codeUnits) {
+      hash = (hash * 31 + codePoint) & 0x7FFFFFFF;
+    }
+    return _palette[hash % _palette.length];
+  }
+}
+
 abstract final class LocalLinkTypography {
   static const pageTitle = TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.15);
   static const sectionTitle = TextStyle(fontSize: 17, fontWeight: FontWeight.w800, height: 1.2);

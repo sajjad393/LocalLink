@@ -14,7 +14,6 @@ import 'package:locallink/features/connectivity/domain/connectivity_repository_c
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/features/connectivity/domain/local_route.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
-import 'package:locallink/core/services/identity_crypto_service.dart';
 
 class ReliableMessagingService {
   final LocalStore store;
@@ -23,7 +22,6 @@ class ReliableMessagingService {
   final FileTransferRepositoryContract files;
   final ConnectivityRepositoryContract connectivity;
   final PeerTransportContract directTransport;
-  final IdentityCryptoService crypto;
   final LocalRoutePolicyService? routePolicy;
 
   final _incoming = StreamController<Message>.broadcast();
@@ -38,15 +36,12 @@ class ReliableMessagingService {
 
   Timer? _retryTimer;
   DateTime? _lastPeriodicSyncAt;
-  DateTime? _lastIdentityKeySyncAt;
   DateTime? _messageRateLimitedUntil;
 
   bool _syncing = false;
   bool _flushing = false;
 
   final Map<String, Map<String, dynamic>> _recentDirectFiles = {};
-
-  final Set<String> _blockedIdentityPeers = <String>{};
 
   ReliableMessagingService(
       this.store,
@@ -55,7 +50,6 @@ class ReliableMessagingService {
       this.files,
       this.connectivity,
       this.directTransport,
-      this.crypto,
       {this.routePolicy});
 
   Stream<Message> get incoming => _incoming.stream;
@@ -271,6 +265,10 @@ class ReliableMessagingService {
       'status': 'queued',
     });
 
+    // Sending to a peer implies a relationship: remember them as a contact
+    // (keyed by their directory user) when resolvable.
+    unawaited(_autoAddContact(recipientId));
+
     AppLogger.info(
       'MESSAGE_OUTBOX_CREATED',
       detail:
@@ -376,18 +374,7 @@ class ReliableMessagingService {
     );
 
     try {
-      final now = DateTime.now().toUtc();
-      final identitySyncDue = _lastIdentityKeySyncAt == null ||
-          now.difference(_lastIdentityKeySyncAt!) >= const Duration(minutes: 10);
-      if (identitySyncDue) {
-        await api.putIdentityKey(
-          await crypto.publicKey(),
-        );
-        _lastIdentityKeySyncAt = now;
-        AppLogger.info('MESSAGE_IDENTITY_KEY_SYNCED');
-      }
-
-      await refreshPeerKeys();
+      await refreshKnownPeers();
 
       var cursor = store.syncCursor;
       var hasMore = true;
@@ -622,7 +609,6 @@ class ReliableMessagingService {
     }
 
     _flushing = true;
-    var peerKeysRefreshedThisFlush = false;
     final messageCooldown = _messageRateLimitedUntil;
     if (messageCooldown != null && DateTime.now().toUtc().isBefore(messageCooldown)) {
       _flushing = false;
@@ -1295,27 +1281,25 @@ class ReliableMessagingService {
             'wifiPermission=$wifiPermissionGranted',
       );
 
-      final publicKeys =
-      await crypto.cachedPeerPublicKeys();
-
-      final keys =
-      await crypto.derivePeerKeys(
-        publicKeys,
-      );
+      final peers = await store.localDevices();
+      final peerIds = peers
+          .where((device) => device.revokedAt.isEmpty)
+          .map((device) => device.id)
+          .toList();
 
       await directTransport.configure(
         deviceId: store.deviceId!,
         connected: connected,
         groupOwner: groupOwner,
         groupOwnerAddress: groupOwnerAddress,
-        peerKeys: keys,
+        knownPeers: peerIds,
       );
 
       AppLogger.info(
         'DIRECT_TRANSPORT_CONFIGURED',
         detail:
         'connected=$connected '
-            'keys=${keys.length}',
+            'knownPeers=${peerIds.length}',
       );
     } catch (error, stackTrace) {
       AppLogger.error(
@@ -1326,11 +1310,11 @@ class ReliableMessagingService {
     }
   }
 
-  Future<void> refreshPeerKeys() async {
+  Future<void> refreshKnownPeers() async {
     if (store.deviceToken == null ||
         store.serverAddress == null) {
       AppLogger.warning(
-        'PEER_KEYS_REFRESH_SKIPPED',
+        'KNOWN_PEERS_REFRESH_SKIPPED',
       );
 
       return;
@@ -1338,78 +1322,25 @@ class ReliableMessagingService {
 
     try {
       AppLogger.info(
-        'PEER_KEYS_REFRESH_START',
+        'KNOWN_PEERS_REFRESH_START',
       );
 
-      final records =
-      await api.identityKeyRecords();
+      final peers = await store.localDevices();
+      final peerIds = peers
+          .where((device) => device.revokedAt.isEmpty)
+          .map((device) => device.id)
+          .toList();
 
-      final publicKeys = {
-        for (final record in records)
-          record.peerId: record.publicKey,
-      };
-
-      final versions = {
-        for (final record in records)
-          record.peerId: record.keyVersion,
-      };
-
-      final changedPeers =
-      await crypto.cachePeerPublicKeys(
-        publicKeys,
-        versions: versions,
-      );
-
-      _blockedIdentityPeers.addAll(
-        changedPeers,
-      );
-
-      try {
-        await crypto.cachePeerIdentityHistory(
-          await api.allIdentityKeyHistory(),
-        );
-      } catch (error, stackTrace) {
-        AppLogger.error(
-          'PEER_KEY_HISTORY_REFRESH_FAILED',
-          error: error,
-          stackTrace: stackTrace,
-        );
-      }
-
-      final cached =
-      await crypto.cachedPeerPublicKeys();
-
-      cached.removeWhere(
-            (id, _) =>
-            _blockedIdentityPeers.contains(id),
-      );
-
-      final keys =
-      await crypto.derivePeerKeys(
-        cached,
-      );
-
-      await directTransport.updatePeerKeys(
-        keys,
-      );
+      await directTransport.updateKnownPeers(peerIds);
 
       AppLogger.info(
-        'PEER_KEYS_REFRESH_SUCCESS',
+        'KNOWN_PEERS_REFRESH_SUCCESS',
         detail:
-        'peers=${publicKeys.length} '
-            'derived=${keys.length} '
-            'changed=${changedPeers.length}',
+        'peers=${peerIds.length}',
       );
-
-      if (changedPeers.isNotEmpty) {
-        throw StateError(
-          'peer identity changed without a newer key version: '
-              '${changedPeers.join(',')}',
-        );
-      }
     } catch (error, stackTrace) {
       AppLogger.error(
-        'PEER_KEYS_REFRESH_FAILED',
+        'KNOWN_PEERS_REFRESH_FAILED',
         error: error,
         stackTrace: stackTrace,
       );
@@ -1647,6 +1578,10 @@ class ReliableMessagingService {
           return;
         }
 
+        // A peer that messages us belongs in the local contact list: add them
+        // by directory user (once) so conversations start from a known person.
+        unawaited(_autoAddContact(message.senderId));
+
         // --------------------------------------------------------------------
         // RESOLVE DIRECT ATTACHMENTS
         // --------------------------------------------------------------------
@@ -1796,11 +1731,12 @@ class ReliableMessagingService {
 
         final now = DateTime.now().toUtc();
 
-        // Mark outbox as delivered.
-        await store.updateOutboxStatus(
-          id,
-          'direct_delivered',
-        );
+        // The message has reached the recipient: drop it from the outbox so
+        // the retry pipeline no longer tracks it. The delivered state itself
+        // is recorded on the message row below. (Previously this only set the
+        // outbox status to 'direct_delivered', which left stale rows behind
+        // because outbox(pendingOnly: true) already excludes them.)
+        await store.removeOutbox(id);
 
         // Update local message status.
         await store.updateMessageStatus(
@@ -1999,6 +1935,30 @@ class ReliableMessagingService {
         stackTrace: stackTrace,
       );
       return null;
+    }
+  }
+
+  /// Adds the directory user that owns [deviceId] to the local contacts if
+  /// they are not already present. Contacts are keyed by user id so a user
+  /// with several devices never produces duplicate contacts. Peers that
+  /// cannot be resolved through the directory are left untouched.
+  Future<void> _autoAddContact(String deviceId) async {
+    try {
+      final profile = await store.directoryProfileByDeviceId(deviceId);
+      final userId = profile?['user_id']?.toString().trim() ?? '';
+      if (userId.isEmpty) return;
+      if (await store.isContact(userId)) return;
+      await store.addContact(userId, deviceId);
+      AppLogger.info(
+        'CONTACT_AUTO_ADDED',
+        detail: 'device=${_shortId(deviceId)}',
+      );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'CONTACT_AUTO_ADD_FAILED',
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
   }
 

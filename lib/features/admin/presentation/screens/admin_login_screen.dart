@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/features/admin/data/models/admin_session.dart';
@@ -111,7 +113,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
-                    Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    Text(friendlyErrorMessage(_error), style: TextStyle(color: Theme.of(context).colorScheme.error)),
                   ],
                   const SizedBox(height: 20),
                   SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _busy ? null : _login, icon: const Icon(Icons.login), label: Text(_busy ? 'Signing in…' : 'Sign in'))),

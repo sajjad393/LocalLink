@@ -88,7 +88,7 @@ class GroupComposer extends StatelessWidget {
                 onPressed: isSending ? null : onSend,
                 filled: true,
                 icon: isSending
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.send_rounded),
                 tooltip: 'Send message',
               ),

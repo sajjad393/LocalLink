@@ -27,13 +27,7 @@ class LegacyMeshPacketBoundaryTest {
         val packet = MeshPacket.new(
             "A", "B", "direct_message", JSONObject().put("body", "ciphertext"), 8,
             packetId = "canonical-boundary-1", createdAt = 1L,
-        ).withOriginAuth(MeshPacketAuthentication.signOrigin(
-            MeshPacket.new(
-                "A", "B", "direct_message", JSONObject().put("body", "ciphertext"), 8,
-                packetId = "canonical-boundary-1", createdAt = 1L,
-            ),
-            "canonical-boundary-key",
-        ))
+        )
         val parsed = MeshPacket.fromJson(packet.toJson())
         assertNotNull(parsed)
         assertEquals(MeshPacket.PROTOCOL_VERSION, parsed!!.protocolVersion)

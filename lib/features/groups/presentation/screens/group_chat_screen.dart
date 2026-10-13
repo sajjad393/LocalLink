@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/error_toast.dart';
+import 'package:locallink/core/widgets/group_avatar.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
+import 'package:locallink/core/widgets/messenger_date_divider.dart';
 import 'package:locallink/features/files/bloc/file_transfer_bloc.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/groups/bloc/group_chat_bloc.dart';
@@ -95,7 +98,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       final files = await _transferController.pickFiles(allowMultiple: true);
       if (mounted && files.isNotEmpty) setState(() => _pending.addAll(files));
     } catch (error) {
-      _showMessage(_cleanError(error));
+      if (mounted) showErrorToast(context, error: error);
     }
   }
 
@@ -112,7 +115,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       }
     } catch (error) {
       if (mounted) setState(() => _pending.addAll(files));
-      _showMessage(_cleanError(error));
+      if (mounted) showErrorToast(context, error: error);
     }
   }
 
@@ -120,13 +123,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     const emojis=['👍','❤️','😂','😮','😢','🙏'];
     final selected=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.all(20),child:Row(mainAxisAlignment:MainAxisAlignment.spaceEvenly,children:[for(final emoji in emojis)IconButton(tooltip:'React $emoji',onPressed:()=>Navigator.pop(c,emoji),icon:Text(emoji,style:const TextStyle(fontSize:28)))]))));
     if(mounted&&selected!=null)await _controller.react(message.id,selected);
-  }
-
-  String _cleanError(Object error) => error.toString().replaceFirst('Exception: ', '').trim();
-
-  void _showMessage(String text) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   String _senderName(GroupMessage message) {
@@ -153,12 +149,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           titleSpacing: 0,
           title: Row(
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-                foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
-                child: const Icon(Icons.groups_rounded),
-              ),
+              const GroupAvatar(radius: 20),
               const SizedBox(width: LocalLinkSpacing.md),
               Expanded(
                 child: Column(
@@ -188,7 +179,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         body: Column(
           children: [
             if (state.error != null)
-              LocalLinkInlineError(message: _cleanError(state.error!), onRetry: _controller.load),
+              LocalLinkInlineError(message: friendlyErrorMessage(state.error), onRetry: _controller.load),
             Expanded(
               child: state.isLoading
                   ? const LocalLinkLoadingView(message: 'Loading group messages…')
@@ -197,6 +188,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                           icon: Icons.groups_outlined,
                           title: 'Start the group conversation',
                           message: 'Send a message or share a file with everyone in this group.',
+                          lottieAsset: 'assets/animations/empty_inbox.json',
                         )
                       : ListView.builder(
                           controller: _scrollController,
@@ -209,11 +201,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             final showDate = parsed != null && (previous == null || previous.day != parsed.day || previous.month != parsed.month || previous.year != parsed.year);
                             return Column(
                               children: [
-                                if (showDate)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: LocalLinkSpacing.md),
-                                    child: Chip(label: Text('${parsed.day}/${parsed.month}/${parsed.year}')),
-                                  ),
+                                if (showDate) MessengerDateDivider(date: parsed),
                                 GestureDetector(
                                   onLongPress: () => _showMessageActions(message),
                                   child: GroupMessageBubble(

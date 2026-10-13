@@ -42,9 +42,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.crypto.Cipher
-import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 import org.json.JSONArray
 import org.json.JSONObject
 import com.sajjad.locallink.mesh.*
@@ -68,10 +66,11 @@ class LocalLinkTransportService : Service() {
         private const val STATE_BLOB = "encrypted_state"
         private const val STATE_KEY_ALIAS = "locallink_transport_state_v1"
         private const val ACTION_CONFIGURE = "configure"
-        private const val ACTION_UPDATE_KEYS = "update_keys"
+        private const val ACTION_UPDATE_ROSTER = "update_roster"
         private const val ACTION_CONNECTION = "connection"
         private const val ACTION_RESUME = "resume"
-        private const val TRANSPORT_AUTH_VERSION = 2
+        // v3: plaintext content; the handshake no longer carries a keyed proof.
+        private const val TRANSPORT_AUTH_VERSION = 3
         private const val CALL_SAMPLE_RATE = 16_000
         private const val CALL_FRAME_MS = 20
         private const val CALL_FRAME_BYTES = CALL_SAMPLE_RATE * CALL_FRAME_MS / 1000 * 2
@@ -84,11 +83,11 @@ class LocalLinkTransportService : Service() {
         fun setEventListener(value: EventListener?) { listener=value }
         fun start(context: Context) { startCommand(context,null) }
         fun stop(context: Context) { instance?.stopTransportExplicit(); context.stopService(Intent(context,LocalLinkTransportService::class.java)) }
-        fun configure(context:Context,deviceId:String,connected:Boolean,groupOwner:Boolean,address:String?,peerKeys:Map<String,String>){
-            val k=JSONObject();peerKeys.forEach{(a,b)->k.put(a,b)}
-            startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_CONFIGURE;putExtra("device_id",deviceId);putExtra("connected",connected);putExtra("group_owner",groupOwner);putExtra("group_owner_address",address);putExtra("peer_keys",k.toString())})
+        fun configure(context:Context,deviceId:String,connected:Boolean,groupOwner:Boolean,address:String?,knownPeers:List<String>){
+            val ids=JSONArray();knownPeers.forEach{ids.put(it)}
+            startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_CONFIGURE;putExtra("device_id",deviceId);putExtra("connected",connected);putExtra("group_owner",groupOwner);putExtra("group_owner_address",address);putExtra("known_peers",ids.toString())})
         }
-        fun updatePeerKeys(context:Context,values:Map<String,String>){instance?.updatePeerKeysInternal(values)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_UPDATE_KEYS;val k=JSONObject();values.forEach{(a,b)->k.put(a,b)};putExtra("peer_keys",k.toString())})}
+        fun updateKnownPeers(context:Context,peerIds:List<String>){instance?.updateRosterInternal(peerIds)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_UPDATE_ROSTER;val ids=JSONArray();peerIds.forEach{ids.put(it)};putExtra("known_peers",ids.toString())})}
         fun updateConnection(context:Context,connected:Boolean,owner:Boolean,address:String?){instance?.startOrStopTransportForConnection(connected,owner,address)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_CONNECTION;putExtra("connected",connected);putExtra("group_owner",owner);putExtra("group_owner_address",address)})}
         fun resume(context:Context,connected:Boolean,owner:Boolean,address:String?){instance?.resumeTransport(connected,owner,address)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_RESUME;putExtra("connected",connected);putExtra("group_owner",owner);putExtra("group_owner_address",address)})}
         fun send(recipientId:String,payload:Map<String,Any?>)=instance?.sendTransportInternal(recipientId,payload)?:false
@@ -157,7 +156,9 @@ class LocalLinkTransportService : Service() {
     private val routeAdvertisementPolicy = com.sajjad.locallink.mesh.MeshRouteAdvertisementPolicy()
     private val routeStabilityPolicy = com.sajjad.locallink.mesh.MeshRouteStabilityPolicy()
     private val transportSendFailures = AtomicLong(0)
-    private val peerKeys = ConcurrentHashMap<String, String>()
+    /** Peer roster used for routing/admission decisions. Message content is not
+     * encrypted between devices; packets carry the canonical plaintext envelope. */
+    private val knownPeers = ConcurrentHashMap.newKeySet<String>()
     private val callMediaLock = Any()
     @Volatile private var callMedia: CallMediaSession? = null
     @Volatile private var callVideo: CallVideoSession? = null
@@ -226,19 +227,19 @@ class LocalLinkTransportService : Service() {
     }
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
         when(intent?.action){
-            ACTION_CONFIGURE->{val keys=parsePeerKeys(intent.getStringExtra("peer_keys"));configureTransport(intent.getStringExtra("device_id") ?: "",intent.getBooleanExtra("connected",false),intent.getBooleanExtra("group_owner",false),intent.getStringExtra("group_owner_address"),keys)}
-            ACTION_UPDATE_KEYS->updatePeerKeysInternal(parsePeerKeys(intent.getStringExtra("peer_keys")))
+            ACTION_CONFIGURE->{val peers=parseKnownPeers(intent.getStringExtra("known_peers"));configureTransport(intent.getStringExtra("device_id") ?: "",intent.getBooleanExtra("connected",false),intent.getBooleanExtra("group_owner",false),intent.getStringExtra("group_owner_address"),peers)}
+            ACTION_UPDATE_ROSTER->updateRosterInternal(parseKnownPeers(intent.getStringExtra("known_peers")))
             ACTION_CONNECTION->if(transportRunning)startOrStopTransportForConnection(intent.getBooleanExtra("connected",false),intent.getBooleanExtra("group_owner",false),intent.getStringExtra("group_owner_address"))
             ACTION_RESUME->resumeTransport(intent.getBooleanExtra("connected",false),intent.getBooleanExtra("group_owner",false),intent.getStringExtra("group_owner_address"))
         };return START_STICKY
     }
-    private fun parsePeerKeys(raw:String?):Map<String,String>{val out=mutableMapOf<String,String>();if(raw.isNullOrBlank())return out;try{val j=JSONObject(raw);val it=j.keys();while(it.hasNext()){val k=it.next();val v=j.optString(k);if(validTransportId(k)&&v.isNotBlank())out[k]=v}}catch(_:Exception){};return out}
+    private fun parseKnownPeers(raw:String?):List<String>{if(raw.isNullOrBlank())return emptyList();val out=mutableListOf<String>();try{val a=JSONArray(raw);for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))out.add(id)}}catch(_:Exception){};return out}
     override fun onBind(intent:Intent?):IBinder?=null
     private fun createNotificationChannel(){if(android.os.Build.VERSION.SDK_INT<26)return;getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL_ID,"LocalLink peer transport",NotificationManager.IMPORTANCE_LOW).apply{description="Keeps LocalLink peer communication available while the app is in the background";setShowBadge(false)})}
     private fun buildNotification():Notification{val li=packageManager.getLaunchIntentForPackage(packageName);val pi=li?.let{PendingIntent.getActivity(this,2202,it,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)};val b=if(android.os.Build.VERSION.SDK_INT>=26)Notification.Builder(this,CHANNEL_ID)else Notification.Builder(this);return b.setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("LocalLink peer network active").setContentText("Offline peer communication is available").setOngoing(true).setCategory(Notification.CATEGORY_SERVICE).setContentIntent(pi).setPriority(Notification.PRIORITY_LOW).build()}
 
-    private fun configureTransport(deviceId:String,connected:Boolean,owner:Boolean,address:String?,keys:Map<String,String>){if(deviceId.isBlank())return;transportDeviceId=deviceId.trim();peerKeys.clear();peerKeys.putAll(keys.filterKeys{validTransportId(it)});transportRunning=true;persistState();startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to connected,"transport_active" to true,"group_owner" to owner));startOrStopTransportForConnection(connected,owner,address)}
-    private fun updatePeerKeysInternal(values:Map<String,String>){peerKeys.clear();values.forEach{(k,v)->if(validTransportId(k)&&v.isNotBlank())peerKeys[k]=v.trim()};persistState()}
+    private fun configureTransport(deviceId:String,connected:Boolean,owner:Boolean,address:String?,peers:List<String>){if(deviceId.isBlank())return;transportDeviceId=deviceId.trim();knownPeers.clear();knownPeers.addAll(peers.filter{validTransportId(it)});transportRunning=true;persistState();startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to connected,"transport_active" to true,"group_owner" to owner));startOrStopTransportForConnection(connected,owner,address)}
+    private fun updateRosterInternal(peerIds:List<String>){knownPeers.clear();peerIds.forEach{if(validTransportId(it))knownPeers.add(it.trim())};persistState()}
     private fun resumeTransport(connected:Boolean,owner:Boolean,address:String?){if(transportDeviceId.isNullOrBlank())return;transportRunning=true;persistState();startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to connected,"transport_active" to true,"group_owner" to owner));startOrStopTransportForConnection(connected,owner,address)}
     private fun sendTransportInternal(target:String,map:Map<String,Any?>):Boolean{if(!transportRunning||!validTransportId(target))return false;val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,v)};return sendRoutedPayload(target,p)}
     private fun broadcastTransportInternal(map:Map<String,Any?>):Boolean{val self=transportDeviceId?:return false;var ok=false;for((id,peer) in transportPeers){val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,v)};p.put("sender_id",self).put("recipient_id",id);if(sendToPeer(peer,p))ok=true};return ok||transportPeers.isEmpty()}
@@ -453,7 +454,7 @@ class LocalLinkTransportService : Service() {
                 "last_seen_at" to now,
             ))
             if (active != null) return
-            if (self.compareTo(nodeId) < 0 && peerKeys.containsKey(nodeId)) {
+            if (self.compareTo(nodeId) < 0 && knownPeers.contains(nodeId)) {
                 connectLanPeer(nodeId, host, port)
             }
         } catch (_: Exception) {}
@@ -572,14 +573,12 @@ class LocalLinkTransportService : Service() {
         if (challenge.optString("type") != "challenge") return null
         if (challenge.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
         val peerId = challenge.optString("peer_id").ifBlank { challenge.optString("node_id") }
-        val nonce = challenge.optString("nonce")
         if (expectedPeerId != null && peerId != expectedPeerId) return null
-        val key = peerKeys[peerId] ?: return null
+        if (!knownPeers.contains(peerId)) return null
         writer.write(JSONObject().put("type", "auth")
             .put("device_id", id)
             .put("node_id", id)
             .put("transport_auth_version", TRANSPORT_AUTH_VERSION)
-            .put("proof", hmac(key, "$TRANSPORT_AUTH_VERSION|$nonce|$id|$peerId"))
             .toString())
         writer.newLine()
         writer.flush()
@@ -599,21 +598,17 @@ class LocalLinkTransportService : Service() {
         val peer = hello.optString("node_id").ifBlank { hello.optString("device_id") }
         val self = transportDeviceId ?: return null
         if (peer.isBlank() || peer == self) return null
-        val key = peerKeys[peer] ?: return null
-        val nonce = ByteArray(24).also(random::nextBytes)
-        val nonceText = Base64.encodeToString(nonce, Base64.NO_WRAP)
+        if (!knownPeers.contains(peer)) return null
         writer.write(JSONObject().put("type", "challenge")
             .put("peer_id", self)
             .put("node_id", self)
             .put("transport_auth_version", TRANSPORT_AUTH_VERSION)
-            .put("nonce", nonceText)
             .toString())
         writer.newLine()
         writer.flush()
         val auth = reader.readLine()?.let { JSONObject(it) } ?: return null
         if (auth.optString("node_id").ifBlank { auth.optString("device_id") } != peer ||
-            auth.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION ||
-            auth.optString("proof") != hmac(key, "$TRANSPORT_AUTH_VERSION|$nonceText|$peer|$self")) return null
+            auth.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
         writer.write(JSONObject().put("type", "auth_ok").put("transport_auth_version", TRANSPORT_AUTH_VERSION).toString())
         writer.newLine()
         writer.flush()
@@ -786,21 +781,11 @@ class LocalLinkTransportService : Service() {
                         val receiver = packet.optString("receiver_id")
                         if (from != connection.peerId) break
                         if (receiver != transportDeviceId) break
-                        val key = peerKeys[from] ?: break
-                        val receiverId = transportDeviceId ?: break
+                        if (!knownPeers.contains(from)) break
                         activePeerConnection(from)?.let { meshPeers.available(from, it.transportName) }
-                        val encrypted = packet.optString("payload")
-                        val keyEpoch = packet.optLong("key_epoch", Long.MIN_VALUE)
-                        val acceptedEpochs = if (keyEpoch == Long.MIN_VALUE) emptySet() else MeshTransportSessionKeyPolicy.acceptedEpochs()
-                        if (keyEpoch !in acceptedEpochs) continue
-                        val decrypted = decryptPacket(
-                            encrypted,
-                            key,
-                            senderId = from,
-                            receiverId = receiverId,
-                            keyEpoch = keyEpoch,
-                        ) ?: continue
-                        val packet = MeshPacket.fromJson(decrypted) ?: run {
+                        val payloadText = packet.optString("payload")
+                        val inbound = try { JSONObject(payloadText) } catch (_: Exception) { null }
+                        val packet = (inbound?.let { MeshPacket.fromJson(it) }) ?: run {
                             transportEvent("mesh_dropped", mapOf(
                                 "reason" to "unsupported_mesh_protocol",
                                 "peer_id" to from,
@@ -809,7 +794,7 @@ class LocalLinkTransportService : Service() {
                         }
                         if (packet.nextHopNodeId != null && packet.nextHopNodeId != transportDeviceId) continue
                         transportPacketsReceived.incrementAndGet()
-                        transportBytesReceived.addAndGet(encrypted.toByteArray(Charsets.UTF_8).size.toLong())
+                        transportBytesReceived.addAndGet(payloadText.toByteArray(Charsets.UTF_8).size.toLong())
                         routeDirectPacket(from, packet)
                     }
                     "ping" -> {
@@ -836,11 +821,6 @@ class LocalLinkTransportService : Service() {
         val self = transportDeviceId ?: return
         if (!validTransportId(senderPeerId) || senderPeerId == self) return
         if (message.optString("type") != "route_withdrawal" || message.optString("sender_id").trim() != senderPeerId) return
-        val key = peerKeys[senderPeerId] ?: return
-        if (!com.sajjad.locallink.mesh.MeshRouteAdvertisementAuthenticator.verify(message, key)) {
-            transportEvent("route_withdrawal_rejected", mapOf("peer_id" to senderPeerId, "reason" to "authentication_failed"))
-            return
-        }
         val destinations = message.optJSONArray("destinations") ?: JSONArray()
         val now = System.currentTimeMillis()
         val decision = routeAdvertisementPolicy.evaluate(
@@ -918,17 +898,7 @@ class LocalLinkTransportService : Service() {
             transportEvent("mesh_dropped", mapOf("packet_id" to packet.packetId, "reason" to "router_validation"))
             return
         }
-        if (packet.destinationNodeId == self) {
-            if (!verifyOriginAuth(packet)) {
-                transportEvent("mesh_dropped", mapOf("packet_id" to packet.packetId, "reason" to "origin_auth_failed"))
-                return
-            }
-            // Do not let a forged origin-auth value poison replay state for the
-            // later valid packet that carries the same source+packet id.
-            if (!markMeshPacketSeen(packet, persist = !isEphemeralCallMediaType(packet.type))) return
-        } else {
-            if (!markMeshPacketSeen(packet, persist = !isEphemeralCallMediaType(packet.type))) return
-        }
+        if (!markMeshPacketSeen(packet, persist = !isEphemeralCallMediaType(packet.type))) return
         val result = meshRouter.route(packet, from)
         when (result) {
             MeshRouteResult.LOCAL_DELIVERY -> deliverLocalPacket(packet)
@@ -937,28 +907,6 @@ class LocalLinkTransportService : Service() {
             MeshRouteResult.NO_ROUTE -> transportEvent("mesh_unroutable", mapOf("packet_id" to packet.packetId, "target_id" to packet.destinationNodeId))
             MeshRouteResult.DROPPED -> transportEvent("mesh_dropped", mapOf("packet_id" to packet.packetId, "reason" to "router_validation"))
         }
-    }
-
-    private fun verifyOriginAuth(packet: MeshPacket): Boolean {
-        val self = transportDeviceId ?: return false
-        if (packet.destinationNodeId != self || packet.sourceNodeId == self) return false
-        val key = peerKeys[packet.sourceNodeId] ?: return false
-        return MeshPacketAuthentication.verifyOrigin(packet, key)
-    }
-
-    private fun buildSignedMeshPacket(target:String,payload:JSONObject):MeshPacket?{
-        val self=transportDeviceId ?: return null
-        if(!validTransportId(target) || target==self) return null
-        val normalized=JSONObject(payload.toString()).apply{
-            put("recipient_id",target)
-            remove("mesh_version");remove("mesh_packet_id");remove("mesh_origin_id");remove("mesh_next_hop_id");remove("mesh_ttl");remove("mesh_hops");remove("mesh_created_at");remove("origin_auth")
-            put(MeshPacket.MESH_PATH_KEY,JSONArray().put(self))
-        }
-        val mediaType=normalized.optString("type").trim()
-        if(!MeshIdPolicy.isValidType(mediaType)) return null
-        val unsigned=try{MeshPacket.new(self,target,mediaType,normalized,meshPacketTtl)}catch(_:Exception){return null}
-        val destinationKey=peerKeys[target] ?: return null
-        return try{unsigned.withOriginAuth(MeshPacketAuthentication.signOrigin(unsigned,destinationKey))}catch(_:Exception){null}
     }
 
     private fun sendCallMediaPacket(peerId:String,callId:String,payload:JSONObject):Boolean{
@@ -1383,8 +1331,7 @@ class LocalLinkTransportService : Service() {
             .put("advertisement_sequence", routeAdvertisementSequence.incrementAndGet())
             .put("sent_at", now)
             .put("routes", routesJson)
-        val key = peerKeys[peerId] ?: return unsigned
-        return com.sajjad.locallink.mesh.MeshRouteAdvertisementAuthenticator.withAuth(unsigned, key)
+        return unsigned
     }
 
     private fun broadcastRouteAdvertisement(excludePeerId: String? = null, force: Boolean = false) {
@@ -1415,11 +1362,6 @@ class LocalLinkTransportService : Service() {
         if (advertisement.optInt("route_protocol_version", -1) != ROUTE_ADVERTISEMENT_PROTOCOL_VERSION) return
         if (advertisement.optString("type") != "route_advertisement") return
         if (advertisement.optString("sender_id").trim() != peerId) return
-        val key = peerKeys[peerId] ?: return
-        if (!com.sajjad.locallink.mesh.MeshRouteAdvertisementAuthenticator.verify(advertisement, key)) {
-            transportEvent("route_advertisement_rejected", mapOf("peer_id" to peerId, "reason" to "authentication_failed"))
-            return
-        }
         val routes = advertisement.optJSONArray("routes") ?: JSONArray()
         val now = System.currentTimeMillis()
         val decision = routeAdvertisementPolicy.evaluate(
@@ -1547,7 +1489,6 @@ class LocalLinkTransportService : Service() {
             remove("mesh_ttl")
             remove("mesh_hops")
             remove("mesh_created_at")
-            remove("origin_auth")
             put(MeshPacket.MESH_PATH_KEY, JSONArray().put(self))
         }
         val mediaType = normalized.optString("type").trim()
@@ -1563,12 +1504,7 @@ class LocalLinkTransportService : Service() {
         } catch (_: IllegalArgumentException) {
             return false
         }
-        val destinationKey = peerKeys[target] ?: return false
-        val packet = try {
-            unsigned.withOriginAuth(MeshPacketAuthentication.signOrigin(unsigned, destinationKey))
-        } catch (_: IllegalArgumentException) {
-            return false
-        }
+        val packet = unsigned
         val isLiveMedia = mediaType == "call_media" || mediaType == "call_video_config" || mediaType == "call_video_frame"
         val before = if (isLiveMedia) routeTable[target] else null
         val result = meshRouter.route(packet)
@@ -1621,22 +1557,14 @@ class LocalLinkTransportService : Service() {
 
     private fun sendToPeer(peer: PeerConnection, packet: MeshPacket): Boolean {
         val self = transportDeviceId ?: return false
-        val key = peerKeys[peer.peerId] ?: return false
+        if (!knownPeers.contains(peer.peerId)) return false
         return try {
             if (packet.nextHopNodeId != peer.peerId) return false
-            val keyEpoch = MeshTransportSessionKeyPolicy.currentEpoch()
-            val encrypted = encryptPacket(
-                packet.toJson(),
-                key,
-                senderId = self,
-                receiverId = peer.peerId,
-                hopAad = MeshPacketAuthentication.hopIdentityAad(self, peer.peerId, keyEpoch),
-                keyEpoch = keyEpoch,
-            )
-            val frame = JSONObject().put("type", "data").put("sender_id", self).put("receiver_id", peer.peerId).put("key_epoch", keyEpoch).put("payload", encrypted)
+            val payloadText = packet.toJson().toString()
+            val frame = JSONObject().put("type", "data").put("sender_id", self).put("receiver_id", peer.peerId).put("payload", payloadText)
             peer.send(frame)
             transportPacketsSent.incrementAndGet()
-            transportBytesSent.addAndGet(encrypted.toByteArray(Charsets.UTF_8).size.toLong())
+            transportBytesSent.addAndGet(payloadText.toByteArray(Charsets.UTF_8).size.toLong())
             true
         } catch (_: Exception) {
             transportSendFailures.incrementAndGet()
@@ -1658,7 +1586,6 @@ class LocalLinkTransportService : Service() {
             remove("mesh_ttl")
             remove("mesh_hops")
             remove("mesh_created_at")
-            remove("origin_auth")
             put(MeshPacket.MESH_PATH_KEY, JSONArray().put(self))
         }
         val type = normalized.optString("type").trim()
@@ -1674,12 +1601,7 @@ class LocalLinkTransportService : Service() {
         } catch (_: IllegalArgumentException) {
             return false
         }
-        val destinationKey = peerKeys[target] ?: return false
-        return try {
-            sendToPeer(peer, packet.withOriginAuth(MeshPacketAuthentication.signOrigin(packet, destinationKey)))
-        } catch (_: IllegalArgumentException) {
-            false
-        }
+        return sendToPeer(peer, packet)
     }
 
     private fun pathContains(path: org.json.JSONArray, id: String): Boolean {
@@ -1800,26 +1722,7 @@ class LocalLinkTransportService : Service() {
                         ))
                         continue
                     }
-                    val self = transportDeviceId
-                    val refreshedPacket = if (self != null && packet.sourceNodeId == self) {
-                        val destinationKey = peerKeys[packet.destinationNodeId]
-                        if (destinationKey != null) {
-                            try {
-                                packet.withOriginAuth(MeshPacketAuthentication.signOrigin(packet, destinationKey))
-                            } catch (_: IllegalArgumentException) {
-                                null
-                            }
-                        } else null
-                    } else packet
-                    if (refreshedPacket == null) {
-                        transportEvent("mesh_dropped", mapOf(
-                            "target_id" to target,
-                            "packet_id" to packet.packetId,
-                            "reason" to "missing_destination_key",
-                        ))
-                        continue
-                    }
-                    val readyPacket = refreshedPacket
+                    val readyPacket = packet
                     if (!validTransportId(target) || readyPacket.destinationNodeId != target) {
                         file.delete(); continue
                     }
@@ -1895,7 +1798,7 @@ class LocalLinkTransportService : Service() {
                             handleRoutesAfterPeerDisconnect(nodeId, "lan_discovery_timeout")
                             continue
                         }
-                        if (!transportPeers.containsKey(nodeId) && (transportDeviceId ?: "").compareTo(nodeId) < 0 && peerKeys.containsKey(nodeId)) {
+                        if (!transportPeers.containsKey(nodeId) && (transportDeviceId ?: "").compareTo(nodeId) < 0 && knownPeers.contains(nodeId)) {
                             connectLanPeer(nodeId, endpoint.host, endpoint.port)
                         }
                     }
@@ -2196,49 +2099,6 @@ class LocalLinkTransportService : Service() {
         return clean.take(160).ifEmpty { "attachment" }
     }
 
-    private fun encryptPacket(payload: JSONObject, key: String, senderId: String, receiverId: String, hopAad: ByteArray, keyEpoch: Long): String {
-        val keyBytes = MeshTransportSessionKeyPolicy.deriveKey(
-            sharedKey = key,
-            senderNodeId = senderId,
-            receiverNodeId = receiverId,
-            epoch = keyEpoch,
-        )
-        val iv = ByteArray(12).also(random::nextBytes)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyBytes, "AES"), GCMParameterSpec(128, iv))
-        cipher.updateAAD(hopAad)
-        val encrypted = cipher.doFinal(payload.toString().toByteArray(Charsets.UTF_8))
-        return Base64.encodeToString(iv + encrypted, Base64.NO_WRAP)
-    }
-
-    /**
-     * Per-hop authenticated decryption. The outer sender/receiver identities
-     * are authenticated as AEAD associated data, while the complete canonical
-     * MeshPacket envelope is covered by AES-GCM as ciphertext.
-     */
-    private fun decryptPacket(encoded: String, key: String, senderId: String, receiverId: String, keyEpoch: Long): JSONObject? {
-        return try {
-            val all = Base64.decode(encoded, Base64.DEFAULT)
-            if (all.size < 13) return null
-            val iv = all.copyOfRange(0, 12)
-            val ciphertext = all.copyOfRange(12, all.size)
-            val keyBytes = MeshTransportSessionKeyPolicy.deriveKey(key, senderId, receiverId, keyEpoch)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"), GCMParameterSpec(128, iv))
-            cipher.updateAAD(MeshPacketAuthentication.hopIdentityAad(senderId, receiverId, keyEpoch))
-            JSONObject(String(cipher.doFinal(ciphertext), Charsets.UTF_8))
-        } catch (_: Exception) { null }
-    }
-
-    private fun derivedKey(key: String, label: String): ByteArray =
-        MessageDigestDigest.sha256("$label|$key".toByteArray(Charsets.UTF_8))
-
-    private fun hmac(key: String, input: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(derivedKey(key, "locallink-hop-hmac-v1"), "HmacSHA256"))
-        return mac.doFinal(input.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it.toInt() and 0xff) }
-    }
-
     private fun transportEvent(type: String, data: Map<String, Any?> = emptyMap()) {
         listener?.onTransportEvent(type, mapOf("type" to type, *data.entries.map { it.key to it.value }.toTypedArray()))
     }
@@ -2333,9 +2193,8 @@ class LocalLinkTransportService : Service() {
             .put("destinations", list)
         for ((peerId, peer) in transportPeers) {
             if (peer.socket.isClosed) continue
-            val key = peerKeys[peerId] ?: continue
-            val message = com.sajjad.locallink.mesh.MeshRouteAdvertisementAuthenticator.withAuth(base, key)
-            try { peer.send(message) } catch (_: Exception) {
+            if (!knownPeers.contains(peerId)) continue
+            try { peer.send(base) } catch (_: Exception) {
                 transportSendFailures.incrementAndGet()
             }
         }
@@ -2414,16 +2273,13 @@ class LocalLinkTransportService : Service() {
         }
     }
 
-    private object MessageDigestDigest {
-        fun sha256(input: ByteArray): ByteArray = java.security.MessageDigest.getInstance("SHA-256").digest(input)
-    }
     private data class OutgoingFileTransfer(val transferId:String,val fileId:String,val messageId:String,val senderId:String,val recipientId:String,val filePath:String,val fileName:String,val contentType:String,val size:Long,val sha256:String,val totalChunks:Int,val acknowledged:BooleanArray,var updatedAt:Long)
 
     private fun stopTransportExplicit(){stopCallMediaInternal("");transportRunning=false;meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();transportGroupOwner=false;transportGroupOwnerAddress=null;ownerConnectInFlight.set(false);routeTable.clear();routeRecovery.clear();persistState();transportEvent("state",mapOf("connected" to false,"transport_active" to false,"service" to "stopped"))}
 
     private fun createStateKey():javax.crypto.SecretKey{val ks=KeyStore.getInstance("AndroidKeyStore").apply{load(null)};if(!ks.containsAlias(STATE_KEY_ALIAS)){val g=javax.crypto.KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");g.init(KeyGenParameterSpec.Builder(STATE_KEY_ALIAS,KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).setUserAuthenticationRequired(false).build());g.generateKey()};return ks.getKey(STATE_KEY_ALIAS,null) as javax.crypto.SecretKey}
-    private fun persistState(){try{val j=JSONObject().put("active",transportRunning).put("device_id",transportDeviceId).put("group_owner",transportGroupOwner).put("group_owner_address",transportGroupOwnerAddress);val k=JSONObject();peerKeys.forEach{(a,b)->k.put(a,b)};j.put("peer_keys",k);val iv=ByteArray(12).also(random::nextBytes);val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,createStateKey(),GCMParameterSpec(128,iv));getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(STATE_BLOB,Base64.encodeToString(iv+c.doFinal(j.toString().toByteArray(Charsets.UTF_8)),Base64.NO_WRAP)).apply()}catch(_:Exception){}}
-    private fun loadPersistedState(){try{val b=getSharedPreferences(PREFS,MODE_PRIVATE).getString(STATE_BLOB,null)?:return;val a=Base64.decode(b,Base64.DEFAULT);if(a.size<28)return;val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,createStateKey(),GCMParameterSpec(128,a.copyOfRange(0,12)));val j=JSONObject(String(c.doFinal(a.copyOfRange(12,a.size)),Charsets.UTF_8));transportRunning=j.optBoolean("active",false);transportDeviceId=j.optString("device_id").takeIf{it.isNotBlank()};transportGroupOwner=j.optBoolean("group_owner",false);transportGroupOwnerAddress=j.optString("group_owner_address").takeIf{it.isNotBlank()};peerKeys.clear();j.optJSONObject("peer_keys")?.let{k->val it=k.keys();while(it.hasNext()){val id=it.next();val v=k.optString(id);if(validTransportId(id)&&v.isNotBlank())peerKeys[id]=v}}}catch(_:Exception){}}
+    private fun persistState(){try{val j=JSONObject().put("active",transportRunning).put("device_id",transportDeviceId).put("group_owner",transportGroupOwner).put("group_owner_address",transportGroupOwnerAddress);val ids=JSONArray();knownPeers.forEach{ids.put(it)};j.put("known_peers",ids);val iv=ByteArray(12).also(random::nextBytes);val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,createStateKey(),GCMParameterSpec(128,iv));getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(STATE_BLOB,Base64.encodeToString(iv+c.doFinal(j.toString().toByteArray(Charsets.UTF_8)),Base64.NO_WRAP)).apply()}catch(_:Exception){}}
+    private fun loadPersistedState(){try{val b=getSharedPreferences(PREFS,MODE_PRIVATE).getString(STATE_BLOB,null)?:return;val a=Base64.decode(b,Base64.DEFAULT);if(a.size<28)return;val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,createStateKey(),GCMParameterSpec(128,a.copyOfRange(0,12)));val j=JSONObject(String(c.doFinal(a.copyOfRange(12,a.size)),Charsets.UTF_8));transportRunning=j.optBoolean("active",false);transportDeviceId=j.optString("device_id").takeIf{it.isNotBlank()};transportGroupOwner=j.optBoolean("group_owner",false);transportGroupOwnerAddress=j.optString("group_owner_address").takeIf{it.isNotBlank()};knownPeers.clear();j.optJSONArray("known_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))knownPeers.add(id)}}}catch(_:Exception){}}
     private fun restoreDurableState(){loadSeenMeshPackets();restoreIncomingTransfers();restoreOutgoingTransfers()}
     private fun seenFileFor(key:String)=File(seenMeshDir,Base64.encodeToString(key.toByteArray(),Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)+".seen")
     private fun loadSeenMeshPackets(){

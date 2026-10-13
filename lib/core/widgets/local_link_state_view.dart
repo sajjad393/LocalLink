@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
 
@@ -34,6 +35,10 @@ class LocalLinkEmptyView extends StatelessWidget {
   final String? actionLabel;
   final VoidCallback? onAction;
 
+  /// Optional Lottie animation shown instead of the icon circle
+  /// (e.g. 'assets/animations/empty_inbox.json'). The asset must exist.
+  final String? lottieAsset;
+
   const LocalLinkEmptyView({
     super.key,
     required this.icon,
@@ -41,27 +46,32 @@ class LocalLinkEmptyView extends StatelessWidget {
     required this.message,
     this.actionLabel,
     this.onAction,
+    this.lottieAsset,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final lottie = lottieAsset;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(LocalLinkSpacing.xxxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.secondaryContainer,
-                shape: BoxShape.circle,
+            if (lottie != null)
+              Lottie.asset(lottie, width: 160, height: 150, repeat: true)
+            else
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colors.secondaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(LocalLinkSpacing.xl),
+                  child: Icon(icon, size: 36, color: colors.onSecondaryContainer),
+                ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(LocalLinkSpacing.xl),
-                child: Icon(icon, size: 36, color: colors.onSecondaryContainer),
-              ),
-            ),
             const SizedBox(height: LocalLinkSpacing.lg),
             Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
             const SizedBox(height: LocalLinkSpacing.sm),

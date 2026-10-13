@@ -81,9 +81,32 @@ class LocalLinkIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final button = filled
-        ? IconButton.filled(onPressed: onPressed, icon: icon)
-        : IconButton(onPressed: onPressed, icon: icon);
+    final Widget button;
+    if (filled) {
+      // Brand gradient circle (reference design).
+      button = Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: Ink(
+            decoration: const BoxDecoration(
+              gradient: LocalLinkBrand.linearGradient,
+              shape: BoxShape.circle,
+            ),
+            child: SizedBox.square(
+              dimension: LocalLinkSizes.sendButton,
+              child: IconTheme.merge(
+                data: const IconThemeData(color: Colors.white, size: 22),
+                child: icon,
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      button = IconButton(onPressed: onPressed, icon: icon);
+    }
     if (tooltip == null) return button;
     return Tooltip(message: tooltip!, child: button);
   }

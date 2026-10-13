@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/theme/app_tokens.dart';
+
 class AccountAvatar extends StatelessWidget {
   final String name;
   final String localPath;
@@ -28,9 +30,8 @@ class AccountAvatar extends StatelessWidget {
     return CircleAvatar(
       radius: radius,
       backgroundImage: _image,
-      child: _image == null ? Text(_initial, style: TextStyle(fontSize: iconSize ?? radius * 0.72, fontWeight: FontWeight.w700)) : null,
-      foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
-      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+      backgroundColor: LocalLinkAvatarColor.forName(name),
+      child: _image == null ? Text(_initial, style: TextStyle(color: Colors.white, fontSize: iconSize ?? radius * 0.72, fontWeight: FontWeight.w700)) : null,
     );
   }
 }

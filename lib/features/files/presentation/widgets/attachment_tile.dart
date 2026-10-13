@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 import 'package:flutter/material.dart';
+
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/features/files/data/models/file_transfer_models.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
@@ -118,8 +120,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
       if (mounted) {
         setState(() => _activeOperation = null);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(error.toString().replaceFirst('Exception: ', ''))),
+          SnackBar(content: Text(friendlyErrorMessage(error))),
         );
       }
     }
@@ -148,7 +149,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
         if (durationMs > 0) { _audioTimer = Timer(Duration(milliseconds: durationMs), () { if (mounted) setState(() => _playing = false); }); }
       }
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyErrorMessage(error))));
     }
   }
 

@@ -11,4 +11,8 @@ abstract interface class HomeRepositoryContract {
   Future<List<LocalGroup>> localGroups();
   Future<LocalGroup> createGroup(String name, List<String> memberIds);
   Future<void> cacheDevice(Device device);
+
+  /// Resolves a device id to the owning directory user id, if known. Used to
+  /// collapse multiple devices of one user into a single conversation entry.
+  Future<String?> userIdForDevice(String deviceId);
 }

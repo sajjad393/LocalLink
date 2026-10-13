@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -215,7 +217,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
               child: Card(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
-                  child: Text(error!),
+                  child: Text(friendlyErrorMessage(error)),
                 ),
               ),
             ),

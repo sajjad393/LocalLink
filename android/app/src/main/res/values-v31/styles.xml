@@ -1,0 +1,13 @@
+<resources>
+    <!-- Android 12+ system splash: solid brand blue with the LocalLink glyph,
+         then the gradient launch background until Flutter's first frame. -->
+    <style name="LaunchTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowSplashScreenBackground">@color/brand_start</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenAnimationDuration">200</item>
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

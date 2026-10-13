@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
@@ -25,7 +27,7 @@ class _AccountTransferScreenState extends State<AccountTransferScreen> {
           final transfer = _controller.transfer;
           if (_controller.loading) return const Center(child: CircularProgressIndicator());
           if (_controller.error != null) {
-            return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Text(_controller.error!, textAlign: TextAlign.center), const SizedBox(height: 16), FilledButton(onPressed: _controller.start, child: const Text('Try again'))])));
+            return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Text(friendlyErrorMessage(_controller.error), textAlign: TextAlign.center), const SizedBox(height: 16), FilledButton(onPressed: _controller.start, child: const Text('Try again'))])));
           }
           return ListView(
             padding: const EdgeInsets.all(24),

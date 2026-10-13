@@ -9,7 +9,7 @@ import java.util.UUID
  *
  * New traffic MUST use protocol version 1. Relays may rewrite only hop-local
  * fields (next hop, TTL, hop count and path). Application payload remains
- * opaque to the mesh layer and should contain its own end-to-end ciphertext.
+ * opaque to the mesh layer.
  */
 data class MeshPacket(
     val packetId: String,
@@ -21,7 +21,6 @@ data class MeshPacket(
     val type: String,
     val payload: JSONObject,
     val createdAt: Long,
-    val originAuth: String? = null,
     val protocolVersion: Int = PROTOCOL_VERSION,
 ) {
     fun copyForForwarding(nextHop: String, localNodeId: String, maxHops: Int = MeshLimits.MAX_HOPS): MeshPacket {
@@ -60,27 +59,6 @@ data class MeshPacket(
         .put("type", type)
         .put("payload", JSONObject(payload.toString()))
         .put("created_at", createdAt)
-        .putOpt("origin_auth", originAuth)
-
-    fun withOriginAuth(value: String): MeshPacket {
-        val normalized = value.trim().ifBlank { null }
-        require(normalized == null || MeshPacketAuthentication.isValidOriginAuth(normalized)) { "invalid origin auth" }
-        return copy(originAuth = normalized)
-    }
-
-    /** Stable, unambiguous representation used for end-to-end origin authentication. */
-    fun originAuthInput(): String {
-        val immutablePayload = JSONObject(payload.toString()).also { it.remove(MESH_PATH_KEY) }
-        val envelope = JSONObject()
-            .put(PROTOCOL_VERSION_KEY, PROTOCOL_VERSION)
-            .put("packet_id", packetId)
-            .put("source_node_id", sourceNodeId)
-            .put("destination_node_id", destinationNodeId)
-            .put("type", type)
-            .put("created_at", createdAt)
-            .put("payload", immutablePayload)
-        return canonicalJson(envelope)
-    }
 
     fun normalizedPath(): List<String> {
         val value = payload.optJSONArray(MESH_PATH_KEY) ?: return emptyList()
@@ -200,38 +178,7 @@ data class MeshPacket(
             if (pathIds.size != expectedPathSize || pathIds.firstOrNull() != source || pathIds.distinct().size != pathIds.size) return null
             val nextHop = json.optString("next_hop_node_id").trim().ifBlank { null }
             if (nextHop != null && !MeshIdPolicy.isValid(nextHop)) return null
-            val originAuth = json.optString("origin_auth").trim().ifBlank { null }
-            if (originAuth == null || !MeshPacketAuthentication.isValidOriginAuth(originAuth)) return null
-            return MeshPacket(packetId, source, destination, nextHop, ttl, hopCount, type, JSONObject(payload.toString()), createdAt, originAuth, version)
-        }
-
-        private fun canonicalJson(value: Any?): String = when (value) {
-            is JSONObject -> {
-                val keys = mutableListOf<String>()
-                val iterator = value.keys()
-                while (iterator.hasNext()) keys.add(iterator.next())
-                keys.sort()
-                buildString {
-                    append('{')
-                    keys.forEachIndexed { index, key ->
-                        if (index > 0) append(',')
-                        append(JSONObject.quote(key)).append(':').append(canonicalJson(value.opt(key)))
-                    }
-                    append('}')
-                }
-            }
-            is JSONArray -> buildString {
-                append('[')
-                for (i in 0 until value.length()) {
-                    if (i > 0) append(',')
-                    append(canonicalJson(value.opt(i)))
-                }
-                append(']')
-            }
-            JSONObject.NULL -> "null"
-            is String -> JSONObject.quote(value)
-            is Number, is Boolean -> value.toString()
-            else -> JSONObject.quote(value.toString())
+            return MeshPacket(packetId, source, destination, nextHop, ttl, hopCount, type, JSONObject(payload.toString()), createdAt, version)
         }
     }
 }

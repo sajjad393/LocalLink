@@ -21,7 +21,6 @@ object MeshChaosResilienceHarness {
         run("route_flap_hold_down") { routeFlapHoldDown() }
         run("route_partition_alternate_recovery") { routePartitionAlternateRecovery() }
         run("route_advertisement_replay_and_rate_limit") { routeAdvertisementReplayAndRateLimit() }
-        run("session_key_rotation") { sessionKeyRotation() }
         run("direct_file_resource_bounds") { directFileResourceBounds() }
         run("concurrent_route_and_replay_stress") { concurrentRouteAndReplayStress() }
         println("PHASE 66 CHAOS HARNESS: 10/10 PASS")
@@ -148,17 +147,6 @@ object MeshChaosResilienceHarness {
         require(!limited.accepted && limited.reason == "rate_limited", "advertisement rate limit failed")
         val oldSession = policy.evaluate("B", "session-0001", 99, NOW, 1, NOW + MeshLimits.ROUTE_ADVERTISEMENT_MAX_AGE_MS + 1L)
         require(!oldSession.accepted || oldSession.reason != "accepted", "stale session replay was accepted")
-    }
-
-    private fun sessionKeyRotation() {
-        val epoch = MeshTransportSessionKeyPolicy.currentEpoch(NOW)
-        val current = MeshTransportSessionKeyPolicy.deriveKey("shared", "A", "B", epoch)
-        val next = MeshTransportSessionKeyPolicy.deriveKey("shared", "A", "B", epoch + 1)
-        val reverse = MeshTransportSessionKeyPolicy.deriveKey("shared", "B", "A", epoch)
-        require(!current.contentEquals(next), "session key did not rotate")
-        require(!current.contentEquals(reverse), "directional session binding failed")
-        require(MeshTransportSessionKeyPolicy.acceptedEpochs(NOW).contains(epoch - 1), "previous epoch grace missing")
-        require(MeshTransportSessionKeyPolicy.acceptedEpochs(NOW).contains(epoch), "current epoch missing")
     }
 
     private fun directFileResourceBounds() {

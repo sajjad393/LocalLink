@@ -85,7 +85,7 @@ class MeshRoutingTest {
             ttl = 8,
             packetId = "p1",
             createdAt = 100L,
-        ).withOriginAuth("0".repeat(64))
+        )
         val parsed = MeshPacket.fromJson(packet.toJson())!!
         assertEquals("p1", parsed.packetId)
         assertEquals("A", parsed.sourceNodeId)
@@ -93,16 +93,7 @@ class MeshRoutingTest {
         assertEquals(8, parsed.ttl)
         assertEquals("direct_message", parsed.type)
         assertEquals("m1", parsed.payload.optString("id"))
-        assertEquals("auth", parsed.originAuth)
         assertEquals(MeshPacket.PROTOCOL_VERSION, parsed.protocolVersion)
-    }
-
-    @Test
-    fun originAuthInputDoesNotChangeWhenHopPathChanges() {
-        val base = MeshPacket.new("A", "D", "direct_message", JSONObject().put("body", "ciphertext"), 8, packetId = "p1", createdAt = System.currentTimeMillis())
-            .copy(payload = JSONObject().put("body", "ciphertext").put("mesh_path", JSONArray().put("A")))
-        val forwarded = base.copyForForwarding("B", "A")
-        assertEquals(base.originAuthInput(), forwarded.originAuthInput())
     }
 
     @Test
@@ -211,7 +202,7 @@ class MeshRoutingTest {
             ttl = 8,
             packetId = "media-7",
             createdAt = 100L,
-        ).withOriginAuth("0".repeat(64))
+        )
         val forwarded = packet.copyForForwarding("B", "A")
         assertEquals("call_media", forwarded.type)
         assertEquals("A", forwarded.sourceNodeId)
@@ -220,7 +211,6 @@ class MeshRoutingTest {
         assertEquals(7, forwarded.ttl)
         assertEquals(1, forwarded.hopCount)
         assertEquals("ciphertext", forwarded.payload.optString("audio"))
-        assertEquals(packet.originAuthInput(), forwarded.originAuthInput())
     }
 
     @Test
@@ -321,7 +311,7 @@ class MeshRoutingTest {
             ttl = 8,
             packetId = "video-42",
             createdAt = 1000L,
-        ).withOriginAuth("0".repeat(64))
+        )
         assertEquals(MeshRouteResult.FORWARDED, router.route(packet))
         assertEquals(listOf("B", "C"), attempts.map { it.nextHopNodeId })
         assertEquals(listOf("video-42", "video-42"), attempts.map { it.packetId })
@@ -346,7 +336,7 @@ class MeshRoutingTest {
             override fun onRouteFailure(destinationNodeId: String, failedNextHopNodeId: String) { failures += failedNextHopNodeId }
         }
         val router = MeshRouter({ "A" }, table, peers, transport, maxHops = 8)
-        val packet = MeshPacket.new("A", "D", "call_media", JSONObject().put("call_id", "call-1").put("sequence", 1), 8, packetId = "audio-1", createdAt = 1000L).withOriginAuth("0".repeat(64))
+        val packet = MeshPacket.new("A", "D", "call_media", JSONObject().put("call_id", "call-1").put("sequence", 1), 8, packetId = "audio-1", createdAt = 1000L)
         assertEquals(MeshRouteResult.FORWARDED, router.route(packet))
         assertEquals(listOf("B"), failures)
         assertEquals(listOf("C"), attempts)
@@ -497,7 +487,7 @@ class MeshHopLimitTest {
             "A", "B", "direct_message", JSONObject(), 8,
             packetId = "packet-overflow", createdAt = System.currentTimeMillis(),
         ).copy(ttl = 8, hopCount = 1)
-        val json = unsigned.withOriginAuth(MeshPacketAuthentication.signOrigin(unsigned, "overflow-key")).toJson()
+        val json = unsigned.toJson()
         assertEquals(null, MeshPacket.fromJson(json))
     }
 
@@ -507,7 +497,7 @@ class MeshHopLimitTest {
             "A", "I", "direct_message", JSONObject(), 8,
             packetId = "packet-final-hop", createdAt = System.currentTimeMillis(),
         ).copy(ttl = 0, hopCount = 8)
-        val json = unsigned.withOriginAuth(MeshPacketAuthentication.signOrigin(unsigned, "final-hop-key")).toJson()
+        val json = unsigned.toJson()
         val parsed = MeshPacket.fromJson(json)
         assertEquals(0, parsed!!.ttl)
         assertEquals(8, parsed.hopCount)
@@ -541,7 +531,6 @@ class MeshCanonicalPacketTest {
             type = "direct_message",
             payload = JSONObject().put("body", "ciphertext"),
             createdAt = System.currentTimeMillis(),
-            originAuth = null,
             protocolVersion = MeshPacket.LEGACY_PROTOCOL_VERSION,
         )
         assertEquals(MeshPacket.LEGACY_PROTOCOL_VERSION, legacy.protocolVersion)
@@ -552,13 +541,7 @@ class MeshCanonicalPacketTest {
         val packet = MeshPacket.new(
             "A", "B", "direct_message", JSONObject().put("body", "ciphertext"), 8,
             packetId = "adapter-1", createdAt = System.currentTimeMillis(),
-        ).withOriginAuth(MeshPacketAuthentication.signOrigin(
-            MeshPacket.new(
-                "A", "B", "direct_message", JSONObject().put("body", "ciphertext"), 8,
-                packetId = "adapter-1", createdAt = System.currentTimeMillis(),
-            ),
-            "adapter-key",
-        ))
+        )
         val applicationPayload = packet.toApplicationPayload()
         assertEquals(null, MeshPacket.fromJson(applicationPayload))
     }
@@ -575,17 +558,6 @@ class MeshCanonicalPacketTest {
         assertEquals(packet.destinationNodeId, forwarded.destinationNodeId)
         assertEquals(MeshPacket.PROTOCOL_VERSION, forwarded.protocolVersion)
         assertEquals(listOf("A", "B"), forwarded.normalizedPath())
-    }
-
-    @Test
-    fun originAuthInputStaysStableWhenRelaysRewriteHopLocalFields() {
-        val packet = MeshPacket.new(
-            "A", "D", "direct_message", JSONObject().put("body", "ciphertext"), 8,
-            packetId = "auth-stable", createdAt = System.currentTimeMillis(),
-        )
-        val input = packet.originAuthInput()
-        val forwarded = packet.copyForForwarding("B", "A").copy(ttl = 7, hopCount = 1, nextHopNodeId = "C")
-        assertEquals(input, forwarded.originAuthInput())
     }
 
     @Test
@@ -611,7 +583,6 @@ class MeshCanonicalPacketTest {
             type = "direct_message",
             payload = JSONObject(),
             createdAt = System.currentTimeMillis(),
-            originAuth = null,
             protocolVersion = MeshPacket.LEGACY_PROTOCOL_VERSION,
         )
         assertEquals(MeshRouteResult.DROPPED, router.route(legacy))

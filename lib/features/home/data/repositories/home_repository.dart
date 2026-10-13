@@ -47,6 +47,13 @@ final class HomeRepository implements HomeRepositoryContract {
   Future<List<Device>> localDevices() => _store.localDevices();
 
   @override
+  Future<String?> userIdForDevice(String deviceId) async {
+    final profile = await _store.directoryProfileByDeviceId(deviceId);
+    final userId = profile?['user_id']?.toString().trim();
+    return (userId == null || userId.isEmpty) ? null : userId;
+  }
+
+  @override
   Future<List<LocalGroup>> localGroups() => _store.localGroups();
 
   @override

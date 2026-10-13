@@ -92,6 +92,7 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                   height: 220,
                   child: LocalLinkEmptyView(
                     icon: Icons.radar_rounded,
+                    lottieAsset: 'assets/animations/radar_pulse.json',
                     title: 'No nearby phones found',
                     message: 'Make sure the other phone is nearby and Wi-Fi Direct is available.',
                   ),

@@ -31,19 +31,19 @@ class WifiDirectTransportService implements PeerTransportContract {
     required bool connected,
     required bool groupOwner,
     String? groupOwnerAddress,
-    required Map<String, String> peerKeys,
+    required List<String> knownPeers,
   }) async {
     await _channel.invokeMethod('configure', {
       'device_id': deviceId,
       'connected': connected,
       'group_owner': groupOwner,
       'group_owner_address': groupOwnerAddress,
-      'peer_keys': peerKeys,
+      'known_peers': knownPeers,
     });
     _started = true;
   }
 
-  Future<void> updatePeerKeys(Map<String, String> peerKeys) => _channel.invokeMethod('updatePeerKeys', {'peer_keys': peerKeys});
+  Future<void> updateKnownPeers(List<String> peerIds) => _channel.invokeMethod('updateKnownPeers', {'known_peers': peerIds});
 
   Future<Map<String, dynamic>> topology() async {
     final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>('topology') ?? const {};

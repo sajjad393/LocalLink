@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/widgets/error_toast.dart';
+
 import 'package:locallink/features/account/bloc/identity_bloc.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
@@ -37,9 +39,9 @@ class _CryptoMigrationScreenState extends State<CryptoMigrationScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Rotate encryption identity?'),
+        title: const Text('Rotate identity key?'),
         content: const Text(
-          'A new device identity key will become active. New messages will use the new key. Previous key material is retained locally as historical decryption keys on this phone. Other devices will learn the new public key automatically.',
+          'A new account identity key will become active. The previous key is retained on this phone as local key history. Other devices will learn the new public key automatically.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
@@ -53,7 +55,7 @@ class _CryptoMigrationScreenState extends State<CryptoMigrationScreen> {
       await _controller.rotate();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Encryption identity rotated to version ${_controller.currentVersion}. Pending messages will be re-encrypted with the new key.')),
+        SnackBar(content: Text('Identity key rotated to version ${_controller.currentVersion}.')),
       );
     } catch (_) {
       // The controller exposes the user-facing error state.
@@ -72,7 +74,7 @@ class _CryptoMigrationScreenState extends State<CryptoMigrationScreen> {
       final error = state.errorMessage;
       return Scaffold(
       appBar: AppBar(
-        title: const Text('Encryption identity'),
+        title: const Text('Identity key'),
         actions: [IconButton(onPressed: _controller.isLoading || _controller.isRotating ? null : _controller.load, icon: const Icon(Icons.refresh))],
       ),
       body: _controller.isLoading
@@ -100,7 +102,7 @@ class _CryptoMigrationScreenState extends State<CryptoMigrationScreen> {
                         FilledButton.icon(
                           onPressed: _controller.isRotating ? null : _rotate,
                           icon: _controller.isRotating ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.autorenew),
-                          label: Text(_controller.isRotating ? 'Rotating…' : 'Rotate encryption key'),
+                          label: Text(_controller.isRotating ? 'Rotating…' : 'Rotate identity key'),
                         ),
                       ],
                     ),
@@ -118,7 +120,7 @@ class _CryptoMigrationScreenState extends State<CryptoMigrationScreen> {
                 const SizedBox(height: 18),
                 const Text('Identity key history', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
-                if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+                if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(friendlyErrorMessage(error), style: TextStyle(color: Theme.of(context).colorScheme.error))),
                 if (state.history.isEmpty)
                   const Card(child: ListTile(title: Text('No server-side key history yet.')))
                 else

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
+import 'package:locallink/core/widgets/gradient_pill_button.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
@@ -49,55 +51,105 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(LocalLinkSpacing.screen),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 84,
-                    height: 84,
-                    decoration: BoxDecoration(
-                      color: colors.primaryContainer,
-                      shape: BoxShape.circle,
+        bottom: false,
+        child: Column(
+          children: [
+            // Gradient hero with the animated chat-bubble motif.
+            Expanded(
+              flex: 5,
+              child: Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  gradient: LocalLinkBrand.heroGradient,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Lottie.asset(
+                      'assets/animations/chat_hero.json',
+                      width: 190,
+                      height: 168,
+                      repeat: true,
                     ),
-                    child: Icon(
-                      Icons.forum_rounded,
-                      size: 42,
-                      color: colors.onPrimaryContainer,
+                    Text(
+                      'LocalLink',
+                      style: textTheme.headlineLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: LocalLinkSpacing.xxl),
-                  Text(
-                    'LocalLink',
-                    style: Theme.of(context).textTheme.headlineLarge,
-                  ),
-                  const SizedBox(height: LocalLinkSpacing.xxl),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () => _openAuth(context, register: false),
-                      child: const Text('Log in'),
+                    const SizedBox(height: LocalLinkSpacing.xs),
+                    Text(
+                      'Messages that work anywhere',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withOpacity(0.85),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: LocalLinkSpacing.sm),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () => _openAuth(context, register: true),
-                      child: const Text('Create account'),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
+            // Rounded bottom sheet with the auth actions.
+            Expanded(
+              flex: 4,
+              child: Container(
+                width: double.infinity,
+                transform: Matrix4.translationValues(0, -22, 0),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(32),
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(
+                    LocalLinkSpacing.screen,
+                    36,
+                    LocalLinkSpacing.screen,
+                    24,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        GradientPillButton(
+                          onPressed: () => _openAuth(context, register: false),
+                          child: const Text('Log in'),
+                        ),
+                        const SizedBox(height: LocalLinkSpacing.md),
+                        OutlinedButton(
+                          onPressed: () => _openAuth(context, register: true),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 52),
+                            side: const BorderSide(
+                              color: LocalLinkBrand.gradientStart,
+                              width: 1.5,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                LocalLinkRadius.pill,
+                              ),
+                            ),
+                          ),
+                          child: const Text('Create account'),
+                        ),
+                        const SizedBox(height: LocalLinkSpacing.lg),
+                        Text(
+                          'Works online, offline and on your local network.',
+                          textAlign: TextAlign.center,
+                          style: textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

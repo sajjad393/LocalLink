@@ -29,3 +29,5 @@ Thumbs.db
 *.md
 !TODO.md
 *.txt
+# Shared docs (contracts, architecture notes) must be tracked
+!docs/*.md

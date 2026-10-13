@@ -1,6 +1,11 @@
 <resources>
+    <!-- Pre-Flutter window: brand hero gradient with the centered splash logo.
+         On Android 12+ the system splash attributes live in values-v31. -->
     <style name="LaunchTheme" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:windowSplashScreenBackground">#FFFFFF</item>
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
     <style name="NormalTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowActionModeOverlay">true</item>

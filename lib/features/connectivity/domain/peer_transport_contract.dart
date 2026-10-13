@@ -7,10 +7,10 @@ abstract interface class PeerTransportContract {
     required bool connected,
     required bool groupOwner,
     String? groupOwnerAddress,
-    required Map<String, String> peerKeys,
+    required List<String> knownPeers,
   });
 
-  Future<void> updatePeerKeys(Map<String, String> peerKeys);
+  Future<void> updateKnownPeers(List<String> peerIds);
   Future<Map<String, dynamic>> topology();
   Future<void> flushQueue();
   Future<void> resume();
