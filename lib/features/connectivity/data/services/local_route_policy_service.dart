@@ -54,8 +54,8 @@ final class LocalRoutePolicyService {
     }
     final topology = await _readTopology();
     _publishRoutes(topology);
-    final route = select(
-        topology: topology, peerId: normalized, transportStarted: true);
+    final route =
+        select(topology: topology, peerId: normalized, transportStarted: true);
     if (!route.isAvailable) _requestFallback(normalized);
     return route;
   }
@@ -139,7 +139,8 @@ final class LocalRoutePolicyService {
   void _requestFallback(String peerId) {
     final fallback = onRouteUnavailable;
     if (fallback == null || _disposed) return;
-    unawaited(fallback(peerId).catchError((Object error, StackTrace stackTrace) {
+    unawaited(
+        fallback(peerId).catchError((Object error, StackTrace stackTrace) {
       AppDiagnostics.instance.recordException(
         'route_policy',
         'fallback_request_failed',

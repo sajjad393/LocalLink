@@ -33,6 +33,7 @@ class _FakeConnectivityRepository implements ConnectivityRepositoryContract {
   Future<void> connectWifiDirect(String address) async {
     connectedAddress = address;
   }
+
   @override
   Future<List<DiscoveredServer>> discoverServers({Duration? timeout}) async =>
       const <DiscoveredServer>[];
@@ -64,6 +65,7 @@ class _FakeConnectivityRepository implements ConnectivityRepositoryContract {
   Future<void> startWifiDirectDiscovery() async {
     discoveryStarted = true;
   }
+
   @override
   Future<void> stopMonitoring() async {}
   @override

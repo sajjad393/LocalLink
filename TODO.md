@@ -97,6 +97,13 @@ reaches the recipient, and use the same route priority as messaging.
 Multiple nearby peers remain a diagnostic/manual-selection case until discovery
 can provide a verified LocalLink device ID.
 
+**Physical-device evidence (2026-10-07):** `RMX5303` and `Z2453` both ran the
+foreground transport service, automatically formed a Wi-Fi Direct group, and
+established LocalLink TCP connections on ports 8988 and 8989. A previous
+foreground-service startup crash on `Z2453` was fixed and the corrected debug
+APK was installed on both devices. Message acknowledgement and call validation
+remain pending.
+
 - When LAN cannot reach a target peer, start Wi-Fi Direct discovery automatically.
 - Establish the Wi-Fi Direct group/connection without normal-flow manual
   Find/Connect controls.

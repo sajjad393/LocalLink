@@ -49,8 +49,8 @@ final class WifiDirectFallbackService {
     final peers = raw is List
         ? raw
             .whereType<Map>()
-            .map((peer) => WifiDirectPeer.fromMap(
-                Map<dynamic, dynamic>.from(peer)))
+            .map((peer) =>
+                WifiDirectPeer.fromMap(Map<dynamic, dynamic>.from(peer)))
             .toList(growable: false)
         : const <WifiDirectPeer>[];
     unawaited(_connectSingleEligiblePeer(peers));

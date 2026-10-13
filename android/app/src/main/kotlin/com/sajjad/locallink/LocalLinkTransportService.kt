@@ -110,7 +110,16 @@ class LocalLinkTransportService : Service() {
         fun topology(): Map<String, Any?> = instance?.meshTopologySnapshot() ?: emptyMap()
         fun flushQueue(){instance?.flushMeshQueue()}
         fun clearStorage(){instance?.clearTransportStorage()}
-        private fun startCommand(context:Context,intent:Intent?){val i=intent?:Intent(context,LocalLinkTransportService::class.java);if(android.os.Build.VERSION.SDK_INT>=26)context.startForegroundService(i)else context.startService(i)}
+        private fun startCommand(context:Context,intent:Intent?){
+            val i=intent?:Intent(context,LocalLinkTransportService::class.java)
+            try {
+                if(android.os.Build.VERSION.SDK_INT>=26) context.startForegroundService(i) else context.startService(i)
+            } catch (_: android.app.ForegroundServiceStartNotAllowedException) {
+                listener?.onTransportEvent("state", mapOf("connected" to false, "transport_active" to false, "reason" to "foreground_service_not_allowed"))
+            } catch (_: SecurityException) {
+                listener?.onTransportEvent("state", mapOf("connected" to false, "transport_active" to false, "reason" to "foreground_service_denied"))
+            }
+        }
     }
 
     private val transportPort = MeshTransportPolicy.WIFI_DIRECT_PORT
