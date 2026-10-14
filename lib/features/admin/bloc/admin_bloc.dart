@@ -20,9 +20,16 @@ final class AdminState extends Equatable {
   final List<Map<String, dynamic>> adminSessions;
   final List<Map<String, dynamic>> transfers;
   final List<Map<String, dynamic>> recoveries;
+  final Map<String, dynamic>? analyticsData;
+  final String analyticsRange;
+  final Map<String, dynamic>? healthData;
+  final Map<String, dynamic>? securitySummaryData;
+  final Map<String, dynamic>? activityData;
+  final bool dashboardLoading;
   final bool loading;
   final bool sessionExpired;
   final String? error;
+  final String? dashboardError;
 
   const AdminState({
     this.summaryData,
@@ -40,9 +47,16 @@ final class AdminState extends Equatable {
     this.adminSessions = const [],
     this.transfers = const [],
     this.recoveries = const [],
+    this.analyticsData,
+    this.analyticsRange = '24h',
+    this.healthData,
+    this.securitySummaryData,
+    this.activityData,
+    this.dashboardLoading = false,
     this.loading = true,
     this.sessionExpired = false,
     this.error,
+    this.dashboardError,
   });
 
   AdminState copyWith({
@@ -61,10 +75,18 @@ final class AdminState extends Equatable {
     List<Map<String, dynamic>>? adminSessions,
     List<Map<String, dynamic>>? transfers,
     List<Map<String, dynamic>>? recoveries,
+    Map<String, dynamic>? analyticsData,
+    String? analyticsRange,
+    Map<String, dynamic>? healthData,
+    Map<String, dynamic>? securitySummaryData,
+    Map<String, dynamic>? activityData,
+    bool? dashboardLoading,
     bool? loading,
     bool? sessionExpired,
     String? error,
+    String? dashboardError,
     bool clearError = false,
+    bool clearDashboardError = false,
   }) {
     return AdminState(
       summaryData: summaryData ?? this.summaryData,
@@ -82,9 +104,17 @@ final class AdminState extends Equatable {
       adminSessions: adminSessions ?? this.adminSessions,
       transfers: transfers ?? this.transfers,
       recoveries: recoveries ?? this.recoveries,
+      analyticsData: analyticsData ?? this.analyticsData,
+      analyticsRange: analyticsRange ?? this.analyticsRange,
+      healthData: healthData ?? this.healthData,
+      securitySummaryData: securitySummaryData ?? this.securitySummaryData,
+      activityData: activityData ?? this.activityData,
+      dashboardLoading: dashboardLoading ?? this.dashboardLoading,
       loading: loading ?? this.loading,
       sessionExpired: sessionExpired ?? this.sessionExpired,
       error: clearError ? null : (error ?? this.error),
+      dashboardError:
+          clearDashboardError ? null : (dashboardError ?? this.dashboardError),
     );
   }
 
@@ -105,9 +135,16 @@ final class AdminState extends Equatable {
         adminSessions,
         transfers,
         recoveries,
+        analyticsData,
+        analyticsRange,
+        healthData,
+        securitySummaryData,
+        activityData,
+        dashboardLoading,
         loading,
         sessionExpired,
         error,
+        dashboardError,
       ];
 }
 
@@ -166,6 +203,59 @@ final class AdminBloc extends Cubit<AdminState> {
       emit(state.copyWith(loading: false, error: cleanBlocError(error)));
     }
   }
+
+  /// Loads what the redesigned dashboard needs. Kept separate from [load] so
+  /// the other admin modules are not slowed by dashboard queries.
+  Future<void> loadDashboard({String? range}) async {
+    final activeRange = range ?? state.analyticsRange;
+    emit(state.copyWith(
+      dashboardLoading: true,
+      analyticsRange: activeRange,
+      clearDashboardError: true,
+    ));
+    try {
+      // The dashboard is self-sufficient: metrics and the live network panel
+      // need summary/network, and settings carries the refresh interval.
+      final results = await Future.wait<dynamic>([
+        _safe(repository.analytics(range: activeRange)),
+        _safe(repository.health()),
+        _safe(repository.securitySummary()),
+        _safe(repository.activity(limit: 40)),
+        _safe(repository.summary()),
+        _safe(repository.network()),
+        _safe(repository.settings()),
+      ]);
+      final unauthorised = results
+          .whereType<_AdminFailure>()
+          .firstWhereOrNull((x) => x.unauthorized);
+      if (unauthorised != null) {
+        emit(state.copyWith(
+            dashboardLoading: false,
+            sessionExpired: true,
+            error: unauthorised.message));
+        return;
+      }
+      final failures = results.whereType<_AdminFailure>().toList();
+      emit(state.copyWith(
+        analyticsData: _mapOrNull(results[0]),
+        healthData: _mapOrNull(results[1]),
+        securitySummaryData: _mapOrNull(results[2]),
+        activityData: _mapOrNull(results[3]),
+        summaryData: _mapOrNull(results[4]),
+        networkData: _mapOrNull(results[5]),
+        settingsData: _mapOrNull(results[6]),
+        dashboardLoading: false,
+        dashboardError: failures.isEmpty ? null : failures.first.message,
+        clearDashboardError: failures.isEmpty,
+      ));
+    } catch (error) {
+      emit(state.copyWith(
+          dashboardLoading: false, dashboardError: cleanBlocError(error)));
+    }
+  }
+
+  /// Switches the analytics window and reloads the dashboard series.
+  Future<void> setAnalyticsRange(String range) => loadDashboard(range: range);
 
   Future<Map<String, dynamic>?> userNetworkPolicy(String id) => _mapAction(repository.userNetworkPolicy(id));
   Future<Map<String, dynamic>?> deviceNetworkPolicy(String id) => _mapAction(repository.deviceNetworkPolicy(id));

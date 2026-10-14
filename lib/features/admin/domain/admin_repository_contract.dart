@@ -2,6 +2,10 @@ abstract interface class AdminRepositoryContract {
   Future<void> logout();
   Future<Map<String, dynamic>> summary();
   Future<Map<String, dynamic>> runtimeDiagnostics();
+  Future<Map<String, dynamic>> analytics({String range});
+  Future<Map<String, dynamic>> health();
+  Future<Map<String, dynamic>> securitySummary();
+  Future<Map<String, dynamic>> activity({int limit});
   Future<Map<String, dynamic>> network();
   Future<Map<String, dynamic>> settings();
   Future<Map<String, dynamic>> privacyPolicy();

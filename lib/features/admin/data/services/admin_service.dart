@@ -93,6 +93,14 @@ class AdminService {
       _map(await _get('/api/v1/admin/summary'));
   Future<Map<String, dynamic>> runtimeDiagnostics() async =>
       _map(await _get('/api/v1/admin/runtime-diagnostics'));
+  Future<Map<String, dynamic>> analytics({String range = '24h'}) async =>
+      _map(await _get('/api/v1/admin/analytics', query: {'range': range}));
+  Future<Map<String, dynamic>> health() async =>
+      _map(await _get('/api/v1/admin/health'));
+  Future<Map<String, dynamic>> securitySummary() async =>
+      _map(await _get('/api/v1/admin/security-summary'));
+  Future<Map<String, dynamic>> activity({int limit = 40}) async =>
+      _map(await _get('/api/v1/admin/activity', query: {'limit': '$limit'}));
   Future<Map<String, dynamic>> network() async =>
       _map(await _get('/api/v1/admin/network'));
   Future<Map<String, dynamic>> settings() async =>

@@ -8,6 +8,10 @@ final class AdminRepository implements AdminRepositoryContract {
   @override Future<void> logout() => service.logout();
   @override Future<Map<String, dynamic>> summary() => service.summary();
   @override Future<Map<String, dynamic>> runtimeDiagnostics() => service.runtimeDiagnostics();
+  @override Future<Map<String, dynamic>> analytics({String range = '24h'}) => service.analytics(range: range);
+  @override Future<Map<String, dynamic>> health() => service.health();
+  @override Future<Map<String, dynamic>> securitySummary() => service.securitySummary();
+  @override Future<Map<String, dynamic>> activity({int limit = 40}) => service.activity(limit: limit);
   @override Future<Map<String, dynamic>> network() => service.network();
   @override Future<Map<String, dynamic>> settings() => service.settings();
   @override Future<Map<String, dynamic>> privacyPolicy() => service.privacyPolicy();
