@@ -51,10 +51,20 @@ class _LocalLinkSplashScreenState extends State<LocalLinkSplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(gradient: LocalLinkBrand.heroGradient),
-      child: Center(
-        child: Column(
+    // The splash can be mounted before a Scaffold/Material ancestor exists.
+    // Without Material, Text falls back to the engine's debug style which
+    // paints the infamous yellow double underline. Own the Material here.
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: const BoxDecoration(gradient: LocalLinkBrand.heroGradient),
+        child: DefaultTextStyle(
+          style: const TextStyle(
+            color: Colors.white,
+            decoration: TextDecoration.none,
+          ),
+          child: Center(
+            child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             FadeTransition(
@@ -106,7 +116,9 @@ class _LocalLinkSplashScreenState extends State<LocalLinkSplashScreen>
                 ),
               ),
             ),
-          ],
+            ],
+          ),
+        ),
         ),
       ),
     );
