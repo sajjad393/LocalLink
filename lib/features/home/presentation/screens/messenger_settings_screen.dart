@@ -85,165 +85,261 @@ class MessengerSettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final displayName = store.deviceName ?? 'LocalLink user';
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
-          Card(
-            child: ListTile(
-              contentPadding: const EdgeInsets.all(16),
-              leading: AccountAvatar(name: displayName, radius: 28),
-              title: Text(displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: const Text('Account and profile'),
-              trailing: const Icon(Icons.chevron_right),
+          // Profile banner — the one emphasized surface on this screen.
+          _group(
+            context,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
               onTap: () => _openAccount(context),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('Account', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          _setting(
-            context,
-            icon: Icons.person_outline,
-            title: 'Account & profile',
-            subtitle: 'Profile, trusted devices, transfer and recovery',
-            onTap: () => _openAccount(context),
-          ),
-          _setting(
-            context,
-            icon: Icons.lock_outline,
-            title: 'Privacy & security',
-            subtitle: 'Identity protection and trusted communication',
-            onTap: () => _openAccount(context),
-          ),
-          const SizedBox(height: 12),
-          Text('Connectivity', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          _setting(
-            context,
-            icon: Icons.tune_outlined,
-            title: 'Connection preference',
-            subtitle: store.internetOnly ? 'Internet / server only' : 'Automatic local, Wi-Fi Direct and mesh paths',
-            onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => ConnectivityPreferencesScreen(store: store))),
-          ),
-          _setting(
-            context,
-            icon: Icons.wifi_tethering,
-            title: 'Nearby & Wi-Fi Direct',
-            subtitle: 'Discover nearby LocalLink phones',
-            onTap: () => Navigator.push<void>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => WifiDirectScreen(controller: connectivityController),
-              ),
-            ),
-          ),
-          _setting(
-            context,
-            icon: Icons.devices_outlined,
-            title: 'Trusted devices',
-            subtitle: 'Review phones connected to your account',
-            onTap: () => Navigator.push<void>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => DevicesScreen(
-                  accountRepository: accountRepository,
-                  identityRepository: identityRepository,
-                  api: api,
-                  store: store,
-                  crypto: crypto,
-                  restoreService: restoreService,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text('Notifications', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          _setting(
-            context,
-            icon: Icons.notifications_none,
-            title: 'Notifications',
-            subtitle: 'Messages, groups and incoming calls',
-            onTap: () => Navigator.push<void>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => NotificationSettingsScreen(notifications: notifications),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text('Appearance', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          _setting(
-            context,
-            icon: Icons.palette_outlined,
-            title: 'Appearance',
-            subtitle: _themeLabel(themeMode),
-            onTap: () => Navigator.push<void>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AppearanceSettingsScreen(
-                  themeMode: themeMode,
-                  onThemeModeChanged: onThemeModeChanged,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text('Advanced', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          _setting(
-            context,
-            icon: Icons.admin_panel_settings_outlined,
-            title: 'Admin panel',
-            subtitle: 'Administrative tools for authorized accounts',
-            onTap: () => Navigator.push<void>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AdminLoginScreen(
-                  api: api,
-                  viewMode: viewMode,
-                  adminCapability: adminCapability,
-                ),
-              ),
-            ),
-          ),
-          _setting(
-            context,
-            icon: Icons.restart_alt,
-            title: 'Reset setup',
-            subtitle: 'Clear this phone’s local setup and start again',
-            destructive: true,
-            onTap: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Reset setup?'),
-                  content: const Text('This returns the app to its setup state. Existing local data may be removed.'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                    FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Reset')),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    AccountAvatar(name: displayName, radius: 28),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Account and profile',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: colors.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right,
+                        color: colors.onSurfaceVariant),
                   ],
                 ),
-              );
-              if (confirmed == true && context.mounted) await onReset();
-            },
+              ),
+            ),
           ),
+          const SizedBox(height: 24),
+          _sectionLabel(context, 'Account'),
+          _group(context, children: [
+            _row(
+              context,
+              icon: Icons.person_outline,
+              title: 'Account & profile',
+              subtitle: 'Profile, trusted devices, transfer and recovery',
+              onTap: () => _openAccount(context),
+            ),
+            _row(
+              context,
+              icon: Icons.lock_outline,
+              title: 'Privacy & security',
+              subtitle: 'Identity protection and trusted communication',
+              onTap: () => _openAccount(context),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          _sectionLabel(context, 'Connectivity'),
+          _group(context, children: [
+            _row(
+              context,
+              icon: Icons.tune_outlined,
+              title: 'Connection preference',
+              subtitle: store.internetOnly
+                  ? 'Internet / server only'
+                  : 'Automatic local, Wi-Fi Direct and mesh paths',
+              onTap: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ConnectivityPreferencesScreen(store: store),
+                ),
+              ),
+            ),
+            _row(
+              context,
+              icon: Icons.wifi_tethering,
+              title: 'Nearby & Wi-Fi Direct',
+              subtitle: 'Discover nearby LocalLink phones',
+              onTap: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      WifiDirectScreen(controller: connectivityController),
+                ),
+              ),
+            ),
+            _row(
+              context,
+              icon: Icons.devices_outlined,
+              title: 'Trusted devices',
+              subtitle: 'Review phones connected to your account',
+              onTap: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DevicesScreen(
+                    accountRepository: accountRepository,
+                    identityRepository: identityRepository,
+                    api: api,
+                    store: store,
+                    crypto: crypto,
+                    restoreService: restoreService,
+                  ),
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          _sectionLabel(context, 'Notifications'),
+          _group(context, children: [
+            _row(
+              context,
+              icon: Icons.notifications_none,
+              title: 'Notifications',
+              subtitle: 'Messages, groups and incoming calls',
+              onTap: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => NotificationSettingsScreen(
+                      notifications: notifications),
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          _sectionLabel(context, 'Appearance'),
+          _group(context, children: [
+            _row(
+              context,
+              icon: Icons.palette_outlined,
+              title: 'Appearance',
+              subtitle: _themeLabel(themeMode),
+              onTap: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AppearanceSettingsScreen(
+                    themeMode: themeMode,
+                    onThemeModeChanged: onThemeModeChanged,
+                  ),
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          _sectionLabel(context, 'Advanced'),
+          _group(context, children: [
+            _row(
+              context,
+              icon: Icons.admin_panel_settings_outlined,
+              title: 'Admin panel',
+              subtitle: 'Administrative tools for authorized accounts',
+              onTap: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AdminLoginScreen(
+                    api: api,
+                    viewMode: viewMode,
+                    adminCapability: adminCapability,
+                  ),
+                ),
+              ),
+            ),
+            _row(
+              context,
+              icon: Icons.restart_alt,
+              title: 'Reset setup',
+              subtitle: 'Clear this phone’s local setup and start again',
+              destructive: true,
+              onTap: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Reset setup?'),
+                    content: const Text(
+                        'This returns the app to its setup state. Existing local data may be removed.'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Cancel')),
+                      FilledButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('Reset')),
+                    ],
+                  ),
+                );
+                if (confirmed == true && context.mounted) await onReset();
+              },
+            ),
+          ]),
         ],
       ),
     );
   }
 
-
   String _themeLabel(ThemeMode mode) => switch (mode) {
-    ThemeMode.system => 'System default',
-    ThemeMode.light => 'Light theme',
-    ThemeMode.dark => 'Dark theme',
-  };
+        ThemeMode.system => 'System default',
+        ThemeMode.light => 'Light theme',
+        ThemeMode.dark => 'Dark theme',
+      };
 
-  Widget _setting(
+  Widget _sectionLabel(BuildContext context, String label) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+      child: Text(
+        label.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              letterSpacing: 1.1,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+      ),
+    );
+  }
+
+  /// Rounded grouped container — the shared visual language for settings and
+  /// conversation groups (subtle surface, 20 radius, hairline border).
+  Widget _group(
+    BuildContext context, {
+    Widget? child,
+    List<Widget>? children,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    final inner = children ?? <Widget>[?child];
+    final separated = <Widget>[];
+    for (var i = 0; i < inner.length; i++) {
+      if (i > 0) {
+        separated.add(
+          Divider(
+            height: 1,
+            indent: 66,
+            color: colors.outlineVariant.withValues(alpha: 0.4),
+          ),
+        );
+      }
+      separated.add(inner[i]);
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainer.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(20),
+        border:
+            Border.all(color: colors.outlineVariant.withValues(alpha: 0.35)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: separated),
+    );
+  }
+
+  Widget _row(
     BuildContext context, {
     required IconData icon,
     required String title,
@@ -252,20 +348,29 @@ class MessengerSettingsScreen extends StatelessWidget {
     bool destructive = false,
   }) {
     final colors = Theme.of(context).colorScheme;
-    final color = destructive ? colors.error : colors.primary;
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: destructive ? colors.errorContainer : colors.primaryContainer,
-          foregroundColor: destructive ? colors.onErrorContainer : colors.onPrimaryContainer,
-          child: Icon(icon),
-        ),
-        title: Text(title, style: Theme.of(context).textTheme.titleSmall),
-        subtitle: Text(subtitle),
-        trailing: Icon(Icons.chevron_right, color: color),
-        onTap: onTap,
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: destructive
+            ? colors.errorContainer.withValues(alpha: 0.6)
+            : colors.primaryContainer.withValues(alpha: 0.6),
+        foregroundColor:
+            destructive ? colors.onErrorContainer : colors.onPrimaryContainer,
+        child: Icon(icon, size: 20),
       ),
+      title: Text(title, style: Theme.of(context).textTheme.titleSmall),
+      subtitle: Text(
+        subtitle,
+        style: Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: colors.onSurfaceVariant),
+      ),
+      trailing: Icon(
+        Icons.chevron_right,
+        color: destructive ? colors.error : colors.onSurfaceVariant,
+        size: 20,
+      ),
+      onTap: onTap,
     );
   }
 }
-

@@ -264,9 +264,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           'Find a nearby person or create a group to start chatting.',
                     ),
                   )
-                else ...[
-                  ...state.groups.map(
-                    (group) => MessengerConversationTile(
+                else
+                  _conversationGroup(context, <Widget>[
+                    ...state.groups.map(
+                      (group) => MessengerConversationTile(
                       title: group.name,
                       subtitle: 'Group conversation',
                       group: group,
@@ -285,22 +286,47 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-                  ...state.devices.map(
-                    (device) => MessengerConversationTile(
-                      title: state.deviceLabels[device.id] ??
-                          (device.name.isEmpty ? 'LocalLink user' : device.name),
-                      subtitle: _deviceSubtitle(device),
-                      device: device,
-                      onTap: () => _openChat(device),
-                      onCall: () => _call(device),
+                    ...state.devices.map(
+                      (device) => MessengerConversationTile(
+                        title: state.deviceLabels[device.id] ??
+                            (device.name.isEmpty ? 'LocalLink user' : device.name),
+                        subtitle: _deviceSubtitle(device),
+                        device: device,
+                        onTap: () => _openChat(device),
+                        onCall: () => _call(device),
+                      ),
                     ),
-                  ),
-                ],
+                  ]),
               ],
             ),
           );
         },
       ),
+    );
+  }
+
+  /// Groups conversation rows into the same rounded-container language the
+  /// settings screen uses (subtle surface, 20 radius, hairline separators).
+  Widget _conversationGroup(BuildContext context, List<Widget> tiles) {
+    final colors = Theme.of(context).colorScheme;
+    final separated = <Widget>[];
+    for (var i = 0; i < tiles.length; i++) {
+      if (i > 0) {
+        separated.add(
+          Divider(height: 1, indent: 72, color: colors.outlineVariant.withValues(alpha: 0.4)),
+        );
+      }
+      separated.add(tiles[i]);
+    }
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainer.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.35)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: separated),
     );
   }
 
