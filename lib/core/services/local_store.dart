@@ -1047,6 +1047,12 @@ class LocalStore {
     );
   }
 
+  /// Rewrites a queued message's timestamp (used to heal rows rejected by the
+  /// server's created_at/future-skew gate so the next retry is accepted).
+  Future<void> updateOutboxCreatedAt(String id, String createdAt) async =>
+      _db.update('outbox', {'created_at': createdAt},
+          where: 'id=?', whereArgs: [id]);
+
   Future<void> updateOutboxStatus(String id, String status) async {
     final rows = await _db.query('outbox',
         columns: ['status'], where: 'id=?', whereArgs: [id], limit: 1);

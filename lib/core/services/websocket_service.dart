@@ -16,6 +16,11 @@ class WebSocketService {
   StreamSubscription? _subscription;
 
   final _messages = StreamController<Map<String, dynamic>>.broadcast();
+
+  /// Server clock offset learned from the `ready` frame (serverNow - localNow).
+  /// Null until the first successful handshake; consumers must tolerate null.
+  Duration? serverClockOffset;
+
   final _state = StreamController<bool>.broadcast();
 
   Timer? _reconnectTimer;
@@ -279,6 +284,15 @@ class WebSocketService {
       );
 
       if (type == 'ready') {
+        // The server stamps `ready` with its own clock. A fast device clock
+        // (skews of minutes are common on manual-time phones) otherwise gets
+        // every message rejected by the server's future-skew gate.
+        final serverNow =
+            DateTime.tryParse(value['created_at']?.toString() ?? '');
+        if (serverNow != null) {
+          serverClockOffset =
+              serverNow.toUtc().difference(DateTime.now().toUtc());
+        }
         _markReady(generation);
         return;
       }

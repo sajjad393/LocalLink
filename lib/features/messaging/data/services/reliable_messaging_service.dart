@@ -1013,6 +1013,11 @@ class ReliableMessagingService {
             Duration(seconds: retryAfter.clamp(1, 300)),
           );
         }
+        if (errorText.contains('created_at') && errorText.contains('required')) {
+          // The row's timestamp failed the server's parse/skew gate. Heal it
+          // to a server-clock-aligned now and let the retry loop deliver it.
+          await store.updateOutboxCreatedAt(id, _rfc3339Utc(null));
+        }
         final permanent = errorCode == 'RECIPIENT_NOT_FOUND' ||
             errorCode == 'SENDER_ID_MISMATCH' ||
             errorText.contains('timestamp is invalid') ||
@@ -1993,10 +1998,27 @@ class ReliableMessagingService {
   /// Outbox rows created by older builds may hold local-format ISO strings
   /// (no Z) which the Go server cannot parse -> "valid created_at is
   /// required" and permanent re-queue loops. Normalize at the send site.
+  /// Always emit a server-acceptable timestamp: parseable, UTC, and never
+  /// ahead of the SERVER clock by more than the skew gate allows. Device
+  /// clocks on manual-time phones can run minutes fast; the offset learned
+  /// from the websocket `ready` frame keeps us inside the 10-minute window
+  /// (with a built-in 2-minute margin).
   String _rfc3339Utc(Object? raw) {
     final parsed = DateTime.tryParse(raw?.toString() ?? '');
-    final value = parsed ?? DateTime.now();
-    return value.toUtc().toIso8601String();
+    var value = (parsed ?? DateTime.now()).toUtc();
+    final offset = socket.serverClockOffset;
+    if (offset != null) {
+      final serverNow = DateTime.now().toUtc().add(offset);
+      final ceiling = serverNow.add(const Duration(minutes: 8));
+      if (value.isAfter(ceiling)) {
+        AppLogger.warning(
+          'MESSAGE_CLOCK_CLAMPED',
+          detail: 'drift=${value.difference(serverNow).inSeconds}s',
+        );
+        value = serverNow;
+      }
+    }
+    return value.toIso8601String();
   }
 
   String _newId() {
