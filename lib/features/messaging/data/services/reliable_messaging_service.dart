@@ -618,12 +618,24 @@ class ReliableMessagingService {
     }
   }
 
+  static const _flushWatchdog = Duration(seconds: 60);
+  DateTime? _flushStartedAt;
+
   Future<void> flush() async {
     if (_flushing) {
-      AppLogger.info(
-        'MESSAGE_FLUSH_SKIPPED_ALREADY_RUNNING',
-      );
-      return;
+      // Watchdog: a hung upload/send must not block the queue forever —
+      // when the previous flush clearly timed out, force-reset the guard.
+      final started = _flushStartedAt;
+      if (started != null &&
+          DateTime.now().difference(started) > _flushWatchdog) {
+        AppLogger.warning('MESSAGE_FLUSH_WATCHDOG_RESET');
+        _flushing = false;
+      } else {
+        AppLogger.info(
+          'MESSAGE_FLUSH_SKIPPED_ALREADY_RUNNING',
+        );
+        return;
+      }
     }
 
     if (!socket.isConnected && !directTransport.isStarted) {
@@ -634,6 +646,7 @@ class ReliableMessagingService {
     }
 
     _flushing = true;
+    _flushStartedAt = DateTime.now();
     final messageCooldown = _messageRateLimitedUntil;
     if (messageCooldown != null && DateTime.now().toUtc().isBefore(messageCooldown)) {
       _flushing = false;
@@ -847,14 +860,14 @@ class ReliableMessagingService {
                   0,
             );
 
-            final uploaded = await files.uploadForMessage(
+            var uploaded = await files.uploadForMessage(
               picked,
               recipientId: recipientId,
               messageId: id,
               createdAt: item['created_at']?.toString() ?? '',
               clientFileId: attachment['id']?.toString() ?? '',
               operationId: id,
-            );
+            ).timeout(const Duration(seconds: 45));
 
             await store.setPendingRemoteFile(
               attachment['id'].toString(),
