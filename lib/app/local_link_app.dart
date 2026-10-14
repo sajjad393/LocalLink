@@ -209,15 +209,24 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   }
 
   Future<void> _finishOnboarding() async {
-    await _deps.initializeConfiguredServices();
-    _listenForIncomingCalls();
-    _listenForNotificationOpens();
-    await _configuredNow();
+    // Navigate to the dashboard FIRST and unconditionally: initialization of
+    // configured services (API, mesh, transfers) may throw when the server is
+    // briefly unreachable — the home screen already degrades gracefully with
+    // its sync notice, so a failed init must never strand the user back on
+    // the register/login screen with a valid session.
     if (!mounted) return;
     _navigatorKey.currentState?.pushNamedAndRemoveUntil(
       AppRoutes.home,
       (route) => false,
     );
+    try {
+      await _deps.initializeConfiguredServices();
+    } catch (_) {
+      // Home screen surfaces its own offline/sync state; onboarding completes.
+    }
+    _listenForIncomingCalls();
+    _listenForNotificationOpens();
+    await _configuredNow();
   }
 
   Future<void> _resetAccount() async {
