@@ -18,6 +18,16 @@ import 'package:locallink/core/security/sensitive_file_protection_service.dart';
 class FileTransferService {
   static const _channel = MethodChannel('locallink/files');
   final LocalStore store;
+
+  /// HTTP client with a bounded TCP connect phase. The surrounding
+  /// `.timeout()` calls bound the whole transfer, but a dead or unreachable
+  /// server can otherwise stall that entire budget inside OS-level connect
+  /// retries — which made attachment taps look frozen when the server is off.
+  /// 8 s connects fail fast; transfer throughput is unaffected.
+  http.Client _newHttpClient() {
+    final inner = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    return http.IOClient(inner);
+  }
   final ConnectivityRepositoryContract? connectivity;
   final Map<String, http.Client> _activeClients = {};
   final Set<String> _cancelledTransfers = {};
@@ -88,7 +98,7 @@ class FileTransferService {
       onDone: streamed.sink.close,
       cancelOnError: true,
     );
-    final client = http.Client();
+    final client = _newHttpClient();
     if (transferId != null && transferId.isNotEmpty)
       _activeClients[transferId] = client;
     try {
@@ -200,7 +210,7 @@ class FileTransferService {
         SecurityPolicy.resolveLocalResource(relative, baseAddress: baseUrl);
     final request = http.Request('GET', uri);
     request.headers.addAll(_headers());
-    final client = http.Client();
+    final client = _newHttpClient();
     if (transferId != null && transferId.isNotEmpty)
       _activeClients[transferId] = client;
     try {
@@ -310,7 +320,7 @@ class FileTransferService {
     final request = http.Request('GET', uri);
     request.headers.addAll(_headers());
     if (offset > 0) request.headers['Range'] = 'bytes=$offset-';
-    final client = http.Client();
+    final client = _newHttpClient();
     if (transferId != null && transferId.isNotEmpty)
       _activeClients[transferId] = client;
     try {
