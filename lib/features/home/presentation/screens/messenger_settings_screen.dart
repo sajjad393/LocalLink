@@ -313,7 +313,7 @@ class MessengerSettingsScreen extends StatelessWidget {
     List<Widget>? children,
   }) {
     final colors = Theme.of(context).colorScheme;
-    final inner = children ?? <Widget>[?child];
+    final inner = children ?? (child == null ? const <Widget>[] : <Widget>[child]);
     final separated = <Widget>[];
     for (var i = 0; i < inner.length; i++) {
       if (i > 0) {
