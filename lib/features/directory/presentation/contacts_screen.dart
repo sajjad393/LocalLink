@@ -123,6 +123,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'add_contact_fab',
         tooltip: 'Add contact',
         onPressed: _addContact,
         backgroundColor: Colors.transparent,

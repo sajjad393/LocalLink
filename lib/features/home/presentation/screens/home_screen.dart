@@ -222,6 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'home_fab',
         tooltip: 'New conversation',
         onPressed: () => setState(() => _index = 2),
         child: const Icon(Icons.chat_rounded),
