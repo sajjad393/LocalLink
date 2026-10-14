@@ -25,6 +25,9 @@ final class MessagingRepository implements MessagingRepositoryContract {
   Future<List<Message>> history(String otherDeviceId) => service.history(otherDeviceId);
 
   @override
+  Future<Set<String>> chatPeerIds() => service.store.chatPeerIds();
+
+  @override
   Stream<MessageReaction> get reactionIncoming => service.reactionIncoming;
 
   @override

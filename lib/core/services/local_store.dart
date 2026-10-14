@@ -1364,6 +1364,29 @@ class LocalStore {
         .toList();
   }
 
+  /// Ids of devices this phone has exchanged at least one locally stored
+  /// message with. Drives the Chats tab: "Conversations" lists only peers
+  /// with an actual thread, never the whole server directory.
+  Future<Set<String>> chatPeerIds() async {
+    final self = _deviceId;
+    if (self == null) return const <String>{};
+    final rows = await _db.query(
+      'messages',
+      columns: const ['sender_id', 'recipient_id'],
+      where: '(sender_id=? OR recipient_id=?)',
+      whereArgs: [self, self],
+      distinct: true,
+    );
+    final peers = <String>{};
+    for (final row in rows) {
+      final sender = row['sender_id']?.toString() ?? '';
+      final recipient = row['recipient_id']?.toString() ?? '';
+      if (sender.isNotEmpty && sender != self) peers.add(sender);
+      if (recipient.isNotEmpty && recipient != self) peers.add(recipient);
+    }
+    return peers;
+  }
+
   Future<List<Message>> messagesFor(String otherId) async {
     final self = _deviceId;
     if (self == null) return [];

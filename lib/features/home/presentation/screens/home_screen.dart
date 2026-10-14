@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
@@ -108,15 +110,38 @@ class _HomeScreenState extends State<HomeScreen> {
   late ThemeMode _themeMode;
   DateTime? _lastBackPressAt;
 
+  /// Devices this phone actually has a message thread with. The Chats tab is
+  /// a messenger inbox, not a global server directory: only peers from this
+  /// set appear under Conversations.
+  Set<String> _chatPeerIds = const {};
+  StreamSubscription<dynamic>? _incomingSub;
+
+  Future<void> _loadChatPeerIds() async {
+    final ids = await widget.messagingRepository.chatPeerIds();
+    if (mounted) setState(() => _chatPeerIds = ids);
+  }
+
   @override
   void initState() {
     super.initState();
     _themeMode = widget.themeMode;
     _controller.start();
+    _loadChatPeerIds();
+    // First contact from a new peer arrives live: the Chats tab picks them up.
+    _incomingSub = widget.messagingRepository.incoming
+        .listen((_) => _loadChatPeerIds());
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([
+      _controller.load(userInitiated: true),
+      _loadChatPeerIds(),
+    ]);
   }
 
   @override
   void dispose() {
+    _incomingSub?.cancel();
     _controller.close();
     super.dispose();
   }
@@ -146,6 +171,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+    // Returning from a (possibly brand-new) thread: refresh so the peer
+    // immediately earns its row in Conversations.
+    await _loadChatPeerIds();
+    await _controller.load(userInitiated: true);
   }
 
   Future<void> _call(Device device) async {
@@ -235,7 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 message: 'Loading your conversations…');
           }
           return RefreshIndicator(
-            onRefresh: () => _controller.load(userInitiated: true),
+            onRefresh: _refresh,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(bottom: 96),
@@ -253,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? () => setState(() => _index = 2)
                       : null,
                 ),
-                if (state.devices.isEmpty && state.groups.isEmpty)
+                if (_visibleDevices(state).isEmpty && state.groups.isEmpty)
                   const SizedBox(
                     height: 420,
                     child: LocalLinkEmptyView(
@@ -286,7 +315,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-                    ...state.devices.map(
+                    ..._visibleDevices(state).map(
                       (device) => MessengerConversationTile(
                         title: state.deviceLabels[device.id] ??
                             (device.name.isEmpty ? 'LocalLink user' : device.name),
@@ -304,6 +333,12 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  /// Conversations = only devices with an existing message thread. Everyone
+  /// else stays reachable from the People tab (directory search, nearby).
+  List<Device> _visibleDevices(HomeState state) => state.devices
+      .where((device) => _chatPeerIds.contains(device.id))
+      .toList();
 
   /// Groups conversation rows into the same rounded-container language the
   /// settings screen uses (subtle surface, 20 radius, hairline separators).
