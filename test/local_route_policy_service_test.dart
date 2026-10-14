@@ -1,6 +1,61 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/features/connectivity/domain/local_route.dart';
+import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
+
+class _FakePeerTransport implements PeerTransportContract {
+  final StreamController<Map<String, dynamic>> _events =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Map<String, dynamic> topologyData = const <String, dynamic>{};
+  bool _started = true;
+
+  @override
+  Stream<Map<String, dynamic>> get events => _events.stream;
+  @override
+  bool get isStarted => _started;
+  @override
+  Future<Map<String, dynamic>> topology() async => topologyData;
+
+  void emit(Map<String, dynamic> event) => _events.add(event);
+
+  @override
+  Future<void> configure(
+      {required String deviceId,
+      required bool connected,
+      required bool groupOwner,
+      String? groupOwnerAddress,
+      required List<String> knownPeers}) async {}
+  @override
+  Future<void> updateKnownPeers(List<String> peerIds) async {}
+  @override
+  Future<void> flushQueue() async {}
+  @override
+  Future<void> resume() async {}
+  @override
+  Future<void> clearStorage() async {}
+  @override
+  Future<void> broadcast(Map<String, dynamic> payload) async {}
+  @override
+  Future<void> send(
+      {required String recipientId,
+      required Map<String, dynamic> payload}) async {}
+  @override
+  Future<void> sendFile(
+      {required String recipientId,
+      required String filePath,
+      required String fileId,
+      required String messageId,
+      required String fileName,
+      required String contentType}) async {}
+  @override
+  Future<void> cancelFile(String fileId) async {}
+  @override
+  Future<void> stop() async {}
+  @override
+  Future<void> dispose() async {}
+}
 
 void main() {
   final now = DateTime(2026).millisecondsSinceEpoch;
@@ -10,6 +65,41 @@ void main() {
           peerId: peerId,
           transportStarted: true,
           now: DateTime.fromMillisecondsSinceEpoch(now));
+
+  test('notifies onRouteAvailable once a waiting peer becomes routable',
+      () async {
+    final transport = _FakePeerTransport();
+    final notified = <String>[];
+    final service = LocalRoutePolicyService(transport,
+        onRouteAvailable: notified.add);
+    await service.start();
+    expect(notified, isEmpty);
+
+    // Route appears over LAN: the fallback waiting on onRouteUnavailable must
+    // be told to stop (mirrors WifiDirectFallbackService.cancelWaiting).
+    transport.topologyData = {
+      'peers': [
+        {
+          'node_id': 'peer-b',
+          'direct': true,
+          'authenticated': true,
+          'state': 'AVAILABLE',
+          'active_transport': 'lan',
+          'available_transports': ['lan'],
+          'last_seen_at': DateTime.now().millisecondsSinceEpoch,
+        }
+      ]
+    };
+    transport.emit(transport.topologyData);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(notified, contains('peer-b'));
+    final calls = notified.length;
+    transport.emit(transport.topologyData);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(notified.length, calls,
+        reason: 're-publication of the same route is not re-notified');
+    await service.dispose();
+  });
 
   test('selects LAN when authenticated peer has both direct links', () {
     final route = resolve({

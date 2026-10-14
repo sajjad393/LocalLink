@@ -108,7 +108,9 @@ class MeshTtlTest {
         )
         assertEquals(null, MeshPacket.fromJson(packet.toJson().put("ttl", 8).put("hop_count", 1)))
         assertEquals(null, MeshPacket.fromJson(packet.toJson().put("ttl", 0).put("hop_count", 0)))
-        assertEquals(null, MeshPacket.fromJson(packet.toJson().put("ttl", 7).put("hop_count", 1)
+        // ttl=7/hop=1 with path=[A] is the legitimate first-hop shape; the
+        // inconsistent variant is a hop count the path length cannot match.
+        assertEquals(null, MeshPacket.fromJson(packet.toJson().put("ttl", 7).put("hop_count", 2)
             .put("payload", JSONObject().put(MeshPacket.MESH_PATH_KEY, org.json.JSONArray().put("A")))))
     }
 }

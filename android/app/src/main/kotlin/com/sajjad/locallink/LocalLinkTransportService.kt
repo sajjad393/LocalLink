@@ -730,10 +730,10 @@ class LocalLinkTransportService : Service() {
             transportPeers.remove(peerId)
             return null
         }
-        val preferred = links.values.minWithOrNull(
-            compareByDescending<PeerConnection> { MeshTransportPolicy.transportPriority(it.transportName) }
-                .thenByDescending { it.lastSeenAt }
-                .thenBy { it.transportName }
+        // Selection ordering lives in MeshLinkSelectionPolicy (unit-tested):
+        // LAN priority, then recency, then name — deterministic, no flap.
+        val preferred = MeshLinkSelectionPolicy.selectActive(
+            links.values, { it.transportName }, { it.lastSeenAt },
         )
         if (preferred != null) transportPeers[peerId] = preferred
         return preferred

@@ -9,12 +9,16 @@ import 'package:locallink/features/connectivity/domain/peer_transport_contract.d
 /// The native transport owns physical links, while this service makes the
 /// application-visible policy explicit: LAN, then Wi-Fi Direct, then mesh.
 final class LocalRoutePolicyService {
-  LocalRoutePolicyService(this.transport, {this.onRouteUnavailable});
+  LocalRoutePolicyService(this.transport,
+      {this.onRouteUnavailable, this.onRouteAvailable});
 
   static const freshnessWindow = Duration(seconds: 90);
 
   final PeerTransportContract transport;
   final Future<void> Function(String peerId)? onRouteUnavailable;
+  /// Invoked when a route to a peer becomes (or already is) available, so
+  /// fallback machinery registered through [onRouteUnavailable] can stop.
+  final void Function(String peerId)? onRouteAvailable;
   final StreamController<LocalRouteResult> _routeChanges =
       StreamController<LocalRouteResult>.broadcast();
   final Map<String, LocalRouteResult> _routes = {};
@@ -176,6 +180,7 @@ final class LocalRoutePolicyService {
           transportStarted: transport.isStarted);
       if (_routes[peerId] == next) continue;
       _routes[peerId] = next;
+      if (next.isAvailable) onRouteAvailable?.call(peerId);
       _routeChanges.add(next);
       AppDiagnostics.instance
           .record('route_policy', 'route_selected', data: <String, Object?>{

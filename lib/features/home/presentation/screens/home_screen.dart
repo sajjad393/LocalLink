@@ -21,6 +21,7 @@ import 'package:locallink/features/calls/data/services/call_preflight_exception.
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/calls/presentation/screens/calls_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
+import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/contacts_screen.dart';
@@ -85,9 +86,14 @@ class HomeScreen extends StatefulWidget {
     required this.notifications,
     required this.viewMode,
     required this.adminCapability,
+    required this.mesh,
     required this.themeMode,
     required this.onThemeModeChanged,
   });
+
+  /// Mesh peer presence (LAN + Wi-Fi Direct discovery states) used to surface
+  /// nearby-but-unpaired devices on the Nearby screen.
+  final MeshBloc mesh;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -303,6 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _contactsTab() => ContactsScreen(
         directory: widget.directoryRepository,
         connectivity: widget.connectivityController,
+        mesh: widget.mesh,
         messaging: widget.messagingRepository,
         files: widget.files,
         calls: widget.calls,

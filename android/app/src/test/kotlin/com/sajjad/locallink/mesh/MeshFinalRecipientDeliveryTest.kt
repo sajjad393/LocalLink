@@ -12,10 +12,12 @@ import org.junit.Test
 class MeshFinalRecipientDeliveryTest {
     @Test
     fun aToBToCToDOnlyDCanReturnLocalDelivery() {
+        // Each node's route path must start at that node (validateRoute
+        // rejects paths not rooted at the table's local node).
         val routes = mapOf(
-            "A" to routeTable("A", "D", "B", listOf("A", "B", "D")),
-            "B" to routeTable("B", "D", "C", listOf("A", "B", "C", "D")),
-            "C" to routeTable("C", "D", "D", listOf("A", "B", "C", "D")),
+            "A" to routeTable("A", "D", "B", listOf("A", "B", "C", "D")),
+            "B" to routeTable("B", "D", "C", listOf("B", "C", "D")),
+            "C" to routeTable("C", "D", "D", listOf("C", "D")),
             "D" to routeTable("D", "A", "A", emptyList()),
         )
         val peers = mapOf("A" to peers("B"), "B" to peers("C"), "C" to peers("D"), "D" to peers("C"))
@@ -26,7 +28,7 @@ class MeshFinalRecipientDeliveryTest {
             routeTable = route,
             peerRegistry = peers[node]!!,
             transport = object : MeshTransport {
-                override val name: String = "test"
+                override val name: String = "lan"
                 override fun isPeerAvailable(nodeId: String): Boolean = peers[node]!!.isAvailable(nodeId)
                 override fun send(peerNodeId: String, packet: MeshPacket): Boolean {
                     sent += peerNodeId to packet
@@ -99,7 +101,7 @@ class MeshFinalRecipientDeliveryTest {
 
     private fun peers(vararg ids: String): MeshPeerRegistry {
         val peers = MeshPeerRegistry()
-        ids.forEachIndexed { index, id -> peers.connected(id, "test", index.toLong() + 1L) }
+        ids.forEachIndexed { index, id -> peers.connected(id, "lan", index.toLong() + 1L) }
         return peers
     }
 }

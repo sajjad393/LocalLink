@@ -12,6 +12,7 @@ class _FakeConnectivityRepository implements ConnectivityRepositoryContract {
   List<WifiDirectPeer> peers;
   String? connectedAddress;
   bool discoveryStarted = false;
+  int discoveryCount = 0;
 
   _FakeConnectivityRepository({this.peers = const <WifiDirectPeer>[]});
 
@@ -64,6 +65,7 @@ class _FakeConnectivityRepository implements ConnectivityRepositoryContract {
   @override
   Future<void> startWifiDirectDiscovery() async {
     discoveryStarted = true;
+    discoveryCount += 1;
   }
 
   @override
@@ -94,6 +96,7 @@ void main() {
 
     expect(repository.discoveryStarted, isTrue);
     expect(repository.connectedAddress, 'aa:bb:cc:dd:ee:ff');
+    await service.dispose();
   });
 
   test('does not guess between multiple nearby Wi-Fi Direct peers', () async {
@@ -109,5 +112,58 @@ void main() {
 
     expect(repository.discoveryStarted, isTrue);
     expect(repository.connectedAddress, isNull);
+    await service.dispose();
+  });
+
+  test('re-arms discovery while a peer waits so a later arrival is picked up',
+      () async {
+    final repository = _FakeConnectivityRepository();
+    final service = WifiDirectFallbackService(
+      repository,
+      rediscoveryInterval: const Duration(milliseconds: 60),
+    );
+
+    await service.requestRoute('peer-b');
+    expect(repository.discoveryCount, 1);
+
+    // Discovery results are event-driven, but the ticker must keep the
+    // discovery alive even when no event ever arrives (OS stopped scanning,
+    // or a connect attempt failed silently).
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(repository.discoveryCount, greaterThanOrEqualTo(3));
+
+    // A late single-peer arrival is connected without any new request.
+    repository.peers = const <WifiDirectPeer>[
+      WifiDirectPeer(
+        name: 'Nearby phone',
+        address: 'aa:bb:cc:dd:ee:ff',
+        status: WifiDirectPeer.availableStatus,
+      ),
+    ];
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    expect(repository.connectedAddress, 'aa:bb:cc:dd:ee:ff');
+
+    await service.dispose();
+    final frozen = repository.discoveryCount;
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(repository.discoveryCount, frozen);
+  });
+
+  test('cancelWaiting drains the waiter and stops re-discovery', () async {
+    final repository = _FakeConnectivityRepository();
+    final service = WifiDirectFallbackService(
+      repository,
+      rediscoveryInterval: const Duration(milliseconds: 60),
+    );
+
+    await service.requestRoute('peer-b');
+    expect(repository.discoveryCount, 1);
+
+    service.cancelWaiting('peer-b');
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(repository.discoveryCount, 1,
+        reason: 'no ticks once nobody waits for a route');
+
+    await service.dispose();
   });
 }

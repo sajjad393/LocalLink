@@ -47,6 +47,7 @@ class AppRouter {
             notifications: dependencies.notifications,
             viewMode: dependencies.viewMode,
             adminCapability: dependencies.adminCapability,
+            mesh: dependencies.mesh,
             themeMode: getThemeMode(),
             onThemeModeChanged: onThemeModeChanged,
           ),

@@ -39,7 +39,9 @@ class MeshRouteAdvertisementPolicyTest {
     fun rejectsStaleFutureAndOversizedAdvertisements() {
         val policy = MeshRouteAdvertisementPolicy(maxRoutesPerAdvertisement = 2, maxAdvertisementsPerWindow = 10)
         assertEquals("stale_advertisement", policy.evaluate("B", "session-1", 1L, 1_000L, 0, 100_000L).reason)
-        assertEquals("future_advertisement", policy.evaluate("B", "session-1", 1L, 100_006L, 0, 100_000L).reason)
+        // Default future skew tolerance is 5_000 ms, so a future rejection
+        // requires a timestamp beyond that window.
+        assertEquals("future_advertisement", policy.evaluate("B", "session-1", 1L, 100_000L + 5_001L, 0, 100_000L).reason)
         assertEquals("route_count_exceeded", policy.evaluate("B", "session-1", 1L, 100_000L, 3, 100_000L).reason)
     }
 }

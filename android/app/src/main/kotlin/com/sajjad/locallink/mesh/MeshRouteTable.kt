@@ -40,7 +40,10 @@ class MeshRouteTable(
         if (!validateRoute(route, destinationNodeId)) return false
         val existingDestination = routes[destinationNodeId]
         if (existingDestination == null && routes.size >= MeshLimits.MAX_ROUTE_TABLE_DESTINATIONS) return false
-        val destinationRoutes = existingDestination ?: ConcurrentHashMap<String, MeshRoute>().also { routes[destinationNodeId] = it }
+        // The destination bucket must only exist in `routes` once every
+        // admission check below has passed; registering it earlier leaks an
+        // empty placeholder that permanently consumes a destination slot.
+        val destinationRoutes = existingDestination ?: ConcurrentHashMap<String, MeshRoute>()
         val existing = destinationRoutes[route.nextHopNodeId]
         if (existing != null) {
             if (existing.state == MeshRouteState.REMOVED) return false
@@ -72,6 +75,7 @@ class MeshRouteTable(
             destinationRoutes.remove(worst.nextHopNodeId, worst)
         }
         destinationRoutes[route.nextHopNodeId] = route.copy(state = MeshRouteState.ACTIVE)
+        if (existingDestination == null) routes[destinationNodeId] = destinationRoutes
         true
     }
 

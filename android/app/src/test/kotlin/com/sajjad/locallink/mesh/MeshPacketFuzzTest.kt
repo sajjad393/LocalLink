@@ -33,8 +33,10 @@ class MeshPacketFuzzTest {
                 packetId = "packet-$index",
                 createdAt = 100_000L + index,
             )
-            val parsed = MeshPacket.fromJson(unsigned.toJson())
-            assertNotNull(parsed)
+            // MeshPacket.fromJson returns MeshPacket? — unwrap before member access.
+            val parsed = requireNotNull(MeshPacket.fromJson(unsigned.toJson())) {
+                "canonical packet must parse: index=$index"
+            }
             assertEquals(MeshPacket.PROTOCOL_VERSION, parsed.protocolVersion)
             assertEquals(parsed.pathInvariant(), true)
         }

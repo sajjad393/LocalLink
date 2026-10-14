@@ -7,15 +7,29 @@ import 'package:locallink/features/connectivity/domain/connectivity_repository_c
 /// Starts a bounded Wi-Fi Direct fallback when a requested peer has no route.
 /// Android discovery exposes no LocalLink device ID, so automatic connection is
 /// attempted only when exactly one eligible nearby peer is present.
+///
+/// Re-discovery is periodic while any peer is waiting: discovery results are
+/// event-driven, but Android silently stops discovery after a while, and a
+/// failed connect attempt produces no event at all. Without a re-arm loop the
+/// fallback could stall forever until the user sent another message.
 final class WifiDirectFallbackService {
-  WifiDirectFallbackService(this.connectivity);
+  WifiDirectFallbackService(
+    this.connectivity, {
+    Duration rediscoveryInterval = const Duration(seconds: 45),
+  }) : _rediscoveryInterval = rediscoveryInterval;
 
   static const _retryCooldown = Duration(seconds: 20);
+
+  /// How often discovery is re-armed while any peer waits for a route.
+  /// Long enough to sit below the OS rate limits, short enough that a phone
+  /// arriving within a minute is picked up without user action.
+  final Duration _rediscoveryInterval;
 
   final ConnectivityRepositoryContract connectivity;
   final Set<String> _waitingPeerIds = <String>{};
   final Map<String, DateTime> _attemptedAddresses = <String, DateTime>{};
   StreamSubscription? _wifiSubscription;
+  Timer? _rediscoveryTimer;
   bool _started = false;
   bool _disposed = false;
   bool _discoveryInFlight = false;
@@ -31,12 +45,28 @@ final class WifiDirectFallbackService {
     final normalized = peerId.trim();
     if (_disposed || normalized.isEmpty) return;
     _waitingPeerIds.add(normalized);
+    _armRediscoveryTimer();
     await _discoverAndConnect();
+  }
+
+  /// Called when any route to [peerId] becomes available again (LAN or mesh
+  /// recovered). The fallback only makes sense while no route exists, so the
+  /// waiter is drained; the re-discovery loop stops once nobody is waiting.
+  void cancelWaiting(String peerId) {
+    final normalized = peerId.trim();
+    if (normalized.isEmpty) return;
+    _waitingPeerIds.remove(normalized);
+    if (_waitingPeerIds.isEmpty) {
+      _rediscoveryTimer?.cancel();
+      _rediscoveryTimer = null;
+    }
   }
 
   Future<void> dispose() async {
     _disposed = true;
     _waitingPeerIds.clear();
+    _rediscoveryTimer?.cancel();
+    _rediscoveryTimer = null;
     await _wifiSubscription?.cancel();
     _wifiSubscription = null;
   }
@@ -54,6 +84,23 @@ final class WifiDirectFallbackService {
             .toList(growable: false)
         : const <WifiDirectPeer>[];
     unawaited(_connectSingleEligiblePeer(peers));
+  }
+
+  /// Re-arms discovery while waiters exist. Skips ticks that would overlap
+  /// an in-flight discovery or connect — never stacks attempts, never pops
+  /// dialogs (the enable request runs at most once per waiting episode by
+  /// _discoverAndConnect's own gating inside the repository).
+  void _armRediscoveryTimer() {
+    if (_rediscoveryTimer != null || _disposed) return;
+    _rediscoveryTimer = Timer.periodic(_rediscoveryInterval, (_) {
+      if (_disposed || _waitingPeerIds.isEmpty) {
+        _rediscoveryTimer?.cancel();
+        _rediscoveryTimer = null;
+        return;
+      }
+      if (_discoveryInFlight || _connectionInFlight) return;
+      unawaited(_discoverAndConnect());
+    });
   }
 
   Future<void> _discoverAndConnect() async {

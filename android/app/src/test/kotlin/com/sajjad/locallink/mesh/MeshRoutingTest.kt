@@ -31,14 +31,18 @@ class MeshRoutingTest {
         val table = MeshRouteTable()
         val peers = MeshPeerRegistry()
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = true
             override fun send(peerNodeId: String, packet: MeshPacket) = false
             override fun disconnect(peerNodeId: String) {}
         }
         val router = MeshRouter({ "I" }, table, peers, transport, maxHops = 8)
-        val packet = MeshPacket.new("A", "I", "direct_message", JSONObject(), 0, packetId = "packet-final", createdAt = System.currentTimeMillis())
-            .copy(hopCount = 8)
+        // MeshPacket.new() intentionally rejects ttl=0 (initial TTL must be
+        // positive); a terminal ttl=0/hopCount=8 packet can only arise after
+        // forwarding hops, so construct it via copy() with a hash-long path.
+        val terminalPath = JSONArray(listOf("A", "B", "C", "D", "E", "F", "G", "H").map { it })
+        val packet = MeshPacket.new("A", "I", "direct_message", JSONObject(), 8, packetId = "packet-final", createdAt = System.currentTimeMillis())
+            .copy(ttl = 0, hopCount = 8, payload = JSONObject().put(MeshPacket.MESH_PATH_KEY, terminalPath))
         assertEquals(MeshRouteResult.LOCAL_DELIVERY, router.route(packet))
     }
 
@@ -46,10 +50,10 @@ class MeshRoutingTest {
     fun zeroTtlCannotBeForwardedByRelay() {
         val table = MeshRouteTable()
         val peers = MeshPeerRegistry()
-        peers.connected("C", "test", 1L)
-        table.upsert("D", MeshRoute("D", "C", 1, Long.MAX_VALUE, 1L, 10L, listOf("B", "C", "D")))
+        peers.connected("C", "lan", 1L)
+        table.upsert("D", MeshRoute("D", "C", 2, Long.MAX_VALUE, 1L, 10L, listOf("B", "C", "D")))
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = peers.isAvailable(nodeId)
             override fun send(peerNodeId: String, packet: MeshPacket): Boolean = true
             override fun disconnect(peerNodeId: String) {}
@@ -64,7 +68,7 @@ class MeshRoutingTest {
         val table = MeshRouteTable()
         val peers = MeshPeerRegistry()
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = true
             override fun send(peerNodeId: String, packet: MeshPacket) = true
             override fun disconnect(peerNodeId: String) {}
@@ -100,7 +104,7 @@ class MeshRoutingTest {
     fun routeTableKeepsAlternativesAndCanInvalidatePrimaryNextHop() {
         val table = MeshRouteTable()
         table.upsert("D", MeshRoute("D", "B", 2, Long.MAX_VALUE, 100L, 10L, listOf("A", "B", "D")))
-        table.upsert("D", MeshRoute("D", "C", 3, Long.MAX_VALUE, 100L, 11L, listOf("A", "C", "D")))
+        table.upsert("D", MeshRoute("D", "C", 3, Long.MAX_VALUE, 100L, 11L, listOf("A", "C", "E", "D")))
         assertEquals(2, table.allFor("D").size)
         assertEquals("B", table["D"]!!.nextHopNodeId)
         val affected = table.invalidateVia("B")
@@ -119,7 +123,7 @@ class MeshRoutingTest {
 
         var sent: MeshPacket? = null
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = peers.isAvailable(nodeId)
             override fun send(peerNodeId: String, packet: MeshPacket): Boolean { sent = packet; return true }
             override fun disconnect(peerNodeId: String) {}
@@ -138,10 +142,10 @@ class MeshRoutingTest {
         val ids = listOf("A", "B", "C", "D", "E")
         val tables = ids.associateWith { MeshRouteTable() }
         val peers = ids.associateWith { MeshPeerRegistry() }
-        ids.drop(1).forEach { peers["A"]!!.connected(it, "test", 1L) }
-        peers["B"]!!.connected("C", "test", 1L)
-        peers["C"]!!.connected("D", "test", 1L)
-        peers["D"]!!.connected("E", "test", 1L)
+        ids.drop(1).forEach { peers["A"]!!.connected(it, "lan", 1L) }
+        peers["B"]!!.connected("C", "lan", 1L)
+        peers["C"]!!.connected("D", "lan", 1L)
+        peers["D"]!!.connected("E", "lan", 1L)
         tables["A"]!!.upsert("E", MeshRoute("E", "B", 4, Long.MAX_VALUE, 1L, 10L, listOf("A", "B", "C", "D", "E")))
         tables["B"]!!.upsert("E", MeshRoute("E", "C", 3, Long.MAX_VALUE, 1L, 10L, listOf("B", "C", "D", "E")))
         tables["C"]!!.upsert("E", MeshRoute("E", "D", 2, Long.MAX_VALUE, 1L, 10L, listOf("C", "D", "E")))
@@ -150,7 +154,7 @@ class MeshRoutingTest {
         val delivered = mutableListOf<String>()
         fun routerFor(id: String): MeshRouter {
             val transport = object : MeshTransport {
-                override val name = "test"
+                override val name = "lan"
                 override fun isPeerAvailable(nodeId: String) = peers[id]!!.isAvailable(nodeId)
                 override fun send(peerNodeId: String, packet: MeshPacket): Boolean {
                     if (peerNodeId == "E") { delivered += packet.packetId; return packet.destinationNodeId == "E" }
@@ -172,10 +176,10 @@ class MeshRoutingTest {
         peers.connected("B", "lan", 1L)
         peers.connected("C", "lan", 1L)
         table.upsert("D", MeshRoute("D", "B", 3, Long.MAX_VALUE, 1L, 10L, listOf("A", "B", "C", "D")))
-        table.upsert("D", MeshRoute("D", "C", 3, Long.MAX_VALUE, 1L, 11L, listOf("A", "C", "D")))
+        table.upsert("D", MeshRoute("D", "C", 2, Long.MAX_VALUE, 1L, 11L, listOf("A", "C", "D")))
         val attempts = mutableListOf<String>()
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = peers.isAvailable(nodeId)
             override fun send(peerNodeId: String, packet: MeshPacket): Boolean { attempts += peerNodeId; return true }
             override fun disconnect(peerNodeId: String) {}
@@ -185,9 +189,13 @@ class MeshRoutingTest {
             .copy(hopCount = 1, ttl = 7, payload = JSONObject().put("mesh_path", JSONArray().put("A").put("B")))
         assertEquals(MeshRouteResult.DROPPED, router.route(looped, incomingPeerId = "A"))
 
-        val fromB = MeshPacket.new("A", "D", "direct_message", JSONObject().put("mesh_path", JSONArray().put("A")), 8, packetId = "p3", createdAt = System.currentTimeMillis())
-        assertEquals(MeshRouteResult.FORWARDED, router.route(fromB, incomingPeerId = "B"))
-        assertFalse(attempts.contains("B"))
+        // A->B hairpin rule: a packet A forwarded to B arrives with
+        // incomingPeerId="A" and path=[A] (hop 1). B must select a next hop
+        // that is neither the incoming peer nor any node already in the path.
+        val fromA = MeshPacket.new("A", "D", "direct_message", JSONObject(), 8, packetId = "p3", createdAt = System.currentTimeMillis())
+            .copyForForwarding("B", "A")
+        assertEquals(MeshRouteResult.FORWARDED, router.route(fromA, incomingPeerId = "A"))
+        assertFalse(attempts.contains("A"))
         assertEquals(listOf("C"), attempts)
     }
 
@@ -210,7 +218,8 @@ class MeshRoutingTest {
         assertEquals("B", forwarded.nextHopNodeId)
         assertEquals(7, forwarded.ttl)
         assertEquals(1, forwarded.hopCount)
-        assertEquals("ciphertext", forwarded.payload.optString("audio"))
+        // Application payload is opaque to the mesh layer and must pass through untouched.
+        assertEquals("pcm", forwarded.payload.optString("audio"))
     }
 
     @Test
@@ -219,7 +228,7 @@ class MeshRoutingTest {
         val peers = MeshPeerRegistry()
         var queueCalls = 0
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = false
             override fun send(peerNodeId: String, packet: MeshPacket): Boolean = false
             override fun disconnect(peerNodeId: String) {}
@@ -249,7 +258,7 @@ class MeshRoutingTest {
         peers.connected("B", "lan", 1L)
         table.upsert("C", MeshRoute("C", "B", 2, Long.MAX_VALUE, 1L, 10L, listOf("A", "B", "C")))
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = true
             override fun send(peerNodeId: String, packet: MeshPacket): Boolean = true
             override fun disconnect(peerNodeId: String) {}
@@ -266,10 +275,10 @@ class MeshRoutingTest {
         peers.connected("B", "lan", 1L)
         peers.connected("C", "lan", 1L)
         table.upsert("D", MeshRoute("D", "B", 2, Long.MAX_VALUE, 1L, 10L, listOf("A", "B", "D")))
-        table.upsert("D", MeshRoute("D", "C", 3, Long.MAX_VALUE, 1L, 11L, listOf("A", "C", "D")))
+        table.upsert("D", MeshRoute("D", "C", 3, Long.MAX_VALUE, 1L, 11L, listOf("A", "C", "E", "D")))
         val attempts = mutableListOf<String>()
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = peers.isAvailable(nodeId)
             override fun send(peerNodeId: String, packet: MeshPacket): Boolean { attempts += peerNodeId; return peerNodeId == "C" }
             override fun disconnect(peerNodeId: String) {}
@@ -288,10 +297,10 @@ class MeshRoutingTest {
         peers.connected("B", "lan", 1L)
         peers.connected("C", "lan", 1L)
         table.upsert("D", MeshRoute("D", "B", 2, Long.MAX_VALUE, 1L, 10L, listOf("A", "B", "D")))
-        table.upsert("D", MeshRoute("D", "C", 2, Long.MAX_VALUE, 1L, 11L, listOf("A", "C", "D")))
+        table.upsert("D", MeshRoute("D", "C", 3, Long.MAX_VALUE, 1L, 11L, listOf("A", "C", "E", "D")))
         val attempts = mutableListOf<MeshPacket>()
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = peers.isAvailable(nodeId)
             override fun send(peerNodeId: String, packet: MeshPacket): Boolean {
                 attempts += packet
@@ -310,7 +319,7 @@ class MeshRoutingTest {
             payload = JSONObject().put("call_id", "call-1").put("sequence", 42).put("timestamp_ms", 1000L).put("video", "base64-data"),
             ttl = 8,
             packetId = "video-42",
-            createdAt = 1000L,
+            createdAt = System.currentTimeMillis(),
         )
         assertEquals(MeshRouteResult.FORWARDED, router.route(packet))
         assertEquals(listOf("B", "C"), attempts.map { it.nextHopNodeId })
@@ -325,18 +334,18 @@ class MeshRoutingTest {
         val peers = MeshPeerRegistry()
         peers.connected("C", "lan", 1L)
         table.upsert("D", MeshRoute("D", "B", 2, Long.MAX_VALUE, 1L, 10L, listOf("A", "B", "D")))
-        table.upsert("D", MeshRoute("D", "C", 3, Long.MAX_VALUE, 1L, 11L, listOf("A", "C", "D")))
+        table.upsert("D", MeshRoute("D", "C", 3, Long.MAX_VALUE, 1L, 11L, listOf("A", "C", "E", "D")))
         val failures = mutableListOf<String>()
         val attempts = mutableListOf<String>()
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = peers.isAvailable(nodeId)
             override fun send(peerNodeId: String, packet: MeshPacket): Boolean { attempts += peerNodeId; return true }
             override fun disconnect(peerNodeId: String) {}
             override fun onRouteFailure(destinationNodeId: String, failedNextHopNodeId: String) { failures += failedNextHopNodeId }
         }
         val router = MeshRouter({ "A" }, table, peers, transport, maxHops = 8)
-        val packet = MeshPacket.new("A", "D", "call_media", JSONObject().put("call_id", "call-1").put("sequence", 1), 8, packetId = "audio-1", createdAt = 1000L)
+        val packet = MeshPacket.new("A", "D", "call_media", JSONObject().put("call_id", "call-1").put("sequence", 1), 8, packetId = "audio-1", createdAt = System.currentTimeMillis())
         assertEquals(MeshRouteResult.FORWARDED, router.route(packet))
         assertEquals(listOf("B"), failures)
         assertEquals(listOf("C"), attempts)
@@ -353,16 +362,16 @@ class MeshRoutingTest {
         val peers = nodes.associateWith { MeshPeerRegistry() }
         val forwarded = mutableListOf<MeshPacket>()
 
-        peers["A"]!!.connected("B", "test", 1L)
-        peers["B"]!!.connected("C", "test", 1L)
-        peers["C"]!!.connected("D", "test", 1L)
+        peers["A"]!!.connected("B", "lan", 1L)
+        peers["B"]!!.connected("C", "lan", 1L)
+        peers["C"]!!.connected("D", "lan", 1L)
 
         tables["A"]!!.upsert("D", MeshRoute("D", "B", 3, Long.MAX_VALUE, 1L, 1L, listOf("A", "B", "C", "D")))
         tables["B"]!!.upsert("D", MeshRoute("D", "C", 2, Long.MAX_VALUE, 1L, 1L, listOf("B", "C", "D")))
         tables["C"]!!.upsert("D", MeshRoute("D", "D", 1, Long.MAX_VALUE, 1L, 1L, listOf("C", "D")))
 
         fun transportFor(node: String) = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = peers[node]!!.isAvailable(nodeId)
             override fun send(peerNodeId: String, packet: MeshPacket): Boolean {
                 forwarded += packet
@@ -410,10 +419,10 @@ class MeshRoutingTest {
     fun routerRejectsIncomingPacketWhosePathDoesNotEndAtPreviousHop() {
         val table = MeshRouteTable()
         val peers = MeshPeerRegistry()
-        peers.connected("C", "test", 1L)
+        peers.connected("C", "lan", 1L)
         table.upsert("D", MeshRoute("D", "C", 2, Long.MAX_VALUE, 1L, 10L, listOf("B", "C", "D")))
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = peers.isAvailable(nodeId)
             override fun send(peerNodeId: String, packet: MeshPacket) = true
             override fun disconnect(peerNodeId: String) {}
@@ -431,17 +440,20 @@ class MeshRoutingTest {
     fun routerRejectsMalformedPacketPathThatDoesNotStartAtSource() {
         val table = MeshRouteTable()
         val peers = MeshPeerRegistry()
-        peers.connected("B", "test", 1L)
+        peers.connected("B", "lan", 1L)
         table.upsert("C", MeshRoute("C", "B", 2, Long.MAX_VALUE, 1L, 10L, listOf("A", "B", "C")))
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = peers.isAvailable(nodeId)
             override fun send(peerNodeId: String, packet: MeshPacket) = true
             override fun disconnect(peerNodeId: String) {}
         }
         val router = MeshRouter({ "A" }, table, peers, transport)
-        val malformed = MeshPacket.new("A", "C", "direct_message", JSONObject()
-            .put(MeshPacket.MESH_PATH_KEY, JSONArray().put("X").put("B")), 8, packetId = "p-bad-path", createdAt = System.currentTimeMillis())
+        // MeshPacket.new() sanitizes mesh_path to [source]; a genuinely
+        // malformed path must be injected past the factory via copy().
+        val malformed = MeshPacket.new("A", "C", "direct_message", JSONObject(), 8, packetId = "p-bad-path", createdAt = System.currentTimeMillis())
+            .copy(hopCount = 1, ttl = 7, payload = JSONObject()
+                .put(MeshPacket.MESH_PATH_KEY, JSONArray().put("X").put("B")))
         assertEquals(MeshRouteResult.DROPPED, router.route(malformed))
     }
 
@@ -471,14 +483,19 @@ class MeshRoutingTest {
 
 class MeshHopLimitTest {
     @Test
-    fun hopBudgetAllowsZeroTtlOnlyAtMaximumHopCount() {
+    fun hopBudgetGrammarMatchesCanonicalRules() {
         assertTrue(MeshLimits.hasValidHopBudget(8, 0))
         assertTrue(MeshLimits.hasValidHopBudget(0, 8))
         assertTrue(MeshLimits.hasValidHopBudget(1, 7))
-        assertFalse(MeshLimits.hasValidHopBudget(0, 7))
+        // The forwarding grammar preserves ttl + hopCount == initial TTL, so a
+        // short-TTL origin legitimately reaches ttl=0 before the max hop count;
+        // ttl=0 then becomes non-forwardable regardless of hops.
+        assertTrue(MeshLimits.hasValidHopBudget(0, 7))
+        assertFalse(MeshLimits.hasValidHopBudget(0, 0))
         assertFalse(MeshLimits.hasValidHopBudget(8, 1))
         assertFalse(MeshLimits.hasValidHopBudget(9, 0))
         assertFalse(MeshLimits.hasValidHopBudget(0, 9))
+        assertFalse(MeshLimits.canForward(0, 7))
     }
 
     @Test
@@ -493,10 +510,13 @@ class MeshHopLimitTest {
 
     @Test
     fun canonicalPacketParserAcceptsFinalHopWithZeroTtl() {
+        // Path length must equal maxOf(1, hopCount); new() always resets the
+        // path to [source], so the terminal path is injected via copy().
+        val fullPath = JSONArray(listOf("A", "B", "C", "D", "E", "F", "G", "H"))
         val unsigned = MeshPacket.new(
             "A", "I", "direct_message", JSONObject(), 8,
             packetId = "packet-final-hop", createdAt = System.currentTimeMillis(),
-        ).copy(ttl = 0, hopCount = 8)
+        ).copy(ttl = 0, hopCount = 8, payload = JSONObject().put(MeshPacket.MESH_PATH_KEY, fullPath))
         val json = unsigned.toJson()
         val parsed = MeshPacket.fromJson(json)
         assertEquals(0, parsed!!.ttl)
@@ -557,17 +577,20 @@ class MeshCanonicalPacketTest {
         assertEquals(packet.sourceNodeId, forwarded.sourceNodeId)
         assertEquals(packet.destinationNodeId, forwarded.destinationNodeId)
         assertEquals(MeshPacket.PROTOCOL_VERSION, forwarded.protocolVersion)
-        assertEquals(listOf("A", "B"), forwarded.normalizedPath())
+        // Canonical path rule: the origin is already at index 0; a relay only
+        // appends ITSELF when it forwards a packet with hopCount >= 1. The
+        // first forward therefore keeps path=[A] (size == maxOf(1, hopCount)).
+        assertEquals(listOf("A"), forwarded.normalizedPath())
     }
 
     @Test
     fun routerRejectsNonCanonicalLegacyPacket() {
         val table = MeshRouteTable()
         val peers = MeshPeerRegistry()
-        peers.connected("B", "test", 1L)
+        peers.connected("B", "lan", 1L)
         table.upsert("D", MeshRoute("D", "B", 2, Long.MAX_VALUE, 1L, 1L, listOf("A", "B", "D")))
         val transport = object : MeshTransport {
-            override val name = "test"
+            override val name = "lan"
             override fun isPeerAvailable(nodeId: String) = peers.isAvailable(nodeId)
             override fun send(peerNodeId: String, packet: MeshPacket) = true
             override fun disconnect(peerNodeId: String) {}

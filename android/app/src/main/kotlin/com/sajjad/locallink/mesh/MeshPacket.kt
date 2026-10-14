@@ -150,19 +150,44 @@ data class MeshPacket(
             )
         }
 
-        /** Parses only the canonical version-1 wire packet. */
+        private fun strictString(json: JSONObject, key: String): String? =
+            when (val value = json.opt(key)) {
+                is String -> value
+                else -> null
+            }
+
+        private fun strictInt(json: JSONObject, key: String): Int? =
+            when (val value = json.opt(key)) {
+                is Number -> value.toInt()
+                else -> null
+            }
+
+        private fun strictLong(json: JSONObject, key: String): Long? =
+            when (val value = json.opt(key)) {
+                is Number -> value.toLong()
+                else -> null
+            }
+
+        /**
+         * Parses only the canonical version-1 wire packet.
+         *
+         * Scalar fields are type-strict: org.json would otherwise silently
+         * coerce stringly-typed numbers or stringify embedded JSON objects,
+         * producing packets the sender never emitted (wire malleability). Any
+         * non-canonical shape is rejected instead of coerced.
+         */
         fun fromJson(json: JSONObject): MeshPacket? {
             if (!json.has(PROTOCOL_VERSION_KEY)) return null
-            val version = json.optInt(PROTOCOL_VERSION_KEY, -1)
+            val version = strictInt(json, PROTOCOL_VERSION_KEY) ?: return null
             if (version != PROTOCOL_VERSION) return null
-            val packetId = json.optString("packet_id").trim()
-            val source = json.optString("source_node_id").trim()
-            val destination = json.optString("destination_node_id").trim()
-            val type = json.optString("type").trim()
+            val packetId = strictString(json, "packet_id")?.trim() ?: return null
+            val source = strictString(json, "source_node_id")?.trim() ?: return null
+            val destination = strictString(json, "destination_node_id")?.trim() ?: return null
+            val type = strictString(json, "type")?.trim() ?: return null
             val payload = json.optJSONObject("payload") ?: return null
-            val ttl = json.optInt("ttl", -1)
-            val hopCount = json.optInt("hop_count", -1)
-            val createdAt = json.optLong("created_at", 0L)
+            val ttl = strictInt(json, "ttl") ?: return null
+            val hopCount = strictInt(json, "hop_count") ?: return null
+            val createdAt = strictLong(json, "created_at") ?: return null
             if (!MeshIdPolicy.isValid(packetId) || !MeshIdPolicy.isValid(source) ||
                 !MeshIdPolicy.isValid(destination) || source == destination ||
                 !MeshIdPolicy.isValidType(type)) return null
@@ -176,7 +201,7 @@ data class MeshPacket(
             }
             val expectedPathSize = maxOf(1, hopCount)
             if (pathIds.size != expectedPathSize || pathIds.firstOrNull() != source || pathIds.distinct().size != pathIds.size) return null
-            val nextHop = json.optString("next_hop_node_id").trim().ifBlank { null }
+            val nextHop = strictString(json, "next_hop_node_id")?.trim()?.ifBlank { null }
             if (nextHop != null && !MeshIdPolicy.isValid(nextHop)) return null
             return MeshPacket(packetId, source, destination, nextHop, ttl, hopCount, type, JSONObject(payload.toString()), createdAt, version)
         }

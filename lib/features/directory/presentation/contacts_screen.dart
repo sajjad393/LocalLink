@@ -9,6 +9,7 @@ import 'package:locallink/core/widgets/messenger_section_header.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
+import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/directory/bloc/contacts_bloc.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
@@ -23,6 +24,7 @@ import 'package:locallink/core/notifications/local_link_notification_service.dar
 class ContactsScreen extends StatefulWidget {
   final DirectoryRepositoryContract directory;
   final ConnectivityBloc connectivity;
+  final MeshBloc mesh;
   final MessagingRepositoryContract messaging;
   final FileTransferRepositoryContract files;
   final CallBloc calls;
@@ -33,6 +35,7 @@ class ContactsScreen extends StatefulWidget {
     super.key,
     required this.directory,
     required this.connectivity,
+    required this.mesh,
     required this.messaging,
     required this.files,
     required this.calls,
@@ -114,7 +117,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         actions: [
           IconButton(
             tooltip: 'Nearby',
-            onPressed: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => NearbyDevicesScreen(connectivity: widget.connectivity))),
+            onPressed: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => NearbyDevicesScreen(connectivity: widget.connectivity, mesh: widget.mesh))),
             icon: const Icon(Icons.wifi_find),
           ),
         ],

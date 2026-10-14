@@ -105,6 +105,7 @@ class AppDependencies {
     routePolicy = LocalRoutePolicyService(
       directTransport,
       onRouteUnavailable: wifiDirectFallback.requestRoute,
+      onRouteAvailable: wifiDirectFallback.cancelWaiting,
     );
     authentication = AuthenticationRepository(api: api, store: store, connectivity: connectivityRepository);
     recoveryRepository = RecoveryRepository(api: api, store: store, crypto: crypto, connectivity: connectivityRepository);
