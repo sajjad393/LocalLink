@@ -3,7 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
-
+import 'package:http/io_client.dart' as http_io;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:sqflite_sqlcipher/sqflite.dart';
@@ -24,10 +24,10 @@ class FileTransferService {
   /// server can otherwise stall that entire budget inside OS-level connect
   /// retries — which made attachment taps look frozen when the server is off.
   /// 8 s connects fail fast; transfer throughput is unaffected.
-  http.Client _newHttpClient() {
-    final inner = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-    return http.IOClient(inner);
-  }
+ http.Client _newHttpClient() {
+  final inner = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+  return http_io.IOClient(inner);
+}
   final ConnectivityRepositoryContract? connectivity;
   final Map<String, http.Client> _activeClients = {};
   final Set<String> _cancelledTransfers = {};
