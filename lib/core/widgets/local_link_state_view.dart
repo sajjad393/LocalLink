@@ -16,10 +16,26 @@ class LocalLinkLoadingView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(),
+            // Branded radar pulse; falls back to the plain spinner if the
+            // asset is unavailable (tests, trimmed builds).
+            Lottie.asset(
+              LocalLinkAssets.lottieLoadingRadar,
+              width: 120,
+              height: 120,
+              repeat: true,
+              errorBuilder: (context, error, stackTrace) =>
+                  const CircularProgressIndicator(),
+            ),
             if (message != null) ...[
               const SizedBox(height: LocalLinkSpacing.lg),
-              Text(message!, textAlign: TextAlign.center),
+              Text(
+                message!,
+                textAlign: TextAlign.center,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
             ],
           ],
         ),
@@ -60,7 +76,22 @@ class LocalLinkEmptyView extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (lottie != null)
-              Lottie.asset(lottie, width: 160, height: 150, repeat: true)
+              Lottie.asset(
+                lottie,
+                width: 160,
+                height: 150,
+                repeat: true,
+                errorBuilder: (context, error, stackTrace) => DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.secondaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(LocalLinkSpacing.xl),
+                    child: Icon(icon, size: 36, color: colors.onSecondaryContainer),
+                  ),
+                ),
+              )
             else
               DecoratedBox(
                 decoration: BoxDecoration(

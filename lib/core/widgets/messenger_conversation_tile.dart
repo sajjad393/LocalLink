@@ -65,6 +65,10 @@ class MessengerConversationTile extends StatelessWidget {
           subtitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          style: Theme.of(context)
+              .textTheme
+              .bodyMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ),
       trailing: trailing ??
@@ -77,6 +81,14 @@ class MessengerConversationTile extends StatelessWidget {
                       IconButton(
                         tooltip: 'Call',
                         onPressed: onCall,
+                        style: IconButton.styleFrom(
+                          backgroundColor: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withOpacity(0.10),
+                          foregroundColor: Theme.of(context).colorScheme.primary,
+                          minimumSize: const Size.square(44),
+                        ),
                         icon: const Icon(Icons.call_outlined),
                       ),
                     if (onMore != null)
