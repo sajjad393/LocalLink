@@ -35,6 +35,7 @@ class ReliableMessagingService {
   StreamSubscription<LocalRouteResult>? _routeSub;
 
   Timer? _retryTimer;
+  Timer? _startupTimer;
   DateTime? _lastPeriodicSyncAt;
   DateTime? _messageRateLimitedUntil;
 
@@ -43,6 +44,13 @@ class ReliableMessagingService {
 
   final Map<String, Map<String, dynamic>> _recentDirectFiles = {};
 
+  /// [startupSettle] delays the initial sync + realtime connect right after
+  /// [start]. On cold launch the main isolate is busy (database keying, first
+  /// frame, platform setup); pushing this burst a few seconds later keeps the
+  /// first seconds of the UI responsive (prevents ANR during startup debt).
+  final Duration _startupSettle;
+  bool _disposed = false;
+
   ReliableMessagingService(
       this.store,
       this.api,
@@ -50,7 +58,9 @@ class ReliableMessagingService {
       this.files,
       this.connectivity,
       this.directTransport,
-      {this.routePolicy});
+      {this.routePolicy,
+      Duration startupSettle = Duration.zero})
+      : _startupSettle = startupSettle;
 
   Stream<Message> get incoming => _incoming.stream;
   Stream<MessageReaction> get reactionIncoming => _reactionIncoming.stream;
@@ -174,23 +184,38 @@ class ReliableMessagingService {
       );
 
       _lastPeriodicSyncAt = DateTime.now().toUtc();
-      unawaited(
-        synchronize().then(
-              (_) => flush(),
-        ),
-      );
+      void runInitialBurst() {
+        unawaited(
+          synchronize().then(
+                (_) => flush(),
+          ),
+        );
 
-      unawaited(
-        api.connectRealtime().catchError(
-              (Object error, StackTrace stackTrace) {
-            AppLogger.error(
-              'MESSAGE_REALTIME_CONNECT_FAILED',
-              error: error,
-              stackTrace: stackTrace,
-            );
-          },
-        ),
-      );
+        unawaited(
+          api.connectRealtime().catchError(
+                (Object error, StackTrace stackTrace) {
+              AppLogger.error(
+                'MESSAGE_REALTIME_CONNECT_FAILED',
+                error: error,
+                stackTrace: stackTrace,
+              );
+            },
+          ),
+        );
+      }
+
+      if (_startupSettle <= Duration.zero) {
+        runInitialBurst();
+      } else {
+        AppLogger.info(
+          'MESSAGE_STARTUP_SETTLE',
+          detail: 'delayMs=${_startupSettle.inMilliseconds}',
+        );
+        _startupTimer = Timer(_startupSettle, () {
+          _startupTimer = null;
+          if (!_disposed) runInitialBurst();
+        });
+      }
     }
   }
 
@@ -1900,6 +1925,8 @@ class ReliableMessagingService {
       'MESSAGE_SERVICE_DISPOSE',
     );
 
+    _disposed = true;
+    _startupTimer?.cancel();
     _retryTimer?.cancel();
 
     await _socketSub?.cancel();
