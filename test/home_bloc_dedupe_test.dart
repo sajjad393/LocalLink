@@ -59,6 +59,9 @@ final class _StubHomeRepository implements HomeRepositoryContract {
   @override
   Future<String?> userIdForDevice(String deviceId) async =>
       userByDevice[deviceId];
+
+  @override
+  Future<String?> labelForDevice(String deviceId) async => null;
 }
 
 Future<void> _pump() => Future<void>.delayed(const Duration(milliseconds: 60));

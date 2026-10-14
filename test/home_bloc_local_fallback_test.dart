@@ -22,8 +22,36 @@ void main() {
 
     expect(discoveryAttempts, 1);
     expect(bloc.state.loading, isFalse);
+    // A failing BACKGROUND sync must stay quiet: no red error banner, only a
+    // neutral offline notice - and never a raw exception.
+    expect(bloc.state.error, isNull);
+    expect(bloc.state.syncNotice, contains('showing saved conversations'));
+    expect(bloc.state.syncNotice, isNot(contains('TimeoutException')));
+  });
+
+  test('an explicit user refresh reports the failure loudly but cleanly', () async {
+    final bloc = HomeBloc(repository: _OfflineHomeRepository());
+    addTearDown(bloc.close);
+
+    await bloc.load(userInitiated: true);
+
+    expect(bloc.state.loading, isFalse);
+    expect(bloc.state.syncNotice, isNull);
     expect(bloc.state.error, contains('Server sync failed'));
     expect(bloc.state.error, contains('showing saved conversations'));
+    expect(bloc.state.error, isNot(contains('TimeoutException')));
+    expect(bloc.state.error, contains('took too long to respond'));
+  });
+
+  test('conversation titles prefer the directory person over the device name', () async {
+    final repository = _OfflineHomeRepository()..offline = false;
+    final bloc = HomeBloc(repository: repository);
+    addTearDown(bloc.close);
+
+    await bloc.load();
+
+    expect(bloc.state.deviceLabels['peer'], 'sana.oz');
+    expect(bloc.state.deviceLabels.containsKey('unresolved'), isFalse);
   });
 
   test('clears the discovery guard after server sync recovers', () async {
@@ -62,7 +90,22 @@ final class _OfflineHomeRepository implements HomeRepositoryContract {
   @override
   Future<List<Device>> devices() async {
     if (offline) throw TimeoutException('Future not completed');
-    return const [];
+    return const [
+      Device(
+        id: 'peer',
+        name: 'My Android Phone',
+        platform: 'android',
+        createdAt: '',
+        lastSeenAt: '',
+      ),
+      Device(
+        id: 'unresolved',
+        name: 'My Android Phone',
+        platform: 'android',
+        createdAt: '',
+        lastSeenAt: '',
+      ),
+    ];
   }
 
   @override
@@ -92,4 +135,8 @@ final class _OfflineHomeRepository implements HomeRepositoryContract {
 
   @override
   Future<String?> userIdForDevice(String deviceId) async => null;
+
+  @override
+  Future<String?> labelForDevice(String deviceId) async =>
+      deviceId == 'peer' ? 'sana.oz' : null;
 }
