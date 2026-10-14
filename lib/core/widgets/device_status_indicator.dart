@@ -45,6 +45,14 @@ class DeviceStatusIndicator extends StatelessWidget {
       icon: _icon(),
     );
     if (showLabel) return badge;
+    // Unknown presence is the common resting state after launch: keep the row
+    // calm with a neutral dot instead of an alarming question-mark icon.
+    if (_status == DeviceNetworkStatus.unknown) {
+      return Tooltip(
+        message: _status.label,
+        child: Icon(Icons.circle, color: color.withOpacity(0.35), size: 10),
+      );
+    }
     return Tooltip(message: _status.label, child: Icon(_icon(), color: color, size: 18));
   }
 }

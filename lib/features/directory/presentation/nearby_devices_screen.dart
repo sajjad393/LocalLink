@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
-import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/widgets/messenger_section_header.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
@@ -97,13 +96,34 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
               ),
               const SizedBox(height: LocalLinkSpacing.lg),
               if (peers.isEmpty)
-                const SizedBox(
-                  height: 220,
-                  child: LocalLinkEmptyView(
-                    icon: Icons.radar_rounded,
-                    lottieAsset: 'assets/animations/radar_pulse.json',
-                    title: 'No nearby phones found',
-                    message: 'Make sure the other phone is nearby and Wi-Fi Direct is available.',
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(LocalLinkSpacing.lg),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                          child: Icon(Icons.radar_rounded,
+                              color: Theme.of(context).colorScheme.onSecondaryContainer),
+                        ),
+                        const SizedBox(width: LocalLinkSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Nothing found yet',
+                                  style: Theme.of(context).textTheme.titleSmall),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Make sure the other phone is nearby, has LocalLink open, and Wi-Fi is enabled.',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               else
