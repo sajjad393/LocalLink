@@ -1,4 +1,5 @@
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
+import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
@@ -131,9 +132,11 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
       }
     }
 
+    final last = lastError;
     throw StateError(
-      lastError?.toString().replaceFirst('Exception: ', '') ??
-          'LocalLink server could not be verified.',
+      last == null
+          ? 'LocalLink server could not be verified.'
+          : cleanBlocError(last),
     );
   }
 

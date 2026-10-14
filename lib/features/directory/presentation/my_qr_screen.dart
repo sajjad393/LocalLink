@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:flutter/material.dart';
 
@@ -186,7 +187,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        error = e.toString().replaceFirst('Exception: ', '').replaceFirst('FormatException: ', '');
+        error = cleanBlocError(e);
       });
     } finally {
       if (mounted) setState(() => resolving = false);

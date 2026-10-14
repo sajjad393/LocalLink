@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/bloc/account_bloc.dart';
@@ -62,7 +63,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', ''))));
+            content: Text(cleanBlocError(e))));
     } finally {
       if (mounted) setState(() => saving = false);
     }

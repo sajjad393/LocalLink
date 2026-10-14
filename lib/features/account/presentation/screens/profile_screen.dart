@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -159,7 +160,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  String _cleanError(Object error) => error.toString().replaceFirst('Exception: ', '').trim();
+  String _cleanError(Object error) => cleanBlocError(error);
 
   Future<void> _pickImage() async {
     final value = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, maxHeight: 1024, imageQuality: 82);

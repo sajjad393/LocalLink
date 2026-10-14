@@ -4,11 +4,17 @@ import 'package:locallink/core/theme/app_tokens.dart';
 
 class LocalLinkTheme {
   static ThemeData _build(Brightness brightness) {
+    final dark = brightness == Brightness.dark;
     final scheme = ColorScheme.fromSeed(
-      seedColor: brightness == Brightness.dark
-          ? const Color(0xFF7C90FF)
-          : const Color(0xFF4664E8),
+      seedColor: LocalLinkBrand.gradientStart,
       brightness: brightness,
+    ).copyWith(
+      // Brand identity (blue → cyan) carried by the scheme itself, so every
+      // button, FAB, indicator and selection follows the LocalLink gradient
+      // family instead of a generic Material seed palette.
+      primary: dark ? const Color(0xFF8EA6FF) : LocalLinkBrand.gradientStart,
+      secondary: dark ? const Color(0xFF5EEAE3) : const Color(0xFF0BB5AC),
+      tertiary: dark ? const Color(0xFF23E0D8) : const Color(0xFF23A0B5),
     );
     final base = ThemeData(
       useMaterial3: true,
@@ -60,14 +66,19 @@ class LocalLinkTheme {
         surfaceTintColor: Colors.transparent,
         titleTextStyle: base.textTheme.titleLarge?.copyWith(
           color: scheme.onSurface,
+          fontSize: 22,
           fontWeight: FontWeight.w800,
+          letterSpacing: -0.4,
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 72,
         elevation: 0,
         backgroundColor: scheme.surface,
-        indicatorColor: scheme.secondaryContainer,
+        indicatorColor: scheme.primary.withOpacity(dark ? 0.22 : 0.12),
+        iconTheme: WidgetStatePropertyAll(
+          IconThemeData(color: scheme.onSurfaceVariant),
+        ),
         labelTextStyle: MaterialStatePropertyAll(
           base.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
@@ -111,6 +122,7 @@ class LocalLinkTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.xl),
           shape: RoundedRectangleBorder(
@@ -120,6 +132,7 @@ class LocalLinkTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.xl),
           shape: RoundedRectangleBorder(
@@ -155,6 +168,31 @@ class LocalLinkTheme {
       progressIndicatorTheme: ProgressIndicatorThemeData(
         color: scheme.primary,
         linearTrackColor: scheme.surfaceContainerHighest,
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? scheme.primary : null,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? scheme.primary.withOpacity(0.35)
+              : null,
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: scheme.surfaceContainerLowest,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(LocalLinkSpacing.xl),
+        ),
+        titleTextStyle: base.textTheme.titleLarge?.copyWith(color: scheme.onSurface),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: scheme.surfaceContainerLowest,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
       ),
     );
   }

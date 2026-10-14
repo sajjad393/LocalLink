@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -146,7 +147,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  String _cleanError(Object error) => error.toString().replaceFirst('Exception: ', '').trim();
+  String _cleanError(Object error) => cleanBlocError(error);
 
   void _startSearch() {
     setState(() {

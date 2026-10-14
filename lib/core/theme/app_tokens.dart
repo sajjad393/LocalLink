@@ -90,3 +90,12 @@ abstract final class LocalLinkMotion {
   static const standard = Duration(milliseconds: 260);
   static const slow = Duration(milliseconds: 360);
 }
+
+/// Lottie animation + brand assets that ship with the app. Referenced by the
+/// shared state views so every module shows the same motion language.
+abstract final class LocalLinkAssets {
+  static const lottieLoadingRadar = 'assets/animations/radar_pulse.json';
+  static const lottieEmptyInbox = 'assets/animations/empty_inbox.json';
+  static const lottieChatHero = 'assets/animations/chat_hero.json';
+  static const brandSplashLogo = 'assets/brand/splash_logo.png';
+}

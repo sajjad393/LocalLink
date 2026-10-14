@@ -1,3 +1,4 @@
+import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../domain/directory_models.dart';
 import '../domain/directory_repository_contract.dart';
@@ -15,9 +16,9 @@ class DirectoryError extends DirectoryState { final String message; const Direct
 class DirectoryBloc extends Bloc<DirectoryEvent, DirectoryState> {
   final DirectoryRepositoryContract repository;
   DirectoryBloc(this.repository):super(const DirectoryInitial()) {
-    on<SearchDirectoryByPhone>((e,emit) async {emit(const DirectoryLoading()); try {final p=await repository.findByPhone(e.phone); emit(DirectoryResults(p==null?const[]:[p]));} catch(x){emit(DirectoryError(x.toString().replaceFirst('Exception: ','')));}});
-    on<SearchDirectoryByName>((e,emit) async {emit(const DirectoryLoading()); try {emit(DirectoryResults(await repository.searchByName(e.query)));} catch(x){emit(DirectoryError(x.toString().replaceFirst('Exception: ','')));}});
-    on<LoadDirectoryProfile>((e,emit) async {emit(const DirectoryLoading()); try {emit(DirectoryProfileLoaded(await repository.getProfile(e.userId)));} catch(x){emit(DirectoryError(x.toString().replaceFirst('Exception: ','')));}});
-    on<SyncDirectory>((e,emit) async {emit(const DirectoryLoading()); try {await repository.sync(); emit(const DirectoryResults([]));} catch(x){emit(DirectoryError(x.toString().replaceFirst('Exception: ','')));}});
+    on<SearchDirectoryByPhone>((e,emit) async {emit(const DirectoryLoading()); try {final p=await repository.findByPhone(e.phone); emit(DirectoryResults(p==null?const[]:[p]));} catch(x){emit(DirectoryError(cleanBlocError(x)));}});
+    on<SearchDirectoryByName>((e,emit) async {emit(const DirectoryLoading()); try {emit(DirectoryResults(await repository.searchByName(e.query)));} catch(x){emit(DirectoryError(cleanBlocError(x)));}});
+    on<LoadDirectoryProfile>((e,emit) async {emit(const DirectoryLoading()); try {emit(DirectoryProfileLoaded(await repository.getProfile(e.userId)));} catch(x){emit(DirectoryError(cleanBlocError(x)));}});
+    on<SyncDirectory>((e,emit) async {emit(const DirectoryLoading()); try {await repository.sync(); emit(const DirectoryResults([]));} catch(x){emit(DirectoryError(cleanBlocError(x)));}});
   }
 }

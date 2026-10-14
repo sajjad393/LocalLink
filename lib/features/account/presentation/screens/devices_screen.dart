@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
@@ -68,7 +69,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
       await _controller.revoke(device);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Device revoked')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(cleanBlocError(e))));
     }
   }
 

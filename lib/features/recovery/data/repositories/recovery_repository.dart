@@ -1,4 +1,5 @@
 import 'package:locallink/core/models/account_restore.dart';
+import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
@@ -65,9 +66,11 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
       }
     }
 
+    final last = lastError;
     throw StateError(
-      lastError?.toString().replaceFirst('Exception: ', '') ??
-          'LocalLink server could not be verified.',
+      last == null
+          ? 'LocalLink server could not be verified.'
+          : cleanBlocError(last),
     );
   }
 

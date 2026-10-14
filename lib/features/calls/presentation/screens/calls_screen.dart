@@ -56,7 +56,7 @@ class _CallsScreenState extends State<CallsScreen> {
                   physics: AlwaysScrollableScrollPhysics(),
                   children: [
                     SizedBox(height: 180),
-                    SizedBox(height: 360, child: LocalLinkEmptyView(icon: Icons.call_outlined, title: 'No calls yet', message: 'Your recent LocalLink calls will appear here.')),
+                    SizedBox(height: 420, child: LocalLinkEmptyView(icon: Icons.call_outlined, lottieAsset: LocalLinkAssets.lottieEmptyInbox, title: 'No calls yet', message: 'Your recent LocalLink calls will appear here.')),
                   ],
                 )
               : ListView.separated(

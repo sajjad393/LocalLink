@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/services.dart';
 
 import 'package:locallink/core/models/device.dart';
@@ -186,7 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _cleanError(Object error) {
     if (error is CallPreflightException) return error.userMessage;
-    return error.toString().replaceFirst('Exception: ', '').trim();
+    return cleanBlocError(error);
   }
 
   String _deviceSubtitle(Device device) {
@@ -249,6 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 420,
                     child: LocalLinkEmptyView(
                       icon: Icons.forum_outlined,
+                      lottieAsset: LocalLinkAssets.lottieEmptyInbox,
                       title: 'No conversations yet',
                       message:
                           'Find a nearby person or create a group to start chatting.',

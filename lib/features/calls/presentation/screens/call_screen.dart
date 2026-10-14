@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:flutter/material.dart';
 
@@ -39,7 +40,7 @@ class _CallScreenState extends State<CallScreen> {
     super.dispose();
   }
 
-  String _cleanError(Object error) => error.toString().replaceFirst('Exception: ', '').trim();
+  String _cleanError(Object error) => cleanBlocError(error);
 
   String _statusTextFor(CallSession session) => switch (session.state) {
         CallState.ringing => session.direction == CallDirection.outgoing ? 'Calling…' : 'Incoming call',

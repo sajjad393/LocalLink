@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/features/directory/bloc/directory_bloc.dart';
@@ -240,7 +241,7 @@ class DirectoryProfileView extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
+            cleanBlocError(e),
           ),
         ),
       );
@@ -254,7 +255,7 @@ class DirectoryProfileView extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(content: Text(cleanBlocError(e))),
       );
     }
   }
