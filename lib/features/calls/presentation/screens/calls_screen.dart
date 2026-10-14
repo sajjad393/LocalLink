@@ -77,13 +77,14 @@ class _CallsScreenState extends State<CallsScreen> {
                     ),
                     Container(
                       decoration: BoxDecoration(
-                        color: colors.surfaceContainer.withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                             color: colors.outlineVariant.withValues(alpha: 0.35)),
                       ),
                       clipBehavior: Clip.antiAlias,
-                      child: ListView.separated(
+                      child: Material(
+                        color: colors.surfaceContainer.withValues(alpha: 0.65),
+                        child: ListView.separated(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         padding: EdgeInsets.zero,
@@ -104,6 +105,7 @@ class _CallsScreenState extends State<CallsScreen> {
                             duration: call.durationSeconds > 0 ? _duration(call.durationSeconds) : null,
                           );
                         },
+                        ),
                       ),
                     ),
                   ],

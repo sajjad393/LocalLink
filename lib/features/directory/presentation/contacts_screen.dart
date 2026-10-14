@@ -230,15 +230,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ),
       );
     }
+    // Material provides the ListTile ink/background layer; the Container only
+    // draws border + radius + horizontal margin.
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.lg),
       decoration: BoxDecoration(
-        color: colors.surfaceContainer.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.35)),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(children: tiles),
+      child: Material(
+        color: colors.surfaceContainer.withValues(alpha: 0.65),
+        child: Column(children: tiles),
+      ),
     );
   }
 }

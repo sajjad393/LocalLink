@@ -760,7 +760,7 @@ class ReliableMessagingService {
                 'sender_id': store.deviceId,
                 'recipient_id': recipientId,
                 'body': body,
-                'created_at': item['created_at'],
+                'created_at': _rfc3339Utc(item['created_at']),
                 if (attachments.isNotEmpty)
                   'attachments': attachments,
               },
@@ -899,7 +899,7 @@ class ReliableMessagingService {
             'id': id,
             'recipient_id': recipientId,
             'body': body,
-            'created_at': item['created_at'],
+            'created_at': _rfc3339Utc(item['created_at']),
             if (remoteIds.isNotEmpty)
               'attachment_ids': remoteIds,
           },
@@ -1987,6 +1987,16 @@ class ReliableMessagingService {
         stackTrace: stackTrace,
       );
     }
+  }
+
+  /// Always emit a server-acceptable timestamp (RFC3339, UTC, Z suffix).
+  /// Outbox rows created by older builds may hold local-format ISO strings
+  /// (no Z) which the Go server cannot parse -> "valid created_at is
+  /// required" and permanent re-queue loops. Normalize at the send site.
+  String _rfc3339Utc(Object? raw) {
+    final parsed = DateTime.tryParse(raw?.toString() ?? '');
+    final value = parsed ?? DateTime.now();
+    return value.toUtc().toIso8601String();
   }
 
   String _newId() {
