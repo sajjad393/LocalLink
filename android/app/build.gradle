@@ -60,6 +60,11 @@ android {
 
 dependencies {
     testImplementation "junit:junit:4.13.2"
+    // Real org.json for local unit tests: the mocked android.jar stubs org.json
+    // (returns null with returnDefaultValues=true), which broke every mesh
+    // packet serialization suite. This jar runs the real implementation,
+    // exactly as the app does on device.
+    testImplementation "org.json:json:20231013"
 }
 
 flutter {
