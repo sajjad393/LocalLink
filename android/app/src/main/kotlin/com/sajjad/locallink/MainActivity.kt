@@ -100,6 +100,25 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         activeInstance = this
+        maybeRequestBatteryOptimizationExemption()
+    }
+
+    // OEM task killers (observed: ZTE SuperKiller gauge dumps+kills the app over
+    // ~0.5 s jank even while LocalLinkTransportService runs in the foreground)
+    // honor the battery-optimization exemption. Ask the user via the official
+    // system dialog exactly once per install; silently skip if already exempt.
+    private fun maybeRequestBatteryOptimizationExemption() {
+        if (android.os.Build.VERSION.SDK_INT < 23) return
+        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+        val prefs = getSharedPreferences("locallink_flags", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("battery_exemption_prompted", false)) return
+        prefs.edit().putBoolean("battery_exemption_prompted", true).apply()
+        try {
+            startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:$packageName")))
+        } catch (_: Exception) {
+            try { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (_: Exception) {}
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
