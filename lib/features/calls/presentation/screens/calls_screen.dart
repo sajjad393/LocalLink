@@ -42,6 +42,7 @@ class _CallsScreenState extends State<CallsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return LocalLinkBlocBuilder<CallBloc, CallState>(
       bloc: widget.controller,
       builder: (context, state) => Scaffold(
@@ -59,22 +60,53 @@ class _CallsScreenState extends State<CallsScreen> {
                     SizedBox(height: 420, child: LocalLinkEmptyView(icon: Icons.call_outlined, lottieAsset: LocalLinkAssets.lottieEmptyInbox, title: 'No calls yet', message: 'Your recent LocalLink calls will appear here.')),
                   ],
                 )
-              : ListView.separated(
+              : ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(vertical: LocalLinkSpacing.sm),
-                  itemCount: state.history.length,
-                  separatorBuilder: (_, __) => const Divider(indent: 84),
-                  itemBuilder: (_, index) {
-                    final call = state.history[index];
-                    return CallHistoryTile(
-                      call: call,
-                      selfId: widget.selfId,
-                      title: _title(call),
-                      status: _status(call),
-                      date: _date(call.startedAt),
-                      duration: call.durationSeconds > 0 ? _duration(call.durationSeconds) : null,
-                    );
-                  },
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                  children: [
+                    // Section label — matches the shared grouped language.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+                      child: Text(
+                        'RECENT',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              letterSpacing: 1.1,
+                              color: colors.onSurfaceVariant,
+                            ),
+                      ),
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainer.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: colors.outlineVariant.withValues(alpha: 0.35)),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        itemCount: state.history.length,
+                        separatorBuilder: (_, __) => Divider(
+                          height: 1,
+                          indent: 72,
+                          color: colors.outlineVariant.withValues(alpha: 0.4),
+                        ),
+                        itemBuilder: (_, index) {
+                          final call = state.history[index];
+                          return CallHistoryTile(
+                            call: call,
+                            selfId: widget.selfId,
+                            title: _title(call),
+                            status: _status(call),
+                            date: _date(call.startedAt),
+                            duration: call.durationSeconds > 0 ? _duration(call.durationSeconds) : null,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
         ),
       ),

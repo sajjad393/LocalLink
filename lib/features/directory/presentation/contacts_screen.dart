@@ -185,32 +185,60 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     ),
                   )
                 else
-                  ...contacts.map((profile) {
-                    final title = profile.displayName.isEmpty ? profile.username : profile.displayName;
-                    return ListTile(
-                      minVerticalPadding: LocalLinkSpacing.sm,
-                      leading: AccountAvatar(name: title, radius: 24),
-                      title: Text(title, style: Theme.of(context).textTheme.titleSmall),
-                      subtitle: Text('@${profile.username}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: PopupMenuButton<String>(
-                        tooltip: 'More',
-                        onSelected: (value) async {
-                          if (value == 'remove') await bloc.remove(profile.userId);
-                          if (value == 'block') await bloc.block(profile.userId);
-                        },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'remove', child: Text('Remove contact')),
-                          PopupMenuItem(value: 'block', child: Text('Block person')),
-                        ],
-                      ),
-                      onTap: () => _chat(profile),
-                    );
-                  }),
+                  _contactGroup(context, contacts),
               ],
             ),
           );
         },
       ),
+    );
+  }
+
+  /// Contact rows grouped in the shared rounded-container language
+  /// (subtle surface, 20 radius, hairline separators).
+  Widget _contactGroup(BuildContext context, List<DirectoryProfile> contacts) {
+    final colors = Theme.of(context).colorScheme;
+    final tiles = <Widget>[];
+    for (var i = 0; i < contacts.length; i++) {
+      final profile = contacts[i];
+      final title =
+          profile.displayName.isEmpty ? profile.username : profile.displayName;
+      if (i > 0) {
+        tiles.add(
+          Divider(height: 1, indent: 72, color: colors.outlineVariant.withValues(alpha: 0.4)),
+        );
+      }
+      tiles.add(
+        ListTile(
+          minVerticalPadding: LocalLinkSpacing.sm,
+          leading: AccountAvatar(name: title, radius: 24),
+          title: Text(title, style: Theme.of(context).textTheme.titleSmall),
+          subtitle: Text('@${profile.username}',
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+          trailing: PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (value) async {
+              if (value == 'remove') await bloc.remove(profile.userId);
+              if (value == 'block') await bloc.block(profile.userId);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'remove', child: Text('Remove contact')),
+              PopupMenuItem(value: 'block', child: Text('Block person')),
+            ],
+          ),
+          onTap: () => _chat(profile),
+        ),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.lg),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainer.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.35)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: tiles),
     );
   }
 }
