@@ -145,6 +145,9 @@ class AppDependencies {
       connectivityRepository,
       directTransport,
       routePolicy: routePolicy,
+      // Keep the launch window responsive: do the first sync/realtime burst
+      // after the first frames are on screen (cold-start ANR guard).
+      startupSettle: const Duration(seconds: 3),
     );
     messagingRepository = MessagingRepository(store: store, service: messaging);
     notifications = LocalLinkNotificationService(
