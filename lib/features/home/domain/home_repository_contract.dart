@@ -15,4 +15,9 @@ abstract interface class HomeRepositoryContract {
   /// Resolves a device id to the owning directory user id, if known. Used to
   /// collapse multiple devices of one user into a single conversation entry.
   Future<String?> userIdForDevice(String deviceId);
+
+  /// Resolves a device id to the best human-readable label from the local
+  /// directory profile (display name first, then username), if known. Used so
+  /// the conversation list shows the person instead of the raw device name.
+  Future<String?> labelForDevice(String deviceId);
 }

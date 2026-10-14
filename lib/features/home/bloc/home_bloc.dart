@@ -13,27 +13,42 @@ final class HomeState extends Equatable {
   final bool loading;
   final String? error;
 
+  /// Quiet, non-alarming line shown when the AUTOMATIC background sync cannot
+  /// reach the server. Never louder, never red, never contains raw errors.
+  final String? syncNotice;
+
+  /// Best human-readable label per device id (directory display name first,
+  /// then username). Conversation tiles show the person, not the device name.
+  final Map<String, String> deviceLabels;
+
   const HomeState(
       {this.devices = const [],
       this.groups = const [],
       this.loading = true,
-      this.error});
+      this.error,
+      this.syncNotice,
+      this.deviceLabels = const {}});
 
   HomeState copyWith(
           {List<Device>? devices,
           List<LocalGroup>? groups,
           bool? loading,
           String? error,
-          bool clearError = false}) =>
+          String? syncNotice,
+          Map<String, String>? deviceLabels,
+          bool clearError = false,
+          bool clearSyncNotice = false}) =>
       HomeState(
         devices: devices ?? this.devices,
         groups: groups ?? this.groups,
         loading: loading ?? this.loading,
         error: clearError ? null : (error ?? this.error),
+        syncNotice: clearSyncNotice ? null : (syncNotice ?? this.syncNotice),
+        deviceLabels: deviceLabels ?? this.deviceLabels,
       );
 
   @override
-  List<Object?> get props => [devices, groups, loading, error];
+  List<Object?> get props => [devices, groups, loading, error, syncNotice, deviceLabels];
 }
 
 final class HomeBloc extends Cubit<HomeState> {
@@ -53,6 +68,7 @@ final class HomeBloc extends Cubit<HomeState> {
   List<LocalGroup> get groups => state.groups;
   bool get loading => state.loading;
   String? get error => state.error;
+  String? get syncNotice => state.syncNotice;
 
   void start() {
     if (_started || _closed) return;
@@ -65,9 +81,9 @@ final class HomeBloc extends Cubit<HomeState> {
     unawaited(load());
   }
 
-  Future<void> load() async {
+  Future<void> load({bool userInitiated = false}) async {
     if (_closed) return;
-    emit(state.copyWith(loading: true, clearError: true));
+    emit(state.copyWith(loading: true, clearError: true, clearSyncNotice: true));
     try {
       final devices = await repository.devices();
       if (_closed) return;
@@ -79,12 +95,16 @@ final class HomeBloc extends Cubit<HomeState> {
       }
       if (_closed) return;
       _localDiscoveryAttempted = false;
+      final visible = await _collapseDeviceDuplicates(
+          devices.where((d) => d.id != repository.localDeviceId).toList());
+      if (_closed) return;
       emit(state.copyWith(
-        devices: await _collapseDeviceDuplicates(
-            devices.where((d) => d.id != repository.localDeviceId).toList()),
+        devices: visible,
         groups: groups,
+        deviceLabels: await _labelsFor(visible),
         loading: false,
         clearError: true,
+        clearSyncNotice: true,
       ));
     } catch (e) {
       if (_closed) return;
@@ -92,26 +112,58 @@ final class HomeBloc extends Cubit<HomeState> {
         final localDevices = await repository.localDevices();
         final localGroups = await repository.localGroups();
         if (_closed) return;
+        final visible = await _collapseDeviceDuplicates(localDevices
+            .where((d) => d.id != repository.localDeviceId)
+            .toList());
+        if (_closed) return;
+        // A failing BACKGROUND sync is not an error worth a red banner: the
+        // user sees their saved conversations plus a quiet offline line. Only
+        // an explicit user action (pull-to-refresh, Retry) reports loudly.
         emit(state.copyWith(
-          devices: await _collapseDeviceDuplicates(localDevices
-              .where((d) => d.id != repository.localDeviceId)
-              .toList()),
+          devices: visible,
           groups: localGroups,
-          error:
-              '${localDevices.isEmpty && localGroups.isEmpty ? 'Server sync failed; no saved conversations are available.' : 'Server sync failed; showing saved conversations.'} ${cleanBlocError(e)}',
+          deviceLabels: await _labelsFor(visible),
+          error: userInitiated
+              ? '${localDevices.isEmpty && localGroups.isEmpty ? 'Server sync failed; no saved conversations are available.' : 'Server sync failed; showing saved conversations.'} ${cleanBlocError(e)}'
+              : null,
+          syncNotice: userInitiated
+              ? null
+              : (localDevices.isEmpty && localGroups.isEmpty
+                  ? 'Not connected to the server yet. Conversations will appear once it is reachable.'
+                  : 'Offline — showing saved conversations. Syncs automatically when the server is back.'),
           loading: false,
         ));
       } catch (fallbackError) {
         if (!_closed) {
           emit(state.copyWith(
-            error:
-                'Server sync failed and saved conversations could not be loaded. ${cleanBlocError(e)}; local data error: ${cleanBlocError(fallbackError)}',
+            error: userInitiated
+                ? 'Server sync failed and saved conversations could not be loaded. ${cleanBlocError(e)}; local data error: ${cleanBlocError(fallbackError)}'
+                : null,
+            syncNotice: userInitiated
+                ? null
+                : 'Offline — saved conversations could not be refreshed.',
             loading: false,
           ));
         }
       }
       await _startLocalDiscovery();
     }
+  }
+
+  /// Resolves conversation titles: the directory person's name wins over the
+  /// raw device name, so "sana.oz" shows instead of "My Android Phone".
+  Future<Map<String, String>> _labelsFor(List<Device> devices) async {
+    final labels = <String, String>{};
+    for (final device in devices) {
+      String? label;
+      try {
+        label = await repository.labelForDevice(device.id);
+      } catch (_) {
+        label = null;
+      }
+      if (label != null && label.isNotEmpty) labels[device.id] = label;
+    }
+    return labels;
   }
 
   Future<void> _startLocalDiscovery() async {
@@ -197,7 +249,9 @@ final class HomeBloc extends Cubit<HomeState> {
       next[i] = updated;
     }
     final collapsed = await _collapseDeviceDuplicates(next);
-    if (!_closed) emit(state.copyWith(devices: collapsed));
+    if (_closed) return;
+    final labels = await _labelsFor(collapsed);
+    if (!_closed) emit(state.copyWith(devices: collapsed, deviceLabels: labels));
   }
 
   /// Collapses multiple devices that belong to the same directory user into a

@@ -226,14 +226,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 message: 'Loading your conversations…');
           }
           return RefreshIndicator(
-            onRefresh: _controller.load,
+            onRefresh: () => _controller.load(userInitiated: true),
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(bottom: 96),
               children: [
                 if (state.error != null)
                   LocalLinkInlineError(
-                      message: state.error!, onRetry: _controller.load),
+                      message: state.error!,
+                      onRetry: () => _controller.load(userInitiated: true)),
+                if (state.error == null && state.syncNotice != null)
+                  _SyncNotice(message: state.syncNotice!),
                 MessengerSectionHeader(
                   title: 'Conversations',
                   actionLabel: state.devices.isNotEmpty ? 'People' : null,
@@ -274,8 +277,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   ...state.devices.map(
                     (device) => MessengerConversationTile(
-                      title:
-                          device.name.isEmpty ? 'LocalLink user' : device.name,
+                      title: state.deviceLabels[device.id] ??
+                          (device.name.isEmpty ? 'LocalLink user' : device.name),
                       subtitle: _deviceSubtitle(device),
                       device: device,
                       onTap: () => _openChat(device),
@@ -387,6 +390,41 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: 'Settings'),
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+/// Quiet, neutral offline line for automatic (background) sync failures.
+/// Deliberately not red and without a Retry button: the app retries itself.
+class _SyncNotice extends StatelessWidget {
+  final String message;
+  const _SyncNotice({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_outlined,
+              size: 18, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style:
+                  TextStyle(color: scheme.onSurfaceVariant, fontSize: 13.5),
+            ),
+          ),
+        ],
       ),
     );
   }
