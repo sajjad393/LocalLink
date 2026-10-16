@@ -69,6 +69,12 @@ class FileTransferService {
       {String? clientFileId,
       String? transferId,
       void Function(TransferProgress progress)? onProgress}) async {
+    // Standard multipart path. The previous hand-rolled StreamedRequest pump
+    // pushed chunks into the sink without backpressure and stalled after the
+    // first chunk on Android — the server only responded to requests that
+    // somehow completed, which is exactly why 200s kept arriving AFTER the
+    // 45s timeouts. This version is bounded end-to-end, and retries are safe:
+    // the server de-duplicates via X-Client-File-ID.
     final request =
         http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/files'));
     request.headers.addAll(_headers());
@@ -77,59 +83,44 @@ class FileTransferService {
     }
     request.files.add(await http.MultipartFile.fromPath('file', file.path,
         filename: file.name));
-    final finalized = request.finalize();
     final contentLength = request.contentLength;
-    final streamed = http.StreamedRequest(request.method, request.url);
-    streamed.headers.addAll(request.headers);
-    streamed.contentLength = contentLength;
-    var sent = 0;
-    var lastLoggedMb = -1;
-    final pump = finalized.listen(
-      (chunk) {
-        sent += chunk.length;
-        final sentMb = sent ~/ (512 * 1024);
-        if (sentMb != lastLoggedMb) {
-          lastLoggedMb = sentMb;
-          AppLogger.info(
-            'FILE_UPLOAD_BYTES_FLOWING',
-            detail: 'bytes=$sent total=$contentLength',
-          );
-        }
-        streamed.sink.add(chunk);
-        onProgress?.call(TransferProgress(
-          operationId: transferId ?? 'untracked-upload',
-          direction: FileTransferDirection.upload,
-          completed: sent,
-          total: contentLength,
-          status: FileTransferStatus.running,
-        ));
-      },
-      onError: streamed.sink.addError,
-      onDone: streamed.sink.close,
-      cancelOnError: true,
+
+    AppLogger.info(
+      'FILE_UPLOAD_SEND_START',
+      detail: 'bytes=$contentLength name=${file.name}',
     );
+    onProgress?.call(TransferProgress(
+      operationId: transferId ?? 'untracked-upload',
+      direction: FileTransferDirection.upload,
+      completed: 0,
+      total: contentLength,
+      status: FileTransferStatus.running,
+    ));
+
     final client = _newHttpClient();
     if (transferId != null && transferId.isNotEmpty)
       _activeClients[transferId] = client;
-    AppLogger.info(
-      'FILE_UPLOAD_SEND_START',
-      detail: 'bytes=$contentLength url=${request.url.host}',
-    );
     try {
-      final response =
-          await client.send(streamed).timeout(const Duration(minutes: 3));
+      final streamed =
+          await client.send(request).timeout(const Duration(seconds: 40));
       AppLogger.info(
         'FILE_UPLOAD_RESPONSE_HEADERS',
-        detail: 'status=${response.statusCode}',
+        detail: 'status=${streamed.statusCode}',
       );
-      await pump.asFuture<void>().catchError((_) {});
-      final body = await response.stream
+      final body = await streamed.stream
           .bytesToString()
           .timeout(const Duration(seconds: 30));
       AppLogger.info('FILE_UPLOAD_RESPONSE_BODY', detail: 'len=${body.length}');
-      if (response.statusCode != 200 && response.statusCode != 201) {
-        throw Exception(_errorBody(body, response.statusCode));
+      if (streamed.statusCode != 200 && streamed.statusCode != 201) {
+        throw Exception(_errorBody(body, streamed.statusCode));
       }
+      onProgress?.call(TransferProgress(
+        operationId: transferId ?? 'untracked-upload',
+        direction: FileTransferDirection.upload,
+        completed: contentLength,
+        total: contentLength,
+        status: FileTransferStatus.completed,
+      ));
       final payload = jsonDecode(body) as Map<String, dynamic>;
       if (transferId != null && _cancelledTransfers.remove(transferId)) {
         throw const FileTransferCancelledException();
@@ -143,7 +134,6 @@ class FileTransferService {
       rethrow;
     } finally {
       _activeClients.remove(transferId);
-      await pump.cancel();
       client.close();
     }
   }
