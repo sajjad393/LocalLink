@@ -124,8 +124,8 @@ class FileTransferService {
       );
       await pump.asFuture<void>().catchError((_) {});
       final body = await response.stream
-          .timeout(const Duration(seconds: 30))
-          .bytesToString();
+          .bytesToString()
+          .timeout(const Duration(seconds: 30));
       AppLogger.info('FILE_UPLOAD_RESPONSE_BODY', detail: 'len=${body.length}');
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception(_errorBody(body, response.statusCode));
