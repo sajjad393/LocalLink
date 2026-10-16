@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:sqflite_sqlcipher/sqflite.dart';
 
 import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/security/security_policy.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
@@ -82,9 +83,18 @@ class FileTransferService {
     streamed.headers.addAll(request.headers);
     streamed.contentLength = contentLength;
     var sent = 0;
+    var lastLoggedMb = -1;
     final pump = finalized.listen(
       (chunk) {
         sent += chunk.length;
+        final sentMb = sent ~/ (512 * 1024);
+        if (sentMb != lastLoggedMb) {
+          lastLoggedMb = sentMb;
+          AppLogger.info(
+            'FILE_UPLOAD_BYTES_FLOWING',
+            detail: 'bytes=$sent total=$contentLength',
+          );
+        }
         streamed.sink.add(chunk);
         onProgress?.call(TransferProgress(
           operationId: transferId ?? 'untracked-upload',
@@ -101,11 +111,22 @@ class FileTransferService {
     final client = _newHttpClient();
     if (transferId != null && transferId.isNotEmpty)
       _activeClients[transferId] = client;
+    AppLogger.info(
+      'FILE_UPLOAD_SEND_START',
+      detail: 'bytes=$contentLength url=${request.url.host}',
+    );
     try {
       final response =
           await client.send(streamed).timeout(const Duration(minutes: 3));
+      AppLogger.info(
+        'FILE_UPLOAD_RESPONSE_HEADERS',
+        detail: 'status=${response.statusCode}',
+      );
       await pump.asFuture<void>().catchError((_) {});
-      final body = await response.stream.bytesToString();
+      final body = await response.stream
+          .timeout(const Duration(seconds: 30))
+          .bytesToString();
+      AppLogger.info('FILE_UPLOAD_RESPONSE_BODY', detail: 'len=${body.length}');
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception(_errorBody(body, response.statusCode));
       }

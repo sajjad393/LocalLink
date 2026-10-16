@@ -1036,7 +1036,10 @@ class ReliableMessagingService {
             errorText.contains('timestamp is invalid') ||
             errorText.contains('too far in the future') ||
             errorText.contains('recipient device not found') ||
-            errorText.contains('sender_id does not match');
+            errorText.contains('sender_id does not match') ||
+            // The server already owns this id bound to OTHER metadata:
+            // retrying can never succeed, so drop it from the queue.
+            errorText.contains('already belongs to different');
         await store.updateOutboxStatus(id, permanent ? 'failed' : 'queued');
         AppLogger.info(
           'MESSAGE_ERROR_CLASSIFIED',
