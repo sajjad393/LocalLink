@@ -365,6 +365,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 onPickAttachments: _pickFiles,
                 onSend: _send,
                 onVoiceNote: _toggleVoiceNote,
+                hasAttachments: state.pendingAttachments.isNotEmpty,
                 isRecording: _recording,
               ),
             ],

@@ -12,6 +12,10 @@ class ChatComposer extends StatelessWidget {
   final VoidCallback? onVoiceNote;
   final bool isRecording;
 
+  /// True when files are staged in the composer — the Send button must then
+  /// appear even with an empty text field (image-without-caption send).
+  final bool hasAttachments;
+
   const ChatComposer({
     super.key,
     required this.controller,
@@ -19,6 +23,7 @@ class ChatComposer extends StatelessWidget {
     required this.onPickAttachments,
     required this.onSend,
     this.onVoiceNote,
+    this.hasAttachments = false,
     this.isRecording = false,
   });
 
@@ -73,7 +78,7 @@ class ChatComposer extends StatelessWidget {
             valueListenable: controller,
             builder: (context, value, _) {
               final hasText = value.text.trim().isNotEmpty;
-              if (!hasText && onVoiceNote != null) {
+              if (!hasText && !hasAttachments && onVoiceNote != null) {
                 return LocalLinkIconButton(
                   onPressed: isSending ? null : onVoiceNote,
                   filled: isRecording,
