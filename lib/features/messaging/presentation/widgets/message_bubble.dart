@@ -27,23 +27,14 @@ class MessageBubble extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final maxWidth = (MediaQuery.sizeOf(context).width * .82).clamp(160.0, 620.0);
-    // Outgoing = brand blue→cyan gradient pill with white text (reference
-    // design); incoming = neutral surface with regular text color.
-    // Outgoing fill is now a neutral surface (gradient moved to the border
-    // ring), so both sides use scheme text colors.
-    final foreground = colors.onSurface;
+    // Outgoing = solid brand pill with white text (no gradient, no border);
+    // incoming = neutral surface.
+    final foreground = isMine ? Colors.white : colors.onSurface;
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(LocalLinkRadius.chat),
       topRight: const Radius.circular(LocalLinkRadius.chat),
       bottomLeft: Radius.circular(isMine ? LocalLinkRadius.chat : 6),
       bottomRight: Radius.circular(isMine ? 6 : LocalLinkRadius.chat),
-    );
-    // Solid inner radius inset under the 1.5 px gradient ring.
-    final innerRadius = BorderRadius.only(
-      topLeft: const Radius.circular(LocalLinkRadius.chat - 1.5),
-      topRight: const Radius.circular(LocalLinkRadius.chat - 1.5),
-      bottomLeft: Radius.circular(isMine ? LocalLinkRadius.chat - 1.5 : 4.5),
-      bottomRight: Radius.circular(isMine ? 4.5 : LocalLinkRadius.chat - 1.5),
     );
 
     return Align(
@@ -57,32 +48,21 @@ class MessageBubble extends StatelessWidget {
           child: Container(
             constraints: BoxConstraints(maxWidth: maxWidth),
             margin: const EdgeInsets.only(bottom: LocalLinkSpacing.xs),
-            // Gradient ring thickness for outgoing bubbles; none for incoming.
-            padding: isMine ? const EdgeInsets.all(1.5) : EdgeInsets.zero,
+            padding: const EdgeInsets.fromLTRB(
+              LocalLinkSpacing.md,
+              LocalLinkSpacing.sm,
+              LocalLinkSpacing.md,
+              LocalLinkSpacing.xs,
+            ),
             decoration: BoxDecoration(
-              gradient: isMine ? LocalLinkBrand.linearGradient : null,
-              color: isMine ? null : colors.surfaceContainerHighest,
+              color: isMine
+                  ? colors.primary
+                  : colors.surfaceContainerHighest,
               borderRadius: radius,
             ),
-            child: Container(
-              decoration: isMine
-                  ? BoxDecoration(
-                      color: colors.surfaceContainerHigh,
-                      borderRadius: innerRadius,
-                    )
-                  : null,
-              // Content padding lives on the inner shell now: for outgoing
-              // it sits inside the gradient ring; for incoming it is the
-              // bubble's own padding.
-              padding: const EdgeInsets.fromLTRB(
-                LocalLinkSpacing.md,
-                LocalLinkSpacing.sm,
-                LocalLinkSpacing.md,
-                LocalLinkSpacing.xs,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
                 if (message.body.isNotEmpty)
                   Align(
                     alignment: Alignment.centerLeft,
@@ -138,7 +118,6 @@ class MessageBubble extends StatelessWidget {
                 ),
               ],
             ),
-            ),
           ),
         ),
       ),
@@ -176,12 +155,12 @@ class MessageBubble extends StatelessWidget {
 
   Color _statusColor(BuildContext context, String status) {
     final colors = Theme.of(context).colorScheme;
-    // Both walls are neutral surfaces now — scheme colors legible on each.
+    // Outgoing sits on solid primary — keep white tints there for legibility.
     if (isMine) {
       return switch (status.toLowerCase()) {
-        'failed' => colors.error,
-        'read' => colors.primary,
-        _ => colors.primary.withOpacity(.75),
+        'failed' => const Color(0xFFFFE0E0),
+        'read' => Colors.white,
+        _ => Colors.white70,
       };
     }
     return switch (status.toLowerCase()) {
