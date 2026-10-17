@@ -305,7 +305,16 @@ class _ChatScreenState extends State<ChatScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(device.name.isEmpty ? 'LocalLink user' : device.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            Text(
+                              device.name.isEmpty ? 'LocalLink user' : device.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16.5,
+                                    letterSpacing: .1,
+                                  ),
+                            ),
                             Text(_presenceLabel(device), style: Theme.of(context).textTheme.bodySmall),
                           ],
                         ),
@@ -316,19 +325,24 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? []
                 : [
                     DeviceStatusIndicator(device: device, showLabel: false),
-                    IconButton(
-                      tooltip: 'Search messages',
-                      onPressed: _startSearch,
-                      icon: const Icon(Icons.search),
-                    ),
                     if (widget.onStartCall != null)
                       IconButton(tooltip: 'Call', onPressed: _startCall, icon: const Icon(Icons.call_outlined)),
                     PopupMenuButton<String>(
-                      tooltip: 'Conversation options',
+                      tooltip: 'More options',
                       itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'search',
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.search),
+                            title: Text('Search messages'),
+                          ),
+                        ),
                         PopupMenuItem(value: 'info', child: Text('Conversation info')),
                       ],
                       onSelected: (value) {
+                        if (value == 'search') _startSearch();
                         if (value == 'info') _showConversationInfo();
                       },
                     ),
