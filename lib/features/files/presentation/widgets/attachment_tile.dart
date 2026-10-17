@@ -17,12 +17,17 @@ class AttachmentTile extends StatefulWidget {
   final String messageId;
   final String? groupMessageId;
 
+  /// Outgoing bubbles show a circular upload ring over the image while the
+  /// outbox is still flushing this message (WhatsApp-style affordance).
+  final bool uploading;
+
   const AttachmentTile({
     super.key,
     required this.attachment,
     required this.transfer,
     required this.messageId,
     this.groupMessageId,
+    this.uploading = false,
   });
 
   @override
@@ -44,6 +49,22 @@ class _AttachmentTileState extends State<AttachmentTile> {
     _localPath = widget.attachment.localPath;
     _controller = FileTransferBloc(repository: widget.transfer);
     _prepareExistingPath();
+    _maybeAutoDownload();
+  }
+
+  /// WhatsApp behaviour: small media starts downloading the moment the
+  /// bubble is shown — no tap needed. Manual tap remains for large files.
+  void _maybeAutoDownload() {
+    final cached = _localPath;
+    final hasLocal = cached != null && cached.isNotEmpty;
+    if (hasLocal || widget.uploading) return;
+    if (widget.attachment.isImage &&
+        widget.attachment.size <= 10 * 1024 * 1024) {
+      // Post-frame so the tile's own progress state binds first.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _activeOperation == null) _download();
+      });
+    }
   }
 
   Future<void> _prepareExistingPath() async {
@@ -81,6 +102,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
     if (id == null) return null;
     return _controller.progressOf(id);
   }
+
 
   Future<void> _download() async {
     try {
@@ -173,18 +195,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
           final displayPath = _displayPath;
           if (displayPath != null && File(displayPath).existsSync()) {
             if (widget.attachment.isImage) {
-              return Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    File(displayPath),
-                    width: 250,
-                    height: 180,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              );
+              return _imageWithUploadOverlay(displayPath);
             }
           }
 
@@ -240,18 +251,83 @@ class _AttachmentTileState extends State<AttachmentTile> {
                   ),
                 ),
                 if (running)
-                  IconButton(
-                    tooltip: 'Cancel download',
-                    onPressed: _cancel,
-                    icon: const Icon(Icons.close),
+                  SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          value: progress?.fraction,
+                          strokeWidth: 3,
+                        ),
+                        IconButton(
+                          tooltip: 'Cancel download',
+                          onPressed: _cancel,
+                          icon: const Icon(Icons.close, size: 18),
+                        ),
+                      ],
+                    ),
                   )
                 else
                   IconButton(
-                      onPressed: _download, icon: const Icon(Icons.download)),
+                    tooltip: 'Download',
+                    onPressed: _download,
+                    icon: const Icon(Icons.download_rounded),
+                  ),
               ],
             ),
           );
         });
+  }
+
+  /// Outgoing affordance: while [AttachmentTile.uploading] is true the image
+  /// local copy is shown dimmed with a circular upload ring on top — the same
+  /// pattern as the receiver's download ring below.
+  _imageWithUploadOverlay(String displayPath) {
+    final uploading = widget.uploading;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 250,
+          height: 180,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.file(File(displayPath), fit: BoxFit.cover),
+              if (uploading)
+                Container(
+                  color: Colors.black38,
+                  child: Center(
+                    child: SizedBox(
+                      width: 72,
+                      height: 72,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            // Indeterminate: outbox flush doesn't expose a
+                            // per-byte upload stream; the ring still signals
+                            // "sending" truthfully while queued/uploading.
+                            value: null,
+                            strokeWidth: 4,
+                            color: Colors.white,
+                            backgroundColor: Colors.white30,
+                          ),
+                          const Icon(Icons.arrow_upward_rounded,
+                              color: Colors.white, size: 28),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   String _sizeLabel(int bytes) {

@@ -72,6 +72,12 @@ class MessageBubble extends StatelessWidget {
                     attachment: attachment,
                     transfer: files,
                     messageId: message.id,
+                    // Outgoing media that the outbox is still flushing gets the
+                    // upload ring; once delivered the ring lifts.
+                    uploading: isMine &&
+                        (message.status == 'queued' ||
+                            message.status == 'sending' ||
+                            message.status == 'pending'),
                   ),
                 ),
                 if (reactions.isNotEmpty)
