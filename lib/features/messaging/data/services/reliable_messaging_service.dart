@@ -987,8 +987,8 @@ class ReliableMessagingService {
     ];
   }
 
-  Future<Attachment> _withLocalPath(
-      Attachment remote, Map<String, String> byId, List<Attachment> local, int i) async {
+  Attachment _withLocalPath(
+      Attachment remote, Map<String, String> byId, List<Attachment> local, int i) {
     if ((remote.localPath ?? '').isNotEmpty) return remote;
     var path = byId[remote.id];
     // The server can rekey attachment ids (re-uploaded dedup). Fall back to
