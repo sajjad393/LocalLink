@@ -27,9 +27,9 @@ class MessageBubble extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final maxWidth = (MediaQuery.sizeOf(context).width * .82).clamp(160.0, 620.0);
-    // Outgoing = solid brand pill with white text (no gradient, no border);
-    // incoming = neutral surface.
-    final foreground = isMine ? Colors.white : colors.onSurface;
+    // No brand blue on bubbles — neutral surfaces on both sides, so both
+    // share scheme text colors.
+    final foreground = colors.onSurface;
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(LocalLinkRadius.chat),
       topRight: const Radius.circular(LocalLinkRadius.chat),
@@ -56,7 +56,7 @@ class MessageBubble extends StatelessWidget {
             ),
             decoration: BoxDecoration(
               color: isMine
-                  ? colors.primary
+                  ? colors.surfaceContainer
                   : colors.surfaceContainerHighest,
               borderRadius: radius,
             ),
@@ -155,14 +155,6 @@ class MessageBubble extends StatelessWidget {
 
   Color _statusColor(BuildContext context, String status) {
     final colors = Theme.of(context).colorScheme;
-    // Outgoing sits on solid primary — keep white tints there for legibility.
-    if (isMine) {
-      return switch (status.toLowerCase()) {
-        'failed' => const Color(0xFFFFE0E0),
-        'read' => Colors.white,
-        _ => Colors.white70,
-      };
-    }
     return switch (status.toLowerCase()) {
       'failed' => colors.error,
       'read' => colors.primary,
