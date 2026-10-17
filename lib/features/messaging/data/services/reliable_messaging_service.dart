@@ -982,11 +982,24 @@ class ReliableMessagingService {
     };
     if (byId.isEmpty) return remote;
     return [
-      for (final a in remote)
-        (a.localPath ?? '').isNotEmpty
-            ? a
-            : a.copyWith(localPath: byId[a.id]),
+      for (var i = 0; i < remote.length; i++)
+        _withLocalPath(remote[i], byId, local, i),
     ];
+  }
+
+  Future<Attachment> _withLocalPath(
+      Attachment remote, Map<String, String> byId, List<Attachment> local, int i) async {
+    if ((remote.localPath ?? '').isNotEmpty) return remote;
+    var path = byId[remote.id];
+    // The server can rekey attachment ids (re-uploaded dedup). Fall back to
+    // positional + name pairing so the sender's own copy still renders.
+    if (path == null && local.length == 1 && remote.originalName == local[0].originalName) {
+      path = byId[local[0].id];
+    }
+    if (path == null && local.length == 1 && i == 0) {
+      path = byId[local[0].id];
+    }
+    return path == null ? remote : remote.copyWith(localPath: path);
   }
 
   Future<Message?> _resolveNetworkPayload(Map<String, dynamic> data) async {
@@ -1088,18 +1101,6 @@ class ReliableMessagingService {
       final pending =
       await store.pendingAttachments(id);
 
-      final localPaths = pending
-          .map(
-            (row) =>
-            row['local_path']
-                ?.toString(),
-      )
-          .whereType<String>()
-          .where(
-            (path) => path.isNotEmpty,
-      )
-          .toList();
-
       final existed =
       await store.messageExists(id);
 
@@ -1151,9 +1152,12 @@ class ReliableMessagingService {
         id,
       );
 
-      for (final path in localPaths) {
-        await files.deleteLocalFile(path);
-      }
+      // Do NOT delete the sender's local copies: the confirmation path
+      // previously wiped the file under the sender's bubble, so the tile
+      // flipped from "photo shown" to "download icon" right after the ack.
+      // The remote server copy backs up retrieval; the local copy is what
+      // WhatsApp-style UX shows. Storage cleanup is handled by the cache
+      // sweep, not by the ack path.
 
       if (!existed) {
         _incoming.add(message);
@@ -1926,6 +1930,10 @@ class ReliableMessagingService {
       for (final networkMessage in remote) {
         final message =
         await _resolveMessage(networkMessage);
+
+        // Reaction control envelopes must never surface as chat bubbles —
+        // history() previously leaked them to the UI (llrx:v1:{...}).
+        if (message != null && await _consumeReaction(message)) continue;
 
         if (message != null &&
             !await store.isBlockedPeer(
