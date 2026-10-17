@@ -3,41 +3,90 @@ import 'package:lottie/lottie.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
 
-class LocalLinkLoadingView extends StatelessWidget {
+class LocalLinkLoadingView extends StatefulWidget {
   final String? message;
 
   const LocalLinkLoadingView({super.key, this.message});
 
   @override
+  State<LocalLinkLoadingView> createState() => _LocalLinkLoadingViewState();
+}
+
+class _LocalLinkLoadingViewState extends State<LocalLinkLoadingView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1300),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final base = scheme.surfaceContainerHighest;
+    final highlight = scheme.surfaceContainerHigh;
+    final widths = <double>[0.72, 0.5, 0.62, 0.4];
+
+    Widget bar(double widthFactor, double height) => FractionallySizedBox(
+          widthFactor: widthFactor,
+          child: Container(
+            height: height,
+            decoration: BoxDecoration(
+              color: base,
+              borderRadius: BorderRadius.circular(height / 2.4),
+            ),
+          ),
+        );
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(LocalLinkSpacing.xxxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Branded radar pulse; falls back to the plain spinner if the
-            // asset is unavailable (tests, trimmed builds).
-            Lottie.asset(
-              LocalLinkAssets.lottieLoadingRadar,
-              width: 120,
-              height: 120,
-              repeat: true,
-              errorBuilder: (context, error, stackTrace) =>
-                  const CircularProgressIndicator(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final t = _controller.value * 2 - 1;
+              return ShaderMask(
+                blendMode: BlendMode.srcATop,
+                shaderCallback: (rect) => LinearGradient(
+                  begin: Alignment(t - 0.6, 0),
+                  end: Alignment(t + 0.6, 0),
+                  colors: [base, highlight, base],
+                  stops: const [0.0, 0.5, 1.0],
+                ).createShader(rect),
+                child: child,
+              );
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final w in widths) ...[
+                  bar(w, 46),
+                  const SizedBox(height: LocalLinkSpacing.md),
+                ],
+                if (widget.message != null) ...[
+                  const SizedBox(height: LocalLinkSpacing.xs),
+                  Center(
+                    child: Text(
+                      widget.message!,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ],
             ),
-            if (message != null) ...[
-              const SizedBox(height: LocalLinkSpacing.lg),
-              Text(
-                message!,
-                textAlign: TextAlign.center,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );

@@ -96,6 +96,23 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.animateTo(target, duration: LocalLinkMotion.quick, curve: Curves.easeOut);
   }
 
+  int _lastSeenCount = -1;
+
+  /// Incoming/outgoing messages should glide the list to the newest entry —
+  /// but only while the reader is already near the end; spamming the scroll
+  /// while someone reads history is hostile.
+  void _maybeAutoScroll(int count) {
+    final previous = _lastSeenCount;
+    _lastSeenCount = count;
+    if (previous < 0 || count <= previous) return;
+    final nearEnd = _scrollController.hasClients &&
+        _scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 220;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollToBottom(animated: nearEnd || previous == 0);
+    });
+  }
+
   Future<void> _pickFiles() async {
     try {
       final picked = await _transferController.pickFiles(allowMultiple: true);
@@ -257,6 +274,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 return message.body.toLowerCase().contains(searchQuery) ||
                     message.attachments.any((attachment) => attachment.originalName.toLowerCase().contains(searchQuery));
               }).toList();
+        _maybeAutoScroll(visibleMessages.length);
         return Scaffold(
           appBar: AppBar(
             titleSpacing: 0,
@@ -321,7 +339,9 @@ class _ChatScreenState extends State<ChatScreen> {
               if (state.error != null)
                 LocalLinkInlineError(message: state.error!, onRetry: () => widget.controller.load()),
               Expanded(
-                child: state.isLoading
+                // Loading no longer blanks the whole chat: the shimmer only
+                // shows for the very first paint (no messages at all).
+                child: (state.isLoading && visibleMessages.isEmpty)
                     ? const LocalLinkLoadingView(message: 'Loading messages…')
                     : visibleMessages.isEmpty
                         ? LocalLinkEmptyView(
