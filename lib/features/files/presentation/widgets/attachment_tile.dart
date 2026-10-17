@@ -241,12 +241,6 @@ class _AttachmentTileState extends State<AttachmentTile> {
                               ?.copyWith(
                                   color: Theme.of(context).colorScheme.error),
                         ),
-                      if (running)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: LinearProgressIndicator(
-                              value: progress?.fraction),
-                        ),
                     ],
                   ),
                 ),
@@ -286,13 +280,21 @@ class _AttachmentTileState extends State<AttachmentTile> {
   /// pattern as the receiver's download ring below.
   _imageWithUploadOverlay(String displayPath) {
     final uploading = widget.uploading;
+    // Natural aspect: use stored EXIF dims when known; never stretch.
+    final w = widget.attachment.width;
+    final h = widget.attachment.height;
+    const maxW = 250.0;
+    final double imgW = (w > 0 && h > 0) ? maxW : maxW;
+    final double imgH = (w > 0 && h > 0)
+        ? (maxW * h / w).clamp(140.0, 360.0)
+        : 180.0;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: SizedBox(
-          width: 250,
-          height: 180,
+          width: imgW,
+          height: imgH,
           child: Stack(
             fit: StackFit.expand,
             children: [

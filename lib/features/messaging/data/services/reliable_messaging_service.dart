@@ -964,8 +964,29 @@ class ReliableMessagingService {
       status: message.status,
       deliveredAt: message.deliveredAt ?? local.deliveredAt,
       serverSeq: message.serverSeq > local.serverSeq ? message.serverSeq : local.serverSeq,
-      attachments: message.attachments.isNotEmpty ? message.attachments : local.attachments,
+      attachments: message.attachments.isNotEmpty
+          ? _preserveLocalAttachmentPaths(message.attachments, local.attachments)
+          : local.attachments,
     );
+  }
+
+  /// Server history round-trips attachments WITHOUT their local file path.
+  /// Blindly taking the server copy makes the sender's own image look
+  /// "not downloaded" (download icon instead of the photo). Merge metadata
+  /// from the server with the local file path by attachment id.
+  List<Attachment> _preserveLocalAttachmentPaths(
+      List<Attachment> remote, List<Attachment> local) {
+    final byId = <String, String>{
+      for (final a in local)
+        if ((a.localPath ?? '').isNotEmpty) a.id: a.localPath!,
+    };
+    if (byId.isEmpty) return remote;
+    return [
+      for (final a in remote)
+        (a.localPath ?? '').isNotEmpty
+            ? a
+            : a.copyWith(localPath: byId[a.id]),
+    ];
   }
 
   Future<Message?> _resolveNetworkPayload(Map<String, dynamic> data) async {
