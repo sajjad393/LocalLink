@@ -31,3 +31,7 @@ Thumbs.db
 *.txt
 # Shared docs (contracts, architecture notes) must be tracked
 !docs/*.md
+
+# Kotlin build cache
+.kotlin/
+android/.kotlin/
