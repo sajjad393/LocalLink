@@ -12,7 +12,6 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
-import android.net.wifi.WifiManager
 import android.os.PowerManager
 import android.media.MediaRecorder
 import android.media.AudioFocusRequest
