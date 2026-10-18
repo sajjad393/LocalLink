@@ -1,9 +1,14 @@
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/models/message_reaction.dart';
+import 'package:locallink/core/models/device.dart';
 
 abstract interface class MessagingRepositoryContract {
   String get localDeviceId;
+
+  /// Latest cached presence/network flags for a peer device (app-bar status
+  /// line), refreshed by the presence pipeline.
+  Future<Device?> peer(String deviceId);
   Stream<Message> get incoming;
   Future<List<Message>> history(String otherDeviceId);
 

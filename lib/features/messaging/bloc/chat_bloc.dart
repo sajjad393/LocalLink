@@ -61,12 +61,35 @@ final class ChatBloc extends Cubit<ChatState> {
   final String localDeviceId;
   late final StreamSubscription<Message> _subscription;
   late final StreamSubscription<MessageReaction> _reactionSubscription;
+  Timer? _peerTimer;
+
+  /// Refreshes `state.device` from the cached directory row; presence
+  /// updates land there asynchronously.
+  Future<void> refreshPeer() async {
+    if (isClosed) return;
+    try {
+      final fresh = await repository.peer(state.device.id);
+      if (fresh == null || isClosed) return;
+      final cur = state.device;
+      if (fresh.networkStatus == cur.networkStatus &&
+          fresh.serverConnected == cur.serverConnected &&
+          fresh.wifiDirectConnected == cur.wifiDirectConnected &&
+          fresh.lanAvailable == cur.lanAvailable &&
+          fresh.meshAvailable == cur.meshAvailable &&
+          fresh.lastSeenAt == cur.lastSeenAt) return;
+      emit(state.copyWith(device: fresh));
+    } catch (_) {}
+  }
   ChatBloc({required this.repository, required Device device})
       : localDeviceId = repository.localDeviceId,
         super(ChatState(
             device: device, localDeviceId: repository.localDeviceId)) {
     _subscription = repository.incoming.listen(_onIncoming);
     _reactionSubscription = repository.reactionIncoming.listen(_onReaction);
+    // Presence pipeline does not push into the chat bloc — poll the cached
+    // peer row every few seconds so the app-bar status line stays live.
+    _peerTimer = Timer.periodic(const Duration(seconds: 5), (_) => unawaited(refreshPeer()));
+    unawaited(refreshPeer());
   }
   Device get device => state.device;
   List<Message> get messages => state.messages;
@@ -179,6 +202,7 @@ final class ChatBloc extends Cubit<ChatState> {
 
   @override
   Future<void> close() async {
+    _peerTimer?.cancel();
     await _subscription.cancel();
     await _reactionSubscription.cancel();
     return super.close();

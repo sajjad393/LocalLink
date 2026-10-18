@@ -2,6 +2,7 @@ import 'package:locallink/features/messaging/domain/messaging_repository_contrac
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/models/message_reaction.dart';
+import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/messaging/data/services/reliable_messaging_service.dart';
 
@@ -17,6 +18,9 @@ final class MessagingRepository implements MessagingRepositoryContract {
 
   @override
   String get localDeviceId => store.deviceId ?? '';
+
+  @override
+  Future<Device?> peer(String deviceId) => store.deviceById(deviceId);
 
   @override
   Stream<Message> get incoming => service.incoming;

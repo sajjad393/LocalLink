@@ -1222,6 +1222,17 @@ class ReliableMessagingService {
         );
       }
 
+      // Push the status refresh into the live message stream — otherwise
+      // delivered/read ticks only repaint when the screen is reopened.
+      final refreshed = await store.messageById(id);
+      if (refreshed != null) {
+        _incoming.add(refreshed);
+        AppLogger.info(
+          'MESSAGE_STATUS_EMITTED',
+          detail: 'id=$id status=$status',
+        );
+      }
+
       return;
     }
 
