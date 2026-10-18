@@ -1612,7 +1612,16 @@ class LocalLinkTransportService : Service() {
         return false
     }
 
-    private fun isStoreForwardable(type: String): Boolean = type == "direct_message" || type == "direct_file_chunk"
+    // Control-plane payloads that must survive brief link flaps ride the same
+    // encrypted store-and-forward queue as chat messages: a LAN/Wi-Fi Direct
+    // socket that drops for a second or two must never eat a delivery ack or a
+    // call signal. Live media (call_media, call_video_*) and call heartbeats
+    // deliberately stay best-effort — stale replayed copies of those are worse
+    // than missing ones.
+    private fun isStoreForwardable(type: String): Boolean = type == "direct_message" || type == "direct_file_chunk" ||
+        type == "direct_delivery_ack" ||
+        type == "call_invite" || type == "call_invite_ack" || type == "call_accept" ||
+        type == "call_reject" || type == "call_busy" || type == "call_end"
 
     private fun markMeshPacketSeen(packet: MeshPacket, persist:Boolean = true):Boolean{
         val source = packet.sourceNodeId.trim()
