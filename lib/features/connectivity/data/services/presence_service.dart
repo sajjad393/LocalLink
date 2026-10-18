@@ -121,6 +121,8 @@ class PresenceService {
       if (serverConnected) {
         socket.send({
           'type': 'presence_update',
+          'device_id': store.deviceId,
+          'sender_id': store.deviceId,
           'server_connected': true,
             'wifi_direct_connected': _wifiDirectConnected,
           'lan_available': lanAvailable,
