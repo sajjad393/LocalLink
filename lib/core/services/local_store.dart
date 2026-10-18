@@ -1515,7 +1515,12 @@ class LocalStore {
     bool viaServer = false,
     bool viaMesh = false,
   }) async {
-    if (deviceId.isEmpty) return;
+    // Defence-in-depth: if storage is not ready yet (a presence event can
+    // race in before LocalStore.init() finishes, and unit tests construct
+    // LocalStore without a database), skip the stamp instead of crashing on
+    // the late _db field. Production always opens the store before the
+    // messaging service starts, so this is a no-op in the app.
+    if (deviceId.isEmpty || !_databaseOpened) return;
     final now = DateTime.now().toUtc().toIso8601String();
     await _db.rawUpdate(
       'UPDATE known_devices SET presence_local_at = ?, '

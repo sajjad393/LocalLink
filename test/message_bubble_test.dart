@@ -38,15 +38,32 @@ Widget _host(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 void main() {
   group('MessageBubble', () {
-    testWidgets('outgoing messages use the brand gradient with white text',
+    testWidgets('outgoing messages use a neutral solid surface, no gradient',
         (tester) async {
       await tester.pumpWidget(
         _host(MessageBubble(message: _message(), isMine: true, files: _NoopFiles())),
       );
 
-      expect(_gradientBubble, findsOneWidget);
+      // Design contract: outgoing bubbles are intentionally neutral — a solid
+      // surface colour with on-surface text, never the brand gradient — so
+      // the message body keeps full contrast in light and dark mode. The
+      // gradient is reserved for accent actions only.
+      expect(_gradientBubble, findsNothing);
+
+      final context = tester.element(find.byType(MessageBubble));
+      final colors = Theme.of(context).colorScheme;
       final text = tester.widget<Text>(find.text('Hello there'));
-      expect(text.style?.color, Colors.white);
+      expect(text.style?.color, colors.onSurface);
+
+      final container = tester.widget<Container>(
+        find
+            .ancestor(of: find.text('Hello there'), matching: find.byType(Container))
+            .first,
+      );
+      final decoration = container.decoration as BoxDecoration;
+      expect(decoration.color, colors.surfaceContainer);
+      expect(decoration.gradient, isNull);
+
       final align = tester.widget<Align>(
         find.ancestor(of: find.byType(GestureDetector), matching: find.byType(Align)).first,
       );

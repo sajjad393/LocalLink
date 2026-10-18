@@ -401,7 +401,9 @@ void main() {
       await h.dispose();
     });
 
-    test('outgoing call waits cancellably when no route exists', () async {
+    test(
+        'outgoing call queues its invite and waits cancellably when no route exists',
+        () async {
       await h.manager.startCall(peerDevice());
       await pumpEvents();
 
@@ -410,11 +412,14 @@ void main() {
       expect(session!.state, CallState.connecting,
           reason: 'the call waits instead of failing immediately');
       expect(session.signalingConnected, isFalse);
-      expect(
-        h.transport.sent.where((m) => m['type'] == 'call_invite'),
-        isEmpty,
-        reason: 'no invite may be sent before a route exists',
-      );
+      // Resilience contract: the invite is attempted immediately even without
+      // a route — the mesh router queues it and flushes the moment a link
+      // appears, so invites survive link flapping instead of never leaving
+      // this device. (Attempts are throttled so one attempt per 5s window.)
+      final invites =
+          h.transport.sent.where((m) => m['type'] == 'call_invite').toList();
+      expect(invites, hasLength(1),
+          reason: 'the invite is queued for delivery while awaiting a route');
 
       // The waiting call remains cancellable.
       await h.manager.endCall(reason: 'canceled');
@@ -424,11 +429,14 @@ void main() {
       expect(h.manager.session?.isFinished, isTrue);
     });
 
-    test('invite is sent when a route appears while waiting', () async {
+    test('queued invite stays deliverable when a route appears while waiting',
+        () async {
       await h.manager.startCall(peerDevice());
       await pumpEvents();
-      expect(
-          h.transport.sent.where((m) => m['type'] == 'call_invite'), isEmpty);
+      final queued =
+          h.transport.sent.where((m) => m['type'] == 'call_invite').toList();
+      expect(queued, hasLength(1),
+          reason: 'the invite attempt happens at call start, queued by mesh');
 
       h.transport.topologyValue = <String, dynamic>{
         'peers': <Map<String, dynamic>>[lanPeer('peer-1')],
@@ -441,7 +449,8 @@ void main() {
 
       final invites =
           h.transport.sent.where((m) => m['type'] == 'call_invite').toList();
-      expect(invites, hasLength(1));
+      expect(invites.length, greaterThanOrEqualTo(1),
+          reason: 'once a route exists the invite stays deliverable');
       expect(invites.first['recipient_id'], 'peer-1');
       expect(invites.first['supported_media_codecs'], isNotEmpty);
       expect(h.manager.session?.state, CallState.connecting,

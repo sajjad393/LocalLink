@@ -22,25 +22,31 @@ void main() {
 
     expect(discoveryAttempts, 1);
     expect(bloc.state.loading, isFalse);
-    // A failing BACKGROUND sync must stay quiet: no red error banner, only a
-    // neutral offline notice - and never a raw exception.
+    // A failing BACKGROUND sync must stay silent: no red error banner and no
+    // chatty notice at all - saved conversations keep rendering and sync
+    // retries itself. Never a raw exception, anywhere.
     expect(bloc.state.error, isNull);
-    expect(bloc.state.syncNotice, contains('showing saved conversations'));
-    expect(bloc.state.syncNotice, isNot(contains('TimeoutException')));
+    expect(bloc.state.syncNotice, isNull,
+        reason:
+            'background sync failures stay silent; only an explicit retry earns one calm line');
   });
 
-  test('an explicit user refresh reports the failure loudly but cleanly', () async {
+  test('an explicit user refresh earns one calm friendly notice', () async {
     final bloc = HomeBloc(repository: _OfflineHomeRepository());
     addTearDown(bloc.close);
 
     await bloc.load(userInitiated: true);
 
     expect(bloc.state.loading, isFalse);
-    expect(bloc.state.syncNotice, isNull);
-    expect(bloc.state.error, contains('Server sync failed'));
-    expect(bloc.state.error, contains('showing saved conversations'));
-    expect(bloc.state.error, isNot(contains('TimeoutException')));
-    expect(bloc.state.error, contains('took too long to respond'));
+    // Standing design rule: an explicit retry earns ONE short friendly
+    // sentence as a calm neutral notice - never a red banner, never raw
+    // error text (no exception names, no technical detail).
+    expect(bloc.state.error, isNull);
+    expect(bloc.state.syncNotice,
+        "Couldn't sync right now — showing your saved conversations.");
+    expect(bloc.state.syncNotice, isNot(contains('TimeoutException')));
+    expect(bloc.state.syncNotice, isNot(contains('took too long')));
+    expect(bloc.state.syncNotice, isNot(contains('Server sync failed')));
   });
 
   test('conversation titles prefer the directory person over the device name', () async {
@@ -132,6 +138,9 @@ final class _OfflineHomeRepository implements HomeRepositoryContract {
 
   @override
   Future<void> cacheDevice(Device device) async {}
+
+  @override
+  Future<void> markDeviceSeen(String deviceId) async {}
 
   @override
   Future<String?> userIdForDevice(String deviceId) async => null;

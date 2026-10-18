@@ -32,10 +32,16 @@ void main() {
   });
 
   group('shared state views', () {
-    testWidgets('loading view is Lottie-first and shows the message', (tester) async {
+    testWidgets('loading view shows a shimmer skeleton and the message',
+        (tester) async {
       await tester.pumpWidget(_host(
           const LocalLinkLoadingView(message: 'Loading your conversations…')));
-      expect(find.byType(Lottie), findsOneWidget);
+      await tester.pump();
+      // Design contract: the loading view is a shimmer skeleton (gradient-
+      // masked placeholder bars) with the message underneath — no blank-to-
+      // spinner flash, so intentionally no Lottie widget.
+      expect(find.byType(ShaderMask), findsOneWidget);
+      expect(find.byType(Lottie), findsNothing);
       expect(find.text('Loading your conversations…'), findsOneWidget);
     });
 

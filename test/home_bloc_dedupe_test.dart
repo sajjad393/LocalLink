@@ -57,6 +57,9 @@ final class _StubHomeRepository implements HomeRepositoryContract {
   Future<void> cacheDevice(Device device) async {}
 
   @override
+  Future<void> markDeviceSeen(String deviceId) async {}
+
+  @override
   Future<String?> userIdForDevice(String deviceId) async =>
       userByDevice[deviceId];
 
