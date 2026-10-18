@@ -53,6 +53,11 @@ final class CallSessionManager implements CallGateway {
   CallSession? _session;
   CallTransport? _transport;
   late final CallTransportFactory transportFactory;
+  /// Live invite arrivals replayed by the mesh store/forward layer are
+  /// suppressed here. Clock skew between phones used to kill every invite —
+  /// see the clamp below.
+  final Set<String> _seenInviteIds = <String>{};
+  int _seenInviteCursor = 0;
   bool _disposed = false;
   bool _inviteInFlight = false;
   DateTime? _lastInviteAttemptAt;
@@ -388,18 +393,26 @@ final class CallSessionManager implements CallGateway {
         msg['transport_mode']?.toString().trim().toLowerCase() ==
             CallTransportMode.offlineMesh.wireName;
     if (!localInvite) return;
-    final createdAt =
+    final createdAtRaw =
         DateTime.tryParse(msg['created_at']?.toString() ?? '')?.toLocal();
-    if (createdAt == null) return;
-    final age = DateTime.now().difference(createdAt);
-    if (age > const Duration(minutes: 2) ||
-        age < const Duration(seconds: -30)) {
-      unawaited(_sendSignal({
-        'type': 'call_reject',
-        'call_id': callId,
-        'recipient_id': peerId,
-        'reason': 'stale_invite'
-      }));
+    // Phone clocks on a mesh can drift by hours; the hard "age > 2min => reject"
+    // guard silently killed every cross-clock invite. The mesh only forwards
+    // fresh events through the live transport stream anyway — stale replays
+    // are filtered by the seen-check below, not by wall-clock comparisons.
+    final createdAt = createdAtRaw ?? DateTime.now();
+    if (!_seenInviteIds.contains(callId)) {
+      _seenInviteIds.add(callId);
+      _seenInviteCursor++;
+      if (_seenInviteIds.length > 64 || _seenInviteCursor > 256) {
+        _seenInviteCursor = 0;
+        if (_seenInviteIds.length > 64) {
+          final excess = _seenInviteIds.length - 64;
+          final list = _seenInviteIds.toList();
+          _seenInviteIds.removeAll(list.take(excess));
+        }
+      }
+    } else {
+      AppLogger.info('CALL_INVITE_DUPLICATE_IGNORED', detail: 'call=$callId');
       return;
     }
     if (await store.isBlockedPeer(peerId)) {
