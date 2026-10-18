@@ -106,14 +106,6 @@ class _CallScreenState extends State<CallScreen> {
                           const SizedBox(height: 48),
                         ],
                         CallHeader(session: session, statusText: _statusTextFor(session)),
-                        if (session.state == CallState.ringing || session.state == CallState.connecting)
-                          const Align(
-                            alignment: Alignment.center,
-                            child: Padding(
-                              padding: EdgeInsets.only(top: 8),
-                              child: Text('WebRTC—Coming Soon.'),
-                            ),
-                          ),
                         if (session.state == CallState.connected || session.state == CallState.reconnecting) ...[
                           const SizedBox(height: LocalLinkSpacing.xl),
                           CallQualityCard(session: session),
