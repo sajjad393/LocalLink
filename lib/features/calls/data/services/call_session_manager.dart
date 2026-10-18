@@ -777,16 +777,29 @@ final class CallSessionManager implements CallGateway {
   Future<void> _sendSignal(Map<String, dynamic> msg) async {
     final recipient = msg['recipient_id']?.toString().trim();
     if (recipient == null || recipient.isEmpty) return;
-    await transportFactory.ensureReady();
-    AppLogger.info('CALL_SIGNAL_SEND', detail: 'type=${msg['type']} call=${msg['call_id'] ?? ''}');
-    await transportFactory.nativeMesh
-        .sendControl(recipientId: recipient, payload: {
-      ...msg,
-      'sender_id': store.deviceId,
-      'direct': true,
-      'mesh_call': true,
-      'transport_mode': CallTransportMode.offlineMesh.wireName,
-    });
+    try {
+      await transportFactory.ensureReady();
+      AppLogger.info('CALL_SIGNAL_SEND', detail: 'type=${msg['type']} call=${msg['call_id'] ?? ''}');
+      await transportFactory.nativeMesh
+          .sendControl(recipientId: recipient, payload: {
+        ...msg,
+        'sender_id': store.deviceId,
+        'direct': true,
+        'mesh_call': true,
+        'transport_mode': CallTransportMode.offlineMesh.wireName,
+      });
+    } catch (error, stackTrace) {
+      // Wi-Fi Direct peers flap constantly (see peer_connected/disconnected
+      // churn in DIRECT_EVENT logs). A heartbeat that lands while the peer
+      // is momentarily down used to escape as an unhandled
+      // PlatformException(PEER_UNAVAILABLE). It's transient — swallow with
+      // a log; the next heartbeat retry or the recovery loop heals it.
+      AppLogger.warning(
+        'CALL_SIGNAL_SEND_FAILED',
+        detail:
+        'type=${msg['type']} call=${msg['call_id'] ?? ''} error=$error',
+      );
+    }
   }
 
   Future<void> _recoverLostMeshTransport(
