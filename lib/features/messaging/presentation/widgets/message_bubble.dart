@@ -105,14 +105,7 @@ class MessageBubble extends StatelessWidget {
                     ),
                     if (isMine) ...[
                       const SizedBox(width: LocalLinkSpacing.xs),
-                      Text(
-                        _statusText(message.status),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: _statusColor(context, message.status),
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -.5,
-                        ),
-                      ),
+                      _StatusIcon(status: message.status),
                     ],
                   ],
                 ),
@@ -144,21 +137,47 @@ class MessageBubble extends StatelessWidget {
     return '$hour:$minute ${value.hour >= 12 ? 'PM' : 'AM'}';
   }
 
-  String _statusText(String status) => switch (status.toLowerCase()) {
-        'delivered' => '✓✓',
-        'read' => '✓✓',
-        'sent' => '✓',
-        'failed' => '!',
-        'queued' || 'pending' => '◷',
-        _ => '✓',
-      };
+}
 
-  Color _statusColor(BuildContext context, String status) {
+/// WhatsApp-style delivery ticks: ⌛ queued, ✓ sent (grey), ✓✓ delivered
+/// (grey), ✓✓ read (blue).
+class _StatusIcon extends StatelessWidget {
+  final String status;
+
+  const _StatusIcon({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return switch (status.toLowerCase()) {
-      'failed' => colors.error,
-      'read' => colors.primary,
-      _ => colors.onSurfaceVariant,
+      'queued' || 'pending' || 'sending' => Icon(
+          Icons.schedule_rounded,
+          size: 14,
+          color: colors.onSurfaceVariant,
+        ),
+      'failed' => Icon(
+          Icons.error_outline_rounded,
+          size: 14,
+          color: colors.error,
+        ),
+      'read' => Icon(
+          // double check, blue = read
+          Icons.done_all_rounded,
+          size: 15,
+          color: colors.primary,
+        ),
+      'delivered' || 'direct_delivered' => Icon(
+          // double check, grey = delivered
+          Icons.done_all_rounded,
+          size: 15,
+          color: colors.onSurfaceVariant,
+        ),
+      // single grey check = sent to server
+      _ => Icon(
+          Icons.check_rounded,
+          size: 15,
+          color: colors.onSurfaceVariant,
+        ),
     };
   }
 }
