@@ -23,6 +23,9 @@ final class MessagingRepository implements MessagingRepositoryContract {
   Future<Device?> peer(String deviceId) => store.deviceById(deviceId);
 
   @override
+  Future<List<Message>> cachedHistory(String peerId) => store.messagesFor(peerId);
+
+  @override
   Stream<Message> get incoming => service.incoming;
 
   @override

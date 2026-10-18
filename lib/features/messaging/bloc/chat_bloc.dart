@@ -102,6 +102,13 @@ final class ChatBloc extends Cubit<ChatState> {
     if (isClosed) return;
     emit(state.copyWith(isLoading: true, clearError: true));
     try {
+      // Cache-first: paint what's already on disk instantly, then fold in the
+      // synced copy when history() resolves. Empty conversations behave as
+      // before (the shimmer still covers the initial remote fetch).
+      final cached = await repository.cachedHistory(state.device.id);
+      if (!isClosed && cached.isNotEmpty) {
+        emit(state.copyWith(messages: cached, isLoading: true));
+      }
       final messages = await repository.history(state.device.id);
       if (isClosed) return;
       final reactionMap = <String, List<MessageReaction>>{};

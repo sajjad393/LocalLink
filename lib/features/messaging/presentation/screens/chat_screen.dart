@@ -54,7 +54,18 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _transferController = FileTransferBloc(repository: widget.files);
     widget.notifications?.setActiveDirectConversation(widget.controller.device.id);
+    // Show the jump-to-latest arrow whenever the reader drifts off the tail.
+    _scrollController.addListener(_syncJumpArrow);
     unawaited(_load());
+  }
+
+  bool _showJumpArrow = false;
+
+  void _syncJumpArrow() {
+    if (!_scrollController.hasClients || !mounted) return;
+    final show = _scrollController.position.pixels <
+        _scrollController.position.maxScrollExtent - 220;
+    if (show != _showJumpArrow) setState(() => _showJumpArrow = show);
   }
 
   Future<void> _load() async {
@@ -98,18 +109,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
   int _lastSeenCount = -1;
 
-  /// Incoming/outgoing messages should glide the list to the newest entry —
-  /// but only while the reader is already near the end; spamming the scroll
-  /// while someone reads history is hostile.
-  void _maybeAutoScroll(int count) {
+  /// Incoming/outgoing messages glide the list to the newest entry. Glide
+  /// rules that match WhatsApp: always for your own send, always while you
+  /// sit near the tail; never while you read older history.
+  void _maybeAutoScroll(int count, {required bool lastIsMine}) {
     final previous = _lastSeenCount;
     _lastSeenCount = count;
     if (previous < 0 || count <= previous) return;
     final nearEnd = _scrollController.hasClients &&
         _scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 220;
+    final shouldGlide = lastIsMine || nearEnd || previous == 0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _scrollToBottom(animated: nearEnd || previous == 0);
+      if (mounted && shouldGlide) _scrollToBottom(animated: true);
     });
   }
 
@@ -277,7 +289,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 return message.body.toLowerCase().contains(searchQuery) ||
                     message.attachments.any((attachment) => attachment.originalName.toLowerCase().contains(searchQuery));
               }).toList();
-        _maybeAutoScroll(visibleMessages.length);
+        _maybeAutoScroll(
+          visibleMessages.length,
+          lastIsMine: visibleMessages.isNotEmpty &&
+              visibleMessages.last.senderId == state.localDeviceId,
+        );
         return Scaffold(
           appBar: AppBar(
             titleSpacing: 0,
@@ -368,28 +384,43 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ? 'Send a message, photo or file to begin chatting privately.'
                                 : 'Try a different word or phrase.',
                           )
-                        : ListView.builder(
-                            controller: _scrollController,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                            padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.lg),
-                            itemCount: visibleMessages.length,
-                            itemBuilder: (_, index) {
-                              final message = visibleMessages[index];
-                              final showDate = index == 0 || !_sameDay(visibleMessages[index - 1].createdAt, message.createdAt);
-                              return Column(
-                                children: [
-                                  if (showDate) _DateDivider(date: message.createdAt),
-                                  MessageBubble(
-                                    message: message,
-                                    isMine: message.senderId == state.localDeviceId,
-                                    files: widget.files,
-                                    reactions: state.reactions[message.id] ?? const [],
-                                    onLongPress: () => _showMessageActions(message.body, message.id),
+                        : Stack(
+                            children: [
+                              ListView.builder(
+                                controller: _scrollController,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                                padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.lg),
+                                itemCount: visibleMessages.length,
+                                itemBuilder: (_, index) {
+                                  final message = visibleMessages[index];
+                                  final showDate = index == 0 || !_sameDay(visibleMessages[index - 1].createdAt, message.createdAt);
+                                  return Column(
+                                    children: [
+                                      if (showDate) _DateDivider(date: message.createdAt),
+                                      MessageBubble(
+                                        message: message,
+                                        isMine: message.senderId == state.localDeviceId,
+                                        files: widget.files,
+                                        reactions: state.reactions[message.id] ?? const [],
+                                        onLongPress: () => _showMessageActions(message.body, message.id),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                              if (_showJumpArrow)
+                                Positioned(
+                                  right: LocalLinkSpacing.md,
+                                  bottom: LocalLinkSpacing.md,
+                                  child: FloatingActionButton.small(
+                                    heroTag: null,
+                                    tooltip: 'Jump to latest',
+                                    onPressed: () => _scrollToBottom(animated: true),
+                                    child: const Icon(Icons.keyboard_arrow_down_rounded),
                                   ),
-                                ],
-                              );
-                            },
+                                ),
+                            ],
                           ),
               ),
               PendingAttachmentStrip(

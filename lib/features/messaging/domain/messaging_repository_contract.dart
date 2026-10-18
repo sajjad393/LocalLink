@@ -9,6 +9,11 @@ abstract interface class MessagingRepositoryContract {
   /// Latest cached presence/network flags for a peer device (app-bar status
   /// line), refreshed by the presence pipeline.
   Future<Device?> peer(String deviceId);
+
+  /// Messages already stored on-device for a conversation — emitted
+  /// immediately on open (WhatsApp-style cache-first read) while the server
+  /// history sync runs in the background.
+  Future<List<Message>> cachedHistory(String peerId);
   Stream<Message> get incoming;
   Future<List<Message>> history(String otherDeviceId);
 
