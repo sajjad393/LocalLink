@@ -227,9 +227,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _deviceSubtitle(Device device) {
-    if (device.wifiDirectConnected) return 'Available · Wi-Fi Direct';
-    if (device.serverConnected || device.lanAvailable)
+    // Same precedence as chat screen: LAN beats Wi-Fi Direct.
+    if (device.lanAvailable || device.serverConnected)
       return 'Available · Local Wi-Fi';
+    if (device.wifiDirectConnected) return 'Available · Wi-Fi Direct';
     if (device.meshAvailable) return 'Available · Nearby mesh';
     if (device.networkStatus == DeviceNetworkStatus.unknown)
       return 'Status unavailable';

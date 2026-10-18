@@ -181,8 +181,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _presenceLabel(Device device) {
+    // Prefer the LAN caption: a peer that advertises BOTH paths (same home
+    // Wi-Fi + Wi-Fi Direct group) should read "Local Wi-Fi", matching what
+    // the user actually sees — not the noisy P2P flap underneath.
+    if (device.lanAvailable || device.serverConnected) return 'Available · Local Wi-Fi';
     if (device.wifiDirectConnected) return 'Available · Wi-Fi Direct';
-    if (device.serverConnected || device.lanAvailable) return 'Available · Local Wi-Fi';
     if (device.meshAvailable) return 'Available nearby';
     if (device.networkStatus == DeviceNetworkStatus.unknown) return 'Status unavailable';
     return 'Offline';
