@@ -12,6 +12,8 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
+import android.net.wifi.WifiManager
+import android.os.PowerManager
 import android.media.MediaRecorder
 import android.media.AudioFocusRequest
 import android.content.pm.ServiceInfo
@@ -34,6 +36,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -159,6 +162,47 @@ class LocalLinkTransportService : Service() {
     private val knownPeers = ConcurrentHashMap.newKeySet<String>()
     private val callMediaLock = Any()
     @Volatile private var callMedia: CallMediaSession? = null
+
+    // CPU and Wi-Fi radio must stay awake for the duration of a call: OEM
+    // power managers (ZTE SuperKiller, battery savers) otherwise suspend the
+    // process or push the radio into power-save mid-speech — audible as
+    // seconds of voice drops even with phones 1 foot apart. Both locks are
+    // non-reference-counted and ALWAYS released when call media stops.
+    private var callWakeLock: PowerManager.WakeLock? = null
+    private var callWifiLock: WifiManager.WifiLock? = null
+
+    private fun acquireCallLocks() {
+        try {
+            if (callWakeLock == null) {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                callWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "locallink:call_audio").apply {
+                    setReferenceCounted(false)
+                    // Hard cap as a safety net; the normal path releases at
+                    // call end, so the timeout only matters after a crash.
+                    acquire(4 * 60 * 60 * 1000L)
+                }
+            }
+        } catch (_: Exception) {}
+        try {
+            if (callWifiLock == null) {
+                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                callWifiLock = wm.createWifiLock(
+                    if (android.os.Build.VERSION.SDK_INT >= 29) WifiManager.WIFI_MODE_FULL_LOW_LATENCY else WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                    "locallink:call_wifi"
+                ).apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun releaseCallLocks() {
+        try { callWakeLock?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+        callWakeLock = null
+        try { callWifiLock?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+        callWifiLock = null
+    }
     @Volatile private var callVideo: CallVideoSession? = null
     @Volatile private var callVideoPreviewSurface: android.view.Surface? = null
     @Volatile private var callVideoRemoteSurface: android.view.Surface? = null
@@ -771,9 +815,25 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun readTransportLoop(connection: PeerConnection) {
+        // Every link death is named and logged once (transport_link_died) —
+        // a bare peer_disconnected with no cause is undebuggable on devices.
+        var exitCause = "eof"
+        var exitDetail: String? = null
         try {
             while (transportRunning && !connection.socket.isClosed) {
-                val line = connection.reader.readLine() ?: break
+                // A socket read timeout is NOT a dead link — it just means the
+                // peer (or its battery manager) has been quiet. Genuine death
+                // is scored by the stale-pong heartbeat rule, not by silence.
+                val line = try {
+                    connection.reader.readLine()
+                } catch (_: SocketTimeoutException) {
+                    if (System.currentTimeMillis() - connection.lastPongAt >
+                        MeshTransportPolicy.HEARTBEAT_TIMEOUT_MS * 2) {
+                        exitCause = "read_timeout_stale"
+                        break
+                    }
+                    continue
+                } ?: break
                 connection.lastSeenAt = System.currentTimeMillis()
                 if (line.length > 128 * 1024) break
                 val packet = JSONObject(line)
@@ -812,8 +872,16 @@ class LocalLinkTransportService : Service() {
                     "route_withdrawal" -> handleRouteWithdrawal(connection.peerId, packet)
                 }
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            exitCause = "read_exception"
+            exitDetail = "${error.javaClass.simpleName}: ${error.message}"
         } finally {
+            transportEvent("transport_link_died", mapOf(
+                "peer_id" to connection.peerId,
+                "transport" to connection.transportName,
+                "cause" to exitCause,
+                "error" to exitDetail,
+            ))
             unregisterPeer(connection.peerId, connection.socket)
             transportEvent("peer_disconnected", mapOf("peer_id" to connection.peerId))
             transportEvent("topology", meshTopologySnapshot())
@@ -966,6 +1034,7 @@ class LocalLinkTransportService : Service() {
         stopCallMediaInternal("")
         val session = CallMediaSession(callId, peerId, codec?.trim()?.lowercase().orEmpty())
         synchronized(callMediaLock) { callMedia = session }
+        acquireCallLocks()
         session.start()
         transportEvent("call_media_started", mapOf("call_id" to callId, "peer_id" to peerId, "sample_rate" to CALL_SAMPLE_RATE, "frame_ms" to CALL_FRAME_MS, "codec" to session.codec))
     }
@@ -978,6 +1047,9 @@ class LocalLinkTransportService : Service() {
                 callMedia = null
             }
         }
+        // Idle connections must never hold the CPU or radio awake: this runs
+        // on every call end, hang-up, and media session stop.
+        releaseCallLocks()
         callMediaRecent.clear()
     }
 
@@ -1566,12 +1638,31 @@ class LocalLinkTransportService : Service() {
             val payloadText = packet.toJson().toString()
             val frame = JSONObject().put("type", "data").put("sender_id", self).put("receiver_id", peer.peerId).put("payload", payloadText)
             peer.send(frame)
+            peer.writeStrikes = 0
             transportPacketsSent.incrementAndGet()
             transportBytesSent.addAndGet(payloadText.toByteArray(Charsets.UTF_8).size.toLong())
             true
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            // One stalled write must never kill a link. Real death is decided
+            // by the heartbeat's stale-pong rule; we strike and only tear
+            // down after repeated consecutive failures.
             transportSendFailures.incrementAndGet()
-            unregisterPeer(peer.peerId, peer.socket)
+            val strikes = ++peer.writeStrikes
+            transportEvent("transport_link_suspect", mapOf(
+                "peer_id" to peer.peerId,
+                "transport" to peer.transportName,
+                "cause" to "write_failure",
+                "strikes" to strikes,
+                "error" to "${error.javaClass.simpleName}: ${error.message}",
+            ))
+            if (strikes >= MeshTransportPolicy.WRITE_STRIKE_LIMIT) {
+                transportEvent("transport_link_died", mapOf(
+                    "peer_id" to peer.peerId,
+                    "transport" to peer.transportName,
+                    "cause" to "write_failure_x$strikes",
+                ))
+                unregisterPeer(peer.peerId, peer.socket)
+            }
             false
         }
     }
@@ -1823,6 +1914,7 @@ class LocalLinkTransportService : Service() {
                         try {
                             peer.lastPingAt = now
                             peer.send(JSONObject().put("type", "ping").put("sent_at", now))
+                            peer.writeStrikes = 0
                             if (now - peer.lastPongAt > MeshTransportPolicy.HEARTBEAT_TIMEOUT_MS) {
                                 transportHeartbeatTimeouts.incrementAndGet()
                                 transportEvent("transport_heartbeat_timeout", mapOf(
@@ -1832,9 +1924,26 @@ class LocalLinkTransportService : Service() {
                                 ))
                                 unregisterPeer(peer.peerId, peer.socket)
                             }
-                        } catch (_: Exception) {
+                        } catch (error: Exception) {
+                            // One stalled ping write must never kill a link —
+                            // the stale-pong rule above is the death verdict.
                             transportSendFailures.incrementAndGet()
-                            unregisterPeer(peer.peerId, peer.socket)
+                            val strikes = ++peer.writeStrikes
+                            transportEvent("transport_link_suspect", mapOf(
+                                "peer_id" to peer.peerId,
+                                "transport" to peer.transportName,
+                                "cause" to "ping_write_failure",
+                                "strikes" to strikes,
+                                "error" to "${error.javaClass.simpleName}: ${error.message}",
+                            ))
+                            if (strikes >= MeshTransportPolicy.WRITE_STRIKE_LIMIT) {
+                                transportEvent("transport_link_died", mapOf(
+                                    "peer_id" to peer.peerId,
+                                    "transport" to peer.transportName,
+                                    "cause" to "ping_write_failure_x$strikes",
+                                ))
+                                unregisterPeer(peer.peerId, peer.socket)
+                            }
                         }
                     }
                     Thread.sleep(MeshTransportPolicy.HEARTBEAT_INTERVAL_MS)
@@ -2281,6 +2390,7 @@ class LocalLinkTransportService : Service() {
         @Volatile var lastSeenAt: Long = connectedAt,
         @Volatile var lastPongAt: Long = connectedAt,
         @Volatile var lastPingAt: Long = 0L,
+        @Volatile var writeStrikes: Int = 0,
     ) {
         @Synchronized fun send(json: JSONObject) {
             writer.write(json.toString())

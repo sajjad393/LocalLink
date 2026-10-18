@@ -18,6 +18,11 @@ object MeshTransportPolicy {
     const val SOCKET_CONNECT_TIMEOUT_MS: Int = 3_000
     const val HEARTBEAT_INTERVAL_MS: Long = 5_000L
     const val HEARTBEAT_TIMEOUT_MS: Long = 15_000L
+    // Transient write failures tolerated before a physical link is declared
+    // dead. Mobile Wi-Fi power-save routinely stalls a single socket write;
+    // tearing the whole link down for one stalled frame is what made calls
+    // and ticks flap. Two+ consecutive failures (or EOF) is what counts.
+    const val WRITE_STRIKE_LIMIT: Int = 3
 
     /** One logical active link is kept per peer; LAN is preferred when both links exist. */
     fun transportPriority(name: String): Int = when (name) {

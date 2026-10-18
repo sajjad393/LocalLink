@@ -32,3 +32,4 @@ void main() {
 
   runApp(const LocalLinkApp());
 }
+
