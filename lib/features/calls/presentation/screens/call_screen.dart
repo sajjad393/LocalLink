@@ -44,14 +44,14 @@ class _CallScreenState extends State<CallScreen> {
 
   String _statusTextFor(CallSession session) => switch (session.state) {
         CallState.ringing => session.direction == CallDirection.outgoing ? 'Calling…' : 'Incoming call',
-        CallState.connecting => 'Connecting…',
-        CallState.reconnecting => 'Reconnecting…',
+        CallState.connecting => session.direction == CallDirection.outgoing && !session.signalingConnected ? 'Trying to reach…' : 'Connecting…',
+        CallState.reconnecting => session.answeredAt == null ? 'Trying to reach…' : 'Reconnecting…',
         CallState.connected => _formatDuration((session.endedAt ?? DateTime.now()).difference(session.answeredAt ?? DateTime.now()).inSeconds),
         CallState.ending => 'Ending…',
         CallState.rejected => session.reason == 'busy' ? 'Busy' : 'Declined',
         CallState.missed => 'Missed call',
         CallState.canceled => 'Call canceled',
-        CallState.failed => 'Call failed',
+        CallState.failed => session.reason == 'unreachable' ? "Couldn't reach them — try again" : 'Call failed',
         CallState.ended => 'Call ended',
       };
 
@@ -106,7 +106,10 @@ class _CallScreenState extends State<CallScreen> {
                           const SizedBox(height: 48),
                         ],
                         CallHeader(session: session, statusText: _statusTextFor(session)),
-                        if (session.state == CallState.connected || session.state == CallState.reconnecting) ...[
+                        // The quality card describes an answered call's media
+                        // link; hide it while still just trying to reach them.
+                        if (session.answeredAt != null &&
+                            (session.state == CallState.connected || session.state == CallState.reconnecting)) ...[
                           const SizedBox(height: LocalLinkSpacing.xl),
                           CallQualityCard(session: session),
                         ],

@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:locallink/core/services/app_logger.dart';
 
 /// Single entry point for regular HTTP requests made by LocalLink.
@@ -17,7 +19,18 @@ import 'package:locallink/core/services/app_logger.dart';
 class ApiHttpClient {
   final http.Client _client;
 
-  ApiHttpClient({http.Client? client}) : _client = client ?? http.Client();
+  ApiHttpClient({http.Client? client})
+      : _client = client ??
+            // Real socket-level connect timeout. Without it the only guard
+            // is the OS TCP-SYN budget (~130s on Android/Linux), and a
+            // Future.timeout racing the call cannot cancel the kernel's
+            // pending connect — that is how a powered-off server wedged the
+            // network-policy fetch for 129848ms and produced an ANR. 6s is
+            // deliberate: this app is local-first (LAN/mesh), so long before
+            // a server is actually "down" the call should fail fast and let
+            // the caller classify it as unreachable.
+            IOClient(HttpClient()
+              ..connectionTimeout = const Duration(seconds: 6));
 
   Future<http.Response> get(
       Uri uri, {

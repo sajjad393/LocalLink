@@ -445,6 +445,44 @@ final class CallSessionManager implements CallGateway {
           existing.peerId == peerId &&
           existing.direction == CallDirection.incoming &&
           existing.state == CallState.ringing) return;
+      // Glare: both devices started calling each other ~simultaneously, so
+      // both hold a pre-answer OUTGOING session to the same peer. Resolve
+      // deterministically without server help: the lexicographically lower
+      // device id keeps its outgoing call and drops this invite; the higher
+      // id cancels its own outgoing call (call_end reason 'glare') and
+      // adopts THIS invite — its user sees the normal Answer/Decline bar and
+      // one single call survives instead of two stuck dialing screens.
+      if (existing.direction == CallDirection.outgoing &&
+          existing.peerId == peerId &&
+          existing.answeredAt == null &&
+          (existing.state == CallState.connecting ||
+              existing.state == CallState.reconnecting)) {
+        final selfId = store.deviceId?.trim() ?? '';
+        final keepCalling = selfId.isNotEmpty && selfId.compareTo(peerId) < 0;
+        if (keepCalling) {
+          AppLogger.info('CALL_GLARE_IGNORED_INVITE',
+              detail: 'theirs=$callId ours=${existing.id}');
+          return;
+        }
+        AppLogger.info('CALL_GLARE_ADOPTED_INVITE',
+            detail: 'ours=${existing.id} theirs=$callId');
+        await endCall(reason: 'glare');
+        // Fall through: our outgoing session is finished; this invite is
+        // adopted as our live session below.
+      } else if (existing.direction == CallDirection.outgoing &&
+          existing.peerId == peerId) {
+        // Same peer, but our call is already answered (media active): real busy.
+        unawaited(_sendSignal({
+          'type': 'call_busy',
+          'call_id': callId,
+          'recipient_id': peerId,
+          'reason': 'busy',
+          'transport_mode': CallTransportMode.offlineMesh.wireName,
+          'mesh_call': true,
+          'direct': true
+        }));
+        return;
+      } else if (existing.direction != CallDirection.outgoing || existing.peerId != peerId) {
       // Zombie guard: an abandoned ringing/connecting session (crash or link
       // flap mid-call) must not DoS every future caller with call_busy. A
       // genuinely active (recent) call still reports busy.
@@ -471,6 +509,9 @@ final class CallSessionManager implements CallGateway {
       );
       await _finishLocal(CallState.canceled, 'superseded',
           notifyServer: false);
+      }
+      // An incoming-ring session for the same (or another) peer that is no
+      // longer live was cleared above; adoption continues below.
     }
     final name = await repository
         .loadDeviceNames()
@@ -601,7 +642,13 @@ final class CallSessionManager implements CallGateway {
       final callId = event['call_id']?.toString();
       final eventTargets = destination == session.peerId &&
           (callId == null || callId.isEmpty || callId == session.id);
+      // Only a call that was actually answered owns media-level reconnect
+      // semantics. Pre-answer sessions (outgoing 'connecting', incoming
+      // 'ringing') must NOT be flipped to 'reconnecting'/'connected' by
+      // background mesh churn — that is how an unaccepted call ended up
+      // showing "Reconnecting…" with phantom recovery attempts.
       if (eventTargets &&
+          session.answeredAt != null &&
           (type == 'route_invalidated' ||
               type == 'route_removed' ||
               type == 'call_media_route_degraded')) {
@@ -623,15 +670,24 @@ final class CallSessionManager implements CallGateway {
           _setSession(current.copyWith(quality: CallQuality.reconnecting));
         });
       } else if (eventTargets && type == 'route_recovered') {
-        _meshRouteRecoveryTimer?.cancel();
-        _meshRouteRecoveryAttempts = 0;
-        _setSession(session.copyWith(
-            state: CallState.connected,
-            quality: CallQuality.good,
-            recoveryAttempts: 0,
-            mediaNextHopId: event['next_hop_id']?.toString(),
-            mediaHopCount: (event['hop_count'] as num?)?.toInt()));
-        unawaited(_persistSession());
+        if (session.answeredAt != null &&
+            session.state == CallState.reconnecting) {
+          _meshRouteRecoveryTimer?.cancel();
+          _meshRouteRecoveryAttempts = 0;
+          _setSession(session.copyWith(
+              state: CallState.connected,
+              quality: CallQuality.good,
+              recoveryAttempts: 0,
+              mediaNextHopId: event['next_hop_id']?.toString(),
+              mediaHopCount: (event['hop_count'] as num?)?.toInt()));
+          unawaited(_persistSession());
+        } else if (session.direction == CallDirection.outgoing &&
+            session.state == CallState.connecting) {
+          // Route is back before the invite was acked: fire a resend now
+          // instead of waiting out the 5s route-wait timer. The invite was
+          // likely swallowed when the route dropped under it.
+          unawaited(_trySendPendingInvite());
+        }
       } else if (eventTargets && type == 'call_media_route_changed') {
         _setSession(session.copyWith(
           mediaNextHopId: event['next_hop_id']?.toString(),
