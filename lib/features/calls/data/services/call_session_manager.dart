@@ -50,6 +50,7 @@ final class CallSessionManager implements CallGateway {
   Timer? _heartbeatTimer;
   Timer? _meshRouteRecoveryTimer;
   Timer? _routeWaitTimer;
+  Timer? _connectWatchdogTimer;
   CallSession? _session;
   CallTransport? _transport;
   late final CallTransportFactory transportFactory;
@@ -182,6 +183,20 @@ final class CallSessionManager implements CallGateway {
     await _persistSession();
     _startRouteWaitTimer();
     await _trySendPendingInvite();
+    // Connecting watchdog: without it a peer that never acks leaves the
+    // caller staring at "connecting…" forever. 45s covers one full link
+    // recovery window, then fail closed with a clear reason.
+    _connectWatchdogTimer?.cancel();
+    _connectWatchdogTimer = Timer(const Duration(seconds: 45), () {
+      final current = _session;
+      if (_disposed || current == null || current.isFinished) return;
+      if (current.direction == CallDirection.outgoing &&
+          current.state == CallState.connecting) {
+        AppLogger.warning('CALL_CONNECT_WATCHDOG_TIMEOUT', detail: 'call=${current.id}');
+        unawaited(_finishLocal(CallState.failed, 'unreachable',
+            notifyServer: false));
+      }
+    });
   }
 
   Future<void> acceptIncoming() async {
@@ -430,16 +445,32 @@ final class CallSessionManager implements CallGateway {
           existing.peerId == peerId &&
           existing.direction == CallDirection.incoming &&
           existing.state == CallState.ringing) return;
-      unawaited(_sendSignal({
-        'type': 'call_busy',
-        'call_id': callId,
-        'recipient_id': peerId,
-        'reason': 'busy',
-        'transport_mode': CallTransportMode.offlineMesh.wireName,
-        'mesh_call': true,
-        'direct': true
-      }));
-      return;
+      // Zombie guard: an abandoned ringing/connecting session (crash or link
+      // flap mid-call) must not DoS every future caller with call_busy. A
+      // genuinely active (recent) call still reports busy.
+      final isLiveCall = existing.state == CallState.connected ||
+          existing.state == CallState.reconnecting ||
+          DateTime.now()
+                  .difference(existing.startedAt) <
+              const Duration(seconds: 60);
+      if (isLiveCall) {
+        unawaited(_sendSignal({
+          'type': 'call_busy',
+          'call_id': callId,
+          'recipient_id': peerId,
+          'reason': 'busy',
+          'transport_mode': CallTransportMode.offlineMesh.wireName,
+          'mesh_call': true,
+          'direct': true
+        }));
+        return;
+      }
+      AppLogger.warning(
+        'CALL_ZOMBIE_SESSION_CLEARED',
+        detail: 'state=${existing.state.name} age=${DateTime.now().difference(existing.startedAt).inSeconds}s',
+      );
+      await _finishLocal(CallState.canceled, 'superseded',
+          notifyServer: false);
     }
     final name = await repository
         .loadDeviceNames()
@@ -677,7 +708,7 @@ final class CallSessionManager implements CallGateway {
         now.difference(lastAttempt) < const Duration(seconds: 5)) {
       return;
     }
-    LocalRouteResult route;
+    LocalRouteResult? route;
     try {
       route = await routePolicy.resolve(session.peerId);
     } catch (error, stackTrace) {
@@ -688,12 +719,17 @@ final class CallSessionManager implements CallGateway {
       );
       return;
     }
-    if (!route.isAvailable) {
+    // No usable route right now? Still attempt the send. The native mesh
+    // router queues signaling when the peer is down and flushes the moment a
+    // link appears (LAN beacon, Wi-Fi Direct reconnect, multi-hop), which —
+    // combined with the 5s route-wait resend — makes invites resilient to
+    // link flapping instead of silently never leaving this device.
+    final routeAvailable = route.isAvailable;
+    if (!routeAvailable) {
       AppLogger.info(
         'CALL_WAITING_FOR_ROUTE',
-        detail: 'state=${route.transportState.name}',
+        detail: 'state=${route.transportState.name} — queueing invite anyway',
       );
-      return;
     }
     _inviteInFlight = true;
     _lastInviteAttemptAt = now;
@@ -708,7 +744,7 @@ final class CallSessionManager implements CallGateway {
         'direct': true,
         'supported_media_codecs': session.supportedMediaCodecs,
       });
-      AppLogger.info('CALL_INVITE_SENT', detail: 'transport=${route.kind.name}');
+      AppLogger.info('CALL_INVITE_SENT', detail: 'transport=${route.kind.name} queued=${!routeAvailable}');
     } catch (error, stackTrace) {
       AppLogger.error(
         'CALL_INVITE_SEND_FAILED',
@@ -1018,11 +1054,13 @@ final class CallSessionManager implements CallGateway {
     _statsTimer?.cancel();
     _heartbeatTimer?.cancel();
     _meshRouteRecoveryTimer?.cancel();
+    _connectWatchdogTimer?.cancel();
     _stopRouteWaitTimer();
     _ringTimer = null;
     _statsTimer = null;
     _heartbeatTimer = null;
     _meshRouteRecoveryTimer = null;
+    _connectWatchdogTimer = null;
   }
 
   Future<void> _persistSession() async {

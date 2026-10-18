@@ -58,8 +58,6 @@ class LocalLinkTransportService : Service() {
         private const val ROUTE_ADVERTISEMENT_MAX_AGE_MS = 90_000L
         private const val ROUTE_ADVERTISEMENT_INTERVAL_MS = 10_000L
         private const val LAN_BEACON_MAX_SIZE = 2_048
-        private const val LAN_BEACON_MAX_AGE_MS = 12_000L
-        private const val LAN_BEACON_FUTURE_SKEW_MS = 5_000L
         private const val CHANNEL_ID = "locallink_transport"
         private const val NOTIFICATION_ID = 2201
         private const val PREFS = "locallink_transport_state"
@@ -437,7 +435,12 @@ class LocalLinkTransportService : Service() {
             val sentAt = beacon.optLong("sent_at", 0L)
             if (!validTransportId(nodeId) || nodeId == self || !MeshTransportPolicy.isValidPort(port)) return
             val now = System.currentTimeMillis()
-            if (sentAt <= 0L || sentAt < now - LAN_BEACON_MAX_AGE_MS || sentAt > now + LAN_BEACON_FUTURE_SKEW_MS) return
+            // No cross-clock freshness check: devices on a mesh routinely have
+            // drifting clocks (hours!), which used to make every beacon from
+            // the peer look "stale" or "from the future" and silently kill LAN
+            // discovery. Beacons are LAN-local, protobuf-free control frames —
+            // trust arrival time (our clock) and dedupe via lastLanBeaconAt.
+            if (sentAt <= 0L) return
             val host = address.hostAddress?.trim().orEmpty()
             if (host.isBlank()) return
             val previousBeacon = lastLanBeaconAt.put(nodeId, now)
