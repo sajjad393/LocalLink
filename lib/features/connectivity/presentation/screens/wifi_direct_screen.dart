@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/widgets/local_link_status_line.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
@@ -108,7 +109,7 @@ class _WifiDirectScreenState extends State<WifiDirectScreen> {
               ),
               if (state.error != null) ...[
                 const SizedBox(height: LocalLinkSpacing.md),
-                LocalLinkInlineError(message: state.error!, onRetry: widget.controller.refresh),
+                LocalLinkInlineError(message: friendlyErrorMessage(state.error!), onRetry: widget.controller.refresh),
               ],
               const SizedBox(height: LocalLinkSpacing.lg),
               Text('Nearby phones', style: Theme.of(context).textTheme.titleMedium),

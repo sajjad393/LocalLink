@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/device_status_indicator.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
@@ -192,16 +193,10 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  String _presenceLabel(Device device) {
-    // Prefer the LAN caption: a peer that advertises BOTH paths (same home
-    // Wi-Fi + Wi-Fi Direct group) should read "Local Wi-Fi", matching what
-    // the user actually sees — not the noisy P2P flap underneath.
-    if (device.lanAvailable || device.serverConnected) return 'Available · Local Wi-Fi';
-    if (device.wifiDirectConnected) return 'Available · Wi-Fi Direct';
-    if (device.meshAvailable) return 'Available nearby';
-    if (device.networkStatus == DeviceNetworkStatus.unknown) return 'Status unavailable';
-    return 'Offline';
-  }
+  String _presenceLabel(Device device) =>
+      // Binary presence, app-wide: locally-stamped liveness within the
+      // presence window is Online; everything else is Offline.
+      device.isOnline() ? 'Online' : 'Offline';
 
   Future<void> _showMessageActions(String body, String messageId) async {
     const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -370,7 +365,7 @@ class _ChatScreenState extends State<ChatScreen> {
           body: Column(
             children: [
               if (state.error != null)
-                LocalLinkInlineError(message: state.error!, onRetry: () => widget.controller.load()),
+                LocalLinkInlineError(message: friendlyErrorMessage(state.error!), onRetry: () => widget.controller.load()),
               Expanded(
                 // Loading no longer blanks the whole chat: the shimmer only
                 // shows for the very first paint (no messages at all).

@@ -72,4 +72,8 @@ final class HomeRepository implements HomeRepositoryContract {
 
   @override
   Future<void> cacheDevice(Device device) => _store.saveDevice(device);
+
+  @override
+  Future<void> markDeviceSeen(String deviceId) =>
+      _store.touchDevicePresence(deviceId);
 }

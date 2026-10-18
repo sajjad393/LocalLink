@@ -12,6 +12,11 @@ abstract interface class HomeRepositoryContract {
   Future<LocalGroup> createGroup(String name, List<String> memberIds);
   Future<void> cacheDevice(Device device);
 
+  /// Stamps locally-arrived liveness for [deviceId] (our own clock) without
+  /// touching reachability flags. Used when the server reports a peer alive
+  /// or any peer traffic lands, feeding the binary Online window.
+  Future<void> markDeviceSeen(String deviceId);
+
   /// Resolves a device id to the owning directory user id, if known. Used to
   /// collapse multiple devices of one user into a single conversation entry.
   Future<String?> userIdForDevice(String deviceId);

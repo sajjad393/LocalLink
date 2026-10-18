@@ -51,6 +51,11 @@ class Device {
   final bool managedDevice;
   final bool wifiEnabled;
 
+  /// Liveness proof stamped with OUR clock at the moment this device's
+  /// presence/traffic last arrived locally. Empty = never seen alive. Never
+  /// compare this with peer-supplied clocks.
+  final String presenceLocalAt;
+
   const Device({
     required this.id,
     required this.name,
@@ -71,6 +76,7 @@ class Device {
     this.wifiControlCapable = false,
     this.managedDevice = false,
     this.wifiEnabled = false,
+    this.presenceLocalAt = '',
   });
 
   factory Device.fromJson(Map<String, dynamic> json) => Device(
@@ -93,6 +99,7 @@ class Device {
         wifiControlCapable: json['wifi_control_capable'] == true,
         managedDevice: json['managed_device'] == true,
         wifiEnabled: json['wifi_enabled'] == true,
+        presenceLocalAt: json['presence_local_at']?.toString() ?? '',
       );
 
   Device copyWithPresence({
@@ -106,6 +113,7 @@ class Device {
     bool? wifiControlCapable,
     bool? managedDevice,
     bool? wifiEnabled,
+    String? presenceLocalAt,
   }) => Device(
         id: id, name: name, platform: platform, createdAt: createdAt, lastSeenAt: lastSeenAt,
         networkStatus: networkStatus ?? this.networkStatus,
@@ -122,5 +130,27 @@ class Device {
         wifiControlCapable: wifiControlCapable ?? this.wifiControlCapable,
         managedDevice: managedDevice ?? this.managedDevice,
         wifiEnabled: wifiEnabled ?? this.wifiEnabled,
+        presenceLocalAt: presenceLocalAt ?? this.presenceLocalAt,
       );
+
+  /// Binary presence for the whole app.
+  ///
+  /// Delayed liveness window: presence publishes every 30s on the mesh
+  /// broadcast + server relay, so one missed packet never flips a peer to
+  /// Offline.
+  static const Duration onlineWindow = Duration(seconds: 60);
+
+  /// Online means: some transport reports reachability AND we have locally
+  /// stamped proof of liveness within [window]. Both keys are local — no
+  /// cross-device clock comparisons (phones on a mesh can drift by hours,
+  /// which used to make peers look Offline or Online-forever).
+  bool isOnline({Duration window = onlineWindow, DateTime? now}) {
+    final reachable =
+        serverConnected || wifiDirectConnected || lanAvailable || meshAvailable;
+    if (!reachable) return false;
+    final stamp = DateTime.tryParse(presenceLocalAt)?.toUtc();
+    if (stamp == null) return false;
+    final age = (now ?? DateTime.now()).toUtc().difference(stamp);
+    return age <= window;
+  }
 }

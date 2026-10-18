@@ -1255,6 +1255,11 @@ class ReliableMessagingService {
       final message =
       await _resolveNetworkPayload(data);
 
+      if (message != null && message.senderId != store.deviceId) {
+        // A server-relayed message implies the peer's client is alive now:
+        // count it as liveness for the binary Online window.
+        unawaited(store.touchDevicePresence(message.senderId, viaServer: true));
+      }
       if (message == null) {
         AppLogger.error(
           'MESSAGE_INCOMING_DROPPED_AFTER_PARSE',
@@ -1664,6 +1669,10 @@ class ReliableMessagingService {
         // by directory user (once) so conversations start from a known person.
         unawaited(_autoAddContact(message.senderId));
 
+        // Mesh delivery just proved the peer is alive: refresh its binary
+        // presence stamp (our clock, not theirs).
+        unawaited(store.touchDevicePresence(message.senderId, viaMesh: true));
+
         // --------------------------------------------------------------------
         // RESOLVE DIRECT ATTACHMENTS
         // --------------------------------------------------------------------
@@ -1708,6 +1717,26 @@ class ReliableMessagingService {
         }
 
         // --------------------------------------------------------------------
+        // NORMALIZE SKEWED CLOCK
+        //
+        // In server mode the server stamp dominates ordering, so a drifting
+        // phone clock never scrambles the timeline. In direct mode there is
+        // no neutral clock: messages sort strictly by the SENDER's
+        // created_at, and two phones hours apart interleave every rapid
+        // back-and-forth burst into a visually "mixed up" chat. Received
+        // messages join the timeline in ARRIVAL order (WhatsApp-style), so
+        // when the peer's stamp disagrees with our clock by more than ~90s
+        // we re-stamp it at local receipt time.
+        // --------------------------------------------------------------------
+        final receivedAtUtc = DateTime.now().toUtc();
+        final stampDrift =
+            message.createdAt.difference(receivedAtUtc).abs();
+        final normalizedCreatedAt =
+            stampDrift > const Duration(seconds: 90)
+                ? receivedAtUtc
+                : message.createdAt;
+
+        // --------------------------------------------------------------------
         // BUILD DELIVERED MESSAGE
         // --------------------------------------------------------------------
         message = Message(
@@ -1715,12 +1744,9 @@ class ReliableMessagingService {
           senderId: message.senderId,
           recipientId: message.recipientId,
           body: message.body,
-          createdAt: message.createdAt,
+          createdAt: normalizedCreatedAt,
           status: 'delivered',
-          deliveredAt:
-          DateTime.now()
-              .toUtc()
-              .toIso8601String(),
+          deliveredAt: receivedAtUtc.toIso8601String(),
           serverSeq: message.serverSeq,
           attachments: directAttachments,
         );
@@ -1811,6 +1837,11 @@ class ReliableMessagingService {
           return;
         }
 
+        // Their ack travelled back over the mesh: the acking peer is alive.
+        unawaited(store.touchDevicePresence(
+            data['sender_id']?.toString() ?? '',
+            viaMesh: true));
+
         final now = DateTime.now().toUtc();
 
         // The message has reached the recipient: drop it from the outbox so
@@ -1833,32 +1864,14 @@ class ReliableMessagingService {
           detail: 'id=$id',
         );
 
-        final senderId =
-            data['sender_id']?.toString() ?? '';
-
-        final local =
-        (await store.messagesFor(senderId))
-            .where(
-              (m) => m.id == id,
-        )
-            .toList();
-
-        if (local.isNotEmpty &&
-            local.first.status != 'delivered') {
-          _incoming.add(
-            Message(
-              id: local.first.id,
-              senderId: local.first.senderId,
-              recipientId: local.first.recipientId,
-              body: local.first.body,
-              createdAt: local.first.createdAt,
-              status: 'delivered',
-              deliveredAt:
-              now.toIso8601String(),
-              serverSeq: local.first.serverSeq,
-              attachments: local.first.attachments,
-            ),
-          );
+        // Push the status refresh into the live message stream, exactly like
+        // the websocket delivery_ack handler above. The previous version
+        // gated the emit on `status != 'delivered'` AFTER persisting
+        // 'delivered' — a condition that could never be true — so direct-mode
+        // ticks stayed stuck at the pending clock until the screen reloaded.
+        final refreshed = await store.messageById(id);
+        if (refreshed != null) {
+          _incoming.add(refreshed);
 
           AppLogger.info(
             'DIRECT_DELIVERY_STATUS_EMITTED',

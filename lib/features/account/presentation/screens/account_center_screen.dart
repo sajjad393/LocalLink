@@ -5,6 +5,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
@@ -140,7 +141,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                       ),
                       if (state.errorMessage != null) ...[
                         const SizedBox(height: LocalLinkSpacing.sm),
-                        LocalLinkInlineError(message: 'Your saved profile is shown. ${state.errorMessage!}', onRetry: _controller.load),
+                        LocalLinkInlineError(message: 'Your saved profile is shown. ${friendlyErrorMessage(state.errorMessage!)}', onRetry: _controller.load),
                       ],
                       const SizedBox(height: LocalLinkSpacing.section),
                       const Text('Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),

@@ -85,13 +85,28 @@ final class HomeBloc extends Cubit<HomeState> {
     if (_closed) return;
     emit(state.copyWith(loading: true, clearError: true, clearSyncNotice: true));
     try {
-      final devices = await repository.devices();
+      final rawDevices = await repository.devices();
       if (_closed) return;
       final groups = await repository.groups();
       if (_closed) return;
+      final syncStamp = DateTime.now().toUtc().toIso8601String();
+      bool wasReportedOnline(Device d) =>
+          d.serverConnected || d.wifiDirectConnected || d.lanAvailable || d.meshAvailable;
+      // The server's device list carries its own freshness: a peer the server
+      // just saw alive is provisionally Online (60s window) until the first
+      // live presence relay refreshes the stamp. Without this, every launch
+      // would flash everyone Offline until the next 30s broadcast landed.
+      final devices = rawDevices
+          .map((d) => wasReportedOnline(d)
+              ? d.copyWithPresence(presenceLocalAt: syncStamp)
+              : d)
+          .toList();
       for (final device in devices) {
         if (_closed) return;
         await repository.cacheDevice(device);
+        if (wasReportedOnline(device)) {
+          unawaited(repository.markDeviceSeen(device.id));
+        }
       }
       if (_closed) return;
       _localDiscoveryAttempted = false;
@@ -119,29 +134,31 @@ final class HomeBloc extends Cubit<HomeState> {
         // A failing BACKGROUND sync is not an error worth a red banner: the
         // user sees their saved conversations plus a quiet offline line. Only
         // an explicit user action (pull-to-refresh, Retry) reports loudly.
+        // No raw exception text in user-facing surfaces, ever. Explicit
+        // Retry / pull-to-refresh earns ONE calm neutral chip; background
+        // failures stay silent (saved conversations keep rendering and sync
+        // retries itself) — matching how users expect a messenger to behave.
+        final hasSavedData =
+            localDevices.isNotEmpty || localGroups.isNotEmpty;
         emit(state.copyWith(
           devices: visible,
           groups: localGroups,
           deviceLabels: await _labelsFor(visible),
-          error: userInitiated
-              ? '${localDevices.isEmpty && localGroups.isEmpty ? 'Server sync failed; no saved conversations are available.' : 'Server sync failed; showing saved conversations.'} ${cleanBlocError(e)}'
-              : null,
+          error: null,
           syncNotice: userInitiated
-              ? null
-              : (localDevices.isEmpty && localGroups.isEmpty
-                  ? 'Not connected to the server yet. Conversations will appear once it is reachable.'
-                  : 'Offline — showing saved conversations. Syncs automatically when the server is back.'),
+              ? (hasSavedData
+                  ? "Couldn't sync right now — showing your saved conversations."
+                  : "Couldn't reach the server. Conversations will appear when it's back.")
+              : null,
           loading: false,
         ));
       } catch (fallbackError) {
         if (!_closed) {
           emit(state.copyWith(
-            error: userInitiated
-                ? 'Server sync failed and saved conversations could not be loaded. ${cleanBlocError(e)}; local data error: ${cleanBlocError(fallbackError)}'
-                : null,
+            error: null,
             syncNotice: userInitiated
-                ? null
-                : 'Offline — saved conversations could not be refreshed.',
+                ? "Couldn't load your conversations. Please try again in a moment."
+                : null,
             loading: false,
           ));
         }
@@ -195,15 +212,19 @@ final class HomeBloc extends Cubit<HomeState> {
       if (data['type']?.toString() != 'direct_presence') return;
       final server = data['server_connected'] == true;
       final wifi = data['wifi_direct_connected'] == true;
+      final lan = data['lan_available'] == true;
+      final mesh = data['mesh_available'] == true;
       _onPresence({
         'device_id': data['sender_id'],
-        'network_status': wifi
+        'network_status': (wifi || lan || mesh)
             ? 'orange'
             : server
                 ? 'green'
                 : 'red',
         'server_connected': server,
         'wifi_direct_connected': wifi,
+        'lan_available': lan,
+        'mesh_available': mesh,
         'status_updated_at': data['status_updated_at']?.toString() ?? '',
       });
     } catch (_) {}
@@ -233,7 +254,12 @@ final class HomeBloc extends Cubit<HomeState> {
       'network_status': event['network_status'],
       'server_connected': event['server_connected'] == true,
       'wifi_direct_connected': event['wifi_direct_connected'] == true,
+      'lan_available': event['lan_available'] == true,
+      'mesh_available': event['mesh_available'] == true,
       'status_updated_at': event['status_updated_at']?.toString() ?? '',
+      // Liveness is stamped with OUR clock at arrival — the peer's
+      // status_updated_at is display-only and never decides Online/Offline.
+      'presence_local_at': DateTime.now().toUtc().toIso8601String(),
     });
     unawaited(repository.cacheDevice(updated));
     unawaited(_applyDeviceUpdate(updated));
@@ -282,35 +308,33 @@ final class HomeBloc extends Cubit<HomeState> {
   /// Picks which device should represent a user in the conversation list: an
   /// online device wins, otherwise the one seen most recently.
   static bool _isBetterConversationPeer(Device a, Device b) {
-    bool online(Device d) =>
-        d.serverConnected || d.wifiDirectConnected || d.lanAvailable;
+    bool online(Device d) => d.isOnline();
     if (online(a) != online(b)) return online(a);
     return a.lastSeenAt.compareTo(b.lastSeenAt) > 0;
   }
 
+  /// Binary decay: a peer whose local liveness stamp slipped past the 60s
+  /// window is Offline. Uses only locally-stamped arrival times — peer clock
+  /// drift can no longer flip statuses in either direction.
   void expireStalePresence() {
     if (_closed) return;
     final now = DateTime.now().toUtc();
     var changed = false;
     final next = state.devices.map((device) {
-      final stamp = DateTime.tryParse(device.statusUpdatedAt)?.toUtc();
-      if (stamp == null ||
-          now.difference(stamp) <= const Duration(seconds: 40) ||
-          device.networkStatus == DeviceNetworkStatus.unknown) {
-        return device;
-      }
+      if (device.isOnline(now: now)) return device;
+      final claimsReachable = device.serverConnected ||
+          device.wifiDirectConnected ||
+          device.lanAvailable ||
+          device.meshAvailable;
+      if (!claimsReachable) return device;
       changed = true;
-      final stale = Device.fromJson({
-        'id': device.id,
-        'name': device.name,
-        'platform': device.platform,
-        'created_at': device.createdAt,
-        'last_seen_at': device.lastSeenAt,
-        'network_status': 'unknown',
-        'server_connected': false,
-        'wifi_direct_connected': false,
-        'status_updated_at': device.statusUpdatedAt,
-      });
+      final stale = device.copyWithPresence(
+        networkStatus: DeviceNetworkStatus.disconnected,
+        serverConnected: false,
+        wifiDirectConnected: false,
+        lanAvailable: false,
+        meshAvailable: false,
+      );
       unawaited(repository.cacheDevice(stale));
       return stale;
     }).toList();

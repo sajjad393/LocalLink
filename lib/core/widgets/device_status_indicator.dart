@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/widgets/local_link_status_badge.dart';
 
+/// Binary presence indicator: a peer is either Online or Offline, judged
+/// exclusively from locally-stamped liveness (Device.isOnline). The old
+/// four-colour server/Wi-Fi/unknown states collapsed into these two —
+/// and, critically, the stale-check no longer compares peer clocks.
 class DeviceStatusIndicator extends StatelessWidget {
   final Device device;
   final bool showLabel;
@@ -12,47 +16,27 @@ class DeviceStatusIndicator extends StatelessWidget {
     this.showLabel = true,
   });
 
-  DeviceNetworkStatus get _status {
-    if (device.networkStatus == DeviceNetworkStatus.unknown) return DeviceNetworkStatus.unknown;
-    if (device.statusUpdatedAt.isEmpty) return DeviceNetworkStatus.unknown;
-    final updated = DateTime.tryParse(device.statusUpdatedAt);
-    if (updated == null || DateTime.now().toUtc().difference(updated.toUtc()).inSeconds > 35) {
-      return DeviceNetworkStatus.unknown;
-    }
-    return device.networkStatus;
-  }
-
-  Color _color(BuildContext context) => switch (_status) {
-    DeviceNetworkStatus.serverConnected => Theme.of(context).colorScheme.primary,
-    DeviceNetworkStatus.wifiDirect => Theme.of(context).colorScheme.tertiary,
-    DeviceNetworkStatus.disconnected => Theme.of(context).colorScheme.error,
-    DeviceNetworkStatus.unknown => Theme.of(context).colorScheme.outline,
-  };
-
-  IconData _icon() => switch (_status) {
-    DeviceNetworkStatus.serverConnected => Icons.dns_outlined,
-    DeviceNetworkStatus.wifiDirect => Icons.wifi_tethering,
-    DeviceNetworkStatus.disconnected => Icons.cloud_off,
-    DeviceNetworkStatus.unknown => Icons.help_outline,
-  };
+  bool get _online => device.isOnline();
 
   @override
   Widget build(BuildContext context) {
-    final color = _color(context);
-    final badge = LocalLinkStatusBadge(
-      label: _status.label,
-      color: color,
-      icon: _icon(),
-    );
-    if (showLabel) return badge;
-    // Unknown presence is the common resting state after launch: keep the row
-    // calm with a neutral dot instead of an alarming question-mark icon.
-    if (_status == DeviceNetworkStatus.unknown) {
-      return Tooltip(
-        message: _status.label,
-        child: Icon(Icons.circle, color: color.withOpacity(0.35), size: 10),
+    final colors = Theme.of(context).colorScheme;
+    final color = _online ? colors.primary : colors.outline;
+    final label = _online ? 'Online' : 'Offline';
+    if (showLabel) {
+      return LocalLinkStatusBadge(
+        label: label,
+        color: color,
+        icon: _online ? Icons.circle : Icons.circle_outlined,
       );
     }
-    return Tooltip(message: _status.label, child: Icon(_icon(), color: color, size: 18));
+    return Tooltip(
+      message: label,
+      child: Icon(
+        Icons.circle,
+        color: _online ? color : color.withOpacity(0.35),
+        size: 10,
+      ),
+    );
   }
 }

@@ -226,16 +226,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return cleanBlocError(error);
   }
 
-  String _deviceSubtitle(Device device) {
-    // Same precedence as chat screen: LAN beats Wi-Fi Direct.
-    if (device.lanAvailable || device.serverConnected)
-      return 'Available · Local Wi-Fi';
-    if (device.wifiDirectConnected) return 'Available · Wi-Fi Direct';
-    if (device.meshAvailable) return 'Available · Nearby mesh';
-    if (device.networkStatus == DeviceNetworkStatus.unknown)
-      return 'Status unavailable';
-    return 'Offline';
-  }
+  String _deviceSubtitle(Device device) =>
+      // Binary presence, one rule everywhere: locally-stamped liveness only.
+      device.isOnline() ? 'Online' : 'Offline';
 
   Widget _chatsTab() {
     return Scaffold(
@@ -270,11 +263,9 @@ class _HomeScreenState extends State<HomeScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(bottom: 96),
               children: [
-                if (state.error != null)
-                  LocalLinkInlineError(
-                      message: state.error!,
-                      onRetry: () => _controller.load(userInitiated: true)),
-                if (state.error == null && state.syncNotice != null)
+                // Red exception banners are banned from the chats tab: quiet
+                // chip for explicit-retry feedback, silence otherwise.
+                if (state.syncNotice != null)
                   _SyncNotice(message: state.syncNotice!),
                 MessengerSectionHeader(
                   title: 'Conversations',

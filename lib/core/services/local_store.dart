@@ -108,6 +108,7 @@ class LocalStore {
         if (oldVersion < 18) await _upgradeTo18(db);
         if (oldVersion < 20) await _upgradeTo20(db);
         if (oldVersion < 21) await _upgradeTo21(db);
+        if (oldVersion < 22) await _upgradeTo22(db);
       },
     );
     _databaseOpened = true;
@@ -211,6 +212,7 @@ class LocalStore {
     await _upgradeTo17(db);
     await _upgradeTo18(db);
     await _upgradeTo20(db);
+    await _upgradeTo22(db);
   }
 
   Future<void> _upgradeTo2(Database db) async {
@@ -552,6 +554,24 @@ class LocalStore {
       PRIMARY KEY(message_id, reactor_id)
     )''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_group_message_reactions_message ON group_message_reactions(message_id)');
+  }
+
+
+  /// v22 — binary presence model.
+  ///
+  /// Presence liveness is no longer judged from the peer-stamped
+  /// status_updated_at (device clocks can drift by hours, which made peers
+  /// appear instantly Offline or Online-forever). The receiver stamps
+  /// presence_local_at with its OWN clock at arrival; staleness compares
+  /// only local stamps. lan_available/mesh_available are now persisted so
+  /// the binary Online rule survives process restarts and DB polling.
+  Future<void> _upgradeTo22(Database db) async {
+    await db.execute(
+        "ALTER TABLE known_devices ADD COLUMN presence_local_at TEXT NOT NULL DEFAULT ''");
+    await db.execute(
+        'ALTER TABLE known_devices ADD COLUMN lan_available INTEGER NOT NULL DEFAULT 0');
+    await db.execute(
+        'ALTER TABLE known_devices ADD COLUMN mesh_available INTEGER NOT NULL DEFAULT 0');
   }
 
   Future<void> _loadSettings() async {
@@ -1446,21 +1466,66 @@ class LocalStore {
     };
   }
 
-  Future<void> saveDevice(Device device) async => _db.insert(
-        'known_devices',
-        {
-          'id': device.id,
-          'name': device.name,
-          'platform': device.platform,
-          'created_at': device.createdAt,
-          'last_seen_at': device.lastSeenAt,
-          'network_status': device.networkStatus.apiValue,
-          'server_connected': device.serverConnected ? 1 : 0,
-          'wifi_direct_connected': device.wifiDirectConnected ? 1 : 0,
-          'status_updated_at': device.statusUpdatedAt,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+  Future<void> saveDevice(Device device) async {
+    // Upsert that never silently wipes the liveness stamp: a device saved
+    // without a presence_local_at (e.g. from the server device list) keeps
+    // whatever stamp local traffic already earned it.
+    await _db.rawInsert('''
+      INSERT INTO known_devices (
+        id, name, platform, created_at, last_seen_at, network_status,
+        server_connected, wifi_direct_connected, lan_available,
+        mesh_available, status_updated_at, presence_local_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        platform = excluded.platform,
+        created_at = excluded.created_at,
+        last_seen_at = excluded.last_seen_at,
+        network_status = excluded.network_status,
+        server_connected = excluded.server_connected,
+        wifi_direct_connected = excluded.wifi_direct_connected,
+        lan_available = excluded.lan_available,
+        mesh_available = excluded.mesh_available,
+        status_updated_at = excluded.status_updated_at,
+        presence_local_at = CASE
+          WHEN excluded.presence_local_at = '' THEN known_devices.presence_local_at
+          ELSE excluded.presence_local_at
+        END
+    ''', <Object?>[
+      device.id,
+      device.name,
+      device.platform,
+      device.createdAt,
+      device.lastSeenAt,
+      device.networkStatus.apiValue,
+      device.serverConnected ? 1 : 0,
+      device.wifiDirectConnected ? 1 : 0,
+      device.lanAvailable ? 1 : 0,
+      device.meshAvailable ? 1 : 0,
+      device.statusUpdatedAt,
+      device.presenceLocalAt,
+    ]);
+  }
+
+  /// Any freshly received traffic from [deviceId] is proof that peer is
+  /// alive right now. Refreshes the local liveness stamp (our own clock —
+  /// never the peer's) and raises the transport flag that delivered it.
+  Future<void> touchDevicePresence(
+    String deviceId, {
+    bool viaServer = false,
+    bool viaMesh = false,
+  }) async {
+    if (deviceId.isEmpty) return;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await _db.rawUpdate(
+      'UPDATE known_devices SET presence_local_at = ?, '
+      'server_connected = CASE WHEN ? = 1 THEN 1 ELSE server_connected END, '
+      'lan_available = CASE WHEN ? = 1 THEN 1 ELSE lan_available END, '
+      'mesh_available = CASE WHEN ? = 1 THEN 1 ELSE mesh_available END '
+      'WHERE id = ?',
+      <Object?>[now, viaServer ? 1 : 0, viaMesh ? 1 : 0, viaMesh ? 1 : 0, deviceId],
+    );
+  }
 
   Future<Device?> deviceById(String deviceId) async {
     final rows = await _db.query(
@@ -1479,7 +1544,10 @@ class LocalStore {
         'network_status': rows.first['network_status'],
         'server_connected': rows.first['server_connected'] == 1,
         'wifi_direct_connected': rows.first['wifi_direct_connected'] == 1,
+        'lan_available': rows.first['lan_available'] == 1,
+        'mesh_available': rows.first['mesh_available'] == 1,
         'status_updated_at': rows.first['status_updated_at'],
+        'presence_local_at': rows.first['presence_local_at'],
       });
     }
 
@@ -1513,7 +1581,10 @@ class LocalStore {
               'network_status': row['network_status'],
               'server_connected': row['server_connected'] == 1,
               'wifi_direct_connected': row['wifi_direct_connected'] == 1,
+              'lan_available': row['lan_available'] == 1,
+              'mesh_available': row['mesh_available'] == 1,
               'status_updated_at': row['status_updated_at'],
+              'presence_local_at': row['presence_local_at'],
             }))
         .toList();
   }
