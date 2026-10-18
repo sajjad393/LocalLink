@@ -1649,9 +1649,13 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun encryptMeshAtRest(value: String): String {
-        val iv = ByteArray(12).also(random::nextBytes)
+        // Keystore-backed GCM keys forbid caller-provided IVs on encrypt
+        // (Android throws "Caller-provided IV not permitted"). Let the cipher
+        // generate the IV and read it back via cipher.iv instead; prepend it
+        // to the ciphertext as before so decryptMeshAtRest can reconstruct.
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, meshQueueSecretKey(), GCMParameterSpec(128, iv))
+        cipher.init(Cipher.ENCRYPT_MODE, meshQueueSecretKey())
+        val iv = cipher.iv
         return Base64.encodeToString(iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
     }
 
@@ -2278,7 +2282,7 @@ class LocalLinkTransportService : Service() {
     private fun stopTransportExplicit(){stopCallMediaInternal("");transportRunning=false;meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();transportGroupOwner=false;transportGroupOwnerAddress=null;ownerConnectInFlight.set(false);routeTable.clear();routeRecovery.clear();persistState();transportEvent("state",mapOf("connected" to false,"transport_active" to false,"service" to "stopped"))}
 
     private fun createStateKey():javax.crypto.SecretKey{val ks=KeyStore.getInstance("AndroidKeyStore").apply{load(null)};if(!ks.containsAlias(STATE_KEY_ALIAS)){val g=javax.crypto.KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");g.init(KeyGenParameterSpec.Builder(STATE_KEY_ALIAS,KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).setUserAuthenticationRequired(false).build());g.generateKey()};return ks.getKey(STATE_KEY_ALIAS,null) as javax.crypto.SecretKey}
-    private fun persistState(){try{val j=JSONObject().put("active",transportRunning).put("device_id",transportDeviceId).put("group_owner",transportGroupOwner).put("group_owner_address",transportGroupOwnerAddress);val ids=JSONArray();knownPeers.forEach{ids.put(it)};j.put("known_peers",ids);val iv=ByteArray(12).also(random::nextBytes);val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,createStateKey(),GCMParameterSpec(128,iv));getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(STATE_BLOB,Base64.encodeToString(iv+c.doFinal(j.toString().toByteArray(Charsets.UTF_8)),Base64.NO_WRAP)).apply()}catch(_:Exception){}}
+    private fun persistState(){try{val j=JSONObject().put("active",transportRunning).put("device_id",transportDeviceId).put("group_owner",transportGroupOwner).put("group_owner_address",transportGroupOwnerAddress);val ids=JSONArray();knownPeers.forEach{ids.put(it)};j.put("known_peers",ids);val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,createStateKey());val iv=c.iv;getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(STATE_BLOB,Base64.encodeToString(iv+c.doFinal(j.toString().toByteArray(Charsets.UTF_8)),Base64.NO_WRAP)).apply()}catch(_:Exception){}}
     private fun loadPersistedState(){try{val b=getSharedPreferences(PREFS,MODE_PRIVATE).getString(STATE_BLOB,null)?:return;val a=Base64.decode(b,Base64.DEFAULT);if(a.size<28)return;val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,createStateKey(),GCMParameterSpec(128,a.copyOfRange(0,12)));val j=JSONObject(String(c.doFinal(a.copyOfRange(12,a.size)),Charsets.UTF_8));transportRunning=j.optBoolean("active",false);transportDeviceId=j.optString("device_id").takeIf{it.isNotBlank()};transportGroupOwner=j.optBoolean("group_owner",false);transportGroupOwnerAddress=j.optString("group_owner_address").takeIf{it.isNotBlank()};knownPeers.clear();j.optJSONArray("known_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))knownPeers.add(id)}}}catch(_:Exception){}}
     private fun restoreDurableState(){loadSeenMeshPackets();restoreIncomingTransfers();restoreOutgoingTransfers()}
     private fun seenFileFor(key:String)=File(seenMeshDir,Base64.encodeToString(key.toByteArray(),Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)+".seen")
