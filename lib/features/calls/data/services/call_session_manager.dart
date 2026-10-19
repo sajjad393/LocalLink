@@ -331,7 +331,9 @@ final class CallSessionManager implements CallGateway {
         transportMode: CallTransportMode.offlineMesh,
         directMode: true,
       ));
-      await _persistSession();
+      // Fire-and-forget: a stalled store must not hold the callee on
+      // 'Connecting…' while the microphone is already live below.
+      unawaited(_persistSession());
       _transport =
           transportFactory.resolve(requested: CallTransportMode.offlineMesh);
       await _transport!.start(_session!);
@@ -973,6 +975,16 @@ final class CallSessionManager implements CallGateway {
         msg['sender_id']?.toString() != session.peerId ||
         msg['recipient_id']?.toString() != selfId) return;
     if (msg['status']?.toString() != 'ringing') return;
+    // Signals travel on TWO unordered paths (direct mesh + server relay), so a
+    // duplicate invite_ack can land AFTER the accept. Without this guard the
+    // caller's screen visibly regressed to 'Ringing…' for seconds mid-call.
+    if (session.answeredAt != null ||
+        session.state == CallState.connected ||
+        session.state == CallState.reconnecting) {
+      AppLogger.info('CALL_INVITE_ACK_LATE_IGNORED',
+          detail: 'call=${session.id}');
+      return;
+    }
     AppLogger.info('CALL_INVITE_ACK_RECEIVED', detail: 'call=${session.id}');
     _stopRouteWaitTimer();
     _setSession(session.copyWith(state: CallState.ringing, signalingConnected: true));
