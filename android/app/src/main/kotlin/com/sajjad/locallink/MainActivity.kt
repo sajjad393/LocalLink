@@ -460,22 +460,12 @@ class MainActivity : FlutterActivity() {
                             result.error("INVALID_CALL_VIDEO", "call_id and peer_id are required", null)
                             return@setMethodCallHandler
                         }
-                        // Camera is never requested anywhere else in the app, so a
-                        // freshly installed phone used to die here with a bare
-                        // permission failure. Ask at tap time (same pattern as the
-                        // voice-note mic request at 7812); the error text carries
-                        // the next step because the dialog is not blocking.
-                        if (call.argument<Boolean>("enable_camera") != false &&
-                            checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                            requestPermissions(arrayOf(Manifest.permission.CAMERA), 7813)
-                            result.error("CALL_MEDIA_ERROR", "Call video: camera permission needed. Allow it on the prompt, then tap video again.", null)
-                            return@setMethodCallHandler
-                        }
                         ensureCallVideoTextures()
                         LocalLinkTransportService.startCallVideo(callId, peerId, call.argument<Boolean>("enable_camera") != false)
                         result.success(mapOf(
                             "local_texture_id" to localVideoTextureEntry!!.id(),
                             "remote_texture_id" to remoteVideoTextureEntry!!.id(),
+                            "rotation" to LocalLinkTransportService.callVideoRotation(callId),
                         ))
                     }
                     "video_stop" -> {
@@ -484,13 +474,7 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "video_enabled" -> {
-                        val videoEnabledArg = call.argument<Boolean>("enabled") != false
-                        if (videoEnabledArg && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                            requestPermissions(arrayOf(Manifest.permission.CAMERA), 7813)
-                            result.error("CALL_MEDIA_ERROR", "Call video: camera permission needed. Allow it on the prompt, then tap video again.", null)
-                            return@setMethodCallHandler
-                        }
-                        LocalLinkTransportService.setCallVideoEnabled(call.argument<String>("call_id")?.trim().orEmpty(), videoEnabledArg)
+                        LocalLinkTransportService.setCallVideoEnabled(call.argument<String>("call_id")?.trim().orEmpty(), call.argument<Boolean>("enabled") != false)
                         result.success(null)
                     }
                     "video_switch_camera" -> {

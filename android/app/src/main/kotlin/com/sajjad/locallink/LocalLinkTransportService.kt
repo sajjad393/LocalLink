@@ -103,6 +103,7 @@ class LocalLinkTransportService : Service() {
         fun stopCallVideo(callId:String) { instance?.stopCallVideoInternal(callId) }
         fun setCallVideoEnabled(callId:String, enabled:Boolean) { instance?.setCallVideoEnabledInternal(callId, enabled) }
         fun switchCallCamera(callId:String) { instance?.switchCallCameraInternal(callId) }
+        fun callVideoRotation(callId:String): Int = instance?.callVideoRotationInternal(callId) ?: 0
         fun broadcast(payload:Map<String,Any?>)=instance?.broadcastTransportInternal(payload)?:false
         fun sendFile(recipientId:String,path:String,fileId:String,messageId:String,fileName:String,contentType:String,cb:(Boolean,String?)->Unit){instance?.sendFileTransportInternal(recipientId,path,fileId,messageId,fileName,contentType,cb)?:cb(false,"transport service is not running")}
         fun cancelFile(fileId:String){instance?.cancelFileTransportInternal(fileId)}
@@ -1104,6 +1105,9 @@ class LocalLinkTransportService : Service() {
         if (current != null && current.callId == callId) current.setEnabled(enabled)
     }
 
+    private fun callVideoRotationInternal(callId:String): Int =
+        callVideo?.takeIf { it.callId == callId }?.rotationDegrees() ?: 0
+
     private fun switchCallCameraInternal(callId:String) {
         val current = callVideo
         if (current != null && current.callId == callId) current.switchCamera()
@@ -1136,7 +1140,7 @@ class LocalLinkTransportService : Service() {
         val encoded = payload.optString("config").trim()
         if (encoded.isBlank()) return
         if (current.onIncomingConfig(encoded, payload.optInt("width", 640), payload.optInt("height", 360), packet.sourceNodeId, packet.destinationNodeId)) {
-            transportEvent("call_video_config_received", mapOf("call_id" to current.callId, "peer_id" to current.peerId))
+            transportEvent("call_video_config_received", mapOf("call_id" to current.callId, "peer_id" to current.peerId, "rotation" to payload.optInt("rotation", 0)))
         }
     }
 

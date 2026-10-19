@@ -426,6 +426,7 @@ final class CallSessionManager implements CallGateway {
         videoEnabled: true,
         localVideoTextureId: (video['local_texture_id'] as num?)?.toInt(),
         remoteVideoTextureId: (video['remote_texture_id'] as num?)?.toInt(),
+        localVideoRotation: (video['rotation'] as num?)?.toInt() ?? 0,
       ));
       return;
     }
@@ -927,6 +928,14 @@ final class CallSessionManager implements CallGateway {
         }
         if (session.answeredAt != null && session.remoteVideoTextureId == null) {
           unawaited(_acceptRemoteVideo(session));
+        }
+      }
+      // Peer video rotation arrives alongside each codec config frame; keep the
+      // display angle synced so a portrait-held phone stops stretching video.
+      if (eventTargets && type == 'call_video_config_received') {
+        final rot = (event['rotation'] as num?)?.toInt() ?? 0;
+        if (rot != session.remoteVideoRotation) {
+          _setSession(session.copyWith(remoteVideoRotation: rot));
         }
       }
       if (eventTargets && type == 'call_peer_video_state') {

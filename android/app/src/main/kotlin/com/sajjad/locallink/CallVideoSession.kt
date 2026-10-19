@@ -7,6 +7,7 @@ import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
+import android.hardware.display.DisplayManager
 import android.hardware.camera2.CaptureRequest
 import android.media.MediaCodec
 import android.media.MediaFormat
@@ -14,6 +15,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Base64
+import android.view.Display
 import android.view.Surface
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
@@ -65,6 +67,9 @@ class CallVideoSession(
     private var camera: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
     private var cameraId: String? = null
+    // Sensor->display rotation for the OPEN camera (0/90/180/270). Signaled to
+    // the peer inside call_video_config so both sides can undo the stretch.
+    @Volatile private var rotationDeg = 0
     private var frontFacing = true
     private var cameraThread: HandlerThread? = null
     private var cameraHandler: Handler? = null
@@ -262,6 +267,8 @@ class CallVideoSession(
         codec.start()
     }
 
+    fun rotationDegrees(): Int = rotationDeg
+
     private fun startCameraThread() {
         val thread = HandlerThread("LocalLink-video-camera").also { it.start() }
         cameraThread = thread
@@ -278,6 +285,17 @@ class CallVideoSession(
             else facing == CameraCharacteristics.LENS_FACING_BACK
         } ?: manager.cameraIdList.firstOrNull() ?: throw IllegalStateException("No camera is available")
         cameraId = selected
+        // Rotate math per the Camera2 SENSOR_ORIENTATION contract: the sensor
+        // buffer is written unrotated into every stream surface, so a portrait
+        // phone otherwise ships a sideways+stretched image.
+        val sensorOrientation = manager.getCameraCharacteristics(selected)
+            .get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+        val displayRotation = try {
+            ((context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
+                .getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: 0) * 90
+        } catch (_: Exception) { 0 }
+        rotationDeg = if (front) (sensorOrientation + displayRotation) % 360
+                      else (sensorOrientation - displayRotation + 360) % 360
         manager.openCamera(selected, object : CameraDevice.StateCallback() {
             override fun onOpened(device: CameraDevice) {
                 if (!running.get() || !enabled.get()) { device.close(); return }
@@ -379,6 +397,7 @@ class CallVideoSession(
             .put("call_id", callId)
             .put("width", WIDTH)
             .put("height", HEIGHT)
+            .put("rotation", rotationDeg)
             .put("config", encoded)
         if (sendPacket(packet)) event("call_video_config_sent", mapOf("call_id" to callId, "peer_id" to peerId))
     }

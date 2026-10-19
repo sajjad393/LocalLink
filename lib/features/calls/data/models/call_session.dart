@@ -63,6 +63,10 @@ class CallSession {
   final bool videoEnabled;
   final int? localVideoTextureId;
   final int? remoteVideoTextureId;
+  /// Display rotation (0/90/180/270) for each video surface, so the receiver
+  /// can undo the sensor-orientation stretch on a portrait-held phone.
+  final int localVideoRotation;
+  final int remoteVideoRotation;
   /// True while the peer's camera is actually streaming video for this call.
   /// Drives the WhatsApp-style fullscreen video view (and its avatar fallback
   /// when the peer turns the camera off mid-call).
@@ -93,6 +97,8 @@ class CallSession {
     this.videoEnabled = false,
     this.localVideoTextureId,
     this.remoteVideoTextureId,
+    this.localVideoRotation = 0,
+    this.remoteVideoRotation = 0,
     this.peerVideoActive = false,
     this.mediaNextHopId,
     this.mediaHopCount,
@@ -124,6 +130,8 @@ class CallSession {
     bool? videoEnabled,
     int? localVideoTextureId,
     int? remoteVideoTextureId,
+    int? localVideoRotation,
+    int? remoteVideoRotation,
     bool? peerVideoActive,
     String? mediaNextHopId,
     int? mediaHopCount,
@@ -151,6 +159,8 @@ class CallSession {
         videoEnabled: videoEnabled ?? this.videoEnabled,
         localVideoTextureId: localVideoTextureId ?? this.localVideoTextureId,
         remoteVideoTextureId: remoteVideoTextureId ?? this.remoteVideoTextureId,
+        localVideoRotation: localVideoRotation ?? this.localVideoRotation,
+        remoteVideoRotation: remoteVideoRotation ?? this.remoteVideoRotation,
         peerVideoActive: peerVideoActive ?? this.peerVideoActive,
         mediaNextHopId: mediaNextHopId ?? this.mediaNextHopId,
         mediaHopCount: mediaHopCount ?? this.mediaHopCount,

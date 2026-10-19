@@ -29,9 +29,11 @@ class CallVideoView extends StatelessWidget {
       children: [
         Container(color: Colors.black),
         if (showRemote)
-          _CoverTexture(textureId: remoteId!)
+          _CoverTexture(textureId: remoteId!,
+              rotation: session.remoteVideoRotation)
         else if (showLocalFull)
-          _CoverTexture(textureId: localId!),
+          _CoverTexture(textureId: localId!,
+              rotation: session.localVideoRotation),
         if (session.videoEnabled && localId != null && showRemote)
           Positioned(
             top: 14,
@@ -42,7 +44,10 @@ class CallVideoView extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               child: Container(
                 color: Colors.black,
-                child: _CoverTexture(textureId: localId),
+                child: _CoverTexture(
+                textureId: localId,
+                rotation: session.localVideoRotation,
+              ),
               ),
             ),
           ),
@@ -58,19 +63,26 @@ class CallVideoView extends StatelessWidget {
 
 class _CoverTexture extends StatelessWidget {
   final int textureId;
+  final int rotation;
 
-  const _CoverTexture({required this.textureId});
+  const _CoverTexture({required this.textureId, this.rotation = 0});
 
   @override
   Widget build(BuildContext context) {
-    // Native feed is 640x360 (16:9); cover-crop like WhatsApp video calls.
+    // Native feed is 640x360 (16:9); cover-crop like WhatsApp video calls,
+    // undoing the capture-side sensor rotation first.
+    final quarterTurns = (rotation ~/ 90) & 3;
+    final sideways = quarterTurns.isOdd;
     return FittedBox(
       fit: BoxFit.cover,
       clipBehavior: Clip.hardEdge,
       child: SizedBox(
-        width: 640,
-        height: 360,
-        child: Texture(textureId: textureId),
+        width: sideways ? 360 : 640,
+        height: sideways ? 640 : 360,
+        child: RotatedBox(
+          quarterTurns: quarterTurns,
+          child: Texture(textureId: textureId),
+        ),
       ),
     );
   }
