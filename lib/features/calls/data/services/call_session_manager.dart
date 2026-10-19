@@ -86,6 +86,92 @@ final class CallSessionManager implements CallGateway {
     return at != null &&
         DateTime.now().difference(at) < const Duration(seconds: 7);
   }
+
+  // Bundle 52: hot route-churn events no longer print one line each —
+  // ROUTE_CHURN_SUPPRESSED fired at media-tick cadence (~dozens/sec) and
+  // was itself re-freezing weak handsets even after the 51 sampler.
+  // Same 10s fold-in pattern as the reliable-messaging sampler.
+  Timer? _routeChurnSummaryTimer;
+  final Map<String, int> _routeChurnPending = <String, int>{};
+
+  void _recordRouteChurn(String type) {
+    _routeChurnPending[type] = (_routeChurnPending[type] ?? 0) + 1;
+    _routeChurnSummaryTimer ??=
+        Timer.periodic(const Duration(seconds: 10), (_) {
+      if (_routeChurnPending.isEmpty || _disposed) return;
+      final parts = _routeChurnPending.entries
+          .map((entry) => '${entry.key}=${entry.value}')
+          .join(' ');
+      _routeChurnPending.clear();
+      AppLogger.info('ROUTE_CHURN_SUMMARY',
+          detail: 'window=10s call=${_session?.id ?? '-'} $parts');
+    });
+  }
+
+  // Bundle 52A - offline lifecycle hardening. Accept/end/reject/busy are
+  // single-shot signals: if the direct link flakes exactly at send time
+  // and the server is unreachable too, the other phone holds a ghost call.
+  // Queue them for 20s of 5s retries; any inbound frame for the same call
+  // corroborates state and retires the entry early. Every inbound handler
+  // is idempotent (fingerprint dedupe + state guards), so re-delivery is
+  // safe.
+  static const Set<String> _lifecycleRetryTypes = <String>{
+    'call_accept',
+    'call_end',
+    'call_reject',
+    'call_busy',
+  };
+  final Map<String, Map<String, dynamic>> _pendingLifecycleSignals =
+      <String, Map<String, dynamic>>{};
+  final Map<String, DateTime> _lifecycleQueuedAt = <String, DateTime>{};
+  final Map<String, DateTime> _lifecycleInboundRxAt = <String, DateTime>{};
+  Timer? _lifecycleRetryTimer;
+
+  void _enqueueLifecycleRetry(Map<String, dynamic> msg) {
+    final type = msg['type']?.toString() ?? '';
+    final callId = msg['call_id']?.toString() ?? '';
+    if (!_lifecycleRetryTypes.contains(type) || callId.isEmpty) return;
+    final key = '$type|$callId';
+    if (_pendingLifecycleSignals.containsKey(key)) return;
+    _pendingLifecycleSignals[key] = Map<String, dynamic>.from(msg);
+    _lifecycleQueuedAt[key] = DateTime.now();
+    _lifecycleRetryTimer ??= Timer.periodic(const Duration(seconds: 5),
+        (_) => _retryLifecycleSignals());
+    AppLogger.info('CALL_LIFECYCLE_QUEUED', detail: 'type=$type call=$callId');
+  }
+
+  void _noteLifecycleInbound(Map<String, dynamic> msg) {
+    final callId = msg['call_id']?.toString();
+    if (callId == null || callId.isEmpty) return;
+    _lifecycleInboundRxAt[callId] = DateTime.now();
+  }
+
+  void _retryLifecycleSignals() {
+    if (_disposed) return;
+    if (_pendingLifecycleSignals.isEmpty) {
+      _lifecycleRetryTimer?.cancel();
+      _lifecycleRetryTimer = null;
+      return;
+    }
+    for (final entry in _pendingLifecycleSignals.entries.toList()) {
+      final key = entry.key;
+      final queuedAt = _lifecycleQueuedAt[key] ?? DateTime.now();
+      final callId = entry.value['call_id']?.toString() ?? '';
+      final inbound = _lifecycleInboundRxAt[callId];
+      final settled = inbound != null && inbound.isAfter(queuedAt);
+      final expired =
+          DateTime.now().difference(queuedAt) > const Duration(seconds: 20);
+      if (settled || expired) {
+        _pendingLifecycleSignals.remove(key);
+        _lifecycleQueuedAt.remove(key);
+        if (expired && !settled) {
+          AppLogger.info('CALL_LIFECYCLE_RETRY_EXPIRED', detail: 'key=$key');
+        }
+        continue;
+      }
+      unawaited(_sendSignal(Map<String, dynamic>.from(entry.value)));
+    }
+  }
   int _presentationRevision = 0;
   bool _appInForeground = true;
 
@@ -387,6 +473,14 @@ final class CallSessionManager implements CallGateway {
     if (_disposed) return;
     _disposed = true;
     _cancelCallTimers();
+    _routeChurnSummaryTimer?.cancel();
+    _routeChurnSummaryTimer = null;
+    _routeChurnPending.clear();
+    _lifecycleRetryTimer?.cancel();
+    _lifecycleRetryTimer = null;
+    _pendingLifecycleSignals.clear();
+    _lifecycleQueuedAt.clear();
+    _lifecycleInboundRxAt.clear();
     await _nativeSub?.cancel();
     await _notificationActionSub?.cancel();
     await _routeSub?.cancel();
@@ -431,6 +525,7 @@ final class CallSessionManager implements CallGateway {
   }
 
   Future<void> _handleLocalCallSignal(Map<String, dynamic> msg) async {
+    _noteLifecycleInbound(msg);
     if (_disposed) return;
     final type = msg['type']?.toString() ?? '';
     // Dual-channel delivery (mesh + server relay) means the same logical
@@ -743,8 +838,7 @@ final class CallSessionManager implements CallGateway {
           // Media packets arrived within the last few seconds, so this churn
           // is a native-side blip, not an outage. Keep the live call (and its
           // timer) on screen; refresh only the hop diagnostics.
-          AppLogger.info('ROUTE_CHURN_SUPPRESSED', detail:
-              'type=$type call=${session.id} rx_age_ms=${DateTime.now().difference(_lastMediaRxAt!).inMilliseconds}');
+          _recordRouteChurn(type);
           _setSession(session.copyWith(
             mediaNextHopId: event['next_hop_id']?.toString(),
             mediaHopCount: (event['hop_count'] as num?)?.toInt(),
@@ -975,8 +1069,7 @@ final class CallSessionManager implements CallGateway {
     }
     if (status == 'reconnecting') {
       if (session.answeredAt != null && _mediaIsLive) {
-        AppLogger.info('ROUTE_CHURN_SUPPRESSED', detail:
-            'type=peer_status_reconnecting call=${session.id} rx_age_ms=${DateTime.now().difference(_lastMediaRxAt!).inMilliseconds}');
+        _recordRouteChurn('peer_status_reconnecting');
         _setSession(session.copyWith(quality: CallQuality.reconnecting));
       } else {
         _setSession(session.copyWith(
@@ -1014,6 +1107,8 @@ final class CallSessionManager implements CallGateway {
   Future<void> _sendSignal(Map<String, dynamic> msg) async {
     final recipient = msg['recipient_id']?.toString().trim();
     if (recipient == null || recipient.isEmpty) return;
+    // No-op for non-lifecycle types (see _lifecycleRetryTypes).
+    _enqueueLifecycleRetry(msg);
     try {
       await transportFactory.ensureReady();
       AppLogger.info('CALL_SIGNAL_SEND', detail: 'type=${msg['type']} call=${msg['call_id'] ?? ''}');
@@ -1104,8 +1199,7 @@ final class CallSessionManager implements CallGateway {
         final current = _session!;
         if (_isClosing(current)) return;
         if (current.answeredAt != null && _mediaIsLive) {
-          AppLogger.info('ROUTE_CHURN_SUPPRESSED', detail:
-              'type=transport_reconnecting call=${current.id} rx_age_ms=${DateTime.now().difference(_lastMediaRxAt!).inMilliseconds}');
+          _recordRouteChurn('transport_reconnecting');
           _setSession(current.copyWith(quality: CallQuality.reconnecting));
         } else {
           _setSession(current.copyWith(

@@ -33,6 +33,8 @@ class ReliableMessagingService {
   StreamSubscription? _directSub;
   StreamSubscription? _wifiSub;
   StreamSubscription<LocalRouteResult>? _routeSub;
+  // Last time the route-listener was allowed to fire a full outbox flush.
+  DateTime? _lastRouteFlushAt;
 
   Timer? _retryTimer;
   Timer? _startupTimer;
@@ -112,6 +114,19 @@ class ReliableMessagingService {
     _routeSub ??= routePolicy?.routeChanges.listen(
       (route) {
         if (!route.isAvailable || store.internetOnly) return;
+        // Bundle 52: route changes arrive in bursts (dozens/sec during
+        // calls over Wi-Fi Direct). One full DB flush per change starved
+        // the store and lined up behind long transactions — the source of
+        // the recurring 'database locked' warnings. Coalesce route-
+        // triggered flushes; the retry tick remains the guaranteed floor.
+        final now = DateTime.now();
+        final last = _lastRouteFlushAt;
+        if (last != null &&
+            now.difference(last) <
+                const Duration(seconds: 4)) {
+          return;
+        }
+        _lastRouteFlushAt = now;
         AppLogger.info(
           'MESSAGE_ROUTE_AVAILABLE',
           detail: 'transport=${route.kind.name}',
@@ -1142,7 +1157,7 @@ class ReliableMessagingService {
         createdAt: base.createdAt,
         status: base.status,
         deliveredAt: base.deliveredAt,
-        serverSeq: base.serverSeq,
+        serverSeq: base.serverSeq,        channel: 'server',
         attachments: atts,
       );
 
@@ -1663,7 +1678,7 @@ class ReliableMessagingService {
           detail: 'id=${decrypted.id}',
         );
 
-        var message = decrypted;
+        var message = decrypted.copyWithChannel('direct');
 
         // --------------------------------------------------------------------
         // MESSAGE VALIDATION

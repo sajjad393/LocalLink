@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/widgets/local_link_status_badge.dart';
 
-/// Binary presence indicator: a peer is either Online or Offline, judged
-/// exclusively from locally-stamped liveness (Device.isOnline). The old
-/// four-colour server/Wi-Fi/unknown states collapsed into these two —
-/// and, critically, the stale-check no longer compares peer clocks.
+/// Reachability indicator (Bundle 52B): a peer can be Nearby (reachable on
+/// the direct link: LAN / Wi-Fi Direct / mesh — works without the server),
+/// Online (reachable only via the server), or Offline. Judged exclusively
+/// from locally-stamped liveness (Device.isOnline), never from peer clocks.
 class DeviceStatusIndicator extends StatelessWidget {
   final Device device;
   final bool showLabel;
@@ -16,26 +16,37 @@ class DeviceStatusIndicator extends StatelessWidget {
     this.showLabel = true,
   });
 
-  bool get _online => device.isOnline();
+  String get _channel => device.presenceChannel();
+  bool get _online => _channel != 'offline';
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final color = _online ? colors.primary : colors.outline;
-    final label = _online ? 'Online' : 'Offline';
+    final label = device.presenceLabel();
+    final icon = switch (_channel) {
+      'nearby' => Icons.wifi_rounded,
+      'server' => Icons.public_rounded,
+      _ => Icons.circle_outlined,
+    };
     if (showLabel) {
       return LocalLinkStatusBadge(
         label: label,
         color: color,
-        icon: _online ? Icons.circle : Icons.circle_outlined,
+        icon: icon,
       );
     }
+    final tooltip = switch (_channel) {
+      'nearby' => 'Nearby - direct link',
+      'server' => 'Online - via server',
+      _ => label,
+    };
     return Tooltip(
-      message: label,
+      message: tooltip,
       child: Icon(
-        Icons.circle,
+        icon,
         color: _online ? color : color.withOpacity(0.35),
-        size: 10,
+        size: 12,
       ),
     );
   }

@@ -194,9 +194,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _presenceLabel(Device device) =>
-      // Binary presence, app-wide: locally-stamped liveness within the
-      // presence window is Online; everything else is Offline.
-      device.isOnline() ? 'Online' : 'Offline';
+      // Presence with path, app-wide: Nearby (direct link survives a dead
+      // server/router) vs Online (server path only) vs Offline.
+      device.presenceLabel();
 
   Future<void> _showMessageActions(String body, String messageId) async {
     const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];

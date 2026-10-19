@@ -227,8 +227,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _deviceSubtitle(Device device) =>
-      // Binary presence, one rule everywhere: locally-stamped liveness only.
-      device.isOnline() ? 'Online' : 'Offline';
+      // Presence with path: Nearby (direct link) vs Online (server) vs
+      // Offline — one rule everywhere: locally-stamped liveness only.
+      device.presenceLabel();
 
   Widget _chatsTab() {
     return Scaffold(

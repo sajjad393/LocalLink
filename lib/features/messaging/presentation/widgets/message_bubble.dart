@@ -105,7 +105,7 @@ class MessageBubble extends StatelessWidget {
                     ),
                     if (isMine) ...[
                       const SizedBox(width: LocalLinkSpacing.xs),
-                      _StatusIcon(status: message.status),
+                      _StatusIcon(status: message.status, channel: message.channel),
                     ],
                   ],
                 ),
@@ -143,13 +143,14 @@ class MessageBubble extends StatelessWidget {
 /// (grey), ✓✓ read (blue).
 class _StatusIcon extends StatelessWidget {
   final String status;
+  final String? channel;
 
-  const _StatusIcon({required this.status});
+  const _StatusIcon({required this.status, this.channel});
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return switch (status.toLowerCase()) {
+    final glyph = switch (status.toLowerCase()) {
       'queued' || 'pending' || 'sending' => Icon(
           Icons.schedule_rounded,
           size: 14,
@@ -179,5 +180,20 @@ class _StatusIcon extends StatelessWidget {
           color: colors.onSurfaceVariant,
         ),
     };
+    if (channel == null) return glyph;
+    // Bundle 52C: tiny path glyph beside the ticks — antenna for messages
+    // that traveled the direct link, globe for the server path.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          channel == 'direct' ? Icons.wifi_rounded : Icons.public_rounded,
+          size: 11,
+          color: colors.onSurfaceVariant,
+        ),
+        const SizedBox(width: 3),
+        glyph,
+      ],
+    );
   }
 }

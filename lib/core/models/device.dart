@@ -153,4 +153,26 @@ class Device {
     final age = (now ?? DateTime.now()).toUtc().difference(stamp);
     return age <= window;
   }
+
+  /// Which path currently reaches this peer, judged from the same locally
+  /// stamped liveness as [isOnline]. 'nearby' wins over 'server': a peer
+  /// reachable directly continues working even if the server disappears.
+  /// Values: 'nearby' | 'server' | 'offline'. (Bundle 52B.)
+  String presenceChannel({DateTime? now}) {
+    if (!isOnline(now: now)) return 'offline';
+    if (wifiDirectConnected || lanAvailable || meshAvailable) return 'nearby';
+    return 'server';
+  }
+
+  /// User-facing label for [presenceChannel].
+  String presenceLabel({DateTime? now}) {
+    switch (presenceChannel(now: now)) {
+      case 'nearby':
+        return 'Nearby';
+      case 'server':
+        return 'Online';
+      default:
+        return 'Offline';
+    }
+  }
 }

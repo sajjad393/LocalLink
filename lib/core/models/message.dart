@@ -10,6 +10,12 @@ class Message {
   final int serverSeq;
   final List<Attachment> attachments;
 
+  /// Which path this copy of the message traveled, in-memory only (Bundle
+  /// 52C): 'direct' (LAN/Wi-Fi Direct/mesh) or 'server'. Null for history
+  /// reloaded from the local DB and for outgoing echo rows — no claim is
+  /// shown rather than a wrong one.
+  final String? channel;
+
   const Message({
     required this.id,
     required this.senderId,
@@ -20,6 +26,7 @@ class Message {
     this.deliveredAt,
     this.serverSeq = 0,
     this.attachments = const [],
+    this.channel,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) => Message(
@@ -48,7 +55,14 @@ class Message {
 
   Message copyWithMessageAttachments(List<Attachment>? attachments) => Message(
         id: id, senderId: senderId, recipientId: recipientId, body: body, createdAt: createdAt,
-        status: status, deliveredAt: deliveredAt, serverSeq: serverSeq, attachments: attachments ?? this.attachments,
+        status: status, deliveredAt: deliveredAt, serverSeq: serverSeq,
+        attachments: attachments ?? this.attachments, channel: channel,
+      );
+
+  Message copyWithChannel(String? value) => Message(
+        id: id, senderId: senderId, recipientId: recipientId, body: body,
+        createdAt: createdAt, status: status, deliveredAt: deliveredAt,
+        serverSeq: serverSeq, attachments: attachments, channel: value,
       );
 
   Map<String, dynamic> toJson() => {
