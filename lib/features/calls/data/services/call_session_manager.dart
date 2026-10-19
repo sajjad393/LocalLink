@@ -412,7 +412,16 @@ final class CallSessionManager implements CallGateway {
       return;
     final enabled = !session.videoEnabled;
     if (enabled && session.localVideoTextureId == null) {
-      final video = await transport.startVideo(session);
+      Map<String, dynamic> video;
+      try {
+        video = await transport.startVideo(session);
+      } catch (error) {
+        // The native error carries a "Call video: <reason>" message; log it so
+        // a capture names the exact device failure behind the toast.
+        AppLogger.error('CALL_VIDEO_START_FAIL',
+            detail: 'call=${session.id} peer=${session.peerId} err=$error');
+        rethrow;
+      }
       _setSession(session.copyWith(
         videoEnabled: true,
         localVideoTextureId: (video['local_texture_id'] as num?)?.toInt(),
@@ -444,7 +453,10 @@ final class CallSessionManager implements CallGateway {
         remoteVideoTextureId: (video['remote_texture_id'] as num?)?.toInt(),
         peerVideoActive: true,
       ));
-    } catch (_) {}
+    } catch (error) {
+      AppLogger.error('CALL_VIDEO_ACCEPT_FAIL',
+          detail: 'call=${session.id} peer=${session.peerId} err=$error');
+    }
   }
 
   Future<void> switchCamera() async {

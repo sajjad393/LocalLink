@@ -78,13 +78,18 @@ class CallVideoSession(
         try {
             if (enabled.get()) {
                 require(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                    "Camera permission is required"
+                    "Call video: camera permission not granted on this phone."
                 }
             }
-            configureEncoder()
-            startCameraThread()
-            if (enabled.get()) chooseCamera(front = frontFacing)
-            encoderThread = Thread({ encoderLoop() }, "LocalLink-video-encoder").also { it.start() }
+            // Receive-only sessions (peer turned their camera on first) must NOT
+            // build the encoder: a device that only displays video does not need
+            // one, and low-end handsets can fail encoder setup even though their
+            // decoder is fine. The encoder is created lazily in setEnabled(true).
+            if (enabled.get()) {
+                ensureEncoder()
+                startCameraThread()
+                chooseCamera(front = frontFacing)
+            }
             event("call_video_started", mapOf("call_id" to callId, "peer_id" to peerId, "width" to WIDTH, "height" to HEIGHT, "fps" to FPS))
             // Tell the peer whether our camera is actually streaming so their
             // UI can render the video area (or the avatar fallback) without
@@ -92,8 +97,18 @@ class CallVideoSession(
             sendVideoState(enabled.get())
         } catch (e: Exception) {
             stop()
-            throw e
+            // Prefix every failure with "Call video:" so the app's error mapper
+            // shows the phone-specific reason instead of the generic toast.
+            val message = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+            throw IllegalStateException(if (message.startsWith("Call video:")) message else "Call video: $message")
         }
+    }
+
+    /** Creates the encoder on demand (idempotent). */
+    private fun ensureEncoder() {
+        if (encoder != null) return
+        configureEncoder()
+        encoderThread = Thread({ encoderLoop() }, "LocalLink-video-encoder").also { it.start() }
     }
 
     fun stop() {
@@ -121,7 +136,25 @@ class CallVideoSession(
     fun setEnabled(value: Boolean) {
         if (enabled.get() == value && running.get()) { sendVideoState(value); return }
         enabled.set(value)
-        if (!value) closeCamera() else if (running.get()) chooseCamera(frontFacing)
+        if (!value) {
+            closeCamera()
+        } else if (running.get()) {
+            // Turning the camera on mid-call can hit the same device-specific
+            // failures as start(); surface the reason instead of dying silently.
+            try {
+                require(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                    "Call video: camera permission not granted on this phone."
+                }
+                ensureEncoder()
+                if (cameraThread == null) startCameraThread()
+                chooseCamera(frontFacing)
+            } catch (e: Exception) {
+                enabled.set(false)
+                sendVideoState(false)
+                event("call_video_error", mapOf("call_id" to callId, "peer_id" to peerId, "error" to (e.message ?: e.javaClass.simpleName)))
+                return
+            }
+        }
         event("call_video_enabled", mapOf("call_id" to callId, "peer_id" to peerId, "enabled" to value))
         sendVideoState(value)
     }
@@ -211,8 +244,19 @@ class CallVideoSession(
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL_SEC)
             if (Build.VERSION.SDK_INT >= 21) setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfoCompat.BITRATE_MODE_VBR)
         }
-        val codec = MediaCodec.createEncoderByType(MIME)
-        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        val codec = try {
+            MediaCodec.createEncoderByType(MIME)
+        } catch (e: Exception) {
+            throw IllegalStateException("Call video: this phone has no H.264 video encoder.")
+        }
+        try {
+            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        } catch (e: Exception) {
+            runCatching { codec.release() }
+            val detail = (e as? MediaCodec.CodecException)?.diagnosticInfo?.takeIf { it.isNotBlank() }
+                ?: e.message ?: e.javaClass.simpleName
+            throw IllegalStateException("Call video: H.264 encoder rejected 640x360 ($detail).")
+        }
         encoder = codec
         encoderInputSurface = codec.createInputSurface()
         codec.start()

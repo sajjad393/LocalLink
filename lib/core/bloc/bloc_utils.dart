@@ -26,6 +26,13 @@ String cleanBlocError(Object error) {
   if (error is FormatException || raw.startsWith('FormatException')) {
     return 'The server returned a reply the app could not understand.';
   }
+  // Native call-video failures carry a human-readable "Call video: <reason>"
+  // message inside a PlatformException string; surface the reason itself.
+  if (raw.contains('Call video:')) {
+    var message = raw.substring(raw.indexOf('Call video:'));
+    message = message.replaceAll(RegExp(r'(,\s*null|\))+\s*$'), '').trim();
+    return message;
+  }
   // Anything else that still looks like a thrown technical type is hidden
   // behind a generic sentence; plain human-authored messages pass through.
   const technicalPrefixes = [
