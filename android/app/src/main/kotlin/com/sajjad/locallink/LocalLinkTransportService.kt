@@ -1361,16 +1361,25 @@ class LocalLinkTransportService : Service() {
 
         private fun playbackLoop() {
             while(running.get()) {
-                val frame=synchronized(playbackLock) {
-                    while(running.get() && playbackQueue.isEmpty()) playbackLock.wait(100)
-                    if(!running.get()) return@synchronized null
-                    val head=playbackQueue.peek() ?: return@synchronized null
-                    val now=System.currentTimeMillis()
-                    if (head.sequence > expectedSequence && now - head.receivedAtMs < CALL_JITTER_BUFFER_MS && playbackQueue.size < 4) {
-                        playbackLock.wait(10)
-                        return@synchronized null
+                val frame=try {
+                    synchronized(playbackLock) {
+                        while(running.get() && playbackQueue.isEmpty()) playbackLock.wait(100)
+                        if(!running.get()) return@synchronized null
+                        val head=playbackQueue.peek() ?: return@synchronized null
+                        val now=System.currentTimeMillis()
+                        if (head.sequence > expectedSequence && now - head.receivedAtMs < CALL_JITTER_BUFFER_MS && playbackQueue.size < 4) {
+                            playbackLock.wait(10)
+                            return@synchronized null
+                        }
+                        playbackQueue.poll()
                     }
-                    playbackQueue.poll()
+                } catch (interrupted:InterruptedException) {
+                    // stop() wakes this worker with interrupt(); an
+                    // InterruptedException out of wait() is the normal
+                    // shutdown path — leave quietly (like captureLoop does)
+                    // instead of escaping as a FATAL uncaught exception.
+                    Thread.currentThread().interrupt()
+                    return
                 } ?: continue
                 if(frame.sequence > expectedSequence) { lost.addAndGet(frame.sequence-expectedSequence); expectedSequence=frame.sequence+1 } else if(frame.sequence < expectedSequence) continue else expectedSequence++
                 try {

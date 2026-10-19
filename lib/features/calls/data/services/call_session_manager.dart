@@ -990,7 +990,11 @@ final class CallSessionManager implements CallGateway {
 
   Future<void> _recoverLostMeshTransport(
       CallSession active, String? reason) async {
-    if (_session?.id != active.id || active.isFinished) return;
+    final live = _session;
+    if (live?.id != active.id || active.isFinished) return;
+    // Transport 'failed' can arrive while endCall() is already tearing the
+    // session down; recovering here resurrects a call the user just ended.
+    if (live != null && _isClosing(live)) return;
     final localStillAvailable = await _hasLocalRouteTo(active.peerId);
     if (!localStillAvailable) {
       await _fail(reason ?? 'mesh_route_failed');
@@ -998,7 +1002,7 @@ final class CallSessionManager implements CallGateway {
     }
     final current = _session;
     final oldTransport = _transport;
-    if (current == null || current.isFinished) return;
+    if (current == null || _isClosing(current)) return;
     _setSession(current.copyWith(
         state: CallState.reconnecting, quality: CallQuality.reconnecting));
     try {
@@ -1021,6 +1025,7 @@ final class CallSessionManager implements CallGateway {
         break;
       case 'reconnecting':
         final current = _session!;
+        if (_isClosing(current)) return;
         if (current.answeredAt != null && _mediaIsLive) {
           AppLogger.info('ROUTE_CHURN_SUPPRESSED', detail:
               'type=transport_reconnecting call=${current.id} rx_age_ms=${DateTime.now().difference(_lastMediaRxAt!).inMilliseconds}');
@@ -1035,6 +1040,7 @@ final class CallSessionManager implements CallGateway {
         break;
       case 'failed':
         final active = _session;
+        if (active != null && _isClosing(active)) return;
         if (active != null &&
             active.transportMode == CallTransportMode.offlineMesh) {
           unawaited(_recoverLostMeshTransport(active, reason));
@@ -1047,7 +1053,7 @@ final class CallSessionManager implements CallGateway {
 
   Future<void> _markConnected() async {
     final session = _session;
-    if (session == null || session.isFinished) return;
+    if (session == null || _isClosing(session)) return;
     _ringTimer?.cancel();
     unawaited(ringtone.stopRingback());
     _recoveryAttempts = 0;
@@ -1194,14 +1200,15 @@ final class CallSessionManager implements CallGateway {
 
   void _startHeartbeatTimer() {
     _heartbeatTimer?.cancel();
-    if (_session == null || _session!.isFinished) return;
+    final active = _session;
+    if (active == null || _isClosing(active)) return;
     _heartbeatTimer =
         Timer.periodic(const Duration(seconds: 15), (_) => _sendHeartbeat());
   }
 
   void _sendHeartbeat() {
     final session = _session;
-    if (session == null || session.isFinished) return;
+    if (session == null || _isClosing(session)) return;
     unawaited(_sendSignal({
       'type': 'call_heartbeat',
       'call_id': session.id,
@@ -1224,6 +1231,13 @@ final class CallSessionManager implements CallGateway {
         const Duration(seconds: 5), (_) => unawaited(_collectStats()));
     unawaited(_collectStats());
   }
+
+  /// A call that is ending or is already in a terminal state must not be
+  /// re-armed by late transport events. `ending` is deliberately included:
+  /// the local user already hung up, so the recovery loop, reconnect handler
+  /// and heartbeat timer must stand down instead of resurrecting the call.
+  bool _isClosing(CallSession session) =>
+      session.isFinished || session.state == CallState.ending;
 
   void _cancelCallTimers() {
     _ringTimer?.cancel();

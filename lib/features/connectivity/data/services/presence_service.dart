@@ -17,6 +17,7 @@ class PresenceService {
   final WifiDirectService wifiDirect;
   final PeerTransportContract directTransport;
   StreamSubscription<bool>? _socketSub;
+  StreamSubscription? _serverErrorSub;
   StreamSubscription? _wifiSub;
   Timer? _timer;
   DateTime? _lastPublishAt;
@@ -39,6 +40,19 @@ class PresenceService {
     _running = true;
     _socketSub = socket.connectionState.listen((connected) =>
         unawaited(publish(force: connected)));
+    // The server throttles presence_update (PRESENCE_RATE_LIMITED +
+    // retry_after). Field [_rateLimitedUntil] was checked on every publish
+    // but never set, so the app kept bursting into rejections. Honour the
+    // server's window now, exactly like the other rate-limit feedback loops.
+    _serverErrorSub = socket.messages.listen((message) {
+      if (message['type'] != 'error' ||
+          message['error_code'] != 'PRESENCE_RATE_LIMITED') return;
+      final seconds =
+          int.tryParse(message['retry_after']?.toString() ?? '') ?? 30;
+      _rateLimitedUntil = DateTime.now()
+          .toUtc()
+          .add(Duration(seconds: seconds.clamp(5, 120)));
+    });
     _wifiSub = wifiDirect.events.listen((event) {
       if (event is! Map || event['type'] != 'connection') return;
       final raw = event['connection'];
@@ -148,6 +162,8 @@ class PresenceService {
     _running = false;
     _timer?.cancel();
     _timer = null;
+    await _serverErrorSub?.cancel();
+    _serverErrorSub = null;
     await _socketSub?.cancel();
     await _wifiSub?.cancel();
     _socketSub = null;
