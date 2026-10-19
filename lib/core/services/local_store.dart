@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_sqlcipher/sqflite.dart';
 import 'package:locallink/core/storage/database_encryption_service.dart';
+import 'package:locallink/core/services/app_logger.dart';
 
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/call.dart';
@@ -21,6 +22,23 @@ import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/features/calls/data/transport/network_policy.dart';
 
 class LocalStore {
+  /// Bundle 53 - temporary instrumentation. The recurring sqflite
+  /// 'database has been locked for 0:00:10' warnings mean SOME op holds
+  /// the serialized SQLCipher queue for seconds, but the warning never
+  /// names the caller. Wrap the known hot writers with this and the next
+  /// capture names the holder directly. Remove once identified.
+  static Future<T> timedOp<T>(String name, Future<T> Function() op) async {
+    final sw = Stopwatch()..start();
+    try {
+      return await op();
+    } finally {
+      final ms = sw.elapsedMilliseconds;
+      if (ms > 1500) {
+        AppLogger.warning('STORE_OP_SLOW', detail: 'op=$name ms=$ms');
+      }
+    }
+  }
+
   static const int _dbVersion = DatabaseConfig.version;
   static const String _tokenKey = 'locallink_device_token';
   static const String _recoveryRequestSecretKey =

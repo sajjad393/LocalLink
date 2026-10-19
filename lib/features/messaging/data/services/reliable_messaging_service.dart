@@ -379,7 +379,8 @@ class ReliableMessagingService {
       attachments: localAttachments,
     );
 
-    await store.saveMessage(message);
+    await LocalStore.timedOp(
+        'message_save', () => store.saveMessage(message));
 
     AppLogger.info(
       'MESSAGE_LOCAL_SAVED',
@@ -530,7 +531,8 @@ class ReliableMessagingService {
 
           final existed = await store.messageExists(message.id);
 
-          await store.saveMessage(message);
+          await LocalStore.timedOp(
+        'message_save', () => store.saveMessage(message));
 
           AppLogger.info(
             'MESSAGE_SYNC_SAVED',
@@ -687,7 +689,8 @@ class ReliableMessagingService {
     );
 
     try {
-      final items = await store.outbox(pendingOnly: true);
+      final items = await LocalStore.timedOp(
+          'outbox_read', () => store.outbox(pendingOnly: true));
 
       AppLogger.info(
         'MESSAGE_OUTBOX_READ',
@@ -1573,7 +1576,8 @@ class ReliableMessagingService {
           ),
         );
 
-        await store.saveMessage(updated);
+        await LocalStore.timedOp(
+            'message_save_delivered', () => store.saveMessage(updated));
 
         _incoming.add(updated);
 
@@ -1790,7 +1794,8 @@ class ReliableMessagingService {
         // --------------------------------------------------------------------
         // SAVE MESSAGE
         // --------------------------------------------------------------------
-        await store.saveMessage(message);
+        await LocalStore.timedOp(
+        'message_save', () => store.saveMessage(message));
 
         AppLogger.info(
           'DIRECT_MESSAGE_SAVED',

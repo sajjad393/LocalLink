@@ -839,10 +839,19 @@ final class CallSessionManager implements CallGateway {
           // is a native-side blip, not an outage. Keep the live call (and its
           // timer) on screen; refresh only the hop diagnostics.
           _recordRouteChurn(type);
-          _setSession(session.copyWith(
-            mediaNextHopId: event['next_hop_id']?.toString(),
-            mediaHopCount: (event['hop_count'] as num?)?.toInt(),
-          ));
+          // Bundle 53: a degraded media event fires per ~20ms while Wi-Fi
+          // Direct churns, and each one used to rebuild + rebroadcast the
+          // whole session (heap churn on weak handsets). Only refresh when
+          // the hop diagnostics actually changed.
+          final churnNextHop = event['next_hop_id']?.toString();
+          final churnHopCount = (event['hop_count'] as num?)?.toInt();
+          if (churnNextHop != session.mediaNextHopId ||
+              churnHopCount != session.mediaHopCount) {
+            _setSession(session.copyWith(
+              mediaNextHopId: churnNextHop,
+              mediaHopCount: churnHopCount,
+            ));
+          }
         } else {
           _meshRouteRecoveryAttempts++;
           _meshRouteRecoveryTimer?.cancel();
@@ -1312,7 +1321,8 @@ final class CallSessionManager implements CallGateway {
         packetLossPercent: loss,
         quality: quality.name,
       );
-      await store.saveCallQualitySample(sample);
+      await LocalStore.timedOp(
+          'call_quality_save', () => store.saveCallQualitySample(sample));
       final hadRxCounter = stats.containsKey('packets_received') ||
           stats.containsKey('received_packets');
       final rxNow =
@@ -1428,7 +1438,8 @@ final class CallSessionManager implements CallGateway {
     final session = _session;
     final self = store.deviceId;
     if (session == null || self == null) return;
-    await store.saveCall(session.toRecord(self));
+    await LocalStore.timedOp(
+        'call_save', () => store.saveCall(session.toRecord(self)));
   }
 
   void _setSession(CallSession? session) {
