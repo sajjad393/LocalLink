@@ -29,6 +29,23 @@ class CallRingtonePlatformService {
     } catch (_) {}
   }
 
+  /// Dialer-side ringback ("calling…" tone). Distinct from the incoming
+  /// ringtone: quiet, routed via voice-call signalling, no audio focus grab.
+  Future<void> startRingback({required String callId}) async {
+    if (_disposed || callId.isEmpty) return;
+    try {
+      await _channel
+          .invokeMethod<void>('ringback_start', {'call_id': callId});
+    } catch (_) {}
+  }
+
+  Future<void> stopRingback() async {
+    if (_disposed) return;
+    try {
+      await _channel.invokeMethod<void>('ringback_stop');
+    } catch (_) {}
+  }
+
   Future<void> dispose() async {
     _disposed = true;
     _activeCallId = null;

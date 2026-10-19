@@ -1,50 +1,76 @@
 import 'package:flutter/material.dart';
 
-class CallVideoView extends StatelessWidget {
-  final int? localTextureId;
-  final int? remoteTextureId;
+import 'package:locallink/features/calls/data/models/call_session.dart';
+import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
 
-  const CallVideoView({super.key, this.localTextureId, this.remoteTextureId});
+/// WhatsApp-style video layer: the most relevant stream fills the screen,
+/// the caller's own camera sits as a small rounded bubble in the top-right.
+///
+/// Layout rules:
+///  * peer camera on  -> remote stream fills the screen, own preview bubbles
+///  * only own camera -> own preview fills the screen
+///  * peer camera off -> keeps the last-allocated surface behind a dark cover
+///    (handled by the caller — the screen shows the avatar header instead)
+class CallVideoView extends StatelessWidget {
+  final CallSession session;
+
+  const CallVideoView({super.key, required this.session});
 
   @override
   Widget build(BuildContext context) {
-    if (remoteTextureId == null && localTextureId == null) {
-      return const SizedBox.shrink();
-    }
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (remoteTextureId != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Texture(textureId: remoteTextureId!),
-            )
-          else
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              ),
-              alignment: Alignment.center,
-              child: const Icon(Icons.videocam_off, size: 48),
-            ),
-          if (localTextureId != null)
-            Positioned(
-              right: 16,
-              top: 16,
-              width: 120,
-              height: 160,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(color: Colors.black),
-                  child: Texture(textureId: localTextureId!),
-                ),
+    final remoteId = session.remoteVideoTextureId;
+    final localId = session.localVideoTextureId;
+    final showRemote = session.peerVideoActive && remoteId != null;
+    final showLocalFull =
+        !showRemote && session.videoEnabled && localId != null;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Container(color: Colors.black),
+        if (showRemote)
+          _CoverTexture(textureId: remoteId!)
+        else if (showLocalFull)
+          _CoverTexture(textureId: localId!),
+        if (session.videoEnabled && localId != null && showRemote)
+          Positioned(
+            top: 14,
+            right: 14,
+            width: 106,
+            height: 150,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                color: Colors.black,
+                child: _CoverTexture(textureId: localId),
               ),
             ),
-        ],
+          ),
+        if (!showRemote && !showLocalFull)
+          const Center(
+            child: Icon(Icons.videocam_off_rounded,
+                color: CallPalette.textSecondary, size: 56),
+          ),
+      ],
+    );
+  }
+}
+
+class _CoverTexture extends StatelessWidget {
+  final int textureId;
+
+  const _CoverTexture({required this.textureId});
+
+  @override
+  Widget build(BuildContext context) {
+    // Native feed is 640x360 (16:9); cover-crop like WhatsApp video calls.
+    return FittedBox(
+      fit: BoxFit.cover,
+      clipBehavior: Clip.hardEdge,
+      child: SizedBox(
+        width: 640,
+        height: 360,
+        child: Texture(textureId: textureId),
       ),
     );
   }

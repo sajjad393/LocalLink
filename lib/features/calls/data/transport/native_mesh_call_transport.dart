@@ -104,11 +104,13 @@ final class NativeMeshCallTransport implements CallTransport {
       media.setVideoEnabled(callId: session.id, enabled: enabled);
 
   @override
-  Future<Map<String, dynamic>> startVideo(CallSession session) async {
+  Future<Map<String, dynamic>> startVideo(CallSession session,
+      {bool enableCamera = true}) async {
     if (!await identityTrust.canEstablishLocalCall(session.peerId)) {
       throw StateError('Peer identity is changed or revoked; local video is blocked');
     }
-    return media.startVideo(callId: session.id, peerId: session.peerId);
+    return media.startVideo(
+        callId: session.id, peerId: session.peerId, enableCamera: enableCamera);
   }
 
   @override

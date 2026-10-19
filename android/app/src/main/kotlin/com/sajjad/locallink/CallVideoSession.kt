@@ -37,6 +37,7 @@ class CallVideoSession(
     private val remoteSurface: Surface,
     private val sendPacket: (JSONObject) -> Boolean,
     private val event: (String, Map<String, Any?>) -> Unit,
+    private val cameraInitiallyOn: Boolean = true,
 ) {
     companion object {
         private const val MIME = MediaFormat.MIMETYPE_VIDEO_AVC
@@ -49,7 +50,7 @@ class CallVideoSession(
     }
 
     private val running = AtomicBoolean(false)
-    private val enabled = AtomicBoolean(true)
+    private val enabled = AtomicBoolean(cameraInitiallyOn)
     private val sequence = AtomicLong(0)
     private val sentFrames = AtomicLong(0)
     private val receivedFrames = AtomicLong(0)
@@ -75,14 +76,20 @@ class CallVideoSession(
     fun start() {
         if (!running.compareAndSet(false, true)) return
         try {
-            require(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                "Camera permission is required"
+            if (enabled.get()) {
+                require(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                    "Camera permission is required"
+                }
             }
             configureEncoder()
             startCameraThread()
-            chooseCamera(front = frontFacing)
+            if (enabled.get()) chooseCamera(front = frontFacing)
             encoderThread = Thread({ encoderLoop() }, "LocalLink-video-encoder").also { it.start() }
             event("call_video_started", mapOf("call_id" to callId, "peer_id" to peerId, "width" to WIDTH, "height" to HEIGHT, "fps" to FPS))
+            // Tell the peer whether our camera is actually streaming so their
+            // UI can render the video area (or the avatar fallback) without
+            // waiting for a frame — WhatsApp-style switch-to-video sync.
+            sendVideoState(enabled.get())
         } catch (e: Exception) {
             stop()
             throw e
@@ -112,9 +119,23 @@ class CallVideoSession(
     }
 
     fun setEnabled(value: Boolean) {
+        if (enabled.get() == value && running.get()) { sendVideoState(value); return }
         enabled.set(value)
         if (!value) closeCamera() else if (running.get()) chooseCamera(frontFacing)
         event("call_video_enabled", mapOf("call_id" to callId, "peer_id" to peerId, "enabled" to value))
+        sendVideoState(value)
+    }
+
+    /** Lightweight camera on/off heartbeat for the peer's UI. */
+    private fun sendVideoState(on: Boolean) {
+        val packet = JSONObject()
+            .put("type", "call_video_state")
+            .put("sender_id", transportSender())
+            .put("recipient_id", peerId)
+            .put("call_id", callId)
+            .put("timestamp_ms", System.currentTimeMillis())
+            .put("enabled", on)
+        runCatching { sendPacket(packet) }
     }
 
     fun switchCamera() {

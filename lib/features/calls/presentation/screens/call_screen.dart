@@ -3,20 +3,22 @@ import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:flutter/material.dart';
 
-import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart' as call_bloc;
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_action_bar.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_header.dart';
-import 'package:locallink/features/calls/presentation/widgets/call_quality_card.dart';
+import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_video_view.dart';
 
+/// WhatsApp-style call screen, identical layout on both the caller and the
+/// receiver side once the call is answered.
 class CallScreen extends StatefulWidget {
   final call_bloc.CallBloc controller;
   final CallSession initialSession;
 
-  const CallScreen({super.key, required this.controller, required this.initialSession});
+  const CallScreen(
+      {super.key, required this.controller, required this.initialSession});
 
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -43,15 +45,29 @@ class _CallScreenState extends State<CallScreen> {
   String _cleanError(Object error) => cleanBlocError(error);
 
   String _statusTextFor(CallSession session) => switch (session.state) {
-        CallState.ringing => session.direction == CallDirection.outgoing ? 'Calling…' : 'Incoming call',
-        CallState.connecting => session.direction == CallDirection.outgoing && !session.signalingConnected ? 'Trying to reach…' : 'Connecting…',
-        CallState.reconnecting => session.answeredAt == null ? 'Trying to reach…' : 'Reconnecting…',
-        CallState.connected => _formatDuration((session.endedAt ?? DateTime.now()).difference(session.answeredAt ?? DateTime.now()).inSeconds),
+        CallState.ringing => session.direction == CallDirection.outgoing
+            ? 'Ringing…'
+            : 'Incoming call',
+        CallState.connecting =>
+          session.direction == CallDirection.outgoing &&
+                  !session.signalingConnected
+              ? 'Trying to reach…'
+              : 'Connecting…',
+        CallState.reconnecting => session.answeredAt == null
+            ? 'Trying to reach…'
+            : 'Reconnecting…',
+        CallState.connected => _formatDuration(
+            (session.endedAt ?? DateTime.now())
+                .difference(session.answeredAt ?? DateTime.now())
+                .inSeconds),
         CallState.ending => 'Ending…',
-        CallState.rejected => session.reason == 'busy' ? 'Busy' : 'Declined',
+        CallState.rejected =>
+          session.reason == 'busy' ? 'Busy' : 'Declined',
         CallState.missed => 'Missed call',
         CallState.canceled => 'Call canceled',
-        CallState.failed => session.reason == 'unreachable' ? "Couldn't reach them — try again" : 'Call failed',
+        CallState.failed => session.reason == 'unreachable'
+            ? "Couldn't reach them — try again"
+            : 'Call failed',
         CallState.ended => 'Call ended',
       };
 
@@ -73,7 +89,8 @@ class _CallScreenState extends State<CallScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             widget.controller.clearError();
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(_cleanError(error))));
           });
         }
         if (session.isFinished && session.id == _session.id) {
@@ -82,47 +99,144 @@ class _CallScreenState extends State<CallScreen> {
           });
         }
 
-        final hasVideo = session.videoEnabled || session.localVideoTextureId != null || session.remoteVideoTextureId != null;
+        final statusText = _statusTextFor(session);
+        final videoMode = session.videoEnabled || session.peerVideoActive;
+
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Call'),
-            leading: IconButton(tooltip: 'Back', onPressed: () => Navigator.of(context).maybePop(), icon: const Icon(Icons.arrow_back)),
-          ),
-          body: SafeArea(
-            child: Column(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, LocalLinkSpacing.md, LocalLinkSpacing.lg, LocalLinkSpacing.md),
-                    child: Column(
-                      children: [
-                        if (hasVideo) ...[
-                          CallVideoView(
-                            localTextureId: session.localVideoTextureId,
-                            remoteTextureId: session.remoteVideoTextureId,
-                          ),
-                          const SizedBox(height: LocalLinkSpacing.lg),
-                        ] else ...[
-                          const SizedBox(height: 48),
-                        ],
-                        CallHeader(session: session, statusText: _statusTextFor(session)),
-                        // The quality card describes an answered call's media
-                        // link; hide it while still just trying to reach them.
-                        if (session.answeredAt != null &&
-                            (session.state == CallState.connected || session.state == CallState.reconnecting)) ...[
-                          const SizedBox(height: LocalLinkSpacing.xl),
-                          CallQualityCard(session: session),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                CallActionBar(controller: widget.controller, session: session),
-              ],
-            ),
-          ),
+          backgroundColor: CallPalette.background,
+          body: videoMode
+              ? _buildVideoLayout(session, statusText)
+              : _buildAudioLayout(session, statusText),
         );
       },
+    );
+  }
+
+  Widget _buildAudioLayout(CallSession session, String statusText) {
+    final typeLabel = session.videoEnabled || session.peerVideoActive
+        ? 'LocalLink video call'
+        : 'LocalLink voice call';
+    return Container(
+      decoration: const BoxDecoration(gradient: CallPalette.backdrop),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                tooltip: 'Minimize',
+                icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                    color: CallPalette.textPrimary, size: 30),
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              typeLabel,
+              style: const TextStyle(
+                color: CallPalette.green,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4,
+              ),
+            ),
+            const Spacer(),
+            CallHeader(session: session, statusText: statusText),
+            const Spacer(flex: 2),
+            CallActionBar(controller: widget.controller, session: session),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVideoLayout(CallSession session, String statusText) {
+    final name =
+        session.peerName.isEmpty ? 'LocalLink user' : session.peerName;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        CallVideoView(session: session),
+        // Top overlay: name + status over a fading dark scrim.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.black87, Colors.transparent],
+              ),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 16, 22),
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Minimize',
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                          color: Colors.white, size: 28),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            statusText,
+                            style: TextStyle(
+                              color: CallHeader.statusColorFor(session),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Bottom overlay: WhatsApp-style control pill.
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [Colors.black87, Colors.transparent],
+              ),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 32),
+                child:
+                    CallActionBar(controller: widget.controller, session: session),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

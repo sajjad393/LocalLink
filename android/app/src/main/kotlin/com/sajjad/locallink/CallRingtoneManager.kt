@@ -17,6 +17,10 @@ object CallRingtoneManager {
     private var focusRequest: AudioFocusRequest? = null
     private var wantsRinging = false
 
+    // Dialer-side ringback ("calling…" tone): short, quiet, no audio focus,
+    // routed through the voice-call signalling channel like a real ringback.
+    private var ringbackPlayer: MediaPlayer? = null
+
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         when (change) {
             AudioManager.AUDIOFOCUS_GAIN -> {
@@ -93,6 +97,40 @@ object CallRingtoneManager {
         wantsRinging = false
         releasePlayerOnly()
         abandonFocus()
+        releaseRingbackOnly()
+    }
+
+    @Synchronized
+    fun startRingback(context: Context) {
+        if (ringbackPlayer?.isPlaying == true) return
+        runCatching {
+            ringbackPlayer = MediaPlayer.create(context.applicationContext, R.raw.locallink_ringback)?.apply {
+                isLooping = true
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
+                }
+                setVolume(0.75f, 0.75f)
+                start()
+            }
+        }.onFailure { releaseRingbackOnly() }
+    }
+
+    @Synchronized
+    fun stopRingback() {
+        releaseRingbackOnly()
+    }
+
+    @Synchronized
+    private fun releaseRingbackOnly() {
+        runCatching { ringbackPlayer?.stop() }
+        runCatching { ringbackPlayer?.reset() }
+        runCatching { ringbackPlayer?.release() }
+        ringbackPlayer = null
     }
 
     @Synchronized

@@ -245,6 +245,14 @@ class MainActivity : FlutterActivity() {
                         CallRingtoneManager.stop()
                         result.success(null)
                     }
+                    "ringback_start" -> {
+                        CallRingtoneManager.startRingback(this)
+                        result.success(null)
+                    }
+                    "ringback_stop" -> {
+                        CallRingtoneManager.stopRingback()
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
@@ -453,7 +461,7 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
                         ensureCallVideoTextures()
-                        LocalLinkTransportService.startCallVideo(callId, peerId)
+                        LocalLinkTransportService.startCallVideo(callId, peerId, call.argument<Boolean>("enable_camera") != false)
                         result.success(mapOf(
                             "local_texture_id" to localVideoTextureEntry!!.id(),
                             "remote_texture_id" to remoteVideoTextureEntry!!.id(),

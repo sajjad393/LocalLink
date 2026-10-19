@@ -9,9 +9,9 @@ class CallMediaPlatformService {
     await _channel.invokeMethod('start', {'call_id': callId, 'peer_id': peerId, 'codec': codec});
   }
 
-  Future<Map<String, dynamic>> startVideo({required String callId, required String peerId}) async {
+  Future<Map<String, dynamic>> startVideo({required String callId, required String peerId, bool enableCamera = true}) async {
     final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>('video_start', {
-      'call_id': callId, 'peer_id': peerId,
+      'call_id': callId, 'peer_id': peerId, 'enable_camera': enableCamera,
     }) ?? const {};
     return Map<String, dynamic>.from(raw);
   }

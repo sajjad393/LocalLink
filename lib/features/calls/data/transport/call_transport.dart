@@ -20,7 +20,8 @@ abstract interface class CallTransport {
 
   Future<void> setVideoEnabled(CallSession session, bool enabled);
 
-  Future<Map<String, dynamic>> startVideo(CallSession session);
+  Future<Map<String, dynamic>> startVideo(CallSession session,
+      {bool enableCamera = true});
 
   Future<void> switchCamera(CallSession session);
 

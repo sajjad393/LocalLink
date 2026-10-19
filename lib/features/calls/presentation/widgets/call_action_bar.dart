@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 
-import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart' hide CallState;
 import 'package:locallink/features/calls/data/models/call_session.dart';
+import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
 
+/// WhatsApp-style call controls.
+///
+/// Incoming ringing: green Answer + red Decline circles with labels.
+/// In-call (identical on both the caller and the receiver side): a dark pill
+/// with mute, speaker, video (plus camera flip while video is on) and a large
+/// red End button.
 class CallActionBar extends StatelessWidget {
   final CallBloc controller;
   final CallSession session;
@@ -14,148 +20,200 @@ class CallActionBar extends StatelessWidget {
     required this.session,
   });
 
+  Future<void> _run(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final incoming = session.direction == CallDirection.incoming && session.state == CallState.ringing;
+    final incoming = session.direction == CallDirection.incoming &&
+        session.state == CallState.ringing;
 
     if (incoming) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.xxl, LocalLinkSpacing.md, LocalLinkSpacing.xxl, LocalLinkSpacing.xxl),
+        padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _CallAction(
-              label: 'Decline',
+            _CallCircleButton(
               icon: Icons.call_end_rounded,
-              background: colors.errorContainer,
-              foreground: colors.onErrorContainer,
-              onPressed: () async {
-                try { await controller.rejectIncoming(); } catch (_) {}
-              },
+              background: CallPalette.red,
+              foreground: Colors.white,
+              size: 68,
+              label: 'Decline',
+              onPressed: () => _run(controller.rejectIncoming),
             ),
-            _CallAction(
-              label: 'Answer',
+            _CallCircleButton(
               icon: Icons.call_rounded,
-              background: colors.primaryContainer,
-              foreground: colors.onPrimaryContainer,
-              onPressed: () async {
-                try { await controller.acceptIncoming(); } catch (_) {}
-              },
+              background: CallPalette.green,
+              foreground: Colors.white,
+              size: 68,
+              label: 'Answer',
+              onPressed: () => _run(controller.acceptIncoming),
             ),
           ],
         ),
       );
     }
 
-    if (!session.isFinished) {
+    if (session.isFinished) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, LocalLinkSpacing.md, LocalLinkSpacing.lg, LocalLinkSpacing.xxl),
-        child: Wrap(
-          alignment: WrapAlignment.center,
-          spacing: LocalLinkSpacing.lg,
-          runSpacing: LocalLinkSpacing.md,
-          children: [
-            _CallIconAction(
-              label: session.muted ? 'Unmute' : 'Mute',
-              icon: session.muted ? Icons.mic_off : Icons.mic,
-              onPressed: () async { try { await controller.toggleMute(); } catch (_) {} },
-            ),
-            _CallIconAction(
-              label: session.videoEnabled ? 'Camera off' : 'Camera',
-              icon: session.videoEnabled ? Icons.videocam_off : Icons.videocam,
-              enabled: session.directMode,
-              onPressed: () async { try { await controller.toggleVideo(); } catch (_) {} },
-            ),
-            _CallAction(
-              label: 'End',
-              icon: Icons.call_end_rounded,
-              background: colors.error,
-              foreground: colors.onError,
-              onPressed: () async { try { await controller.endCall(); } catch (_) {} },
-            ),
-            _CallIconAction(
-              label: session.speakerOn ? 'Speaker off' : 'Speaker',
-              icon: session.speakerOn ? Icons.volume_up : Icons.phone_in_talk,
-              onPressed: () async { try { await controller.toggleSpeaker(); } catch (_) {} },
-            ),
-            if (session.directMode && session.videoEnabled)
-              _CallIconAction(
-                label: 'Switch camera',
-                icon: Icons.cameraswitch,
-                onPressed: () async { try { await controller.switchCamera(); } catch (_) {} },
-              ),
-          ],
+        padding: const EdgeInsets.only(bottom: 28),
+        child: TextButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          child: const Text(
+            'Close',
+            style:
+                TextStyle(color: CallPalette.textSecondary, fontSize: 15),
+          ),
         ),
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.all(LocalLinkSpacing.xxl),
-      child: FilledButton(onPressed: () => Navigator.of(context).maybePop(), child: const Text('Done')),
-    );
-  }
-}
-
-class _CallIconAction extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Future<void> Function() onPressed;
-  final bool enabled;
-
-  const _CallIconAction({required this.label, required this.icon, required this.onPressed, this.enabled = true});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme;
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: label,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton.filledTonal(
-            iconSize: 26,
-            onPressed: enabled ? () => onPressed() : null,
-            icon: Icon(icon),
-          ),
-          const SizedBox(height: 3),
-          Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color.onSurfaceVariant)),
-        ],
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 26),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: CallPalette.pill,
+          borderRadius: BorderRadius.circular(40),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _CallToggleButton(
+              icon: session.muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+              active: session.muted,
+              tooltip: session.muted ? 'Unmute' : 'Mute',
+              onPressed: () => _run(controller.toggleMute),
+            ),
+            _CallToggleButton(
+              icon: session.speakerOn
+                  ? Icons.volume_up_rounded
+                  : Icons.phone_in_talk_rounded,
+              active: session.speakerOn,
+              tooltip: session.speakerOn ? 'Speaker off' : 'Speaker on',
+              onPressed: () => _run(controller.toggleSpeaker),
+            ),
+            _CallToggleButton(
+              icon: session.videoEnabled
+                  ? Icons.videocam_rounded
+                  : Icons.videocam_off_rounded,
+              active: session.videoEnabled,
+              enabled: session.directMode,
+              tooltip: session.videoEnabled ? 'Camera off' : 'Camera on',
+              onPressed: () => _run(controller.toggleVideo),
+            ),
+            if (session.directMode && session.videoEnabled)
+              _CallToggleButton(
+                icon: Icons.cameraswitch_rounded,
+                active: false,
+                tooltip: 'Switch camera',
+                onPressed: () => _run(controller.switchCamera),
+              ),
+            _CallCircleButton(
+              icon: Icons.call_end_rounded,
+              background: CallPalette.red,
+              foreground: Colors.white,
+              size: 60,
+              label: null,
+              onPressed: () => _run(controller.endCall),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _CallAction extends StatelessWidget {
-  final String label;
+class _CallCircleButton extends StatelessWidget {
   final IconData icon;
   final Color background;
   final Color foreground;
+  final double size;
+  final String? label;
   final Future<void> Function() onPressed;
 
-  const _CallAction({
-    required this.label,
+  const _CallCircleButton({
     required this.icon,
     required this.background,
     required this.foreground,
+    required this.size,
+    required this.label,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
+    final button = Material(
+      color: background,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onPressed,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Icon(icon, color: foreground, size: size * 0.44),
+        ),
+      ),
+    );
+    if (label == null) return button;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton.filled(
-          style: IconButton.styleFrom(backgroundColor: background, foregroundColor: foreground, iconSize: 30),
-          onPressed: () => onPressed(),
-          icon: Icon(icon),
+        button,
+        const SizedBox(height: 10),
+        Text(
+          label!,
+          style: const TextStyle(color: CallPalette.textSecondary, fontSize: 14),
         ),
-        const SizedBox(height: 4),
-        Text(label, style: Theme.of(context).textTheme.labelSmall),
       ],
+    );
+  }
+}
+
+class _CallToggleButton extends StatelessWidget {
+  final IconData icon;
+  final bool active;
+  final bool enabled;
+  final String tooltip;
+  final Future<void> Function() onPressed;
+
+  const _CallToggleButton({
+    required this.icon,
+    required this.active,
+    required this.tooltip,
+    required this.onPressed,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final background =
+        active ? CallPalette.controlActive : CallPalette.controlInactive;
+    final foreground =
+        active ? CallPalette.controlActiveIcon : Colors.white;
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.35,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: background,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: enabled ? onPressed : null,
+            child: SizedBox(
+              width: 52,
+              height: 52,
+              child: Icon(icon, color: foreground, size: 25),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

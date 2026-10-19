@@ -64,6 +64,18 @@ final class CallSessionManager implements CallGateway {
   DateTime? _lastInviteAttemptAt;
   int _recoveryAttempts = 0;
   int _meshRouteRecoveryAttempts = 0;
+  // Media-flow truth, fed by _collectStats()' packets_received deltas. Mesh
+  // route churn events (degraded/invalidated) are hyper-eager — they fire
+  // dozens of times during a perfectly audible call — so a live-media
+  // window suppresses their user-facing 'reconnecting' flips. 7s covers
+  // the 5s stats tick plus slack.
+  int _lastMediaPacketsReceived = -1;
+  DateTime? _lastMediaRxAt;
+  bool get _mediaIsLive {
+    final at = _lastMediaRxAt;
+    return at != null &&
+        DateTime.now().difference(at) < const Duration(seconds: 7);
+  }
   int _presentationRevision = 0;
   bool _appInForeground = true;
 
@@ -308,6 +320,29 @@ final class CallSessionManager implements CallGateway {
     }
     await transport.setVideoEnabled(session, enabled);
     _setSession(session.copyWith(videoEnabled: enabled));
+  }
+
+  /// Receive-side half of the WhatsApp-style switch-to-video: the peer turned
+  /// their camera on mid-call; allocate a local video session in receive-only
+  /// mode (camera closed — no camera permission prompt on this device) so the
+  /// peer's video renders on our screen.
+  Future<void> _acceptRemoteVideo(CallSession session) async {
+    final transport = _transport;
+    if (_disposed ||
+        transport == null ||
+        !transport.supportsVideo ||
+        _session?.id != session.id) return;
+    try {
+      final video = await transport.startVideo(session, enableCamera: false);
+      final latest = _session;
+      if (latest == null || latest.id != session.id || latest.isFinished)
+        return;
+      _setSession(latest.copyWith(
+        localVideoTextureId: (video['local_texture_id'] as num?)?.toInt(),
+        remoteVideoTextureId: (video['remote_texture_id'] as num?)?.toInt(),
+        peerVideoActive: true,
+      ));
+    } catch (_) {}
   }
 
   Future<void> switchCamera() async {
@@ -638,6 +673,7 @@ final class CallSessionManager implements CallGateway {
         session.transportMode == CallTransportMode.offlineMesh) {
       final destination = event['destination_id']?.toString() ??
           event['mesh_destination_id']?.toString() ??
+          event['peer_id']?.toString() ??
           '';
       final callId = event['call_id']?.toString();
       final eventTargets = destination == session.peerId &&
@@ -652,23 +688,35 @@ final class CallSessionManager implements CallGateway {
           (type == 'route_invalidated' ||
               type == 'route_removed' ||
               type == 'call_media_route_degraded')) {
-        _meshRouteRecoveryAttempts++;
-        _meshRouteRecoveryTimer?.cancel();
-        _setSession(session.copyWith(
-          state: CallState.reconnecting,
-          quality: CallQuality.reconnecting,
-          recoveryAttempts: _meshRouteRecoveryAttempts,
-          mediaNextHopId: event['next_hop_id']?.toString(),
-          mediaHopCount: (event['hop_count'] as num?)?.toInt(),
-        ));
-        _meshRouteRecoveryTimer = Timer(const Duration(seconds: 10), () {
-          final current = _session;
-          if (current == null ||
-              current.isFinished ||
-              current.id != session.id ||
-              current.transportMode != CallTransportMode.offlineMesh) return;
-          _setSession(current.copyWith(quality: CallQuality.reconnecting));
-        });
+        if (_mediaIsLive) {
+          // Media packets arrived within the last few seconds, so this churn
+          // is a native-side blip, not an outage. Keep the live call (and its
+          // timer) on screen; refresh only the hop diagnostics.
+          AppLogger.info('ROUTE_CHURN_SUPPRESSED', detail:
+              'type=$type call=${session.id} rx_age_ms=${DateTime.now().difference(_lastMediaRxAt!).inMilliseconds}');
+          _setSession(session.copyWith(
+            mediaNextHopId: event['next_hop_id']?.toString(),
+            mediaHopCount: (event['hop_count'] as num?)?.toInt(),
+          ));
+        } else {
+          _meshRouteRecoveryAttempts++;
+          _meshRouteRecoveryTimer?.cancel();
+          _setSession(session.copyWith(
+            state: CallState.reconnecting,
+            quality: CallQuality.reconnecting,
+            recoveryAttempts: _meshRouteRecoveryAttempts,
+            mediaNextHopId: event['next_hop_id']?.toString(),
+            mediaHopCount: (event['hop_count'] as num?)?.toInt(),
+          ));
+          _meshRouteRecoveryTimer = Timer(const Duration(seconds: 10), () {
+            final current = _session;
+            if (current == null ||
+                current.isFinished ||
+                current.id != session.id ||
+                current.transportMode != CallTransportMode.offlineMesh) return;
+            _setSession(current.copyWith(quality: CallQuality.reconnecting));
+          });
+        }
       } else if (eventTargets && type == 'route_recovered') {
         if (session.answeredAt != null &&
             session.state == CallState.reconnecting) {
@@ -699,6 +747,29 @@ final class CallSessionManager implements CallGateway {
               ? CallState.connected
               : session.state,
         ));
+      }
+      // WhatsApp-style switch-to-video sync. 'call_remote_video_started' is
+      // raised natively when a peer's video frames arrive for an answered call
+      // that has no local video session yet; we auto-spawn a receive-only
+      // session (camera stays closed, no camera permission needed on this
+      // device) so both screens flip to video on a single tap.
+      if (eventTargets && type == 'call_remote_video_started') {
+        AppLogger.info('CALL_REMOTE_VIDEO_STARTED',
+            detail: 'call=${session.id}');
+        if (!session.peerVideoActive) {
+          _setSession(session.copyWith(peerVideoActive: true));
+        }
+        if (session.answeredAt != null && session.remoteVideoTextureId == null) {
+          unawaited(_acceptRemoteVideo(session));
+        }
+      }
+      if (eventTargets && type == 'call_peer_video_state') {
+        final on = event['enabled'] == true;
+        if (session.peerVideoActive != on) {
+          AppLogger.info('CALL_PEER_VIDEO_STATE',
+              detail: 'call=${session.id} enabled=$on');
+          _setSession(session.copyWith(peerVideoActive: on));
+        }
       }
     }
     if (type != 'message') return;
@@ -731,6 +802,10 @@ final class CallSessionManager implements CallGateway {
     _stopRouteWaitTimer();
     _setSession(session.copyWith(state: CallState.ringing, signalingConnected: true));
     _startRingTimer(outgoing: true);
+    // WhatsApp-style ringback: the peer's phone is now actually ringing, so
+    // let the caller hear it too. Stops on answer/end in _markConnected /
+    // _finishLocal.
+    unawaited(ringtone.startRingback(session.id));
     await _persistSession();
   }
 
@@ -848,8 +923,14 @@ final class CallSessionManager implements CallGateway {
       return;
     }
     if (status == 'reconnecting') {
-      _setSession(session.copyWith(
-          state: CallState.reconnecting, quality: CallQuality.reconnecting));
+      if (session.answeredAt != null && _mediaIsLive) {
+        AppLogger.info('ROUTE_CHURN_SUPPRESSED', detail:
+            'type=peer_status_reconnecting call=${session.id} rx_age_ms=${DateTime.now().difference(_lastMediaRxAt!).inMilliseconds}');
+        _setSession(session.copyWith(quality: CallQuality.reconnecting));
+      } else {
+        _setSession(session.copyWith(
+            state: CallState.reconnecting, quality: CallQuality.reconnecting));
+      }
       return;
     }
     if (status == 'rejected') {
@@ -939,11 +1020,18 @@ final class CallSessionManager implements CallGateway {
         unawaited(_markConnected());
         break;
       case 'reconnecting':
-        _setSession(_session!.copyWith(
-            state: CallState.reconnecting,
-            quality: CallQuality.reconnecting,
-            reason: reason ?? _session!.reason));
-        unawaited(_persistSession());
+        final current = _session!;
+        if (current.answeredAt != null && _mediaIsLive) {
+          AppLogger.info('ROUTE_CHURN_SUPPRESSED', detail:
+              'type=transport_reconnecting call=${current.id} rx_age_ms=${DateTime.now().difference(_lastMediaRxAt!).inMilliseconds}');
+          _setSession(current.copyWith(quality: CallQuality.reconnecting));
+        } else {
+          _setSession(current.copyWith(
+              state: CallState.reconnecting,
+              quality: CallQuality.reconnecting,
+              reason: reason ?? current.reason));
+          unawaited(_persistSession());
+        }
         break;
       case 'failed':
         final active = _session;
@@ -961,6 +1049,7 @@ final class CallSessionManager implements CallGateway {
     final session = _session;
     if (session == null || session.isFinished) return;
     _ringTimer?.cancel();
+    unawaited(ringtone.stopRingback());
     _recoveryAttempts = 0;
     _setSession(session.copyWith(
         state: CallState.connected,
@@ -989,6 +1078,7 @@ final class CallSessionManager implements CallGateway {
     final session = _session;
     if (session == null) return;
     _cancelCallTimers();
+    unawaited(ringtone.stopRingback());
     final endedAt = DateTime.now();
     final next =
         session.copyWith(state: state, endedAt: endedAt, reason: reason);
@@ -1046,9 +1136,39 @@ final class CallSessionManager implements CallGateway {
         quality: quality.name,
       );
       await store.saveCallQualitySample(sample);
+      final hadRxCounter = stats.containsKey('packets_received') ||
+          stats.containsKey('received_packets');
+      final rxNow =
+          _asInt(stats['packets_received'] ?? stats['received_packets']);
       final latest = _session;
-      if (latest != null && latest.id == session.id && !latest.isFinished)
-        _setSession(latest.copyWith(quality: quality, qualitySample: sample));
+      if (latest != null && latest.id == session.id && !latest.isFinished) {
+        var recovering = false;
+        if (hadRxCounter) {
+          if (_lastMediaPacketsReceived >= 0 &&
+              rxNow > _lastMediaPacketsReceived) {
+            _lastMediaRxAt = DateTime.now();
+            recovering = latest.state == CallState.reconnecting;
+          }
+          _lastMediaPacketsReceived = rxNow;
+        }
+        if (recovering) {
+          // Media is provably flowing again — drop the phantom reconnecting
+          // state instead of waiting for a route_recovered event that may
+          // never arrive on this transport.
+          AppLogger.info('MEDIA_LIVE_RECOVERED',
+              detail: 'call=${latest.id} rx_packets=$rxNow');
+          _meshRouteRecoveryAttempts = 0;
+          _meshRouteRecoveryTimer?.cancel();
+          _setSession(latest.copyWith(
+              state: CallState.connected,
+              quality: quality,
+              qualitySample: sample,
+              recoveryAttempts: 0));
+          unawaited(_persistSession());
+        } else {
+          _setSession(latest.copyWith(quality: quality, qualitySample: sample));
+        }
+      }
     } catch (_) {}
   }
 

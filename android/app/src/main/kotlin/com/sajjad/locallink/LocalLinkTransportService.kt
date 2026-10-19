@@ -99,7 +99,7 @@ class LocalLinkTransportService : Service() {
         fun currentDeviceId(): String? = instance?.transportDeviceId
         fun configureCallVideoSurfaces(preview: android.view.Surface, remote: android.view.Surface) { instance?.configureCallVideoSurfacesInternal(preview, remote) }
         fun clearCallVideoSurfaces() { instance?.clearCallVideoSurfacesInternal() }
-        fun startCallVideo(callId:String, peerId:String) { instance?.startCallVideoInternal(callId, peerId) ?: throw IllegalStateException("transport service is not running") }
+        fun startCallVideo(callId:String, peerId:String, enableCamera:Boolean = true) { instance?.startCallVideoInternal(callId, peerId, enableCamera) ?: throw IllegalStateException("transport service is not running") }
         fun stopCallVideo(callId:String) { instance?.stopCallVideoInternal(callId) }
         fun setCallVideoEnabled(callId:String, enabled:Boolean) { instance?.setCallVideoEnabledInternal(callId, enabled) }
         fun switchCallCamera(callId:String) { instance?.switchCallCameraInternal(callId) }
@@ -209,6 +209,7 @@ class LocalLinkTransportService : Service() {
     // duplicate protection; sequence numbers provide protection when the same valid
     // media frame is re-wrapped in a new mesh packet.
     private val callMediaRecent = ConcurrentHashMap<String, Long>()
+    private val remoteVideoAskRecent = ConcurrentHashMap<String, Long>()
     private val callMediaMaxRecent = 512
     private val incomingFiles = ConcurrentHashMap<String, IncomingFileTransfer>()
     private val outgoingTransfers = ConcurrentHashMap<String, OutgoingFileTransfer>()
@@ -1006,6 +1007,7 @@ class LocalLinkTransportService : Service() {
             "call_media" -> handleIncomingCallMedia(packet)
             "call_video_config" -> handleIncomingCallVideoConfig(packet)
             "call_video_frame" -> handleIncomingCallVideoFrame(packet)
+            "call_video_state" -> handleIncomingCallVideoState(packet)
             "direct_file_chunk" -> handleIncomingFileChunk(packet.sourceNodeId, payload)
             "direct_file_progress" -> handleFileProgress(payload)
             "direct_file_resume_request" -> handleFileResumeRequest(payload)
@@ -1067,7 +1069,7 @@ class LocalLinkTransportService : Service() {
         callVideoRemoteSurface = null
     }
 
-    private fun startCallVideoInternal(callId:String, peerId:String) {
+    private fun startCallVideoInternal(callId:String, peerId:String, enableCamera:Boolean) {
         require(callId.length in 1..128) { "invalid call id" }
         require(peerId.length in 1..128) { "invalid peer id" }
         val preview = callVideoPreviewSurface ?: throw IllegalStateException("local video surface is not configured")
@@ -1081,6 +1083,7 @@ class LocalLinkTransportService : Service() {
             remoteSurface = remote,
             sendPacket = { packet -> sendCallMediaPacket(peerId, callId, packet) },
             event = { type, data -> transportEvent(type, data) },
+            cameraInitiallyOn = enableCamera,
         )
         synchronized(callMediaLock) { callVideo = session }
         session.start()
@@ -1107,8 +1110,28 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun handleIncomingCallVideoConfig(packet:MeshPacket) {
-        val current = callVideo ?: return
         val payload = packet.payload
+        val current = callVideo
+        if (current == null) {
+            // The peer just switched this voice call to video (WhatsApp-style
+            // one-tap upgrade) but this device has no local video session yet.
+            // Ask the Flutter call layer to allocate a receive-only session —
+            // rate-limited because config resends arrive on every keyframe.
+            val audio = callMedia
+            val callId = payload.optString("call_id")
+            if (audio == null || callId != audio.callId || packet.sourceNodeId != audio.peerId) return
+            val now = System.currentTimeMillis()
+            val lastAsk = remoteVideoAskRecent[callId] ?: 0L
+            if (now - lastAsk < 2_000L) return
+            remoteVideoAskRecent[callId] = now
+            transportEvent("call_remote_video_started", mapOf(
+                "call_id" to callId,
+                "peer_id" to packet.sourceNodeId,
+                "width" to payload.optInt("width", 640),
+                "height" to payload.optInt("height", 360),
+            ))
+            return
+        }
         if (payload.optString("call_id") != current.callId || packet.sourceNodeId != current.peerId) return
         val encoded = payload.optString("config").trim()
         if (encoded.isBlank()) return
@@ -1134,7 +1157,22 @@ class LocalLinkTransportService : Service() {
         }
     }
 
-    private fun isEphemeralCallMediaType(type:String): Boolean = type == "call_media" || type == "call_video_config" || type == "call_video_frame"
+    private fun handleIncomingCallVideoState(packet:MeshPacket) {
+        val payload = packet.payload
+        val callId = payload.optString("call_id")
+        val video = callVideo
+        val audio = callMedia
+        val activeCallId = video?.callId ?: audio?.callId ?: return
+        val activePeerId = video?.peerId ?: audio?.peerId ?: return
+        if (callId != activeCallId || packet.sourceNodeId != activePeerId) return
+        transportEvent("call_peer_video_state", mapOf(
+            "call_id" to callId,
+            "peer_id" to packet.sourceNodeId,
+            "enabled" to payload.optBoolean("enabled", false),
+        ))
+    }
+
+    private fun isEphemeralCallMediaType(type:String): Boolean = type == "call_media" || type == "call_video_config" || type == "call_video_frame" || type == "call_video_state"
 
     private fun callMediaStatsInternal(callId:String): Map<String,Any?> {
         val audio = callMedia?.takeIf { it.callId == callId }?.stats() ?: emptyMap()

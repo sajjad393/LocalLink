@@ -63,6 +63,10 @@ class CallSession {
   final bool videoEnabled;
   final int? localVideoTextureId;
   final int? remoteVideoTextureId;
+  /// True while the peer's camera is actually streaming video for this call.
+  /// Drives the WhatsApp-style fullscreen video view (and its avatar fallback
+  /// when the peer turns the camera off mid-call).
+  final bool peerVideoActive;
   final String? mediaNextHopId;
   final int? mediaHopCount;
 
@@ -89,6 +93,7 @@ class CallSession {
     this.videoEnabled = false,
     this.localVideoTextureId,
     this.remoteVideoTextureId,
+    this.peerVideoActive = false,
     this.mediaNextHopId,
     this.mediaHopCount,
   });
@@ -119,6 +124,7 @@ class CallSession {
     bool? videoEnabled,
     int? localVideoTextureId,
     int? remoteVideoTextureId,
+    bool? peerVideoActive,
     String? mediaNextHopId,
     int? mediaHopCount,
   }) =>
@@ -145,6 +151,7 @@ class CallSession {
         videoEnabled: videoEnabled ?? this.videoEnabled,
         localVideoTextureId: localVideoTextureId ?? this.localVideoTextureId,
         remoteVideoTextureId: remoteVideoTextureId ?? this.remoteVideoTextureId,
+        peerVideoActive: peerVideoActive ?? this.peerVideoActive,
         mediaNextHopId: mediaNextHopId ?? this.mediaNextHopId,
         mediaHopCount: mediaHopCount ?? this.mediaHopCount,
       );
