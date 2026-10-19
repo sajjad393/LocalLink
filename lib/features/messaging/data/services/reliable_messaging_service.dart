@@ -1428,16 +1428,58 @@ class ReliableMessagingService {
     }
   }
 
+  // Hot-path guardian. During an active call the direct transport emits
+  // 100-300 events/sec (mesh_delivered/call_media_received/route_degraded…).
+  // developer.log per event is a marshalled platform hop — on the weaker
+  // handset that froze the UI for 15-26s at a time (Choreographer megaskips
+  // observed in production logcat). We count hot types and flush one summary
+  // line per 10s window; rare/interesting event types still log per event.
+  // (AppDiagnostics.record() stays per-event — it is in-RAM only.)
+  static const Set<String> _hotDirectEventTypes = {
+    'call_media_received',
+    'mesh_delivered',
+    'mesh_queued',
+    'call_media_route_degraded',
+    'topology',
+    'route_invalidated',
+    'route_update',
+    'link_update',
+  };
+  final Map<String, int> _hotDirectEventCounts = <String, int>{};
+  DateTime? _hotDirectEventWindowStart;
+
+  void _recordHotDirectEvent(String type) {
+    final now = DateTime.now();
+    final windowStart = _hotDirectEventWindowStart;
+    if (windowStart == null) {
+      _hotDirectEventWindowStart = now;
+    } else if (now.difference(windowStart) >= const Duration(seconds: 10)) {
+      if (_hotDirectEventCounts.isNotEmpty) {
+        final counts = _hotDirectEventCounts.entries
+            .map((e) => '${e.key}=${e.value}')
+            .join(' ');
+        AppLogger.info('DIRECT_EVENTS_SUMMARY', detail: 'window=10s $counts');
+        _hotDirectEventCounts.clear();
+      }
+      _hotDirectEventWindowStart = now;
+    }
+    _hotDirectEventCounts[type] = (_hotDirectEventCounts[type] ?? 0) + 1;
+  }
+
   Future<void> _handleDirectEvent(
     Map<String, dynamic> event,
   ) async {
-    final eventType = event['type']?.toString();
+    final eventType = event['type']?.toString() ?? 'unknown';
 
-    AppLogger.info(
-      'DIRECT_EVENT_RECEIVED',
-      detail: 'type=${eventType ?? 'unknown'} '
-          'message=${event['message_id']?.toString() ?? ''}',
-    );
+    if (_hotDirectEventTypes.contains(eventType)) {
+      _recordHotDirectEvent(eventType);
+    } else {
+      AppLogger.info(
+        'DIRECT_EVENT_RECEIVED',
+        detail: 'type=$eventType '
+            'message=${event['message_id']?.toString() ?? ''}',
+      );
+    }
 
     // ------------------------------------------------------------------------
     // DIRECT FILE RECEIVED

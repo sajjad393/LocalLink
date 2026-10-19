@@ -9,6 +9,7 @@ import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/call_quality.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/local_store.dart';
+import 'package:locallink/core/services/websocket_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/data/models/call_notification_action.dart';
@@ -60,6 +61,15 @@ final class CallSessionManager implements CallGateway {
   final Set<String> _seenInviteIds = <String>{};
   int _seenInviteCursor = 0;
   bool _disposed = false;
+  final WebSocketService? socket;
+  StreamSubscription<dynamic>? _socketSub;
+  // Dedupes lifecycle signals that can legitimately arrive twice at the same
+  // instant: once over Wi-Fi Direct, once relayed through the server WS
+  // fallback. Keyed by type|call_id|sender. call_invite is excluded on
+  // purpose: the 5s route-wait resend loop legitimately repeats identical
+  // invites, and _seenInviteIds guards duplicates for those.
+  final Map<String, DateTime> _recentSignalFingerprints =
+      <String, DateTime>{};
   bool _inviteInFlight = false;
   DateTime? _lastInviteAttemptAt;
   int _recoveryAttempts = 0;
@@ -88,6 +98,7 @@ final class CallSessionManager implements CallGateway {
   CallSessionManager(
     this.store,
     this.directTransport, {
+    this.socket,
     required this.repository,
     required this.audioPlatform,
     required this.ringtone,
@@ -111,6 +122,11 @@ final class CallSessionManager implements CallGateway {
     _nativeSub ??=
         transportFactory.nativeMesh.events.listen(_handleNativeTransportEvent);
     _routeSub ??= routePolicy.routeChanges.listen(_handleRouteChange);
+    // Server-relay intake: the backend hub forwards call lifecycle frames
+    // between validated participants. When Wi-Fi Direct is down this is the
+    // only path an invite/accept/end can arrive on.
+    _socketSub ??= socket?.messages
+        .listen((msg) => unawaited(_handleServerCallSignal(msg)));
     unawaited(_synchronizeIncomingPresentation());
     unawaited(syncHistory());
   }
@@ -374,6 +390,8 @@ final class CallSessionManager implements CallGateway {
     await _nativeSub?.cancel();
     await _notificationActionSub?.cancel();
     await _routeSub?.cancel();
+    await _socketSub?.cancel();
+    _socketSub = null;
     _nativeSub = null;
     _notificationActionSub = null;
     _presentationRevision++;
@@ -394,8 +412,41 @@ final class CallSessionManager implements CallGateway {
       (await routePolicy.resolve(peerId)).isAvailable;
 
 
+  /// Server-WS relay intake. The backend hub only relays call lifecycle
+  /// frames between validated call participants, so frames arriving here are
+  /// source-trusted. Normalized into the mesh-style envelope and funneled
+  /// through the shared dispatcher, whose fingerprint dedupe drops the
+  /// duplicate copy when mesh managed to deliver first.
+  Future<void> _handleServerCallSignal(Map<String, dynamic> msg) async {
+    if (_disposed) return;
+    final type = msg['type']?.toString() ?? '';
+    if (!type.startsWith('call_')) return;
+    final withDefaults = Map<String, dynamic>.from(msg);
+    withDefaults['server'] = true;
+    // The hub only handles offline_mesh calls; satisfying the local-invite
+    // gate even for frames relayed before the backend preserved
+    // transport_mode.
+    withDefaults['transport_mode'] ??= CallTransportMode.offlineMesh.wireName;
+    await _handleLocalCallSignal(withDefaults);
+  }
+
   Future<void> _handleLocalCallSignal(Map<String, dynamic> msg) async {
     if (_disposed) return;
+    final type = msg['type']?.toString() ?? '';
+    // Dual-channel delivery (mesh + server relay) means the same logical
+    // signal can arrive twice milliseconds apart; process the first only.
+    // Invites are intentionally NOT deduped here: the 5s resend loop emits
+    // identical fingerprints legitimately, and _seenInviteIds covers them.
+    const skipDedupe = {'call_invite', 'call_heartbeat_ack'};
+    if (!skipDedupe.contains(type)) {
+      final key =
+          '$type|${msg['call_id'] ?? ''}|${msg['sender_id'] ?? ''}';
+      final now = DateTime.now();
+      _recentSignalFingerprints.removeWhere(
+          (_, ts) => now.difference(ts) > const Duration(seconds: 10));
+      if (_recentSignalFingerprints.containsKey(key)) return;
+      _recentSignalFingerprints[key] = now;
+    }
     switch (msg['type']?.toString()) {
       case 'call_invite':
         await _handleInvite(msg);
@@ -974,12 +1025,38 @@ final class CallSessionManager implements CallGateway {
         'mesh_call': true,
         'transport_mode': CallTransportMode.offlineMesh.wireName,
       });
-    } catch (error, stackTrace) {
+    } catch (error) {
       // Wi-Fi Direct peers flap constantly (see peer_connected/disconnected
-      // churn in DIRECT_EVENT logs). A heartbeat that lands while the peer
-      // is momentarily down used to escape as an unhandled
-      // PlatformException(PEER_UNAVAILABLE). It's transient — swallow with
-      // a log; the next heartbeat retry or the recovery loop heals it.
+      // churn in DIRECT_EVENT logs). A heartbeat landing while the peer is
+      // momentarily down is transient — swallow with a log; the next tick or
+      // the recovery loop heals it. Lifecycle signals are different: losing
+      // them while the direct link is down leaves the peer holding a ghost
+      // call (observed in production logs), so relay them via the server WS.
+      final type = msg['type']?.toString() ?? '';
+      const relayable = {
+        'call_invite',
+        'call_invite_ack',
+        'call_accept',
+        'call_reject',
+        'call_busy',
+        'call_end',
+      };
+      final ws = socket;
+      if (relayable.contains(type) && ws != null && ws.isConnected) {
+        final relayed = ws.send({
+          ...msg,
+          'sender_id': store.deviceId,
+          'transport_mode': CallTransportMode.offlineMesh.wireName,
+        });
+        if (relayed) {
+          AppLogger.warning(
+            'CALL_SIGNAL_RELAYED',
+            detail: 'type=$type call=${msg['call_id'] ?? ''} '
+                'via=server reason=mesh_down error=$error',
+          );
+          return;
+        }
+      }
       AppLogger.warning(
         'CALL_SIGNAL_SEND_FAILED',
         detail:

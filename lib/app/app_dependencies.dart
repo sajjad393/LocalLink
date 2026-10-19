@@ -130,6 +130,7 @@ class AppDependencies {
     callService = CallSessionManager(
       store,
       directTransport,
+      socket: socket,
       repository: callRepository,
       audioPlatform: callAudioPlatform,
       ringtone: callRingtone,
