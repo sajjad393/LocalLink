@@ -854,9 +854,12 @@ class LocalLinkTransportService : Service() {
                     continue
                 } ?: break
                 connection.lastSeenAt = System.currentTimeMillis()
-                if (line.length > 128 * 1024) break
+                // Never tear the socket over one fat line: video keyframes ride
+                // this channel, and breaking here every ~2s produced the
+                // Reconnecting/PEER_UNAVAILABLE loop with zero inbound frames.
+                if (line.length > 256 * 1024) { noteVideoDrop("wire_line_over_256k"); continue }
                 val packet = JSONObject(line)
-                if (packet.toString().toByteArray(Charsets.UTF_8).size > 128 * 1024) break
+                if (packet.toString().toByteArray(Charsets.UTF_8).size > 256 * 1024) { noteVideoDrop("wire_packet_over_256k"); continue }
                 when (packet.optString("type")) {
                     "data" -> {
                         val from = packet.optString("sender_id")

@@ -106,13 +106,8 @@ class CallActionBar extends StatelessWidget {
               tooltip: session.videoEnabled ? 'Camera off' : 'Camera on',
               onPressed: () => _run(controller.toggleVideo),
             ),
-            if (session.directMode && session.videoEnabled)
-              _CallToggleButton(
-                icon: Icons.cameraswitch_rounded,
-                active: false,
-                tooltip: 'Switch camera',
-                onPressed: () => _run(controller.switchCamera),
-              ),
+            // Camera flip moved onto the floating self-preview (tap it) —
+            // WhatsApp-style; keeps the bottom bar to call controls only.
             _CallCircleButton(
               icon: Icons.call_end_rounded,
               background: CallPalette.red,

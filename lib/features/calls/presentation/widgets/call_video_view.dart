@@ -14,7 +14,11 @@ import 'package:locallink/features/calls/presentation/widgets/call_palette.dart'
 class CallVideoView extends StatelessWidget {
   final CallSession session;
 
-  const CallVideoView({super.key, required this.session});
+  /// Tap on the floating self-preview flips the camera (WhatsApp-style); when
+  /// null the preview is not tappable.
+  final VoidCallback? onSelfPreviewTap;
+
+  const CallVideoView({super.key, required this.session, this.onSelfPreviewTap});
 
   @override
   Widget build(BuildContext context) {
@@ -40,14 +44,29 @@ class CallVideoView extends StatelessWidget {
             right: 14,
             width: 106,
             height: 150,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                color: Colors.black,
-                child: _CoverTexture(
-                textureId: localId,
-                rotation: session.localVideoRotation,
-              ),
+            child: GestureDetector(
+              onTap: onSelfPreviewTap,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(
+                      color: Colors.black,
+                      child: _CoverTexture(
+                        textureId: localId,
+                        rotation: session.localVideoRotation,
+                      ),
+                    ),
+                    if (onSelfPreviewTap != null)
+                      const Positioned(
+                        right: 4,
+                        bottom: 4,
+                        child: Icon(Icons.cameraswitch_rounded,
+                            color: Colors.white70, size: 18),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

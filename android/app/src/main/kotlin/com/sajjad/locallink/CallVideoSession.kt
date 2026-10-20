@@ -48,7 +48,13 @@ class CallVideoSession(
         private const val FPS = 20
         private const val BITRATE = 550_000
         private const val I_FRAME_INTERVAL_SEC = 2
-        private const val MAX_PACKET_BYTES = 110 * 1024
+        // Wire-safe cap: the mesh socket reader rejects frames above its line
+        // limit (128KiB, now 256KiB); a single oversize keyframe used to tear
+        // the ENTIRE mesh link every 2s (Reconnecting loop, zero video ever
+        // crossing, heartbeat PEER_UNAVAILABLE). Keep frames far below it;
+        // an oversize keyframe is simply skipped (decoder waits <=2s for the
+        // next one) instead of killing the whole call.
+        private const val MAX_PACKET_BYTES = 40 * 1024
     }
 
     private val running = AtomicBoolean(false)
@@ -411,7 +417,12 @@ class CallVideoSession(
         if (!enabled.get()) return
         val seq = sequence.getAndIncrement()
         val encoded = Base64.encodeToString(data, Base64.NO_WRAP)
-        if (encoded.toByteArray(Charsets.UTF_8).size > MAX_PACKET_BYTES) { droppedFrames.incrementAndGet(); return }
+        val wireBytes = encoded.toByteArray(Charsets.UTF_8).size
+        if (wireBytes > MAX_PACKET_BYTES) {
+            droppedFrames.incrementAndGet()
+            event("call_video_frame_too_big", mapOf("call_id" to callId, "bytes" to wireBytes, "key_frame" to keyFrame))
+            return
+        }
         val packet = JSONObject()
             .put("type", "call_video_frame")
             .put("sender_id", transportSender())

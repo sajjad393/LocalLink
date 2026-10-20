@@ -156,7 +156,12 @@ class _CallScreenState extends State<CallScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        CallVideoView(session: session),
+        CallVideoView(
+          session: session,
+          onSelfPreviewTap: session.videoEnabled && session.directMode
+              ? widget.controller.switchCamera
+              : null,
+        ),
         // Top overlay: name + status over a fading dark scrim.
         Positioned(
           top: 0,
