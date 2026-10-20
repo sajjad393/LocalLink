@@ -93,6 +93,17 @@ class DatabaseEncryptionService {
       version: version,
       onCreate: onCreate,
       onUpgrade: onUpgrade,
+      onOpen: (db) async {
+        // Bundle 63: SQLCipher defaults mean journal in delete-mode +
+        // synchronous=FULL -> an fsync after EVERY commit. On weak handset
+        // eMMCs that multiplies into multi-second serialized-queue stalls
+        // (the residual STORE_OP_SLOW spikes / 'database locked 0:00:10'
+        // warnings after bundle 61 removed the worst writers).
+        await db.execute('PRAGMA journal_mode=WAL');
+        await db.execute('PRAGMA synchronous=NORMAL');
+        await db.execute('PRAGMA busy_timeout=5000');
+        await db.execute('PRAGMA wal_autocheckpoint=1000');
+      },
     );
     // A successful authenticated query proves the key matches the database.
     await db.rawQuery('PRAGMA user_version');

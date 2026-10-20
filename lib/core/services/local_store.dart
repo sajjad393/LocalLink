@@ -27,6 +27,19 @@ class LocalStore {
   /// the serialized SQLCipher queue for seconds, but the warning never
   /// names the caller. Wrap the known hot writers with this and the next
   /// capture names the holder directly. Remove once identified.
+  /// Bundle 63: same idea as timedOp but for db.transaction bodies; names
+  /// any transaction that pins the queue for >1.5s.
+  static Future<T> timedTx<T>(String name, Database db,
+      Future<T> Function(Transaction txn) body) {
+    final sw = Stopwatch()..start();
+    return db.transaction((txn) => body(txn)).whenComplete(() {
+      final ms = sw.elapsedMilliseconds;
+      if (ms > 1500) {
+        AppLogger.warning('STORE_TX_SLOW', detail: 'tx=$name ms=$ms');
+      }
+    });
+  }
+
   static Future<T> timedOp<T>(String name, Future<T> Function() op) async {
     final sw = Stopwatch()..start();
     try {
@@ -749,7 +762,7 @@ class LocalStore {
     _syncCursor = null;
     _serverId = null;
     _serverFingerprint = null;
-    await _db.transaction((txn) async {
+    await LocalStore.timedTx('clear_config_tx', _db, (txn) async {
       for (final table in [
         'settings',
         'messages',
@@ -1786,7 +1799,7 @@ class LocalStore {
 
   Future<void> deleteMessage(String id) async {
     if (id.isEmpty) return;
-    await _db.transaction((txn) async {
+    await LocalStore.timedTx('delete_message_tx', _db, (txn) async {
       await txn.delete(
         'message_attachments',
         where: 'message_id=?',
@@ -1990,7 +2003,7 @@ class LocalStore {
 
   Future<List<String>> deleteGroupLocal(String groupId) async {
     final localPaths = <String>[];
-    await _db.transaction((txn) async {
+    await LocalStore.timedTx('delete_group_tx', _db, (txn) async {
       final outboxRows = await txn.query('group_outbox',
           columns: ['id'], where: 'group_id=?', whereArgs: [groupId]);
       final outboxMessageIds = outboxRows
@@ -2325,7 +2338,7 @@ class LocalStore {
 
   @visibleForTesting
   Future<void> clearAll() async {
-    await _db.transaction((txn) async {
+    await LocalStore.timedTx('clear_all_tx', _db, (txn) async {
       for (final table in [
         'messages',
         'outbox',
