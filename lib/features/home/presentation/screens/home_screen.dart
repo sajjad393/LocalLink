@@ -25,6 +25,7 @@ import 'package:locallink/features/calls/presentation/screens/calls_screen.dart'
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
+import 'package:locallink/core/permissions/app_permission_gate.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/contacts_screen.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
@@ -124,6 +125,15 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Dashboard entry: verify the real notification permission once per
+    // install (and once per app start), explain WHY, and only then run the
+    // official runtime flow. Never repeats on rebuilds or tab refreshes.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        AppPermissionGate.ensureNotificationsOnDashboardEntry(
+            context, widget.notifications);
+      }
+    });
     _themeMode = widget.themeMode;
     _controller.start();
     _loadChatPeerIds();
@@ -363,7 +373,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _callsTab() => CallsScreen(
-      controller: widget.calls, selfId: widget.store.deviceId ?? '');
+        controller: widget.calls,
+        selfId: widget.store.deviceId ?? '',
+        connectivityController: widget.connectivityController,
+        onNewCall: () => setState(() => _index = 2),
+      );
 
   Widget _contactsTab() => ContactsScreen(
         directory: widget.directoryRepository,

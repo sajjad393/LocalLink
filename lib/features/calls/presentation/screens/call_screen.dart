@@ -38,6 +38,7 @@ class _CallScreenState extends State<CallScreen> {
 
   @override
   void dispose() {
+    _videoUiTimer?.cancel();
     _ticker?.cancel();
     super.dispose();
   }
@@ -150,98 +151,142 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
+  // --- WhatsApp-style tap-to-toggle chrome for VIDEO calls only (the voice
+  // UI is untouched): taps fade the top/bottom chrome, and any activity
+  // re-arms a 4s auto-hide so the full-screen video stays unobstructed.
+  bool _videoUiVisible = true;
+  Timer? _videoUiTimer;
+
+  void _toggleVideoUi() {
+    setState(() {
+      _videoUiVisible = !_videoUiVisible;
+      if (_videoUiVisible) _armVideoUiTimer();
+    });
+  }
+
+  void _armVideoUiTimer() {
+    _videoUiTimer?.cancel();
+    _videoUiTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _videoUiVisible = false);
+    });
+  }
+
+  /// Fades/pointer-wraps video chrome while leaving the Positioned parent
+  /// as a direct Stack child (required by Stack layout).
+  Widget _videoChrome(Widget child) {
+    return IgnorePointer(
+      ignoring: !_videoUiVisible,
+      child: AnimatedOpacity(
+        opacity: _videoUiVisible ? 1 : 0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeInOut,
+        child: child,
+      ),
+    );
+  }
+
   Widget _buildVideoLayout(CallSession session, String statusText) {
     final name =
         session.peerName.isEmpty ? 'LocalLink user' : session.peerName;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        CallVideoView(
-          session: session,
-          onSelfPreviewTap: session.videoEnabled && session.directMode
-              ? widget.controller.switchCamera
-              : null,
-        ),
-        // Top overlay: name + status over a fading dark scrim.
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.black87, Colors.transparent],
-              ),
-            ),
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(4, 4, 16, 22),
-                child: Row(
-                  children: [
-                    IconButton(
-                      tooltip: 'Minimize',
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                          color: Colors.white, size: 28),
-                      onPressed: () => Navigator.of(context).maybePop(),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                            ),
+    // Any rebuild counts as activity: keep the chrome visible briefly.
+    _armVideoUiTimer();
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggleVideoUi,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CallVideoView(
+            session: session,
+            onSelfPreviewTap: session.videoEnabled && session.directMode
+                ? widget.controller.switchCamera
+                : null,
+          ),
+          // Top overlay: name + status over a fading dark scrim.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _videoChrome(
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                  ),
+                ),
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 4, 16, 22),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Minimize',
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                              color: Colors.white, size: 28),
+                          onPressed: () => Navigator.of(context).maybePop(),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                statusText,
+                                style: TextStyle(
+                                  color: CallHeader.statusColorFor(session),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
-                          Text(
-                            statusText,
-                            style: TextStyle(
-                              color: CallHeader.statusColorFor(session),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        // Bottom overlay: WhatsApp-style control pill.
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [Colors.black87, Colors.transparent],
-              ),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 32),
-                child:
-                    CallActionBar(controller: widget.controller, session: session),
+          // Bottom overlay: WhatsApp-style control pill.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _videoChrome(
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 32),
+                    child: CallActionBar(
+                        controller: widget.controller, session: session),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

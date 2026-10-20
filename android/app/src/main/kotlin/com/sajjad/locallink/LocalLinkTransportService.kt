@@ -1029,6 +1029,8 @@ class LocalLinkTransportService : Service() {
             "call_media" -> handleIncomingCallMedia(packet)
             "call_video_config" -> handleIncomingCallVideoConfig(packet)
             "call_video_frame" -> handleIncomingCallVideoFrame(packet)
+            "call_video_quality" -> handleIncomingCallVideoControl(packet)
+            "call_video_keyframe_request" -> handleIncomingCallVideoControl(packet)
             "call_video_state" -> handleIncomingCallVideoState(packet)
             "direct_file_chunk" -> handleIncomingFileChunk(packet.sourceNodeId, payload)
             "direct_file_progress" -> handleFileProgress(payload)
@@ -1161,7 +1163,7 @@ class LocalLinkTransportService : Service() {
         val encoded = payload.optString("config").trim()
         if (encoded.isBlank()) { noteVideoDrop("config_empty"); return }
         if (current.onIncomingConfig(encoded, payload.optInt("width", 640), payload.optInt("height", 360), packet.sourceNodeId, packet.destinationNodeId)) {
-            transportEvent("call_video_config_received", mapOf("call_id" to current.callId, "peer_id" to current.peerId, "rotation" to payload.optInt("rotation", 0)))
+            transportEvent("call_video_config_received", mapOf("call_id" to current.callId, "peer_id" to current.peerId, "rotation" to payload.optInt("rotation", 0), "width" to payload.optInt("width", 640), "height" to payload.optInt("height", 360)))
         }
     }
 
@@ -1190,6 +1192,17 @@ class LocalLinkTransportService : Service() {
         }
     }
 
+    private fun handleIncomingCallVideoControl(packet:MeshPacket) {
+        val payload = packet.payload
+        val current = callVideo ?: return
+        if (payload.optString("call_id") != current.callId || packet.sourceNodeId != current.peerId) return
+        if (payload.optString("recipient_id").trim() != transportDeviceId) return
+        when (packet.type) {
+            "call_video_quality" -> current.onPeerQuality(payload.optLong("drop_pct", 0L))
+            "call_video_keyframe_request" -> current.onKeyframeRequest()
+        }
+    }
+
     private fun handleIncomingCallVideoState(packet:MeshPacket) {
         val payload = packet.payload
         val callId = payload.optString("call_id")
@@ -1205,7 +1218,7 @@ class LocalLinkTransportService : Service() {
         ))
     }
 
-    private fun isEphemeralCallMediaType(type:String): Boolean = type == "call_media" || type == "call_video_config" || type == "call_video_frame" || type == "call_video_state"
+    private fun isEphemeralCallMediaType(type:String): Boolean = type == "call_media" || type == "call_video_config" || type == "call_video_frame" || type == "call_video_state" || type == "call_video_quality" || type == "call_video_keyframe_request"
 
     private fun callMediaStatsInternal(callId:String): Map<String,Any?> {
         val audio = callMedia?.takeIf { it.callId == callId }?.stats() ?: emptyMap()
@@ -1659,7 +1672,7 @@ class LocalLinkTransportService : Service() {
             return false
         }
         val packet = unsigned
-        val isLiveMedia = mediaType == "call_media" || mediaType == "call_video_config" || mediaType == "call_video_frame"
+        val isLiveMedia = mediaType == "call_media" || mediaType == "call_video_config" || mediaType == "call_video_frame" || mediaType == "call_video_quality" || mediaType == "call_video_keyframe_request"
         val before = if (isLiveMedia) routeTable[target] else null
         val result = meshRouter.route(packet)
         val after = if (isLiveMedia) routeTable[target] else null

@@ -7,12 +7,24 @@ import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_history_tile.dart';
+import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
+import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 
 class CallsScreen extends StatefulWidget {
   final CallBloc controller;
   final String selfId;
 
-  const CallsScreen({super.key, required this.controller, required this.selfId});
+  /// Same live connectivity chip the Chats tab shows in its app bar.
+  final ConnectivityBloc connectivityController;
+  final VoidCallback onNewCall;
+
+  const CallsScreen({
+    super.key,
+    required this.controller,
+    required this.selfId,
+    required this.connectivityController,
+    required this.onNewCall,
+  });
 
   @override
   State<CallsScreen> createState() => _CallsScreenState();
@@ -92,12 +104,20 @@ class _CallsScreenState extends State<CallsScreen> {
           automaticallyImplyLeading: false,
           title: const Text('Calls'),
           actions: [
+            ConnectionStatusIndicator(
+                controller: widget.connectivityController),
             IconButton(
-              tooltip: 'Refresh',
+              tooltip: 'Refresh calls',
               onPressed: widget.controller.refreshHistory,
-              icon: const Icon(Icons.more_vert),
+              icon: const Icon(Icons.refresh_rounded),
             ),
           ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          heroTag: 'calls_fab',
+          tooltip: 'New call',
+          onPressed: widget.onNewCall,
+          child: const Icon(Icons.call_rounded),
         ),
         body: RefreshIndicator(
           onRefresh: widget.controller.refreshHistory,
@@ -105,15 +125,18 @@ class _CallsScreenState extends State<CallsScreen> {
               ? ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
-                    const SizedBox(height: 180),
                     SizedBox(
-                      height: 420,
+                      // Fill the viewport so the empty view centers like the
+                      // Chats tab, instead of sitting on hardcoded offsets.
+                      height: MediaQuery.of(context).size.height * 0.62,
+                      child: Center(
                       child: LocalLinkEmptyView(
                         icon: Icons.call_outlined,
                         lottieAsset: LocalLinkAssets.lottieEmptyInbox,
                         title: 'No calls yet',
                         message:
                             'Your recent LocalLink calls will appear here.',
+                      ),
                       ),
                     ),
                   ],

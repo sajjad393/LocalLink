@@ -948,8 +948,24 @@ final class CallSessionManager implements CallGateway {
       // display angle synced so a portrait-held phone stops stretching video.
       if (eventTargets && type == 'call_video_config_received') {
         final rot = (event['rotation'] as num?)?.toInt() ?? 0;
-        if (rot != session.remoteVideoRotation) {
-          _setSession(session.copyWith(remoteVideoRotation: rot));
+        final w = (event['width'] as num?)?.toInt() ?? 0;
+        final h = (event['height'] as num?)?.toInt() ?? 0;
+        if (rot != session.remoteVideoRotation ||
+            (w > 0 && w != session.remoteVideoWidth) ||
+            (h > 0 && h != session.remoteVideoHeight)) {
+          _setSession(session.copyWith(
+            remoteVideoRotation: rot,
+            remoteVideoWidth: w > 0 ? w : session.remoteVideoWidth,
+            remoteVideoHeight: h > 0 ? h : session.remoteVideoHeight,
+          ));
+        }
+      }
+      if (eventTargets && type == 'call_video_started') {
+        final w = (event['width'] as num?)?.toInt() ?? 0;
+        final h = (event['height'] as num?)?.toInt() ?? 0;
+        if (w > 0 && h > 0 &&
+            (w != session.localVideoWidth || h != session.localVideoHeight)) {
+          _setSession(session.copyWith(localVideoWidth: w, localVideoHeight: h));
         }
       }
       if (eventTargets && type == 'call_peer_video_state') {

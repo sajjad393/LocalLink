@@ -43,18 +43,25 @@ class CallVideoSession(
 ) {
     companion object {
         private const val MIME = MediaFormat.MIMETYPE_VIDEO_AVC
-        private const val WIDTH = 640
-        private const val HEIGHT = 360
-        private const val FPS = 20
-        private const val BITRATE = 550_000
+        // Resolution ladder (width, height, target bitrate): picked top-down
+        // against the camera's SCALER_STREAM_CONFIGURATION_MAP output sizes,
+        // so high-res phones send 720p while weak ones stay at 360p. The old
+        // fixed 640x360/550kbps was the root cause of blurry video on every
+        // device.
+        private val RESOLUTION_LADDER = listOf(
+            Triple(1280, 720, 1_700_000),
+            Triple(960, 540, 900_000),
+            Triple(640, 360, 550_000),
+        )
+        private const val MIN_BITRATE = 400_000
+        private const val FPS = 24
         private const val I_FRAME_INTERVAL_SEC = 2
-        // Wire-safe cap: the mesh socket reader rejects frames above its line
-        // limit (128KiB, now 256KiB); a single oversize keyframe used to tear
-        // the ENTIRE mesh link every 2s (Reconnecting loop, zero video ever
-        // crossing, heartbeat PEER_UNAVAILABLE). Keep frames far below it;
-        // an oversize keyframe is simply skipped (decoder waits <=2s for the
-        // next one) instead of killing the whole call.
-        private const val MAX_PACKET_BYTES = 96 * 1024 // bundle 64: reader wall is 256KB now -> 96KB restores keyframe quality with margin
+        // Wire-safe cap: the mesh socket reader rejects lines above 256KiB;
+        // a single oversize keyframe used to tear the ENTIRE mesh link every
+        // 2s (bundle 62). 200kiB covers a 720p keyframe with envelope margin
+        // while staying below the wall. Oversize frames are skipped, never
+        // fatal.
+        private const val MAX_PACKET_BYTES = 200 * 1024
     }
 
     private val running = AtomicBoolean(false)
@@ -83,6 +90,20 @@ class CallVideoSession(
     private var codecConfig0: ByteArray? = null
     private var codecConfig1: ByteArray? = null
     private var decoderConfigured = false
+    // Active encoder geometry/bitrate (chosen from RESOLUTION_LADDER once the
+    // camera id is known; stays fixed for the call because MediaCodec cannot
+    // resize without a full codec restart).
+    @Volatile private var encWidth = 640
+    @Volatile private var encHeight = 360
+    @Volatile private var encBitrate = 550_000
+    @Volatile private var encBitrateCeiling = 550_000
+    @Volatile private var decWidth = 0
+    @Volatile private var decHeight = 0
+    // Receiver-side congestion/gap bookkeeping for adaptive feedback.
+    @Volatile private var lastRcvdSeq = -1L
+    @Volatile private var lastFrameAtMs = 0L
+    @Volatile private var lastIdrRequestMs = 0L
+    @Volatile private var framesSinceReport = 0
 
     fun start() {
         if (!running.compareAndSet(false, true)) return
@@ -95,13 +116,13 @@ class CallVideoSession(
             // Receive-only sessions (peer turned their camera on first) must NOT
             // build the encoder: a device that only displays video does not need
             // one, and low-end handsets can fail encoder setup even though their
-            // decoder is fine. The encoder is created lazily in setEnabled(true).
+            // decoder is fine. The encoder is created lazily once the camera id
+            // (and hence the supported-resolution ladder) is known.
             if (enabled.get()) {
-                ensureEncoder()
                 startCameraThread()
                 chooseCamera(front = frontFacing)
             }
-            event("call_video_started", mapOf("call_id" to callId, "peer_id" to peerId, "width" to WIDTH, "height" to HEIGHT, "fps" to FPS))
+            event("call_video_started", mapOf("call_id" to callId, "peer_id" to peerId, "width" to encWidth, "height" to encHeight, "fps" to FPS))
             // Tell the peer whether our camera is actually streaming so their
             // UI can render the video area (or the avatar fallback) without
             // waiting for a frame — WhatsApp-style switch-to-video sync.
@@ -156,7 +177,6 @@ class CallVideoSession(
                 require(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                     "Call video: camera permission not granted on this phone."
                 }
-                ensureEncoder()
                 if (cameraThread == null) startCameraThread()
                 chooseCamera(frontFacing)
             } catch (e: Exception) {
@@ -192,10 +212,10 @@ class CallVideoSession(
         "call_id" to callId,
         "peer_id" to peerId,
         "video_enabled" to enabled.get(),
-        "width" to WIDTH,
-        "height" to HEIGHT,
+        "width" to encWidth,
+        "height" to encHeight,
         "fps" to FPS,
-        "bitrate" to BITRATE,
+        "bitrate" to encBitrate,
         "sent_frames" to sentFrames.get(),
         "received_frames" to receivedFrames.get(),
         "dropped_frames" to droppedFrames.get(),
@@ -231,6 +251,20 @@ class CallVideoSession(
 
     fun onIncomingFrame(sequenceNumber: Long, timestampMs: Long, encoded: String, sourceId: String, destinationId: String): Boolean {
         if (!running.get() || encoded.isBlank()) return false
+        // Gap accounting: packet switches/torn sockets used to be invisible;
+        // a gap or a >1.5s starvation now requests a fresh keyframe so the
+        // decoder recovers after packet loss instead of waiting up to 2s.
+        val last = lastRcvdSeq
+        if (last >= 0L && sequenceNumber > last + 1L) {
+            val gap = sequenceNumber - last - 1L
+            droppedFrames.addAndGet(gap)
+            event("call_video_frame_gap", mapOf("call_id" to callId, "gap" to gap))
+            requestRemoteIdr(force = true)
+        } else if (System.currentTimeMillis() - lastFrameAtMs > 1_500L) {
+            requestRemoteIdr(force = false)
+        }
+        lastRcvdSeq = sequenceNumber
+        lastFrameAtMs = System.currentTimeMillis()
         return try {
             if (!decoderConfigured) return false
             val data = Base64.decode(encoded, Base64.DEFAULT)
@@ -245,6 +279,7 @@ class CallVideoSession(
             drainDecoder(codec)
             receivedFrames.incrementAndGet()
             receivedBytes.addAndGet(data.size.toLong())
+            maybeReportQuality()
             true
         } catch (_: Exception) {
             droppedFrames.incrementAndGet()
@@ -252,10 +287,26 @@ class CallVideoSession(
         }
     }
 
+    private fun selectEncoderGeometry(manager: CameraManager, cameraId: String) {
+        val sizes = try {
+            manager.getCameraCharacteristics(cameraId)
+                .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputSizes(android.media.MediaCodec::class.java)
+                ?.toList() ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+        val chosen = RESOLUTION_LADDER.firstOrNull { (w, h, _) -> sizes.contains(android.util.Size(w, h)) }
+            ?: RESOLUTION_LADDER.last()
+        encWidth = chosen.first
+        encHeight = chosen.second
+        encBitrate = chosen.third
+        encBitrateCeiling = chosen.third * 2
+        event("call_video_source", mapOf("call_id" to callId, "width" to encWidth, "height" to encHeight, "fps" to FPS, "bitrate" to encBitrate))
+    }
+
     private fun configureEncoder() {
-        val format = MediaFormat.createVideoFormat(MIME, WIDTH, HEIGHT).apply {
+        val format = MediaFormat.createVideoFormat(MIME, encWidth, encHeight).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfoCompat.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, BITRATE)
+            setInteger(MediaFormat.KEY_BIT_RATE, encBitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, FPS)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL_SEC)
             if (Build.VERSION.SDK_INT >= 21) setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfoCompat.BITRATE_MODE_VBR)
@@ -268,10 +319,21 @@ class CallVideoSession(
         try {
             codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         } catch (e: Exception) {
+            // 720p/540p can be rejected on the weakest chips despite the
+            // SCALER map claiming support (concurrent-session limits) — drop
+            // one ladder rung and retry once before failing.
             runCatching { codec.release() }
+            val rung = RESOLUTION_LADDER.indexOfFirst { it.first == encWidth && it.second == encHeight }
+            if (rung >= 0 && rung < RESOLUTION_LADDER.lastIndex) {
+                val next = RESOLUTION_LADDER[rung + 1]
+                encWidth = next.first; encHeight = next.second
+                encBitrate = next.third; encBitrateCeiling = next.third * 2
+                configureEncoder()
+                return
+            }
             val detail = (e as? MediaCodec.CodecException)?.diagnosticInfo?.takeIf { it.isNotBlank() }
                 ?: e.message ?: e.javaClass.simpleName
-            throw IllegalStateException("Call video: H.264 encoder rejected 640x360 ($detail).")
+            throw IllegalStateException("Call video: H.264 encoder rejected ${encWidth}x${encHeight} ($detail).")
         }
         encoder = codec
         encoderInputSurface = codec.createInputSurface()
@@ -307,6 +369,18 @@ class CallVideoSession(
         } catch (_: Exception) { 0 }
         rotationDeg = if (front) (sensorOrientation + displayRotation) % 360
                       else (sensorOrientation - displayRotation + 360) % 360
+        // Pick the best supported capture size (once per call; the codec cannot
+        // resize without a restart, so a camera flip keeps the geometry).
+        if (encoder == null) {
+            selectEncoderGeometry(manager, selected)
+            ensureEncoder()
+        } else {
+            // Camera flipped mid-call: the peer's decoder still needs the NEW
+            // orientation; resend the cached codec config so rotation and
+            // geometry stay in sync (this was the sideways-after-flip bug).
+            val c0 = codecConfig0; val c1 = codecConfig1
+            if (c0 != null && c1 != null) sendCodecConfig(c0, c1)
+        }
         manager.openCamera(selected, object : CameraDevice.StateCallback() {
             override fun onOpened(device: CameraDevice) {
                 if (!running.get() || !enabled.get()) { device.close(); return }
@@ -406,8 +480,8 @@ class CallVideoSession(
             .put("sender_id", transportSender())
             .put("recipient_id", peerId)
             .put("call_id", callId)
-            .put("width", WIDTH)
-            .put("height", HEIGHT)
+            .put("width", encWidth)
+            .put("height", encHeight)
             .put("rotation", rotationDeg)
             .put("config", encoded)
         if (sendPacket(packet)) event("call_video_config_sent", mapOf("call_id" to callId, "peer_id" to peerId))
@@ -439,8 +513,18 @@ class CallVideoSession(
     }
 
     private fun configureDecoder(csd0: ByteArray, csd1: ByteArray, width: Int, height: Int) {
-        if (decoderConfigured) return
-        val format = MediaFormat.createVideoFormat(MIME, width.coerceAtLeast(2), height.coerceAtLeast(2)).apply {
+        val w = width.coerceAtLeast(2)
+        val h = height.coerceAtLeast(2)
+        if (decoderConfigured) {
+            if (decWidth == w && decHeight == h) return
+            // Geometry changed mid-call (peer flipped/ladder rerun): rebuild
+            // the decoder or frames land on a mis-sized surface.
+            try { decoder?.stop() } catch (_: Exception) {}
+            try { decoder?.release() } catch (_: Exception) {}
+            decoder = null
+            decoderConfigured = false
+        }
+        val format = MediaFormat.createVideoFormat(MIME, w, h).apply {
             setByteBuffer("csd-0", ByteBuffer.wrap(csd0))
             setByteBuffer("csd-1", ByteBuffer.wrap(csd1))
             if (Build.VERSION.SDK_INT >= 21) setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxOf(csd0.size + csd1.size, 256 * 1024))
@@ -449,7 +533,69 @@ class CallVideoSession(
         codec.configure(format, remoteSurface, null, 0)
         decoder = codec
         codec.start()
+        decWidth = w
+        decHeight = h
         decoderConfigured = true
+    }
+
+    /** Periodically tell the sender how the link feels so its bitrate can
+     * track the link instead of being pinned at the ladder target. */
+    private fun maybeReportQuality() {
+        framesSinceReport++
+        if (framesSinceReport < FPS * 10) return
+        framesSinceReport = 0
+        val decoded = receivedFrames.get()
+        val dropped = droppedFrames.get()
+        val dropPct = if (decoded + dropped > 0) (dropped * 100) / (decoded + dropped) else 0
+        event("call_video_quality", mapOf("call_id" to callId, "decoded_frames" to decoded, "dropped_frames" to dropped, "drop_pct" to dropPct, "decoder_size" to "${decWidth}x${decHeight}"))
+        val packet = JSONObject()
+            .put("type", "call_video_quality")
+            .put("sender_id", transportSender())
+            .put("recipient_id", peerId)
+            .put("call_id", callId)
+            .put("drop_pct", dropPct)
+        runCatching { sendPacket(packet) }
+    }
+
+    private fun requestRemoteIdr(force: Boolean) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastIdrRequestMs < 1_000L) return
+        lastIdrRequestMs = now
+        val packet = JSONObject()
+            .put("type", "call_video_keyframe_request")
+            .put("sender_id", transportSender())
+            .put("recipient_id", peerId)
+            .put("call_id", callId)
+        runCatching { sendPacket(packet) }
+    }
+
+    /** Sender-side control endpoints (invoked by the transport). */
+    fun onKeyframeRequest() {
+        val codec = encoder ?: return
+        if (Build.VERSION.SDK_INT < 19) return
+        try {
+            val bundle = android.os.Bundle()
+            bundle.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+            codec.setParameters(bundle)
+        } catch (_: Exception) {}
+    }
+
+    fun onPeerQuality(dropPct: Long) {
+        val codec = encoder ?: return
+        if (Build.VERSION.SDK_INT < 19) return
+        val next = when {
+            dropPct >= 5 -> (encBitrate * 4 / 5).coerceAtLeast(MIN_BITRATE)
+            dropPct <= 1 -> (encBitrate * 23 / 20).coerceAtMost(encBitrateCeiling)
+            else -> return
+        }
+        if (next == encBitrate) return
+        encBitrate = next
+        try {
+            val bundle = android.os.Bundle()
+            bundle.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, next)
+            codec.setParameters(bundle)
+            event("call_video_bitrate_step", mapOf("call_id" to callId, "bitrate" to next, "drop_pct" to dropPct))
+        } catch (_: Exception) {}
     }
 
     private fun drainDecoder(codec: MediaCodec) {

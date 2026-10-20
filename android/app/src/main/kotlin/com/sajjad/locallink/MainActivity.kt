@@ -467,7 +467,7 @@ class MainActivity : FlutterActivity() {
                         // the next step because the dialog is not blocking.
                         if (call.argument<Boolean>("enable_camera") != false &&
                             checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                            requestPermissions(arrayOf(Manifest.permission.CAMERA), 7813)
+                            requestWithRationale(arrayOf(Manifest.permission.CAMERA), 7813, "Camera access", "LocalLink needs the camera so the other person can see you on video calls. Allow it, then tap video again.")
                             result.error("CALL_MEDIA_ERROR", "Call video: camera permission needed. Allow it on the prompt, then tap video again.", null)
                             return@setMethodCallHandler
                         }
@@ -487,7 +487,7 @@ class MainActivity : FlutterActivity() {
                     "video_enabled" -> {
                         val videoEnabledArg = call.argument<Boolean>("enabled") != false
                         if (videoEnabledArg && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                            requestPermissions(arrayOf(Manifest.permission.CAMERA), 7813)
+                            requestWithRationale(arrayOf(Manifest.permission.CAMERA), 7813, "Camera access", "LocalLink needs the camera so the other person can see you on video calls. Allow it, then tap video again.")
                             result.error("CALL_MEDIA_ERROR", "Call video: camera permission needed. Allow it on the prompt, then tap video again.", null)
                             return@setMethodCallHandler
                         }
@@ -565,7 +565,7 @@ class MainActivity : FlutterActivity() {
 
     private fun startVoiceRecording(result: MethodChannel.Result) {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7812)
+            requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "Microphone access", "LocalLink needs the microphone so the other person can hear you on calls. Allow it, then start the call again.")
             result.error("PERMISSION", "Microphone permission is required", null)
             return
         }
@@ -643,6 +643,13 @@ class MainActivity : FlutterActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // Call mic (7812) / camera (7813): a real DENIAL gets the settings
+        // recovery once; nothing happens for silent/cancel fine-grained cases.
+        if (requestCode == 7812 || requestCode == 7813) {
+            val denied = grantResults.isNotEmpty() && grantResults.any { it != PackageManager.PERMISSION_GRANTED }
+            if (denied) offerPermissionSettings(if (requestCode == 7812) "Microphone" else "Camera")
+            return
+        }
         if (requestCode != wifiPermissionRequestCode) return
 
         val result = pendingWifiPermissionResult
@@ -766,8 +773,34 @@ class MainActivity : FlutterActivity() {
         }
 
         pendingWifiPermissionResult = result
-        requestPermissions(permissions, wifiPermissionRequestCode)
+        requestWithRationale(permissions, wifiPermissionRequestCode, "Nearby device access", "LocalLink uses Wi-Fi Direct to call and chat with nearby phones without internet. Allow nearby-device access to continue.")
     }
+    /** Playbook-compliant wrapper: explain WHY before the system dialog, then
+     * run the official runtime flow. Denials are settled through
+     * onRequestPermissionsResult -> offerPermissionSettings. */
+    private fun requestWithRationale(permissions: Array<String>, requestCode: Int, title: String, rationale: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(rationale)
+            .setNegativeButton("Not now", null)
+            .setPositiveButton("Continue") { _, _ -> requestPermissions(permissions, requestCode) }
+            .show()
+    }
+
+    private fun offerPermissionSettings(feature: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("$feature permission is off")
+            .setMessage("You declined $feature access. Calls that need $feature will stay limited. You can enable it any time in Settings.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Open settings") { _, _ ->
+                try {
+                    startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.fromParts("package", packageName, null)))
+                } catch (_: Exception) {}
+            }
+            .show()
+    }
+
     private fun hasWifiPermission():Boolean=if(android.os.Build.VERSION.SDK_INT>=33)checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)==PackageManager.PERMISSION_GRANTED else checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
     private fun registerWifiReceiver(){if(wifiReceiverRegistered)return;val filter=IntentFilter().apply{addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)};if(Build.VERSION.SDK_INT>=33)registerReceiver(wifiReceiver,filter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(wifiReceiver,filter);wifiReceiverRegistered=true}
     private fun unregisterWifiReceiver(){if(!wifiReceiverRegistered)return;try{unregisterReceiver(wifiReceiver)}catch(_:Exception){};wifiReceiverRegistered=false}

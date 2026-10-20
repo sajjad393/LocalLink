@@ -67,6 +67,12 @@ class CallSession {
   /// can undo the sensor-orientation stretch on a portrait-held phone.
   final int localVideoRotation;
   final int remoteVideoRotation;
+  /// Actual encoded geometry of each feed (the peer advertises its ladder
+  /// pick inside call_video_config; defaults match the old fixed 640x360).
+  final int localVideoWidth;
+  final int localVideoHeight;
+  final int remoteVideoWidth;
+  final int remoteVideoHeight;
   /// True while the peer's camera is actually streaming video for this call.
   /// Drives the WhatsApp-style fullscreen video view (and its avatar fallback
   /// when the peer turns the camera off mid-call).
@@ -99,6 +105,10 @@ class CallSession {
     this.remoteVideoTextureId,
     this.localVideoRotation = 0,
     this.remoteVideoRotation = 0,
+    this.localVideoWidth = 640,
+    this.localVideoHeight = 360,
+    this.remoteVideoWidth = 640,
+    this.remoteVideoHeight = 360,
     this.peerVideoActive = false,
     this.mediaNextHopId,
     this.mediaHopCount,
@@ -132,6 +142,10 @@ class CallSession {
     int? remoteVideoTextureId,
     int? localVideoRotation,
     int? remoteVideoRotation,
+    int? localVideoWidth,
+    int? localVideoHeight,
+    int? remoteVideoWidth,
+    int? remoteVideoHeight,
     bool? peerVideoActive,
     String? mediaNextHopId,
     int? mediaHopCount,
@@ -161,6 +175,10 @@ class CallSession {
         remoteVideoTextureId: remoteVideoTextureId ?? this.remoteVideoTextureId,
         localVideoRotation: localVideoRotation ?? this.localVideoRotation,
         remoteVideoRotation: remoteVideoRotation ?? this.remoteVideoRotation,
+        localVideoWidth: localVideoWidth ?? this.localVideoWidth,
+        localVideoHeight: localVideoHeight ?? this.localVideoHeight,
+        remoteVideoWidth: remoteVideoWidth ?? this.remoteVideoWidth,
+        remoteVideoHeight: remoteVideoHeight ?? this.remoteVideoHeight,
         peerVideoActive: peerVideoActive ?? this.peerVideoActive,
         mediaNextHopId: mediaNextHopId ?? this.mediaNextHopId,
         mediaHopCount: mediaHopCount ?? this.mediaHopCount,
