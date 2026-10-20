@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 
 class AppearanceSettingsScreen extends StatelessWidget {
@@ -59,6 +60,8 @@ class AppearanceSettingsScreen extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: LocalLinkSpacing.lg),
+          const Card(child: _VerboseLogsTile()),
         ],
       ),
     );
@@ -80,6 +83,34 @@ class AppearanceSettingsScreen extends StatelessWidget {
       secondary: Icon(icon),
       title: Text(title),
       subtitle: Text(subtitle),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: LocalLinkSpacing.md,
+        vertical: LocalLinkSpacing.xs,
+      ),
+    );
+  }
+}
+
+/// Verbose app logs are OFF by default (they flood logcat). Turn on only when
+/// a support capture is requested; warnings/errors are always logged either
+/// way. Not persisted: the app starts quiet again after a restart.
+class _VerboseLogsTile extends StatefulWidget {
+  const _VerboseLogsTile();
+
+  @override
+  State<_VerboseLogsTile> createState() => _VerboseLogsTileState();
+}
+
+class _VerboseLogsTileState extends State<_VerboseLogsTile> {
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      value: AppLogger.verbose,
+      onChanged: (value) => setState(() => AppLogger.verbose = value),
+      secondary: const Icon(Icons.terminal_outlined),
+      title: const Text('Diagnostic capture mode'),
+      subtitle: const Text(
+          'Verbose logs for support captures. Turns off when the app restarts.'),
       contentPadding: const EdgeInsets.symmetric(
         horizontal: LocalLinkSpacing.md,
         vertical: LocalLinkSpacing.xs,

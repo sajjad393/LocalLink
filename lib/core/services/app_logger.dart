@@ -10,8 +10,14 @@ class AppLogger {
 
   static const String _name = 'LocalLink';
 
+  /// Bundle 60: routine INFO events were flooding logcat. Quiet by default;
+  /// flip on from Appearance settings ("Diagnostic capture mode") only when a
+  /// capture is requested. Warnings and errors always print.
+  static bool verbose = false;
+
   static void info(String event, {String? detail}) {
     AppDiagnostics.instance.record('app', event);
+    if (!verbose) return;
     final message = _format(event, detail: detail);
     developer.log(message, name: _name, level: 800);
   }
