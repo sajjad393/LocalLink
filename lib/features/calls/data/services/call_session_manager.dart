@@ -80,6 +80,7 @@ final class CallSessionManager implements CallGateway {
   // window suppresses their user-facing 'reconnecting' flips. 7s covers
   // the 5s stats tick plus slack.
   int _lastMediaPacketsReceived = -1;
+  CallQualitySample? _lastQualitySample;
   DateTime? _lastMediaRxAt;
   bool get _mediaIsLive {
     final at = _lastMediaRxAt;
@@ -897,7 +898,7 @@ final class CallSessionManager implements CallGateway {
               recoveryAttempts: 0,
               mediaNextHopId: event['next_hop_id']?.toString(),
               mediaHopCount: (event['hop_count'] as num?)?.toInt()));
-          unawaited(_persistSession());
+          _queuePersistSession();
         } else if (session.direction == CallDirection.outgoing &&
             session.state == CallState.connecting) {
           // Route is back before the invite was acked: fire a resend now
@@ -1259,7 +1260,7 @@ final class CallSessionManager implements CallGateway {
               state: CallState.reconnecting,
               quality: CallQuality.reconnecting,
               reason: reason ?? current.reason));
-          unawaited(_persistSession());
+          _queuePersistSession();
         }
         break;
       case 'failed':
@@ -1310,6 +1311,13 @@ final class CallSessionManager implements CallGateway {
     _cancelCallTimers();
     unawaited(ringtone.stopRingback());
     final endedAt = DateTime.now();
+    _persistTimer?.cancel();
+    _persistPending = false;
+    final lastSample = _lastQualitySample;
+    _lastQualitySample = null;
+    if (lastSample != null) {
+      unawaited(store.saveCallQualitySample(lastSample));
+    }
     final next =
         session.copyWith(state: state, endedAt: endedAt, reason: reason);
     _setSession(next);
@@ -1365,8 +1373,11 @@ final class CallSessionManager implements CallGateway {
         packetLossPercent: loss,
         quality: quality.name,
       );
-      await LocalStore.timedOp(
-          'call_quality_save', () => store.saveCallQualitySample(sample));
+      // Bundle 61: samples fire every second during a call. Writing each one
+      // through the serialized SQLCipher queue was the engine behind the
+      // 50-90s STORE_OP_SLOW pileups on weak handsets; keep them in memory
+      // and persist exactly one at call end instead.
+      _lastQualitySample = sample;
       final hadRxCounter = stats.containsKey('packets_received') ||
           stats.containsKey('received_packets');
       final rxNow =
@@ -1395,7 +1406,7 @@ final class CallSessionManager implements CallGateway {
               quality: quality,
               qualitySample: sample,
               recoveryAttempts: 0));
-          unawaited(_persistSession());
+          _queuePersistSession();
         } else {
           _setSession(latest.copyWith(quality: quality, qualitySample: sample));
         }
@@ -1484,6 +1495,22 @@ final class CallSessionManager implements CallGateway {
     if (session == null || self == null) return;
     await LocalStore.timedOp(
         'call_save', () => store.saveCall(session.toRecord(self)));
+  }
+
+  // Bundle 61: route/recovery paths fire this on every mesh event; coalesce
+  // to one trailing write per 3s so the DB queue never piles up mid-call.
+  Timer? _persistTimer;
+  bool _persistPending = false;
+
+  void _queuePersistSession() {
+    _persistPending = true;
+    if (_persistTimer?.isActive == true) return;
+    _persistTimer = Timer(const Duration(seconds: 3), () {
+      _persistTimer = null;
+      if (!_persistPending || _disposed) return;
+      _persistPending = false;
+      unawaited(_persistSession());
+    });
   }
 
   void _setSession(CallSession? session) {
