@@ -89,8 +89,12 @@ class _CoverTexture extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Native feed is 640x360 (16:9); cover-crop like WhatsApp video calls,
-    // undoing the capture-side sensor rotation first.
-    final quarterTurns = (rotation ~/ 90) & 3;
+    // undoing the capture-side sensor rotation first. Camera2 supplies the
+    // raw sensor buffer unrotated: to make it upright the UI layer rotates
+    // by the INVERSE of the capture rotation (Camera2Basic matrix uses -90
+    // for a portrait phone) -> 360 - rot, not rot. This was the sideways
+    // video in portrait mode.
+    final quarterTurns = ((360 - rotation) ~/ 90) & 3;
     final sideways = quarterTurns.isOdd;
     return FittedBox(
       fit: BoxFit.cover,

@@ -54,7 +54,7 @@ class CallVideoSession(
         // crossing, heartbeat PEER_UNAVAILABLE). Keep frames far below it;
         // an oversize keyframe is simply skipped (decoder waits <=2s for the
         // next one) instead of killing the whole call.
-        private const val MAX_PACKET_BYTES = 40 * 1024
+        private const val MAX_PACKET_BYTES = 96 * 1024 // bundle 64: reader wall is 256KB now -> 96KB restores keyframe quality with margin
     }
 
     private val running = AtomicBoolean(false)
