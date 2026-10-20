@@ -130,8 +130,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // official runtime flow. Never repeats on rebuilds or tab refreshes.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        // A permission-dialog hiccup must never block the dashboard.
         AppPermissionGate.ensureNotificationsOnDashboardEntry(
-            context, widget.notifications);
+                context, widget.notifications)
+            .catchError((_) {});
       }
     });
     _themeMode = widget.themeMode;
