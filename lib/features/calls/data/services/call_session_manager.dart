@@ -932,6 +932,17 @@ final class CallSessionManager implements CallGateway {
           unawaited(_acceptRemoteVideo(session));
         }
       }
+      // Bundle 59: native drop ledger for inbound video packets (named reasons,
+      // 2s summaries) plus decoder config failures -- the next capture names
+      // exactly why peer video never paints.
+      if (eventTargets && type == 'call_video_drop') {
+        AppLogger.warning('CALL_VIDEO_DROP',
+            detail: 'call=${session.id} ${event['reasons']}');
+      }
+      if (eventTargets && type == 'call_video_decoder_error') {
+        AppLogger.error('CALL_VIDEO_DECODER_ERROR',
+            detail: 'call=${session.id} err=${event['error']}');
+      }
       // Peer video rotation arrives alongside each codec config frame; keep the
       // display angle synced so a portrait-held phone stops stretching video.
       if (eventTargets && type == 'call_video_config_received') {

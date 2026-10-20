@@ -213,10 +213,15 @@ class CallVideoSession(
             if (csd0.isEmpty() || csd1.isEmpty()) return false
             configureDecoder(csd0, csd1, width, height)
             true
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Decoder setup failures used to be invisible: every remote frame
+            // then dropped forever with zero log signal.
+            event("call_video_decoder_error", mapOf("call_id" to callId, "peer_id" to peerId, "error" to (e.message ?: e.javaClass.simpleName)))
             false
         }
     }
+
+    fun isDecoderConfigured(): Boolean = decoderConfigured
 
     fun onIncomingFrame(sequenceNumber: Long, timestampMs: Long, encoded: String, sourceId: String, destinationId: String): Boolean {
         if (!running.get() || encoded.isBlank()) return false

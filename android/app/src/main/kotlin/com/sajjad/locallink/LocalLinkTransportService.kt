@@ -211,6 +211,24 @@ class LocalLinkTransportService : Service() {
     // media frame is re-wrapped in a new mesh packet.
     private val callMediaRecent = ConcurrentHashMap<String, Long>()
     private val remoteVideoAskRecent = ConcurrentHashMap<String, Long>()
+
+    // Bundle 59 diagnostic: inbound video frames were dropped for a dozen
+    // different reasons with NO log output, making "video never crosses to the
+    // other phone" undebuggable from the field. Summarize drops every 2s as a
+    // transport event so app logs name the exact gate that is rejecting them.
+    private val videoDropCounts = ConcurrentHashMap<String, Int>()
+    @Volatile private var videoDropLastLogged = 0L
+
+    private fun noteVideoDrop(reason: String) {
+        videoDropCounts.merge(reason, 1, Int::plus)
+        val now = System.currentTimeMillis()
+        if (now - videoDropLastLogged >= 2_000L) {
+            videoDropLastLogged = now
+            val snapshot = videoDropCounts.entries.joinToString(",") { "${it.key}=${it.value}" }
+            videoDropCounts.clear()
+            if (snapshot.isNotEmpty()) transportEvent("call_video_drop", mapOf("reasons" to snapshot))
+        }
+    }
     private val callMediaMaxRecent = 512
     private val incomingFiles = ConcurrentHashMap<String, IncomingFileTransfer>()
     private val outgoingTransfers = ConcurrentHashMap<String, OutgoingFileTransfer>()
@@ -1136,28 +1154,36 @@ class LocalLinkTransportService : Service() {
             ))
             return
         }
-        if (payload.optString("call_id") != current.callId || packet.sourceNodeId != current.peerId) return
+        if (payload.optString("call_id") != current.callId || packet.sourceNodeId != current.peerId) { noteVideoDrop("config_mismatch"); return }
         val encoded = payload.optString("config").trim()
-        if (encoded.isBlank()) return
+        if (encoded.isBlank()) { noteVideoDrop("config_empty"); return }
         if (current.onIncomingConfig(encoded, payload.optInt("width", 640), payload.optInt("height", 360), packet.sourceNodeId, packet.destinationNodeId)) {
             transportEvent("call_video_config_received", mapOf("call_id" to current.callId, "peer_id" to current.peerId, "rotation" to payload.optInt("rotation", 0)))
         }
     }
 
     private fun handleIncomingCallVideoFrame(packet:MeshPacket) {
-        val current = callVideo ?: return
+        val current = callVideo ?: run { noteVideoDrop("no_video_session"); return }
         val payload = packet.payload
-        if (payload.optString("call_id") != current.callId || packet.sourceNodeId != current.peerId) return
-        if (payload.optString("recipient_id").trim() != transportDeviceId) return
-        if (payload.optString("sender_id").trim() != packet.sourceNodeId) return
+        if (payload.optString("call_id") != current.callId) { noteVideoDrop("call_id_mismatch"); return }
+        if (packet.sourceNodeId != current.peerId) { noteVideoDrop("sender_mismatch"); return }
+        if (payload.optString("recipient_id").trim() != transportDeviceId) { noteVideoDrop("not_for_me"); return }
+        if (payload.optString("sender_id").trim() != packet.sourceNodeId) { noteVideoDrop("sender_field_mismatch"); return }
         val sequence = payload.optLong("sequence", -1L)
-        if (sequence < 0L || sequence > Long.MAX_VALUE - 1L) return
+        if (sequence < 0L || sequence > Long.MAX_VALUE - 1L) { noteVideoDrop("bad_sequence"); return }
         val timestamp = payload.optLong("timestamp_ms", 0L)
-        if (timestamp <= 0L || kotlin.math.abs(System.currentTimeMillis() - timestamp) > 120_000L) return
+        // NOTE: no freshness check here. Phone clocks on a mesh drift by
+        // minutes+ (this exact class of bug killed call invites before); a
+        // stale-looking timestamp is harmless downstream, the decoder simply
+        // displays frames in arrival order, and replay storms are stopped by
+        // the mesh seen-packet dedupe instead.
         val encoded = payload.optString("video").trim()
-        if (encoded.isBlank()) return
+        if (encoded.isBlank()) { noteVideoDrop("empty_payload"); return }
+        if (!current.isDecoderConfigured()) { noteVideoDrop("awaiting_decoder_config"); return }
         if (current.onIncomingFrame(sequence, timestamp, encoded, packet.sourceNodeId, packet.destinationNodeId)) {
             transportEvent("call_video_received", mapOf("call_id" to current.callId, "sequence" to sequence, "key_frame" to payload.optBoolean("key_frame", false), "hop_count" to packet.hopCount))
+        } else {
+            noteVideoDrop("frame_rejected")
         }
     }
 
