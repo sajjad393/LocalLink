@@ -7,6 +7,7 @@ import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
+import 'package:locallink/features/directory/data/contact_edge.dart';
 import 'package:locallink/features/directory/data/phone_number_normalizer.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
@@ -30,6 +31,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   bool _syncInFlight = false;
   DateTime? _lastSyncAt;
   bool _serverContactsSyncInFlight = false;
+  // Edges received before the author's directory profile (and therefore the
+  // signing key we must verify with) was cached. Re-attempted whenever a
+  // profile lands; gossip round-trips are seconds, not minutes.
+  final List<Map<String, dynamic>> _pendingEdges = <Map<String, dynamic>>[];
 
   DirectoryRepository({
     required this.store,
@@ -194,7 +199,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     }
 
     final type = message['type']?.toString() ?? '';
-    if (!type.startsWith('DIRECTORY_')) return;
+    if (!type.startsWith('DIRECTORY_') && type != 'CONTACT_EDGE') return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final createdAt = int.tryParse(message['created_at']?.toString() ?? '') ?? now;
@@ -204,7 +209,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final isGossip = type == 'DIRECTORY_PROFILE' ||
         type == 'DIRECTORY_PROFILE_REVOKED' ||
         type == 'DIRECTORY_PROFILE_QUERY' ||
-        type == 'DIRECTORY_SYNC_REQUEST';
+        type == 'DIRECTORY_SYNC_REQUEST' ||
+        type == 'CONTACT_EDGE';
 
     if (expiresAt <= now ||
         createdAt > now + const Duration(minutes: 2).inMilliseconds) {
@@ -219,6 +225,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     }
 
     switch (type) {
+      case 'CONTACT_EDGE':
+        await _handleContactEdge(message);
+        return;
       case 'DIRECTORY_PROFILE':
         final map = message['profile'];
         if (map is! Map) return;
@@ -226,6 +235,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         if (await _saveVerified(profile)) {
           _updates.add(profile);
           await _forwardGossip(message);
+          await _flushPendingEdgesFor(profile.userId);
         }
         return;
 
@@ -733,7 +743,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     _serverContactsSyncInFlight = true;
     try {
       final confirmed = await store.serverConfirmedContactIds();
-      final localIds = await store.contactUserIds();
+      final localIds = await store.rawContactUserIds();
 
       // Push local offline adds (local, but never confirmed by the server).
       for (final id in localIds.difference(confirmed)) {
@@ -791,6 +801,122 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     }
   }
 
+  /// Broadcasts a signed contact-edge gossip so the peer learns about the
+  /// relationship change over Wi-Fi Direct/mesh even while the account
+  /// server is unreachable. Gossip hops/ttl/expiry/replay-dedupe match the
+  /// directory sync envelopes; the signature lets relays forward freely while
+  /// only the addressee applies (and only after verifying it).
+  Future<void> publishContactEdge(String op, String toUserId) async {
+    try {
+      final fromUserId = store.accountId ?? '';
+      final fromDeviceId = store.deviceId ?? '';
+      final edgedTs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      final edge = ContactEdge(
+        op: op,
+        fromUserId: fromUserId,
+        fromDeviceId: fromDeviceId,
+        toUserId: toUserId,
+        edgeTs: edgedTs,
+      );
+      if (!edge.isValid || toUserId == fromUserId) return;
+      await store.saveContactEdgeState(toUserId, op, edgedTs);
+      if (!transport.isStarted) return; // server sync is the fallback path
+      final signature = await crypto.signPayload(edge.canonical());
+      final signingKey = await crypto.signingPublicKey();
+      await transport.broadcast({
+        ..._gossipEnvelope(
+          type: 'CONTACT_EDGE',
+          syncId: 'contact-edge-${fromDeviceId.isEmpty ? 'self' : fromDeviceId}-${edge.edgeTs}',
+          originId: store.deviceId,
+          originUserId: store.accountId,
+        ),
+        ...edge.toMap(),
+        'edge_sig': signature,
+        'edge_signing_key': signingKey,
+      });
+      await transport.flushQueue();
+    } catch (e) {
+      AppLogger.warning('CONTACT_EDGE_PUBLISH_FAILED', detail: e.toString());
+    }
+  }
+
+  Future<void> _handleContactEdge(Map<String, dynamic> message) async {
+    final edge = ContactEdge.fromWire(message);
+    if (edge == null) return;
+    final expiresAt = int.tryParse(message['expires_at']?.toString() ?? '') ?? 0;
+    if (expiresAt > 0 && expiresAt <= DateTime.now().millisecondsSinceEpoch) return;
+    // Forward first so the envelope can reach its intended recipient over
+    // multi-hop links; the dedupe marker was already set above.
+    await _forwardGossip(message);
+
+    final me = store.accountId ?? '';
+    if (me.isEmpty || edge.toUserId != me) return; // not addressed to us
+    // Only the claimed AUTHOR may be trusted: source user must sign with the
+    // directory signing key we already hold for them (profiles arrive via the
+    // same gossip; fail secure when the key is unknown yet).
+    if (await store.isBlocked(edge.fromUserId) ||
+        await store.isBlockedPeer(edge.fromDeviceId)) {
+      AppLogger.warning('CONTACT_EDGE_BLOCKED_SENDER', detail: 'ignored');
+      return;
+    }
+    Map<String, dynamic>? author;
+    try {
+      author = await store.directoryProfile(edge.fromUserId);
+    } catch (_) {}
+    final key = author?['signing_public_key']?.toString() ?? '';
+    final signature = message['edge_sig']?.toString() ?? '';
+    if (key.isEmpty || signature.isEmpty) {
+      // Profile/gossip race: the edge legitimately arrived BEFORE the
+      // author's directory profile. Park it and re-apply when that profile
+      // arrives (see the DIRECTORY_PROFILE case).
+      if (_pendingEdges.length < 32) _pendingEdges.add(Map<String, dynamic>.from(message));
+      AppLogger.warning('CONTACT_EDGE_DEFERRED', detail: 'waiting for author profile');
+      return;
+    }
+    final verifyOk = await crypto.verifyPayloadSignature(
+      canonicalPayload: edge.canonical(),
+      signature: signature,
+      signingPublicKey: key,
+    );
+    if (!verifyOk) {
+      AppLogger.warning('CONTACT_EDGE_BAD_SIGNATURE', detail: 'dropped forged edge');
+      return;
+    }
+    // Last-writer-wins on the sender-claimed timestamp; stale relays can't
+    // resurrect an edge that is newer than the local ledger entry.
+    final localRaw = await store.contactEdgeState(edge.fromUserId);
+    final apply = ContactEdge.decideApply(edge, localRaw);
+    if (apply == null) return;
+    await store.saveContactEdgeState(edge.fromUserId, edge.op, edge.edgeTs);
+    if (edge.op == ContactEdge.opAdd) {
+      final fromDevice = edge.fromDeviceId;
+      if (fromDevice.isNotEmpty) {
+        await store.addContact(edge.fromUserId, fromDevice);
+      } else if (!await store.isContact(edge.fromUserId)) {
+        return; // can't add without a usable device id
+      }
+      // Make the join-based contacts list displayable immediately.
+      unawaited(getProfile(edge.fromUserId).catchError((_) => null));
+    } else {
+      await store.removeContact(edge.fromUserId);
+      // Leave the id in the confirmed-set: syncServerContacts' removal-push
+      // compares it with local state and forwards the deletion to the server
+      // on its next cycle (offline-safe).
+      AppLogger.info('CONTACT_EDGE_REMOVE_DEFERRED', detail: 'server remove deferred to sync cycle');
+    }
+  }
+
+  Future<void> _flushPendingEdgesFor(String userId) async {
+    if (_pendingEdges.isEmpty) return;
+    final pending = _pendingEdges.where((m) =>
+        m['from_user_id']?.toString() == userId).toList();
+    if (pending.isEmpty) return;
+    _pendingEdges.removeWhere((m) => pending.contains(m));
+    for (final message in pending) {
+      await _handleContactEdge(message);
+    }
+  }
+
   @override
   Future<void> addContact(String userId) async {
     final id = userId.trim();
@@ -823,6 +949,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       }
     }
     unawaited(syncServerContacts());
+    unawaited(publishContactEdge(ContactEdge.opAdd, id));
   }
 
   @override
@@ -841,6 +968,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       }
     }
     unawaited(syncServerContacts());
+    unawaited(publishContactEdge(ContactEdge.opRemove, userId.trim()));
   }
 
   @override

@@ -1049,7 +1049,8 @@ class LocalStore {
   /// Raw contact user ids regardless of whether a directory profile is cached
   /// for them — required by the server contacts reconciliation, which must
   /// also see contacts whose profile has not arrived over the directory yet.
-  Future<Set<String>> contactUserIds() async {
+  /// (Named distinctively; the phase5 test fakes own a contactUserIds field.)
+  Future<Set<String>> rawContactUserIds() async {
     final rows = await _db.query('contacts', columns: ['user_id']);
     return rows
         .map((row) => row['user_id']?.toString() ?? '')
@@ -1075,6 +1076,22 @@ class LocalStore {
   Future<void> saveServerConfirmedContactIds(Set<String> ids) async {
     await _putSetting(
         'server_confirmed_contacts', (ids.toList()..sort()).join(','));
+  }
+
+  /// Last-writer-wins ledger of applied contact-edge ops keyed by peer user
+  /// id ("add|<epochMs>" / "remove|<epochMs>"). Records BOTH locally created
+  /// ops and ops applied from a received mesh edge; a stale gossip replay
+  /// can never resurrect an edge newer than the recorded one.
+  Future<String?> contactEdgeState(String userId) async {
+    if (userId.isEmpty) return null;
+    final rows = await _db.query('settings',
+        where: 'key=?', whereArgs: ['contact_edge_$userId'], limit: 1);
+    return rows.isEmpty ? null : rows.first['value']?.toString();
+  }
+
+  Future<void> saveContactEdgeState(String userId, String op, int ts) async {
+    if (userId.isEmpty) return;
+    await _putSetting('contact_edge_$userId', op + '|' + ts.toString());
   }
   Future<void> blockUser(String userId) async {
     await _db.insert(

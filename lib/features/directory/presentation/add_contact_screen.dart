@@ -24,8 +24,7 @@ class AddContactScreen extends StatefulWidget {
 }
 
 class _AddContactScreenState extends State<AddContactScreen> {
-  final phone = TextEditingController();
-  final name = TextEditingController();
+  final query = TextEditingController();
   late final DirectoryBloc bloc;
   bool searching = false;
 
@@ -33,12 +32,12 @@ class _AddContactScreenState extends State<AddContactScreen> {
   void initState() {
     super.initState();
     bloc = DirectoryBloc(widget.repository);
+    query.addListener(() => setState(() {})); // keeps the clear icon in sync
   }
 
   @override
   void dispose() {
-    phone.dispose();
-    name.dispose();
+    query.dispose();
     bloc.close();
     super.dispose();
   }
@@ -47,32 +46,27 @@ class _AddContactScreenState extends State<AddContactScreen> {
         (state) => state is DirectoryResults || state is DirectoryError,
       );
 
-  Future<void> _phone() async {
-    if (phone.text.trim().isEmpty || searching) return;
-    setState(() => searching = true);
-    bloc.add(SearchDirectoryByPhone(phone.text));
-    final state = await _waitForResult();
-    if (!mounted) return;
-    setState(() => searching = false);
-    if (state is DirectoryResults && state.profiles.isNotEmpty) {
-      _open(state.profiles.first);
-    } else if (state is DirectoryError) {
-      _showError(state.message);
-    } else {
-      _showError('User not found or not discoverable');
-    }
+  /// Phone if it consists (mostly) of digits/+/-/()/spaces with >= 5 digits;
+  /// anything else is treated as a name/username query.
+  static bool _looksLikePhone(String raw) {
+    if (!RegExp(r'^[+0-9()\- ]+$').hasMatch(raw)) return false;
+    return raw.replaceAll(RegExp(r'[^0-9]'), '').length >= 5;
   }
 
-  Future<void> _name() async {
-    if (name.text.trim().isEmpty || searching) return;
+  Future<void> _search() async {
+    final text = query.text.trim();
+    if (text.isEmpty || searching) return;
     setState(() => searching = true);
-    bloc.add(SearchDirectoryByName(name.text));
+    final asPhone = _looksLikePhone(text);
+    bloc.add(asPhone ? SearchDirectoryByPhone(text) : SearchDirectoryByName(text));
     final state = await _waitForResult();
     if (!mounted) return;
     setState(() => searching = false);
     if (state is DirectoryResults) {
       if (state.profiles.isEmpty) {
         _showError('No matching users found');
+      } else if (state.profiles.length == 1) {
+        _open(state.profiles.first);
       } else {
         _showResults(state.profiles);
       }
@@ -166,31 +160,44 @@ class _AddContactScreenState extends State<AddContactScreen> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 6),
-            const Text('Use a phone number, name, username, or QR code.'),
+            Text(
+              'Search by name, @username, or phone number — or scan a QR code.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
             const SizedBox(height: 22),
             TextField(
-              controller: phone,
-              keyboardType: TextInputType.phone,
+              controller: query,
               textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _phone(),
+              onSubmitted: (_) => _search(),
               decoration: InputDecoration(
-                labelText: 'Phone number',
-                suffixIcon: IconButton(
-                  onPressed: searching ? null : _phone,
-                  icon: const Icon(Icons.search),
+                hintText: 'Name, username, or phone number',
+                filled: true,
+                prefixIcon: searching
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : const Icon(Icons.search),
+                suffixIcon: query.text.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: searching
+                            ? null
+                            : () => setState(query.clear),
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Clear',
+                      ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(28),
+                  borderSide: BorderSide.none,
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: name,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _name(),
-              decoration: InputDecoration(
-                labelText: 'Name or username',
-                suffixIcon: IconButton(
-                  onPressed: searching ? null : _name,
-                  icon: const Icon(Icons.search),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
                 ),
               ),
             ),
@@ -200,10 +207,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
               icon: const Icon(Icons.qr_code_scanner),
               label: const Text('Scan QR code'),
             ),
-            if (searching) ...[
-              const SizedBox(height: 18),
-              const Center(child: CircularProgressIndicator()),
-            ],
+
           ],
         ),
       );
