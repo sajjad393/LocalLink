@@ -734,10 +734,18 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       throw Exception('Contact has no active device');
     }
     await store.addContact(id, profile.deviceId);
+    // Mirror to the account on the server so contacts survive reinstalls.
+    // Best-effort: the local add succeeds even when the server is offline; a
+    // fresh-install restore reconciles using the last mirrored list.
+    unawaited(api.addAccountContact(id).catchError((_) {}));
   }
 
   @override
-  Future<void> removeContact(String userId) => store.removeContact(userId);
+  @override
+  Future<void> removeContact(String userId) async {
+    await store.removeContact(userId);
+    unawaited(api.removeAccountContact(userId).catchError((_) {}));
+  }
 
   @override
   Future<void> blockUser(String userId) async {

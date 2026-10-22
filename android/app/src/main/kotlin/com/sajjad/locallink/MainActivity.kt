@@ -123,6 +123,20 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Stable per-device identity survives app reinstall/data-clear (resets
+        // only on factory reset or signing-key change). Used to re-bind this
+        // physical phone to its existing device row and to restore the account.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "locallink/device").setMethodCallHandler { call, result ->
+            if (call.method == "androidId") {
+                try {
+                    result.success(android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "")
+                } catch (e: Exception) {
+                    result.success("")
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
         wifiChannel = wifiManager.initialize(this, mainLooper, null)
         registerWifiReceiver()

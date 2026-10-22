@@ -8,6 +8,7 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/features/authentication/presentation/screens/setup_screen.dart';
+import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 
@@ -19,6 +20,7 @@ class WelcomeScreen extends StatelessWidget {
   final Future<void> Function() onSaved;
   final RecoveryRepositoryContract recoveryRepository;
   final AccountTransferRepositoryContract transferRepository;
+  final AccountRestorationRepositoryContract restorationService;
 
   const WelcomeScreen({
     super.key,
@@ -29,6 +31,7 @@ class WelcomeScreen extends StatelessWidget {
     required this.onSaved,
     required this.recoveryRepository,
     required this.transferRepository,
+    required this.restorationService,
   });
 
   void _openAuth(BuildContext context, {required bool register}) {
@@ -43,6 +46,7 @@ class WelcomeScreen extends StatelessWidget {
           onSaved: onSaved,
           recoveryRepository: recoveryRepository,
           transferRepository: transferRepository,
+          restorationService: restorationService,
           initialRegisterMode: register,
         ),
       ),

@@ -324,6 +324,7 @@ class LocalLinkApi {
         'username': username.trim().toLowerCase(),
         'password': password,
         'device_id': id,
+        'hardware_fp': store.hardwareFp,
         'device_name': deviceName.trim(),
         'platform': 'android',
         if (pairingCode != null && pairingCode.trim().isNotEmpty) 'pairing_code': pairingCode.trim(),
@@ -361,6 +362,7 @@ class LocalLinkApi {
         'username': username.trim().toLowerCase(),
         'password': password,
         'device_id': id,
+        'hardware_fp': store.hardwareFp,
         'device_name': deviceName.trim(),
         'platform': 'android',
         if (pairingCode != null && pairingCode.trim().isNotEmpty) 'pairing_code': pairingCode.trim(),
@@ -716,6 +718,27 @@ class LocalLinkApi {
 
   Future<void> disableRecoveryCode() async {
     final response = await await http.post(Uri.parse('$baseUrl/api/v1/account/recovery-code/disable'), headers: _headers()).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) throw Exception(_error(response));
+  }
+
+  // Mirrors contact list changes to the account on the server so contacts
+  // survive reinstalls (they were previously stored locally only). Failures
+  // are non-fatal for the local action; the next successful sync/restore
+  // reconciles the server list.
+  Future<void> addAccountContact(String userId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/v1/account/contacts'),
+      headers: _headers(),
+      body: jsonEncode({'user_id': userId.trim()}),
+    ).timeout(const Duration(seconds: 6));
+    if (response.statusCode != 200) throw Exception(_error(response));
+  }
+
+  Future<void> removeAccountContact(String userId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/api/v1/account/contacts/${Uri.encodeComponent(userId.trim())}'),
+      headers: _headers(),
+    ).timeout(const Duration(seconds: 6));
     if (response.statusCode != 200) throw Exception(_error(response));
   }
 

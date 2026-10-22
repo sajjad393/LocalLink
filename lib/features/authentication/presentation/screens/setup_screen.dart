@@ -8,6 +8,9 @@ import 'package:locallink/core/widgets/local_link_text_field.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/presentation/screens/profile_screen.dart';
 import 'package:locallink/features/authentication/bloc/authentication_bloc.dart';
+import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/core/models/account_restore.dart';
+import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
@@ -22,6 +25,7 @@ class SetupScreen extends StatefulWidget {
   final Future<void> Function() onSaved;
   final RecoveryRepositoryContract recoveryRepository;
   final AccountTransferRepositoryContract transferRepository;
+  final AccountRestorationRepositoryContract restorationService;
   final bool initialRegisterMode;
 
   const SetupScreen({
@@ -33,6 +37,7 @@ class SetupScreen extends StatefulWidget {
     required this.onSaved,
     required this.recoveryRepository,
     required this.transferRepository,
+    required this.restorationService,
     this.initialRegisterMode = false,
   });
 
@@ -68,6 +73,13 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   Future<void> _completeAuthentication(AuthResult result) async {
+    // Login (not registration) onto a dataless install: pull the account's
+    // server-backed history automatically instead of silently showing an
+    // empty chat list.
+    if (!_controller.registerMode && mounted) {
+      await _maybeRestoreAccountData();
+    }
+
     if (_controller.registerMode && result.recoveryCode.isNotEmpty && mounted) {
       await showDialog<void>(
         context: context,
@@ -105,6 +117,141 @@ class _SetupScreenState extends State<SetupScreen> {
     await widget.onSaved();
   }
 
+  Future<void> _maybeRestoreAccountData() async {
+    final store = widget.store;
+    if (store.accountId == null || store.accountId!.isEmpty) return;
+    final isEmpty = await store.localAccountDataIsEmpty();
+    if (!isEmpty) return; // existing install data -> normal login, never overwrite
+    AccountRestoreManifest manifest;
+    try {
+      manifest = await widget.restorationService.loadManifest();
+    } catch (error) {
+      // Restore must not block login silently; surface and let the user retry
+      // from Account Center instead of masking the failure as "no history".
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                'Could not check your account history on the server (${cleanBlocError(error)}). You can restore it later from Account > Account data.')));
+      }
+      return;
+    }
+    final total = (manifest.counts['messages'] ?? 0) +
+        (manifest.counts['group_messages'] ?? 0) +
+        (manifest.counts['calls'] ?? 0) +
+        (manifest.counts['files'] ?? 0) +
+        (manifest.counts['contacts'] ?? 0);
+    if (total <= 0) return; // genuinely a fresh account
+    if (!mounted) return;
+
+    String? passphrase;
+    if (manifest.cryptoBackupAvailable) {
+      passphrase = await _restorePassphraseDialog();
+      if (!mounted) return;
+    }
+    await _runRestoreWithProgress(passphrase: passphrase);
+  }
+
+  Future<String?> _restorePassphraseDialog() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore encrypted identity keys?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+                'This account has an encrypted backup of its identity keys. Enter the backup passphrase to also restore message decryption keys, or skip it.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Backup passphrase'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Skip'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Restore keys'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runRestoreWithProgress({String? passphrase}) async {
+    while (mounted) {
+      final detail = ValueNotifier<String>('Starting restore…');
+      final done = showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: const Text('Restoring your account'),
+            content: Row(
+              children: [
+                const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: detail,
+                    builder: (_, text, __) => Text(text),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      try {
+        await widget.restorationService.restoreAccountData(
+          cryptoBackupPassphrase: (passphrase != null && passphrase.isNotEmpty) ? passphrase : null,
+          onProgress: (p) => detail.value = p.detail,
+        );
+        if (!mounted) return;
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Your conversations and contacts are restored.')));
+        return;
+      } catch (error) {
+        if (!mounted) return;
+        Navigator.of(context, rootNavigator: true).pop();
+        final retry = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Restore failed'),
+            content: Text(
+                'The account history could not be restored (${cleanBlocError(error)}). You can retry now — the app will NOT pretend the account is empty.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Later'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        );
+        if (retry != true) return;
+      } finally {
+        detail.dispose();
+      }
+    }
+  }
+
   void _openRecovery() {
     Navigator.push(
       context,
@@ -130,6 +277,7 @@ class _SetupScreenState extends State<SetupScreen> {
           onSaved: widget.onSaved,
           recoveryRepository: widget.recoveryRepository,
           transferRepository: widget.transferRepository,
+          restorationService: widget.restorationService,
           initialRegisterMode: !_controller.registerMode,
         ),
       ),

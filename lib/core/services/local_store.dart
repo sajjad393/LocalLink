@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:cryptography/cryptography.dart';
+import 'package:flutter/services.dart' show MethodChannel;
+
 import 'package:flutter/foundation.dart';
 import 'package:locallink/core/security/secure_storage_service.dart';
 import 'package:locallink/core/storage/database_config.dart';
@@ -145,6 +148,58 @@ class LocalStore {
     _databaseOpened = true;
     await _loadSettings();
     await _migrateLegacySharedPreferences();
+    await _ensureStableDeviceId();
+  }
+
+  // A per-install random device id made every reinstall register a duplicate
+  // device on the server and silently orphaned account data. Derive the device
+  // id deterministically from the Android hardware id so reinstalls and
+  // pm-clear get the SAME device identity back. Existing installs keep their
+  // persisted id untouched (only created when the settings store has none).
+  String _hardwareFp = '';
+
+  String get hardwareFp => _hardwareFp;
+
+  static const _deviceChannel = MethodChannel('locallink/device');
+
+  Future<void> _ensureStableDeviceId() async {
+    String androidId = '';
+    if (Platform.isAndroid) {
+      try {
+        androidId = (await _deviceChannel.invokeMethod<String>('androidId')) ?? '';
+      } catch (_) {
+        androidId = '';
+      }
+    }
+    // '9774d56d682e549c' is the well-known pre-4.2 emulator constant.
+    final usable = androidId.length >= 8 && androidId != '9774d56d682e549c';
+    if (usable) {
+      final hash = await Sha256().hash(utf8.encode('locallink-hw|$androidId'));
+      _hardwareFp = hash.bytes.
+          take(16)
+          .map((b) => b.toRadixString(16).padLeft(2, '0'))
+          .join();
+      await _db.insert('settings', {'key': 'hardware_fp', 'value': _hardwareFp},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    if (_deviceId == null || _deviceId!.isEmpty) {
+      _deviceId = usable
+          ? 'android-${_hardwareFp.substring(0, 16)}'
+          : generateDeviceId();
+      await _db.insert('settings', {'key': 'device_id', 'value': _deviceId},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  // True when this install holds no account history yet (fresh install or
+  // cleared data) — the auto-restore path uses this to decide whether to pull
+  // server-backed conversations/messages/contacts automatically after login.
+  Future<bool> localAccountDataIsEmpty() async {
+    final m = await _db.rawQuery('SELECT COUNT(*) AS c FROM messages');
+    final g = await _db.rawQuery('SELECT COUNT(*) AS c FROM group_messages');
+    final mc = (m.first['c'] as num?)?.toInt() ?? 0;
+    final gc = (g.first['c'] as num?)?.toInt() ?? 0;
+    return mc == 0 && gc == 0;
   }
 
   Future<String> prepareDeviceReEnrollment() async {

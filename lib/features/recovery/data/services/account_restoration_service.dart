@@ -206,6 +206,14 @@ class AccountRestorationService {
     for (final member in metadata.groupMembers) {
       await store.saveGroupMember({'group_id': member.groupId, 'device_id': member.deviceId, 'role': member.role, 'joined_at': member.joinedAt, 'name': member.name});
     }
+    // Server-backed contacts (idempotent upsert; device id resolves live on
+    // the server so a restored contact always points at the peer's most
+    // recently active device).
+    for (final contact in metadata.contacts) {
+      if (contact.userId.isNotEmpty && contact.deviceId.isNotEmpty) {
+        await store.addContact(contact.userId, contact.deviceId);
+      }
+    }
   }
 
   Future<void> _restoreMessages(void Function(ServiceRestoreProgress) onProgress, int step, int total) async {

@@ -42,6 +42,20 @@ class AccountRestoreManifest {
       );
 }
 
+class AccountContact {
+  final String userId;
+  final String deviceId;
+  final String addedAt;
+
+  const AccountContact({required this.userId, required this.deviceId, required this.addedAt});
+
+  factory AccountContact.fromJson(Map<String, dynamic> json) => AccountContact(
+        userId: json['user_id']?.toString() ?? '',
+        deviceId: json['device_id']?.toString() ?? '',
+        addedAt: json['added_at']?.toString() ?? '',
+      );
+}
+
 class AccountRestorePage {
   final String scope;
   final LocalAccount? account;
@@ -53,6 +67,7 @@ class AccountRestorePage {
   final List<GroupMessage> groupMessages;
   final List<CallRecord> calls;
   final List<Attachment> files;
+  final List<AccountContact> contacts;
   final String nextCursor;
   final bool hasMore;
 
@@ -67,6 +82,7 @@ class AccountRestorePage {
     required this.groupMessages,
     required this.calls,
     required this.files,
+    required this.contacts,
     required this.nextCursor,
     required this.hasMore,
   });
@@ -82,6 +98,7 @@ class AccountRestorePage {
         groupMessages: (json['group_messages'] as List? ?? []).map((e) => GroupMessage.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
         calls: (json['calls'] as List? ?? []).map((e) => CallRecord.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
         files: (json['files'] as List? ?? []).map((e) => Attachment.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+        contacts: (json['contacts'] as List? ?? []).map((e) => AccountContact.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
         nextCursor: json['next_cursor']?.toString() ?? '',
         hasMore: json['has_more'] == true,
       );

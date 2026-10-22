@@ -64,6 +64,7 @@ class AppRouter {
             onSaved: onSaved,
             recoveryRepository: dependencies.recoveryRepository,
             transferRepository: dependencies.transferRepository,
+            restorationService: dependencies.restoreService,
           ),
         );
     }
