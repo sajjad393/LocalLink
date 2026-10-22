@@ -367,8 +367,14 @@ class CallVideoSession(
             ((context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
                 .getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: 0) * 90
         } catch (_: Exception) { 0 }
-        rotationDeg = if (front) (sensorOrientation + displayRotation) % 360
-                      else (sensorOrientation - displayRotation + 360) % 360
+        // Advertise the CONCRETE meaning "clockwise degrees the receiver must
+        // rotate this wire frame to see it upright". The wire image is the raw
+        // sensor buffer and is NEVER mirrored on the wire, so the rule is the
+        // same for both cameras — the legacy Camera1 front formula (sensor +
+        // display) assumes a mirrored preview and breaks undo-by-rotation on
+        // the receiving side for every non-zero display rotation (and lucky-
+        // matches in portrait only when the two sensors happen to agree).
+        rotationDeg = (sensorOrientation - displayRotation + 360) % 360
         // Pick the best supported capture size (once per call; the codec cannot
         // resize without a restart, so a camera flip keeps the geometry).
         if (encoder == null) {

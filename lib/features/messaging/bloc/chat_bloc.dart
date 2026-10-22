@@ -71,7 +71,10 @@ final class ChatBloc extends Cubit<ChatState> {
       final fresh = await repository.peer(state.device.id);
       if (fresh == null || isClosed) return;
       final cur = state.device;
-      if (fresh.networkStatus == cur.networkStatus &&
+      // name excluded from the equality chain below until now — a nickname
+      // change alone must still refresh the header.
+      if (fresh.name == cur.name &&
+          fresh.networkStatus == cur.networkStatus &&
           fresh.serverConnected == cur.serverConnected &&
           fresh.wifiDirectConnected == cur.wifiDirectConnected &&
           fresh.lanAvailable == cur.lanAvailable &&

@@ -55,12 +55,11 @@ final class HomeRepository implements HomeRepositoryContract {
 
   @override
   Future<String?> labelForDevice(String deviceId) async {
-    final profile = await _store.directoryProfileByDeviceId(deviceId);
-    if (profile == null) return null;
-    final displayName = (profile['display_name'] ?? '').toString().trim();
-    if (displayName.isNotEmpty) return displayName;
-    final username = (profile['username'] ?? '').toString().trim();
-    return username.isEmpty ? null : username;
+    try {
+      return await _store.peerDisplayName(deviceId);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override

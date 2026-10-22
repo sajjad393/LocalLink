@@ -20,7 +20,25 @@ final class MessagingRepository implements MessagingRepositoryContract {
   String get localDeviceId => store.deviceId ?? '';
 
   @override
-  Future<Device?> peer(String deviceId) => store.deviceById(deviceId);
+  Future<Device?> peer(String deviceId) async {
+    final device = await store.deviceById(deviceId);
+    if (device == null) return null;
+    // Chat screens display `device.name` directly, but that column carries
+    // the auto-generated DEVICE label ("My Android Phone (xxxx)"). Overlay
+    // the account profile nickname (display_name → username) so headers,
+    // avatars and dialogs show the person, never the device label.
+    final label = await _peerLabel(deviceId);
+    if (label == null || label == device.name) return device;
+    return device.copyWithPresence(name: label);
+  }
+
+  Future<String?> _peerLabel(String deviceId) async {
+    try {
+      return await store.peerDisplayName(deviceId);
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   Future<List<Message>> cachedHistory(String peerId) => store.messagesFor(peerId);

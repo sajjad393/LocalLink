@@ -66,9 +66,16 @@ class _CallScreenState extends State<CallScreen> {
           session.reason == 'busy' ? 'Busy' : 'Declined',
         CallState.missed => 'Missed call',
         CallState.canceled => 'Call canceled',
-        CallState.failed => session.reason == 'unreachable'
-            ? "Couldn't reach them — try again"
-            : 'Call failed',
+        CallState.failed => switch (session.reason) {
+            'unreachable' => "Couldn't reach them — try again",
+            'microphone_permission' =>
+              'Microphone permission needed — allow it, then answer again',
+            'transport_unavailable' =>
+              'Local calling service unavailable — reconnect and try again',
+            'identity_blocked' =>
+              'Identity changed or revoked — verify this user again',
+            _ => 'Call failed',
+          },
         CallState.ended => 'Call ended',
       };
 

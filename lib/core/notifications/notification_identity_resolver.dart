@@ -24,11 +24,14 @@ final class NotificationIdentityResolver {
     final profile = await store.directoryProfile(peerId) ??
         await store.directoryProfileByDeviceId(peerId);
     if (profile != null) {
-      final name = _firstNonEmpty([
-        profile['display_name']?.toString(),
-        profile['username']?.toString(),
-        peerId,
-      ]);
+      final displayName = profile['display_name']?.toString().trim() ?? '';
+      final username = profile['username']?.toString().trim() ?? '';
+      // People-facing labels: profile nickname → username → generic fallback.
+      // A notification must never advertise a raw device/user id or the
+      // auto-generated device label as if it were the person.
+      final name = displayName.isNotEmpty
+          ? displayName
+          : (username.isNotEmpty ? username : 'Unknown user');
       return NotificationIdentity(
         displayName: name,
         initials: _initials(name),
@@ -36,19 +39,9 @@ final class NotificationIdentityResolver {
       );
     }
 
-    final devices = await store.localDevices();
-    for (final device in devices) {
-      if (device.id == peerId) {
-        return NotificationIdentity(
-          displayName: device.name.isEmpty ? peerId : device.name,
-          initials: _initials(device.name.isEmpty ? peerId : device.name),
-        );
-      }
-    }
-
-    return NotificationIdentity(
-      displayName: peerId,
-      initials: _initials(peerId),
+    return const NotificationIdentity(
+      displayName: 'Unknown user',
+      initials: 'UN',
     );
   }
 
@@ -59,10 +52,12 @@ final class NotificationIdentityResolver {
     final members = await store.groupMembers(groupId);
     for (final row in members) {
       if (row['device_id']?.toString() == senderId) {
-        final name = _firstNonEmpty([
-          row['name']?.toString(),
-          senderId,
-        ]);
+        // Live profile nickname wins; the cached group-member row name (a
+        // snapshot that could be a device label) is only a fallback. The raw
+        // sender id is never shown.
+        final rowName = row['name']?.toString().trim() ?? '';
+        final name = await store.peerDisplayName(senderId) ??
+            (rowName.isNotEmpty ? rowName : 'Unknown user');
         return NotificationIdentity(
           displayName: name,
           initials: _initials(name),
@@ -75,14 +70,6 @@ final class NotificationIdentityResolver {
   Future<String> groupName(String groupId) async {
     final group = await store.groupById(groupId);
     return group?.name.trim().isNotEmpty == true ? group!.name.trim() : 'Group';
-  }
-
-  String _firstNonEmpty(List<String?> values) {
-    for (final value in values) {
-      final normalized = value?.trim() ?? '';
-      if (normalized.isNotEmpty) return normalized;
-    }
-    return 'LocalLink';
   }
 
   String _initials(String value) {

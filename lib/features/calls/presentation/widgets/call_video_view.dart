@@ -4,9 +4,16 @@ import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
 
 /// Quarter-turns the UI must apply so a raw Camera2 sensor buffer reads
-/// upright: the INVERSE of the capture rotation (bundle 64 fix; Camera2Basic
-/// uses a -90deg matrix for portrait). 0->0, 90->3, 180->2, 270->1.
-int videoDisplayQuarterTurns(int rotation) => ((360 - (rotation % 360)) ~/ 90) & 3;
+/// upright.
+/// Wire-geometry display rule. [rotation] is advertised by the SENDER as the
+/// CLOCKWISE screen-rotation (Camera2 contract: sensorOrientation -
+/// displayRotation) needed to make its raw camera frame upright. The wire
+/// frame is the UNROTATED sensor buffer, so the receiver must rotate the
+/// texture clockwise by exactly that many degrees — quarterTurns = r/90.
+/// An older build accidentally undid with (360-r), i.e. rotated the frame the
+/// WRONG direction: portrait feeds landed upside-down/sideways, and every
+/// 'rotation fix' appears to flip-flop between sideways and inverted.
+int videoDisplayQuarterTurns(int rotation) => ((rotation % 360) ~/ 90) & 3;
 
 /// WhatsApp-style video layer: the peer's stream fills the screen and the
 /// caller's own camera sits as a small rounded picture-in-picture that the
@@ -287,10 +294,11 @@ class _CoverTexture extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Cover-crop like WhatsApp video calls, undoing the capture-side sensor
-    // rotation first (inverse angle — see videoDisplayQuarterTurns). The box
-    // size comes from the ACTUAL encoded geometry, so any ladder rung keeps
-    // its true aspect instead of stretching a hardcoded 16:9.
+    // Cover-crop like WhatsApp video calls, first undoing the capture-side
+    // sensor rotation with the ADVERTISED clockwise angle (see
+    // videoDisplayQuarterTurns). The box size comes from the ACTUAL encoded
+    // geometry, so any ladder rung keeps its true aspect instead of
+    // stretching a hardcoded 16:9.
     final quarterTurns = videoDisplayQuarterTurns(rotation);
     final sideways = quarterTurns.isOdd;
     return FittedBox(

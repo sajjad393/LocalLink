@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:locallink/core/models/profile.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
@@ -28,6 +29,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   bool _started = false;
   bool _syncInFlight = false;
   DateTime? _lastSyncAt;
+  bool _serverContactsSyncInFlight = false;
 
   DirectoryRepository({
     required this.store,
@@ -56,6 +58,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       // Directory must not prevent LocalLink from opening.
     }
     unawaited(sync());
+    unawaited(syncServerContacts());
   }
 
   @override
@@ -715,6 +718,77 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     } finally {
       _syncInFlight = false;
     }
+    unawaited(syncServerContacts());
+  }
+
+  @override
+  Future<void> syncServerContacts() async {
+    // Contact relationships are stored per ACCOUNT on the server (survives
+    // reinstalls) and the model is MUTUAL: entries the other account created
+    // must appear here without a manual re-add. This routine is what pulls
+    // them on a live, running app (start + the 2-minute directory cycle).
+    if (!_started || _serverContactsSyncInFlight) return;
+    final accountId = store.accountId;
+    if (accountId == null || accountId.isEmpty) return;
+    _serverContactsSyncInFlight = true;
+    try {
+      final confirmed = await store.serverConfirmedContactIds();
+      final localIds = await store.contactUserIds();
+
+      // Push local offline adds (local, but never confirmed by the server).
+      for (final id in localIds.difference(confirmed)) {
+        if (id == accountId) continue;
+        try {
+          await api.addAccountContact(id);
+          confirmed.add(id);
+        } catch (e) {
+          AppLogger.warning('CONTACT_PUSH_DEFERRED',
+              detail: 'offline or server error; will retry next cycle');
+        }
+      }
+
+      // Push removals handled while the mirror call failed (confirmed on the
+      // server at some point, but no longer present locally). DELETE is
+      // idempotent, so repeated pushes are safe.
+      for (final id in confirmed.difference(localIds)) {
+        try {
+          await api.removeAccountContact(id);
+          confirmed.remove(id);
+        } catch (e) {
+          AppLogger.warning('CONTACT_REMOVE_DEFERRED',
+              detail: 'offline or server error; will retry next cycle');
+        }
+      }
+
+      // Pull the converged list. Only a successful pull may prune local rows,
+      // and only rows the server had confirmed — offline-pending local adds
+      // are protected by not being in `confirmed`.
+      final remote = await api.listAccountContacts();
+      final remoteIds = <String>{};
+      for (final contact in remote) {
+        if (contact.userId.isEmpty || contact.userId == accountId) continue;
+        remoteIds.add(contact.userId);
+        final hadLocal = await store.isContact(contact.userId);
+        if (contact.deviceId.isNotEmpty || !hadLocal) {
+          await store.addContact(contact.userId, contact.deviceId);
+        }
+        // Ensure a profile exists for the join-based contacts list, otherwise
+        // a mutual contact with no cached profile would be invisible.
+        if (contact.userId.isNotEmpty) {
+          unawaited(getProfile(contact.userId).catchError((_) => null));
+        }
+      }
+      for (final id in confirmed.difference(remoteIds)) {
+        await store.removeContact(id);
+      }
+      await store.saveServerConfirmedContactIds(remoteIds);
+    } catch (e) {
+      // Never silently discard sync failures: log and leave local state
+      // untouched; the next cycle retries both directions.
+      AppLogger.warning('CONTACTS_SYNC_FAILED', detail: e.toString());
+    } finally {
+      _serverContactsSyncInFlight = false;
+    }
   }
 
   @override
@@ -735,16 +809,38 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     }
     await store.addContact(id, profile.deviceId);
     // Mirror to the account on the server so contacts survive reinstalls.
-    // Best-effort: the local add succeeds even when the server is offline; a
-    // fresh-install restore reconciles using the last mirrored list.
-    unawaited(api.addAccountContact(id).catchError((_) {}));
+    // Failures are NOT discarded silently: the push is deferred to the
+    // periodic syncServerContacts reconcile (id marks stay unconfirmed).
+    final confirmed = await store.serverConfirmedContactIds();
+    if (!confirmed.contains(id)) {
+      try {
+        await api.addAccountContact(id);
+        confirmed.add(id);
+        await store.saveServerConfirmedContactIds(confirmed);
+      } catch (e) {
+        AppLogger.warning('CONTACT_PUSH_DEFERRED',
+            detail: 'server unreachable; syncServerContacts will retry');
+      }
+    }
+    unawaited(syncServerContacts());
   }
 
   @override
   @override
   Future<void> removeContact(String userId) async {
     await store.removeContact(userId);
-    unawaited(api.removeAccountContact(userId).catchError((_) {}));
+    final confirmed = await store.serverConfirmedContactIds();
+    if (confirmed.contains(userId)) {
+      try {
+        await api.removeAccountContact(userId);
+        confirmed.remove(userId);
+        await store.saveServerConfirmedContactIds(confirmed);
+      } catch (e) {
+        AppLogger.warning('CONTACT_REMOVE_DEFERRED',
+            detail: 'server unreachable; syncServerContacts will retry');
+      }
+    }
+    unawaited(syncServerContacts());
   }
 
   @override

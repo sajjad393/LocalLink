@@ -457,6 +457,9 @@ class FakeCallRepository implements CallRepositoryContract {
   @override
   Future<Map<String, String>> loadDeviceNames() async =>
       const <String, String>{'peer-1': 'Peer One'};
+
+  @override
+  Future<String?> labelForPeer(String id) async => 'Peer One';
 }
 
 class AlwaysTrustedIdentity extends IdentityTrustService {

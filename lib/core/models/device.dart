@@ -103,6 +103,7 @@ class Device {
       );
 
   Device copyWithPresence({
+    String? name,
     DeviceNetworkStatus? networkStatus,
     bool? serverConnected,
     bool? wifiDirectConnected,
@@ -115,7 +116,7 @@ class Device {
     bool? wifiEnabled,
     String? presenceLocalAt,
   }) => Device(
-        id: id, name: name, platform: platform, createdAt: createdAt, lastSeenAt: lastSeenAt,
+        id: id, name: name ?? this.name, platform: platform, createdAt: createdAt, lastSeenAt: lastSeenAt,
         networkStatus: networkStatus ?? this.networkStatus,
         serverConnected: serverConnected ?? this.serverConnected,
         wifiDirectConnected: wifiDirectConnected ?? this.wifiDirectConnected,

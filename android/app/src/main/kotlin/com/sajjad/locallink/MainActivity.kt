@@ -454,6 +454,16 @@ class MainActivity : FlutterActivity() {
                             result.error("INVALID_CALL_MEDIA", "call_id and peer_id are required", null)
                             return@setMethodCallHandler
                         }
+                        // Call media was the ONLY audio path that never checked the mic:
+                        // on a fresh install (or after an app-data wipe) AudioRecord threw
+                        // a bare SecurityException here and the accept died as a generic
+                        // "Call failed". Ask with rationale like the other media permissions;
+                        // the user grants it once and the next Answer connects normally.
+                        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                            requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "Microphone access", "LocalLink needs the microphone so the other person can hear you on calls. Allow it, then answer the call again.")
+                            result.error("PERMISSION", "Call audio: microphone permission needed. Allow it on the prompt, then answer the call again.", null)
+                            return@setMethodCallHandler
+                        }
                         LocalLinkTransportService.startCallMedia(callId, peerId, codec)
                         result.success(null)
                     }

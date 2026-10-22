@@ -13,6 +13,11 @@ abstract interface class DirectoryRepositoryContract {
   Future<DirectoryProfile?> getProfile(String userId);
   Future<DirectoryProfile?> importQrProfile(Map<String, dynamic> payload);
   Future<List<DirectoryProfile>> contacts();
+
+  /// Reconciles the local contacts table with the account's server-backed
+  /// list (mutual relationship: pulls entries the peer added, pushes local
+  /// offline adds/removals, self-heals divergence). Safe to call repeatedly.
+  Future<void> syncServerContacts();
   Future<void> sync();
   Future<void> addContact(String userId);
   Future<void> removeContact(String userId);

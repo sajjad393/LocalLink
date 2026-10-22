@@ -17,6 +17,7 @@ import 'package:locallink/core/services/app_logger.dart';
 
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/call.dart';
+import 'package:locallink/core/identity/display_label.dart';
 import 'package:locallink/core/models/call_quality.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/models/device.dart';
@@ -997,6 +998,16 @@ class LocalStore {
     return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
   }
 
+  /// Single authoritative rule for people-facing display of a peer:
+  /// directory profile display_name → username → null when nothing is known.
+  /// Accepts a device id or a user id. Callers MUST present a generic label
+  /// (e.g. "Unknown user") on null — never a device name or a raw id.
+  Future<String?> peerDisplayName(String id) async {
+    if (id.trim().isEmpty) return null;
+    final profile = await directoryProfile(id) ?? await directoryProfileByDeviceId(id);
+    return displayNameFromProfile(profile);
+  }
+
   Future<Map<String, dynamic>?> directoryProfileByDeviceId(
       String deviceId) async {
     final rows = await _db.query('directory_profiles',
@@ -1034,6 +1045,37 @@ class LocalStore {
       .isNotEmpty;
   Future<List<Map<String, dynamic>>> contacts() async => _db.rawQuery(
       'SELECT p.* FROM contacts c JOIN directory_profiles p ON p.user_id=c.user_id ORDER BY p.display_name COLLATE NOCASE ASC');
+
+  /// Raw contact user ids regardless of whether a directory profile is cached
+  /// for them — required by the server contacts reconciliation, which must
+  /// also see contacts whose profile has not arrived over the directory yet.
+  Future<Set<String>> contactUserIds() async {
+    final rows = await _db.query('contacts', columns: ['user_id']);
+    return rows
+        .map((row) => row['user_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+  }
+
+  /// Ids known to be present in the server-side account contact list (last
+  /// successful push/pull). Lets the periodic sync tell "locally added while
+  /// offline" apart from "removed on the server" without ever deleting a
+  /// pending local row.
+  Future<Set<String>> serverConfirmedContactIds() async {
+    final rows = await _db.query('settings',
+        where: 'key=?', whereArgs: ['server_confirmed_contacts'], limit: 1);
+    if (rows.isEmpty) return <String>{};
+    return (rows.first['value']?.toString() ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+  }
+
+  Future<void> saveServerConfirmedContactIds(Set<String> ids) async {
+    await _putSetting(
+        'server_confirmed_contacts', (ids.toList()..sort()).join(','));
+  }
   Future<void> blockUser(String userId) async {
     await _db.insert(
         'blocked_users',

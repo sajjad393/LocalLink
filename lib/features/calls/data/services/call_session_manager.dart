@@ -15,6 +15,7 @@ import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/data/models/call_notification_action.dart';
 import 'package:locallink/features/calls/data/platform/call_audio_platform_service.dart';
 import 'package:locallink/features/calls/data/platform/call_media_platform_service.dart';
+import 'package:locallink/features/calls/data/services/call_failure_reason.dart';
 import 'package:locallink/features/calls/data/services/call_notification_platform_service.dart';
 import 'package:locallink/features/calls/data/services/call_ringtone_service.dart';
 import 'package:locallink/features/calls/data/repositories/call_repository.dart';
@@ -282,7 +283,9 @@ final class CallSessionManager implements CallGateway {
     final session = CallSession(
       id: id,
       peerId: device.id,
-      peerName: device.name,
+      // Same display rule as incoming calls: profile nickname, never the
+      // auto-generated device label.
+      peerName: await _peerDisplayName(device.id),
       direction: CallDirection.outgoing,
       state: CallState.connecting,
       startedAt: now,
@@ -348,10 +351,28 @@ final class CallSessionManager implements CallGateway {
         'direct': true,
       });
       await _markConnected();
-    } catch (e) {
-      await _fail('microphone_unavailable');
+    } catch (e, stackTrace) {
+      // Every failure used to collapse into 'microphone_unavailable', which
+      // hid the real cause (most often a missing mic permission on a fresh
+      // install). Classify so the UI can offer the right next step and the
+      // logs show the true failure.
+      final reason = callFailureReason(e);
+      AppLogger.error('CALL_ACCEPT_FAILED',
+          detail: 'reason=$reason', error: e, stackTrace: stackTrace);
+      await _fail(reason);
       rethrow;
     }
+  }
+
+  /// Single display-name rule for every call-surface peer label:
+  /// directory profile display_name → username → 'Unknown user'.
+  /// Device ids and device names are never shown as a person's name.
+  Future<String> _peerDisplayName(String peerId) async {
+    try {
+      final label = await repository.labelForPeer(peerId);
+      if (label != null && label.trim().isNotEmpty) return label.trim();
+    } catch (_) {}
+    return 'Unknown user';
   }
 
   Future<void> rejectIncoming({String reason = 'rejected'}) async {
@@ -710,9 +731,11 @@ final class CallSessionManager implements CallGateway {
       // An incoming-ring session for the same (or another) peer that is no
       // longer live was cleared above; adoption continues below.
     }
-    final name = await repository
-        .loadDeviceNames()
-        .then((names) => names[peerId] ?? peerId);
+    // Display name for the incoming caller must be the ACCOUNT's profile
+    // nickname (or username) — never the raw device id and never the
+    // auto-generated device label ("My Android Phone (xxxx)"). When no
+    // profile is known yet, show a safe generic label.
+    final name = await _peerDisplayName(peerId);
     final advertised = (msg['supported_media_codecs'] is List)
         ? (msg['supported_media_codecs'] as List)
             .map((e) => e.toString().trim().toLowerCase())
@@ -798,8 +821,11 @@ final class CallSessionManager implements CallGateway {
         await _transport!.start(current);
       }
       await _markConnected();
-    } catch (_) {
-      await _fail('media_setup_failed');
+    } catch (error, stackTrace) {
+      final reason = callFailureReason(error);
+      AppLogger.error('CALL_MEDIA_SETUP_FAILED',
+          detail: 'reason=$reason', error: error, stackTrace: stackTrace);
+      await _fail(reason);
     }
   }
 
@@ -1616,6 +1642,7 @@ final class CallSessionManager implements CallGateway {
         .toList();
     return normalized.isEmpty ? const ['pcm_s16le'] : normalized;
   }
+
 
   Future<String> _negotiateCodec(List<String> remoteCodecs) async {
     final local = await _supportedMediaCodecs();

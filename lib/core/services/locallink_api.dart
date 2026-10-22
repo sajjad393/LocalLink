@@ -725,6 +725,18 @@ class LocalLinkApi {
   // survive reinstalls (they were previously stored locally only). Failures
   // are non-fatal for the local action; the next successful sync/restore
   // reconciles the server list.
+  Future<List<AccountContact>> listAccountContacts() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/v1/account/contacts'),
+      headers: _headers(),
+    ).timeout(const Duration(seconds: 6));
+    if (response.statusCode != 200) throw Exception(_error(response));
+    final body = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    return (body['contacts'] as List? ?? [])
+        .map((e) => AccountContact.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
   Future<void> addAccountContact(String userId) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/v1/account/contacts'),

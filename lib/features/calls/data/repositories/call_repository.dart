@@ -44,13 +44,33 @@ class CallRepository implements CallRepositoryContract {
 
   @override
   Future<Map<String, String>> loadDeviceNames() async {
+    // Labels for call-history rows are profile nicknames resolved per peer.
+    // The old implementation fed raw DEVICE names from the /devices
+    // directory into people-facing rows, which is why call history showed
+    // "My Android Phone (xxxx)". Unknown peers get no entry here; the UI
+    // falls back to a generic label instead of an identifier.
+    final ids = <String>{};
     try {
-      final devices = await api.devices();
-      return {
-        for (final device in devices) device.id: device.name,
-      };
+      for (final call in await store.calls()) {
+        ids.addAll([call.callerId, call.calleeId]);
+      }
     } catch (_) {
       return const {};
+    }
+    final labels = <String, String>{};
+    for (final id in ids) {
+      final label = await labelForPeer(id);
+      if (label != null) labels[id] = label;
+    }
+    return labels;
+  }
+
+  @override
+  Future<String?> labelForPeer(String id) async {
+    try {
+      return await store.peerDisplayName(id);
+    } catch (_) {
+      return null;
     }
   }
 }

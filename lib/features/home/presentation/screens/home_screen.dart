@@ -322,8 +322,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                     ..._visibleDevices(state).map(
                       (device) => MessengerConversationTile(
-                        title: state.deviceLabels[device.id] ??
-                            (device.name.isEmpty ? 'LocalLink user' : device.name),
+                        // People-facing titles show the profile nickname; a
+                        // device label ("My Android Phone") is never a person.
+                        title: state.deviceLabels[device.id] ?? 'Unknown user',
                         subtitle: _deviceSubtitle(device),
                         device: device,
                         onTap: () => _openChat(device),

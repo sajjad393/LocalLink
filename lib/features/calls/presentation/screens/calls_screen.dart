@@ -40,7 +40,7 @@ class _CallsScreenState extends State<CallsScreen> {
   String _peerId(CallRecord call) => call.peerId(widget.selfId);
 
   String _title(CallRecord call) =>
-      widget.controller.deviceNames[_peerId(call)] ?? 'LocalLink user';
+      widget.controller.deviceNames[_peerId(call)] ?? 'Unknown user';
 
   bool _isMissed(CallRecord call) =>
       (call.status == 'missed' || call.status == 'ringing') &&
