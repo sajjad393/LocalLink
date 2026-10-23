@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:locallink/core/models/profile.dart';
@@ -12,21 +11,17 @@ import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/gradient_pill_button.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
 import 'package:locallink/features/account/bloc/account_bloc.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
-import 'package:locallink/features/account/presentation/screens/devices_screen.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
-import 'package:locallink/features/admin/presentation/screens/admin_shell_screen.dart';
-import 'package:locallink/features/calls/data/transport/network_policy.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
-import 'package:locallink/features/connectivity/data/services/wifi_radio_control_service.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/my_qr_screen.dart';
-import 'package:locallink/features/directory/presentation/privacy_security_screen.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/features/transfer/presentation/screens/account_transfer_screen.dart';
@@ -75,10 +70,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final picker = ImagePicker();
   XFile? image;
   LocalProfile? profile;
-  bool byPhone = true;
-  bool byName = true;
-  bool sync = true;
-  String visibility = 'contacts';
+  // Bundle 105: discovery toggles removed from the UI — they stay ON
+  // permanently so friends can find you by phone/username and the profile
+  // syncs whenever a trusted connection is available.
+  String visibility = 'public';
   bool _adminCapable = false;
 
   @override
@@ -95,10 +90,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         name.text = value.displayName;
         username.text = value.username;
         phone.text = value.phoneNumber;
-        byPhone = value.discoverableByPhone;
-        byName = value.discoverableByName;
-        sync = value.directorySyncEnabled;
-        visibility = value.phoneVisibility;
+        visibility = value.phoneVisibility.isNotEmpty
+            ? value.phoneVisibility
+            : 'public';
       });
     });
   }
@@ -110,35 +104,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     widget.viewMode?.setAdminCapability(_adminCapable);
   }
 
-  Future<void> _openAdminView() async {
-    final connectivity = widget.connectivityController;
-    if (connectivity == null || !connectivity.state.snapshot.serverConnected) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect to the LocalLink server to enter Admin View.')));
-      return;
-    }
-    final session = await (widget.adminCapability ?? AdminCapabilityService()).readValidSession();
-    if (!mounted) return;
-    if (session == null || session.expired) {
-      setState(() => _adminCapable = false);
-      widget.viewMode?.setAdminCapability(false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Your admin session has expired. Sign in again from Admin panel.')));
-      return;
-    }
-    final viewMode = widget.viewMode;
-    final repositoryFactory = widget.adminRepositoryFactory;
-    if (viewMode == null || repositoryFactory == null) return;
-    viewMode.setAdminCapability(true);
-    if (!viewMode.enterAdminView()) return;
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AdminShellScreen(api: widget.api, repository: repositoryFactory.create(session.token), session: session, viewMode: viewMode),
-      ),
-    );
-    widget.viewMode?.enterUserView();
-    await _refreshAdminCapability();
-  }
-
+  // Bundle 105: in-profile Admin View switch removed with the Advanced
+  // section — the Admin panel lives in Settings now.
   Future<void> save() async {
     try {
       final synced = await bloc.saveProfile(
@@ -146,9 +113,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         username: username.text,
         phoneNumber: phone.text,
         phoneVisibility: visibility,
-        discoverableByPhone: byPhone,
-        discoverableByName: byName,
-        directorySyncEnabled: sync,
+        discoverableByPhone: true,
+        discoverableByName: true,
+        directorySyncEnabled: true,
         avatarFile: image == null ? null : File(image!.path),
       );
       await widget.directoryRepository?.publishOwnProfile();
@@ -259,48 +226,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: LocalLinkSpacing.sm),
           LocalLinkTextField(controller: phone, keyboardType: TextInputType.phone, labelText: 'Phone number', hintText: 'Optional', prefixIcon: const Icon(Icons.phone_outlined)),
           const SizedBox(height: LocalLinkSpacing.md),
-          FilledButton(onPressed: bloc.isSaving ? null : save, child: bloc.isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save changes')),
+          SizedBox(
+            width: double.infinity,
+            // Bundle 105: brand gradient CTA (matches the profile redesign).
+            child: GradientPillButton(
+              onPressed: bloc.isSaving ? null : save,
+              child: bloc.isSaving
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Save changes'),
+            ),
+          ),
           if (!widget.onboarding) ...[
             const SizedBox(height: LocalLinkSpacing.section),
-            Text('Sharing & privacy', style: Theme.of(context).textTheme.titleMedium),
+            Text('Visibility', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: LocalLinkSpacing.sm),
+            // Bundle 105: find-by-phone / find-by-username / keep-synced are
+            // always on (switches removed); only the phone-visibility choice
+            // remains, defaulting to Public.
             Card(
-              child: Column(
-                children: [
-                  SwitchListTile.adaptive(
-                    title: const Text('Find me by phone'),
-                    subtitle: const Text('Allow people who know your phone number to find you.'),
-                    value: byPhone,
-                    onChanged: (v) => setState(() => byPhone = v),
-                  ),
-                  const Divider(height: 1),
-                  SwitchListTile.adaptive(
-                    title: const Text('Find me by username'),
-                    subtitle: const Text('Allow people to find you by your username.'),
-                    value: byName,
-                    onChanged: (v) => setState(() => byName = v),
-                  ),
-                  const Divider(height: 1),
-                  SwitchListTile.adaptive(
-                    title: const Text('Keep my profile synced'),
-                    subtitle: const Text('Sync profile changes when a trusted LocalLink connection is available.'),
-                    value: sync,
-                    onChanged: (v) => setState(() => sync = v),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    title: const Text('Phone visibility'),
-                    subtitle: Text(visibility == 'public' ? 'Anyone with your profile can see it.' : 'Only people who can access your contact can see it.'),
-                    trailing: DropdownButton<String>(
-                      value: visibility,
-                      items: const [DropdownMenuItem(value: 'contacts', child: Text('Contacts')), DropdownMenuItem(value: 'public', child: Text('Public'))],
-                      onChanged: (value) => setState(() => visibility = value ?? visibility),
-                    ),
-                  ),
-                ],
+              child: ListTile(
+                leading: const Icon(Icons.visibility_outlined),
+                title: const Text('Phone visibility'),
+                subtitle: Text(visibility == 'public' ? 'Anyone with your profile can see it.' : 'Only people who can access your contact can see it.'),
+                trailing: DropdownButton<String>(
+                  value: visibility,
+                  items: const [DropdownMenuItem(value: 'contacts', child: Text('Contacts')), DropdownMenuItem(value: 'public', child: Text('Public'))],
+                  onChanged: (value) => setState(() => visibility = value ?? visibility),
+                ),
               ),
             ),
-            const SizedBox(height: LocalLinkSpacing.md),
+            const SizedBox(height: LocalLinkSpacing.section),
+            Text('Share', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: LocalLinkSpacing.sm),
             Card(
               child: ListTile(
                 leading: CircleAvatar(backgroundColor: Theme.of(context).colorScheme.primaryContainer, child: const Icon(Icons.qr_code_2)),
@@ -310,17 +267,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onTap: widget.crypto == null || value == null ? null : () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => MyQrScreen(profile: _directoryProfile(value), crypto: widget.crypto!, repository: widget.directoryRepository))),
               ),
             ),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.devices_outlined),
-                title: const Text('Trusted devices'),
-                subtitle: const Text('Review and manage phones connected to your account.'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: widget.identityRepository == null || widget.restoreService == null || widget.crypto == null
-                    ? null
-                    : () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => DevicesScreen(accountRepository: widget.accountRepository, identityRepository: widget.identityRepository!, api: widget.api, store: widget.store, crypto: widget.crypto!, restoreService: widget.restoreService!))),
-              ),
-            ),
+            const SizedBox(height: LocalLinkSpacing.section),
+            Text('Account', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: LocalLinkSpacing.sm),
             Card(
               child: ListTile(
                 leading: const Icon(Icons.sync_lock_outlined),
@@ -337,84 +286,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 subtitle: const Text('Move this account to another phone with a one-time QR transfer.'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AccountTransferScreen(repository: widget.transferRepository))),
-              ),
-            ),
-            const SizedBox(height: LocalLinkSpacing.section),
-            Text('Advanced', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: LocalLinkSpacing.sm),
-           const Card(
-              child: ListTile(
-                leading: const Icon(Icons.lan_outlined),
-                title: const Text('Local calling'),
-                subtitle: const Text('Calls prefer nearby private connections when they are available.'),
-              ),
-            ),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.public_off_outlined),
-                title: const Text('WebRTC—Coming Soon.'),
-                subtitle: const Text('LocalLink calling uses LAN, Wi-Fi Direct, or multi-hop mesh only.'),
-              ),
-            ),
-            Card(
-              child: ExpansionTile(
-                leading: const Icon(Icons.wifi_outlined),
-                title: const Text('Wi-Fi controls'),
-                subtitle: const Text('Device-level Wi-Fi information and policy'),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, 0, LocalLinkSpacing.lg, LocalLinkSpacing.lg),
-                    child: FutureBuilder<WifiRadioStatus>(
-                      future: WifiRadioControlService().status(),
-                      builder: (context, snapshot) {
-                        final status = snapshot.data;
-                        final policy = widget.store.effectiveNetworkPolicy;
-                        final configured = policy.wifiRadioAdminPolicy?.label ?? 'Platform controlled';
-                        final capability = status == null
-                            ? 'Checking device support…'
-                            : status.managedDevice && status.canControl
-                                ? 'Managed device controls are available.'
-                                : 'Android may require manual Wi-Fi changes on this device.';
-                        return Text('$configured\n$capability');
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (_adminCapable && widget.viewMode != null && widget.connectivityController != null)
-              BlocBuilder<ConnectivityBloc, ConnectivityState>(
-                bloc: widget.connectivityController,
-                builder: (context, connectivityState) {
-                  final enabled = connectivityState.snapshot.serverConnected;
-                  final admin = widget.viewMode!.state.mode == AppViewMode.admin;
-                  return Card(
-                    child: SwitchListTile.adaptive(
-                      secondary: const Icon(Icons.admin_panel_settings_outlined),
-                      title: const Text('Admin View'),
-                      subtitle: Text(admin ? 'Admin tools are open.' : enabled ? 'Available while connected to LocalLink server.' : 'Connect to LocalLink server to enable Admin View.'),
-                      value: admin,
-                      onChanged: enabled
-                          ? (value) async {
-                              if (value) {
-                                await _openAdminView();
-                              } else {
-                                widget.viewMode?.enterUserView();
-                                if (mounted) setState(() {});
-                              }
-                            }
-                          : null,
-                    ),
-                  );
-                },
-              ),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.security_outlined),
-                title: const Text('Privacy & security'),
-                subtitle: const Text('Manage discovery, visibility and trusted communication settings.'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => PrivacySecurityScreen(accountRepository: widget.accountRepository, directoryRepository: widget.directoryRepository))),
               ),
             ),
           ],

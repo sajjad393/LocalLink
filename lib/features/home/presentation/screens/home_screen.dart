@@ -10,6 +10,7 @@ import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
+import 'package:locallink/core/widgets/brand_gradient_fab.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
@@ -545,11 +546,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: BrandGradientFab(
         heroTag: 'home_fab',
         tooltip: 'New conversation',
+        // Bundle 104: brand-gradient FAB (People tab look) + modern icon.
+        icon: Icons.chat_bubble_outline_rounded,
         onPressed: () => setState(() => _index = 2),
-        child: const Icon(Icons.chat_rounded),
       ),
       body: LocalLinkBlocBuilder<HomeBloc, HomeState>(
         bloc: _controller,

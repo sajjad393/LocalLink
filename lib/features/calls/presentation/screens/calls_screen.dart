@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/widgets/brand_gradient_fab.dart';
 import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
@@ -113,11 +114,12 @@ class _CallsScreenState extends State<CallsScreen> {
             ),
           ],
         ),
-        floatingActionButton: FloatingActionButton(
+        floatingActionButton: BrandGradientFab(
           heroTag: 'calls_fab',
           tooltip: 'New call',
+          // Bundle 104: brand-gradient FAB (People tab look) + modern icon.
+          icon: Icons.add_ic_call_rounded,
           onPressed: widget.onNewCall,
-          child: const Icon(Icons.call_rounded),
         ),
         body: RefreshIndicator(
           onRefresh: widget.controller.refreshHistory,
