@@ -1,3 +1,8 @@
+import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:locallink/core/crypto/password_kdf.dart';
+import 'package:locallink/core/crypto/recovery_code.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/local_store.dart';
@@ -167,6 +172,51 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
       password: password,
       deviceName: deviceName,
       pairingCode: pairingCode,
+    );
+  }
+
+  @override
+  Future<String> registerOffline({
+    required String username,
+    required String password,
+    String? pairingCode,
+  }) async {
+    final normalized = username.trim().toLowerCase();
+    if (normalized.length < 3 || normalized.length > 32) {
+      throw StateError('Choose a username between 3 and 32 characters.');
+    }
+    if (password.length < 8 || password.length > 128) {
+      throw StateError('Choose a password of at least 8 characters.');
+    }
+    final rng = Random.secure();
+    final salt = Uint8List.fromList(
+        List<int>.generate(PasswordKdf.saltLength, (_) => rng.nextInt(256)));
+    final hash = PasswordKdf.derive(password, salt);
+    final recovery = RecoveryCode.generate();
+    await _store.saveOfflineAccount(
+      username: normalized,
+      pwdHash: PasswordKdf.b64(hash),
+      pwdSalt: PasswordKdf.b64(salt),
+      recoveryCode: recovery,
+      pairingCode: pairingCode,
+    );
+    return recovery;
+  }
+
+  @override
+  bool get isOfflinePending => _store.isOfflinePending;
+
+  @override
+  Map<String, dynamic>? get offlinePending => _store.offlinePending;
+
+  @override
+  bool verifyOfflinePassword(String password) {
+    final pending = _store.offlinePending;
+    if (pending == null) return false;
+    return PasswordKdf.verify(
+      password,
+      pending['pwd_salt']?.toString() ?? '',
+      pending['pwd_hash']?.toString() ?? '',
     );
   }
 

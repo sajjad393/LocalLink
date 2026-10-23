@@ -81,7 +81,17 @@ class MessengerSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final displayName = store.deviceName ?? 'LocalLink user';
+    // Bundle 103: the header belongs to the PERSON, not the phone — account
+    // nickname first (offline-pending username included), device name second.
+    final pendingUsername =
+        store.offlinePending?['username']?.toString().trim() ?? '';
+    final nickname = (store.username?.trim().isNotEmpty == true)
+        ? store.username!.trim()
+        : pendingUsername;
+    final deviceLabel = store.deviceName?.trim() ?? '';
+    final displayName = nickname.isNotEmpty
+        ? nickname
+        : (deviceLabel.isNotEmpty ? deviceLabel : 'LocalLink user');
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -112,7 +122,11 @@ class MessengerSettingsScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Account and profile',
+                            deviceLabel.isNotEmpty
+                                ? '$deviceLabel · Account and profile'
+                                : 'Account and profile',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: Theme.of(context)
                                 .textTheme
                                 .bodySmall
@@ -208,12 +222,18 @@ class MessengerSettingsScreen extends StatelessWidget {
               subtitle: 'Clear this phone’s local setup and start again',
               destructive: true,
               onTap: () async {
+                // Bundle 102: an offline-pending account lives only in secure
+                // storage on this phone — resetting deletes it forever.
+                final offlinePending = store.isOfflinePending;
                 final confirmed = await showDialog<bool>(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: const Text('Reset setup?'),
-                    content: const Text(
-                        'This returns the app to its setup state. Existing local data may be removed.'),
+                    title: Text(offlinePending
+                        ? 'Delete unpublished account?'
+                        : 'Reset setup?'),
+                    content: Text(offlinePending
+                        ? 'Your account exists ONLY on this phone and has never reached the server. Resetting deletes it permanently — chats, and its recovery code, will be unrecoverable.'
+                        : 'This returns the app to its setup state. Existing local data may be removed.'),
                     actions: [
                       TextButton(
                           onPressed: () => Navigator.pop(context, false),

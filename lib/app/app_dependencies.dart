@@ -206,6 +206,31 @@ class AppDependencies {
   late final AdminCapabilityService adminCapability;
   StreamSubscription<bool>? _serverConnectionSubscription;
 
+  /// Local-only boot (Bundle 102): account was created while the server was
+  /// unreachable. Starts the mesh/transport stack; server-bound services
+  /// self-guard on the missing token (presence) or are skipped. Publishing
+  /// happens later via the deferred-registration flow, which then calls
+  /// initializeConfiguredServices() once a real token exists.
+  Future<void> initializeLocalOnlyServices() async {
+    await store.ensureDeviceIdentity();
+    await crypto.init(store.deviceId!);
+    await connectivity.start();
+    viewMode.setServerConnected(false);
+    await mesh.start();
+    await wifiDirectFallback.start();
+    await routePolicy.start();
+    try {
+      await directoryRepository.start();
+    } catch (_) {}
+    messaging.start();
+    groupMessagingService.start();
+    calls.start();
+    await notifications.start();
+    try {
+      await presence.start();
+    } catch (_) {}
+  }
+
   Future<void> initializeConfiguredServices() async {
     await crypto.init(store.deviceId!);
     await connectivity.start();

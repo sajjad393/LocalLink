@@ -72,6 +72,43 @@ class _SetupScreenState extends State<SetupScreen> {
     }
   }
 
+  /// Bundle 102 — server was unreachable; create the account on-device and
+  /// continue straight into the app. Deferred sync publishes it later.
+  Future<void> _registerOffline() async {
+    try {
+      final recovery = await _controller.registerOffline(
+        username: _username.text,
+        password: _password.text,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text('Account saved on this phone'),
+          content: SelectableText(
+            'No server was reachable, so your account stays on this phone for now. '
+            'It publishes automatically when the network server becomes available.\n\n'
+            'Recovery code:\n$recovery\n\n'
+            'Keep this code somewhere safe. When your account publishes you will '
+            'receive a new recovery code — this one is only needed if you erase '
+            'the app before that. It will not be shown again.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('I saved it'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      await widget.onSaved();
+    } catch (_) {
+      // The controller exposes the user-facing error state.
+    }
+  }
+
   Future<void> _completeAuthentication(AuthResult result) async {
     // Login (not registration) onto a dataless install: pull the account's
     // server-backed history automatically instead of silently showing an
@@ -376,6 +413,55 @@ class _SetupScreenState extends State<SetupScreen> {
                         )
                       : Text(register ? 'Register' : 'Log in'),
                 ),
+                if (state.offlineRegisterAvailable) ...[
+                  const SizedBox(height: LocalLinkSpacing.lg),
+                  Container(
+                    padding: const EdgeInsets.all(LocalLinkSpacing.md),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.cloud_off_outlined,
+                                size: 18,
+                                color:
+                                    Theme.of(context).colorScheme.onSurfaceVariant),
+                            const SizedBox(width: LocalLinkSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                'No server right now',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: LocalLinkSpacing.xs),
+                        Text(
+                          'Create this account offline: it stays on this phone, '
+                          'chat over Wi-Fi Direct works immediately, and your '
+                          'account publishes automatically once a network '
+                          'server is available.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: LocalLinkSpacing.sm),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.tonal(
+                            onPressed: state.busy ? null : _registerOffline,
+                            child: const Text('Create account offline'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 if (!register) ...[
                   const SizedBox(height: LocalLinkSpacing.sm),
                   TextButton(

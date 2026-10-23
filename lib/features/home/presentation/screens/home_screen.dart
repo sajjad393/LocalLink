@@ -42,6 +42,8 @@ import 'package:locallink/features/home/presentation/screens/messenger_settings_
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
+import 'package:locallink/features/authentication/data/services/offline_account_sync_service.dart';
+import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 
 class HomeScreen extends StatefulWidget {
   final LocalLinkApi api;
@@ -62,6 +64,11 @@ class HomeScreen extends StatefulWidget {
   final AdminRepositoryFactory adminRepositoryFactory;
   final DirectoryRepositoryContract directoryRepository;
   final LocalLinkNotificationService notifications;
+  // Bundle 102 (offline-first accounts): publish flow for accounts created
+  // while no server was reachable. [onSynced] starts the configured services
+  // once the server accepted the deferred registration.
+  final AuthenticationRepositoryContract authentication;
+  final Future<void> Function() onSynced;
   final AppViewModeCubit viewMode;
   final AdminCapabilityService adminCapability;
   final ThemeMode themeMode;
@@ -87,6 +94,8 @@ class HomeScreen extends StatefulWidget {
     required this.adminRepositoryFactory,
     required this.directoryRepository,
     required this.notifications,
+    required this.authentication,
+    required this.onSynced,
     required this.viewMode,
     required this.adminCapability,
     required this.mesh,
@@ -117,6 +126,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<String> _chatPeerIds = const {};
   StreamSubscription<dynamic>? _incomingSub;
 
+  // Bundle 102: offline-pending account state (session-scoped UI).
+  OfflineAccountSyncService? _offlineSync;
+  bool _offlineBannerDismissed = false;
+  bool _publishPromptShown = false;
+  bool _publishBusy = false;
+
   Future<void> _loadChatPeerIds() async {
     final ids = await widget.messagingRepository.chatPeerIds();
     if (mounted) setState(() => _chatPeerIds = ids);
@@ -130,18 +145,291 @@ class _HomeScreenState extends State<HomeScreen> {
     // official runtime flow. Never repeats on rebuilds or tab refreshes.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        // A permission-dialog hiccup must never block the dashboard.
-        AppPermissionGate.ensureNotificationsOnDashboardEntry(
-                context, widget.notifications)
-            .catchError((_) {});
+        // Bundle 101: kick the mic -> nearby -> notifications native-dialog
+        // sequencer (5s apart; missing ones re-ask every 10 minutes). The
+        // chain is context-free and must never block the dashboard.
+        AppPermissionGate.ensureRequiredOnDashboardEntry(
+            context, widget.notifications);
       }
     });
     _themeMode = widget.themeMode;
+    if (widget.store.isOfflinePending) {
+      _offlineSync = OfflineAccountSyncService(
+          store: widget.store, auth: widget.authentication);
+      WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _maybeOfferPublish());
+    }
     _controller.start();
     _loadChatPeerIds();
     // First contact from a new peer arrives live: the Chats tab picks them up.
     _incomingSub = widget.messagingRepository.incoming
         .listen((_) => _loadChatPeerIds());
+  }
+
+  // ---------------- Bundle 102: offline-account publish flow ---------------
+
+  Widget _offlineAccountBanner() {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _publishBusy ? null : () => _maybeOfferPublish(force: true),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+            child: Row(
+              children: [
+                Icon(Icons.cloud_upload_outlined,
+                    size: 18, color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Account saved on this phone — publishes when the server is available.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                TextButton(
+                  onPressed: _publishBusy
+                      ? null
+                      : () => _maybeOfferPublish(force: true),
+                  child: const Text('Publish'),
+                ),
+                IconButton(
+                  tooltip: 'Dismiss until next launch',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () =>
+                      setState(() => _offlineBannerDismissed = true),
+                  icon: Icon(Icons.close,
+                      size: 16, color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Auto-prompt once per session when a publishable server answers, plus
+  /// manual retry from the banner. Everything else stays off the network.
+  Future<void> _maybeOfferPublish({bool force = false}) async {
+    final sync = _offlineSync;
+    if (sync == null ||
+        !sync.pending ||
+        !mounted ||
+        _publishBusy ||
+        (!force && _publishPromptShown)) return;
+    _publishBusy = true;
+    final ok = await sync.probeServerReachable();
+    if (!mounted || !ok || (!force && _publishPromptShown)) {
+      _publishBusy = false;
+      return;
+    }
+    setState(() => _publishPromptShown = true);
+    await _showPublishSheet();
+    _publishBusy = false;
+  }
+
+  Future<void> _showPublishSheet() async {
+    final sync = _offlineSync;
+    if (sync == null) return;
+    final passwordController = TextEditingController();
+    final usernameController =
+        TextEditingController(text: sync.pendingUsername);
+    final pairingController = TextEditingController(
+        text: widget.store.offlinePending?['pairing_code']?.toString() ?? '');
+    String? error;
+    var renaming = false;
+    var working = false;
+
+    Future<void> attempt(StateSetter setSheetState) async {
+      final password = passwordController.text;
+      if (password.length < 8) {
+        setSheetState(() => error = 'Password must be at least 8 characters.');
+        return;
+      }
+      if (!renaming && !sync.verifyPassword(password)) {
+        setSheetState(
+            () => error = 'That is not the password you used offline.');
+        return;
+      }
+      setSheetState(() {
+        error = null;
+        working = true;
+      });
+      try {
+        final result = await sync.publish(
+          username: usernameController.text.trim(),
+          password: password,
+          pairingCode: pairingController.text,
+        );
+        if (!mounted) return;
+        Navigator.pop(context); // close sheet
+        await _publishSucceeded(result.recoveryCode);
+      } catch (e) {
+        if (!mounted) return;
+        if (sync.isUsernameConflict(e)) {
+          setSheetState(() {
+            renaming = true;
+            working = false;
+            error = null;
+          });
+        } else {
+          setSheetState(() {
+            working = false;
+            error = cleanBlocError(e);
+          });
+        }
+      }
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return StatefulBuilder(
+          builder: (context, setSheetState) => Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.cloud_upload_outlined,
+                        color: theme.colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        renaming
+                            ? 'Pick a new username'
+                            : 'Publish your account',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  renaming
+                      ? 'The server already knows "${usernameController.text.trim()}". Choose another name — your offline password stays the same.'
+                      : 'The network server is available. Confirm your password once: it is sent only to this server to create your account there.',
+                  style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                if (renaming) ...[
+                  TextField(
+                    controller: usernameController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      labelText: 'New username',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ] else ...[
+                  TextField(
+                    controller: passwordController,
+                    autofocus: true,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      labelText: 'Password',
+                    ),
+                    onSubmitted: (_) {
+                      if (!working) attempt(setSheetState);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: pairingController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      labelText: 'Pairing code (only if your network uses one)',
+                    ),
+                  ),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(error!,
+                      style: TextStyle(color: theme.colorScheme.error)),
+                ],
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: working ? null : () => Navigator.pop(context),
+                      child: const Text('Later'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed:
+                          working ? null : () => attempt(setSheetState),
+                      child: working
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(renaming ? 'Try this name' : 'Publish'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _publishSucceeded(String recoveryCode) async {
+    if (!mounted) return;
+    if (recoveryCode.isNotEmpty) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text('Account published'),
+          content: SelectableText(
+            '\nNew recovery code:\n$recoveryCode\n\nThe server issued this code — it replaces the offline one. Keep it somewhere safe; it will not be shown again.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('I saved it'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (!mounted) return;
+    setState(() {
+      // store.isOfflinePending is false now; banner disappears, and the
+      // prompt flag stays set so nothing re-triggers this session.
+      _publishBusy = false;
+    });
+    try {
+      await widget.onSynced();
+    } catch (_) {
+      // Next launch boots into the fully-configured path regardless.
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Account published to the server.')));
+    }
   }
 
   Future<void> _refresh() async {
@@ -280,6 +568,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 // chip for explicit-retry feedback, silence otherwise.
                 if (state.syncNotice != null)
                   _SyncNotice(message: state.syncNotice!),
+                if (widget.store.isOfflinePending &&
+                    !_offlineBannerDismissed)
+                  _offlineAccountBanner(),
                 MessengerSectionHeader(
                   title: 'Conversations',
                   actionLabel: state.devices.isNotEmpty ? 'People' : null,

@@ -79,16 +79,22 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       await _deps.files.cleanupSensitiveViewCopies();
       await _deps.connectivity.start();
       final configured = await _deps.store.isConfigured();
+      final offlinePending = _deps.store.isOfflinePending;
       if (!mounted) return;
 
       if (configured) {
         await _deps.initializeConfiguredServices();
         _listenForIncomingCalls();
         _listenForNotificationOpens();
+      } else if (offlinePending) {
+        // Bundle 102: account exists only on this phone (server was
+        // unreachable at signup). Mesh chat/calls work without a server.
+        await _deps.initializeLocalOnlyServices();
+        _listenForIncomingCalls();
       }
 
       setState(() {
-        _configured = configured;
+        _configured = configured || offlinePending;
         _ready = true;
         _startupError = null;
       });
@@ -203,7 +209,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   }
 
   Future<void> _configuredNow() async {
-    final configured = await _deps.store.isConfigured();
+    final configured =
+        await _deps.store.isConfigured() || _deps.store.isOfflinePending;
     if (!mounted) return;
     setState(() => _configured = configured);
   }
@@ -220,7 +227,11 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       (route) => false,
     );
     try {
-      await _deps.initializeConfiguredServices();
+      if (_deps.store.isOfflinePending) {
+        await _deps.initializeLocalOnlyServices();
+      } else {
+        await _deps.initializeConfiguredServices();
+      }
     } catch (_) {
       // Home screen surfaces its own offline/sync state; onboarding completes.
     }

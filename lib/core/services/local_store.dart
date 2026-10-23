@@ -58,6 +58,8 @@ class LocalStore {
 
   static const int _dbVersion = DatabaseConfig.version;
   static const String _tokenKey = 'locallink_device_token';
+  static const _offlinePendingKey = 'account_offline_pending_v1';
+  static const _localRecoveryKey = 'account_local_recovery_v1';
   static const String _recoveryRequestSecretKey =
       'locallink_recovery_request_secret';
 
@@ -80,6 +82,12 @@ class LocalStore {
   String? _deviceToken;
   String? _accountId;
   String? _username;
+  // Bundle 102 (offline-first accounts): an account created while the server
+  // was unreachable lives here until /api/v1/auth/register accepts it later.
+  String _syncState = 'synced';
+  String? _offlinePendingJson; // secure storage: hash+salt, never plaintext pwd
+  String? _localRecoveryCode;  // secure storage
+
   String? _syncCursor;
   String? _serverId;
   String? _serverFingerprint;
@@ -96,6 +104,19 @@ class LocalStore {
   String? get deviceToken => _deviceToken;
   String? get accountId => _accountId;
   String? get username => _username;
+
+  bool get isOfflinePending => _syncState == 'local_only';
+  String? get localRecoveryCode => _localRecoveryCode;
+
+  /// Unsynced registration payload (hash+salt, pairing code) — secure storage.
+  Map<String, dynamic>? get offlinePending {
+    if (_offlinePendingJson == null) return null;
+    try {
+      return Map<String, dynamic>.from(jsonDecode(_offlinePendingJson!));
+    } catch (_) {
+      return null;
+    }
+  }
   String? get syncCursor => _syncCursor;
   String? get serverId => _serverId;
   String? get serverFingerprint => _serverFingerprint;
@@ -688,6 +709,9 @@ class LocalStore {
     _deviceToken = await _secureStorage.read(key: _tokenKey);
     _accountId = values['account_id'];
     _username = values['username'];
+    _syncState = values['sync_state'] ?? 'synced';
+    _offlinePendingJson = await _secureStorage.read(key: _offlinePendingKey);
+    _localRecoveryCode = await _secureStorage.read(key: _localRecoveryKey);
     _serverId = values['server_id'];
     _serverFingerprint = values['server_fingerprint'];
     _adminUserWifiRadioPolicy = AdminWifiRadioPolicyX.fromStorage(
@@ -821,6 +845,36 @@ class LocalStore {
     }
   }
 
+  Future<void> saveOfflineAccount({
+    required String username,
+    required String pwdHash,
+    required String pwdSalt,
+    required String recoveryCode,
+    String? pairingCode,
+  }) async {
+    _syncState = 'local_only';
+    _localRecoveryCode = recoveryCode;
+    _offlinePendingJson = jsonEncode({
+      'username': username.trim().toLowerCase(),
+      'pwd_hash': pwdHash,
+      'pwd_salt': pwdSalt,
+      'pairing_code': pairingCode?.trim() ?? '',
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    });
+    await _putSetting('sync_state', _syncState);
+    await _secureStorage.write(key: _localRecoveryKey, value: recoveryCode);
+    await _secureStorage.write(key: _offlinePendingKey, value: _offlinePendingJson!);
+  }
+
+  /// The server accepted the pending registration: clear the credential shell
+  /// (the real token lives in deviceToken via saveConfiguration afterwards).
+  Future<void> markAccountSynced() async {
+    _syncState = 'synced';
+    _offlinePendingJson = null;
+    await _putSetting('sync_state', _syncState);
+    await _secureStorage.delete(key: _offlinePendingKey);
+  }
+
   Future<void> clearConfiguration() async {
     _serverAddress = null;
     _deviceId = null;
@@ -831,6 +885,11 @@ class LocalStore {
     _syncCursor = null;
     _serverId = null;
     _serverFingerprint = null;
+    _syncState = 'synced';
+    _offlinePendingJson = null;
+    _localRecoveryCode = null;
+    await _secureStorage.delete(key: _offlinePendingKey);
+    await _secureStorage.delete(key: _localRecoveryKey);
     await LocalStore.timedTx('clear_config_tx', _db, (txn) async {
       for (final table in [
         'settings',
@@ -1208,6 +1267,19 @@ class LocalStore {
         .map((n) => n.toRadixString(16))
         .join();
     return 'android-$suffix';
+  }
+
+  /// Offline-first accounts (Bundle 102) skip server verify, so the identity
+  /// pair may not exist yet. Persist it once so crypto/mesh can start.
+  Future<void> ensureDeviceIdentity() async {
+    if (_deviceId == null || _deviceId!.isEmpty) {
+      _deviceId = generateDeviceId();
+      await _putSetting('device_id', _deviceId!);
+    }
+    if (_deviceName == null || _deviceName!.trim().isEmpty) {
+      _deviceName = 'My LocalLink phone';
+      await _putSetting('device_name', _deviceName!);
+    }
   }
 
   Future<void> addOutbox(Map<String, dynamic> item) async => _db.insert(
@@ -2520,6 +2592,9 @@ class LocalStore {
     });
     await _secureStorage.delete(key: _tokenKey);
     await _secureStorage.delete(key: _recoveryRequestSecretKey);
+    // Bundle 102: never strand offline credentials in secure storage.
+    await _secureStorage.delete(key: _offlinePendingKey);
+    await _secureStorage.delete(key: _localRecoveryKey);
     _serverAddress = null;
     _deviceId = null;
     _deviceName = null;
@@ -2527,6 +2602,9 @@ class LocalStore {
     _accountId = null;
     _username = null;
     _syncCursor = null;
+    _syncState = 'synced';
+    _offlinePendingJson = null;
+    _localRecoveryCode = null;
     _adminUserWifiRadioPolicy = null;
     _adminDeviceWifiRadioPolicy = null;
     _adminUserPolicyVersion = 0;

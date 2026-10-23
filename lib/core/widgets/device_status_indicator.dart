@@ -6,6 +6,15 @@ import 'package:locallink/core/widgets/local_link_status_badge.dart';
 /// the direct link: LAN / Wi-Fi Direct / mesh — works without the server),
 /// Online (reachable only via the server), or Offline. Judged exclusively
 /// from locally-stamped liveness (Device.isOnline), never from peer clocks.
+/// Bundle 103: single status color rule for every surface (chats avatar
+/// ring/dot, conversation-header avatar ring, status badge). Matches the
+/// existing indicator semantics: primary when the peer is reachable (nearby
+/// or via server), outline grey when offline/unknown.
+Color deviceStatusColor(BuildContext context, Device device) {
+  final colors = Theme.of(context).colorScheme;
+  return device.presenceChannel() == 'offline' ? colors.outline : colors.primary;
+}
+
 class DeviceStatusIndicator extends StatelessWidget {
   final Device device;
   final bool showLabel;

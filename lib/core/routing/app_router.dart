@@ -47,6 +47,8 @@ class AppRouter {
             notifications: dependencies.notifications,
             viewMode: dependencies.viewMode,
             adminCapability: dependencies.adminCapability,
+            authentication: dependencies.authentication,
+            onSynced: () => dependencies.initializeConfiguredServices(),
             mesh: dependencies.mesh,
             themeMode: getThemeMode(),
             onThemeModeChanged: onThemeModeChanged,

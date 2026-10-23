@@ -28,4 +28,20 @@ abstract interface class AuthenticationRepositoryContract {
     required String deviceName,
     String? pairingCode,
   });
+
+  /// Bundle 102: create the account fully on-device while the server is
+  /// unreachable (hash+salt in secure storage; recovery code returned once
+  /// for display). The deferred sync registers on the real server LATER.
+  Future<String> registerOffline({
+    required String username,
+    required String password,
+    String? pairingCode,
+  });
+
+  bool get isOfflinePending;
+  Map<String, dynamic>? get offlinePending;
+
+  /// Verifies a password against the stashed PBKDF2 credentials (offline
+  /// re-login and the publish-time confirm step). Never stores plaintext.
+  bool verifyOfflinePassword(String password);
 }

@@ -315,6 +315,19 @@ class MainActivity : FlutterActivity() {
         })
 
         LocalLinkNotificationManager.initialize(this)
+        // Bundle 101: native-dialog-only status/request plumbing for the Dart
+        // permission sequencer (mic -> nearby -> notifications).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "locallink/permissions").setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "granted" -> result.success(mapOf("granted" to gateIsGranted(call.argument<String>("name")?.trim().orEmpty())))
+                    "request" -> { gateRequest(call.argument<String>("name")?.trim().orEmpty()); result.success(null) }
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("PERMISSIONS_SEQ", e.message, null)
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "locallink/notifications").setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
@@ -668,13 +681,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        // Call mic (7812) / camera (7813): a real DENIAL gets the settings
-        // recovery once; nothing happens for silent/cancel fine-grained cases.
-        if (requestCode == 7812 || requestCode == 7813) {
-            val denied = grantResults.isNotEmpty() && grantResults.any { it != PackageManager.PERMISSION_GRANTED }
-            if (denied) offerPermissionSettings(if (requestCode == 7812) "Microphone" else "Camera")
-            return
-        }
+        // Bundle 101: mic (7812) / camera (7813) denials re-enter Dart's
+        // 10-minute re-ask loop — no settings-recovery dialog here.
+        if (requestCode == 7812 || requestCode == 7813) return
         if (requestCode != wifiPermissionRequestCode) return
 
         val result = pendingWifiPermissionResult
@@ -800,32 +809,31 @@ class MainActivity : FlutterActivity() {
         pendingWifiPermissionResult = result
         requestWithRationale(permissions, wifiPermissionRequestCode, "Nearby device access", "LocalLink uses Wi-Fi Direct to call and chat with nearby phones without internet. Allow nearby-device access to continue.")
     }
-    /** Playbook-compliant wrapper: explain WHY before the system dialog, then
-     * run the official runtime flow. Denials are settled through
-     * onRequestPermissionsResult -> offerPermissionSettings. */
+    /** Bundle 101: direct native-dialog runtime permission flow; denials are
+     * settled by the Dart-side sequencer's 10-minute re-ask loop. */
 
 
-    private fun requestWithRationale(permissions: Array<String>, requestCode: Int, title: String, rationale: String) {
-        android.app.AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(rationale)
-            .setNegativeButton("Not now", null)
-            .setPositiveButton("Continue") { _, _ -> requestPermissions(permissions, requestCode) }
-            .show()
+    // Bundle 101 sequencer helpers ==========================================
+    private fun gateIsGranted(name: String): Boolean = when (name) {
+        "microphone" -> checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        "nearby" -> hasWifiPermission()
+        "notifications" -> LocalLinkNotificationManager.notificationsEnabled(this)
+        else -> false
     }
 
-    private fun offerPermissionSettings(feature: String) {
-        android.app.AlertDialog.Builder(this)
-            .setTitle("$feature permission is off")
-            .setMessage("You declined $feature access. Calls that need $feature will stay limited. You can enable it any time in Settings.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Open settings") { _, _ ->
-                try {
-                    startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        android.net.Uri.fromParts("package", packageName, null)))
-                } catch (_: Exception) {}
-            }
-            .show()
+    private fun gateRequest(name: String) {
+        when (name) {
+            "microphone" -> requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "", "")
+            "nearby" -> if (!hasWifiPermission()) requestWithRationale(if (android.os.Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), wifiPermissionRequestCode, "", "")
+            "notifications" -> LocalLinkNotificationManager.requestNotificationPermission(this)
+        }
+    }
+
+    // Bundle 101: no pre-info/rationale dialogs anywhere — fire the one
+    // native system dialog directly (signature kept; call sites untouched).
+    @Suppress("UNUSED_PARAMETER")
+    private fun requestWithRationale(permissions: Array<String>, requestCode: Int, title: String, rationale: String) {
+        requestPermissions(permissions, requestCode)
     }
 
     private fun hasWifiPermission():Boolean=if(android.os.Build.VERSION.SDK_INT>=33)checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)==PackageManager.PERMISSION_GRANTED else checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
