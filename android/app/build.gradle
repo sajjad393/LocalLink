@@ -48,6 +48,14 @@ android {
                     System.getenv("LOCLINK_RELEASE_KEY_ALIAS") &&
                     System.getenv("LOCLINK_RELEASE_KEY_PASSWORD")) {
                 signingConfig signingConfigs.release
+            } else {
+                // Bundle 95: without the release env keys the build used to
+                // ship an UNSIGNED release APK (`INSTALL_PARSE_FAILED_NO_CERTIFICATES`
+                // on every install). Sign with the debug key instead — the
+                // debug key is identical across our installs, so updates keep
+                // working during development; only Play-Store distribution
+                // must set the env vars above.
+                signingConfig signingConfigs.debug
             }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
