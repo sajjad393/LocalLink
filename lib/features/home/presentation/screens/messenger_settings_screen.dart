@@ -8,16 +8,13 @@ import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
 import 'package:locallink/features/account/presentation/screens/account_center_screen.dart';
-import 'package:locallink/features/account/presentation/screens/devices_screen.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_login_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
-import 'package:locallink/features/connectivity/presentation/screens/wifi_direct_screen.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/notifications/presentation/screens/notification_settings_screen.dart';
 import 'package:locallink/features/home/presentation/screens/appearance_settings_screen.dart';
-import 'package:locallink/features/home/presentation/screens/connectivity_preferences_screen.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
@@ -147,56 +144,6 @@ class MessengerSettingsScreen extends StatelessWidget {
               title: 'Privacy & security',
               subtitle: 'Identity protection and trusted communication',
               onTap: () => _openAccount(context),
-            ),
-          ]),
-          const SizedBox(height: 16),
-          _sectionLabel(context, 'Connectivity'),
-          _group(context, children: [
-            _row(
-              context,
-              icon: Icons.tune_outlined,
-              title: 'Connection preference',
-              subtitle: store.internetOnly
-                  ? 'Internet / server only'
-                  : 'Automatic local, Wi-Fi Direct and mesh paths',
-              onTap: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ConnectivityPreferencesScreen(store: store),
-                ),
-              ),
-            ),
-            _row(
-              context,
-              icon: Icons.wifi_tethering,
-              title: 'Nearby & Wi-Fi Direct',
-              subtitle: 'Discover nearby LocalLink phones',
-              onTap: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      WifiDirectScreen(controller: connectivityController),
-                ),
-              ),
-            ),
-            _row(
-              context,
-              icon: Icons.devices_outlined,
-              title: 'Trusted devices',
-              subtitle: 'Review phones connected to your account',
-              onTap: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => DevicesScreen(
-                    accountRepository: accountRepository,
-                    identityRepository: identityRepository,
-                    api: api,
-                    store: store,
-                    crypto: crypto,
-                    restoreService: restoreService,
-                  ),
-                ),
-              ),
             ),
           ]),
           const SizedBox(height: 16),

@@ -22,6 +22,16 @@ class VoiceNoteService {
   }
 
   Future<void> cancel() => _channel.invokeMethod('record_cancel');
+
+  /// Live mic amplitude (0..32767) while recording. 0 when idle or if the
+  /// native side is mid-transition — the wave UI fades instead of erroring.
+  Future<int> amplitude() async {
+    try {
+      return (await _channel.invokeMethod<int>('amplitude')) ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
   Future<int> play(String path) async => (await _channel.invokeMethod<int>('play', {'path': path})) ?? 0;
   Future<void> pause() => _channel.invokeMethod('pause');
   Future<void> stopPlayback() => _channel.invokeMethod('stop');

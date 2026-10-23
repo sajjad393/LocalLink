@@ -26,7 +26,6 @@ import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
 import 'package:locallink/core/permissions/app_permission_gate.dart';
-import 'package:locallink/features/onboarding/permissions_gate_screen.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/contacts_screen.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
@@ -129,15 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Dashboard entry: verify the real notification permission once per
     // install (and once per app start), explain WHY, and only then run the
     // official runtime flow. Never repeats on rebuilds or tab refreshes.
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (mounted) {
-        // Bundle 94 first: required-permission gate (mic + nearby) runs EVERY
-        // cold start while missing, and suppresses the notification gate
-        // until finished so dialogs never stack.
-        try {
-          await PermissionsGateScreen.maybeShow(context);
-        } catch (_) {}
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // A permission-dialog hiccup must never block the dashboard.
         AppPermissionGate.ensureNotificationsOnDashboardEntry(

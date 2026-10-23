@@ -8,8 +8,8 @@ import 'package:locallink/features/calls/presentation/widgets/call_palette.dart'
 ///
 /// Incoming ringing: green Answer + red Decline circles with labels.
 /// In-call (identical on both the caller and the receiver side): a dark pill
-/// with mute, speaker, video (plus camera flip while video is on) and a large
-/// red End button.
+/// with mute and speaker and a large red End button. (Video is temporarily
+/// hidden from the UI — bundle 97; the plumbing stays dormant for later.)
 class CallActionBar extends StatelessWidget {
   final CallBloc controller;
   final CallSession session;
@@ -97,17 +97,6 @@ class CallActionBar extends StatelessWidget {
               tooltip: session.speakerOn ? 'Speaker off' : 'Speaker on',
               onPressed: () => _run(controller.toggleSpeaker),
             ),
-            _CallToggleButton(
-              icon: session.videoEnabled
-                  ? Icons.videocam_rounded
-                  : Icons.videocam_off_rounded,
-              active: session.videoEnabled,
-              enabled: session.directMode,
-              tooltip: session.videoEnabled ? 'Camera off' : 'Camera on',
-              onPressed: () => _run(controller.toggleVideo),
-            ),
-            // Camera flip moved onto the floating self-preview (tap it) —
-            // WhatsApp-style; keeps the bottom bar to call controls only.
             _CallCircleButton(
               icon: Icons.call_end_rounded,
               background: CallPalette.red,

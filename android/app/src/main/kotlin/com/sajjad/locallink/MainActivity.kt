@@ -57,8 +57,6 @@ class MainActivity : FlutterActivity() {
     private val wifiPermissionRequestCode = 7742
     private var pendingResult: MethodChannel.Result? = null
     private var pendingWifiPermissionResult: MethodChannel.Result? = null
-    // Bundle 94: batched verdict for the pre-dashboard permission gate.
-    private var pendingGatePermissionResult: MethodChannel.Result? = null
     private var voiceRecorder: MediaRecorder? = null
     private var voiceRecordingPath: String? = null
     private var voicePlayer: MediaPlayer? = null
@@ -317,25 +315,6 @@ class MainActivity : FlutterActivity() {
         })
 
         LocalLinkNotificationManager.initialize(this)
-        // Bundle 94: batched permission verdicts + one-shot request prompts for
-        // the pre-dashboard permission gate (ONLY queries/checks here; every
-        // app's contextual request flow below stays the single source of truth
-        // for feature-time prompts — this channel never replaces them).
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "locallink/permissions").setMethodCallHandler { call, result ->
-            try {
-                when (call.method) {
-                    "status" -> result.success(gatePermissionStatuses())
-                    "request" -> {
-                        @Suppress("UNCHECKED_CAST") val names = call.argument<List<Any>>("permissions")?.map { it.toString() }.orEmpty()
-                        requestGatePermissions(names, result)
-                    }
-                    "openSettings" -> { startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null))); result.success(null) }
-                    else -> result.notImplemented()
-                }
-            } catch (e: Exception) {
-                result.error("PERMISSIONS_GATE", e.message, null)
-            }
-        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "locallink/notifications").setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
@@ -552,6 +531,7 @@ class MainActivity : FlutterActivity() {
             try {
                 when (call.method) {
                     "record_start" -> startVoiceRecording(result)
+                    "amplitude" -> result.success(voiceRecorder?.let { r -> try { r.maxAmplitude } catch (_: Exception) { 0 } } ?: 0)
                     "record_stop" -> stopVoiceRecording(result)
                     "record_cancel" -> { cancelVoiceRecording(); result.success(null) }
                     "play" -> playVoiceNote(call.argument<String>("path"), result)
@@ -695,15 +675,6 @@ class MainActivity : FlutterActivity() {
             if (denied) offerPermissionSettings(if (requestCode == 7812) "Microphone" else "Camera")
             return
         }
-        // Bundle 94 gate batch (mic/camera/notifications): always answered
-        // with the re-verified status map — the request pop-up result itself
-        // is never trusted as the verdict.
-        if (requestCode == 7840) {
-            val gate = pendingGatePermissionResult
-            pendingGatePermissionResult = null
-            gate?.success(gatePermissionStatuses())
-            return
-        }
         if (requestCode != wifiPermissionRequestCode) return
 
         val result = pendingWifiPermissionResult
@@ -833,56 +804,6 @@ class MainActivity : FlutterActivity() {
      * run the official runtime flow. Denials are settled through
      * onRequestPermissionsResult -> offerPermissionSettings. */
 
-    // Bundle 94 =================================================================
-    private fun gatePermissionStatuses(): Map<String, Map<String, Boolean>> {
-        fun entry(manifestName: String): Map<String, Boolean> {
-            val granted = checkSelfPermission(manifestName) == PackageManager.PERMISSION_GRANTED
-            // Android 13+: no rationale shown twice ≈ user chose permanently.
-            val canRequest = granted || shouldShowRequestPermissionRationale(manifestName)
-            return mapOf("granted" to granted, "can_request" to canRequest)
-        }
-        return mapOf(
-            "microphone" to entry(Manifest.permission.RECORD_AUDIO),
-            "camera" to entry(Manifest.permission.CAMERA),
-            "nearby" to mapOf(
-                "granted" to hasWifiPermission(),
-                // The wifi flow already has its own requested-once tracking,
-                // so the gate always offers a real prompt on tap here.
-                "can_request" to true,
-            ),
-            "notifications" to mapOf(
-                "granted" to LocalLinkNotificationManager.notificationsEnabled(this),
-                "can_request" to true,
-            ),
-        )
-    }
-
-    private fun requestGatePermissions(names: List<String>, result: MethodChannel.Result) {
-        if (pendingGatePermissionResult != null) { result.error("BUSY", "A permission request is already open", null); return }
-        val runtime = mutableListOf<String>()
-        if (names.contains("microphone")) runtime.add(Manifest.permission.RECORD_AUDIO)
-        if (names.contains("camera")) runtime.add(Manifest.permission.CAMERA)
-        if (names.contains("notifications") && android.os.Build.VERSION.SDK_INT >= 33) runtime.add(Manifest.permission.POST_NOTIFICATIONS)
-        // Nearby has a dedicated legacy channel + its own request UI; launch it
-        // from the gate if it is the SOLE missing item (mixed batches get the
-        // wifi channel afterwards).
-        val wantNearby = names.contains("nearby")
-        if (runtime.isEmpty() && wantNearby) {
-            // Nearby reuses the EXISTING wifi-direct request flow verbatim
-            // (same rationale, same request code, same result plumbing) so
-            // identity of UX is preserved: the gate simply auto-fills it.
-            pendingWifiPermissionResult = object : MethodChannel.Result {
-                override fun success(res: Any?) { result.success(gatePermissionStatuses()) }
-                override fun error(code: String, message: String?, details: Any?) { result.success(gatePermissionStatuses()) }
-                override fun notImplemented() { result.success(gatePermissionStatuses()) }
-            }
-            requestWithRationale(if (android.os.Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), wifiPermissionRequestCode, "Nearby device access", "LocalLink uses Wi-Fi Direct to call and chat with nearby phones without internet. Allow nearby-device access to continue.")
-            return
-        }
-        if (runtime.isEmpty()) { result.success(gatePermissionStatuses()); return }
-        pendingGatePermissionResult = result
-        requestWithRationale(runtime.toTypedArray(), 7840, "LocalLink", "LocalLink needs these permissions for calls and nearby discovery.")
-    }
 
     private fun requestWithRationale(permissions: Array<String>, requestCode: Int, title: String, rationale: String) {
         android.app.AlertDialog.Builder(this)

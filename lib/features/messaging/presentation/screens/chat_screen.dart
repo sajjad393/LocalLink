@@ -49,6 +49,8 @@ class _ChatScreenState extends State<ChatScreen> {
   late final FileTransferBloc _transferController;
   final _voiceNotes = VoiceNoteService();
   bool _recording = false;
+  int _recAmplitude = 0;
+  Timer? _recAmplitudeTimer;
 
   @override
   void initState() {
@@ -139,20 +141,37 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _toggleVoiceNote() async {
     if (_recording) {
+      _recAmplitudeTimer?.cancel();
+      _recAmplitudeTimer = null;
       try {
         final file = await _voiceNotes.stop();
         if (!mounted) return;
-        setState(() => _recording = false);
+        setState(() {
+          _recording = false;
+          _recAmplitude = 0;
+        });
         widget.controller.addPendingAttachments([file]);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voice note ready to send')));
       } catch (error) {
-        if (mounted) { setState(() => _recording = false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error)))); }
+        if (mounted) { setState(() { _recording = false; _recAmplitude = 0; }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error)))); }
       }
       return;
     }
     try {
       await _voiceNotes.record();
-      if (mounted) setState(() => _recording = true);
+      if (!mounted) return;
+      setState(() {
+        _recording = true;
+        _recAmplitude = 0;
+      });
+      // Mirrors WhatsApp's mic-meter poll cadence; native amplitude is
+      // reset 8x/s into the composer's live bars.
+      _recAmplitudeTimer?.cancel();
+      _recAmplitudeTimer =
+          Timer.periodic(const Duration(milliseconds: 120), (_) async {
+        final amp = await _voiceNotes.amplitude();
+        if (mounted && _recording) setState(() => _recAmplitude = amp);
+      });
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
     }
@@ -266,6 +285,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.dispose();
     widget.notifications?.setActiveDirectConversation(null);
     widget.controller.close();
+    _recAmplitudeTimer?.cancel();
     if (_recording) { unawaited(_voiceNotes.cancel()); }
     _transferController.close();
     super.dispose();
@@ -430,6 +450,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 onVoiceNote: _toggleVoiceNote,
                 hasAttachments: state.pendingAttachments.isNotEmpty,
                 isRecording: _recording,
+                recordingAmplitude: _recAmplitude,
               ),
             ],
           ),
