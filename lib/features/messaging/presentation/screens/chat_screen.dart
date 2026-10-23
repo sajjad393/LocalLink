@@ -332,48 +332,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   )
                 : Row(
                     children: [
-                      // Bundle 103: same status ring+dot as the Chats list.
-                      Builder(builder: (context) {
-                        final ringColor = deviceStatusColor(context, device);
-                        return SizedBox(
-                          width: 44,
-                          height: 44,
-                          child: Stack(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(2.5),
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border:
-                                      Border.all(color: ringColor, width: 2),
-                                ),
-                                child: AccountAvatar(
-                                    name: device.name, radius: 17),
-                              ),
-                              Positioned(
-                                right: 0,
-                                bottom: 0,
-                                child: Container(
-                                  width: 12,
-                                  height: 12,
-                                  decoration: BoxDecoration(
-                                    color: ringColor,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .surface,
-                                      width: 2,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
+                      AccountAvatar(name: device.name, radius: 20),
                       const SizedBox(width: LocalLinkSpacing.md),
                       Expanded(
                         child: Column(
