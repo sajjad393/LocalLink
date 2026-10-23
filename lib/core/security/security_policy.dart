@@ -9,7 +9,13 @@ import 'package:flutter/foundation.dart';
 class SecurityPolicy {
   const SecurityPolicy._();
 
-  static bool get allowInsecureHttp => kDebugMode;
+  /// Bundle 96: release smoke-testing escape hatch. The repo default keeps
+  /// plaintext HTTP debug-only; a one-off BUILD-TIME opt-in
+  /// `flutter build apk --release --dart-define=LOCLINK_ALLOW_INSECURE_HTTP=true`
+  /// relaxes it for LAN testing. Never ship store builds with this flag.
+  static const _allowInsecureHttpOverride =
+      bool.fromEnvironment('LOCLINK_ALLOW_INSECURE_HTTP');
+  static bool get allowInsecureHttp => kDebugMode || _allowInsecureHttpOverride;
 
   static const int maxServerAddressLength = 255;
 
