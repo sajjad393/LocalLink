@@ -169,8 +169,11 @@ class _CallsScreenState extends State<CallsScreen> {
           ),
         ),
       );
+      // One filled card per date bucket (Settings-style grouping): rows live
+      // together inside a rounded white container with hairline dividers.
+      final rows = <Widget>[];
       for (var i = 0; i < records.length; i++) {
-        children.add(CallHistoryTile(
+        rows.add(CallHistoryTile(
           call: records[i],
           selfId: widget.selfId,
           title: _title(records[i]),
@@ -183,13 +186,25 @@ class _CallsScreenState extends State<CallsScreen> {
           onCall: () => _redial(records[i]),
         ));
         if (i < records.length - 1) {
-          children.add(Divider(
+          rows.add(Divider(
             height: 1,
             indent: 76,
             color: colors.outlineVariant.withOpacity(.35),
           ));
         }
       }
+      children.add(
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          clipBehavior: Clip.hardEdge,
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: colors.outlineVariant.withOpacity(.5)),
+          ),
+          child: Column(children: rows),
+        ),
+      );
     });
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 
@@ -28,18 +30,42 @@ class _AddContactScreenState extends State<AddContactScreen> {
   late final DirectoryBloc bloc;
   bool searching = false;
 
+  // Bundle 98: live search — results refresh as the user types (debounced)
+  // and render inline on this page instead of the one-shot bottom sheet.
+  Timer? _debounce;
+  List<DirectoryProfile> _results = const [];
+  bool _noMatch = false;
+  /// Token of the request whose results may land; stale responses die here.
+  int _searchSeq = 0;
+
   @override
   void initState() {
     super.initState();
     bloc = DirectoryBloc(widget.repository);
-    query.addListener(() => setState(() {})); // keeps the clear icon in sync
+    query.addListener(_onQueryChanged);
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     query.dispose();
     bloc.close();
     super.dispose();
+  }
+
+  void _onQueryChanged() {
+    _debounce?.cancel();
+    final text = query.text.trim();
+    if (text.length < 2) {
+      setState(() {
+        searching = false;
+        _results = const [];
+        _noMatch = false;
+      });
+      return;
+    }
+    setState(() => searching = true);
+    _debounce = Timer(const Duration(milliseconds: 350), () => _runSearch(text));
   }
 
   Future<DirectoryState> _waitForResult() => bloc.stream.firstWhere(
@@ -53,60 +79,24 @@ class _AddContactScreenState extends State<AddContactScreen> {
     return raw.replaceAll(RegExp(r'[^0-9]'), '').length >= 5;
   }
 
-  Future<void> _search() async {
-    final text = query.text.trim();
-    if (text.isEmpty || searching) return;
-    setState(() => searching = true);
+  Future<void> _runSearch(String text) async {
+    final seq = ++_searchSeq;
     final asPhone = _looksLikePhone(text);
     bloc.add(asPhone ? SearchDirectoryByPhone(text) : SearchDirectoryByName(text));
     final state = await _waitForResult();
     if (!mounted) return;
+    // A newer keystroke re-issued the query while this one was in flight —
+    // drop the stale response silently instead of flashing old results.
+    if (seq != _searchSeq || query.text.trim() != text) return;
     setState(() => searching = false);
     if (state is DirectoryResults) {
-      if (state.profiles.isEmpty) {
-        _showError('No matching users found');
-      } else if (state.profiles.length == 1) {
-        _open(state.profiles.first);
-      } else {
-        _showResults(state.profiles);
-      }
+      setState(() {
+        _results = state.profiles;
+        _noMatch = state.profiles.isEmpty;
+      });
     } else if (state is DirectoryError) {
       _showError(state.message);
     }
-  }
-
-  void _showResults(List<DirectoryProfile> rows) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const ListTile(title: Text('Search results')),
-            ...rows.map(
-              (profile) => ListTile(
-                leading: CircleAvatar(
-                  child: Text(
-                    _initial(profile),
-                  ),
-                ),
-                title: Text(
-                  profile.displayName.isEmpty
-                      ? profile.username
-                      : profile.displayName,
-                ),
-                subtitle: Text('@${profile.username}'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _open(profile);
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   String _initial(DirectoryProfile profile) {
@@ -152,65 +142,101 @@ class _AddContactScreenState extends State<AddContactScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Add Contact')),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              'Find someone on LocalLink',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Search by name, @username, or phone number — or scan a QR code.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 22),
-            TextField(
-              controller: query,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _search(),
-              decoration: InputDecoration(
-                hintText: 'Name, username, or phone number',
-                filled: true,
-                prefixIcon: searching
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    : const Icon(Icons.search),
-                suffixIcon: query.text.isEmpty
-                    ? null
-                    : IconButton(
-                        onPressed: searching
-                            ? null
-                            : () => setState(query.clear),
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Clear',
-                      ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(28),
-                  borderSide: BorderSide.none,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: query,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Search',
+                    filled: true,
+                    prefixIcon: searching
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : const Icon(Icons.search),
+                    suffixIcon: query.text.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: searching
+                                ? null
+                                : () => query.clear(), // listener re-syncs state
+                            icon: const Icon(Icons.close),
+                            tooltip: 'Clear',
+                          ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(28),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
+                  ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 14,
+                const SizedBox(height: 16),
+                Expanded(child: _buildResults(context)),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: searching ? null : _scan,
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('Scan QR code'),
                 ),
-              ),
+              ],
             ),
-            const SizedBox(height: 18),
-            OutlinedButton.icon(
-              onPressed: searching ? null : _scan,
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Scan QR code'),
-            ),
-
-          ],
+          ),
         ),
       );
+
+  Widget _buildResults(BuildContext context) {
+    if (query.text.trim().length < 2) {
+      return Center(
+        child: Text(
+          'Type at least 2 characters to search.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      );
+    }
+    if (_noMatch && !searching) {
+      return Center(
+        child: Text(
+          'No matching users found',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      );
+    }
+    if (_results.isEmpty) return const SizedBox.shrink();
+    return ListView.separated(
+      itemCount: _results.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final profile = _results[index];
+        return ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Theme.of(context).dividerColor),
+          ),
+          tileColor: Theme.of(context).colorScheme.surface,
+          leading: CircleAvatar(child: Text(_initial(profile))),
+          title: Text(profile.displayName.isEmpty
+              ? profile.username
+              : profile.displayName),
+          subtitle: Text('@${profile.username}'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _open(profile),
+        );
+      },
+    );
+  }
 }
 
 class DirectoryProfileView extends StatefulWidget {

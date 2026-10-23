@@ -4,7 +4,6 @@ import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
-import 'package:locallink/core/widgets/device_status_indicator.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
 
 class MessengerConversationTile extends StatelessWidget {
@@ -45,7 +44,10 @@ class MessengerConversationTile extends StatelessWidget {
 
     return ListTile(
       minVerticalPadding: LocalLinkSpacing.sm,
-      leading: avatar,
+      // Bundle 100: presence chip moves onto the avatar's UPPER-RIGHT edge —
+      // Facebook-WhatsApp-style badge (white ring + filled chip) instead of
+      // the old floating icon beside the name.
+      leading: device == null ? avatar : _PresenceAvatar(avatar: avatar, device: device!),
       title: Row(
         children: [
           Expanded(
@@ -56,7 +58,6 @@ class MessengerConversationTile extends StatelessWidget {
               style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
-          if (device != null) DeviceStatusIndicator(device: device!, showLabel: false),
         ],
       ),
       subtitle: Padding(
@@ -100,6 +101,56 @@ class MessengerConversationTile extends StatelessWidget {
                   ],
                 )),
       onTap: onTap,
+    );
+  }
+}
+
+/// Wraps the row avatar with a 14px presence badge pinned to the avatar's
+/// upper-right: wifi_chip = Nearby (direct link), globe = Online via server,
+/// plain dot = offline. Colors/state come from the same presenceChannel()
+/// rule the app bars already use, so the badge can never disagree with any
+/// other surface.
+class _PresenceAvatar extends StatelessWidget {
+  final Widget avatar;
+  final Device device;
+
+  const _PresenceAvatar({required this.avatar, required this.device});
+
+  @override
+  Widget build(BuildContext context) {
+    final channel = device.presenceChannel();
+    final colors = Theme.of(context).colorScheme;
+    final (chipColor, icon) = switch (channel) {
+      'nearby' => (colors.primary, Icons.wifi_rounded),
+      'server' => (colors.primary, Icons.public_rounded),
+      _ => (colors.outline.withOpacity(.55), null),
+    };
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        avatar,
+        Positioned(
+          right: -1,
+          top: -1,
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: chipColor,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Theme.of(context).colorScheme.surface,
+                width: 2,
+              ),
+            ),
+            child: icon == null
+                ? null
+                : Center(
+                    child: Icon(icon, size: 7.5, color: Colors.white),
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 
-/// WhatsApp-style call history row: avatar, name, direction arrow + status,
-/// trailing green call button (tap-to-redial).
+/// WhatsApp-style call history row: avatar, name, direction arrow + time.
+/// Bundle 99: no trailing call-back button — the ROW itself starts the call.
 class CallHistoryTile extends StatelessWidget {
   final CallRecord call;
   final String title;
@@ -26,6 +26,13 @@ class CallHistoryTile extends StatelessWidget {
     this.missed = false,
     this.onCall,
   });
+
+  // 'Completed' is the default happy path, so it stays silent (mock 99):
+  // completed rows show "12:48 AM · 2:50"; everything else keeps its label.
+  String _statusLine() =>
+      status == 'Completed'
+          ? (duration == null ? date : '$date · $duration')
+          : (duration == null ? '$status, $date' : '$status, $date · $duration');
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +69,7 @@ class CallHistoryTile extends StatelessWidget {
             const SizedBox(width: 5),
             Expanded(
               child: Text(
-                duration == null ? '$status, $date' : '$status, $date · $duration',
+                _statusLine(),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -74,17 +81,7 @@ class CallHistoryTile extends StatelessWidget {
           ],
         ),
       ),
-      trailing: onCall == null
-          ? null
-          : IconButton(
-              tooltip: 'Call $title',
-              onPressed: onCall,
-              icon: const Icon(
-                Icons.call_rounded,
-                color: whatsGreen,
-                size: 24,
-              ),
-            ),
+      trailing: null, // bundle 99: row tap calls (no right-side button)
       onTap: onCall,
     );
   }
