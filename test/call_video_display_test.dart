@@ -20,6 +20,18 @@ void main() {
       expect(videoDisplayQuarterTurns(360), 0);
     });
 
+    test('local self-preview uses the INVERSE undo (wire-CW double-rotates it)', () {
+      // Sensor 90 (typical portrait back camera): wire frames need 1 CW
+      // quarter-turn on the receiver; the direct preview texture needs the
+      // inverse 3. Failing again = my face sideways after a "remote video"
+      // fix — these two tables must stay independent.
+      expect(localPreviewQuarterTurns(90), 3);
+      expect(localPreviewQuarterTurns(270), 1);
+      expect(localPreviewQuarterTurns(0), 0);
+      expect(localPreviewQuarterTurns(180), 2);
+      expect(localPreviewQuarterTurns(360), 0);
+    });
+
     test('sender-side table stays upright for every sensor/display combo', () {
       // (sensor, display, advertisedR, quarterTurns) — both cameras use the
       // same formula now; the first column pair comes straight out of the

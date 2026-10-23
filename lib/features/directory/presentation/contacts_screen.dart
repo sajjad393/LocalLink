@@ -220,8 +220,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
             onSelected: (value) async {
               if (value == 'remove') await bloc.remove(profile.userId);
               if (value == 'block') await bloc.block(profile.userId);
+              if (value == 'privacy') await _editPrivacy(profile);
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'privacy', child: Text('Contact privacy…')),
               PopupMenuItem(value: 'remove', child: Text('Remove contact')),
               PopupMenuItem(value: 'block', child: Text('Block person')),
             ],
@@ -245,4 +247,59 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ),
     );
   }
+  Future<void> _editPrivacy(DirectoryProfile profile) async {
+    var isPrivate = true;
+    try {
+      isPrivate = await widget.directory.contactPrivate(profile.userId);
+    } catch (_) {}
+    if (!mounted) return;
+    final name = profile.displayName.isEmpty
+        ? profile.username
+        : profile.displayName;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => AlertDialog(
+          title: Text(name),
+          content: SwitchListTile(
+            title: const Text('Searchable by others'),
+            subtitle: const Text(
+              'Public contacts are shared onward so anyone searching can '
+              'find them through you (server, Wi‑Fi Direct, mesh). '
+              'Turning this off marks the contact private — only you know it.',
+            ),
+            value: !isPrivate,
+            onChanged: (value) => setSheetState(() => isPrivate = !value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                try {
+                  await widget.directory
+                      .setContactPrivate(profile.userId, isPrivate);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(isPrivate
+                        ? name + ' marked private'
+                        : name + ' is public again'),
+                  ));
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Could not update privacy: ' + e.toString())));
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+

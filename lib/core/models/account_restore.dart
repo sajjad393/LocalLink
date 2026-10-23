@@ -46,13 +46,15 @@ class AccountContact {
   final String userId;
   final String deviceId;
   final String addedAt;
+  final bool isPrivate;
 
-  const AccountContact({required this.userId, required this.deviceId, required this.addedAt});
+  const AccountContact({required this.userId, required this.deviceId, required this.addedAt, this.isPrivate = false});
 
   factory AccountContact.fromJson(Map<String, dynamic> json) => AccountContact(
         userId: json['user_id']?.toString() ?? '',
         deviceId: json['device_id']?.toString() ?? '',
         addedAt: json['added_at']?.toString() ?? '',
+        isPrivate: json['is_private'] == true || json['is_private'] == 1,
       );
 }
 

@@ -455,7 +455,43 @@ final class CallSessionManager implements CallGateway {
       return;
     }
     await transport.setVideoEnabled(session, enabled);
-    _setSession(session.copyWith(videoEnabled: enabled));
+    _setSession(session.copyWith(
+      videoEnabled: enabled,
+      videoSwitchRequested: false,
+      videoSwitchDeclined: false,
+    ));
+  }
+
+  /// WhapApp-style: the local user accepted the peer's switch-to-video —
+  /// turn OUR camera on for this call (same path as a manual toggle). Falls
+  /// back to a receive-only viewer when the camera can't start (permission
+  /// still denied etc.) so the peer's video at least renders.
+  @override
+  Future<void> acceptVideoSwitch() async {
+    final session = _session;
+    if (session == null || !session.videoSwitchRequested) return;
+    _setSession(session.copyWith(
+        videoSwitchRequested: false, videoSwitchDeclined: false));
+    if (session.videoEnabled) return;
+    try {
+      await toggleVideo();
+    } catch (_) {
+      final fresh = _session;
+      if (fresh != null &&
+          fresh.answeredAt != null &&
+          fresh.remoteVideoTextureId == null) {
+        await _acceptRemoteVideo(fresh);
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> declineVideoSwitch() async {
+    final session = _session;
+    if (session == null) return;
+    _setSession(session.copyWith(
+        videoSwitchRequested: false, videoSwitchDeclined: true));
   }
 
   /// Receive-side half of the WhatsApp-style switch-to-video: the peer turned
@@ -955,7 +991,11 @@ final class CallSessionManager implements CallGateway {
         if (!session.peerVideoActive) {
           _setSession(session.copyWith(peerVideoActive: true));
         }
-        if (session.answeredAt != null && session.remoteVideoTextureId == null) {
+        if (session.answeredAt != null &&
+            session.remoteVideoTextureId == null &&
+            !session.videoSwitchRequested) {
+          // Suppressed while the switch-consent dialog is up: the Accept
+          // action itself starts our side of video.
           unawaited(_acceptRemoteVideo(session));
         }
       }
@@ -963,8 +1003,12 @@ final class CallSessionManager implements CallGateway {
       // 2s summaries) plus decoder config failures -- the next capture names
       // exactly why peer video never paints.
       if (eventTargets && type == 'call_video_drop') {
+        final reasons = event['reasons']?.toString() ?? '';
         AppLogger.warning('CALL_VIDEO_DROP',
             detail: 'call=${session.id} ${event['reasons']}');
+        if (reasons != session.videoDropSummary) {
+          _setSession(session.copyWith(videoDropSummary: reasons));
+        }
       }
       if (eventTargets && type == 'call_video_decoder_error') {
         AppLogger.error('CALL_VIDEO_DECODER_ERROR',
@@ -976,13 +1020,28 @@ final class CallSessionManager implements CallGateway {
         final rot = (event['rotation'] as num?)?.toInt() ?? 0;
         final w = (event['width'] as num?)?.toInt() ?? 0;
         final h = (event['height'] as num?)?.toInt() ?? 0;
-        if (rot != session.remoteVideoRotation ||
+        if (!session.videoRemoteConfigured ||
+            rot != session.remoteVideoRotation ||
             (w > 0 && w != session.remoteVideoWidth) ||
             (h > 0 && h != session.remoteVideoHeight)) {
           _setSession(session.copyWith(
+            videoRemoteConfigured: true,
             remoteVideoRotation: rot,
             remoteVideoWidth: w > 0 ? w : session.remoteVideoWidth,
             remoteVideoHeight: h > 0 ? h : session.remoteVideoHeight,
+          ));
+        }
+      }
+      // Live RX counter for the on-screen diagnostics: proves frames actually
+      // cross the wire even before the first decoded paint.
+      if (eventTargets && type == 'call_video_received') {
+        final next = session.videoRxFrames + 1;
+        // Throttled: 30fps sessions would otherwise rebuild the overlay per
+        // frame; the counter refreshes in bursts of five plus the first frame.
+        if (next % 5 == 0 || session.videoRxFrames == 0) {
+          _setSession(session.copyWith(
+            videoRxFrames: next,
+            videoRemoteConfigured: true, // frames are downstream of config
           ));
         }
       }
@@ -996,10 +1055,22 @@ final class CallSessionManager implements CallGateway {
       }
       if (eventTargets && type == 'call_peer_video_state') {
         final on = event['enabled'] == true;
-        if (session.peerVideoActive != on) {
+        if (session.peerVideoActive != on ||
+            (on && !session.videoEnabled) ||
+            (!on && (session.videoSwitchRequested || session.videoSwitchDeclined))) {
           AppLogger.info('CALL_PEER_VIDEO_STATE',
               detail: 'call=${session.id} enabled=$on');
-          _setSession(session.copyWith(peerVideoActive: on));
+          final askConsent = on &&
+              session.answeredAt != null &&
+              !session.videoEnabled &&
+              !session.videoSwitchDeclined;
+          _setSession(session.copyWith(
+            peerVideoActive: on,
+            // Ask once per peer-video-on episode; decline resets on peer-off.
+            videoSwitchRequested:
+                askConsent ? true : (!on ? false : session.videoSwitchRequested),
+            videoSwitchDeclined: !on ? false : session.videoSwitchDeclined,
+          ));
         }
       }
     }

@@ -59,6 +59,8 @@ final class CallBloc extends Cubit<CallState> {
   Future<void> toggleMute() async => _run(service.toggleMute);
   Future<void> toggleSpeaker() async => _run(service.toggleSpeaker);
   Future<void> toggleVideo() async => _run(service.toggleVideo);
+  Future<void> acceptVideoSwitch() async => _run(service.acceptVideoSwitch);
+  Future<void> declineVideoSwitch() async => _run(service.declineVideoSwitch);
   Future<void> switchCamera() async => _run(service.switchCamera);
   void onAppLifecycleState(AppLifecycleState s) => service.onAppLifecycleState(s);
 

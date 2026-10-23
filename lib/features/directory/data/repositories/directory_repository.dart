@@ -8,6 +8,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/features/directory/data/contact_edge.dart';
+import 'package:locallink/features/directory/data/shareable_profile_filter.dart';
 import 'package:locallink/features/directory/data/phone_number_normalizer.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
@@ -376,9 +377,13 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final requesterUserId = message['origin_user_id']?.toString() ?? '';
     final rows = <Map<String, dynamic>>[];
     final profiles = await store.directoryProfiles();
+    final privateIds = await store.privateContactIds();
     for (final row in profiles.take(_maxSyncProfiles)) {
       final profile = DirectoryProfile.fromMap(row);
       if (!profile.isSigned || await store.isBlocked(profile.userId)) continue;
+      // Bundle 90: a contact the local owner marked private is never
+      // re-shared onward — third parties stop learning it from this device.
+      if (!isShareableRow(profile.userId, privateIds)) continue;
       final payload = await _profileForRequester(profile, requesterUserId);
       if (payload != null) rows.add(payload);
     }
@@ -749,7 +754,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       for (final id in localIds.difference(confirmed)) {
         if (id == accountId) continue;
         try {
-          await api.addAccountContact(id);
+          await api.addAccountContact(id,
+              isPrivate: await store.isContactPrivate(id));
           confirmed.add(id);
         } catch (e) {
           AppLogger.warning('CONTACT_PUSH_DEFERRED',
@@ -782,6 +788,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         if (contact.deviceId.isNotEmpty || !hadLocal) {
           await store.addContact(contact.userId, contact.deviceId);
         }
+        // The server entry is MY list row: its is_private applies here too
+        // (restore-after-reinstall keeps your private marks).
+        await store.setContactPrivate(contact.userId, contact.isPrivate);
         // Ensure a profile exists for the join-based contacts list, otherwise
         // a mutual contact with no cached profile would be invisible.
         if (contact.userId.isNotEmpty) {
@@ -969,6 +978,26 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     }
     unawaited(syncServerContacts());
     unawaited(publishContactEdge(ContactEdge.opRemove, userId.trim()));
+  }
+
+  @override
+  Future<bool> contactPrivate(String userId) =>
+      store.isContactPrivate(userId);
+
+  @override
+  Future<void> setContactPrivate(String userId, bool isPrivate) async {
+    final id = userId.trim();
+    if (id.isEmpty) return;
+    await store.setContactPrivate(id, isPrivate);
+    // Mirror to the account server so the mark survives reinstall; the add
+    // upsert carries the flag (best effort — next sync retries on failure).
+    try {
+      await api.addAccountContact(id, isPrivate: isPrivate);
+      AppLogger.info('CONTACT_PRIVACY_PUSHED', detail: isPrivate ? 'private' : 'public');
+    } catch (_) {
+      AppLogger.warning('CONTACT_PRIVACY_PUSH_DEFERRED',
+          detail: 'server unreachable; flag stays local for now');
+    }
   }
 
   @override

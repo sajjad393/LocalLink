@@ -80,6 +80,30 @@ class CallSession {
   final String? mediaNextHopId;
   final int? mediaHopCount;
 
+  /// Bundle 92 on-screen diagnostics: live verdicts of the native video
+  /// pipeline (decoder configured? frames arriving? drops by named reason?).
+  /// Rendered small in the video-waiting overlay so a screenshot instantly
+  /// tells transport problems apart from decode/config problems.
+  final bool videoRemoteConfigured;
+  final int videoRxFrames;
+  final String videoDropSummary; // '' = no drops seen
+
+  /// Bundle 93: WhatsApp-style audio→video switch CONSENT. Set when the peer
+  /// turns their camera on while OUR camera is off; the call screen surfaces
+  /// a dialog. Only when the user Accepts do we start our side of video
+  /// ('declined' suppresses both the dialog and the auto-viewer until the
+  /// peer turns video off/on fresh).
+  final bool videoSwitchRequested;
+  final bool videoSwitchDeclined;
+
+  /// Stable id of the DEBUG overlay: '' hides it.
+  String get videoDebugLine {
+    if (!videoEnabled) return '';
+    final cfg = videoRemoteConfigured ? 'cfg:ok' : 'cfg:--';
+    final drops = videoDropSummary.isEmpty ? 'drops:none' : 'drops:$videoDropSummary';
+    return 'video dbg · $cfg · rx:$videoRxFrames · $drops';
+  }
+
   const CallSession({
     required this.id,
     required this.peerId,
@@ -112,6 +136,11 @@ class CallSession {
     this.peerVideoActive = false,
     this.mediaNextHopId,
     this.mediaHopCount,
+    this.videoRemoteConfigured = false,
+    this.videoRxFrames = 0,
+    this.videoDropSummary = '',
+    this.videoSwitchRequested = false,
+    this.videoSwitchDeclined = false,
   });
 
   bool get isFinished => const {
@@ -138,6 +167,11 @@ class CallSession {
     String? mediaCodec,
     List<String>? supportedMediaCodecs,
     bool? videoEnabled,
+    bool? videoSwitchRequested,
+    bool? videoSwitchDeclined,
+    bool? videoRemoteConfigured,
+    int? videoRxFrames,
+    String? videoDropSummary,
     int? localVideoTextureId,
     int? remoteVideoTextureId,
     int? localVideoRotation,
@@ -180,6 +214,11 @@ class CallSession {
         remoteVideoWidth: remoteVideoWidth ?? this.remoteVideoWidth,
         remoteVideoHeight: remoteVideoHeight ?? this.remoteVideoHeight,
         peerVideoActive: peerVideoActive ?? this.peerVideoActive,
+        videoRemoteConfigured: videoRemoteConfigured ?? this.videoRemoteConfigured,
+        videoRxFrames: videoRxFrames ?? this.videoRxFrames,
+        videoDropSummary: videoDropSummary ?? this.videoDropSummary,
+        videoSwitchRequested: videoSwitchRequested ?? this.videoSwitchRequested,
+        videoSwitchDeclined: videoSwitchDeclined ?? this.videoSwitchDeclined,
         mediaNextHopId: mediaNextHopId ?? this.mediaNextHopId,
         mediaHopCount: mediaHopCount ?? this.mediaHopCount,
       );

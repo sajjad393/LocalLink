@@ -737,11 +737,16 @@ class LocalLinkApi {
         .toList();
   }
 
-  Future<void> addAccountContact(String userId) async {
+  Future<void> addAccountContact(String userId, {bool? isPrivate}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/v1/account/contacts'),
       headers: _headers(),
-      body: jsonEncode({'user_id': userId.trim()}),
+      // is_private omitted when null → server upsert keeps the existing flag
+      // (old clients stay byte-compatible; bundle 90 toggles send it).
+      body: jsonEncode({
+        'user_id': userId.trim(),
+        if (isPrivate != null) 'is_private': isPrivate,
+      }),
     ).timeout(const Duration(seconds: 6));
     if (response.statusCode != 200) throw Exception(_error(response));
   }

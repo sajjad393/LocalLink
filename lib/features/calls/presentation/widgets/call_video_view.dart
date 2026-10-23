@@ -15,6 +15,17 @@ import 'package:locallink/features/calls/presentation/widgets/call_palette.dart'
 /// 'rotation fix' appears to flip-flop between sideways and inverted.
 int videoDisplayQuarterTurns(int rotation) => ((rotation % 360) ~/ 90) & 3;
 
+/// The LOCAL self-preview renders a SurfaceTexture the camera wrote into
+/// directly (preview target of the same capture request) — unlike the wire
+/// path that passes through encoder→network→decoder. Field evidence: the
+/// wire-CLOCKWISE undo is correct for the DECODED texture, but the preview
+/// texture arrives already display-composed, so undoing clockwise a second
+/// time turns the user's own face sideways. Self-view therefore keeps the
+/// INVERSE (counter-clockwise) undo — exactly why the remote/self renderers
+/// must never share a rotation mapping again.
+int localPreviewQuarterTurns(int rotation) =>
+    (4 - videoDisplayQuarterTurns(rotation)) & 3;
+
 /// WhatsApp-style video layer: the peer's stream fills the screen and the
 /// caller's own camera sits as a small rounded picture-in-picture that the
 /// user can DRAG to any corner. Tap the bubble to flip the camera.
@@ -49,7 +60,7 @@ class _CallVideoViewState extends State<CallVideoView> {
     // Aspect (w/h) as actually rendered, mirroring _CoverTexture rotation math.
     final w = widget.session.localVideoWidth.toDouble();
     final h = widget.session.localVideoHeight.toDouble();
-    final sideways = videoDisplayQuarterTurns(widget.session.localVideoRotation).isOdd;
+    final sideways = localPreviewQuarterTurns(widget.session.localVideoRotation).isOdd;
     return sideways ? (h / w) : (w / h);
   }
 
@@ -128,6 +139,7 @@ class _CallVideoViewState extends State<CallVideoView> {
                 rotation: session.localVideoRotation,
                 sourceWidth: session.localVideoWidth,
                 sourceHeight: session.localVideoHeight,
+                selfPreview: true,
               )
             else if (showLocalFull)
               const _VideoLoading(label: 'Starting camera…')
@@ -135,6 +147,27 @@ class _CallVideoViewState extends State<CallVideoView> {
               const Center(
                 child: Icon(Icons.videocam_off_rounded,
                     color: CallPalette.textSecondary, size: 56),
+              ),
+
+            // ---- Bundle 92: on-screen video pipeline verdict. One small,
+            // translucent line driven by the native counters — a screenshot
+            // distinguishes "no frames arrive" from "config never completes"
+            // in one glance. Always visible while MY camera is on.
+            if (session.videoEnabled && session.videoDebugLine.isNotEmpty)
+              Align(
+                alignment: Alignment.bottomLeft,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(
+                    session.videoDebugLine,
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 10,
+                      fontFamily: 'monospace',
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
               ),
 
             // ---- Local PiP, draggable + snap + tap-to-flip --------------
@@ -198,6 +231,7 @@ class _CallVideoViewState extends State<CallVideoView> {
                                 rotation: session.localVideoRotation,
                                 sourceWidth: session.localVideoWidth,
                                 sourceHeight: session.localVideoHeight,
+                                selfPreview: true,
                               ),
                             if (widget.onSelfPreviewTap != null)
                               const Positioned(
@@ -227,6 +261,7 @@ class _FadeTexture extends StatelessWidget {
   final int rotation;
   final int sourceWidth;
   final int sourceHeight;
+  final bool selfPreview;
 
   const _FadeTexture({
     super.key,
@@ -234,6 +269,7 @@ class _FadeTexture extends StatelessWidget {
     required this.rotation,
     required this.sourceWidth,
     required this.sourceHeight,
+    this.selfPreview = false,
   });
 
   @override
@@ -249,6 +285,7 @@ class _FadeTexture extends StatelessWidget {
         rotation: rotation,
         sourceWidth: sourceWidth,
         sourceHeight: sourceHeight,
+        selfPreview: selfPreview,
       ),
     );
   }
@@ -284,12 +321,14 @@ class _CoverTexture extends StatelessWidget {
   final int rotation;
   final int sourceWidth;
   final int sourceHeight;
+  final bool selfPreview;
 
   const _CoverTexture({
     required this.textureId,
     this.rotation = 0,
     this.sourceWidth = 640,
     this.sourceHeight = 360,
+    this.selfPreview = false,
   });
 
   @override
@@ -299,7 +338,9 @@ class _CoverTexture extends StatelessWidget {
     // videoDisplayQuarterTurns). The box size comes from the ACTUAL encoded
     // geometry, so any ladder rung keeps its true aspect instead of
     // stretching a hardcoded 16:9.
-    final quarterTurns = videoDisplayQuarterTurns(rotation);
+    final quarterTurns = selfPreview
+        ? localPreviewQuarterTurns(rotation)
+        : videoDisplayQuarterTurns(rotation);
     final sideways = quarterTurns.isOdd;
     return FittedBox(
       fit: BoxFit.cover,

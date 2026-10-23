@@ -17,6 +17,10 @@ abstract interface class CallGateway {
   Future<void> endCall({String reason = 'hangup'});
   Future<void> toggleMute();
   Future<void> toggleVideo();
+
+  /// Bundle 93: WhatsApp-style audio→video switch consent (see CallSession).
+  Future<void> acceptVideoSwitch(); // enable our camera for this call
+  Future<void> declineVideoSwitch(); // stay audio-only, suppress re-asks
   Future<void> switchCamera();
   Future<void> toggleSpeaker();
   void onAppLifecycleState(AppLifecycleState state);

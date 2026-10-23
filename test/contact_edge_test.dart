@@ -6,7 +6,7 @@ ContactEdge edge({
   String fromUser = 'u-a',
   String fromDevice = 'd-a',
   String toUser = 'u-b',
-  int ts = 1_700_000_000_000,
+  int ts = 1700000000000,
 }) =>
     ContactEdge(
       op: op,

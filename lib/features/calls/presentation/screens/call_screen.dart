@@ -27,6 +27,7 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   late CallSession _session = widget.initialSession;
   Timer? _ticker;
+  bool _switchDialogOpen = false;
 
   @override
   void initState() {
@@ -105,6 +106,26 @@ class _CallScreenState extends State<CallScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) Navigator.of(context).maybePop();
           });
+        }
+
+        // Bundle 93: peer turned their camera on mid-call while ours is off —
+        // WhatsApp-style consent dialog. Accepting starts our camera; Not now
+        // keeps the call audio-only and suppresses re-asks for this episode.
+        if (session.videoSwitchRequested &&
+            !session.videoSwitchDeclined &&
+            !_switchDialogOpen &&
+            session.answeredAt != null &&
+            !session.videoEnabled) {
+          _switchDialogOpen = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _showVideoSwitchDialog(session);
+          });
+        }
+        if (!session.videoSwitchRequested && _switchDialogOpen) {
+          // Flag cleared elsewhere (accepted/declined already); mark closed
+          // so the next switch request can surface again.
+          _switchDialogOpen = false;
         }
 
         final statusText = _statusTextFor(session);
@@ -188,6 +209,36 @@ class _CallScreenState extends State<CallScreen> {
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeInOut,
         child: child,
+      ),
+    );
+  }
+
+  Future<void> _showVideoSwitchDialog(CallSession session) async {
+    final name = session.peerName.isEmpty ? 'Your contact' : session.peerName;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.videocam_rounded, size: 36),
+        title: const Text('Switch to video call?'),
+        content: Text('$name turned on their camera. Accept to switch this call to video.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              widget.controller.declineVideoSwitch();
+            },
+            child: const Text('Not now'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              widget.controller.acceptVideoSwitch();
+            },
+            icon: const Icon(Icons.videocam_rounded),
+            label: const Text('Accept'),
+          ),
+        ],
       ),
     );
   }

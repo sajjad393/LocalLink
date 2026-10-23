@@ -213,7 +213,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
       );
 }
 
-class DirectoryProfileView extends StatelessWidget {
+class DirectoryProfileView extends StatefulWidget {
   final DirectoryProfile profile;
   final DirectoryRepositoryContract repository;
   final Future<void> Function(DirectoryProfile)? onStartChat;
@@ -225,6 +225,34 @@ class DirectoryProfileView extends StatelessWidget {
     this.onStartChat,
   });
 
+  @override
+  State<DirectoryProfileView> createState() => _DirectoryProfileViewState();
+}
+
+class _DirectoryProfileViewState extends State<DirectoryProfileView> {
+  /// null until the contact-status probe resolves; hidden for non-contacts.
+  bool? _isPrivate;
+
+  DirectoryProfile get profile => widget.profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrivacy();
+  }
+
+  Future<void> _loadPrivacy() async {
+    try {
+      final rows = await widget.repository.contacts();
+      final isContact = rows.any((p) => p.userId == profile.userId);
+      if (!isContact) return;
+      if (!mounted) return;
+      setState(() => _isPrivate = false);
+      final value = await widget.repository.contactPrivate(profile.userId);
+      if (mounted) setState(() => _isPrivate = value);
+    } catch (_) {}
+  }
+
   String _initial() {
     final value = profile.displayName.isEmpty
         ? profile.username
@@ -234,11 +262,14 @@ class DirectoryProfileView extends StatelessWidget {
 
   Future<void> _addContact(BuildContext context) async {
     try {
-      await repository.addContact(profile.userId);
+      await widget.repository.addContact(profile.userId);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Contact added')),
         );
+        // Reveal the privacy toggle for the freshly added contact.
+        setState(() => _isPrivate ??= false);
+        _loadPrivacy();
       }
     } catch (e) {
       if (!context.mounted) return;
@@ -254,7 +285,7 @@ class DirectoryProfileView extends StatelessWidget {
 
   Future<void> _block(BuildContext context) async {
     try {
-      await repository.blockUser(profile.userId);
+      await widget.repository.blockUser(profile.userId);
       if (context.mounted) Navigator.pop(context);
     } catch (e) {
       if (!context.mounted) return;
@@ -298,9 +329,30 @@ class DirectoryProfileView extends StatelessWidget {
               icon: const Icon(Icons.person_add_alt_1),
               label: const Text('Add Contact'),
             ),
-            if (onStartChat != null)
+            if (_isPrivate != null)
+              SwitchListTile(
+                title: const Text('Searchable by others'),
+                subtitle: Text(_isPrivate!
+                    ? 'Private — this contact is not re-shared from your phone'
+                    : 'Public — shared onward so anyone searching can find them'),
+                value: !_isPrivate!,
+                onChanged: (value) async {
+                  final makePrivate = !value;
+                  setState(() => _isPrivate = makePrivate);
+                  try {
+                    await widget.repository
+                        .setContactPrivate(profile.userId, makePrivate);
+                  } catch (e) {
+                    if (!mounted) return;
+                    setState(() => _isPrivate = !makePrivate);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('Could not update privacy: $e')));
+                  }
+                },
+              ),
+            if (widget.onStartChat != null)
               OutlinedButton.icon(
-                onPressed: () => onStartChat!(profile),
+                onPressed: () => widget.onStartChat!(profile),
                 icon: const Icon(Icons.chat_bubble_outline),
                 label: const Text('Message'),
               ),
@@ -311,5 +363,4 @@ class DirectoryProfileView extends StatelessWidget {
           ],
         ),
       );
-
 }

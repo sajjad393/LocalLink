@@ -21,6 +21,13 @@ abstract interface class DirectoryRepositoryContract {
   Future<void> sync();
   Future<void> addContact(String userId);
   Future<void> removeContact(String userId);
+
+  /// Bundle 90: per-contact re-sharing mark (default false/public). Set by
+  /// the LISTER on their own entry: private entries are excluded from this
+  /// device's mesh sync-response rows and from what this device re-broadcasts
+  /// — they never change anyone else's entries or the peer's own visibility.
+  Future<void> setContactPrivate(String userId, bool isPrivate);
+  Future<bool> contactPrivate(String userId);
   Future<void> blockUser(String userId);
   Future<void> unblockUser(String userId);
   Future<bool> isBlocked(String userId);

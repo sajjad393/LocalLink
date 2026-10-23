@@ -144,6 +144,7 @@ class LocalStore {
         if (oldVersion < 20) await _upgradeTo20(db);
         if (oldVersion < 21) await _upgradeTo21(db);
         if (oldVersion < 22) await _upgradeTo22(db);
+        if (oldVersion < 23) await _upgradeTo23(db);
       },
     );
     _databaseOpened = true;
@@ -300,6 +301,7 @@ class LocalStore {
     await _upgradeTo18(db);
     await _upgradeTo20(db);
     await _upgradeTo22(db);
+    await _upgradeTo23(db);
   }
 
   Future<void> _upgradeTo2(Database db) async {
@@ -652,6 +654,17 @@ class LocalStore {
   /// presence_local_at with its OWN clock at arrival; staleness compares
   /// only local stamps. lan_available/mesh_available are now persisted so
   /// the binary Online rule survives process restarts and DB polling.
+  // Bundle 90: per-contact privacy mark (default public, 0). A lister marks
+  // their own contact entry private; private entries must be excluded from
+  // the rows this device re-shares in mesh sync responses.
+  Future<void> _upgradeTo23(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(contacts)');
+    if (!cols.any((c) => c['name']?.toString() == 'is_private')) {
+      await db.execute(
+          'ALTER TABLE contacts ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
+    }
+  }
+
   Future<void> _upgradeTo22(Database db) async {
     await db.execute(
         "ALTER TABLE known_devices ADD COLUMN presence_local_at TEXT NOT NULL DEFAULT ''");
@@ -1043,6 +1056,36 @@ class LocalStore {
   Future<bool> isContact(String userId) async => (await _db.query('contacts',
           where: 'user_id=?', whereArgs: [userId], limit: 1))
       .isNotEmpty;
+
+  /// Bundle 90: per-contact re-sharing mark. `true` = this device must NOT
+  /// include the contact in the profiles it re-shares over mesh sync replies
+  /// (default false = public/shareable). Non-contacts always read false.
+  Future<bool> isContactPrivate(String userId) async {
+    final rows = await _db.query('contacts',
+        columns: ['is_private'],
+        where: 'user_id=?',
+        whereArgs: [userId],
+        limit: 1);
+    if (rows.isEmpty) return false;
+    return (rows.first['is_private'] as int? ?? 0) != 0;
+  }
+
+  Future<void> setContactPrivate(String userId, bool isPrivate) async {
+    if (userId.isEmpty) return;
+    await _db.update('contacts', {'is_private': isPrivate ? 1 : 0},
+        where: 'user_id=?', whereArgs: [userId]);
+  }
+
+  /// Contact ids currently marked private — the sync-row filter set.
+  Future<Set<String>> privateContactIds() async {
+    final rows = await _db.query('contacts',
+        columns: ['user_id'], where: 'is_private != 0');
+    return rows
+        .map((r) => r['user_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+  }
+
   Future<List<Map<String, dynamic>>> contacts() async => _db.rawQuery(
       'SELECT p.* FROM contacts c JOIN directory_profiles p ON p.user_id=c.user_id ORDER BY p.display_name COLLATE NOCASE ASC');
 
