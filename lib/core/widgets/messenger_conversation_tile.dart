@@ -4,7 +4,6 @@ import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
-import 'package:locallink/core/widgets/device_status_indicator.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
 
 class MessengerConversationTile extends StatelessWidget {
@@ -35,7 +34,7 @@ class MessengerConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget avatar = group != null
+    final avatar = group != null
         ? GroupAvatar(radius: 24, icon: fallbackIcon ?? Icons.groups_rounded)
         : AccountAvatar(
             name: title,
@@ -119,45 +118,39 @@ class _PresenceAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Bundle 103: replace the top-right chip with the status language used
-    // everywhere else — colored ring around the avatar + corner dot, colors
-    // from deviceStatusColor (blue server, amber nearby, grey offline).
-    final ringColor = deviceStatusColor(context, device);
-    return SizedBox(
-      width: 54,
-      height: 54,
-      child: Stack(
-        children: [
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: ringColor, width: 2),
-              ),
-              child: avatar,
-            ),
-          ),
-          Positioned(
-            right: 0,
-            bottom: 1,
-            child: Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                color: ringColor,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.surface,
-                  width: 2,
-                ),
+    final channel = device.presenceChannel();
+    final colors = Theme.of(context).colorScheme;
+    final (chipColor, icon) = switch (channel) {
+      'nearby' => (colors.primary, Icons.wifi_rounded),
+      'server' => (colors.primary, Icons.public_rounded),
+      _ => (colors.outline.withOpacity(.55), null),
+    };
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        avatar,
+        Positioned(
+          right: -1,
+          top: -1,
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: chipColor,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Theme.of(context).colorScheme.surface,
+                width: 2,
               ),
             ),
+            child: icon == null
+                ? null
+                : Center(
+                    child: Icon(icon, size: 7.5, color: Colors.white),
+                  ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

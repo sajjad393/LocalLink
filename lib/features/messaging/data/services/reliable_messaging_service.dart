@@ -343,21 +343,32 @@ class ReliableMessagingService {
     for (final file in attachments) {
       final fileId = _newId();
 
+      // Bundle 106: stage the picked bytes into durable app-private storage
+      // BEFORE queueing. Picker/voice-cache paths can be reclaimed by the OS
+      // while the outbox waits offline; without a durable copy the mesh push
+      // aborted and the sender's own preview could not render.
+      final staged = PickedFile(
+        path: await files.stageOutgoingFile(file: file, fileId: fileId),
+        name: file.name,
+        contentType: file.contentType,
+        size: file.size,
+      );
+
       await store.addPendingAttachment(
         id: fileId,
         messageId: id,
-        file: file,
+        file: staged,
       );
 
       localAttachments.add(
         Attachment(
           id: fileId,
-          originalName: file.name,
-          contentType: file.contentType,
-          size: file.size,
+          originalName: staged.name,
+          contentType: staged.contentType,
+          size: staged.size,
           sha256: '',
-          isImage: file.contentType.startsWith('image/'),
-          localPath: file.path,
+          isImage: staged.contentType.startsWith('image/'),
+          localPath: staged.path,
         ),
       );
 
@@ -767,12 +778,25 @@ class ReliableMessagingService {
                     0,
               );
 
-              await files.sendDirectFile(
-                recipientId: recipientId,
-                messageId: id,
-                fileId: attachment['id'].toString(),
-                file: file,
-              );
+              // Bundle 106: a missing local copy or a Wi-Fi Direct hiccup
+              // must not swallow the message — push the bytes best-effort,
+              // still send the direct_message, and let the outbox retry the
+              // file on the next flush.
+              try {
+                await files.sendDirectFile(
+                  recipientId: recipientId,
+                  messageId: id,
+                  fileId: attachment['id'].toString(),
+                  file: file,
+                );
+              } catch (error, stackTrace) {
+                AppLogger.error(
+                  'DIRECT_FILE_PUSH_FAILED',
+                  error: error,
+                  stackTrace: stackTrace,
+                  detail: 'message=$id file=${attachment['id']}',
+                );
+              }
 
               attachments.add({
                 'id': attachment['id'].toString(),

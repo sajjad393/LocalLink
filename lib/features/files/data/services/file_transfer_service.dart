@@ -290,6 +290,40 @@ class FileTransferService {
     );
   }
 
+  @override
+  Future<String> stageOutgoingFile({
+    required PickedFile file,
+    required String fileId,
+  }) async {
+    // Bundle 106: give every outgoing attachment a durable home in the
+    // app-private attachments dir. image_picker returns CACHE paths the OS
+    // can reclaim; when that copy vanished while the outbox waited offline,
+    // the direct send aborted before the message left (no delivery) and the
+    // sender's own bubble had no file to render (no preview). Staged copies
+    // fix both, and server uploads stay byte-identical.
+    try {
+      if (fileId.trim().isEmpty) return file.path;
+      final source = File(file.path);
+      if (file.path.trim().isEmpty || !await source.exists()) return file.path;
+      final root = await getDatabasesPath();
+      final dir = Directory('$root/attachments');
+      await dir.create(recursive: true);
+      final target =
+          '${dir.path}/outbox-${_safeAttachmentId(fileId)}${_safeExtension(file.name, file.contentType, false)}';
+      if (FileSystemEntity.typeSync(target) != FileSystemEntityType.notFound) {
+        return target; // already staged (retry flush re-resolves it)
+      }
+      await source.copy(target);
+      AppLogger.info('FILE_STAGED_OUTBOX',
+          detail: 'file=$fileId size=${file.size}');
+      return target;
+    } catch (error, stackTrace) {
+      AppLogger.error('FILE_STAGE_OUTBOX_FAILED',
+          error: error, stackTrace: stackTrace, detail: 'file=$fileId');
+      return file.path; // fall back: keep today's behavior rather than fail
+    }
+  }
+
   Future<void> cancelDirectFile(String fileId) async {
     final id = fileId.trim();
     if (id.isEmpty) return;

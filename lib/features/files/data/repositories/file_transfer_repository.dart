@@ -79,6 +79,13 @@ final class FileTransferRepository implements FileTransferRepositoryContract {
       );
 
   @override
+  Future<String> stageOutgoingFile({
+    required PickedFile file,
+    required String fileId,
+  }) =>
+      service.stageOutgoingFile(file: file, fileId: fileId);
+
+  @override
   Future<void> cancelDirectFile(String fileId) =>
       service.cancelDirectFile(fileId);
 

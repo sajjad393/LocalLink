@@ -39,6 +39,16 @@ abstract interface class FileTransferRepositoryContract {
     required PickedFile file,
   });
 
+  /// Copies a freshly picked outgoing attachment into app-private durable
+  /// storage and returns the new path. Pickers hand back cache paths the OS
+  /// can reclaim at any moment; the outbox must own a durable copy so the
+  /// sender's preview renders and retry flushes (mesh or server) still find
+  /// the bytes. Falls back to the original path when staging fails.
+  Future<String> stageOutgoingFile({
+    required PickedFile file,
+    required String fileId,
+  });
+
   Future<void> cancelDirectFile(String fileId);
 
   Future<String> download(
