@@ -255,7 +255,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final value = bloc.profile ?? profile;
     final displayName = value?.displayName.isNotEmpty == true ? value!.displayName : 'LocalLink user';
     return Scaffold(
-      appBar: AppBar(title: Text(widget.onboarding ? 'Your profile' : 'Profile')),
+      appBar: AppBar(
+        title: Text(widget.onboarding ? 'Your profile' : 'Profile'),
+        actions: [
+          // Bundle 118 rev3: tonal pill QR quick-action — jumps straight to
+          // the My QR code screen from anywhere Profile is reachable.
+          if (!widget.onboarding && widget.crypto != null && value != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: IconButton.filledTonal(
+                tooltip: 'My QR code',
+                onPressed: () => Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MyQrScreen(
+                      profile: _directoryProfile(value),
+                      crypto: widget.crypto!,
+                      repository: widget.directoryRepository,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.qr_code_scanner),
+              ),
+            ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, LocalLinkSpacing.md, LocalLinkSpacing.lg, LocalLinkSpacing.xxxl),
         children: [
