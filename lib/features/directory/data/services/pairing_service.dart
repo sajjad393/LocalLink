@@ -126,7 +126,9 @@ final class PairingService {
     try {
       await _transport.sendPairPayload(
           nodeId: nodeId, kind: 'request', body: body);
+      _diag('Pair request sent to native transport.');
     } catch (first) {
+      AppLogger.warning('PAIR_SEND_THROW', detail: '$first');
       // Bundle 113: one silent self-heal retry — the ensure call may have had
       // to (re)start the native service; endpoint tables resolve next tap.
       await _ensureTransportReady();
@@ -253,16 +255,29 @@ final class PairingService {
 
   /// Byte-identical to MyQrScreen._payload(): a v1 signed identity bundle.
   Future<String> _payload() async {
-    final profile = await _store.profile();
-    if (profile == null) {
-      throw StateError('Finish setting up your profile before pairing');
-    }
     final deviceId = _store.deviceId ?? '';
     if (deviceId.isEmpty) {
       throw StateError('Device identity is not ready yet');
     }
-    final signingPublicKey = await _crypto.signingPublicKey();
-    final identityPublicKey = await _crypto.publicKey();
+    // Bundle 114: offline-created accounts can reach pairing before any
+    // crypto init ran; init() is idempotent (reads-or-generates seed), so
+    // make payload building fully self-healing instead of dying on an
+    // uninitialized key store.
+    await _crypto.init(deviceId);
+    final profile = await _store.profile();
+    if (profile == null) {
+      throw StateError('Finish setting up your profile before pairing');
+    }
+    String signingPublicKey;
+    String identityPublicKey;
+    try {
+      signingPublicKey = await _crypto.signingPublicKey();
+      identityPublicKey = await _crypto.publicKey();
+    } catch (error) {
+      AppLogger.warning('PAIR_KEYS_FAILED', detail: '$error');
+      throw Exception(
+          'Identity keys are not ready on this phone — restart the app once and try again.');
+    }
     final unsigned = _directoryProfile(profile, deviceId).copyWith(
       deviceId: deviceId,
       phoneNumber: '',
@@ -273,8 +288,13 @@ final class PairingService {
       source: 'qr',
       syncedAt: '',
     );
-    final signature =
-        await _crypto.signDirectoryProfile(unsigned.canonical());
+    String signature;
+    try {
+      signature = await _crypto.signDirectoryProfile(unsigned.canonical());
+    } catch (error) {
+      AppLogger.warning('PAIR_SIGN_FAILED', detail: '$error');
+      throw Exception('Could not sign your identity for pairing.');
+    }
     return jsonEncode(<String, dynamic>{
       'v': 1,
       'profile': unsigned.toMap(),
