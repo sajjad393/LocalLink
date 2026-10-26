@@ -147,17 +147,28 @@ final class PairingService {
   /// push the fresh roster so native sessions open, then answer with our
   /// own signed identity so the OTHER phone pairs us back automatically.
   Future<void> accept(PairRequest request, {String customName = ''}) async {
+    // Bundle 117: the accept packet goes out FIRST so the requester's UI
+    // unblocks immediately; local adoption (import, contact write, roster
+    // push — including its server mirror) runs after, best effort.
+    AppLogger.warning('PAIR_ACCEPT',
+        detail: 'stage=entered node=${request.nodeId} from=${request.displayName}');
     await _ensureTransportReady();
-    await _adopt(request.raw, request.profile, request.nodeId,
-        customName: customName);
-    final body = await _payload();
+    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=transport_ready');
     try {
+      final body = await _payload();
+      AppLogger.warning('PAIR_ACCEPT', detail: 'stage=payload_built');
       await _transport.sendPairPayload(
           nodeId: request.nodeId, kind: 'accept', body: body);
-    } catch (_) {
+      AppLogger.warning('PAIR_ACCEPT', detail: 'stage=accept_packet_sent');
+    } catch (error) {
       // Best effort: the requester can re-ask; the roster is already right
       // on this side and their next request auto-answers (trusted fast path).
+      AppLogger.warning('PAIR_ACCEPT_SEND_FAILED', detail: '$error');
     }
+    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopting');
+    await _adopt(request.raw, request.profile, request.nodeId,
+        customName: customName);
+    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=done');
   }
 
   /// Decline: the requester stays muted for [_muteWindow] (set when the
@@ -235,9 +246,14 @@ final class PairingService {
   Future<void> _adopt(Map<String, dynamic> raw, DirectoryProfile profile,
       String nodeId,
       {String customName = ''}) async {
+    // Bundle 117: stage logs — if adoption ever stalls (server mirror with no
+    // internet, encrypted store contention) the log names the exact step.
     await _directory.importQrProfile(raw);
+    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_import_done');
     await _directory.addContact(profile.userId, customName: customName);
+    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_contact_saved');
     await _pushRoster();
+    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_roster_pushed');
     if (!_paired.isClosed) _paired.add(profile.displayName);
   }
 

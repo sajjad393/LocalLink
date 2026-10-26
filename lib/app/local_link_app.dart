@@ -174,7 +174,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // Bundle 116: build stamp — first line of every log capture proves
     // exactly which bundle set is installed on this device.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'bundles 104-116 (2026-10-26)');
+        detail: 'bundles 104-117 (2026-10-27)');
     if (mounted) {
       setState(() {
         _ready = false;

@@ -173,10 +173,29 @@ class MainActivity : FlutterActivity() {
                     "ensureTransportReady" -> {
                         val id = call.argument<String>("device_id")?.trim().orEmpty()
                         if (id.isEmpty()) { result.error("INVALID_DEVICE", "device_id is required", null); return@setMethodCallHandler }
-                        LocalLinkTransportService.ensureReady(this, id, stringList(call.argument<List<*>>("known_peers")))
-                        result.success(null)
+                        val peers = stringList(call.argument<List<*>>("known_peers"))
+                        // Bundle 117: transport bootstrap opens sockets and encrypts
+                        // transport state — it must never run on the UI thread.
+                        // Its synchronous main-thread run was the receiver-side ANR
+                        // when a user accepted an incoming pair dialog.
+                        Thread({
+                            try {
+                                LocalLinkTransportService.ensureReady(this@MainActivity, id, peers)
+                                runOnUiThread { result.success(null) }
+                            } catch (error: Exception) {
+                                runOnUiThread { result.error("TRANSPORT_ERROR", error.message, null) }
+                            }
+                        }, "locallink-ensure-transport").start()
                     }
-                    "updateKnownPeers" -> { LocalLinkTransportService.updateKnownPeers(this, stringList(call.argument<List<*>>("known_peers"))); result.success(null) }
+                    "updateKnownPeers" -> {
+                        val peers = stringList(call.argument<List<*>>("known_peers"))
+                        // Bundle 117: roster push rewrites encrypted transport
+                        // state (AES) — off the UI thread.
+                        Thread({
+                            LocalLinkTransportService.updateKnownPeers(this@MainActivity, peers)
+                            runOnUiThread { result.success(null) }
+                        }, "locallink-known-peers").start()
+                    }
                     "sendPairPayload" -> {
                         val target = call.argument<String>("target").orEmpty()
                         val pairKind = call.argument<String>("pair").orEmpty()
@@ -186,12 +205,23 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "send" -> {
-                        val ok = LocalLinkTransportService.send(call.argument<String>("recipient_id")?.trim().orEmpty(), mapToPayload(call.argument<Map<*, *>>("payload")))
-                        if (ok) result.success(null) else result.error("PEER_UNAVAILABLE", "peer is not connected", null)
+                        val targetId = call.argument<String>("recipient_id")?.trim().orEmpty()
+                        val payload = mapToPayload(call.argument<Map<*, *>>("payload"))
+                        // Bundle 117: socket writes can stall for seconds when a peer
+                        // link is half-dead — that stall on the UI thread froze the
+                        // whole app during the message flush loop. Background it.
+                        Thread({
+                            val ok = LocalLinkTransportService.send(targetId, payload)
+                            runOnUiThread { if (ok) result.success(null) else result.error("PEER_UNAVAILABLE", "peer is not connected", null) }
+                        }, "locallink-send").start()
                     }
                     "broadcast" -> {
-                        val ok = LocalLinkTransportService.broadcast(mapToPayload(call.argument<Map<*, *>>("payload")))
-                        if (ok) result.success(null) else result.error("BROADCAST_FAILED", "no direct peer is connected", null)
+                        val payload = mapToPayload(call.argument<Map<*, *>>("payload"))
+                        // Bundle 117: same UI-thread socket-stall risk as "send".
+                        Thread({
+                            val ok = LocalLinkTransportService.broadcast(payload)
+                            runOnUiThread { if (ok) result.success(null) else result.error("BROADCAST_FAILED", "no direct peer is connected", null) }
+                        }, "locallink-broadcast").start()
                     }
                     "sendFile" -> sendFileTransport(call, result)
                     "cancelFile" -> { LocalLinkTransportService.cancelFile(call.argument<String>("file_id")?.trim().orEmpty()); result.success(null) }
@@ -209,7 +239,7 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }, "locallink-topology").start()
-                    "flushQueue" -> { LocalLinkTransportService.flushQueue(); result.success(null) }
+                    "flushQueue" -> Thread({ LocalLinkTransportService.flushQueue(); runOnUiThread { result.success(null) } }, "locallink-flush").start() // Bundle 117: off UI thread
                     "resume" -> { requestConnectionInfo(); result.success(null) }
                     "clearStorage" -> { LocalLinkTransportService.clearStorage(); result.success(null) }
                     "stop" -> { LocalLinkTransportService.stop(this); result.success(null) }
