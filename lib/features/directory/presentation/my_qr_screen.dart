@@ -1,4 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
+
+import 'dart:math' as math;
+
+import 'package:flutter/services.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:flutter/material.dart';
@@ -47,6 +52,16 @@ class MyQrScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Bundle 118: card-based layout, avatar in the QR centre (error
+    // correction H leaves 30% headroom so the overlay never breaks scans),
+    // 3 short icon steps instead of prose, and copy/scan actions.
+    final scheme = Theme.of(context).colorScheme;
+    final name = profile.displayName.isNotEmpty
+        ? profile.displayName
+        : (profile.username.isNotEmpty ? profile.username : 'LocalLink user');
+    final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    final hasAvatar =
+        profile.avatarUrl.isNotEmpty && File(profile.avatarUrl).existsSync();
     return Scaffold(
       appBar: AppBar(
         title: const Text('My QR Code'),
@@ -82,34 +97,129 @@ class MyQrScreen extends StatelessWidget {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          return Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(28),
-              child: Column(
-                children: [
-                  QrImageView(data: snapshot.data!, size: 280),
-                  const SizedBox(height: 20),
-                  Text(
-                    profile.displayName.isEmpty
-                        ? '@${profile.username}'
-                        : profile.displayName,
-                    style: Theme.of(context).textTheme.titleLarge,
-                    textAlign: TextAlign.center,
+          final payload = snapshot.data!;
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+            children: [
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24)),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+                  child: Column(
+                    children: [
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          QrImageView(
+                            data: payload,
+                            size: 232,
+                            errorCorrectionLevel: QrErrorCorrectLevel.H,
+                            backgroundColor: Colors.white,
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border:
+                                  Border.all(color: Colors.white, width: 5),
+                            ),
+                            child: hasAvatar
+                                ? CircleAvatar(
+                                    radius: 28,
+                                    backgroundImage:
+                                        FileImage(File(profile.avatarUrl)),
+                                  )
+                                : CircleAvatar(
+                                    radius: 28,
+                                    backgroundColor: scheme.primary,
+                                    child: Text(
+                                      initial,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        name,
+                        style: Theme.of(context).textTheme.titleLarge,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '@${profile.username.isNotEmpty ? profile.username : 'locallink'} · LocalLink',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Scan this code to verify my identity and add me as a contact.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+              const SizedBox(height: 20),
+              _QrStep(
+                icon: Icons.smartphone_outlined,
+                text: 'Open LocalLink on the other phone',
+              ),
+              _QrStep(
+                icon: Icons.center_focus_strong_outlined,
+                text: 'Point its camera at this code',
+              ),
+              _QrStep(
+                icon: Icons.check_circle_outline,
+                text: 'Contact is added instantly',
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: payload));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text(
+                                    'Code copied — paste it in any chat')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.share_outlined, size: 18),
+                      label: const Text('Share code'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: repository == null
+                          ? null
+                          : () => Navigator.push<void>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ContactQrScannerScreen(
+                                    crypto: crypto,
+                                    repository: repository!,
+                                  ),
+                                ),
+                              ),
+                      icon: const Icon(Icons.qr_code_scanner_outlined, size: 18),
+                      label: const Text('Scan instead'),
+                    ),
                   ),
                 ],
               ),
-            ),
+            ],
           );
         },
       ),
     );
   }
+
 }
 
 class ContactQrScannerScreen extends StatefulWidget {
@@ -130,6 +240,7 @@ class ContactQrScannerScreen extends StatefulWidget {
 
 class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
   final MobileScannerController scanner = MobileScannerController();
+  bool torchOn = false;
   bool done = false;
   bool resolving = false;
   String? error;
@@ -218,36 +329,228 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
     }
   }
 
+  Future<void> _pasteCode() async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Paste contact code'),
+        content: TextField(
+          controller: controller,
+          maxLines: 4,
+          minLines: 2,
+          decoration: const InputDecoration(
+            hintText: 'Paste the shared code text here',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value != null && value.isNotEmpty) await _handle(value);
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Bundle 118: dark viewfinder with corner brackets + torch toggle + a
+    // single helper line; paste/manual entry stays one tap away.
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan contact QR')),
-      body: Stack(
-        children: [
-          MobileScanner(
-            controller: scanner,
-            onDetect: (capture) async {
-              if (capture.barcodes.isEmpty) return;
-              final raw = capture.barcodes.first.rawValue;
-              if (raw != null && raw.isNotEmpty) await _handle(raw);
+      backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Scan contact QR'),
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            tooltip: 'Flashlight',
+            icon: Icon(torchOn ? Icons.flash_on : Icons.flash_off_outlined),
+            onPressed: () {
+              scanner.toggleTorch();
+              setState(() => torchOn = !torchOn);
             },
           ),
-          if (resolving)
-            const Center(child: CircularProgressIndicator()),
-          if (error != null)
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 24,
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(error ?? ''),
+        ],
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final side =
+              math.min(constraints.maxWidth, constraints.maxHeight) * 0.66;
+          final window = Rect.fromCenter(
+            center:
+                Offset(constraints.maxWidth / 2, constraints.maxHeight * 0.40),
+            width: side,
+            height: side,
+          );
+          return Stack(
+            children: [
+              MobileScanner(
+                controller: scanner,
+                scanWindow: window,
+                onDetect: (capture) async {
+                  if (capture.barcodes.isEmpty) return;
+                  final raw = capture.barcodes.first.rawValue;
+                  if (raw != null && raw.isNotEmpty) await _handle(raw);
+                },
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(painter: ScanOverlayPainter(window)),
                 ),
               ),
-            ),
+              Positioned(
+                top: window.bottom + 14,
+                left: 24,
+                right: 24,
+                child: const Text(
+                  "Point at the other phone's code",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ),
+              if (resolving)
+                const Center(child: CircularProgressIndicator()),
+              if (error != null)
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: 96,
+                  child: Card(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Text(
+                        error ?? '',
+                        style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onErrorContainer,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 28,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black87),
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.qr_code, size: 18),
+                        label: const Text('My code'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white54)),
+                        onPressed: done || resolving ? null : _pasteCode,
+                        icon: const Icon(Icons.content_paste, size: 18),
+                        label: const Text('Paste code'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+
+/// Bundle 118: one icon + one short line — replaces the old instruction
+/// paragraph under the QR card.
+class _QrStep extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _QrStep({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: scheme.primaryContainer,
+            child: Icon(icon, size: 17, color: scheme.onPrimaryContainer),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+              child:
+                  Text(text, style: Theme.of(context).textTheme.bodyMedium)),
         ],
       ),
     );
   }
+}
+
+/// Bundle 118: dimmed overlay with a clear rounded window and bold corner
+/// brackets — gives the scanner frame its focused look.
+class ScanOverlayPainter extends CustomPainter {
+  final Rect window;
+  const ScanOverlayPainter(this.window);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const r = Radius.circular(20);
+    final dim = Paint()..color = Colors.black.withOpacity(0.55);
+    final hole = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(Offset.zero & size)
+      ..addRRect(RRect.fromRectAndRadius(window, r));
+    canvas.drawPath(hole, dim);
+
+    final corner = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round;
+    const len = 26.0;
+    final path = Path()
+      ..moveTo(window.left, window.top + len)
+      ..lineTo(window.left, window.top + r.y)
+      ..arcToPoint(Offset(window.left + r.x, window.top), radius: r)
+      ..lineTo(window.left + len, window.top)
+      ..moveTo(window.right - len, window.top)
+      ..lineTo(window.right - r.x, window.top)
+      ..arcToPoint(Offset(window.right, window.top + r.y), radius: r)
+      ..lineTo(window.right, window.top + len)
+      ..moveTo(window.right, window.bottom - len)
+      ..lineTo(window.right, window.bottom - r.y)
+      ..arcToPoint(Offset(window.right - r.x, window.bottom), radius: r)
+      ..lineTo(window.right - len, window.bottom)
+      ..moveTo(window.left + len, window.bottom)
+      ..lineTo(window.left + r.x, window.bottom)
+      ..arcToPoint(Offset(window.left, window.bottom - r.y), radius: r)
+      ..lineTo(window.left, window.bottom - len);
+    canvas.drawPath(path, corner);
+  }
+
+  @override
+  bool shouldRepaint(covariant ScanOverlayPainter oldDelegate) =>
+      oldDelegate.window != window;
 }

@@ -1,7 +1,7 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:locallink/core/bloc/bloc_utils.dart';
@@ -70,11 +70,13 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// Bundle 107: Connect used to die invisibly — native errors were emitted
-  /// into bloc state that this screen never rendered, and refresh() cleared
-  /// them within a cycle. Now: preflight first (support/permission), show
-  /// progress guidance, and let the BlocListener below surface failures.
-  Future<void> _connect(WifiDirectPeer peer) async {
+  /// Bundle 118: one-tap Pair for a Wi-Fi Direct peer — the transport link
+  /// is established silently (permissions/support preflight still run, errors
+  /// surface through the bloc listener) and, when the same phone is already
+  /// beacon-visible on the LAN (the common case on shared Wi-Fi), the pair
+  /// request fires immediately. Users never see a separate Connect step.
+  Future<void> _pairWithWifiPeer(WifiDirectPeer peer) async {
+    AppLogger.warning('PAIR_UI', detail: 'stage=pair_button peer=${peer.name}');
     final c = widget.connectivity;
     if (!await c.isWifiDirectSupported()) {
       _snack('This phone does not support Wi-Fi Direct.');
@@ -82,11 +84,18 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
     }
     if (!await c.hasWifiDirectPermission()) {
       await c.requestWifiDirectEnable();
-      _snack('Allow the "Nearby devices" permission, then tap Connect again.');
+      _snack(
+          'Allow the "Nearby devices" permission, then tap Pair again.');
       return;
     }
-    _snack('Connecting… the other phone is asked to accept once.');
-    await c.connectWifiDirect(peer);
+    _snack('Asking the other phone to accept…');
+    unawaited(c.connectWifiDirect(peer));
+    final discovered = widget.mesh.state.peers.values
+        .where((p) => p.state == 'DISCOVERED')
+        .toList(growable: false);
+    if (discovered.length == 1) {
+      await _requestPair(discovered.first);
+    }
   }
 
   /// Bundle 108: ask the discovered peer to pair — a signed identity packet
@@ -190,74 +199,111 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
               ),
               const SizedBox(height: LocalLinkSpacing.sm),
               Text(
-                'Keep Wi-Fi Direct enabled to discover nearby LocalLink phones. You can message or call once a connection is available.',
+                'Both phones need Wi-Fi on — pairing and chats work without the internet.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: LocalLinkSpacing.lg),
-              if (peers.isEmpty)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(LocalLinkSpacing.lg),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-                          child: Icon(Icons.radar_rounded,
-                              color: Theme.of(context).colorScheme.onSecondaryContainer),
+              BlocBuilder<MeshBloc, MeshState>(
+                bloc: widget.mesh,
+                builder: (context, meshState) {
+                  final meshPeers = meshState.peers.values.toList();
+                  final discovered = meshPeers
+                      .where((p) => p.state == 'DISCOVERED')
+                      .toList(growable: false)
+                    ..sort((a, b) =>
+                        (b.lastSeenAt ?? 0).compareTo(a.lastSeenAt ?? 0));
+                  final live = meshPeers
+                      .where((p) =>
+                          p.state == 'CONNECTED' ||
+                          p.state == 'AVAILABLE' ||
+                          p.state == 'CONNECTING')
+                      .toList(growable: false);
+                  // Bundle 118: one card per phone. When a peer is visible on
+                  // both Wi-Fi Direct and the LAN beacon (same phone seen
+                  // twice), the LAN card wins — it carries the node id that
+                  // pairing needs.
+                  final wifiOnly = discovered.isEmpty ? peers : const [];
+                  final nothingFound = wifiOnly.isEmpty &&
+                      discovered.isEmpty &&
+                      live.isEmpty;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (nothingFound)
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(LocalLinkSpacing.lg),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  backgroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .secondaryContainer,
+                                  child: Icon(Icons.radar_rounded,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSecondaryContainer),
+                                ),
+                                const SizedBox(width: LocalLinkSpacing.md),
+                                const Expanded(
+                                  child: Text(
+                                    'Nothing found yet — keep LocalLink open on the other phone.',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else ...[
+                        ...discovered.map(
+                          (peer) => _NearbyCard(
+                            icon: Icons.wifi_find_rounded,
+                            title: peers.length == 1 && peers.first.name.isNotEmpty
+                                ? peers.first.name
+                                : 'LocalLink phone nearby ·…${peer.nodeId.length > 8 ? peer.nodeId.substring(peer.nodeId.length - 8) : peer.nodeId}',
+                            subtitle:
+                                'Same Wi-Fi / LAN — not paired yet',
+                            action: FilledButton.tonal(
+                              onPressed: () => _requestPair(peer),
+                              child: const Text('Pair'),
+                            ),
+                          ),
                         ),
-                        const SizedBox(width: LocalLinkSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Nothing found yet',
-                                  style: Theme.of(context).textTheme.titleSmall),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Make sure the other phone is nearby, has LocalLink open, and Wi-Fi is enabled.',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
+                        ...wifiOnly.map(
+                          (peer) => _NearbyCard(
+                            icon: Icons.phone_android_rounded,
+                            title: peer.name.isEmpty
+                                ? 'Nearby LocalLink phone'
+                                : peer.name,
+                            subtitle: 'Not paired yet',
+                            action: FilledButton.tonal(
+                              onPressed: state.busy
+                                  ? null
+                                  : () => _pairWithWifiPeer(peer),
+                              child: state.busy
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
+                                  : const Text('Pair'),
+                            ),
+                          ),
+                        ),
+                        ...live.map(
+                          (peer) => _NearbyCard(
+                            icon: Icons.check_circle_outline_rounded,
+                            title:
+                                'Connected ·…${peer.nodeId.length > 8 ? peer.nodeId.substring(peer.nodeId.length - 8) : peer.nodeId}',
+                            subtitle:
+                                '${peer.state.toLowerCase()} — ${_nearbyTransportLabel(peer.transport)} · ${_nearbyWhen(peer.lastSeenAt)}',
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                )
-              else
-                ...peers.map(
-                  (peer) => Card(
-                    child: ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.phone_android)),
-                      title: Text(peer.name.isEmpty ? 'Nearby LocalLink phone' : peer.name),
-                      // Android cannot hand us the peer's LocalLink device id
-                      // over Wi-Fi Direct discovery, so automatic connect only
-                      // happens when exactly one peer is visible. With several,
-                      // connect explicitly here (product limitation, M3).
-                      subtitle: Text(peers.length > 1
-                          ? 'Several phones nearby — choose one to connect'
-                          : 'Nearby connection available'),
-                      trailing: FilledButton.tonal(
-                        onPressed:
-                            state.busy ? null : () => _connect(peer),
-                        child: state.busy
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2))
-                            : const Text('Connect'),
-                      ),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: LocalLinkSpacing.lg),
-              _MeshNearbySection(
-                mesh: widget.mesh,
-                onAddContact: _openAddContact,
-                onPairRequest: _requestPair,
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -268,151 +314,44 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
   }
 }
 
-/// Devices the mesh transport has discovered on the local network.
-///
-/// A device in DISCOVERED state has broadcast a valid beacon but is not in
-/// this phone's roster: no session will be attempted, and no payload is
-/// exchanged until both devices are paired contacts (profile-mirror trust
-/// model). This section makes that discovery visible instead of letting it
-/// dead-end silently.
-class _MeshNearbySection extends StatelessWidget {
-  final MeshBloc mesh;
+String _nearbyWhen(int? lastSeenAt) {
+  if (lastSeenAt == null || lastSeenAt <= 0) return 'seen just now';
+  final age = DateTime.now().millisecondsSinceEpoch - lastSeenAt;
+  if (age < 0) return 'seen just now';
+  if (age < 60000) return 'seen ${(age / 1000).round()}s ago';
+  return 'seen ${(age / 60000).round()}m ago';
+}
 
-  /// Bundle 107: opens Add contact so pairing is one tap, not instructions.
-  final VoidCallback onAddContact;
+String _nearbyTransportLabel(String transport) => switch (transport) {
+      'lan' => 'same Wi-Fi / LAN',
+      'wifi_direct' => 'Wi-Fi Direct',
+      _ => 'local network',
+    };
 
-  /// Bundle 108: in-band auto-pair attempt for the discovered peer.
-  final void Function(MeshPeer peer) onPairRequest;
-  const _MeshNearbySection({
-    required this.mesh,
-    required this.onAddContact,
-    required this.onPairRequest,
+/// Bundle 118: single compact card per nearby phone — one title, one short
+/// subtitle, at most one action. Replaces the old two-section layout
+/// (Wi-Fi Direct "Connect" card + mesh "Pair" card).
+class _NearbyCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget? action;
+  const _NearbyCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.action,
   });
-
-  static bool _isLive(String state) =>
-      state == 'CONNECTED' || state == 'AVAILABLE' || state == 'CONNECTING';
-
-  static String _when(int? lastSeenAt) {
-    if (lastSeenAt == null || lastSeenAt <= 0) return 'seen just now';
-    final age = DateTime.now().millisecondsSinceEpoch - lastSeenAt;
-    if (age < 0) return 'seen just now';
-    if (age < 60000) return 'seen ${(age / 1000).round()}s ago';
-    return 'seen ${(age / 60000).round()}m ago';
-  }
-
-  static String _transportLabel(String transport) => switch (transport) {
-        'lan' => 'same Wi-Fi / LAN',
-        'wifi_direct' => 'Wi-Fi Direct',
-        _ => 'local network',
-      };
-
-  static void _pairSheet(BuildContext context, MeshPeer peer,
-      VoidCallback? onAddContact, void Function(MeshPeer peer) onPairRequest) {
-    // Bundle 112 rev2: the QR "Add contact" button was removed from this
-    // sheet (pair request is the one-tap path); QR adding stays under
-    // Contacts → Add contact. Param kept so call sites don't churn.
-    onAddContact;
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.all(LocalLinkSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Pair this device', style: Theme.of(sheetContext).textTheme.titleMedium),
-            const SizedBox(height: LocalLinkSpacing.md),
-            SelectableText('Device id: ${peer.nodeId}',
-                style: Theme.of(sheetContext).textTheme.bodyMedium),
-            const SizedBox(height: LocalLinkSpacing.md),
-            const Text(
-              'LocalLink only opens sessions between paired contacts. Send a pair request and '
-              'the other phone taps Connect once — both phones then add each other automatically, '
-              'no QR codes needed. Messages and calls between you use the local network without '
-              'the Internet. Scanning QR codes still works too (Add contact).',
-            ),
-            const SizedBox(height: LocalLinkSpacing.lg),
-            Wrap(
-              spacing: LocalLinkSpacing.sm,
-              runSpacing: LocalLinkSpacing.sm,
-              children: [
-                FilledButton.icon(
-                  onPressed: () {
-                    Navigator.of(sheetContext).pop();
-                    onPairRequest(peer);
-                  },
-                  icon: const Icon(Icons.handshake_outlined, size: 18),
-                  label: const Text('Send pair request'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: peer.nodeId));
-                    if (sheetContext.mounted) Navigator.of(sheetContext).pop();
-                  },
-                  icon: const Icon(Icons.copy, size: 18),
-                  label: const Text('Copy device id'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<MeshBloc, MeshState>(
-      bloc: mesh,
-      builder: (context, state) {
-        final seen = state.peers.values.toList(growable: false)
-          ..sort((a, b) => (b.lastSeenAt ?? 0).compareTo(a.lastSeenAt ?? 0));
-        final live = seen.where((p) => _isLive(p.state)).toList(growable: false);
-        final discovered =
-            seen.where((p) => p.state == 'DISCOVERED').toList(growable: false);
-        if (live.isEmpty && discovered.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const MessengerSectionHeader(title: 'On this network'),
-            ...live.map(
-              (peer) => Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primaryContainer,
-                    child: Icon(Icons.link,
-                        color: Theme.of(context).colorScheme.primary),
-                  ),
-                  title: Text('LocalLink device ·…${peer.nodeId.length > 8 ? peer.nodeId.substring(peer.nodeId.length - 8) : peer.nodeId}'),
-                  subtitle: Text(
-                    '${peer.state.toLowerCase()} — ${_transportLabel(peer.transport)} · ${_when(peer.lastSeenAt)}.',
-                  ),
-                ),
-              ),
-            ),
-            ...discovered.map(
-              (peer) => Card(
-                child: ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.wifi_find)),
-                  title: Text('LocalLink phone nearby ·…${peer.nodeId.length > 8 ? peer.nodeId.substring(peer.nodeId.length - 8) : peer.nodeId}'),
-                  subtitle: Text(
-                    'Found over ${_transportLabel(peer.transport)} — not yet paired: '
-                    'messages stay unavailable until you pair.',
-                  ),
-                  trailing: FilledButton.tonal(
-                    onPressed: () =>
-                        _pairSheet(context, peer, onAddContact, onPairRequest),
-                    child: const Text('Pair'),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(child: Icon(icon, size: 20)),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: action,
+      ),
     );
   }
 }

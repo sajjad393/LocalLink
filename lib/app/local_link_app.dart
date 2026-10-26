@@ -81,32 +81,61 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // Bundle 111: accepting a pair creates a contact — let the user decide
     // the LOCAL display name right here (only their phone ever sees it).
     final nameController = TextEditingController(text: request.displayName);
+    // Bundle 118: compact one-glance dialog — avatar initial, name, one id
+    // line, name field, two actions. The long explainer paragraph moved to
+    // onboarding; a modal is for a fast decision.
+    final scheme = Theme.of(context).colorScheme;
+    final initial = request.displayName.trim().isEmpty
+        ? '?'
+        : request.displayName.trim()[0].toUpperCase();
+    final tail = request.nodeId.length > 6
+        ? request.nodeId.substring(request.nodeId.length - 6)
+        : request.nodeId;
     showDialog<bool>(
       context: navigator.overlay?.context ?? context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Connect with this phone?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        title: Column(
           children: [
-            Text(
-              '${request.displayName} wants to connect with you.\n\n'
-              '@${request.username.isNotEmpty ? request.username : 'locallink'} · '
-              'device …${request.nodeId.length > 6 ? request.nodeId.substring(request.nodeId.length - 6) : request.nodeId}\n\n'
-              'If you accept, you can message and call each other on the local network — no internet needed.',
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nameController,
-              autocorrect: false,
-              maxLength: 40,
-              decoration: const InputDecoration(
-                labelText: 'Save contact as',
-                hintText: 'Name on this phone',
+            CircleAvatar(
+              radius: 26,
+              backgroundColor: scheme.primaryContainer,
+              child: Text(
+                initial,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onPrimaryContainer,
+                ),
               ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '${request.displayName} wants to connect',
+              textAlign: TextAlign.center,
+              style: Theme.of(dialogContext).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '@${request.username.isNotEmpty ? request.username : 'locallink'} · device …$tail',
+              textAlign: TextAlign.center,
+              style: Theme.of(dialogContext).textTheme.bodySmall,
             ),
           ],
         ),
+        titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+        content: TextField(
+          controller: nameController,
+          autocorrect: false,
+          maxLength: 40,
+          decoration: const InputDecoration(
+            labelText: 'Save contact as',
+            hintText: 'Name on this phone',
+            counterText: '',
+          ),
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
         actions: [
           TextButton(
             onPressed: () {
@@ -174,7 +203,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // Bundle 116: build stamp — first line of every log capture proves
     // exactly which bundle set is installed on this device.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'bundles 104-117 (2026-10-27)');
+        detail: 'bundles 104-118 (2026-10-27)');
     if (mounted) {
       setState(() {
         _ready = false;
