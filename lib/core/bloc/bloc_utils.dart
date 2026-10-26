@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/services.dart' show PlatformException;
+
 /// Converts raw exceptions into short, human-readable text.
 ///
 /// Raw exception class names (`TimeoutException`, `SocketException`, stack
@@ -8,6 +10,16 @@ import 'dart:io';
 /// facing error message in the app goes through this mapper.
 String cleanBlocError(Object error) {
   final raw = error.toString().replaceFirst('Exception: ', '').trim();
+
+  // Bundle 113: native channel errors arrive as PlatformException(code, REAL
+  // MESSAGE, ...) and were being flattened into the generic "Something went
+  // wrong" sentence — hiding actionable text like 'transport service is not
+  // running' (root cause of the silent pair-request failures). Surface the
+  // native message directly.
+  if (error is PlatformException) {
+    final message = (error.message ?? '').trim();
+    if (message.isNotEmpty) return message;
+  }
 
   if (error is TimeoutException || raw.startsWith('TimeoutException')) {
     return 'The server took too long to respond. It will keep retrying automatically.';

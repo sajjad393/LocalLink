@@ -10,6 +10,15 @@ abstract interface class PeerTransportContract {
     required List<String> knownPeers,
   });
 
+  /// Bundle 113: idempotent self-heal. Makes sure the native transport
+  /// service is running AND bound to [deviceId] with a roster, WITHOUT
+  /// touching any live Wi-Fi Direct connection state. Safe to call before
+  /// every critical send (pairing does).
+  Future<void> ensureTransportReady({
+    required String deviceId,
+    List<String> knownPeers = const <String>[],
+  });
+
   Future<void> updateKnownPeers(List<String> peerIds);
 
   /// Bundle 108: fire a signed identity exchange packet at a locally visible

@@ -67,6 +67,7 @@ class LocalLinkTransportService : Service() {
         private const val STATE_BLOB = "encrypted_state"
         private const val STATE_KEY_ALIAS = "locallink_transport_state_v1"
         private const val ACTION_CONFIGURE = "configure"
+        private const val ACTION_ENSURE = "ensure"
         private const val ACTION_UPDATE_ROSTER = "update_roster"
         private const val ACTION_CONNECTION = "connection"
         private const val ACTION_RESUME = "resume"
@@ -84,6 +85,13 @@ class LocalLinkTransportService : Service() {
         fun setEventListener(value: EventListener?) { listener=value }
         fun start(context: Context) { startCommand(context,null) }
         fun stop(context: Context) { instance?.stopTransportExplicit(); context.stopService(Intent(context,LocalLinkTransportService::class.java)) }
+        fun ensureReady(context:Context,deviceId:String,peerIds:List<String>){
+            if(deviceId.isBlank())return
+            val svc=instance
+            if(svc==null){
+                startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_ENSURE;putExtra("device_id",deviceId);val ids=JSONArray();peerIds.forEach{ids.put(it)};putExtra("known_peers",ids.toString())})
+            } else svc.ensureIdentityInternal(deviceId,peerIds)
+        }
         fun configure(context:Context,deviceId:String,connected:Boolean,groupOwner:Boolean,address:String?,knownPeers:List<String>){
             val ids=JSONArray();knownPeers.forEach{ids.put(it)}
             startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_CONFIGURE;putExtra("device_id",deviceId);putExtra("connected",connected);putExtra("group_owner",groupOwner);putExtra("group_owner_address",address);putExtra("known_peers",ids.toString())})
@@ -107,7 +115,7 @@ class LocalLinkTransportService : Service() {
         fun callVideoRotation(callId:String): Int = instance?.callVideoRotationInternal(callId) ?: 0
         fun broadcast(payload:Map<String,Any?>)=instance?.broadcastTransportInternal(payload)?:false
         fun sendFile(recipientId:String,path:String,fileId:String,messageId:String,fileName:String,contentType:String,cb:(Boolean,String?)->Unit){instance?.sendFileTransportInternal(recipientId,path,fileId,messageId,fileName,contentType,cb)?:cb(false,"transport service is not running")}
-        fun sendPairPayload(target:String,pair:String,body:String,cb:(Boolean,String?)->Unit){instance?.sendPairPayloadInternal(target,pair,body,cb)?:cb(false,"transport service is not running")}
+        fun sendPairPayload(target:String,pair:String,body:String,cb:(Boolean,String?)->Unit){val svc=instance;if(svc==null){Log.w("LocalLinkTransportService","pair-packet tx failed: service instance is null (not running)");cb(false,"transport service is not running")}else svc.sendPairPayloadInternal(target,pair,body,cb)}
         fun cancelFile(fileId:String){instance?.cancelFileTransportInternal(fileId)}
         fun topology(): Map<String, Any?> = instance?.meshTopologySnapshot() ?: emptyMap()
         fun flushQueue(){instance?.flushMeshQueue()}
@@ -290,6 +298,7 @@ class LocalLinkTransportService : Service() {
     }
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
         when(intent?.action){
+            ACTION_ENSURE->ensureIdentityInternal(intent.getStringExtra("device_id") ?: "",parseKnownPeers(intent.getStringExtra("known_peers")))
             ACTION_CONFIGURE->{val peers=parseKnownPeers(intent.getStringExtra("known_peers"));configureTransport(intent.getStringExtra("device_id") ?: "",intent.getBooleanExtra("connected",false),intent.getBooleanExtra("group_owner",false),intent.getStringExtra("group_owner_address"),peers)}
             ACTION_UPDATE_ROSTER->updateRosterInternal(parseKnownPeers(intent.getStringExtra("known_peers")))
             ACTION_CONNECTION->if(transportRunning)startOrStopTransportForConnection(intent.getBooleanExtra("connected",false),intent.getBooleanExtra("group_owner",false),intent.getStringExtra("group_owner_address"))
@@ -324,6 +333,28 @@ class LocalLinkTransportService : Service() {
             }
         }
         Thread{try{val t=prepareOutgoingTransfer(target,f,fileId,messageId,fileName,contentType);persistOutgoingTransfer(t);sendMissingChunks(t,true);transportEvent("file_queued",mapOf("transfer_id" to t.transferId,"message_id" to messageId,"size" to t.size,"total_chunks" to t.totalChunks));cb(true,null)}catch(e:Exception){cb(false,e.message)}finally{outgoingReservations.remove(fileId)}}.start()
+    }
+
+    /** Bundle 113: idempotent transport bootstrap used by pairing before any
+     *  pair packet flies. Unlike configureTransport this NEVER touches Wi-Fi
+     *  Direct connection state — it only guarantees the service is alive,
+     *  has a device identity, a roster, and the LAN sockets listening. */
+    private var lanStartedForEnsure = false
+    private fun ensureIdentityInternal(deviceId: String, peers: List<String>) {
+        val id = deviceId.trim()
+        if (id.isEmpty()) return
+        if (transportDeviceId.isNullOrBlank()) transportDeviceId = id
+        if (peers.isNotEmpty()) knownPeers.addAll(peers.filter { validTransportId(it) })
+        if (transportRunning) return
+        transportRunning = true
+        persistState()
+        startMeshMaintenance()
+        if (!lanStartedForEnsure) {
+            lanStartedForEnsure = true
+            startLanTransport()
+        }
+        Log.d(pairLogTag, "transport ensured: device=$id peers=${knownPeers.size} (lan listen on)")
+        transportEvent("state", mapOf("connected" to false, "transport_active" to true, "group_owner" to false))
     }
 
     private fun startOrStopTransportForConnection(connected: Boolean, groupOwner: Boolean, groupOwnerAddress: String?) {
@@ -571,7 +602,7 @@ class LocalLinkTransportService : Service() {
     private fun sendPairPayloadInternal(target: String, pair: String, body: String, cb: (Boolean, String?) -> Unit) {
         if (!transportRunning) { Log.w(pairLogTag, "pair-packet tx failed: transport not configured"); cb(false, "transport is not configured"); return }
         val self = transportDeviceId
-        if (self.isNullOrBlank()) { cb(false, "transport is not configured"); return }
+        if (self.isNullOrBlank()) { Log.w(pairLogTag, "pair-packet tx failed: device identity not configured; cb: not configured"); cb(false, "transport is not configured — identity missing"); return }
         if (!validTransportId(target) || target == self || (pair != "request" && pair != "accept")) { cb(false, "invalid pair packet"); return }
         if (body.isBlank() || body.length > lanPairMaxBytes) { cb(false, "pair payload is too large"); return }
         val endpoint = lanEndpoints[target]

@@ -328,23 +328,18 @@ class _MeshNearbySection extends StatelessWidget {
               'the Internet. Scanning QR codes still works too (Add contact).',
             ),
             const SizedBox(height: LocalLinkSpacing.lg),
-            Row(
+            Wrap(
+              spacing: LocalLinkSpacing.sm,
+              runSpacing: LocalLinkSpacing.sm,
               children: [
-                Wrap(
-                  spacing: LocalLinkSpacing.sm,
-                  runSpacing: LocalLinkSpacing.sm,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: () {
-                        Navigator.of(sheetContext).pop();
-                        onPairRequest(peer);
-                      },
-                      icon: const Icon(Icons.handshake_outlined, size: 18),
-                      label: const Text('Send pair request'),
-                    ),
-                  ],
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    onPairRequest(peer);
+                  },
+                  icon: const Icon(Icons.handshake_outlined, size: 18),
+                  label: const Text('Send pair request'),
                 ),
-                const SizedBox(width: LocalLinkSpacing.sm),
                 FilledButton.tonalIcon(
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: peer.nodeId));

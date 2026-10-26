@@ -81,6 +81,30 @@ final class PairingService {
     if (_started) return;
     _started = true;
     _events = _transport.events.listen(_handleTransportEvent);
+    // Bundle 113: the receiver side must already have identity+sockets when a
+    // packet lands; configure lazily here (idempotent, safe, never restarts
+    // existing links).
+    unawaited(_ensureTransportReady());
+  }
+
+  /// Bundle 113: pairing can be the FIRST transport user on phones that went
+  /// through the local-only boot or lost the service to an OEM task killer —
+  /// in either case sendPairPayload returned 'transport is not running' /
+  /// 'not configured'. Make the transport ready on demand instead of relying
+  /// on cold-start ordering.
+  Future<void> _ensureTransportReady() async {
+    final deviceId = _store.deviceId ?? '';
+    if (deviceId.isEmpty) return; // nothing to identify with yet
+    final devices = await _store.localDevices();
+    final ids = devices
+        .where((device) => device.revokedAt.isEmpty)
+        .map((device) => device.id)
+        .toList();
+    try {
+      await _transport.ensureTransportReady(deviceId: deviceId, knownPeers: ids);
+    } catch (error) {
+      AppLogger.warning('PAIR_TRANSPORT_READY_FAILED', detail: '$error');
+    }
   }
 
   Future<void> dispose() async {
@@ -98,14 +122,24 @@ final class PairingService {
   /// is not currently visible on the local network (native error).
   Future<void> requestPair(String nodeId) async {
     final body = await _payload();
-    await _transport.sendPairPayload(
-        nodeId: nodeId, kind: 'request', body: body);
+    await _ensureTransportReady();
+    try {
+      await _transport.sendPairPayload(
+          nodeId: nodeId, kind: 'request', body: body);
+    } catch (first) {
+      // Bundle 113: one silent self-heal retry — the ensure call may have had
+      // to (re)start the native service; endpoint tables resolve next tap.
+      await _ensureTransportReady();
+      await _transport.sendPairPayload(
+          nodeId: nodeId, kind: 'request', body: body);
+    }
   }
 
   /// Accept an incoming verified request: import the peer, add the contact,
   /// push the fresh roster so native sessions open, then answer with our
   /// own signed identity so the OTHER phone pairs us back automatically.
   Future<void> accept(PairRequest request, {String customName = ''}) async {
+    await _ensureTransportReady();
     await _adopt(request.raw, request.profile, request.nodeId,
         customName: customName);
     final body = await _payload();

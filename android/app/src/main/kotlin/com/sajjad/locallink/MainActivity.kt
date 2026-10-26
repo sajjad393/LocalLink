@@ -170,6 +170,12 @@ class MainActivity : FlutterActivity() {
             try {
                 when (call.method) {
                     "configure" -> configureTransport(call, result)
+                    "ensureTransportReady" -> {
+                        val id = call.argument<String>("device_id")?.trim().orEmpty()
+                        if (id.isEmpty()) { result.error("INVALID_DEVICE", "device_id is required", null); return@setMethodCallHandler }
+                        LocalLinkTransportService.ensureReady(this, id, stringList(call.argument<List<*>>("known_peers")))
+                        result.success(null)
+                    }
                     "updateKnownPeers" -> { LocalLinkTransportService.updateKnownPeers(this, stringList(call.argument<List<*>>("known_peers"))); result.success(null) }
                     "sendPairPayload" -> {
                         val target = call.argument<String>("target").orEmpty()

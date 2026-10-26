@@ -17,7 +17,9 @@ class AppLogger {
 
   static void info(String event, {String? detail}) {
     AppDiagnostics.instance.record('app', event);
-    if (!verbose) return;
+    // Bundle 113: debug/dev runs always print info lines (the quiet flag is
+    // only honored in release); it was hiding field-diagnostic output.
+    if (!verbose && !kDebugMode) return;
     final message = _format(event, detail: detail);
     developer.log(message, name: _name, level: 800);
   }
