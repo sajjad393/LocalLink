@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:locallink/core/bloc/bloc_utils.dart';
@@ -132,6 +133,100 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
       }
     }
     if (lastError != null) _snack(cleanBlocError(lastError));
+  }
+
+  /// Bundle 118 rev2: slim confirmation sheet after the Pair tap — avatar,
+  /// one id line WITH a copy affordance (the icon the old sheet lost), one
+  /// transport chip, one primary action, one cancel. No paragraphs.
+  Future<void> _pairSheet(MeshPeer peer) async {
+    final scheme = Theme.of(context).colorScheme;
+    final tail = peer.nodeId.length > 8
+        ? peer.nodeId.substring(peer.nodeId.length - 8)
+        : peer.nodeId;
+    // Reuse the wifi-direct peer name when it is the only visible phone —
+    // it is almost certainly the same device discovered over LAN.
+    final wifiPeers = widget.connectivity.state.snapshot.wifiPeers;
+    final displayName = wifiPeers.length == 1 && wifiPeers.first.name.isNotEmpty
+        ? wifiPeers.first.name
+        : 'this phone';
+    final transportChip = switch (peer.transport) {
+      'lan' => 'same Wi-Fi',
+      'wifi_direct' => 'Wi-Fi Direct',
+      _ => 'local network',
+    };
+    final send = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+            LocalLinkSpacing.lg, 0, LocalLinkSpacing.lg, LocalLinkSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 26,
+              backgroundColor: scheme.primaryContainer,
+              child: Icon(Icons.phone_android_rounded,
+                  color: scheme.onPrimaryContainer),
+            ),
+            const SizedBox(height: 12),
+            Text('Pair with $displayName?',
+                style: Theme.of(sheetContext).textTheme.titleMedium,
+                textAlign: TextAlign.center),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text('device …$tail',
+                      style: Theme.of(sheetContext).textTheme.bodySmall,
+                      overflow: TextOverflow.ellipsis),
+                ),
+                IconButton(
+                  tooltip: 'Copy device id',
+                  visualDensity: VisualDensity.compact,
+                  iconSize: 18,
+                  onPressed: () async {
+                    await Clipboard.setData(
+                        ClipboardData(text: peer.nodeId));
+                    if (sheetContext.mounted) {
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(
+                        const SnackBar(content: Text('Device id copied')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.copy_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Chip(
+              label: Text(transportChip),
+              visualDensity: VisualDensity.compact,
+              side: BorderSide.none,
+              backgroundColor: scheme.surfaceContainerHighest,
+            ),
+            const SizedBox(height: LocalLinkSpacing.lg),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.of(sheetContext).pop(true),
+                icon: const Icon(Icons.handshake_outlined, size: 18),
+                label: const Text('Send pair request'),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(sheetContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (send == true && mounted) {
+      AppLogger.warning('PAIR_SHEET', detail: 'confirmed node=${peer.nodeId}');
+      await _requestPair(peer);
+    }
   }
 
   void _openAddContact() {
@@ -265,7 +360,7 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                             subtitle:
                                 'Same Wi-Fi / LAN — not paired yet',
                             action: FilledButton.tonal(
-                              onPressed: () => _requestPair(peer),
+                              onPressed: () => _pairSheet(peer),
                               child: const Text('Pair'),
                             ),
                           ),
