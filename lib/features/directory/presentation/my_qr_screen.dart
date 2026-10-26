@@ -8,6 +8,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:locallink/core/services/identity_crypto_service.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 
@@ -146,7 +147,15 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
       error = null;
     });
 
+    // Bundle 116: staged QR import diagnostics. cleanBlocError() flattens
+    // every typed failure (FormatException/StateError/...) into a generic
+    // sentence, so these AppLogger.warning lines + a verbatim error card are
+    // the only way to see WHERE and WHY a scan failed.
+    var stage = 'scanned';
+    AppLogger.warning('QR_IMPORT stage=scanned',
+        detail: 'len=${raw.length} head=${raw.substring(0, raw.length < 32 ? raw.length : 32)}');
     try {
+      stage = 'decode';
       final decoded = jsonDecode(raw);
       if (decoded is! Map || decoded['v']?.toString() != '1') {
         throw const FormatException('Unsupported LocalLink QR code');
@@ -165,6 +174,11 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
         source: 'qr',
         syncedAt: DateTime.now().toUtc().toIso8601String(),
       );
+      AppLogger.warning('QR_IMPORT stage=decoded',
+          detail: 'uid=${profile.userId} v=${profile.profileVersion} '
+              'device=${profile.deviceId}');
+
+      stage = 'verify';
       if (!profile.isSigned ||
           !await widget.crypto.verifyDirectoryProfile(
             canonicalPayload: profile.canonical(),
@@ -173,21 +187,31 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
           )) {
         throw const FormatException('QR signature verification failed');
       }
+      AppLogger.warning('QR_IMPORT stage=verified');
 
+      stage = 'import';
       final resolved = await widget.repository.importQrProfile(payload);
       if (resolved == null) {
+        AppLogger.warning('QR_IMPORT stage=import_null',
+            detail: 'repository returned null '
+                '(self-scan, blocked contact, or unavailable profile)');
         throw StateError('This contact is unavailable or blocked');
       }
 
+      AppLogger.warning('QR_IMPORT stage=done',
+          detail: 'uid=${resolved.userId} name=${resolved.displayName}');
       setState(() => done = true);
       widget.onFound?.call(resolved);
       if (widget.onFound == null && mounted) {
         Navigator.pop(context, resolved);
       }
     } catch (e) {
+      AppLogger.warning('QR_IMPORT fail', detail: 'stage=$stage error=$e');
       if (!mounted) return;
+      // Bundle 116: verbatim reason — cleanBlocError() would squash this into
+      // "Something went wrong" / a server sentence and hide the real cause.
       setState(() {
-        error = cleanBlocError(e);
+        error = 'QR import failed ($stage): $e';
       });
     } finally {
       if (mounted) setState(() => resolving = false);
@@ -218,7 +242,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
               child: Card(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
-                  child: Text(friendlyErrorMessage(error)),
+                  child: Text(error ?? ''),
                 ),
               ),
             ),

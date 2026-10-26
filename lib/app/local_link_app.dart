@@ -171,6 +171,10 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   Future<void> _initialize() async {
     if (_initializing) return;
     _initializing = true;
+    // Bundle 116: build stamp — first line of every log capture proves
+    // exactly which bundle set is installed on this device.
+    AppLogger.warning('APP_BUILD_STAMP',
+        detail: 'bundles 104-116 (2026-10-26)');
     if (mounted) {
       setState(() {
         _ready = false;
