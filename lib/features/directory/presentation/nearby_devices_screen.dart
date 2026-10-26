@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/error_toast.dart';
@@ -90,12 +91,34 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
   /// Bundle 108: ask the discovered peer to pair — a signed identity packet
   /// rides the LAN beacon channel; the other phone shows Accept/Connect.
   Future<void> _requestPair(MeshPeer peer) async {
-    try {
-      await widget.pairing.requestPair(peer.nodeId);
-      _snack('Pair request sent — the other phone will be asked to accept.');
-    } catch (error) {
-      _snack(friendlyErrorMessage(error));
+    // Bundle 112: the first tap right after opening Nearby often lands before
+    // the peer's LAN beacon has populated the transport endpoint table — the
+    // send then fails with "not visible yet". Retry briefly before giving up,
+    // and always show the REAL error text (never the generic placeholder).
+    Object? lastError;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(const Duration(seconds: 3));
+        if (!mounted) return;
+      }
+      try {
+        await widget.pairing.requestPair(peer.nodeId);
+        _snack('Pair request sent — the other phone will be asked to accept.');
+        return;
+      } catch (error) {
+        lastError = error;
+        final text = cleanBlocError(error);
+        final lower = text.toLowerCase();
+        final endpointPending = lower.contains('not visible') ||
+            lower.contains('not configured') ||
+            lower.contains('wait for it');
+        if (!endpointPending || attempt == 3) {
+          _snack(text);
+          return;
+        }
+      }
     }
+    if (lastError != null) _snack(cleanBlocError(lastError));
   }
 
   void _openAddContact() {
@@ -280,7 +303,11 @@ class _MeshNearbySection extends StatelessWidget {
       };
 
   static void _pairSheet(BuildContext context, MeshPeer peer,
-      VoidCallback onAddContact, void Function(MeshPeer peer) onPairRequest) {
+      VoidCallback? onAddContact, void Function(MeshPeer peer) onPairRequest) {
+    // Bundle 112 rev2: the QR "Add contact" button was removed from this
+    // sheet (pair request is the one-tap path); QR adding stays under
+    // Contacts → Add contact. Param kept so call sites don't churn.
+    onAddContact;
     showModalBottomSheet<void>(
       context: context,
       builder: (sheetContext) => Padding(
@@ -295,10 +322,10 @@ class _MeshNearbySection extends StatelessWidget {
                 style: Theme.of(sheetContext).textTheme.bodyMedium),
             const SizedBox(height: LocalLinkSpacing.md),
             const Text(
-              'LocalLink only opens sessions between paired contacts. Have this phone and the '
-              'discovered phone add each other: open Contacts → Add contact on both phones and '
-              'scan each other\'s QR codes (or search by registered phone number). Messages and '
-              'calls between you will then use the local network without the Internet.',
+              'LocalLink only opens sessions between paired contacts. Send a pair request and '
+              'the other phone taps Connect once — both phones then add each other automatically, '
+              'no QR codes needed. Messages and calls between you use the local network without '
+              'the Internet. Scanning QR codes still works too (Add contact).',
             ),
             const SizedBox(height: LocalLinkSpacing.lg),
             Row(
@@ -314,14 +341,6 @@ class _MeshNearbySection extends StatelessWidget {
                       },
                       icon: const Icon(Icons.handshake_outlined, size: 18),
                       label: const Text('Send pair request'),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: () {
-                        Navigator.of(sheetContext).pop();
-                        onAddContact();
-                      },
-                      icon: const Icon(Icons.qr_code_scanner, size: 18),
-                      label: const Text('Add contact (scan QR)'),
                     ),
                   ],
                 ),

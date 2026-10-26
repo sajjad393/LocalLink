@@ -46,6 +46,7 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import org.json.JSONArray
+import android.util.Log
 import org.json.JSONObject
 import com.sajjad.locallink.mesh.*
 
@@ -540,36 +541,41 @@ class LocalLinkTransportService : Service() {
     // ------------------------------------------------------------------------
     private val lanPairMaxBytes = 6000
 
+    private val pairLogTag = "LocalLinkTransportService"
+
     private fun handlePairPacket(raw: String, address: InetAddress) {
         try {
+            Log.d(pairLogTag, "pair-packet rx ${'$'}{raw.length}B from ${'$'}{address.hostAddress}")
             if (raw.toByteArray(Charsets.UTF_8).size > lanPairMaxBytes) return
             if (address.address.size != 4 || address.isAnyLocalAddress || address.isLoopbackAddress || address.isMulticastAddress) return
             val packet = JSONObject(raw)
             if (packet.optString("type") != "pair_packet") return
-            val self = transportDeviceId ?: return
+            val self = transportDeviceId
+            if (self.isNullOrBlank()) { Log.w(pairLogTag, "pair-packet dropped: transport not configured"); return }
             val fromNode = packet.optString("node_id").trim()
             val kind = packet.optString("pair")
             val body = packet.optString("body")
-            if (!validTransportId(fromNode) || fromNode == self) return
-            if (kind != "request" && kind != "accept") return
+            if (!validTransportId(fromNode) || fromNode == self) { Log.w(pairLogTag, "pair-packet dropped: invalid sender '$fromNode' (self=$self)"); return }
+            if (kind != "request" && kind != "accept") { Log.w(pairLogTag, "pair-packet dropped: bad kind '$kind'"); return }
             if (body.isBlank() || body.length > lanPairMaxBytes) return
+            Log.d(pairLogTag, "pair-packet accepted from=$fromNode kind=$kind -> dart")
             transportEvent("pair_packet", mapOf(
                 "pair" to kind,
                 "node_id" to fromNode,
                 "body" to body,
                 "address" to (address.hostAddress?.trim().orEmpty()),
             ))
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Log.w(pairLogTag, "pair-packet dropped: ${'$'}{e.message}") }
     }
 
     private fun sendPairPayloadInternal(target: String, pair: String, body: String, cb: (Boolean, String?) -> Unit) {
-        if (!transportRunning) { cb(false, "transport is not configured"); return }
+        if (!transportRunning) { Log.w(pairLogTag, "pair-packet tx failed: transport not configured"); cb(false, "transport is not configured"); return }
         val self = transportDeviceId
         if (self.isNullOrBlank()) { cb(false, "transport is not configured"); return }
         if (!validTransportId(target) || target == self || (pair != "request" && pair != "accept")) { cb(false, "invalid pair packet"); return }
         if (body.isBlank() || body.length > lanPairMaxBytes) { cb(false, "pair payload is too large"); return }
         val endpoint = lanEndpoints[target]
-        if (endpoint == null) { cb(false, "peer is not visible on the local network yet — wait for it to appear under On this network"); return }
+        if (endpoint == null) { Log.w(pairLogTag, "pair-packet tx failed: no LAN endpoint for ${'$'}target yet"); cb(false, "peer is not visible on the local network yet — wait for it to appear under On this network"); return }
         val packet = JSONObject()
             .put("type", "pair_packet")
             .put("pair", pair)
@@ -588,8 +594,10 @@ class LocalLinkTransportService : Service() {
                         Thread.sleep(250)
                     }
                 }
+                Log.d(pairLogTag, "pair-packet tx ok target=${'$'}target kind=${'$'}pair")
                 cb(true, null)
             } catch (e: Exception) {
+                Log.w(pairLogTag, "pair-packet tx failed target=${'$'}target: ${'$'}{e.message}")
                 cb(false, e.message)
             }
         }.start()

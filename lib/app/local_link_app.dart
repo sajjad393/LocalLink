@@ -36,6 +36,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   // Bundle 108: pair-request dialog host + pairing-complete toasts.
   StreamSubscription<PairRequest>? _pairingRequestSub;
   StreamSubscription<String>? _pairingDoneSub;
+  StreamSubscription<String>? _pairingDiagSub;
   final List<PairRequest> _pairQueue = <PairRequest>[];
   bool _pairDialogOpen = false;
   String? _shownIncomingCallId;
@@ -55,6 +56,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     );
     _pairingRequestSub = _deps.pairing.requests.listen(_enqueuePairRequest);
     _pairingDoneSub = _deps.pairing.paired.listen(_showPairComplete);
+    _pairingDiagSub = _deps.pairing.diagnostics.listen(_showPairDiag);
     _initialize();
   }
 
@@ -135,6 +137,18 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       _pairDialogOpen = false;
       _pumpPairQueue();
     });
+  }
+
+  /// Bundle 112: field-debuggable pairing. Stage toasts so a silent failure
+  /// chain stops being silent (transport level lines stay in logcat).
+  void _showPairDiag(String message) {
+    if (!mounted) return;
+    final navigator = _navigatorKey.currentState;
+    final ctx = navigator?.overlay?.context ?? context;
+    ScaffoldMessenger.maybeOf(ctx)?.hideCurrentSnackBar();
+    ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
+    );
   }
 
   void _showPairComplete(String displayName) {
@@ -400,6 +414,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   void dispose() {
     _pairingRequestSub?.cancel();
     _pairingDoneSub?.cancel();
+    _pairingDiagSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_callSub?.cancel());
     unawaited(_notificationSub?.cancel());

@@ -66,6 +66,17 @@ final class PairingService {
   Stream<PairRequest> get requests => _requests.stream;
   Stream<String> get paired => _paired.stream;
 
+  /// Bundle 112: human-readable diagnostics (toasts). Pairing used to fail
+  /// completely silently, which made field debugging impossible.
+  Stream<String> get diagnostics => _diagnostics.stream;
+
+  final _diagnostics = StreamController<String>.broadcast();
+
+  void _diag(String message) {
+    AppLogger.info('PAIR_DIAG', detail: message);
+    if (!_diagnostics.isClosed) _diagnostics.add(message);
+  }
+
   void start() {
     if (_started) return;
     _started = true;
@@ -78,6 +89,7 @@ final class PairingService {
     _events = null;
     await _requests.close();
     await _paired.close();
+    await _diagnostics.close();
   }
 
   // ---------------------------------------------------------------- OUTGOING
@@ -118,16 +130,26 @@ final class PairingService {
     if (event['type']?.toString() != 'pair_packet') return;
     final kind = event['pair']?.toString() ?? '';
     final nodeId = event['node_id']?.toString().trim() ?? '';
+    _diag('Pair packet received from …${nodeId.length > 6 ? nodeId.substring(nodeId.length - 6) : nodeId} ($kind)');
     final body = event['body']?.toString() ?? '';
-    if (nodeId.isEmpty || body.isEmpty) return;
-    if (!{'request', 'accept'}.contains(kind)) return;
+    if (nodeId.isEmpty || body.isEmpty) {
+      _diag('Pair packet dropped: empty fields');
+      return;
+    }
+    if (!{'request', 'accept'}.contains(kind)) {
+      _diag('Pair packet dropped: unknown kind $kind');
+      return;
+    }
 
     final mutedAt = _mutedUntil[nodeId];
     final isMuted = mutedAt != null && DateTime.now().isBefore(mutedAt);
 
     try {
       final parsed = await _verify(body, nodeId);
-      if (parsed == null) return; // signature/device-id mismatch: drop silent
+      if (parsed == null) {
+        _diag('Pair packet rejected: identity or signature did not check out.');
+        return;
+      }
       final (raw, profile) = parsed;
 
       if (await _isTrusted(profile.deviceId)) {
@@ -144,7 +166,10 @@ final class PairingService {
         return;
       }
 
-      if (isMuted) return;
+      if (isMuted) {
+        _diag('Pair request from …${nodeId.substring(nodeId.length - 6)} muted (already handled recently)');
+        return;
+      }
 
       if (kind == 'request') {
         _mutedUntil[nodeId] = DateTime.now().add(_muteWindow);
@@ -157,6 +182,7 @@ final class PairingService {
         await _adopt(raw, profile, nodeId);
       }
     } catch (error) {
+      _diag('Pair packet failed: $error');
       AppLogger.warning('PAIR_PACKET_REJECTED',
           detail: 'node=$nodeId error=$error');
     }
