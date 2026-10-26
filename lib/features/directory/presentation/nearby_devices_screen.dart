@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/error_toast.dart';
@@ -91,10 +92,10 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
   /// Bundle 108: ask the discovered peer to pair — a signed identity packet
   /// rides the LAN beacon channel; the other phone shows Accept/Connect.
   Future<void> _requestPair(MeshPeer peer) async {
-    // Bundle 112: the first tap right after opening Nearby often lands before
-    // the peer's LAN beacon has populated the transport endpoint table — the
-    // send then fails with "not visible yet". Retry briefly before giving up,
-    // and always show the REAL error text (never the generic placeholder).
+    // Bundle 115: every stage of the tap chain is loud. Anything that throws
+    // before this print line-by-line scaffold runs means the tap never left
+    // the sheet — it lands in the console as PAIR_TAP lines either way.
+    AppLogger.warning('PAIR_TAP', detail: 'stage=handler node=${peer.nodeId}');
     Object? lastError;
     for (var attempt = 0; attempt < 4; attempt++) {
       if (attempt > 0) {
@@ -102,10 +103,13 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
         if (!mounted) return;
       }
       try {
+        AppLogger.warning('PAIR_TAP', detail: 'stage=calling_requestPair attempt=${attempt + 1}');
         await widget.pairing.requestPair(peer.nodeId);
+        AppLogger.warning('PAIR_TAP', detail: 'stage=requestPair_returned_ok');
         _snack('Pair request sent — the other phone will be asked to accept.');
         return;
       } catch (error) {
+        AppLogger.warning('PAIR_TAP', detail: 'stage=caught error=$error');
         lastError = error;
         final text = cleanBlocError(error);
         final lower = text.toLowerCase();

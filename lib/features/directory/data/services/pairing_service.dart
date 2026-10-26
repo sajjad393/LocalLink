@@ -80,6 +80,7 @@ final class PairingService {
   void start() {
     if (_started) return;
     _started = true;
+    AppLogger.warning('PAIR_STAGE', detail: 'pairing service started');
     _events = _transport.events.listen(_handleTransportEvent);
     // Bundle 113: the receiver side must already have identity+sockets when a
     // packet lands; configure lazily here (idempotent, safe, never restarts
@@ -94,6 +95,7 @@ final class PairingService {
   /// on cold-start ordering.
   Future<void> _ensureTransportReady() async {
     final deviceId = _store.deviceId ?? '';
+    AppLogger.warning('PAIR_STAGE', detail: 'ensureTransportReady deviceId=${deviceId.isEmpty ? '<empty>' : deviceId.substring(0, deviceId.length > 12 ? 12 : deviceId.length)}…');
     if (deviceId.isEmpty) return; // nothing to identify with yet
     final devices = await _store.localDevices();
     final ids = devices
@@ -121,11 +123,15 @@ final class PairingService {
   /// Ask the locally visible peer [nodeId] to pair. Throws when the peer
   /// is not currently visible on the local network (native error).
   Future<void> requestPair(String nodeId) async {
+    AppLogger.warning('PAIR_STAGE', detail: 'requestPair entered node=$nodeId');
     final body = await _payload();
+    AppLogger.warning('PAIR_STAGE', detail: 'payload built');
     await _ensureTransportReady();
+    AppLogger.warning('PAIR_STAGE', detail: 'transport ensured, sending');
     try {
       await _transport.sendPairPayload(
           nodeId: nodeId, kind: 'request', body: body);
+      AppLogger.warning('PAIR_STAGE', detail: 'native send returned OK');
       _diag('Pair request sent to native transport.');
     } catch (first) {
       AppLogger.warning('PAIR_SEND_THROW', detail: '$first');
