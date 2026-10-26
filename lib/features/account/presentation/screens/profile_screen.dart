@@ -22,6 +22,7 @@ import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/my_qr_screen.dart';
+import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/features/transfer/presentation/screens/account_transfer_screen.dart';
@@ -40,6 +41,8 @@ class ProfileScreen extends StatefulWidget {
   final AdminCapabilityService? adminCapability;
   final AppViewModeCubit? viewMode;
   final ConnectivityBloc? connectivityController;
+  final AuthenticationRepositoryContract? authentication;
+  final Future<void> Function()? onSignedOut;
 
   const ProfileScreen({
     super.key,
@@ -56,6 +59,8 @@ class ProfileScreen extends StatefulWidget {
     this.adminCapability,
     this.viewMode,
     this.connectivityController,
+    this.authentication,
+    this.onSignedOut,
   });
 
   @override
@@ -135,38 +140,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _showRecovery() async {
-    final status = await widget.accountRepository.recoveryCodeStatus();
+    bool configured = false;
+    try {
+      final status = await widget.accountRepository.recoveryCodeStatus();
+      configured = status.configured;
+    } catch (_) {
+      // Offline: status query needs the server; local recovery may still
+      // exist, so offer a rotation that works fully on-device (Bundle 110).
+      configured = (widget.store.localRecoveryCode ?? '').isNotEmpty;
+    }
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Recovery code'),
-        content: Text(status.configured ? 'A recovery code is already configured. Generate a new one to replace it.' : 'No recovery code is configured yet.'),
+        content: Text(configured ? 'A recovery code is already configured. Generate a new one to replace it.' : 'No recovery code is configured yet.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
           FilledButton(
             onPressed: () async {
               Navigator.pop(context);
-              try {
-                final code = await widget.accountRepository.rotateRecoveryCode();
-                if (!mounted) return;
-                await showDialog<void>(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('New recovery code'),
-                    content: SelectableText(code),
-                    actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
-                  ),
-                );
-              } catch (error) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
-              }
+              final code = await _rotateRecovery();
+              if (code == null || !mounted) return;
+              await showDialog<void>(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text('New recovery code'),
+                  content: SelectableText(code),
+                  actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
+                ),
+              );
             },
-            child: Text(status.configured ? 'Replace code' : 'Generate code'),
+            child: Text(configured ? 'Replace code' : 'Generate code'),
           ),
         ],
       ),
     );
+  }
+
+  /// Server-first rotation with a silent local fallback (Bundle 110): offline
+  /// the new code is stored on this phone only and syncs with the account.
+  Future<String?> _rotateRecovery() async {
+    try {
+      return await widget.accountRepository.rotateRecoveryCode();
+    } catch (_) {} // offline or server hiccup — rotate locally instead
+    try {
+      final code = await widget.store.rotateLocalRecoveryCode();
+      return code;
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
+      return null;
+    }
   }
 
   DirectoryProfile _directoryProfile(LocalProfile value) => DirectoryProfile(
@@ -182,6 +206,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
         directorySyncEnabled: value.directorySyncEnabled,
         source: 'local',
       );
+
+  /// Bundle 110: soft sign-out. Chats, contacts and the account itself stay
+  /// on this phone; the next login accepts the password or recovery code,
+  /// with or without a server.
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Your chats and account stay on this phone. Log back in with your '
+          'password or recovery code whenever you are ready.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.authentication!.signOut();
+    } catch (_) {}
+    if (!mounted) return;
+    await widget.onSignedOut!();
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
 
   @override
   void dispose() {
@@ -288,6 +346,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AccountTransferScreen(repository: widget.transferRepository))),
               ),
             ),
+            if (widget.onSignedOut != null && widget.authentication != null)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.logout_outlined),
+                  title: const Text('Sign out'),
+                  subtitle: const Text('Your chats and account stay on this phone.'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _confirmSignOut(context),
+                ),
+              ),
           ],
         ],
       ),

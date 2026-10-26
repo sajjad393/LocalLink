@@ -286,9 +286,49 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
     return value.isEmpty ? '?' : value[0].toUpperCase();
   }
 
+  /// Bundle 111: choose the LOCAL display name at add time. Cancelling
+  /// aborts the add; clearing the field keeps the profile name as-is.
+  Future<String?> _contactNameDialog(BuildContext context) {
+    final controller =
+        TextEditingController(text: profile.displayName);
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Save contact as'),
+        content: TextField(
+          controller: controller,
+          autocorrect: false,
+          maxLength: 40,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Name on this phone',
+            hintText: 'Only you will see this name',
+          ),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Add contact'),
+          ),
+        ],
+      ),
+    ).then((value) {
+      controller.dispose();
+      return value;
+    });
+  }
+
   Future<void> _addContact(BuildContext context) async {
+    final customName = await _contactNameDialog(context);
+    if (customName == null || !context.mounted) return;
     try {
-      await widget.repository.addContact(profile.userId);
+      await widget.repository
+          .addContact(profile.userId, customName: customName.trim());
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Contact added')),

@@ -4,10 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/messenger_section_header.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
+import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
+import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
+import 'package:locallink/features/directory/presentation/add_contact_screen.dart';
+import 'package:locallink/features/directory/data/services/pairing_service.dart';
 
 class NearbyDevicesScreen extends StatefulWidget {
   final ConnectivityBloc connectivity;
@@ -17,7 +23,22 @@ class NearbyDevicesScreen extends StatefulWidget {
   /// paired, so discovery never dead-ends for roster-unknown peers.
   final MeshBloc mesh;
 
-  const NearbyDevicesScreen({super.key, required this.connectivity, required this.mesh});
+  /// Bundle 107: pairing becomes actionable — the Pair sheet can open Add
+  /// contact (QR scan / search) directly instead of showing instructions.
+  final DirectoryRepositoryContract directory;
+  final IdentityCryptoService crypto;
+
+  /// Bundle 108: auto-pairing over the local network (beacon channel).
+  final PairingService pairing;
+
+  const NearbyDevicesScreen({
+    super.key,
+    required this.connectivity,
+    required this.mesh,
+    required this.directory,
+    required this.crypto,
+    required this.pairing,
+  });
 
   @override
   State<NearbyDevicesScreen> createState() => _NearbyDevicesScreenState();
@@ -41,9 +62,61 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
     super.dispose();
   }
 
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Bundle 107: Connect used to die invisibly — native errors were emitted
+  /// into bloc state that this screen never rendered, and refresh() cleared
+  /// them within a cycle. Now: preflight first (support/permission), show
+  /// progress guidance, and let the BlocListener below surface failures.
+  Future<void> _connect(WifiDirectPeer peer) async {
+    final c = widget.connectivity;
+    if (!await c.isWifiDirectSupported()) {
+      _snack('This phone does not support Wi-Fi Direct.');
+      return;
+    }
+    if (!await c.hasWifiDirectPermission()) {
+      await c.requestWifiDirectEnable();
+      _snack('Allow the "Nearby devices" permission, then tap Connect again.');
+      return;
+    }
+    _snack('Connecting… the other phone is asked to accept once.');
+    await c.connectWifiDirect(peer);
+  }
+
+  /// Bundle 108: ask the discovered peer to pair — a signed identity packet
+  /// rides the LAN beacon channel; the other phone shows Accept/Connect.
+  Future<void> _requestPair(MeshPeer peer) async {
+    try {
+      await widget.pairing.requestPair(peer.nodeId);
+      _snack('Pair request sent — the other phone will be asked to accept.');
+    } catch (error) {
+      _snack(friendlyErrorMessage(error));
+    }
+  }
+
+  void _openAddContact() {
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            AddContactScreen(repository: widget.directory, crypto: widget.crypto),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<ConnectivityBloc, ConnectivityState>(
+    return BlocListener<ConnectivityBloc, ConnectivityState>(
+      bloc: widget.connectivity,
+      listenWhen: (prev, next) =>
+          next.error != null && next.error != prev.error,
+      listener: (context, state) => ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyErrorMessage(state.error!)))),
+      child: BlocBuilder<ConnectivityBloc, ConnectivityState>(
       bloc: widget.connectivity,
       builder: (context, state) {
         final peers = state.snapshot.wifiPeers;
@@ -140,18 +213,30 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                           ? 'Several phones nearby — choose one to connect'
                           : 'Nearby connection available'),
                       trailing: FilledButton.tonal(
-                        onPressed: () => widget.connectivity.connectWifiDirect(peer),
-                        child: const Text('Connect'),
+                        onPressed:
+                            state.busy ? null : () => _connect(peer),
+                        child: state.busy
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : const Text('Connect'),
                       ),
                     ),
                   ),
                 ),
               const SizedBox(height: LocalLinkSpacing.lg),
-              _MeshNearbySection(mesh: widget.mesh),
+              _MeshNearbySection(
+                mesh: widget.mesh,
+                onAddContact: _openAddContact,
+                onPairRequest: _requestPair,
+              ),
             ],
           ),
         );
       },
+    ),
     );
   }
 }
@@ -165,7 +250,17 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
 /// dead-end silently.
 class _MeshNearbySection extends StatelessWidget {
   final MeshBloc mesh;
-  const _MeshNearbySection({required this.mesh});
+
+  /// Bundle 107: opens Add contact so pairing is one tap, not instructions.
+  final VoidCallback onAddContact;
+
+  /// Bundle 108: in-band auto-pair attempt for the discovered peer.
+  final void Function(MeshPeer peer) onPairRequest;
+  const _MeshNearbySection({
+    required this.mesh,
+    required this.onAddContact,
+    required this.onPairRequest,
+  });
 
   static bool _isLive(String state) =>
       state == 'CONNECTED' || state == 'AVAILABLE' || state == 'CONNECTING';
@@ -184,7 +279,8 @@ class _MeshNearbySection extends StatelessWidget {
         _ => 'local network',
       };
 
-  static void _pairSheet(BuildContext context, MeshPeer peer) {
+  static void _pairSheet(BuildContext context, MeshPeer peer,
+      VoidCallback onAddContact, void Function(MeshPeer peer) onPairRequest) {
     showModalBottomSheet<void>(
       context: context,
       builder: (sheetContext) => Padding(
@@ -207,6 +303,29 @@ class _MeshNearbySection extends StatelessWidget {
             const SizedBox(height: LocalLinkSpacing.lg),
             Row(
               children: [
+                Wrap(
+                  spacing: LocalLinkSpacing.sm,
+                  runSpacing: LocalLinkSpacing.sm,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        onPairRequest(peer);
+                      },
+                      icon: const Icon(Icons.handshake_outlined, size: 18),
+                      label: const Text('Send pair request'),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        onAddContact();
+                      },
+                      icon: const Icon(Icons.qr_code_scanner, size: 18),
+                      label: const Text('Add contact (scan QR)'),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: LocalLinkSpacing.sm),
                 FilledButton.tonalIcon(
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: peer.nodeId));
@@ -266,7 +385,8 @@ class _MeshNearbySection extends StatelessWidget {
                     'messages stay unavailable until you pair.',
                   ),
                   trailing: FilledButton.tonal(
-                    onPressed: () => _pairSheet(context, peer),
+                    onPressed: () =>
+                        _pairSheet(context, peer, onAddContact, onPairRequest),
                     child: const Text('Pair'),
                   ),
                 ),

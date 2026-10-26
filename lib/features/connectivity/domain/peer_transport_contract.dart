@@ -11,6 +11,14 @@ abstract interface class PeerTransportContract {
   });
 
   Future<void> updateKnownPeers(List<String> peerIds);
+
+  /// Bundle 108: fire a signed identity exchange packet at a locally visible
+  /// peer over the LAN beacon channel (pre-trust; only pair packets fly).
+  Future<void> sendPairPayload({
+    required String nodeId,
+    required String kind,
+    required String body,
+  });
   Future<Map<String, dynamic>> topology();
   Future<void> flushQueue();
   Future<void> resume();

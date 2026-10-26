@@ -44,4 +44,33 @@ abstract interface class AuthenticationRepositoryContract {
   /// Verifies a password against the stashed PBKDF2 credentials (offline
   /// re-login and the publish-time confirm step). Never stores plaintext.
   bool verifyOfflinePassword(String password);
+
+  // ------------------------------------------------------------- Bundle 110
+
+  /// After every successful ONLINE register/login, mirror the credentials
+  /// into secure storage so the same account can be reopened without a
+  /// server (silent offline re-login). Generates a local recovery code when
+  /// [recoveryCode] is empty.
+  Future<void> mirrorOfflineLogin({
+    required String username,
+    required String password,
+    String recoveryCode = '',
+  });
+
+  /// Offline login: verifies [username]/[password] against the offline
+  /// pending account OR the mirrored online credentials.
+  bool verifyOfflineLogin(String username, String password);
+
+  /// Offline login fallback: verifies the single local recovery code as a
+  /// password stand-in. [username] must match a locally known account.
+  bool verifyOfflineRecovery(String username, String recoveryCode);
+
+  /// Clears the soft sign-out gate after a successful offline login.
+  Future<void> completeOfflineLogin();
+
+  /// Soft sign-out: keeps ALL local data; the next launch shows the login
+  /// gate until credentials (or the recovery code) are re-entered.
+  Future<void> signOut();
+
+  Future<bool> isSignedOut();
 }

@@ -106,6 +106,7 @@ class LocalLinkTransportService : Service() {
         fun callVideoRotation(callId:String): Int = instance?.callVideoRotationInternal(callId) ?: 0
         fun broadcast(payload:Map<String,Any?>)=instance?.broadcastTransportInternal(payload)?:false
         fun sendFile(recipientId:String,path:String,fileId:String,messageId:String,fileName:String,contentType:String,cb:(Boolean,String?)->Unit){instance?.sendFileTransportInternal(recipientId,path,fileId,messageId,fileName,contentType,cb)?:cb(false,"transport service is not running")}
+        fun sendPairPayload(target:String,pair:String,body:String,cb:(Boolean,String?)->Unit){instance?.sendPairPayloadInternal(target,pair,body,cb)?:cb(false,"transport service is not running")}
         fun cancelFile(fileId:String){instance?.cancelFileTransportInternal(fileId)}
         fun topology(): Map<String, Any?> = instance?.meshTopologySnapshot() ?: emptyMap()
         fun flushQueue(){instance?.flushMeshQueue()}
@@ -425,7 +426,11 @@ class LocalLinkTransportService : Service() {
                 try {
                     val datagram = DatagramPacket(receiveBuffer, receiveBuffer.size)
                     socket.receive(datagram)
-                    handleLanBeacon(String(datagram.data, datagram.offset, datagram.length, Charsets.UTF_8), datagram.address)
+                    val raw = String(datagram.data, datagram.offset, datagram.length, Charsets.UTF_8)
+                    // Bundle 108: pre-trust pairing packets ride the same LAN
+                    // datagram channel as beacons; everything else stays on
+                    // the beacon path. Type is re-validated inside both.
+                    if (raw.contains("\"pair_packet\"")) handlePairPacket(raw, datagram.address) else handleLanBeacon(raw, datagram.address)
                 } catch (_: java.net.SocketTimeoutException) {
                     // Continue periodic discovery broadcast.
                 }
@@ -524,6 +529,70 @@ class LocalLinkTransportService : Service() {
                 connectLanPeer(nodeId, host, port)
             }
         } catch (_: Exception) {}
+    }
+
+    // ------------------------------------------------------------------------
+    // BUNDLE 108 — IN-BAND PAIRING (mutual consent over the local network)
+    // Pair packets are JSON control frames exchanged over the LAN UDP channel
+    // BEFORE any roster trust exists: the signed identity inside is verified
+    // on the Dart side with the same crypto path as a QR scan, so transport
+    // stays a dumb pipe. size-capped, self-checks, no session required.
+    // ------------------------------------------------------------------------
+    private val lanPairMaxBytes = 6000
+
+    private fun handlePairPacket(raw: String, address: InetAddress) {
+        try {
+            if (raw.toByteArray(Charsets.UTF_8).size > lanPairMaxBytes) return
+            if (address.address.size != 4 || address.isAnyLocalAddress || address.isLoopbackAddress || address.isMulticastAddress) return
+            val packet = JSONObject(raw)
+            if (packet.optString("type") != "pair_packet") return
+            val self = transportDeviceId ?: return
+            val fromNode = packet.optString("node_id").trim()
+            val kind = packet.optString("pair")
+            val body = packet.optString("body")
+            if (!validTransportId(fromNode) || fromNode == self) return
+            if (kind != "request" && kind != "accept") return
+            if (body.isBlank() || body.length > lanPairMaxBytes) return
+            transportEvent("pair_packet", mapOf(
+                "pair" to kind,
+                "node_id" to fromNode,
+                "body" to body,
+                "address" to (address.hostAddress?.trim().orEmpty()),
+            ))
+        } catch (_: Exception) {}
+    }
+
+    private fun sendPairPayloadInternal(target: String, pair: String, body: String, cb: (Boolean, String?) -> Unit) {
+        if (!transportRunning) { cb(false, "transport is not configured"); return }
+        val self = transportDeviceId
+        if (self.isNullOrBlank()) { cb(false, "transport is not configured"); return }
+        if (!validTransportId(target) || target == self || (pair != "request" && pair != "accept")) { cb(false, "invalid pair packet"); return }
+        if (body.isBlank() || body.length > lanPairMaxBytes) { cb(false, "pair payload is too large"); return }
+        val endpoint = lanEndpoints[target]
+        if (endpoint == null) { cb(false, "peer is not visible on the local network yet — wait for it to appear under On this network"); return }
+        val packet = JSONObject()
+            .put("type", "pair_packet")
+            .put("pair", pair)
+            .put("node_id", self)
+            .put("body", body)
+            .put("sent_at", System.currentTimeMillis())
+        val bytes = packet.toString().toByteArray(Charsets.UTF_8)
+        Thread {
+            try {
+                // 3 unicast datagrams, 250ms apart: UDP has no delivery ack,
+                // and the receiver deduplicates on arrival timestamp anyway.
+                DatagramSocket().use { socket ->
+                    val destination = InetAddress.getByName(endpoint.host)
+                    repeat(3) {
+                        socket.send(DatagramPacket(bytes, bytes.size, destination, lanDiscoveryPort))
+                        Thread.sleep(250)
+                    }
+                }
+                cb(true, null)
+            } catch (e: Exception) {
+                cb(false, e.message)
+            }
+        }.start()
     }
 
     private fun connectLanPeer(nodeId: String, host: String, port: Int = lanTransportPort) {

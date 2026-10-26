@@ -6,6 +6,7 @@ import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
+import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
 import 'package:locallink/features/account/presentation/screens/account_center_screen.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
@@ -21,6 +22,7 @@ import 'package:locallink/features/transfer/domain/account_transfer_repository_c
 
 class MessengerSettingsScreen extends StatelessWidget {
   final LocalLinkApi api;
+  final AuthenticationRepositoryContract? authentication;
   final LocalStore store;
   final IdentityCryptoService crypto;
   final AccountRepositoryContract accountRepository;
@@ -34,11 +36,13 @@ class MessengerSettingsScreen extends StatelessWidget {
   final ConnectivityBloc connectivityController;
   final LocalLinkNotificationService notifications;
   final Future<void> Function() onReset;
+  final Future<void> Function()? onSignedOut;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
 
   const MessengerSettingsScreen({
     super.key,
+    this.authentication,
     required this.api,
     required this.store,
     required this.crypto,
@@ -53,6 +57,7 @@ class MessengerSettingsScreen extends StatelessWidget {
     required this.connectivityController,
     required this.notifications,
     required this.onReset,
+    this.onSignedOut,
     required this.themeMode,
     required this.onThemeModeChanged,
   });
@@ -63,6 +68,7 @@ class MessengerSettingsScreen extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => AccountCenterScreen(
           accountRepository: accountRepository,
+          authentication: authentication,
           identityRepository: identityRepository,
           api: api,
           store: store,
@@ -72,6 +78,7 @@ class MessengerSettingsScreen extends StatelessWidget {
           directoryRepository: directoryRepository,
           adminRepositoryFactory: adminRepositoryFactory,
           viewMode: viewMode,
+          onSignedOut: onSignedOut,
           adminCapability: adminCapability,
           connectivityController: connectivityController,
         ),

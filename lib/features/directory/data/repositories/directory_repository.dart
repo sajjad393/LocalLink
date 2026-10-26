@@ -705,7 +705,12 @@ class DirectoryRepository implements DirectoryRepositoryContract {
 
   @override
   Future<List<DirectoryProfile>> contacts() async =>
-      (await store.contacts()).map(DirectoryProfile.fromMap).toList();
+      (await store.contacts()).map((map) {
+        final profile = DirectoryProfile.fromMap(map);
+        // Bundle 111: a custom contact name fully replaces the profile name.
+        final custom = map['custom_name']?.toString().trim() ?? '';
+        return custom.isEmpty ? profile : profile.copyWith(displayName: custom);
+      }).toList();
 
   @override
   Future<void> sync() async {
@@ -927,7 +932,17 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   }
 
   @override
-  Future<void> addContact(String userId) async {
+  @override
+  Future<void> renameContact(String userId, String customName) async {
+    final id = userId.trim();
+    if (id.isEmpty || !(await store.isContact(id))) {
+      throw const FormatException('Unknown contact');
+    }
+    await store.setContactCustomName(id, customName);
+  }
+
+  @override
+  Future<void> addContact(String userId, {String customName = ''}) async {
     final id = userId.trim();
     if (id.isEmpty || id == store.accountId) {
       throw const FormatException('Invalid contact');
@@ -942,7 +957,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     if (profile.deviceId.isEmpty) {
       throw Exception('Contact has no active device');
     }
-    await store.addContact(id, profile.deviceId);
+    await store.addContact(id, profile.deviceId, customName: customName);
     // Mirror to the account on the server so contacts survive reinstalls.
     // Failures are NOT discarded silently: the push is deferred to the
     // periodic syncServerContacts reconcile (id marks stay unconfirmed).

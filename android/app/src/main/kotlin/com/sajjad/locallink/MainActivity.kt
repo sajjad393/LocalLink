@@ -171,6 +171,14 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "configure" -> configureTransport(call, result)
                     "updateKnownPeers" -> { LocalLinkTransportService.updateKnownPeers(this, stringList(call.argument<List<*>>("known_peers"))); result.success(null) }
+                    "sendPairPayload" -> {
+                        val target = call.argument<String>("target").orEmpty()
+                        val pairKind = call.argument<String>("pair").orEmpty()
+                        val body = call.argument<String>("body").orEmpty()
+                        LocalLinkTransportService.sendPairPayload(target, pairKind, body) { ok, error ->
+                            runOnUiThread { if (ok) result.success(null) else result.error("PAIR_SEND_FAILED", error, null) }
+                        }
+                    }
                     "send" -> {
                         val ok = LocalLinkTransportService.send(call.argument<String>("recipient_id")?.trim().orEmpty(), mapToPayload(call.argument<Map<*, *>>("payload")))
                         if (ok) result.success(null) else result.error("PEER_UNAVAILABLE", "peer is not connected", null)

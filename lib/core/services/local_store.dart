@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+
+import 'package:locallink/core/crypto/recovery_code.dart';
 import 'dart:io';
 import 'dart:math';
 
@@ -59,6 +61,10 @@ class LocalStore {
   static const int _dbVersion = DatabaseConfig.version;
   static const String _tokenKey = 'locallink_device_token';
   static const _offlinePendingKey = 'account_offline_pending_v1';
+  static const _offlineLoginKey = 'account_offline_login_v1';
+  // Bundle 110: sign-out is a UI gate only — data + identity stay on the
+  // phone so offline login can reopen the account without a server.
+  static const _signedOutKey = 'auth_signed_out';
   static const _localRecoveryKey = 'account_local_recovery_v1';
   static const String _recoveryRequestSecretKey =
       'locallink_recovery_request_secret';
@@ -86,6 +92,7 @@ class LocalStore {
   // was unreachable lives here until /api/v1/auth/register accepts it later.
   String _syncState = 'synced';
   String? _offlinePendingJson; // secure storage: hash+salt, never plaintext pwd
+  String? _offlineLoginJson; // secure: mirrored creds for server-registered accounts
   String? _localRecoveryCode;  // secure storage
 
   String? _syncCursor;
@@ -166,6 +173,7 @@ class LocalStore {
         if (oldVersion < 21) await _upgradeTo21(db);
         if (oldVersion < 22) await _upgradeTo22(db);
         if (oldVersion < 23) await _upgradeTo23(db);
+        if (oldVersion < 24) await _upgradeTo24(db);
       },
     );
     _databaseOpened = true;
@@ -323,6 +331,7 @@ class LocalStore {
     await _upgradeTo20(db);
     await _upgradeTo22(db);
     await _upgradeTo23(db);
+    await _upgradeTo24(db);
   }
 
   Future<void> _upgradeTo2(Database db) async {
@@ -686,6 +695,17 @@ class LocalStore {
     }
   }
 
+  /// Bundle 111: local-only custom contact names. Never synced, never
+  /// overwritten by directory sync — a plain TEXT column the server and the
+  /// mesh layer know nothing about.
+  Future<void> _upgradeTo24(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(contacts)');
+    if (!cols.any((c) => c['name']?.toString() == 'custom_name')) {
+      await db.execute(
+          "ALTER TABLE contacts ADD COLUMN custom_name TEXT NOT NULL DEFAULT ''");
+    }
+  }
+
   Future<void> _upgradeTo22(Database db) async {
     await db.execute(
         "ALTER TABLE known_devices ADD COLUMN presence_local_at TEXT NOT NULL DEFAULT ''");
@@ -712,6 +732,7 @@ class LocalStore {
     _syncState = values['sync_state'] ?? 'synced';
     _offlinePendingJson = await _secureStorage.read(key: _offlinePendingKey);
     _localRecoveryCode = await _secureStorage.read(key: _localRecoveryKey);
+    _offlineLoginJson = await _secureStorage.read(key: _offlineLoginKey);
     _serverId = values['server_id'];
     _serverFingerprint = values['server_fingerprint'];
     _adminUserWifiRadioPolicy = AdminWifiRadioPolicyX.fromStorage(
@@ -875,6 +896,62 @@ class LocalStore {
     await _secureStorage.delete(key: _offlinePendingKey);
   }
 
+  // ---------------------------------------------------------------- Bundle 110
+
+  Map<String, dynamic>? get offlineLoginAccount {
+    if (_offlineLoginJson == null) return null;
+    try {
+      return Map<String, dynamic>.from(jsonDecode(_offlineLoginJson!));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Silent mirror written after every successful ONLINE register/login so
+  /// the same credentials can reopen this account later without a server.
+  Future<void> saveOfflineLoginAccount({
+    required String username,
+    required String pwdHash,
+    required String pwdSalt,
+    required String recoveryCode,
+  }) async {
+    _offlineLoginJson = jsonEncode({
+      'username': username.trim().toLowerCase(),
+      'pwd_hash': pwdHash,
+      'pwd_salt': pwdSalt,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    });
+    await _secureStorage.write(key: _offlineLoginKey, value: _offlineLoginJson!);
+    // The single local-recovery slot: only set when none exists yet (an
+    // offline-created account's own recovery code outranks the mirror's).
+    if ((_localRecoveryCode ?? '').isEmpty) {
+      await updateLocalRecoveryCode(recoveryCode);
+    }
+  }
+
+  /// Generates + stores a brand-new local recovery code (offline rotation).
+  Future<String> rotateLocalRecoveryCode() async {
+    final code = RecoveryCode.generate();
+    await updateLocalRecoveryCode(code);
+    return code;
+  }
+
+  Future<void> updateLocalRecoveryCode(String recoveryCode) async {
+    _localRecoveryCode = recoveryCode;
+    await _secureStorage.write(key: _localRecoveryKey, value: recoveryCode);
+  }
+
+  Future<void> setSignedOut(bool signedOut) =>
+      _putSetting(_signedOutKey, signedOut ? '1' : '0');
+
+  Future<bool> isSignedOut() async =>
+      (await readSetting(_signedOutKey) ?? '0') == '1';
+
+  Future<void> clearOfflineLoginMirror() async {
+    _offlineLoginJson = null;
+    await _secureStorage.delete(key: _offlineLoginKey);
+  }
+
   Future<void> clearConfiguration() async {
     _serverAddress = null;
     _deviceId = null;
@@ -890,6 +967,7 @@ class LocalStore {
     _localRecoveryCode = null;
     await _secureStorage.delete(key: _offlinePendingKey);
     await _secureStorage.delete(key: _localRecoveryKey);
+    await clearOfflineLoginMirror();
     await LocalStore.timedTx('clear_config_tx', _db, (txn) async {
       for (final table in [
         'settings',
@@ -1077,6 +1155,10 @@ class LocalStore {
   Future<String?> peerDisplayName(String id) async {
     if (id.trim().isEmpty) return null;
     final profile = await directoryProfile(id) ?? await directoryProfileByDeviceId(id);
+    // Bundle 111: a locally set custom contact name fully replaces the
+    // (possibly changing) profile name everywhere a person is displayed.
+    final custom = await _customNameFor(id, profile);
+    if (custom != null && custom.isNotEmpty) return custom;
     return displayNameFromProfile(profile);
   }
 
@@ -1095,21 +1177,68 @@ class LocalStore {
 
   Future<List<Map<String, dynamic>>> searchDirectoryByName(
           String query) async =>
-      _db.query('directory_profiles',
-          where: 'display_name LIKE ? OR username LIKE ?',
-          whereArgs: ['%$query%', '%$query%'],
-          orderBy: 'display_name COLLATE NOCASE ASC',
-          limit: 50);
+      _db.rawQuery(
+          'SELECT p.*, c.custom_name AS custom_name FROM directory_profiles p '
+          'LEFT JOIN contacts c ON c.user_id = p.user_id '
+          'WHERE p.display_name LIKE ? OR p.username LIKE ? OR c.custom_name LIKE ? '
+          'ORDER BY p.display_name COLLATE NOCASE ASC LIMIT 50',
+          ['%$query%', '%$query%', '%$query%']);
   Future<List<Map<String, dynamic>>> directoryProfiles() async =>
       _db.query('directory_profiles', orderBy: 'updated_at DESC');
-  Future<void> addContact(String userId, String deviceId) async => _db.insert(
-      'contacts',
-      {
-        'user_id': userId,
-        'device_id': deviceId,
-        'added_at': DateTime.now().toUtc().toIso8601String()
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace);
+  Future<void> addContact(String userId, String deviceId,
+          {String customName = ''}) async =>
+      _db.insert(
+          'contacts',
+          {
+            'user_id': userId,
+            'device_id': deviceId,
+            'added_at': DateTime.now().toUtc().toIso8601String(),
+            'custom_name': customName.trim(),
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace);
+
+  /// Bundle 111: rename (or clear, with an empty string) the local custom
+  /// name of a contact. Local-only by design.
+  Future<void> setContactCustomName(String userId, String customName) async {
+    if (userId.trim().isEmpty) return;
+    await _db.update('contacts', {'custom_name': customName.trim()},
+        where: 'user_id=?', whereArgs: [userId]);
+  }
+
+  Future<String?> contactCustomName(String userId) async {
+    if (userId.isEmpty) return null;
+    final rows = await _db.query('contacts',
+        columns: ['custom_name'],
+        where: 'user_id=?',
+        whereArgs: [userId],
+        limit: 1);
+    if (rows.isEmpty) return null;
+    final value = rows.first['custom_name']?.toString().trim() ?? '';
+    return value.isEmpty ? null : value;
+  }
+
+  Future<String?> contactCustomNameByDevice(String deviceId) async {
+    if (deviceId.isEmpty) return null;
+    final rows = await _db.query('contacts',
+        columns: ['custom_name'],
+        where: 'device_id=?',
+        whereArgs: [deviceId],
+        limit: 1);
+    if (rows.isEmpty) return null;
+    final value = rows.first['custom_name']?.toString().trim() ?? '';
+    return value.isEmpty ? null : value;
+  }
+
+  /// Custom name attached to either id form (peer ids arrive as user OR
+  /// device ids depending on the feature calling).
+  Future<String?> _customNameFor(String id, Map<String, dynamic>? profile) async {
+    final uid = profile?['user_id']?.toString() ?? '';
+    final did = profile?['device_id']?.toString() ?? '';
+    return await contactCustomName(uid.isEmpty ? id : uid) ??
+        await contactCustomName(uid.isEmpty ? '' : id) ??
+        await contactCustomNameByDevice(did.isEmpty ? id : did) ??
+        (did.isEmpty ? await contactCustomNameByDevice(id) : null);
+  }
   Future<void> removeContact(String userId) =>
       _db.delete('contacts', where: 'user_id=?', whereArgs: [userId]);
   Future<bool> isContact(String userId) async => (await _db.query('contacts',
@@ -1146,7 +1275,7 @@ class LocalStore {
   }
 
   Future<List<Map<String, dynamic>>> contacts() async => _db.rawQuery(
-      'SELECT p.* FROM contacts c JOIN directory_profiles p ON p.user_id=c.user_id ORDER BY p.display_name COLLATE NOCASE ASC');
+      'SELECT p.*, c.custom_name AS custom_name FROM contacts c JOIN directory_profiles p ON p.user_id=c.user_id ORDER BY p.display_name COLLATE NOCASE ASC');
 
   /// Raw contact user ids regardless of whether a directory profile is cached
   /// for them — required by the server contacts reconciliation, which must

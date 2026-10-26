@@ -19,7 +19,12 @@ abstract interface class DirectoryRepositoryContract {
   /// offline adds/removals, self-heals divergence). Safe to call repeatedly.
   Future<void> syncServerContacts();
   Future<void> sync();
-  Future<void> addContact(String userId);
+  /// [customName] is Bundle 111's local-only custom contact name; never
+  /// synced server-side nor re-shared over the directory mesh.
+  Future<void> addContact(String userId, {String customName = ''});
+
+  /// Rename (or clear with an empty string) the local custom contact name.
+  Future<void> renameContact(String userId, String customName);
   Future<void> removeContact(String userId);
 
   /// Bundle 90: per-contact re-sharing mark (default false/public). Set by

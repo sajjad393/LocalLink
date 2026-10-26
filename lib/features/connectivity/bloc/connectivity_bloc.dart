@@ -99,6 +99,14 @@ final class ConnectivityBloc extends Cubit<ConnectivityState> {
     });
   }
 
+  // Bundle 107: preflight helpers for the Nearby screen so Connect can
+  // fail loudly with guidance instead of silently.
+  Future<bool> isWifiDirectSupported() => repository.isWifiDirectSupported();
+
+  Future<bool> hasWifiDirectPermission() => repository.isWifiDirectPermissionGranted();
+
+  Future<void> requestWifiDirectEnable() => repository.requestWifiDirectEnable();
+
   Future<void> connectWifiDirect(WifiDirectPeer peer) async {
     if (_closed) return;
     if (peer.address.trim().isEmpty) {

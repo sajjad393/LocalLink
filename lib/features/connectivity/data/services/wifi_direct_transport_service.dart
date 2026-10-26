@@ -45,6 +45,10 @@ class WifiDirectTransportService implements PeerTransportContract {
 
   Future<void> updateKnownPeers(List<String> peerIds) => _channel.invokeMethod('updateKnownPeers', {'known_peers': peerIds});
 
+  @override
+  Future<void> sendPairPayload({required String nodeId, required String kind, required String body}) =>
+      _channel.invokeMethod('sendPairPayload', {'target': nodeId, 'pair': kind, 'body': body});
+
   Future<Map<String, dynamic>> topology() async {
     final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>('topology') ?? const {};
     return Map<String, dynamic>.from(raw);

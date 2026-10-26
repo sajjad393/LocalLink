@@ -220,6 +220,80 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
     );
   }
 
+  // ------------------------------------------------------------- Bundle 110
+
+  @override
+  Future<void> mirrorOfflineLogin({
+    required String username,
+    required String password,
+    String recoveryCode = '',
+  }) async {
+    final rng = Random.secure();
+    final salt = Uint8List.fromList(
+        List<int>.generate(PasswordKdf.saltLength, (_) => rng.nextInt(256)));
+    final hash = PasswordKdf.derive(password, salt);
+    await _store.saveOfflineLoginAccount(
+      username: username,
+      pwdHash: PasswordKdf.b64(hash),
+      pwdSalt: PasswordKdf.b64(salt),
+      recoveryCode: recoveryCode.isEmpty ? RecoveryCode.generate() : recoveryCode,
+    );
+  }
+
+  @override
+  bool verifyOfflineLogin(String username, String password) {
+    final user = username.trim().toLowerCase();
+    if (user.isEmpty || password.isEmpty) return false;
+    final pending = _store.offlinePending;
+    if (pending != null &&
+        pending['username']?.toString().trim().toLowerCase() == user &&
+        PasswordKdf.verify(
+          password,
+          pending['pwd_salt']?.toString() ?? '',
+          pending['pwd_hash']?.toString() ?? '',
+        )) {
+      return true;
+    }
+    final mirror = _store.offlineLoginAccount;
+    return mirror != null &&
+        mirror['username']?.toString().trim().toLowerCase() == user &&
+        PasswordKdf.verify(
+          password,
+          mirror['pwd_salt']?.toString() ?? '',
+          mirror['pwd_hash']?.toString() ?? '',
+        );
+  }
+
+  @override
+  bool verifyOfflineRecovery(String username, String recoveryCode) {
+    final user = username.trim().toLowerCase();
+    final code = _normalizeRecovery(recoveryCode);
+    final local = _normalizeRecovery(_store.localRecoveryCode ?? '');
+    if (user.isEmpty || code.isEmpty || local.isEmpty || code != local) {
+      return false;
+    }
+    final pending = _store.offlinePending;
+    if (pending != null &&
+        pending['username']?.toString().trim().toLowerCase() == user) {
+      return true;
+    }
+    final mirror = _store.offlineLoginAccount;
+    return mirror != null &&
+        mirror['username']?.toString().trim().toLowerCase() == user;
+  }
+
+  static String _normalizeRecovery(String value) =>
+      value.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+
+  @override
+  Future<void> completeOfflineLogin() => _store.setSignedOut(false);
+
+  @override
+  Future<void> signOut() => _store.setSignedOut(true);
+
+  @override
+  Future<bool> isSignedOut() => _store.isSignedOut();
+
   @override
   Future<AuthResult> reEnrollDevice({
     required String username,

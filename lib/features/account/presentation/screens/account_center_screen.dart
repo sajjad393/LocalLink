@@ -11,6 +11,7 @@ import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/features/account/bloc/account_bloc.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
+import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
 import 'package:locallink/features/account/presentation/screens/crypto_migration_screen.dart';
 import 'package:locallink/features/account/presentation/screens/devices_screen.dart';
@@ -37,6 +38,8 @@ class AccountCenterScreen extends StatefulWidget {
   final AppViewModeCubit viewMode;
   final AdminCapabilityService adminCapability;
   final ConnectivityBloc connectivityController;
+  final Future<void> Function()? onSignedOut;
+  final AuthenticationRepositoryContract? authentication;
 
   const AccountCenterScreen({
     super.key,
@@ -52,6 +55,8 @@ class AccountCenterScreen extends StatefulWidget {
     required this.viewMode,
     required this.adminCapability,
     required this.connectivityController,
+    this.onSignedOut,
+    this.authentication,
   });
 
   @override
@@ -90,6 +95,8 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
           viewMode: widget.viewMode,
           adminCapability: widget.adminCapability,
           connectivityController: widget.connectivityController,
+          onSignedOut: widget.onSignedOut,
+          authentication: widget.authentication,
         ),
       ),
     );

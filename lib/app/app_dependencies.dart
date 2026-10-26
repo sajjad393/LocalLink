@@ -31,6 +31,7 @@ import 'package:locallink/features/connectivity/data/services/wifi_direct_servic
 import 'package:locallink/features/connectivity/data/services/wifi_direct_transport_service.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_fallback_service.dart';
+import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/files/data/repositories/file_transfer_repository.dart';
 import 'package:locallink/features/files/data/services/file_transfer_service.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
@@ -97,7 +98,13 @@ class AppDependencies {
       store: AdminSessionStore(storage: this.secureStorage),
     );
     _serverConnectionSubscription = socket.connectionState.listen(
-      viewMode.setServerConnected,
+      (connected) {
+        viewMode.setServerConnected(connected);
+        // Bundle 109: server just dropped → nudge local linking for trusted
+        // devices so conversations reroute onto Wi-Fi Direct/mesh by
+        // themselves.
+        if (!connected) primeTrustedRoutes();
+      },
     );
     meshRepository = MeshRepository(transport: directTransport);
     mesh = MeshBloc(repository: meshRepository);
@@ -161,6 +168,12 @@ class AppDependencies {
     presence = PresenceService(store, socket, wifiDirect, directTransport, httpClient: this.httpClient, crypto: crypto, wifiRadio: WifiRadioControlService());
     networkPolicySync = NetworkPolicySyncService(store, api, socket, httpClient: this.httpClient, wifiRadio: WifiRadioControlService());
     directoryRepository = DirectoryRepository(store: store, api: api, transport: directTransport, crypto: crypto);
+    pairing = PairingService(
+      store: store,
+      crypto: crypto,
+      directory: directoryRepository,
+      transport: directTransport,
+    );
   }
 
   final LocalStore store;
@@ -175,6 +188,7 @@ class AppDependencies {
   late final MeshRepositoryContract meshRepository;
   late final MeshBloc mesh;
   late final WifiDirectFallbackService wifiDirectFallback;
+  late final PairingService pairing;
   late final LocalRoutePolicyService routePolicy;
   late final AuthenticationRepositoryContract authentication;
   late final RecoveryRepositoryContract recoveryRepository;
@@ -218,6 +232,10 @@ class AppDependencies {
     viewMode.setServerConnected(false);
     await mesh.start();
     await wifiDirectFallback.start();
+    pairing.start();
+    // Bundle 109: prime Wi-Fi Direct probing for trusted devices right after
+    // boot — friends nearby link up without anyone opening Nearby.
+    primeTrustedRoutes();
     await routePolicy.start();
     try {
       await directoryRepository.start();
@@ -237,6 +255,10 @@ class AppDependencies {
     viewMode.setServerConnected(socket.isConnected);
     await mesh.start();
     await wifiDirectFallback.start();
+    pairing.start();
+    // Bundle 109: prime Wi-Fi Direct probing for trusted devices right after
+    // boot — friends nearby link up without anyone opening Nearby.
+    primeTrustedRoutes();
     await routePolicy.start();
     await directoryRepository.start();
     messaging.start();
@@ -248,6 +270,23 @@ class AppDependencies {
   }
 
 
+  /// Bundle 109: nudge the Wi-Fi Direct fallback for every trusted device.
+  /// The fallback service self-throttles (45s rediscovery, 20s retry
+  /// cooldown, single-peer connect rule, 10-minute waiter expiry), so this
+  /// is a hint, not a hammer.
+  void primeTrustedRoutes() {
+    unawaited(() async {
+      try {
+        final devices = await store.localDevices();
+        for (final device in devices) {
+          if (device.revokedAt.isEmpty) {
+            await wifiDirectFallback.requestRoute(device.id);
+          }
+        }
+      } catch (_) {}
+    }());
+  }
+
   Future<void> dispose() async {
     await directoryRepository.dispose();
     await messaging.dispose();
@@ -256,6 +295,7 @@ class AppDependencies {
     await calls.close();
     await routePolicy.dispose();
     await wifiDirectFallback.dispose();
+    await pairing.dispose();
     await mesh.close();
     await connectivity.close();
     await callNotificationPlatform.dispose();

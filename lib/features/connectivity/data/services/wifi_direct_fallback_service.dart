@@ -25,8 +25,13 @@ final class WifiDirectFallbackService {
   /// arriving within a minute is picked up without user action.
   final Duration _rediscoveryInterval;
 
+  /// Bundle 109: waiters expire — proactive probing (boot + server-loss) can
+  /// park many watch entries; without a TTL the rediscovery loop would spin
+  /// for contacts that are simply far away today.
+  static const _waiterTtl = Duration(minutes: 10);
+
   final ConnectivityRepositoryContract connectivity;
-  final Set<String> _waitingPeerIds = <String>{};
+  final Map<String, DateTime> _waitingSince = <String, DateTime>{};
   final Map<String, DateTime> _attemptedAddresses = <String, DateTime>{};
   StreamSubscription? _wifiSubscription;
   Timer? _rediscoveryTimer;
@@ -44,7 +49,7 @@ final class WifiDirectFallbackService {
   Future<void> requestRoute(String peerId) async {
     final normalized = peerId.trim();
     if (_disposed || normalized.isEmpty) return;
-    _waitingPeerIds.add(normalized);
+    _waitingSince[normalized] = DateTime.now();
     _armRediscoveryTimer();
     await _discoverAndConnect();
   }
@@ -55,8 +60,8 @@ final class WifiDirectFallbackService {
   void cancelWaiting(String peerId) {
     final normalized = peerId.trim();
     if (normalized.isEmpty) return;
-    _waitingPeerIds.remove(normalized);
-    if (_waitingPeerIds.isEmpty) {
+    _waitingSince.remove(normalized);
+    if (_waitingSince.isEmpty) {
       _rediscoveryTimer?.cancel();
       _rediscoveryTimer = null;
     }
@@ -64,7 +69,7 @@ final class WifiDirectFallbackService {
 
   Future<void> dispose() async {
     _disposed = true;
-    _waitingPeerIds.clear();
+    _waitingSince.clear();
     _rediscoveryTimer?.cancel();
     _rediscoveryTimer = null;
     await _wifiSubscription?.cancel();
@@ -93,7 +98,10 @@ final class WifiDirectFallbackService {
   void _armRediscoveryTimer() {
     if (_rediscoveryTimer != null || _disposed) return;
     _rediscoveryTimer = Timer.periodic(_rediscoveryInterval, (_) {
-      if (_disposed || _waitingPeerIds.isEmpty) {
+      // Expire parked waiters (Bundle 109 TTL) before deciding to stop.
+      _waitingSince.removeWhere((_, since) =>
+          DateTime.now().difference(since) > _waiterTtl);
+      if (_disposed || _waitingSince.isEmpty) {
         _rediscoveryTimer?.cancel();
         _rediscoveryTimer = null;
         return;
@@ -104,7 +112,7 @@ final class WifiDirectFallbackService {
   }
 
   Future<void> _discoverAndConnect() async {
-    if (_disposed || _waitingPeerIds.isEmpty || _discoveryInFlight) return;
+    if (_disposed || _waitingSince.isEmpty || _discoveryInFlight) return;
     _discoveryInFlight = true;
     try {
       if (!await connectivity.isWifiDirectSupported()) {
@@ -138,7 +146,7 @@ final class WifiDirectFallbackService {
 
   Future<void> _connectSingleEligiblePeer(List<WifiDirectPeer> peers) async {
     if (_disposed ||
-        _waitingPeerIds.isEmpty ||
+        _waitingSince.isEmpty ||
         _connectionInFlight ||
         peers.length != 1) {
       if (peers.length > 1) _record('ambiguous_peers', count: peers.length);

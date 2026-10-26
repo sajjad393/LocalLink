@@ -27,6 +27,7 @@ import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
 import 'package:locallink/core/permissions/app_permission_gate.dart';
+import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/contacts_screen.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
@@ -59,11 +60,15 @@ class HomeScreen extends StatefulWidget {
   final IdentityRepositoryContract identityRepository;
   final ConnectivityBloc connectivityController;
   final Future<void> Function() onReset;
+  final Future<void> Function()? onSignedOut;
   final AccountRestorationRepositoryContract restoreService;
   final AccountTransferRepositoryContract transferRepository;
   final HomeRepositoryContract homeRepository;
   final AdminRepositoryFactory adminRepositoryFactory;
   final DirectoryRepositoryContract directoryRepository;
+
+  /// Bundle 108: local pairing engine (Nearby → auto-pair requests).
+  final PairingService pairing;
   final LocalLinkNotificationService notifications;
   // Bundle 102 (offline-first accounts): publish flow for accounts created
   // while no server was reachable. [onSynced] starts the configured services
@@ -76,6 +81,7 @@ class HomeScreen extends StatefulWidget {
   final ValueChanged<ThemeMode> onThemeModeChanged;
 
   const HomeScreen({
+    required this.pairing,
     super.key,
     required this.api,
     required this.store,
@@ -89,6 +95,7 @@ class HomeScreen extends StatefulWidget {
     required this.identityRepository,
     required this.connectivityController,
     required this.onReset,
+    this.onSignedOut,
     required this.restoreService,
     required this.transferRepository,
     required this.homeRepository,
@@ -676,6 +683,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
   Widget _contactsTab() => ContactsScreen(
+        pairing: widget.pairing,
         directory: widget.directoryRepository,
         connectivity: widget.connectivityController,
         mesh: widget.mesh,
@@ -693,6 +701,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _settingsTab() => MessengerSettingsScreen(
         api: widget.api,
+        authentication: widget.authentication,
         store: widget.store,
         crypto: widget.crypto,
         accountRepository: widget.accountRepository,
@@ -706,6 +715,7 @@ class _HomeScreenState extends State<HomeScreen> {
         connectivityController: widget.connectivityController,
         notifications: widget.notifications,
         onReset: widget.onReset,
+        onSignedOut: widget.onSignedOut,
         themeMode: _themeMode,
         onThemeModeChanged: _changeThemeMode,
       );

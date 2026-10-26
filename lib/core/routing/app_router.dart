@@ -10,6 +10,7 @@ class AppRouter {
   final AppDependencies dependencies;
   final Future<void> Function() onSaved;
   final Future<void> Function() onReset;
+  final Future<void> Function()? onSignedOut;
   final ThemeMode Function() getThemeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
 
@@ -17,6 +18,7 @@ class AppRouter {
     required this.dependencies,
     required this.onSaved,
     required this.onReset,
+    this.onSignedOut,
     required this.getThemeMode,
     required this.onThemeModeChanged,
   });
@@ -27,6 +29,7 @@ class AppRouter {
         return MaterialPageRoute(
           settings: settings,
           builder: (_) => HomeScreen(
+            pairing: dependencies.pairing,
             api: dependencies.api,
             store: dependencies.store,
             messagingRepository: dependencies.messagingRepository,
@@ -39,6 +42,7 @@ class AppRouter {
             identityRepository: dependencies.identity,
             connectivityController: dependencies.connectivity,
             onReset: onReset,
+            onSignedOut: onSignedOut,
             restoreService: dependencies.restoreService,
             transferRepository: dependencies.transferRepository,
             homeRepository: dependencies.homeRepository,

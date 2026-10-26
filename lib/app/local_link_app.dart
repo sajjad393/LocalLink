@@ -11,6 +11,7 @@ import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/core/notifications/notification_action.dart';
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
+import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
 
@@ -32,6 +33,11 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
   StreamSubscription<CallSession?>? _callSub;
   StreamSubscription<LocalLinkNotificationAction>? _notificationSub;
+  // Bundle 108: pair-request dialog host + pairing-complete toasts.
+  StreamSubscription<PairRequest>? _pairingRequestSub;
+  StreamSubscription<String>? _pairingDoneSub;
+  final List<PairRequest> _pairQueue = <PairRequest>[];
+  bool _pairDialogOpen = false;
   String? _shownIncomingCallId;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
@@ -43,10 +49,99 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       dependencies: _deps,
       onSaved: _finishOnboarding,
       onReset: _resetAccount,
+      onSignedOut: _signedOut,
       getThemeMode: () => _themeMode,
       onThemeModeChanged: _setThemeMode,
     );
+    _pairingRequestSub = _deps.pairing.requests.listen(_enqueuePairRequest);
+    _pairingDoneSub = _deps.pairing.paired.listen(_showPairComplete);
     _initialize();
+  }
+
+  /// One pair dialog at a time; the PairingService already rate-limits per
+  /// device, so the queue only guards simultaneous bursts.
+  void _enqueuePairRequest(PairRequest request) {
+    _pairQueue.add(request);
+    _pumpPairQueue();
+  }
+
+  void _pumpPairQueue() {
+    if (_pairDialogOpen || _pairQueue.isEmpty) return;
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null || !mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _pumpPairQueue();
+      });
+      return;
+    }
+    final request = _pairQueue.removeAt(0);
+    _pairDialogOpen = true;
+    // Bundle 111: accepting a pair creates a contact — let the user decide
+    // the LOCAL display name right here (only their phone ever sees it).
+    final nameController = TextEditingController(text: request.displayName);
+    showDialog<bool>(
+      context: navigator.overlay?.context ?? context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Connect with this phone?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${request.displayName} wants to connect with you.\n\n'
+              '@${request.username.isNotEmpty ? request.username : 'locallink'} · '
+              'device …${request.nodeId.length > 6 ? request.nodeId.substring(request.nodeId.length - 6) : request.nodeId}\n\n'
+              'If you accept, you can message and call each other on the local network — no internet needed.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nameController,
+              autocorrect: false,
+              maxLength: 40,
+              decoration: const InputDecoration(
+                labelText: 'Save contact as',
+                hintText: 'Name on this phone',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _deps.pairing.decline(request);
+              Navigator.of(dialogContext).pop(false);
+            },
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop(true);
+              try {
+                await _deps.pairing.accept(request,
+                    customName: nameController.text.trim());
+              } catch (error) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Could not finish pairing')));
+                }
+              }
+            },
+            child: const Text('Connect'),
+          ),
+        ],
+      ),
+    ).then((_) {
+      nameController.dispose();
+      _pairDialogOpen = false;
+      _pumpPairQueue();
+    });
+  }
+
+  void _showPairComplete(String displayName) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Connected with $displayName — say hi!')),
+    );
   }
 
   Future<void> _setThemeMode(ThemeMode mode) async {
@@ -93,8 +188,11 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         _listenForIncomingCalls();
       }
 
+      final signedOut = await _deps.store.isSignedOut();
       setState(() {
-        _configured = configured || offlinePending;
+        // Bundle 110: soft sign-out forces the login gate even though the
+        // account data itself stays on the phone.
+        _configured = (configured || offlinePending) && !signedOut;
         _ready = true;
         _startupError = null;
       });
@@ -211,8 +309,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   Future<void> _configuredNow() async {
     final configured =
         await _deps.store.isConfigured() || _deps.store.isOfflinePending;
+    final signedOut = await _deps.store.isSignedOut();
     if (!mounted) return;
-    setState(() => _configured = configured);
+    setState(() => _configured = configured && !signedOut);
   }
 
   Future<void> _finishOnboarding() async {
@@ -237,6 +336,13 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     }
     _listenForIncomingCalls();
     _listenForNotificationOpens();
+    await _configuredNow();
+  }
+
+  /// Bundle 110: soft sign-out finished in the profile — flip the boot gate
+  /// back to the login screen. Nothing is wiped; offline login reopens the
+  /// account with its password or recovery code.
+  Future<void> _signedOut() async {
     await _configuredNow();
   }
 
@@ -292,6 +398,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
 
   @override
   void dispose() {
+    _pairingRequestSub?.cancel();
+    _pairingDoneSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_callSub?.cancel());
     unawaited(_notificationSub?.cancel());

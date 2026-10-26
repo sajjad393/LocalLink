@@ -4,6 +4,22 @@ import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 
+/// Bundle 110: submit() outcome — either a server-authenticated session or a
+/// silent offline reopen of a locally known account. No message is emitted on
+/// either success path.
+final class AuthOutcome {
+  final AuthResult? result;
+  final bool offline;
+
+  const AuthOutcome.online(this.result) : offline = false;
+
+  const AuthOutcome.offline()
+      : result = null,
+        offline = true;
+
+  bool get online => result != null;
+}
+
 final class AuthenticationState extends Equatable {
   final bool registerMode;
   final bool busy;
@@ -57,7 +73,7 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
     if (state.error != null) emit(state.copyWith(clearError: true));
   }
 
-  Future<AuthResult> submit({
+  Future<AuthOutcome> submit({
     required String username,
     required String password,
   }) async {
@@ -79,28 +95,74 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
       final deviceName = repository.generateUniqueDeviceName();
       await repository.prepareForAuthentication(deviceName: deviceName);
       if (state.registerMode) {
-        return await repository.register(
+        final result = await repository.register(
           username: user,
           password: password,
           deviceName: deviceName,
         );
+        await _mirror(user, password, result);
+        await repository.completeOfflineLogin(); // clears any prior sign-out gate
+        return AuthOutcome.online(result);
       }
-      return await repository.login(
+      final result = await repository.login(
         username: user,
         password: password,
         deviceName: deviceName,
       );
+      await _mirror(user, password, result);
+      await repository.completeOfflineLogin();
+      return AuthOutcome.online(result);
     } catch (error) {
+      if (_isOfflineEligible(error)) {
+        // Bundle 110: invisible server-first → offline fallback.
+        final offline = await _offlineFallback(user, password);
+        if (offline != null) return offline;
+      }
       final message = cleanBlocError(error);
       emit(state.copyWith(
         error: _cleanAuthenticationError(message),
-        offlineRegisterAvailable:
-            state.registerMode && _isOfflineEligible(error),
+        offlineRegisterAvailable: false,
       ));
       rethrow;
     } finally {
       emit(state.copyWith(busy: false));
     }
+  }
+
+  /// Bundle 110: after an ONLINE success, mirror the credentials into secure
+  /// storage so the account can be reopened later without any server. A
+  /// mirror failure never fails the login itself.
+  Future<void> _mirror(String user, String password, AuthResult result) async {
+    try {
+      await repository.mirrorOfflineLogin(
+        username: user,
+        password: password,
+        recoveryCode: result.recoveryCode,
+      );
+    } catch (_) {}
+  }
+
+  /// Silent offline path (Bundle 110). Registering while offline creates a
+  /// fully local account; logging in reopens a locally known account via its
+  /// password, or via its recovery code typed in the password field.
+  Future<AuthOutcome?> _offlineFallback(String user, String password) async {
+    if (state.registerMode) {
+      if (password.length < 8) {
+        throw _validation('Password must be at least 8 characters.');
+      }
+      await repository.registerOffline(username: user, password: password);
+      await repository.completeOfflineLogin();
+      return const AuthOutcome.offline();
+    }
+    if (repository.verifyOfflineLogin(user, password) ||
+        repository.verifyOfflineRecovery(user, password)) {
+      await repository.completeOfflineLogin();
+      return const AuthOutcome.offline();
+    }
+    // Known receiver: the credential simply did not match — say so plainly,
+    // with a single fixed message and no connectivity chatter.
+    emit(state.copyWith(error: 'That username and password do not match.'));
+    throw Exception('That username and password do not match.');
   }
 
   /// Register without a reachable server (Bundle 102). Returns the recovery
