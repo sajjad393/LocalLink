@@ -25,6 +25,19 @@ class _FakeTransport implements PeerTransportContract {
   }
 
   @override
+  Future<void> sendPairPayload({
+    required String nodeId,
+    required String kind,
+    required String body,
+  }) async {}
+
+  @override
+  Future<void> ensureTransportReady({
+    required String deviceId,
+    List<String> knownPeers = const <String>[],
+  }) async {}
+
+  @override
   Future<void> updateKnownPeers(List<String> peerIds) async {}
   @override
   Future<Map<String, dynamic>> topology() async {

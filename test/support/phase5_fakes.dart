@@ -59,6 +59,31 @@ class FakePeerTransport implements PeerTransportContract {
     started = true;
   }
 
+  /// Bundles 108+113: pair packets surface in `sent` so tests can assert on
+  /// the exchange; ensureTransportReady just marks the fake as running.
+  final List<Map<String, dynamic>> pairPackets = <Map<String, dynamic>>[];
+
+  @override
+  Future<void> sendPairPayload({
+    required String nodeId,
+    required String kind,
+    required String body,
+  }) async {
+    pairPackets.add(<String, dynamic>{
+      'node_id': nodeId,
+      'pair': kind,
+      'body': body,
+    });
+  }
+
+  @override
+  Future<void> ensureTransportReady({
+    required String deviceId,
+    List<String> knownPeers = const <String>[],
+  }) async {
+    started = true;
+  }
+
   @override
   Future<void> updateKnownPeers(List<String> peerIds) async {}
 
@@ -230,7 +255,8 @@ class FakeStore extends LocalStore {
       contactUserIds.contains(userId);
 
   @override
-  Future<void> addContact(String userId, String deviceId) async {
+  Future<void> addContact(String userId, String deviceId,
+      {String customName = ''}) async {
     contactUserIds.add(userId);
   }
 
