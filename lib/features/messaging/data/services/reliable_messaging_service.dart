@@ -131,7 +131,7 @@ class ReliableMessagingService {
           'MESSAGE_ROUTE_AVAILABLE',
           detail: 'transport=${route.kind.name}',
         );
-        unawaited(flush());
+        unawaited(_safeFlush('route_available'));
       },
       onError: (Object error, StackTrace stackTrace) {
         AppLogger.error(
@@ -156,7 +156,7 @@ class ReliableMessagingService {
         if (connected) {
           _lastPeriodicSyncAt = DateTime.now().toUtc();
           await synchronize();
-          await flush();
+          await _safeFlush('socket_connected');
         }
       },
       onError: (Object error, StackTrace stackTrace) {
@@ -181,7 +181,7 @@ class ReliableMessagingService {
           await _configureDirectTransport();
         }
 
-        await flush();
+        await _safeFlush('retry_tick');
 
         if (socket.isConnected) {
           final now = DateTime.now().toUtc();
@@ -204,7 +204,7 @@ class ReliableMessagingService {
       void runInitialBurst() {
         unawaited(
           synchronize().then(
-            (_) => flush(),
+            (_) => _safeFlush('initial_sync'),
           ),
         );
 
@@ -266,7 +266,7 @@ class ReliableMessagingService {
         reactorId: store.deviceId ?? '',
         emoji: normalized,
         createdAt: DateTime.parse(createdAt).toLocal()));
-    await flush();
+    await _safeFlush('reaction');
   }
 
   Future<List<MessageReaction>> reactions(String messageId) async {
@@ -407,7 +407,7 @@ class ReliableMessagingService {
       detail: 'id=$id',
     );
 
-    await flush();
+    await _safeFlush('send');
 
     AppLogger.info(
       'MESSAGE_SEND_FLUSH_COMPLETE',
@@ -657,6 +657,23 @@ class ReliableMessagingService {
   static const _flushWatchdog = Duration(seconds: 60);
   DateTime? _flushStartedAt;
 
+  /// Bundle 128: every call site routes through here. A thrown transport
+  /// error (e.g. PlatformException PEER_UNAVAILABLE while the mesh only has
+  /// a dead/queued route) used to escape from unawaited/timer call sites as
+  /// an uncaught exception — swallow + log it, the retry loop owns recovery.
+  Future<void> _safeFlush(String caller) async {
+    try {
+      await flush();
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'MESSAGE_FLUSH_FAILED',
+        error: error,
+        stackTrace: stackTrace,
+        detail: 'caller=$caller',
+      );
+    }
+  }
+
   Future<void> flush() async {
     if (_flushing) {
       // Watchdog: a hung upload/send must not block the queue forever —
@@ -845,6 +862,13 @@ class ReliableMessagingService {
               stackTrace: stackTrace,
               detail: 'id=$id',
             );
+            // Bundle 128: put the item back to a clean queued state after a
+            // transport throw (e.g. PEER_UNAVAILABLE) — otherwise it stayed
+            // half-marked and the UI showed an eternal "pending" spinner with
+            // no logged cause. The retry loop owns the next attempt.
+            try {
+              await store.updateOutboxStatus(id, 'queued');
+            } catch (_) {}
           }
 
           continue;
@@ -2027,6 +2051,17 @@ class ReliableMessagingService {
     final local = await store.messagesFor(otherId);
 
     await synchronize();
+
+    // Bundle 128: with no server configured (fully offline account) the
+    // remote fetch only threw FormatException (Server address is required)
+    // as log noise after every send. Skip it; local history is truth.
+    if (!await store.isConfigured()) {
+      AppLogger.info(
+        'MESSAGE_HISTORY_LOCAL_ONLY',
+        detail: 'peer=${_shortId(otherId)} reason=no_server_configured',
+      );
+      return local;
+    }
 
     try {
       final remote = await api.messages(otherId);

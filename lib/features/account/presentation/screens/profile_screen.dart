@@ -81,6 +81,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String visibility = 'public';
   bool _adminCapable = false;
 
+  // Bundle 128: strict rules once the account exists. Registration always
+  // creates a username, and this screen opens right after registering — so
+  // "onboarding" mode was wrongly lenient. From now on, an account that
+  // already HAS a username behaves as an update everywhere: username field
+  // locked (🔒), display name + phone number mandatory. Only a genuinely
+  // blank username (true first-time profile setup) stays editable/lenient.
+  bool get _usernameLocked =>
+      (profile?.username ?? username.text).trim().isNotEmpty;
+
   @override
   void initState() {
     super.initState();
@@ -112,10 +121,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Bundle 105: in-profile Admin View switch removed with the Advanced
   // section — the Admin panel lives in Settings now.
   Future<void> save() async {
-    // Bundle 127: display name + phone are mandatory when UPDATING a profile
-    // (onboarding keeps the old lenient rules so offline first-time setup
-    // can't be blocked by a missing phone number).
-    if (!widget.onboarding) {
+    // Bundle 128: display name + phone are mandatory whenever the account
+    // already exists (update path AND the post-registration "Your profile"
+    // screen — see _usernameLocked). True first-time setup stays lenient so
+    // offline onboarding can't be blocked by a missing phone number.
+    if (_usernameLocked) {
       final missing = <String>[
         if (name.text.trim().isEmpty) 'Display name',
         if (phone.text.trim().isEmpty) 'Phone number',
@@ -132,12 +142,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final synced = await bloc.saveProfile(
         displayName: name.text,
-        // Bundle 127: username is set once (onboarding) and frozen afterwards —
-        // the field renders disabled in update mode; send the stored value so
-        // no external path can change it either.
-        username: widget.onboarding
-            ? username.text
-            : (profile?.username ?? username.text),
+        // Bundle 127/128: username is set once and frozen afterwards — send
+        // the stored value whenever one exists so no code path can change it.
+        username: (profile?.username ?? '').trim().isNotEmpty
+            ? profile!.username
+            : username.text,
         phoneNumber: phone.text,
         phoneVisibility: visibility,
         discoverableByPhone: true,
@@ -326,24 +335,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: LocalLinkSpacing.sm),
           LocalLinkTextField(controller: name, labelText: 'Display name', hintText: 'How other people see you'),
           const SizedBox(height: LocalLinkSpacing.sm),
-          // Bundle 127: username is immutable after onboarding — field is
-          // disabled (greyed, untappable) on the update screen, with a lock
-          // affordance so it reads as "fixed", not "broken".
+          // Bundle 127/128: username is immutable once set — the field is
+          // disabled (greyed, untappable) whenever the account already has
+          // one, with a lock affordance so it reads as "fixed", not "broken".
           LocalLinkTextField(
             controller: username,
             autocorrect: false,
-            enabled: widget.onboarding,
+            enabled: !_usernameLocked,
             labelText: 'Username',
-            hintText: widget.onboarding ? 'Your unique username' : 'Set once — cannot be changed',
+            hintText: _usernameLocked ? 'Set once — cannot be changed' : 'Your unique username',
             prefixIcon: const Icon(Icons.alternate_email),
-            suffixIcon: widget.onboarding ? null : const Icon(Icons.lock_outline, size: 20),
+            suffixIcon: _usernameLocked ? const Icon(Icons.lock_outline, size: 20) : null,
           ),
           const SizedBox(height: LocalLinkSpacing.sm),
           LocalLinkTextField(
             controller: phone,
             keyboardType: TextInputType.phone,
             labelText: 'Phone number',
-            hintText: widget.onboarding ? 'Optional' : 'Required',
+            hintText: _usernameLocked ? 'Required' : 'Optional',
             prefixIcon: const Icon(Icons.phone_outlined),
           ),
           const SizedBox(height: LocalLinkSpacing.md),

@@ -557,7 +557,15 @@ class LocalLinkTransportService : Service() {
                 "last_seen_at" to now,
             ))
             if (active != null) return
-            if (self.compareTo(nodeId) < 0 && knownPeers.contains(nodeId)) {
+            // Bundle 128: drop the one-way-dial gate. Only the lexicographically
+            // SMALLER node id used to dial, which made any device with a larger
+            // id unable to self-heal its own outbound link — one restart on the
+            // smaller-id peer left all larger-id outbound chat dead
+            // (NO_ROUTE / PEER_UNAVAILABLE, outbox stuck pending forever).
+            // Either side may now dial; a rare simultaneous double-dial is
+            // harmless because registerPeer replaces the older same-transport
+            // link and the seen-packet tracker dedupes any duplicate frames.
+            if (knownPeers.contains(nodeId)) {
                 connectLanPeer(nodeId, host, port)
             }
         } catch (_: Exception) {}
@@ -2105,7 +2113,9 @@ class LocalLinkTransportService : Service() {
                             handleRoutesAfterPeerDisconnect(nodeId, "lan_discovery_timeout")
                             continue
                         }
-                        if (!transportPeers.containsKey(nodeId) && (transportDeviceId ?: "").compareTo(nodeId) < 0 && knownPeers.contains(nodeId)) {
+                        // Bundle 128: same one-way-dial flaw in the sweeper —
+                        // redial known LAN peers regardless of node-id order.
+                        if (!transportPeers.containsKey(nodeId) && knownPeers.contains(nodeId)) {
                             connectLanPeer(nodeId, endpoint.host, endpoint.port)
                         }
                     }
