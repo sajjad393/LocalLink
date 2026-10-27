@@ -152,8 +152,13 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
                     customName: nameController.text.trim());
               } catch (error) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Could not finish pairing')));
+                  // Bundle 122: show the REAL cause. A generic toast that was
+                  // instantly replaced by the next pair-diagnosis toast made
+                  // the Connect button look dead during retry storms.
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(_pairFailureMessage(error)),
+                    duration: const Duration(seconds: 6),
+                  ));
                 }
               }
             },
@@ -185,6 +190,22 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Connected with $displayName — say hi!')),
     );
+  }
+
+  /// Bundle 122: map a pairing failure to one actionable sentence instead of
+  /// the generic "Could not finish pairing".
+  String _pairFailureMessage(Object error) {
+    final text = '$error';
+    if (text.contains('Finish setting up your profile')) {
+      return 'Set up your profile first (Profile — add your name), then ask them to pair again.';
+    }
+    if (text.contains('Invalid contact')) {
+      return 'That contact cannot be added — is the same account signed in on both phones?';
+    }
+    if (text.contains('blocked')) {
+      return 'This user is blocked on this phone.';
+    }
+    return 'Could not finish pairing: $text';
   }
 
   Future<void> _setThemeMode(ThemeMode mode) async {

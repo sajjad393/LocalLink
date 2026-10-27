@@ -154,21 +154,46 @@ final class PairingService {
         detail: 'stage=entered node=${request.nodeId} from=${request.displayName}');
     await _ensureTransportReady();
     AppLogger.warning('PAIR_ACCEPT', detail: 'stage=transport_ready');
+    var answerSent = false;
+    Object? sendError;
     try {
       final body = await _payload();
       AppLogger.warning('PAIR_ACCEPT', detail: 'stage=payload_built');
       await _transport.sendPairPayload(
           nodeId: request.nodeId, kind: 'accept', body: body);
+      answerSent = true;
       AppLogger.warning('PAIR_ACCEPT', detail: 'stage=accept_packet_sent');
     } catch (error) {
+      sendError = error;
       // Best effort: the requester can re-ask; the roster is already right
       // on this side and their next request auto-answers (trusted fast path).
       AppLogger.warning('PAIR_ACCEPT_SEND_FAILED', detail: '$error');
     }
     AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopting');
-    await _adopt(request.raw, request.profile, request.nodeId,
-        customName: customName);
+    try {
+      await _adopt(request.raw, request.profile, request.nodeId,
+          customName: customName, signalPaired: false);
+    } catch (error) {
+      // Bundle 122: adoption failures used to escape unlabeled (stage=done
+      // never printed, and the UI showed a generic snackbar). Name the stage
+      // and carry the real cause to the caller.
+      AppLogger.warning('PAIR_ACCEPT',
+          detail: 'stage=adopt_failed error=$error');
+      rethrow;
+    }
     AppLogger.warning('PAIR_ACCEPT', detail: 'stage=done');
+    // Bundle 122: honest completion — only claim "connected" when our accept
+    // packet actually left the device AND the peer was adopted. When the
+    // answer failed (e.g. local profile not set up yet), adoption has still
+    // run so the peer is trusted: their next retry will auto-answer silently.
+    // Surface the real reason instead of faking success.
+    if (answerSent) {
+      if (!_paired.isClosed) _paired.add(request.profile.displayName);
+    } else {
+      throw sendError ??
+          StateError(
+              'Pair answer was not sent — check the connection and ask them to pair again.');
+    }
   }
 
   /// Decline: the requester stays muted for [_muteWindow] (set when the
@@ -210,11 +235,15 @@ final class PairingService {
         // request-idempotent so pairing survives app restarts on one side.
         if (kind == 'request' && !isMuted) {
           _mutedUntil[nodeId] = DateTime.now().add(_muteWindow);
-          final answer = await _payload();
           try {
+            final answer = await _payload();
             await _transport.sendPairPayload(
                 nodeId: nodeId, kind: 'accept', body: answer);
-          } catch (_) {}
+          } catch (error) {
+            // Bundle 122: _payload() used to sit ABOVE the try, so a missing
+            // local profile here escaped as a mislabeled PAIR_PACKET_REJECTED.
+            AppLogger.warning('PAIR_TRUSTED_ANSWER_FAILED', detail: '$error');
+          }
         }
         return;
       }
@@ -245,7 +274,7 @@ final class PairingService {
   /// accept-in-dialog path and the incoming-'accept' path.
   Future<void> _adopt(Map<String, dynamic> raw, DirectoryProfile profile,
       String nodeId,
-      {String customName = ''}) async {
+      {String customName = '', bool signalPaired = true}) async {
     // Bundle 117: stage logs — if adoption ever stalls (server mirror with no
     // internet, encrypted store contention) the log names the exact step.
     await _directory.importQrProfile(raw);
@@ -254,7 +283,9 @@ final class PairingService {
     AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_contact_saved');
     await _pushRoster();
     AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_roster_pushed');
-    if (!_paired.isClosed) _paired.add(profile.displayName);
+    // signalPaired=false is used by accept(): the dialog path only announces
+    // completion after the accept packet has actually been sent (Bundle 122).
+    if (signalPaired && !_paired.isClosed) _paired.add(profile.displayName);
   }
 
   Future<void> _pushRoster() async {
