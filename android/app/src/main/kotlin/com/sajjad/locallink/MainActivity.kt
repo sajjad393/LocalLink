@@ -862,6 +862,8 @@ class MainActivity : FlutterActivity() {
         "microphone" -> checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         "nearby" -> hasWifiPermission()
         "notifications" -> LocalLinkNotificationManager.notificationsEnabled(this)
+        // Bundle 121: battery-optimization exemption ("always run in background").
+        "background" -> isBatteryUnrestricted()
         else -> false
     }
 
@@ -870,8 +872,18 @@ class MainActivity : FlutterActivity() {
             "microphone" -> requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "", "")
             "nearby" -> if (!hasWifiPermission()) requestWithRationale(if (android.os.Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), wifiPermissionRequestCode, "", "")
             "notifications" -> LocalLinkNotificationManager.requestNotificationPermission(this)
+            // Bundle 121: the Dart sequencer owns re-ask pacing, so this entry
+            // point deliberately skips the once-per-install shared-pref flag
+            // that the onCreate prompt uses.
+            "background" -> requestBatteryOptimizationExemption()
         }
     }
+
+    // Bundle 121: gate-facing battery helpers. The onCreate one-shot prompt
+    // (maybeRequestBatteryOptimizationExemption) stays untouched; it only ever
+    // fires once per install and harmlessly no-ops once granted.
+    private fun isBatteryUnrestricted():Boolean{if(android.os.Build.VERSION.SDK_INT<23)return true;val pm=getSystemService(Context.POWER_SERVICE) as android.os.PowerManager;return pm.isIgnoringBatteryOptimizations(packageName)}
+    private fun requestBatteryOptimizationExemption(){if(isBatteryUnrestricted())return;try{startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,android.net.Uri.parse("package:$packageName")))}catch(_:Exception){try{startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))}catch(_:Exception){}}}
 
     // Bundle 101: no pre-info/rationale dialogs anywhere — fire the one
     // native system dialog directly (signature kept; call sites untouched).

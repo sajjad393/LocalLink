@@ -425,6 +425,13 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _lifecycleState = state;
     _deps.notifications.setAppLifecycleResumed(state == AppLifecycleState.resumed);
+    // Bundle 120: the call service must see EVERY lifecycle transition. This
+    // call was previously gated behind `state == resumed`, so the call
+    // session manager's foreground flag stayed stuck at true forever. An
+    // incoming call that arrived while the app sat in the background then
+    // CANCELLED the native full-screen call notification instead of showing
+    // it — users on another app saw nothing at all.
+    _deps.calls.onAppLifecycleState(state);
     if (state != AppLifecycleState.resumed) {
       unawaited(_deps.files.cleanupSensitiveArtifacts());
     }
@@ -435,7 +442,6 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       _deps.messaging.synchronize();
       _deps.messaging.flush();
       _deps.calls.refreshHistory();
-      _deps.calls.onAppLifecycleState(state);
       _deps.presence.publish();
       _deps.connectivity.refresh();
       unawaited(_deps.api.syncPendingProfile());

@@ -38,10 +38,13 @@ object LocalLinkNotificationManager {
     const val EXTRA_REPLY_TEXT = "reply_text"
     const val REMOTE_INPUT_KEY = "locallink_inline_reply"
 
-    // v2 is intentional. Android O+ channel settings are persistent/user-owned
+    // v3 is intentional. Android O+ channel settings are persistent/user-owned
     // and cannot safely be changed in place after the channel is created.
-    private const val MESSAGE_CHANNEL_ID = "locallink_messages_v2"
-    private const val SYSTEM_CHANNEL_ID = "locallink_system_v2"
+    // Devices that created v2 while the bundled wav resource was absent are
+    // stuck with a silent channel forever, so a fresh channel id is the only
+    // reliable way to re-enable sound on upgrades.
+    private const val MESSAGE_CHANNEL_ID = "locallink_messages_v3"
+    private const val SYSTEM_CHANNEL_ID = "locallink_system_v3"
     private const val MESSAGE_TAG = "locallink_message"
     private const val REQUEST_PERMISSION = 7744
 
@@ -62,16 +65,19 @@ object LocalLinkNotificationManager {
                 "raw",
                 context.packageName,
             )
+            val notificationAudio = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
             if (soundId != 0) {
                 setSound(
                     Uri.parse("android.resource://${context.packageName}/$soundId"),
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build(),
+                    notificationAudio,
                 )
             } else {
-                setSound(null, null)
+                // Bundled wav missing: fall back to the system default
+                // notification sound instead of a permanently silent channel.
+                setSound(Settings.System.DEFAULT_NOTIFICATION_URI, notificationAudio)
             }
         }
         manager.createNotificationChannel(messageChannel)

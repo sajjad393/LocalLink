@@ -134,6 +134,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<String> _chatPeerIds = const {};
   StreamSubscription<dynamic>? _incomingSub;
 
+  // Bundle 119: unread badges on the chat list. Counts come straight from the
+  // store (same source the notification service uses, so badges can never
+  // disagree with the shade). Polled cheaply and refreshed on open/return.
+  Map<String, int> _unreadDirectCounts = const {};
+  Map<String, int> _unreadGroupCounts = const {};
+  Timer? _unreadTimer;
+
   // Bundle 102: offline-pending account state (session-scoped UI).
   OfflineAccountSyncService? _offlineSync;
   bool _offlineBannerDismissed = false;
@@ -143,6 +150,29 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadChatPeerIds() async {
     final ids = await widget.messagingRepository.chatPeerIds();
     if (mounted) setState(() => _chatPeerIds = ids);
+    await _refreshUnreadCounts();
+  }
+
+  Future<void> _refreshUnreadCounts() async {
+    try {
+      final direct = <String, int>{};
+      for (final id in _chatPeerIds) {
+        final unread = await widget.store.unreadMessagesForConversation(id);
+        if (unread.isNotEmpty) direct[id] = unread.length;
+      }
+      final group = <String, int>{};
+      for (final g in _controller.groups) {
+        final unread = await widget.store.unreadGroupMessages(g.id);
+        if (unread.isNotEmpty) group[g.id] = unread.length;
+      }
+      if (!mounted) return;
+      setState(() {
+        _unreadDirectCounts = direct;
+        _unreadGroupCounts = group;
+      });
+    } catch (_) {
+      // Badge refresh is best-effort; never break the chat list over it.
+    }
   }
 
   @override
@@ -171,7 +201,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadChatPeerIds();
     // First contact from a new peer arrives live: the Chats tab picks them up.
     _incomingSub = widget.messagingRepository.incoming
-        .listen((_) => _loadChatPeerIds());
+        .listen((_) {
+      _loadChatPeerIds();
+      _refreshUnreadCounts();
+    });
+    // Poll keeps badges truthful when messages arrive via silent paths.
+    _unreadTimer = Timer.periodic(
+        const Duration(seconds: 6), (_) => _refreshUnreadCounts());
   }
 
   // ---------------- Bundle 102: offline-account publish flow ---------------
@@ -449,6 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _unreadTimer?.cancel();
     _incomingSub?.cancel();
     _controller.close();
     super.dispose();
@@ -478,11 +515,7 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       ),
-    );
-    // Returning from a (possibly brand-new) thread: refresh so the peer
-    // immediately earns its row in Conversations.
-    await _loadChatPeerIds();
-    await _controller.load(userInitiated: true);
+    ).whenComplete(_refreshUnreadCounts);
   }
 
   Future<void> _call(Device device) async {
@@ -605,6 +638,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       title: group.name,
                       subtitle: 'Group conversation',
                       group: group,
+                      unreadCount: _unreadGroupCounts[group.id] ?? 0,
                       onTap: () => Navigator.push<void>(
                         context,
                         MaterialPageRoute(
@@ -627,6 +661,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         title: state.deviceLabels[device.id] ?? 'Unknown user',
                         subtitle: _deviceSubtitle(device),
                         device: device,
+                        unreadCount: _unreadDirectCounts[device.id] ?? 0,
                         onTap: () => _openChat(device),
                         onCall: () => _call(device),
                       ),

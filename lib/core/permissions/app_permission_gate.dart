@@ -9,19 +9,25 @@ import 'package:locallink/core/notifications/local_link_notification_service.dar
 /// Rules:
 ///  * NO pre-info/rationale dialog anywhere — the native system dialog only.
 ///  * Fire order at dashboard entry: microphone -> 5s pause -> Nearby devices
-///    -> 5s pause -> Notifications. Each step is skipped when already granted,
-///    and each native prompt fires even if the previous one is still open
-///    (Android serializes them).
+///    -> 5s pause -> Notifications -> 5s pause -> Background (battery
+///    optimization exemption, Bundle 121). Each step is skipped when already
+///    granted, and each native prompt fires even if the previous one is still
+///    open (Android serializes them).
 ///  * Anything still missing after the chain re-asks every 10 minutes while
 ///    the app stays open, and again on the next dashboard entry. Once granted
 ///    it is never asked again until revoked from system settings.
+///  * Bundle 121 note: the "background" step asks the system battery-exemption
+///    dialog ("Let LocalLink always run in the background?"). The existing
+///    once-per-install splash prompt in MainActivity.onCreate stays as the
+///    very first ask; this step is what makes a denial recoverable instead of
+///    silent forever, matching the same policy as mic/nearby/notifications.
 ///
 /// Note: Android itself may stop rendering a dialog after about two denials
 /// of the same permission; from then on only Settings can heal it. That is a
 /// platform rule, not an app decision.
 class AppPermissionGate {
   static const _channel = MethodChannel('locallink/permissions');
-  static const _order = ['microphone', 'nearby', 'notifications'];
+  static const _order = ['microphone', 'nearby', 'notifications', 'background'];
   static const _gap = Duration(seconds: 5);
   static const _reaskAfter = Duration(minutes: 10);
 

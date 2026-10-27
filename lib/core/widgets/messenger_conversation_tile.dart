@@ -15,6 +15,8 @@ class MessengerConversationTile extends StatelessWidget {
   final Widget? trailing;
   final String? avatarPath;
   final IconData? fallbackIcon;
+  // Bundle 119: unread message badge count (0 = hidden).
+  final int unreadCount;
   final Device? device;
   final LocalGroup? group;
 
@@ -28,6 +30,7 @@ class MessengerConversationTile extends StatelessWidget {
     this.trailing,
     this.avatarPath,
     this.fallbackIcon,
+    this.unreadCount = 0,
     this.device,
     this.group,
   });
@@ -72,35 +75,63 @@ class MessengerConversationTile extends StatelessWidget {
               ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ),
-      trailing: trailing ??
-          (onCall == null && onMore == null
-              ? null
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (onCall != null)
-                      IconButton(
-                        tooltip: 'Call',
-                        onPressed: onCall,
-                        style: IconButton.styleFrom(
-                          backgroundColor: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withOpacity(0.10),
-                          foregroundColor: Theme.of(context).colorScheme.primary,
-                          minimumSize: const Size.square(44),
-                        ),
-                        icon: const Icon(Icons.call_outlined),
-                      ),
-                    if (onMore != null)
-                      IconButton(
-                        tooltip: 'More',
-                        onPressed: onMore,
-                        icon: const Icon(Icons.more_vert),
-                      ),
-                  ],
-                )),
+      trailing: trailing ?? _buildTrailing(context),
       onTap: onTap,
+    );
+  }
+
+  Widget? _buildTrailing(BuildContext context) {
+    final badge = unreadCount > 0
+        ? Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+            child: Center(
+              child: Text(
+                unreadCount > 99 ? '99+' : '$unreadCount',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          )
+        : null;
+    final callButton = onCall == null
+        ? null
+        : IconButton(
+            tooltip: 'Call',
+            onPressed: onCall,
+            style: IconButton.styleFrom(
+              backgroundColor: Theme.of(context)
+                  .colorScheme
+                  .primary
+                  .withOpacity(0.10),
+              foregroundColor: Theme.of(context).colorScheme.primary,
+              minimumSize: const Size.square(44),
+            ),
+            icon: const Icon(Icons.call_outlined),
+          );
+    final moreButton = onMore == null
+        ? null
+        : IconButton(
+            tooltip: 'More',
+            onPressed: onMore,
+            icon: const Icon(Icons.more_vert),
+          );
+    if (badge == null && callButton == null && moreButton == null) return null;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (badge != null) badge,
+        if (callButton != null) callButton,
+        if (moreButton != null) moreButton,
+      ],
     );
   }
 }
