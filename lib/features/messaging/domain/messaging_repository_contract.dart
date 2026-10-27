@@ -6,6 +6,10 @@ import 'package:locallink/core/models/device.dart';
 abstract interface class MessagingRepositoryContract {
   String get localDeviceId;
 
+  /// Bundle 132 (A/C): is the server socket live right now — the chat screen
+  /// uses it to keep dead-server load failures visually SILENT.
+  bool get isServerConnected;
+
   /// Latest cached presence/network flags for a peer device (app-bar status
   /// line), refreshed by the presence pipeline.
   Future<Device?> peer(String deviceId);

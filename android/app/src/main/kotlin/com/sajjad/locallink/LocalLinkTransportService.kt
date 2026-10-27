@@ -318,7 +318,7 @@ class LocalLinkTransportService : Service() {
     private fun parseKnownPeers(raw:String?):List<String>{if(raw.isNullOrBlank())return emptyList();val out=mutableListOf<String>();try{val a=JSONArray(raw);for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))out.add(id)}}catch(_:Exception){};return out}
     override fun onBind(intent:Intent?):IBinder?=null
     private fun createNotificationChannel(){if(android.os.Build.VERSION.SDK_INT<26)return;getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL_ID,"LocalLink peer transport",NotificationManager.IMPORTANCE_LOW).apply{description="Keeps LocalLink peer communication available while the app is in the background";setShowBadge(false)})}
-    private fun buildNotification():Notification{val li=packageManager.getLaunchIntentForPackage(packageName);val pi=li?.let{PendingIntent.getActivity(this,2202,it,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)};val b=if(android.os.Build.VERSION.SDK_INT>=26)Notification.Builder(this,CHANNEL_ID)else Notification.Builder(this);return b.setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("LocalLink peer network active").setContentText("Offline peer communication is available").setOngoing(true).setCategory(Notification.CATEGORY_SERVICE).setContentIntent(pi).setPriority(Notification.PRIORITY_LOW).build()}
+    private fun buildNotification():Notification{val li=packageManager.getLaunchIntentForPackage(packageName);val pi=li?.let{PendingIntent.getActivity(this,2202,it,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)};val b=if(android.os.Build.VERSION.SDK_INT>=26)Notification.Builder(this,CHANNEL_ID)else Notification.Builder(this);return b.setSmallIcon(R.mipmap.ic_launcher_foreground).setContentTitle("LocalLink peer network active").setContentText("Offline peer communication is available").setOngoing(true).setCategory(Notification.CATEGORY_SERVICE).setContentIntent(pi).setPriority(Notification.PRIORITY_LOW).build()}
 
     private fun configureTransport(deviceId:String,connected:Boolean,owner:Boolean,address:String?,peers:List<String>){if(deviceId.isBlank())return;transportDeviceId=deviceId.trim();knownPeers.clear();knownPeers.addAll(peers.filter{validTransportId(it)});transportRunning=true;persistState();startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to connected,"transport_active" to true,"group_owner" to owner));startOrStopTransportForConnection(connected,owner,address)}
     private fun updateRosterInternal(peerIds:List<String>){knownPeers.clear();peerIds.forEach{if(validTransportId(it))knownPeers.add(it.trim())};persistState()}
@@ -1169,6 +1169,10 @@ class LocalLinkTransportService : Service() {
                 "mesh_packet_id" to packet.packetId,
                 "mesh_destination_id" to self,
                 "mesh_hop_count" to packet.hopCount,
+                // Bundle 132 (G): the link kind that carried the last hop
+                // (wifi_direct | lan), so Dart can label the receive
+                // transport truthfully. Meaningful when hop_count == 1.
+                "mesh_link_kind" to (transportPeers[packet.sourceNodeId]?.transportName ?: "unknown"),
             ))
         }
         transportEvent("mesh_delivered", mapOf("packet_id" to packet.packetId, "source_id" to packet.sourceNodeId, "destination_id" to self, "hop_count" to packet.hopCount))

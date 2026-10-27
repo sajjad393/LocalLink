@@ -125,7 +125,17 @@ final class ChatBloc extends Cubit<ChatState> {
       }
       emit(state.copyWith(messages: messages, reactions: reactionMap, isLoading: false));
     } catch (e) {
-      if (!isClosed) emit(state.copyWith(error: cleanBlocError(e), isLoading: false));
+      if (isClosed) return;
+      // Bundle 132 (A/C): a dead server is NOT an error state for the user.
+      // If the cache painted (A) the thread stays; if the conversation is
+      // simply unreachable-but-empty (C) the friendly empty view shows. The
+      // background sync/flush pipelines retry on their own — the red inline
+      // error is reserved for real failures while the server IS reachable.
+      if (state.messages.isNotEmpty || !repository.isServerConnected) {
+        emit(state.copyWith(isLoading: false, clearError: true));
+        return;
+      }
+      emit(state.copyWith(error: cleanBlocError(e), isLoading: false));
     }
   }
 

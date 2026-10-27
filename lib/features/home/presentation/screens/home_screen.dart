@@ -146,6 +146,10 @@ class _HomeScreenState extends State<HomeScreen> {
   OfflineAccountSyncService? _offlineSync;
   bool _offlineBannerDismissed = false;
 
+  /// Bundle 132 (F): one-time note when the offline account auto-published
+  /// under a renamed username (e.g. it already existed on the server).
+  String? _renamedAccountNotice;
+
   // Bundle 130: banner etiquette. Both offline/sync banners show for ~5
   // seconds, hide themselves, then stay quiet for 24 hours. The snooze stamp
   // is persisted (survives restarts); the hide timer + session flag are
@@ -271,6 +275,16 @@ class _HomeScreenState extends State<HomeScreen> {
     _controller.start();
     _loadChatPeerIds();
     unawaited(_loadBannerSnoozes());
+    // Bundle 132 (F): one-time "joined as …" note after an automatic publish
+    // with a rename. Read it, clear it in storage, keep it in memory so it
+    // shows this session and never again.
+    unawaited(() async {
+      final renamed = await widget.store.readRenamedAccountNotice();
+      if (renamed != null && renamed.isNotEmpty) {
+        await widget.store.clearRenamedAccountNotice();
+        if (mounted) setState(() => _renamedAccountNotice = renamed);
+      }
+    }());
     // First contact from a new peer arrives live: the Chats tab picks them up.
     _incomingSub = widget.messagingRepository.incoming
         .listen((_) {
@@ -317,7 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Account saved on this phone — publishes when the server is available.',
+                    'Account saved — it will publish itself automatically the moment the server answers.',
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
@@ -702,6 +716,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 // chip for explicit-retry feedback, silence otherwise.
                 if (state.syncNotice != null && _syncNoticeVisible)
                   _gatedSyncNotice(state.syncNotice!),
+                if (_renamedAccountNotice != null)
+                  // Bundle 132 (F): one-time note — the account self-published
+                  // under a renamed username (conflict on the server).
+                  _SyncNotice(
+                      message: 'Your account published as '
+                          '"${_renamedAccountNotice!}" — that name is yours '
+                          'on the server now.'),
                 if (widget.store.isOfflinePending && _offlineBannerVisible)
                   _offlineAccountBanner(),
                 MessengerSectionHeader(

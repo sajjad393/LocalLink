@@ -175,6 +175,7 @@ class LocalStore {
         if (oldVersion < 23) await _upgradeTo23(db);
         if (oldVersion < 24) await _upgradeTo24(db);
         if (oldVersion < 25) await _upgradeTo25(db);
+        if (oldVersion < 26) await _upgradeTo26(db);
       },
     );
     _databaseOpened = true;
@@ -260,7 +261,8 @@ class LocalStore {
       delivered_at TEXT,
       server_seq INTEGER NOT NULL DEFAULT 0,
       is_read INTEGER NOT NULL DEFAULT 0,
-      read_at TEXT
+      read_at TEXT,
+      channel TEXT NOT NULL DEFAULT ''
     )''');
     await db.execute(
         'CREATE INDEX idx_messages_conversation ON messages(sender_id, recipient_id, created_at, id)');
@@ -334,6 +336,7 @@ class LocalStore {
     await _upgradeTo23(db);
     await _upgradeTo24(db);
     await _upgradeTo25(db);
+    await _upgradeTo26(db);
   }
 
   Future<void> _upgradeTo2(Database db) async {
@@ -720,6 +723,17 @@ class LocalStore {
     }
   }
 
+  /// Bundle 132 (G): messages remember which transport delivered them
+  /// ('server' / 'wifi_direct' / 'lan' / 'mesh'), powering the in-thread
+  /// transport section dividers. '' = unknown (all pre-132 rows).
+  Future<void> _upgradeTo26(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(messages)');
+    if (!cols.any((c) => c['name']?.toString() == 'channel')) {
+      await db.execute(
+          "ALTER TABLE messages ADD COLUMN channel TEXT NOT NULL DEFAULT ''");
+    }
+  }
+
   Future<void> _upgradeTo22(Database db) async {
     await db.execute(
         "ALTER TABLE known_devices ADD COLUMN presence_local_at TEXT NOT NULL DEFAULT ''");
@@ -901,6 +915,41 @@ class LocalStore {
     await _secureStorage.write(key: _offlinePendingKey, value: _offlinePendingJson!);
   }
 
+  // ------------------------------------------------------- Bundle 132 (F)
+  // One-time publish secret for offline-created accounts: the password the
+  // user just typed, held in secure storage ONLY until the first successful
+  // automatic publish, and wiped immediately after. Never logged, never
+  // sent anywhere except the pinned server's register endpoint.
+  static const _offlinePublishSecretKey = 'account_offline_publish_secret_v1';
+
+  Future<void> writeOfflinePublishSecret(String secret) =>
+      _secureStorage.write(key: _offlinePublishSecretKey, value: secret);
+
+  Future<String?> readOfflinePublishSecret() =>
+      _secureStorage.read(key: _offlinePublishSecretKey);
+
+  Future<void> clearOfflinePublishSecret() =>
+      _secureStorage.delete(key: _offlinePublishSecretKey);
+
+  // Bundle 132 (F): one-time notice when an offline account auto-published
+  // under a RENAMED username. Home shows it once, then clears it here.
+  static const _renamedNoticeKey = 'account_auto_renamed_to';
+
+  Future<void> writeRenamedAccountNotice(String username) =>
+      _putSetting(_renamedNoticeKey, username);
+
+  Future<String?> readRenamedAccountNotice() async {
+    final rows = await _db.query('settings',
+        columns: ['value'],
+        where: 'key=?',
+        whereArgs: [_renamedNoticeKey],
+        limit: 1);
+    return rows.isEmpty ? null : rows.first['value']?.toString();
+  }
+
+  Future<void> clearRenamedAccountNotice() =>
+      _db.delete('settings', where: 'key=?', whereArgs: [_renamedNoticeKey]);
+
   /// The server accepted the pending registration: clear the credential shell
   /// (the real token lives in deviceToken via saveConfiguration afterwards).
   Future<void> markAccountSynced() async {
@@ -908,6 +957,8 @@ class LocalStore {
     _offlinePendingJson = null;
     await _putSetting('sync_state', _syncState);
     await _secureStorage.delete(key: _offlinePendingKey);
+    // Bundle 132 (F): the one-time publish secret never survives publish.
+    await clearOfflinePublishSecret();
   }
 
   // ---------------------------------------------------------------- Bundle 110
@@ -1706,9 +1757,14 @@ class LocalStore {
     var effectiveRead = message.senderId == _deviceId ? 1 : 0;
     String? effectiveReadAt;
 
+    // Bundle 132 (G) hotfix: outgoing rows carry NO transport label — my own
+    // messages must never open an "Online"/"Local Wi-Fi" section divider.
+    var effectiveChannel = message.senderId == _deviceId
+        ? ''
+        : (message.channel ?? '');
     final existing = await _db.query(
       'messages',
-      columns: ['status', 'delivered_at', 'server_seq', 'is_read', 'read_at'],
+      columns: ['status', 'delivered_at', 'server_seq', 'is_read', 'read_at', 'channel'],
       where: 'id=?',
       whereArgs: [message.id],
       limit: 1,
@@ -1728,6 +1784,11 @@ class LocalStore {
           current['is_read']?.toString() == '1' || current['is_read'] == true;
       if (currentRead) effectiveRead = 1;
       effectiveReadAt = current['read_at']?.toString();
+      // Bundle 132 (G): keep a previously stored receive-transport claim when
+      // this save carries none (status flips, server echoes).
+      if (effectiveChannel.isEmpty) {
+        effectiveChannel = current['channel']?.toString() ?? '';
+      }
     }
 
     await _db.insert(
@@ -1743,6 +1804,9 @@ class LocalStore {
         'server_seq': effectiveServerSeq,
         'is_read': effectiveRead,
         'read_at': effectiveReadAt,
+        // Bundle 132 (G): persist the receive transport; never let a later
+        // status flip (queued→sent) erase it with an empty claim.
+        'channel': effectiveChannel,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );

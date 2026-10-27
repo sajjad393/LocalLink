@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:locallink/core/models/device.dart';
+import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/error_toast.dart';
@@ -428,8 +429,16 @@ class _ChatScreenState extends State<ChatScreen> {
                                 itemBuilder: (_, index) {
                                   final message = visibleMessages[index];
                                   final showDate = index == 0 || !_sameDay(visibleMessages[index - 1].createdAt, message.createdAt);
+                                  // Bundle 132 (G): a transport section label
+                                  // renders where the RECEIVE transport of
+                                  // incoming history changes (walking back to
+                                  // the previous labeled row). Untagged rows
+                                  // and outgoing rows never open a section.
+                                  final sectionLabel = _transportSectionLabelAt(visibleMessages, index, state.localDeviceId);
                                   return Column(
                                     children: [
+                                      if (sectionLabel != null)
+                                        _TransportDivider(label: sectionLabel),
                                       if (showDate) _DateDivider(date: message.createdAt),
                                       MessageBubble(
                                         message: message,
@@ -479,6 +488,38 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Bundle 132 (G): transport label for ONE message — null when the row is
+  /// untagged (pre-132 history) or outgoing (own rows never wear a label).
+  static String? _transportLabel(Message m, String localDeviceId) {
+    if (m.senderId == localDeviceId) return null;
+    switch (m.channel) {
+      case 'server':
+        return 'Online';
+      case 'wifi_direct':
+        return 'Wi-Fi Direct';
+      case 'mesh':
+        return 'Mesh';
+      case 'lan':
+      case 'direct': // pre-132 value, no finer claim available
+        return 'Local Wi-Fi';
+      default:
+        return null;
+    }
+  }
+
+  /// The label rendering above visible[index] when the receive-transport
+  /// section changes at that row (walking back to the previous LABELED row).
+  static String? _transportSectionLabelAt(
+      List<Message> visible, int index, String localDeviceId) {
+    final label = _transportLabel(visible[index], localDeviceId);
+    if (label == null) return null;
+    for (var i = index - 1; i >= 0; i--) {
+      final prev = _transportLabel(visible[i], localDeviceId);
+      if (prev != null) return prev == label ? null : label;
+    }
+    return label; // first labeled row opens its section
+  }
 }
 
 class _DateDivider extends StatelessWidget {
@@ -502,6 +543,48 @@ class _DateDivider extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.md, vertical: LocalLinkSpacing.xs),
           child: Text(label, style: Theme.of(context).textTheme.labelSmall),
         ),
+      ),
+    );
+  }
+}
+
+/// Bundle 132 (G): "—— Online ——" style section divider marking WHICH
+/// transport delivered the messages below. Approved visual: hairline both
+/// sides of a small colored label, no pill. Online=green, Wi-Fi Direct=
+/// yellow, Mesh=purple, Local Wi-Fi=teal.
+class _TransportDivider extends StatelessWidget {
+  final String label;
+  const _TransportDivider({required this.label});
+
+  static const Map<String, Color> _labelColors = {
+    'Online': Color(0xFF16A34A), // green-600
+    'Wi-Fi Direct': Color(0xFFCA8A04), // yellow-600
+    'Mesh': Color(0xFF7C3AED), // purple-600
+    'Local Wi-Fi': Color(0xFF0D9488), // teal-600
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = _labelColors[label] ?? scheme.outline;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: LocalLinkSpacing.sm),
+      child: Row(
+        children: [
+          Expanded(child: Container(height: 1, color: scheme.outlineVariant)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.md),
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+            ),
+          ),
+          Expanded(child: Container(height: 1, color: scheme.outlineVariant)),
+        ],
       ),
     );
   }

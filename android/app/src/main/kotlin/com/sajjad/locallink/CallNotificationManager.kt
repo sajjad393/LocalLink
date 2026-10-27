@@ -90,7 +90,7 @@ object CallNotificationManager {
             @Suppress("DEPRECATION")
             Notification.Builder(context)
         }
-            .setSmallIcon(android.R.drawable.sym_call_incoming)
+            .setSmallIcon(R.mipmap.ic_launcher_foreground)
             .setContentTitle("Incoming call")
             .setContentText(callerName.ifBlank { callerId })
             .setCategory(Notification.CATEGORY_CALL)

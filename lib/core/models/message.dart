@@ -10,10 +10,11 @@ class Message {
   final int serverSeq;
   final List<Attachment> attachments;
 
-  /// Which path this copy of the message traveled, in-memory only (Bundle
-  /// 52C): 'direct' (LAN/Wi-Fi Direct/mesh) or 'server'. Null for history
-  /// reloaded from the local DB and for outgoing echo rows — no claim is
-  /// shown rather than a wrong one.
+  /// Which path this copy of the message traveled (Bundle 52C, extended by
+  /// 132/G): 'server', 'wifi_direct', 'lan', or 'mesh'. Legacy value
+  /// 'direct' (52C, pre-granular) still renders as Local Wi-Fi. Null for
+  /// pre-132 history rows and outgoing echo rows — no claim rather than a
+  /// wrong one. Persisted in the messages.channel column since DB v26.
   final String? channel;
 
   const Message({
@@ -51,6 +52,12 @@ class Message {
         deliveredAt: row['delivered_at']?.toString(),
         serverSeq: int.tryParse(row['server_seq']?.toString() ?? '') ?? 0,
         attachments: const [],
+        // Bundle 132 (G): the receive transport is persisted now, so the
+        // chat thread can render Online / Wi-Fi Direct / Mesh / Local Wi-Fi
+        // section dividers for history too. '' for pre-132 rows → no label.
+        channel: (row['channel']?.toString() ?? '').isEmpty
+            ? null
+            : row['channel']?.toString(),
       );
 
   Message copyWithMessageAttachments(List<Attachment>? attachments) => Message(

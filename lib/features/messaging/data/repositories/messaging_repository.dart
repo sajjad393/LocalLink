@@ -20,6 +20,9 @@ final class MessagingRepository implements MessagingRepositoryContract {
   String get localDeviceId => store.deviceId ?? '';
 
   @override
+  bool get isServerConnected => service.isServerConnected;
+
+  @override
   Future<Device?> peer(String deviceId) async {
     final device = await store.deviceById(deviceId);
     if (device == null) return null;

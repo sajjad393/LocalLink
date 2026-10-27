@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/config/app_config.dart';
 import 'package:locallink/core/network/api_http_client.dart';
 import 'package:locallink/core/security/secure_storage_service.dart';
@@ -7,6 +9,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/services/websocket_service.dart';
 import 'package:locallink/features/authentication/data/repositories/authentication_repository.dart';
+import 'package:locallink/features/authentication/data/services/offline_account_sync_service.dart';
 import 'package:locallink/features/account/data/repositories/account_repository.dart';
 import 'package:locallink/features/account/data/repositories/identity_repository.dart';
 import 'package:locallink/features/calls/data/platform/call_audio_platform_service.dart';
@@ -104,6 +107,10 @@ class AppDependencies {
         // devices so conversations reroute onto Wi-Fi Direct/mesh by
         // themselves.
         if (!connected) primeTrustedRoutes();
+        // Bundle 132 (D): server just came BACK → one silent catch-up burst
+        // (history sync + outbox flush + presence repaint + deferred profile
+        // sync + fully automatic offline-account publish), debounced.
+        if (connected) unawaited(_fireSilentResyncBurst());
       },
     );
     meshRepository = MeshRepository(transport: directTransport);
@@ -285,6 +292,47 @@ class AppDependencies {
         }
       } catch (_) {}
     }());
+  }
+
+  // ------------------------------------------------------- Bundle 132 (D/F)
+  DateTime? _lastSilentResyncAt;
+  bool _silentResyncBusy = false;
+
+  /// One silent catch-up burst fired on socket regain: synchronize history,
+  /// flush the outbox, repaint presence, push the deferred profile — and, if
+  /// an offline-created account is still unpublished, publish it fully
+  /// automatically (F). Debounced to at most once per 10 seconds; every step
+  /// is individually failure-tolerant.
+  Future<void> _fireSilentResyncBurst() async {
+    final now = DateTime.now();
+    final last = _lastSilentResyncAt;
+    if (_silentResyncBusy ||
+        (last != null && now.difference(last).inSeconds < 10)) {
+      return;
+    }
+    _silentResyncBusy = true;
+    _lastSilentResyncAt = now;
+    try {
+      await messaging.synchronize();
+      await messaging.flush();
+      unawaited(presence.publish());
+      unawaited(account.syncPendingProfile());
+      if (store.isOfflinePending) {
+        final offlineSync =
+            OfflineAccountSyncService(store: store, auth: authentication);
+        final renamed = await offlineSync.autoPublish();
+        if (renamed != null) {
+          AppLogger.info(
+            'OFFLINE_ACCOUNT_AUTO_PUBLISHED_RENAMED',
+            detail: 'username=$renamed',
+          );
+        }
+      }
+    } catch (_) {
+      // The whole burst is best-effort; the next regain retries it.
+    } finally {
+      _silentResyncBusy = false;
+    }
   }
 
   Future<void> dispose() async {

@@ -1,15 +1,17 @@
+import 'dart:math';
+
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 
-/// Deferred registration for offline-first accounts (Bundle 102).
+/// Deferred registration for offline-first accounts (Bundle 102, auto in 132).
 ///
 /// An account created while no server was reachable holds PBKDF2 credentials
-/// in secure storage only. When the configured/discovered server answers
-/// again, the user confirms the SAME password once — the hash proves we are
-/// publishing OUR account — and the plaintext travels one time, straight to
-/// that server, via the existing /api/v1/auth/register. Nothing plaintext is
-/// persisted; the server never saw the account until this exact call.
+/// in secure storage only. Since Bundle 132 the publish is FULLY AUTOMATIC:
+/// the one-time plaintext secret (secure storage, wiped on success) goes
+/// straight to the configured/pinned server via /api/v1/auth/register, with
+/// silent numeric-suffix rename on username conflict. The manual password
+/// confirm (the existing ConfirmPublish flow) remains as an accelerator.
 class OfflineAccountSyncService {
   final LocalStore _store;
   final AuthenticationRepositoryContract _auth;
@@ -95,5 +97,49 @@ class OfflineAccountSyncService {
     final name = _store.deviceName?.trim() ?? '';
     if (name.isNotEmpty) return name;
     return _auth.generateUniqueDeviceName();
+  }
+
+  bool _autoPublishing = false;
+
+  /// Bundle 132 (F): fully automatic publish. When the pinned server answers
+  /// and a one-time publish secret exists in secure storage, register without
+  /// any user interaction. On a username conflict, silently retry with a
+  /// numeric suffix ("sumaira" → "sumaira7") per the user's locked policy.
+  /// Returns the final username ONLY when it differs from the requested one
+  /// (the UI then shows the one-time "joined as …" note); null otherwise
+  /// (success with original name, or nothing publishable right now).
+  Future<String?> autoPublish() async {
+    if (_autoPublishing || !pending) return null;
+    _autoPublishing = true;
+    try {
+      if (!await probeServerReachable()) return null;
+      final secret = await _store.readOfflinePublishSecret();
+      if (secret == null || secret.isEmpty) return null;
+      var username = pendingUsername;
+      if (username.isEmpty) return null;
+      final rng = Random.secure();
+      for (var attempt = 0; attempt < 6; attempt++) {
+        try {
+          await publish(username: username, password: secret);
+          // markAccountSynced() (inside publish → register) already wiped
+          // the one-time secret.
+          if (attempt > 0) {
+            // Acceptance #6: the promised one-time note — Home picks it up.
+            await _store.writeRenamedAccountNotice(username);
+          }
+          return attempt == 0 ? null : username;
+        } catch (error) {
+          if (isUsernameConflict(error)) {
+            // Silent rename: keep the base name readable, suffix 2–99.
+            username = '$pendingUsername${2 + rng.nextInt(98)}';
+            continue;
+          }
+          return null; // server/device errors: stay pending, retry later
+        }
+      }
+      return null;
+    } finally {
+      _autoPublishing = false;
+    }
   }
 }

@@ -70,6 +70,10 @@ class ReliableMessagingService {
   Stream<Message> get incoming => _incoming.stream;
   Stream<MessageReaction> get reactionIncoming => _reactionIncoming.stream;
 
+  /// Bundle 132 (A/C): single truthful source for "is the server reachable
+  /// right now" so the chat screen can stay quiet on offline load failures.
+  bool get isServerConnected => socket.isConnected;
+
   void start() {
     AppLogger.info(
       'MESSAGE_SERVICE_START',
@@ -157,6 +161,17 @@ class ReliableMessagingService {
           _lastPeriodicSyncAt = DateTime.now().toUtc();
           await synchronize();
           await _safeFlush('socket_connected');
+        } else {
+          // Bundle 132 (B): the moment the server socket drops, failover must
+          // not wait for the 30s native maintenance tick — ensure the direct
+          // transport is up and immediately retry queued traffic over it.
+          // Fire-and-forget; the flush interlock/watchdog absorb overlaps.
+          unawaited(() async {
+            try {
+              if (!directTransport.isStarted) await _configureDirectTransport();
+              await _safeFlush('socket_disconnected');
+            } catch (_) {}
+          }());
         }
       },
       onError: (Object error, StackTrace stackTrace) {
@@ -1365,8 +1380,12 @@ class ReliableMessagingService {
         message.id,
       );
 
+      // Bundle 132 (G): server-relayed arrival — stamp the receive transport
+      // so the thread can render the "Online" section divider.
+      final stampedIncoming = message.copyWithChannel('server');
+
       await store.saveMessage(
-        message,
+        stampedIncoming,
       );
 
       AppLogger.info(
@@ -1389,7 +1408,7 @@ class ReliableMessagingService {
       );
 
       if (!existed) {
-        _incoming.add(message);
+        _incoming.add(stampedIncoming);
 
         AppLogger.info(
           'MESSAGE_INCOMING_EMITTED',
@@ -1538,6 +1557,17 @@ class ReliableMessagingService {
       _hotDirectEventWindowStart = now;
     }
     _hotDirectEventCounts[type] = (_hotDirectEventCounts[type] ?? 0) + 1;
+  }
+
+  /// Bundle 132 (G): granular receive-transport label from a direct event —
+  /// hop count > 1 means mesh-forwarded; a single-hop packet is labeled by
+  /// the link kind of the connection it arrived on (wifi_direct | lan).
+  String _directChannelFor(Map<String, dynamic> event) {
+    final hopCount =
+        int.tryParse(event['mesh_hop_count']?.toString() ?? '') ?? 1;
+    if (hopCount > 1) return 'mesh';
+    final linkKind = event['mesh_link_kind']?.toString() ?? '';
+    return linkKind == 'wifi_direct' ? 'wifi_direct' : 'lan';
   }
 
   Future<void> _handleDirectEvent(
@@ -1738,7 +1768,9 @@ class ReliableMessagingService {
           detail: 'id=${decrypted.id}',
         );
 
-        var message = decrypted.copyWithChannel('direct');
+        // Bundle 132 (G): label the actual receive path. Native emits
+        // mesh_hop_count plus mesh_link_kind (the last hop's link type).
+        var message = decrypted.copyWithChannel(_directChannelFor(event));
 
         // --------------------------------------------------------------------
         // MESSAGE VALIDATION

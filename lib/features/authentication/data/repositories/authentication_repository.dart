@@ -201,6 +201,10 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
       recoveryCode: recovery,
       pairingCode: pairingCode,
     );
+    // Bundle 132 (F): fully automatic publish (user decision). The plaintext
+    // lives in secure storage ONLY until the first successful publish (wiped
+    // in markAccountSynced), and is only ever sent to the pinned server once.
+    await _store.writeOfflinePublishSecret(password);
     // Bundle 123: the online register path leaves the phone with a usable
     // profile immediately; do the same here. Pairing/QR read
     // LocalStore.profile() and failed with "Finish setting up your profile"

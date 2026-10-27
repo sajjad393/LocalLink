@@ -209,7 +209,7 @@ object LocalLinkNotificationManager {
             @Suppress("DEPRECATION")
             NotificationCompat.Builder(context)
         }
-            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setSmallIcon(R.mipmap.ic_launcher_foreground)
             .setContentTitle(title.ifBlank { "LocalLink" })
             .setContentText(body.ifBlank { summary })
             .setContentIntent(openPending)
@@ -231,7 +231,7 @@ object LocalLinkNotificationManager {
                 builder.setVisibility(Notification.VISIBILITY_PRIVATE)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     val publicVersion = Notification.Builder(context)
-                        .setSmallIcon(android.R.drawable.ic_dialog_email)
+                        .setSmallIcon(R.mipmap.ic_launcher_foreground)
                         .setContentTitle(publicTitle.ifBlank { "LocalLink" })
                         .setContentText(publicBody.ifBlank { "New notification" })
                         .setCategory(Notification.CATEGORY_MESSAGE)
@@ -306,7 +306,7 @@ object LocalLinkNotificationManager {
             @Suppress("DEPRECATION")
             NotificationCompat.Builder(context)
         }
-            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setSmallIcon(R.mipmap.ic_launcher_foreground)
             .setContentTitle(title.ifBlank { "LocalLink" })
             .setContentText(body.ifBlank { "New messages" })
             .setCategory(Notification.CATEGORY_MESSAGE)
@@ -337,7 +337,7 @@ object LocalLinkNotificationManager {
             @Suppress("DEPRECATION")
             NotificationCompat.Builder(context)
         }
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.mipmap.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(body)
             .setCategory(Notification.CATEGORY_STATUS)
