@@ -174,6 +174,7 @@ class LocalStore {
         if (oldVersion < 22) await _upgradeTo22(db);
         if (oldVersion < 23) await _upgradeTo23(db);
         if (oldVersion < 24) await _upgradeTo24(db);
+        if (oldVersion < 25) await _upgradeTo25(db);
       },
     );
     _databaseOpened = true;
@@ -332,6 +333,7 @@ class LocalStore {
     await _upgradeTo22(db);
     await _upgradeTo23(db);
     await _upgradeTo24(db);
+    await _upgradeTo25(db);
   }
 
   Future<void> _upgradeTo2(Database db) async {
@@ -413,7 +415,8 @@ class LocalStore {
       answered_at TEXT,
       ended_at TEXT,
       duration_seconds INTEGER NOT NULL DEFAULT 0,
-      end_reason TEXT NOT NULL DEFAULT ''
+      end_reason TEXT NOT NULL DEFAULT '',
+      peer_name TEXT NOT NULL DEFAULT ''
     )""");
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_calls_started ON calls(started_at DESC, id DESC)');
@@ -703,6 +706,17 @@ class LocalStore {
     if (!cols.any((c) => c['name']?.toString() == 'custom_name')) {
       await db.execute(
           "ALTER TABLE contacts ADD COLUMN custom_name TEXT NOT NULL DEFAULT ''");
+    }
+  }
+
+  /// Bundle 130: call history rows carry the peer's display name captured at
+  /// call time. Offline accounts no longer render "Unknown user" while the
+  /// directory profile is missing or still syncing.
+  Future<void> _upgradeTo25(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(calls)');
+    if (!cols.any((c) => c['name']?.toString() == 'peer_name')) {
+      await db.execute(
+          "ALTER TABLE calls ADD COLUMN peer_name TEXT NOT NULL DEFAULT ''");
     }
   }
 
@@ -2010,8 +2024,28 @@ class LocalStore {
 
     final nextRank = rank(call.status);
     final currentRank = rank(current.status);
-    final effective = nextRank > currentRank
+    // Bundle 130: server echoes carry no peer_name — prefer the best-known
+    // (a name captured locally at call time always wins over an empty one).
+    final bestPeerName =
+        call.peerName.isNotEmpty ? call.peerName : current.peerName;
+    // Rebuild the incoming winner only when its peer_name needs filling;
+    // otherwise the status-rank merge below stays byte-identical to before.
+    final effectiveIncoming = call.peerName.isNotEmpty
         ? call
+        : CallRecord(
+            id: call.id,
+            callerId: call.callerId,
+            calleeId: call.calleeId,
+            status: call.status,
+            startedAt: call.startedAt,
+            answeredAt: call.answeredAt,
+            endedAt: call.endedAt,
+            durationSeconds: call.durationSeconds,
+            endReason: call.endReason,
+            peerName: bestPeerName,
+          );
+    final effective = nextRank > currentRank
+        ? effectiveIncoming
         : CallRecord(
             id: current.id,
             callerId: current.callerId,
@@ -2026,6 +2060,7 @@ class LocalStore {
             endReason: current.endReason.isNotEmpty
                 ? current.endReason
                 : call.endReason,
+            peerName: bestPeerName,
           );
     await _db.insert('calls', effective.toDb(),
         conflictAlgorithm: ConflictAlgorithm.replace);
@@ -2035,6 +2070,25 @@ class LocalStore {
     final rows = await _db.query('calls',
         orderBy: 'started_at DESC, id DESC', limit: 200);
     return rows.map(CallRecord.fromDb).toList();
+  }
+
+  /// Bundle 131: backfill — call rows recorded before the peer_name column
+  /// existed (pre-130 history) heal themselves the first time ANY label
+  /// source resolves that peer. Only empty peer_name cells are written;
+  /// [names] must already exclude our own device id (peer semantics).
+  Future<void> fillMissingCallPeerNames(Map<String, String> names) async {
+    if (names.isEmpty || !_databaseOpened) return;
+    for (final entry in names.entries) {
+      final id = entry.key.trim();
+      final name = entry.value.trim();
+      if (id.isEmpty || name.isEmpty) continue;
+      await _db.update(
+        'calls',
+        {'peer_name': name},
+        where: "peer_name = '' AND (caller_id = ? OR callee_id = ?)",
+        whereArgs: [id, id],
+      );
+    }
   }
 
   Future<void> saveCallQualitySample(CallQualitySample sample) async =>

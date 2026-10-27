@@ -322,17 +322,59 @@ final class HomeBloc extends Cubit<HomeState> {
   /// drift can no longer flip statuses in either direction.
   void expireStalePresence() {
     if (_closed) return;
+    unawaited(_expireStalePresenceAsync());
+  }
+
+  /// Bundle 130: before decaying anything, re-sync liveness from the local
+  /// store. Every delivered packet stamps presence_local_at there
+  /// (LocalStore.touchDevicePresence) — so a chat message that just arrived
+  /// IS proof of life, and the "Nearby" label heals itself within one 10s
+  /// tick instead of flapping to "Offline" (and staying wrong until a manual
+  /// refresh) whenever the 30s presence broadcast is missed. The DB stamp
+  /// only ever REFRESHES a device here; expiry still comes from staleness.
+  Future<void> _expireStalePresenceAsync() async {
+    if (_closed) return;
+    Map<String, Device> localById;
+    try {
+      localById = {for (final d in await repository.localDevices()) d.id: d};
+    } catch (_) {
+      localById = const {};
+    }
+    if (_closed) return;
     final now = DateTime.now().toUtc();
     var changed = false;
     final next = state.devices.map((device) {
-      if (device.isOnline(now: now)) return device;
-      final claimsReachable = device.serverConnected ||
-          device.wifiDirectConnected ||
-          device.lanAvailable ||
-          device.meshAvailable;
-      if (!claimsReachable) return device;
+      var current = device;
+      final local = localById[device.id];
+      if (local != null) {
+        final localStamp = DateTime.tryParse(local.presenceLocalAt)?.toUtc();
+        final stateStamp = DateTime.tryParse(device.presenceLocalAt)?.toUtc();
+        if (localStamp != null &&
+            (stateStamp == null || localStamp.isAfter(stateStamp))) {
+          current = device.copyWithPresence(
+            presenceLocalAt: local.presenceLocalAt,
+            serverConnected: device.serverConnected || local.serverConnected,
+            wifiDirectConnected:
+                device.wifiDirectConnected || local.wifiDirectConnected,
+            lanAvailable: device.lanAvailable || local.lanAvailable,
+            meshAvailable: device.meshAvailable || local.meshAvailable,
+          );
+        }
+      }
+      if (current.isOnline(now: now)) {
+        if (!identical(current, device)) changed = true;
+        return current;
+      }
+      final claimsReachable = current.serverConnected ||
+          current.wifiDirectConnected ||
+          current.lanAvailable ||
+          current.meshAvailable;
+      if (!claimsReachable) {
+        if (!identical(current, device)) changed = true;
+        return current;
+      }
       changed = true;
-      final stale = device.copyWithPresence(
+      final stale = current.copyWithPresence(
         networkStatus: DeviceNetworkStatus.disconnected,
         serverConnected: false,
         wifiDirectConnected: false,

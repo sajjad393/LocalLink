@@ -50,7 +50,7 @@ class MessengerConversationTile extends StatelessWidget {
       // Bundle 100: presence chip moves onto the avatar's UPPER-RIGHT edge —
       // Facebook-WhatsApp-style badge (white ring + filled chip) instead of
       // the old floating icon beside the name.
-      leading: device == null ? avatar : _PresenceAvatar(avatar: avatar, device: device!),
+      leading: device == null ? avatar : PresenceAvatar(avatar: avatar, device: device!),
       title: Row(
         children: [
           Expanded(
@@ -81,20 +81,29 @@ class MessengerConversationTile extends StatelessWidget {
   }
 
   Widget? _buildTrailing(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Bundle 130: single-digit counts render as a filled CIRCLE (WhatsApp
+    // style); only multi-digit labels keep the pill so text stays readable.
+    final label = unreadCount > 99 ? '99+' : '$unreadCount';
+    final isCircle = label.length == 1;
     final badge = unreadCount > 0
         ? Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            padding: isCircle
+                ? EdgeInsets.zero
+                : const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
             margin: const EdgeInsets.only(right: 8),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary,
-              borderRadius: BorderRadius.circular(12),
+              color: scheme.primary,
+              shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
+              borderRadius:
+                  isCircle ? null : BorderRadius.circular(12),
             ),
             constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
             child: Center(
               child: Text(
-                unreadCount > 99 ? '99+' : '$unreadCount',
+                label,
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onPrimary,
+                  color: scheme.onPrimary,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -141,11 +150,12 @@ class MessengerConversationTile extends StatelessWidget {
 /// plain dot = offline. Colors/state come from the same presenceChannel()
 /// rule the app bars already use, so the badge can never disagree with any
 /// other surface.
-class _PresenceAvatar extends StatelessWidget {
+/// Bundle 130: public — the chat-screen app bar avatar uses the same badge.
+class PresenceAvatar extends StatelessWidget {
   final Widget avatar;
   final Device device;
 
-  const _PresenceAvatar({required this.avatar, required this.device});
+  const PresenceAvatar({super.key, required this.avatar, required this.device});
 
   @override
   Widget build(BuildContext context) {

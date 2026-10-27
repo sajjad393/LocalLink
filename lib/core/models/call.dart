@@ -8,6 +8,7 @@ class CallRecord {
   final DateTime? endedAt;
   final int durationSeconds;
   final String endReason;
+  final String peerName;
 
   const CallRecord({
     required this.id,
@@ -19,6 +20,10 @@ class CallRecord {
     this.endedAt,
     this.durationSeconds = 0,
     this.endReason = '',
+    // Bundle 130: the peer's display name is frozen into the record at call
+    // time, so history rows survive offline/never-synced directory states
+    // instead of degrading to "Unknown user" when the live lookup misses.
+    this.peerName = '',
   });
 
   factory CallRecord.fromJson(Map<String, dynamic> json) => CallRecord(
@@ -31,6 +36,7 @@ class CallRecord {
         endedAt: DateTime.tryParse(json['ended_at']?.toString() ?? '')?.toLocal(),
         durationSeconds: int.tryParse(json['duration_seconds']?.toString() ?? '') ?? 0,
         endReason: json['end_reason']?.toString() ?? '',
+        peerName: json['peer_name']?.toString() ?? '',
       );
 
   factory CallRecord.fromDb(Map<String, dynamic> row) => CallRecord(
@@ -43,6 +49,7 @@ class CallRecord {
         endedAt: DateTime.tryParse(row['ended_at']?.toString() ?? '')?.toLocal(),
         durationSeconds: int.tryParse(row['duration_seconds']?.toString() ?? '') ?? 0,
         endReason: row['end_reason']?.toString() ?? '',
+        peerName: row['peer_name']?.toString() ?? '',
       );
 
   Map<String, dynamic> toDb() => {
@@ -55,6 +62,7 @@ class CallRecord {
         'ended_at': endedAt?.toUtc().toIso8601String(),
         'duration_seconds': durationSeconds,
         'end_reason': endReason,
+        'peer_name': peerName,
       };
 
   String peerId(String selfId) => callerId == selfId ? calleeId : callerId;

@@ -73,12 +73,17 @@ final class ChatBloc extends Cubit<ChatState> {
       final cur = state.device;
       // name excluded from the equality chain below until now — a nickname
       // change alone must still refresh the header.
+      // Bundle 131: presenceLocalAt joins the chain. Without it a steady-
+      // state peer (flags unchanged) kept the OPEN-TIME stamp, so the
+      // app-bar status could still decay to "Offline" mid-chat even though
+      // the cached row (and the Chats list, bundle 130) had already healed.
       if (fresh.name == cur.name &&
           fresh.networkStatus == cur.networkStatus &&
           fresh.serverConnected == cur.serverConnected &&
           fresh.wifiDirectConnected == cur.wifiDirectConnected &&
           fresh.lanAvailable == cur.lanAvailable &&
           fresh.meshAvailable == cur.meshAvailable &&
+          fresh.presenceLocalAt == cur.presenceLocalAt &&
           fresh.lastSeenAt == cur.lastSeenAt) return;
       emit(state.copyWith(device: fresh));
     } catch (_) {}

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
@@ -144,6 +145,65 @@ class _HomeScreenState extends State<HomeScreen> {
   // Bundle 102: offline-pending account state (session-scoped UI).
   OfflineAccountSyncService? _offlineSync;
   bool _offlineBannerDismissed = false;
+
+  // Bundle 130: banner etiquette. Both offline/sync banners show for ~5
+  // seconds, hide themselves, then stay quiet for 24 hours. The snooze stamp
+  // is persisted (survives restarts); the hide timer + session flag are
+  // per-launch. The X button dismisses for the same 24h, not just this launch.
+  static const Duration _bannerVisibleFor = Duration(seconds: 5);
+  static const Duration _bannerCooldown = Duration(hours: 24);
+  static const String _kOfflineBannerSnoozeKey =
+      'ui_banner_offline_account_snoozed_until_ms';
+  static const String _kSyncNoticeSnoozeKey =
+      'ui_banner_sync_notice_snoozed_until_ms';
+  final Set<String> _bannerArmed = {};
+  final Set<String> _bannerHiddenThisSession = {};
+  final List<Timer> _bannerTimers = [];
+  int _offlineBannerSnoozedUntilMs = 0;
+  int _syncNoticeSnoozedUntilMs = 0;
+
+  Future<void> _loadBannerSnoozes() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _offlineBannerSnoozedUntilMs =
+          prefs.getInt(_kOfflineBannerSnoozeKey) ?? 0;
+      _syncNoticeSnoozedUntilMs = prefs.getInt(_kSyncNoticeSnoozeKey) ?? 0;
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _persistBannerSnooze(String prefsKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(prefsKey,
+          DateTime.now().add(_bannerCooldown).millisecondsSinceEpoch);
+    } catch (_) {}
+  }
+
+  /// Scheduled exactly once per banner per show-episode. Runs inside build
+  /// (armed-set guarded): records the 24h snooze immediately and starts the
+  /// 5s self-hide timer.
+  void _armBannerAutoHide({
+    required String id,
+    required String prefsKey,
+    required void Function() hide,
+  }) {
+    if (_bannerArmed.contains(id)) return;
+    _bannerArmed.add(id);
+    unawaited(_persistBannerSnooze(prefsKey));
+    _bannerTimers.add(Timer(_bannerVisibleFor, () {
+      if (!mounted) return;
+      hide();
+    }));
+  }
+
+  bool get _syncNoticeVisible =>
+      !_bannerHiddenThisSession.contains('sync_notice') &&
+      DateTime.now().millisecondsSinceEpoch >= _syncNoticeSnoozedUntilMs;
+
+  bool get _offlineBannerVisible =>
+      !_offlineBannerDismissed &&
+      DateTime.now().millisecondsSinceEpoch >= _offlineBannerSnoozedUntilMs;
   bool _publishPromptShown = false;
   bool _publishBusy = false;
 
@@ -210,6 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _controller.start();
     _loadChatPeerIds();
+    unawaited(_loadBannerSnoozes());
     // First contact from a new peer arrives live: the Chats tab picks them up.
     _incomingSub = widget.messagingRepository.incoming
         .listen((_) {
@@ -223,7 +284,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ---------------- Bundle 102: offline-account publish flow ---------------
 
+  Widget _gatedSyncNotice(String message) {
+    _armBannerAutoHide(
+      id: 'sync_notice',
+      prefsKey: _kSyncNoticeSnoozeKey,
+      hide: () => setState(() => _bannerHiddenThisSession.add('sync_notice')),
+    );
+    return _SyncNotice(message: message);
+  }
+
   Widget _offlineAccountBanner() {
+    _armBannerAutoHide(
+      id: 'offline_account',
+      prefsKey: _kOfflineBannerSnoozeKey,
+      hide: () => setState(() => _offlineBannerDismissed = true),
+    );
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -253,10 +328,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: const Text('Publish'),
                 ),
                 IconButton(
-                  tooltip: 'Dismiss until next launch',
+                  tooltip: 'Dismiss for 24 hours',
                   visualDensity: VisualDensity.compact,
-                  onPressed: () =>
-                      setState(() => _offlineBannerDismissed = true),
+                  onPressed: () {
+                    // Bundle 130: manual dismiss now also snoozes 24h.
+                    unawaited(_persistBannerSnooze(_kOfflineBannerSnoozeKey));
+                    setState(() => _offlineBannerDismissed = true);
+                  },
                   icon: Icon(Icons.close,
                       size: 16, color: theme.colorScheme.onSurfaceVariant),
                 ),
@@ -496,6 +574,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    for (final timer in _bannerTimers) {
+      timer.cancel();
+    }
     _unreadTimer?.cancel();
     _incomingSub?.cancel();
     _controller.close();
@@ -619,10 +700,9 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 // Red exception banners are banned from the chats tab: quiet
                 // chip for explicit-retry feedback, silence otherwise.
-                if (state.syncNotice != null)
-                  _SyncNotice(message: state.syncNotice!),
-                if (widget.store.isOfflinePending &&
-                    !_offlineBannerDismissed)
+                if (state.syncNotice != null && _syncNoticeVisible)
+                  _gatedSyncNotice(state.syncNotice!),
+                if (widget.store.isOfflinePending && _offlineBannerVisible)
                   _offlineAccountBanner(),
                 MessengerSectionHeader(
                   title: 'Conversations',

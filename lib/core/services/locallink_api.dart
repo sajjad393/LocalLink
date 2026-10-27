@@ -835,7 +835,10 @@ class LocalLinkApi {
         .post(
           Uri.parse('$baseUrl/api/v1/calls/reconcile'),
           headers: {..._headers(), 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
-          body: jsonEncode(call.toDb()),
+          // Bundle 130: peer_name is a LOCAL display cache — strip it from
+          // the reconcile payload so the server contract stays unchanged.
+          body: jsonEncode(Map<String, dynamic>.from(call.toDb())
+            ..remove('peer_name')),
         )
         .timeout(const Duration(seconds: 8));
     if (response.statusCode != 200 && response.statusCode != 201) throw Exception(_error(response));

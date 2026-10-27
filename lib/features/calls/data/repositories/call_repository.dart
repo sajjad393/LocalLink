@@ -62,6 +62,13 @@ class CallRepository implements CallRepositoryContract {
       final label = await labelForPeer(id);
       if (label != null) labels[id] = label;
     }
+    // Bundle 131: pre-130 history rows carry no stored peer_name — heal them
+    // the moment any label resolves. Our own device id is excluded so a row
+    // can never be backfilled with OUR name instead of the peer's.
+    final fillable = Map<String, String>.from(labels)..remove(store.deviceId);
+    try {
+      await store.fillMissingCallPeerNames(fillable);
+    } catch (_) {}
     return labels;
   }
 

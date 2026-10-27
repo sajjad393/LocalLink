@@ -40,8 +40,15 @@ class _CallsScreenState extends State<CallsScreen> {
 
   String _peerId(CallRecord call) => call.peerId(widget.selfId);
 
-  String _title(CallRecord call) =>
-      widget.controller.deviceNames[_peerId(call)] ?? 'Unknown user';
+  String _title(CallRecord call) {
+    // Fresh directory nickname wins; the name frozen into the record at call
+    // time (Bundle 130) is the offline-safe fallback. "Unknown user" is now
+    // the last resort, not the default.
+    final live = widget.controller.deviceNames[_peerId(call)];
+    if (live != null && live.isNotEmpty) return live;
+    if (call.peerName.isNotEmpty) return call.peerName;
+    return 'Unknown user';
+  }
 
   bool _isMissed(CallRecord call) =>
       (call.status == 'missed' || call.status == 'ringing') &&

@@ -233,6 +233,9 @@ class CallSession {
         endedAt: endedAt,
         durationSeconds: _durationSeconds,
         endReason: reason,
+        // Bundle 130: capture the name we called / were called by — call
+        // history must render even when the directory profile never synced.
+        peerName: peerName,
       );
 
   int get _durationSeconds {

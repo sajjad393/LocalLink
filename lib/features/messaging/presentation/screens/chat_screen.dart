@@ -7,7 +7,7 @@ import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/error_toast.dart';
-import 'package:locallink/core/widgets/device_status_indicator.dart';
+import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/features/files/bloc/file_transfer_bloc.dart';
@@ -51,6 +51,15 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _recording = false;
   int _recAmplitude = 0;
   Timer? _recAmplitudeTimer;
+  /// Bundle 130: start stamp drives the composer "0:05" elapsed counter —
+  /// refreshed by the same 8x/s amplitude poll, so no extra ticker exists.
+  DateTime? _recStartedAt;
+
+  int get _recElapsedSeconds {
+    if (_recStartedAt == null) return 0;
+    final s = DateTime.now().difference(_recStartedAt!).inSeconds;
+    return s < 0 ? 0 : (s > 35999 ? 35999 : s);
+  }
 
   @override
   void initState() {
@@ -149,11 +158,12 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _recording = false;
           _recAmplitude = 0;
+          _recStartedAt = null;
         });
         widget.controller.addPendingAttachments([file]);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voice note ready to send')));
       } catch (error) {
-        if (mounted) { setState(() { _recording = false; _recAmplitude = 0; }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error)))); }
+        if (mounted) { setState(() { _recording = false; _recAmplitude = 0; _recStartedAt = null; }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error)))); }
       }
       return;
     }
@@ -163,6 +173,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _recording = true;
         _recAmplitude = 0;
+        _recStartedAt = DateTime.now();
       });
       // Mirrors WhatsApp's mic-meter poll cadence; native amplitude is
       // reset 8x/s into the composer's live bars.
@@ -332,7 +343,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   )
                 : Row(
                     children: [
-                      AccountAvatar(name: device.name, radius: 20),
+                      // Bundle 130: presence badge rides ON the avatar's
+                      // upper-right edge — the standalone status icon is gone
+                      // from the app-bar actions.
+                      PresenceAvatar(
+                        avatar: AccountAvatar(name: device.name, radius: 20),
+                        device: device,
+                      ),
                       const SizedBox(width: LocalLinkSpacing.md),
                       Expanded(
                         child: Column(
@@ -358,7 +375,8 @@ class _ChatScreenState extends State<ChatScreen> {
             actions: _searching
                 ? []
                 : [
-                    DeviceStatusIndicator(device: device, showLabel: false),
+                    // Bundle 130: the hollow/presence circle moved onto the
+                    // title avatar as a badge — nothing else changed here.
                     if (widget.onStartCall != null)
                       IconButton(tooltip: 'Call', onPressed: _startCall, icon: const Icon(Icons.call_outlined)),
                     PopupMenuButton<String>(
@@ -451,6 +469,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 hasAttachments: state.pendingAttachments.isNotEmpty,
                 isRecording: _recording,
                 recordingAmplitude: _recAmplitude,
+                recordingElapsedSeconds: _recElapsedSeconds,
               ),
             ],
           ),

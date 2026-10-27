@@ -19,6 +19,10 @@ class ChatComposer extends StatelessWidget {
   /// appear even with an empty text field (image-without-caption send).
   final bool hasAttachments;
 
+  /// Bundle 130: elapsed seconds while recording — drives the WhatsApp-style
+  /// "0:05" counter that replaced the mic glyph + "Recording…" text.
+  final int recordingElapsedSeconds;
+
   const ChatComposer({
     super.key,
     required this.controller,
@@ -29,6 +33,7 @@ class ChatComposer extends StatelessWidget {
     this.hasAttachments = false,
     this.isRecording = false,
     this.recordingAmplitude = 0,
+    this.recordingElapsedSeconds = 0,
   });
 
   @override
@@ -70,7 +75,10 @@ class ChatComposer extends StatelessWidget {
                   ),
                   Expanded(
                     child: isRecording
-                        ? _RecordingWaveBars(amplitude: recordingAmplitude)
+                        ? _RecordingWaveBars(
+                            amplitude: recordingAmplitude,
+                            elapsedSeconds: recordingElapsedSeconds,
+                          )
                         : LocalLinkTextField(
                               controller: controller,
                       enabled: !isSending,
@@ -80,6 +88,12 @@ class ChatComposer extends StatelessWidget {
                       maxLines: 5,
                       minLines: 1,
                             decoration: const InputDecoration(
+                              // Bundle 130: the global input theme fills every
+                              // field (filled:true) — inside this pill that
+                              // fill painted as a SQUARE slab whose two
+                              // corners peeked out past the pill's rounded
+                              // right end. Kill the fill here.
+                              filled: false,
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               focusedBorder: InputBorder.none,
@@ -188,20 +202,35 @@ class _RoundAction extends StatelessWidget {
 
 /// Compact recording visual: fixed bar count (WhatsApp-like); heights follow
 /// the real mic amplitude with per-bar lag so motion reads smoothly at the
-/// 8 fps poll cadence.
+/// 8 fps poll cadence. Bundle 130: the mic glyph and "Recording…" label are
+/// gone — WhatsApp style = elapsed timer followed by the live wave only.
 class _RecordingWaveBars extends StatelessWidget {
   final int amplitude;
-  const _RecordingWaveBars({required this.amplitude});
+  final int elapsedSeconds;
+  const _RecordingWaveBars({required this.amplitude, this.elapsedSeconds = 0});
 
   static const _bars = 16;
   static const _shapes = [0.62, 1.0, 0.72, 0.9, 0.5, 0.8, 1.0, 0.66];
 
+  String get _elapsedLabel {
+    final minutes = elapsedSeconds ~/ 60;
+    final seconds = (elapsedSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final level = (amplitude / 32767.0).clamp(0.0, 1.0);
     final children = <Widget>[
-      Icon(Icons.mic_rounded, size: 18, color: Theme.of(context).colorScheme.error),
-      const SizedBox(width: 8),
+      Text(
+        _elapsedLabel,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(width: 10),
     ];
     for (var i = 0; i < _bars; i++) {
       final h = 4.0 + 16.0 * (level * _shapes[i % _shapes.length]).clamp(0.05, 1.0);
@@ -212,20 +241,12 @@ class _RecordingWaveBars extends StatelessWidget {
           width: 3,
           height: h,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.error.withOpacity(.85),
+            color: theme.colorScheme.error.withOpacity(.85),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
       ));
     }
-    children.add(const SizedBox(width: 8));
-    children.add(Text(
-      'Recording…',
-      style: Theme.of(context)
-          .textTheme
-          .bodySmall
-          ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-    ));
     return SizedBox(
       height: 52,
       child: Row(children: children),
