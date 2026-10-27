@@ -59,6 +59,16 @@ class LocalLinkTransportService : Service() {
     companion object {
         private const val ROUTE_ADVERTISEMENT_PROTOCOL_VERSION = 2
         private const val ROUTE_ADVERTISEMENT_MAX_AGE_MS = 90_000L
+
+        // Bundle 129: direct (1-hop, next-hop == destination) routes must live
+        // with their socket, not a 60 s advertisement-cycle TTL. Any stall in
+        // the advertisement/maintenance cycle used to expire routes while the
+        // socket was still alive, dropping every send to NO_ROUTE /
+        // PEER_UNAVAILABLE (chat pending forever, call heartbeats throwing
+        // every 15 s). Socket loss stays authoritative: prune() drops routes
+        // with unavailable next hops and disconnect handlers do it instantly —
+        // the maintenance loop + advertisements keep refreshing this anyway.
+        private const val DIRECT_ROUTE_TTL_MS = 5 * 60_000L
         private const val ROUTE_ADVERTISEMENT_INTERVAL_MS = 10_000L
         private const val LAN_BEACON_MAX_SIZE = 2_048
         private const val CHANNEL_ID = "locallink_transport"
@@ -838,7 +848,7 @@ class LocalLinkTransportService : Service() {
         val self = transportDeviceId ?: ""
         val directVersion = directRouteVersions.computeIfAbsent(connection.peerId) { AtomicLong(now) }.incrementAndGet()
         val previousDirect = routeTable[connection.peerId]
-        routeTable.upsert(connection.peerId, MeshRoute(destinationNodeId = connection.peerId, nextHopNodeId = connection.peerId, hopCount = 1, expiresAt = now + 60_000L, lastSeenAt = now, routeVersion = directVersion, path = listOf(self, connection.peerId)))
+        routeTable.upsert(connection.peerId, MeshRoute(destinationNodeId = connection.peerId, nextHopNodeId = connection.peerId, hopCount = 1, expiresAt = now + DIRECT_ROUTE_TTL_MS, lastSeenAt = now, routeVersion = directVersion, path = listOf(self, connection.peerId)))
         val directRecovery = routeRecovery.markRecovered(connection.peerId)
         transportEvent("peer_connected",mapOf(
             "peer_id" to connection.peerId,
@@ -1660,7 +1670,7 @@ class LocalLinkTransportService : Service() {
             return
         }
         val directVersion = directRouteVersions.computeIfAbsent(peerId) { AtomicLong(now) }.get()
-        routeTable.upsert(peerId, MeshRoute(destinationNodeId = peerId, nextHopNodeId = peerId, hopCount = 1, expiresAt = now + 60_000L, lastSeenAt = now, routeVersion = directVersion, path = listOf(self, peerId)))
+        routeTable.upsert(peerId, MeshRoute(destinationNodeId = peerId, nextHopNodeId = peerId, hopCount = 1, expiresAt = now + DIRECT_ROUTE_TTL_MS, lastSeenAt = now, routeVersion = directVersion, path = listOf(self, peerId)))
         var accepted = 0
         val count = routes.length()
         for (i in 0 until count) {
@@ -1989,7 +1999,10 @@ class LocalLinkTransportService : Service() {
         synchronized(meshFlushLock) {
             meshQueueDir.mkdirs()
             val files = meshQueueDir.listFiles { file -> file.extension == "json" }?.sortedBy { it.name } ?: emptyList()
-            if (files.any { queuedPacketId(it) == packet.packetId }) return false
+            // Bundle 129: already parked in the durable queue IS "queued" —
+            // returning false made MeshRouter report NO_ROUTE, which surfaced
+            // as PEER_UNAVAILABLE for a packet safely awaiting a healed route.
+            if (files.any { queuedPacketId(it) == packet.packetId }) return true
             val bytes = files.sumOf { it.length() }
             if (files.size >= meshMaxQueuePackets || bytes + serialized.toByteArray(Charsets.UTF_8).size > meshMaxQueueBytes) {
                 transportEvent("mesh_queue_full", mapOf("target_id" to target, "queued_packets" to files.size, "queued_bytes" to bytes))
@@ -2077,7 +2090,7 @@ class LocalLinkTransportService : Service() {
             if (peer.socket.isClosed) continue
             val path = listOf(self, peer.peerId)
             val version = directRouteVersions[peer.peerId]?.get() ?: now
-            routeTable.upsert(peer.peerId, MeshRoute(destinationNodeId = peer.peerId, nextHopNodeId = peer.peerId, hopCount = 1, expiresAt = now + 60_000L, lastSeenAt = now, routeVersion = version, path = path))
+            routeTable.upsert(peer.peerId, MeshRoute(destinationNodeId = peer.peerId, nextHopNodeId = peer.peerId, hopCount = 1, expiresAt = now + DIRECT_ROUTE_TTL_MS, lastSeenAt = now, routeVersion = version, path = path))
             meshPeers.available(peer.peerId, peer.transportName, now)
         }
     }

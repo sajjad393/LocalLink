@@ -81,9 +81,13 @@ final class HomeBloc extends Cubit<HomeState> {
     unawaited(load());
   }
 
-  Future<void> load({bool userInitiated = false}) async {
+  Future<void> load({bool userInitiated = false, bool quiet = false}) async {
     if (_closed) return;
-    emit(state.copyWith(loading: true, clearError: true, clearSyncNotice: true));
+    // quiet=true (Bundle 129): silent membership refresh when a new chat peer
+    // appears mid-session — no loading shimmer flash on the Chats tab.
+    if (!quiet) {
+      emit(state.copyWith(loading: true, clearError: true, clearSyncNotice: true));
+    }
     try {
       final rawDevices = await repository.devices();
       if (_closed) return;

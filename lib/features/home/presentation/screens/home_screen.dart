@@ -150,6 +150,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadChatPeerIds() async {
     final ids = await widget.messagingRepository.chatPeerIds();
     if (mounted) setState(() => _chatPeerIds = ids);
+    // Bundle 129: a brand-new chat peer must appear in Conversations without
+    // a pull-to-refresh. The message listener refreshed only the peer-id set
+    // + badges, but tiles render state.devices ∩ chatPeerIds — and HomeBloc
+    // loads device membership once at startup, so a peer paired mid-session
+    // stayed invisible ("No conversations yet") until manually refreshed.
+    // Quiet-reload only when an unknown peer actually appears.
+    if (mounted &&
+        ids.any(
+            (peer) => !_controller.devices.any((device) => device.id == peer))) {
+      unawaited(_controller.load(quiet: true));
+    }
     await _refreshUnreadCounts();
   }
 

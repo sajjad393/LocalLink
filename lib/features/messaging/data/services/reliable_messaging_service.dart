@@ -423,6 +423,15 @@ class ReliableMessagingService {
       return;
     }
 
+    // Bundle 129: the known-peers roster push must NEVER be gated behind the
+    // server-token check. Offline accounts have no token, so after every app
+    // restart the native transport's knownPeers list stayed empty — the LAN
+    // dial guard (knownPeers.contains) never fired, no socket was ever built
+    // to paired phones, and every send/reply died as PEER_UNAVAILABLE or
+    // eternal pending until a fresh pairing re-pushed the roster. Push the
+    // roster FIRST, then let the server sync run when online.
+    await refreshKnownPeers();
+
     if (store.deviceToken == null) {
       AppLogger.warning(
         'MESSAGE_SYNC_SKIPPED_NO_TOKEN',
@@ -445,8 +454,7 @@ class ReliableMessagingService {
     );
 
     try {
-      await refreshKnownPeers();
-
+      // (roster already pushed above the token gate — Bundle 129)
       var cursor = store.syncCursor;
       var hasMore = true;
 

@@ -1558,11 +1558,25 @@ final class CallSessionManager implements CallGateway {
   void _sendHeartbeat() {
     final session = _session;
     if (session == null || _isClosing(session)) return;
-    unawaited(_sendSignal({
-      'type': 'call_heartbeat',
-      'call_id': session.id,
-      'recipient_id': session.peerId
-    }));
+    unawaited(() async {
+      // Bundle 129: heartbeat ticks used to throw PlatformException
+      // (PEER_UNAVAILABLE) every 15 s whenever the mesh route was momentarily
+      // down — caught downstream, but it halted debuggers and spammed
+      // CALL_SIGNAL_SEND_FAILED. Skip silently instead; the recovery loop
+      // owns healing a missing link.
+      if (!await _hasLocalRouteTo(session.peerId)) {
+        AppLogger.info(
+          'CALL_HEARTBEAT_SKIPPED',
+          detail: 'call=${session.id} reason=no_local_route',
+        );
+        return;
+      }
+      await _sendSignal({
+        'type': 'call_heartbeat',
+        'call_id': session.id,
+        'recipient_id': session.peerId
+      });
+    }());
   }
 
   void _handleHeartbeatAck(Map<String, dynamic> msg) {

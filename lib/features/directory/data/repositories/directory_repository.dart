@@ -52,7 +52,13 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     if (_started) return;
     _started = true;
     _transportSub = transport.events.listen((event) {
-      unawaited(_handleTransportEvent(event));
+      unawaited(_handleTransportEventSafely(event));
+    }, onError: (Object error, StackTrace stackTrace) {
+      AppLogger.error(
+        'DIRECTORY_TRANSPORT_STREAM_ERROR',
+        error: error,
+        stackTrace: stackTrace,
+      );
     });
     _syncTimer = Timer.periodic(_periodicSyncInterval, (_) {
       unawaited(sync());
@@ -169,6 +175,24 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     return unsigned.copyWith(
       signature: await crypto.signDirectoryProfile(unsigned.canonical()),
     );
+  }
+
+  /// Bundle 129: the subscription above is unawaited — any exception inside
+  /// the handler (a DIRECTORY_SYNC_RESPONSE send racing a not-yet-built
+  /// mesh route hits PlatformException PEER_UNAVAILABLE natively) used to
+  /// escape as an uncaught Zone error and halt the app/debugger on screen
+  /// load. Gossip replies are best-effort: log and swallow.
+  Future<void> _handleTransportEventSafely(Map<String, dynamic> event) async {
+    try {
+      await _handleTransportEvent(event);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'DIRECTORY_EVENT_HANDLER_FAILED',
+        error: error,
+        stackTrace: stackTrace,
+        detail: 'type=${event['type']?.toString() ?? ''}',
+      );
+    }
   }
 
   Future<void> _handleTransportEvent(Map<String, dynamic> event) async {
