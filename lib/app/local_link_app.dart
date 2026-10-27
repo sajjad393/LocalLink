@@ -151,15 +151,13 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
                 await _deps.pairing.accept(request,
                     customName: nameController.text.trim());
               } catch (error) {
-                if (mounted) {
-                  // Bundle 122: show the REAL cause. A generic toast that was
-                  // instantly replaced by the next pair-diagnosis toast made
-                  // the Connect button look dead during retry storms.
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(_pairFailureMessage(error)),
-                    duration: const Duration(seconds: 6),
-                  ));
-                }
+                // Bundle 124: 'context' here belongs to LocalLinkApp itself —
+                // ABOVE MaterialApp — so ScaffoldMessenger.of(context) threw
+                // "No ScaffoldMessenger widget found" and the real pair error
+                // surfaced as a crash. Route through the navigator overlay,
+                // the pattern _showPairDiag already uses.
+                _showAppSnackBar(_pairFailureMessage(error),
+                    duration: const Duration(seconds: 6));
               }
             },
             child: const Text('Connect'),
@@ -185,11 +183,24 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     );
   }
 
-  void _showPairComplete(String displayName) {
+  /// Bundle 124: one safe snackbar entry point for dialogs/streams driven
+  /// from this state. LocalLinkApp's own build context sits ABOVE
+  /// MaterialApp (no ScaffoldMessenger ancestor — the 122 snackbar crashed
+  /// on exactly that); the navigator overlay context always has one.
+  void _showAppSnackBar(String message, {Duration? duration}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Connected with $displayName — say hi!')),
-    );
+    final navigator = _navigatorKey.currentState;
+    final ctx = navigator?.overlay?.context;
+    if (ctx == null) return;
+    final messenger = ScaffoldMessenger.maybeOf(ctx);
+    messenger?.showSnackBar(SnackBar(
+      content: Text(message),
+      duration: duration ?? const Duration(seconds: 4),
+    ));
+  }
+
+  void _showPairComplete(String displayName) {
+    _showAppSnackBar('Connected with $displayName — say hi!');
   }
 
   /// Bundle 122: map a pairing failure to one actionable sentence instead of

@@ -100,25 +100,12 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         activeInstance = this
-        maybeRequestBatteryOptimizationExemption()
-    }
-
-    // OEM task killers (observed: ZTE SuperKiller gauge dumps+kills the app over
-    // ~0.5 s jank even while LocalLinkTransportService runs in the foreground)
-    // honor the battery-optimization exemption. Ask the user via the official
-    // system dialog exactly once per install; silently skip if already exempt.
-    private fun maybeRequestBatteryOptimizationExemption() {
-        if (android.os.Build.VERSION.SDK_INT < 23) return
-        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-        if (pm.isIgnoringBatteryOptimizations(packageName)) return
-        val prefs = getSharedPreferences("locallink_flags", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("battery_exemption_prompted", false)) return
-        prefs.edit().putBoolean("battery_exemption_prompted", true).apply()
-        try {
-            startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:$packageName")))
-        } catch (_: Exception) {
-            try { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (_: Exception) {}
-        }
+        // Bundle 124: the once-per-install battery-exemption dialog that used
+        // to fire here slapped first-time users on TOP of the register/login
+        // screen with zero context. The dashboard permission sequencer
+        // (Bundle 121, step "background") now owns that ask through the same
+        // official system dialog, with recoverable re-asks. OEM killers
+        // (ZTE SuperKiller etc.) still honor the exemption once granted.
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -879,9 +866,9 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Bundle 121: gate-facing battery helpers. The onCreate one-shot prompt
-    // (maybeRequestBatteryOptimizationExemption) stays untouched; it only ever
-    // fires once per install and harmlessly no-ops once granted.
+    // Bundle 121: gate-facing battery helpers. Bundle 124 removed the old
+    // once-per-install onCreate prompt entirely — this sequencer entry is now
+    // the single, recoverable ask for the exemption.
     private fun isBatteryUnrestricted():Boolean{if(android.os.Build.VERSION.SDK_INT<23)return true;val pm=getSystemService(Context.POWER_SERVICE) as android.os.PowerManager;return pm.isIgnoringBatteryOptimizations(packageName)}
     private fun requestBatteryOptimizationExemption(){if(isBatteryUnrestricted())return;try{startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,android.net.Uri.parse("package:$packageName")))}catch(_:Exception){try{startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))}catch(_:Exception){}}}
 

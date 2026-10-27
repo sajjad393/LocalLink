@@ -71,6 +71,26 @@ class _SetupScreenState extends State<SetupScreen> {
         // Bundle 110: offline register/login reopens (or creates) the local
         // account and drops the user straight into the app — no banners,
         // no dialogs, no "offline" wording anywhere.
+        // Bundle 124: flow parity — an offline REGISTRATION takes the same
+        // profile-onboarding step online registrations get, instead of
+        // falling through to the dashboard with the profile never offered
+        // (bundle 123 already seeds a usable row; this is the human step).
+        // Offline login keeps the drop-straight-in behavior.
+        if (_controller.registerMode && mounted) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ProfileScreen(
+                authentication: widget.authentication,
+                accountRepository: widget.accountRepository,
+                api: widget.api,
+                store: widget.store,
+                onboarding: true,
+                transferRepository: widget.transferRepository,
+              ),
+            ),
+          );
+        }
         await widget.onSaved();
         return;
       }
