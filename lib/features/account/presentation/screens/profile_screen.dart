@@ -112,10 +112,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Bundle 105: in-profile Admin View switch removed with the Advanced
   // section — the Admin panel lives in Settings now.
   Future<void> save() async {
+    // Bundle 127: display name + phone are mandatory when UPDATING a profile
+    // (onboarding keeps the old lenient rules so offline first-time setup
+    // can't be blocked by a missing phone number).
+    if (!widget.onboarding) {
+      final missing = <String>[
+        if (name.text.trim().isEmpty) 'Display name',
+        if (phone.text.trim().isEmpty) 'Phone number',
+      ];
+      if (missing.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(missing.length == 1
+              ? '${missing.first} is required — fill it in before saving.'
+              : '${missing.join(' and ')} are required — fill them in before saving.'),
+        ));
+        return;
+      }
+    }
     try {
       final synced = await bloc.saveProfile(
         displayName: name.text,
-        username: username.text,
+        // Bundle 127: username is set once (onboarding) and frozen afterwards —
+        // the field renders disabled in update mode; send the stored value so
+        // no external path can change it either.
+        username: widget.onboarding
+            ? username.text
+            : (profile?.username ?? username.text),
         phoneNumber: phone.text,
         phoneVisibility: visibility,
         discoverableByPhone: true,
@@ -304,9 +326,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: LocalLinkSpacing.sm),
           LocalLinkTextField(controller: name, labelText: 'Display name', hintText: 'How other people see you'),
           const SizedBox(height: LocalLinkSpacing.sm),
-          LocalLinkTextField(controller: username, autocorrect: false, labelText: 'Username', hintText: 'Your unique username', prefixIcon: const Icon(Icons.alternate_email)),
+          // Bundle 127: username is immutable after onboarding — field is
+          // disabled (greyed, untappable) on the update screen, with a lock
+          // affordance so it reads as "fixed", not "broken".
+          LocalLinkTextField(
+            controller: username,
+            autocorrect: false,
+            enabled: widget.onboarding,
+            labelText: 'Username',
+            hintText: widget.onboarding ? 'Your unique username' : 'Set once — cannot be changed',
+            prefixIcon: const Icon(Icons.alternate_email),
+            suffixIcon: widget.onboarding ? null : const Icon(Icons.lock_outline, size: 20),
+          ),
           const SizedBox(height: LocalLinkSpacing.sm),
-          LocalLinkTextField(controller: phone, keyboardType: TextInputType.phone, labelText: 'Phone number', hintText: 'Optional', prefixIcon: const Icon(Icons.phone_outlined)),
+          LocalLinkTextField(
+            controller: phone,
+            keyboardType: TextInputType.phone,
+            labelText: 'Phone number',
+            hintText: widget.onboarding ? 'Optional' : 'Required',
+            prefixIcon: const Icon(Icons.phone_outlined),
+          ),
           const SizedBox(height: LocalLinkSpacing.md),
           SizedBox(
             width: double.infinity,

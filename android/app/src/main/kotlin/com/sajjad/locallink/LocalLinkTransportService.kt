@@ -576,7 +576,7 @@ class LocalLinkTransportService : Service() {
 
     private fun handlePairPacket(raw: String, address: InetAddress) {
         try {
-            Log.d(pairLogTag, "pair-packet rx ${'$'}{raw.length}B from ${'$'}{address.hostAddress}")
+            Log.d(pairLogTag, "pair-packet rx ${raw.length}B from ${address.hostAddress}")
             if (raw.toByteArray(Charsets.UTF_8).size > lanPairMaxBytes) return
             if (address.address.size != 4 || address.isAnyLocalAddress || address.isLoopbackAddress || address.isMulticastAddress) return
             val packet = JSONObject(raw)
@@ -596,7 +596,7 @@ class LocalLinkTransportService : Service() {
                 "body" to body,
                 "address" to (address.hostAddress?.trim().orEmpty()),
             ))
-        } catch (e: Exception) { Log.w(pairLogTag, "pair-packet dropped: ${'$'}{e.message}") }
+        } catch (e: Exception) { Log.w(pairLogTag, "pair-packet dropped: ${e.message}") }
     }
 
     private fun sendPairPayloadInternal(target: String, pair: String, body: String, cb: (Boolean, String?) -> Unit) {
@@ -606,7 +606,7 @@ class LocalLinkTransportService : Service() {
         if (!validTransportId(target) || target == self || (pair != "request" && pair != "accept")) { cb(false, "invalid pair packet"); return }
         if (body.isBlank() || body.length > lanPairMaxBytes) { cb(false, "pair payload is too large"); return }
         val endpoint = lanEndpoints[target]
-        if (endpoint == null) { Log.w(pairLogTag, "pair-packet tx failed: no LAN endpoint for ${'$'}target yet"); cb(false, "peer is not visible on the local network yet — wait for it to appear under On this network"); return }
+        if (endpoint == null) { Log.w(pairLogTag, "pair-packet tx failed: no LAN endpoint for $target yet"); cb(false, "peer is not visible on the local network yet — wait for it to appear under On this network"); return }
         val packet = JSONObject()
             .put("type", "pair_packet")
             .put("pair", pair)
@@ -625,10 +625,10 @@ class LocalLinkTransportService : Service() {
                         Thread.sleep(250)
                     }
                 }
-                Log.d(pairLogTag, "pair-packet tx ok target=${'$'}target kind=${'$'}pair")
+                Log.d(pairLogTag, "pair-packet tx ok target=$target kind=$pair")
                 cb(true, null)
             } catch (e: Exception) {
-                Log.w(pairLogTag, "pair-packet tx failed target=${'$'}target: ${'$'}{e.message}")
+                Log.w(pairLogTag, "pair-packet tx failed target=$target: ${e.message}")
                 cb(false, e.message)
             }
         }.start()

@@ -55,6 +55,10 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
   // contact now appears instantly (ContactsBloc listens to profileUpdates).
   Set<String> _trustedIds = const <String>{};
   StreamSubscription<String>? _pairedSub;
+  // Bundle 126: burst-duplicated accept packets used to fire the "paired"
+  // stream once per copy — each copy re-popped this screen. Dedupe by a
+  // short window: a real second pairing minutes later still auto-pops.
+  DateTime? _lastPairHandledAt;
 
   @override
   void initState() {
@@ -87,8 +91,19 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
   /// the People tab, so popping lands exactly there.
   void _onPaired(String displayName) {
     if (!mounted) return;
-    unawaited(_refreshTrusted());
-    unawaited(Navigator.maybePop(context));
+    final now = DateTime.now();
+    final last = _lastPairHandledAt;
+    if (last != null && now.difference(last) < const Duration(seconds: 5)) {
+      return; // burst duplicate of the pairing we just reacted to
+    }
+    _lastPairHandledAt = now;
+    try {
+      unawaited(_refreshTrusted());
+      unawaited(Navigator.maybePop(context));
+    } catch (_) {
+      // Never let a pairing-completion reaction take the app down — the
+      // contact is already saved; worst case the user navigates back by hand.
+    }
   }
 
   void _snack(String message) {

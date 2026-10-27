@@ -64,6 +64,15 @@ final class PairingService {
   final Map<String, DateTime> _mutedUntil = <String, DateTime>{};
   bool _started = false;
 
+  /// Bundle 126: "nodeId|kind" entries currently being processed. The LAN
+  /// transport burst-delivers each packet (typically three copies in the
+  /// same tick); the mute check used to run only AFTER awaiting _verify, so
+  /// every copy raced through — the receiver stacked phantom "wants to
+  /// connect" dialogs (Connect closed one and the next rose instantly,
+  /// looking like the dialog refused to dismiss) and the sender adopted the
+  /// same peer three times. Added/removed around the processing below.
+  final Set<String> _inflightPairs = <String>{};
+
   Stream<PairRequest> get requests => _requests.stream;
   Stream<String> get paired => _paired.stream;
 
@@ -220,6 +229,15 @@ final class PairingService {
       return;
     }
 
+    // Bundle 126: drop burst duplicates synchronously, before the first
+    // await. A copy that arrives while its sibling is still being verified
+    // returns here; one arriving after processing completes is caught by
+    // the mute window (request) or the trusted fast path (accept) below.
+    final inflightKey = '$nodeId|$kind';
+    if (!_inflightPairs.add(inflightKey)) {
+      return;
+    }
+
     final mutedAt = _mutedUntil[nodeId];
     final isMuted = mutedAt != null && DateTime.now().isBefore(mutedAt);
 
@@ -268,6 +286,8 @@ final class PairingService {
       _diag('Pair packet failed: $error');
       AppLogger.warning('PAIR_PACKET_REJECTED',
           detail: 'node=$nodeId error=$error');
+    } finally {
+      _inflightPairs.remove(inflightKey);
     }
   }
 

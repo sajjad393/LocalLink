@@ -36,7 +36,6 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   // Bundle 108: pair-request dialog host + pairing-complete toasts.
   StreamSubscription<PairRequest>? _pairingRequestSub;
   StreamSubscription<String>? _pairingDoneSub;
-  StreamSubscription<String>? _pairingDiagSub;
   final List<PairRequest> _pairQueue = <PairRequest>[];
   bool _pairDialogOpen = false;
   String? _shownIncomingCallId;
@@ -56,7 +55,11 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     );
     _pairingRequestSub = _deps.pairing.requests.listen(_enqueuePairRequest);
     _pairingDoneSub = _deps.pairing.paired.listen(_showPairComplete);
-    _pairingDiagSub = _deps.pairing.diagnostics.listen(_showPairDiag);
+    // Bundle 126: pairing diagnostics are demoted to logcat-only (the
+    // service still prints every PAIR_DIAG line). While bring-up was broken,
+    // toasting every stage line was worth it; now each packet produced 1–3
+    // identical snackbars on BOTH phones — the request/accept milestones are
+    // already user-visible via the dialog and the "Connected with…" toast.
     _initialize();
   }
 
@@ -154,8 +157,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
                 // Bundle 124: 'context' here belongs to LocalLinkApp itself —
                 // ABOVE MaterialApp — so ScaffoldMessenger.of(context) threw
                 // "No ScaffoldMessenger widget found" and the real pair error
-                // surfaced as a crash. Route through the navigator overlay,
-                // the pattern _showPairDiag already uses.
+                // surfaced as a crash. Route through the navigator overlay
+                // via _showAppSnackBar.
                 _showAppSnackBar(_pairFailureMessage(error),
                     duration: const Duration(seconds: 6));
               }
@@ -167,20 +170,14 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     ).then((_) {
       nameController.dispose();
       _pairDialogOpen = false;
+      // Bundle 126: drop phantom duplicates of the request just answered.
+      // The transport burst-delivers each request several times; service-side
+      // dedupe is primary, this drain keeps the UI safe if one slips through
+      // (that was the "Connect won't dismiss — next dialog rises instantly"
+      // symptom).
+      _pairQueue.removeWhere((queued) => queued.nodeId == request.nodeId);
       _pumpPairQueue();
     });
-  }
-
-  /// Bundle 112: field-debuggable pairing. Stage toasts so a silent failure
-  /// chain stops being silent (transport level lines stay in logcat).
-  void _showPairDiag(String message) {
-    if (!mounted) return;
-    final navigator = _navigatorKey.currentState;
-    final ctx = navigator?.overlay?.context ?? context;
-    ScaffoldMessenger.maybeOf(ctx)?.hideCurrentSnackBar();
-    ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
-    );
   }
 
   /// Bundle 124: one safe snackbar entry point for dialogs/streams driven
@@ -232,10 +229,12 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   Future<void> _initialize() async {
     if (_initializing) return;
     _initializing = true;
-    // Bundle 116: build stamp — first line of every log capture proves
-    // exactly which bundle set is installed on this device.
+    // Bundle 116/126: build stamp — first line of every log capture proves
+    // exactly which bundle set is installed on this device. The stamp
+    // silently stayed at 118 through bundles 119–125, which misled a whole
+    // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'bundles 104-118 (2026-10-27)');
+        detail: 'bundles 104-126 (2026-10-27)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -485,7 +484,6 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   void dispose() {
     _pairingRequestSub?.cancel();
     _pairingDoneSub?.cancel();
-    _pairingDiagSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_callSub?.cancel());
     unawaited(_notificationSub?.cancel());

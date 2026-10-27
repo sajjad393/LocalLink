@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
@@ -227,33 +226,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
           title: Text(title, style: Theme.of(context).textTheme.titleSmall),
           subtitle: Text('@${profile.username}',
               maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                tooltip: 'Rename contact',
-                icon: const Icon(Icons.edit_outlined),
-                onPressed: () => _renameContact(context, profile, title),
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'More',
-                onSelected: (value) async {
-                  if (value == 'rename') {
-                    await _renameContact(context, profile, title);
-                  }
-                  if (value == 'remove') await bloc.remove(profile.userId);
-                  if (value == 'block') await bloc.block(profile.userId);
-                  if (value == 'privacy') await _editPrivacy(profile);
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                      value: 'rename', child: Text('Rename contact…')),
-                  PopupMenuItem(
-                      value: 'privacy', child: Text('Contact privacy…')),
-                  PopupMenuItem(value: 'remove', child: Text('Remove contact')),
-                  PopupMenuItem(value: 'block', child: Text('Block person')),
-                ],
-              ),
+          trailing: PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (value) async {
+              if (value == 'remove') await bloc.remove(profile.userId);
+              if (value == 'block') await bloc.block(profile.userId);
+              if (value == 'privacy') await _editPrivacy(profile);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                  value: 'privacy', child: Text('Contact privacy…')),
+              PopupMenuItem(value: 'remove', child: Text('Remove contact')),
+              PopupMenuItem(value: 'block', child: Text('Block person')),
             ],
           ),
           onTap: () => _chat(profile),
@@ -275,91 +259,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ),
     );
   }
-  /// Bundle 111: edit the LOCAL custom contact name. The sheet prefills the
-  /// currently displayed name; saving an empty field clears the custom name
-  /// and falls back to the other person's profile name again.
-  Future<void> _renameContact(
-      BuildContext context, DirectoryProfile profile, String current) async {
-    final controller = TextEditingController(text: current);
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Rename contact',
-              style: Theme.of(sheetContext).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '@${profile.username} — only you will see this name. Clear it to '
-              'show their profile name again.',
-              style: Theme.of(sheetContext).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              autocorrect: false,
-              autofocus: true,
-              maxLength: 40,
-              decoration: const InputDecoration(
-                labelText: 'Name on this phone',
-                prefixIcon: Icon(Icons.edit_outlined),
-              ),
-              onSubmitted: (_) async {
-                await _saveRename(sheetContext, profile, controller.text);
-              },
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(sheetContext, false),
-                  child: const Text('Cancel'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: () =>
-                      _saveRename(sheetContext, profile, controller.text),
-                  child: const Text('Save name'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-    controller.dispose();
-    if (saved == true && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Contact renamed')),
-      );
-    }
-  }
-
-  Future<void> _saveRename(BuildContext sheetContext, DirectoryProfile profile,
-      String value) async {
-    try {
-      await bloc.renameContact(profile.userId, value.trim());
-      if (sheetContext.mounted) Navigator.pop(sheetContext, true);
-    } catch (e) {
-      if (sheetContext.mounted) {
-        ScaffoldMessenger.of(sheetContext)
-            .showSnackBar(SnackBar(content: Text(cleanBlocError(e))));
-      }
-    }
-  }
-
   Future<void> _editPrivacy(DirectoryProfile profile) async {
     var isPrivate = true;
     try {
