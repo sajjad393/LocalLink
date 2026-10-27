@@ -41,6 +41,13 @@ abstract interface class AuthenticationRepositoryContract {
   bool get isOfflinePending;
   Map<String, dynamic>? get offlinePending;
 
+  /// Bundle 123: guarantee a minimal local profile exists for an
+  /// offline-pending account (seeded at register from 123 onward; legacy ones
+  /// are healed on their next offline login). Without a profile row, pairing
+  /// and QR identity fail with "Finish setting up your profile" even though
+  /// the account is registered.
+  Future<void> ensureOfflineProfileSeed();
+
   /// Verifies a password against the stashed PBKDF2 credentials (offline
   /// re-login and the publish-time confirm step). Never stores plaintext.
   bool verifyOfflinePassword(String password);

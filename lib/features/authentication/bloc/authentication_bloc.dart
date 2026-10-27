@@ -157,6 +157,9 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
     if (repository.verifyOfflineLogin(user, password) ||
         repository.verifyOfflineRecovery(user, password)) {
       await repository.completeOfflineLogin();
+      // Bundle 123: self-heal accounts created before offline registration
+      // seeded a profile — pairing read LocalStore.profile() and found null.
+      await repository.ensureOfflineProfileSeed();
       return const AuthOutcome.offline();
     }
     // Known receiver: the credential simply did not match — say so plainly,

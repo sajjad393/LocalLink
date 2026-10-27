@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:locallink/core/crypto/password_kdf.dart';
 import 'package:locallink/core/crypto/recovery_code.dart';
+import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/local_store.dart';
@@ -200,7 +201,46 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
       recoveryCode: recovery,
       pairingCode: pairingCode,
     );
+    // Bundle 123: the online register path leaves the phone with a usable
+    // profile immediately; do the same here. Pairing/QR read
+    // LocalStore.profile() and failed with "Finish setting up your profile"
+    // for offline accounts until now.
+    await ensureOfflineProfileSeed();
     return recovery;
+  }
+
+  @override
+  Future<void> ensureOfflineProfileSeed() async {
+    if (!_store.isOfflinePending) return;
+    final existing = await _store.profile();
+    if (existing != null && existing.userId.trim().isNotEmpty) return;
+    final pending = _store.offlinePending;
+    final username = pending?['username']?.toString().trim() ??
+        (_store.username?.trim() ?? '');
+    if (username.isEmpty) return;
+    final userId = 'offline_${_localIdSuffix()}';
+    if (existing != null) {
+      // Profile exists but was written before a user id was assigned.
+      await _store.saveProfile(existing.copyWith(userId: userId));
+      return;
+    }
+    await _store.saveProfile(LocalProfile(
+      userId: userId,
+      username: username,
+      deviceId: _store.deviceId ?? '',
+      displayName: username,
+      profileVersion: 1,
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+    ));
+  }
+
+  /// Collision-safe local user id for accounts that have not been published
+  /// yet; `OfflineAccountSyncService.publish` swaps it for the server id.
+  static String _localIdSuffix() {
+    final rng = Random.secure();
+    return List<int>.generate(6, (_) => rng.nextInt(256))
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
   }
 
   @override

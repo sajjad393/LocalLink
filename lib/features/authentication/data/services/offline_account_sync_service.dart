@@ -75,6 +75,19 @@ class OfflineAccountSyncService {
       pairingCode: pairing.isEmpty ? null : pairing,
     );
     await _store.markAccountSynced();
+    // Bundle 123: the seeded offline profile carries a collision-safe local
+    // user id (offline_<hex>). Now that the server assigned the real one,
+    // rewrite the profile row so pairing payloads / QR identity keep pointing
+    // at the same person pre- and post-publish.
+    try {
+      final seeded = await _store.profile();
+      if (seeded != null && seeded.userId.startsWith('offline_')) {
+        await _store.saveProfile(seeded.copyWith(userId: result.account.id));
+      }
+    } catch (_) {
+      // Non-fatal: the account is published; the id swap retries on the next
+      // profile save either way.
+    }
     return result;
   }
 
