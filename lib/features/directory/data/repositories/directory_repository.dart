@@ -958,6 +958,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       throw Exception('Contact has no active device');
     }
     await store.addContact(id, profile.deviceId, customName: customName);
+    // Bundle 125: the People tab lives in an always-mounted IndexedStack and
+    // only repaints on stream events — a pair-added contact used to stay
+    // invisible ("No contacts yet") until a manual pull-to-refresh. Emit.
+    if (!_updates.isClosed) _updates.add(profile);
     // Mirror to the account on the server so contacts survive reinstalls.
     // Failures are NOT discarded silently: the push is deferred to the
     // periodic syncServerContacts reconcile (id marks stay unconfirmed).

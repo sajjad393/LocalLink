@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
@@ -281,6 +282,21 @@ final class PairingService {
     AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_import_done');
     await _directory.addContact(profile.userId, customName: customName);
     AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_contact_saved');
+    // Bundle 125: register the peer's device in known_devices. _isTrusted
+    // reads that table — without this row the trusted fast path was
+    // structurally unreachable: the peer's later pair retries fell off the
+    // mute window and re-opened the Accept dialog forever ("Connected"
+    // toast but popup never stays dismissed), and the roster push below
+    // silently omitted the peer. Presence flags are painted by the normal
+    // discovery feeds afterwards; defaults are fine here.
+    await _store.saveDevice(Device(
+      id: profile.deviceId,
+      name: profile.displayName,
+      platform: 'android',
+      createdAt: DateTime.now().toUtc().toIso8601String(),
+      lastSeenAt: DateTime.now().toUtc().toIso8601String(),
+    ));
+    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_device_registered');
     await _pushRoster();
     AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_roster_pushed');
     // signalPaired=false is used by accept(): the dialog path only announces
@@ -302,6 +318,17 @@ final class PairingService {
     final devices = await _store.localDevices();
     return devices.any(
         (device) => device.id == deviceId && device.revokedAt.isEmpty);
+  }
+
+  /// Bundle 125: node ids this phone already trusts (paired peers). Nearby
+  /// uses it to stop offering "Pair" for phones that are already paired —
+  /// the button used to re-appear because nothing marked the peer known.
+  Future<Set<String>> trustedNodeIds() async {
+    final devices = await _store.localDevices();
+    return devices
+        .where((device) => device.revokedAt.isEmpty)
+        .map((device) => device.id)
+        .toSet();
   }
 
   // ---------------------------------------------------------------- IDENTITY

@@ -49,6 +49,12 @@ class NearbyDevicesScreen extends StatefulWidget {
 
 class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTickerProviderStateMixin {
   late final AnimationController controller;
+  // Bundle 125: node ids of phones already paired with this device — a
+  // paired phone inside the DISCOVERED list must never offer "Pair" again,
+  // and a fresh pairing sends the user back to the People tab where the new
+  // contact now appears instantly (ContactsBloc listens to profileUpdates).
+  Set<String> _trustedIds = const <String>{};
+  StreamSubscription<String>? _pairedSub;
 
   @override
   void initState() {
@@ -57,12 +63,32 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
     controller = AnimationController(vsync: this, duration: const Duration(seconds: 2));
     if (!reduceMotion) controller.repeat();
     widget.connectivity.discoverWifiDirect();
+    unawaited(_refreshTrusted());
+    _pairedSub = widget.pairing.paired.listen(_onPaired);
   }
 
   @override
   void dispose() {
+    unawaited(_pairedSub?.cancel());
+    _pairedSub = null;
     controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshTrusted() async {
+    try {
+      final ids = await widget.pairing.trustedNodeIds();
+      if (mounted) setState(() => _trustedIds = ids);
+    } catch (_) {}
+  }
+
+  /// Bundle 125: pairing succeeded (this phone's "_paired" event fired just
+  /// as the global toast shows "Connected with …") — Nearby was pushed from
+  /// the People tab, so popping lands exactly there.
+  void _onPaired(String displayName) {
+    if (!mounted) return;
+    unawaited(_refreshTrusted());
+    unawaited(Navigator.maybePop(context));
   }
 
   void _snack(String message) {
@@ -352,18 +378,28 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                         )
                       else ...[
                         ...discovered.map(
-                          (peer) => _NearbyCard(
-                            icon: Icons.wifi_find_rounded,
-                            title: peers.length == 1 && peers.first.name.isNotEmpty
-                                ? peers.first.name
-                                : 'LocalLink phone nearby ·…${peer.nodeId.length > 8 ? peer.nodeId.substring(peer.nodeId.length - 8) : peer.nodeId}',
-                            subtitle:
-                                'Same Wi-Fi / LAN — not paired yet',
-                            action: FilledButton.tonal(
-                              onPressed: () => _pairSheet(peer),
-                              child: const Text('Pair'),
-                            ),
-                          ),
+                          (peer) {
+                            // Bundle 125: a phone this device already paired
+                            // with is never offered "Pair" again.
+                            final paired = _trustedIds.contains(peer.nodeId);
+                            return _NearbyCard(
+                              icon: paired
+                                  ? Icons.check_circle_outline_rounded
+                                  : Icons.wifi_find_rounded,
+                              title: peers.length == 1 && peers.first.name.isNotEmpty
+                                  ? peers.first.name
+                                  : 'LocalLink phone nearby ·…${peer.nodeId.length > 8 ? peer.nodeId.substring(peer.nodeId.length - 8) : peer.nodeId}',
+                              subtitle: paired
+                                  ? 'Paired — find them in the People tab'
+                                  : 'Same Wi-Fi / LAN — not paired yet',
+                              action: paired
+                                  ? null
+                                  : FilledButton.tonal(
+                                      onPressed: () => _pairSheet(peer),
+                                      child: const Text('Pair'),
+                                    ),
+                            );
+                          },
                         ),
                         ...wifiOnly.map(
                           (peer) => _NearbyCard(
