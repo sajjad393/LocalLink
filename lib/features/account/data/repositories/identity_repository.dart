@@ -21,14 +21,25 @@ class IdentityRepository implements IdentityRepositoryContract {
       throw StateError('Device identity is not configured');
     }
     await _crypto.init(deviceId);
-    final history = (await _api.identityKeyHistory())
-        .map(IdentityKeyHistoryEntry.fromJson)
-        .toList(growable: false);
+    // Bundle 133: the LOCAL identity key must render even with the server
+    // down. Read it first; history is best-effort — its fetch threw offline
+    // and took the whole screen down with it (the "Public key unavailable"
+    // bug).
     final publicKey = await _crypto.publicKey();
+    List<IdentityKeyHistoryEntry> history = const [];
+    var historyUnavailable = false;
+    try {
+      history = (await _api.identityKeyHistory())
+          .map(IdentityKeyHistoryEntry.fromJson)
+          .toList(growable: false);
+    } catch (_) {
+      historyUnavailable = true;
+    }
     return IdentitySnapshot(
       keyVersion: _crypto.keyVersion,
       publicKey: publicKey,
       history: history,
+      historyUnavailable: historyUnavailable,
     );
   }
 

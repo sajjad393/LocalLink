@@ -1,24 +1,32 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/features/admin/data/models/admin_session.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/data/services/admin_service.dart';
+import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
+import 'package:locallink/features/admin/presentation/screens/admin_panel_screen.dart';
 import 'package:locallink/features/admin/presentation/theme/admin_theme.dart';
 
 /// Administrator sign-in. Two columns on wide screens (brand panel + form),
-/// a single stacked column on phones.
+/// a single stacked column on phones. Bundle 134: success goes straight into
+/// the merged admin panel (works offline on Wi-Fi Direct / mesh).
 class AdminLoginScreen extends StatefulWidget {
   final LocalLinkApi api;
   final AppViewModeCubit viewMode;
   final AdminCapabilityService adminCapability;
+  final AdminRepositoryFactory repositoryFactory;
+  final LocalStore store;
   const AdminLoginScreen(
       {super.key,
       required this.api,
       required this.viewMode,
-      required this.adminCapability});
+      required this.adminCapability,
+      required this.repositoryFactory,
+      required this.store});
 
   @override
   State<AdminLoginScreen> createState() => _AdminLoginScreenState();
@@ -38,13 +46,26 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     _restore();
   }
 
+  /// Bundle 134: login (or a still-valid saved session) lands straight on the
+  /// merged admin panel — server offline now simply locks the server modules.
+  void _openPanel(AdminSession session) {
+    widget.viewMode.setAdminCapability(true);
+    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+      builder: (_) => AdminPanelScreen(
+        api: widget.api,
+        store: widget.store,
+        repositoryFactory: widget.repositoryFactory,
+        session: session,
+        viewMode: widget.viewMode,
+      ),
+    ));
+  }
+
   Future<void> _restore() async {
     final session = await widget.adminCapability.readValidSession();
     if (!mounted) return;
     if (session != null) {
-      widget.viewMode.setAdminCapability(true);
-      widget.viewMode.enterUserView();
-      Navigator.pop(context);
+      _openPanel(session);
       return;
     }
     setState(() => _loading = false);
@@ -69,9 +90,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
             'The server returned an invalid admin session.');
       }
       await widget.adminCapability.store.save(session);
-      widget.viewMode.setAdminCapability(true);
-      widget.viewMode.enterUserView();
-      if (mounted) Navigator.pop(context);
+      if (mounted) _openPanel(session);
     } catch (error) {
       // Operators see a plain-language reason; the raw error never reaches the UI.
       if (mounted) setState(() => _error = friendlyErrorMessage(error.toString()));

@@ -11,6 +11,9 @@ import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
+import 'package:locallink/features/calls/bloc/call_bloc.dart';
+import 'package:locallink/features/calls/data/models/call_session.dart';
+import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/files/bloc/file_transfer_bloc.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
@@ -24,6 +27,11 @@ class ChatScreen extends StatefulWidget {
   final ChatBloc controller;
   final FileTransferRepositoryContract files;
   final Future<void> Function(Device device)? onStartCall;
+
+  /// Bundle 136: set from Home so this chat can show a "Return to call" chip
+  /// whenever the live call belongs to THIS peer (back on CallScreen hides the
+  /// UI; the session lives in CallSessionManager).
+  final CallBloc? calls;
   final LocalLinkNotificationService? notifications;
   final String? initialMessageId;
   final String? initialAttachmentId;
@@ -33,6 +41,7 @@ class ChatScreen extends StatefulWidget {
     required this.controller,
     required this.files,
     this.onStartCall,
+    this.calls,
     this.notifications,
     this.initialMessageId,
     this.initialAttachmentId,
@@ -146,6 +155,52 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
+    }
+  }
+
+  /// Bundle 133+ (approved mock): WhatsApp-minimal recording bar — trash
+  /// discards the in-progress note, the gradient orb sends it immediately.
+  Future<void> _cancelVoiceNote() async {
+    try {
+      await _voiceNotes.cancel();
+    } catch (_) {}
+    _recAmplitudeTimer?.cancel();
+    _recAmplitudeTimer = null;
+    if (mounted) {
+      setState(() {
+        _recording = false;
+        _recAmplitude = 0;
+        _recStartedAt = null;
+      });
+    }
+  }
+
+  Future<void> _finishVoiceNoteSend() async {
+    if (!_recording) return;
+    _recAmplitudeTimer?.cancel();
+    _recAmplitudeTimer = null;
+    try {
+      final file = await _voiceNotes.stop();
+      if (!mounted) return;
+      setState(() {
+        _recording = false;
+        _recAmplitude = 0;
+        _recStartedAt = null;
+      });
+      widget.controller.addPendingAttachments([file]);
+      // Stop+send in one gesture, like WhatsApp — no detached strip step.
+      await widget.controller.send('');
+      if (mounted) _scrollToBottom(animated: true);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _recording = false;
+          _recAmplitude = 0;
+          _recStartedAt = null;
+        });
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_cleanError(error))));
+      }
     }
   }
 
@@ -376,6 +431,9 @@ class _ChatScreenState extends State<ChatScreen> {
             actions: _searching
                 ? []
                 : [
+                    // Bundle 136: resume-live-call chip for THIS peer.
+                    if (widget.calls != null)
+                      _ReturnToCallChip(calls: widget.calls!, peerId: device.id),
                     // Bundle 130: the hollow/presence circle moved onto the
                     // title avatar as a badge — nothing else changed here.
                     if (widget.onStartCall != null)
@@ -475,6 +533,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 onPickAttachments: _pickFiles,
                 onSend: _send,
                 onVoiceNote: _toggleVoiceNote,
+                onVoiceCancel: _cancelVoiceNote,
+                onVoiceSend: _finishVoiceNoteSend,
                 hasAttachments: state.pendingAttachments.isNotEmpty,
                 isRecording: _recording,
                 recordingAmplitude: _recAmplitude,
@@ -586,6 +646,48 @@ class _TransportDivider extends StatelessWidget {
           Expanded(child: Container(height: 1, color: scheme.outlineVariant)),
         ],
       ),
+    );
+  }
+}
+
+/// Bundle 136: compact green chip in the chat app bar — only for a LIVE call
+/// with THIS peer — reopening the (still running) CallScreen.
+class _ReturnToCallChip extends StatelessWidget {
+  final CallBloc calls;
+  final String peerId;
+  const _ReturnToCallChip({required this.calls, required this.peerId});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<CallSession?>(
+      stream: calls.sessionStream,
+      initialData: calls.session,
+      builder: (context, snapshot) {
+        final session = snapshot.data;
+        if (session == null || session.isFinished || session.peerId != peerId) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: ActionChip(
+            avatar: const Icon(Icons.call, size: 15, color: Color(0xFF14532D)),
+            label: const Text('Return',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF14532D))),
+            backgroundColor: const Color(0xFFDFF3E6),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            onPressed: () => Navigator.push<void>(
+              context,
+              MaterialPageRoute(
+                  builder: (_) =>
+                      CallScreen(controller: calls, initialSession: session)),
+            ),
+          ),
+        );
+      },
     );
   }
 }

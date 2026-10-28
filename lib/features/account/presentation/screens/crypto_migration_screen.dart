@@ -121,7 +121,18 @@ class _CryptoMigrationScreenState extends State<CryptoMigrationScreen> {
                 const Text('Identity key history', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
                 if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(friendlyErrorMessage(error), style: TextStyle(color: Theme.of(context).colorScheme.error))),
-                if (state.history.isEmpty)
+                // Bundle 133: server history unreachable — calm note, the
+                // local key above already renders (no more offline red error).
+                if (state.historyUnavailable)
+                  Card(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: const ListTile(
+                      leading: Icon(Icons.cloud_off_outlined),
+                      title: Text('Server history not reachable right now.'),
+                      subtitle: Text('It syncs when the server answers. Your local key above is fine.'),
+                    ),
+                  )
+                else if (state.history.isEmpty)
                   const Card(child: ListTile(title: Text('No server-side key history yet.')))
                 else
                   ...state.history.map(

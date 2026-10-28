@@ -36,7 +36,9 @@ final class AppViewModeState extends Equatable {
 final class AppViewModeCubit extends Cubit<AppViewModeState> {
   AppViewModeCubit() : super(const AppViewModeState());
 
-  bool get canEnterAdminView => state.adminCapable && state.serverConnected;
+  /// Bundle 134: an admin opens the panel even when the server is unreachable —
+  /// the panel itself locks its server-only modules while offline.
+  bool get canEnterAdminView => state.adminCapable;
 
   void setServerConnected(bool connected) {
     if (!connected && state.mode == AppViewMode.admin) {

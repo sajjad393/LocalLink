@@ -9,6 +9,7 @@ import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/features/files/data/models/file_transfer_models.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/files/bloc/file_transfer_bloc.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 
 class AttachmentTile extends StatefulWidget {
@@ -100,9 +101,12 @@ class _AttachmentTileState extends State<AttachmentTile> {
         return;
       }
       setState(() => _displayPath = view);
-    } catch (_) {
-      // Do not render an unprotected legacy file. The attachment remains
-      // unavailable until it can be migrated into the protected format.
+    } catch (error) {
+      // Bundle 133+: never degrade silently again — this catch was pinning
+      // the sender's OWN media behind a download icon with zero diagnostics
+      // (the voice-note/video screenshot bug).
+      AppLogger.error('ATTACHMENT_PREPARE_FAILED',
+          error: error, detail: 'file=${widget.attachment.id}');
       if (mounted) setState(() => _displayPath = null);
     }
   }
@@ -169,8 +173,27 @@ class _AttachmentTileState extends State<AttachmentTile> {
     if (mounted) setState(() => _activeOperation = null);
   }
 
+  /// Bundle 133+: a file that lives on THIS device must never download
+  /// itself. Tap retries the protected local render instead of hitting the
+  /// network for our own bytes.
+  Future<void> _openOrRetryLocal() async {
+    final local = _localPath;
+    if (local == null || local.isEmpty) return;
+    await _prepareExistingPath();
+  }
+
   Future<void> _toggleAudio() async {
-    if (_displayPath == null) { await _download(); return; }
+    if (_displayPath == null) {
+      final local = _localPath;
+      if (local != null && local.isNotEmpty) {
+        // Local file exists but the protected render failed once — retry
+        // that instead of downloading our own bytes back.
+        _prepareExistingPath();
+        return;
+      }
+      await _download();
+      return;
+    }
     try {
       const channel = MethodChannel('locallink/voice_notes');
       if (_playing) {
@@ -285,7 +308,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
                                 child: Icon(
                                   _playing
                                       ? Icons.pause_rounded
-                                      : (_displayPath == null
+                                      : (_displayPath == null &&
+                                              (_localPath == null ||
+                                                  _localPath!.isEmpty)
                                           ? Icons.download_rounded
                                           : Icons.play_arrow_rounded),
                                   color: Colors.white,
@@ -391,9 +416,26 @@ class _AttachmentTileState extends State<AttachmentTile> {
                   )
                 else
                   IconButton(
-                    tooltip: 'Download',
-                    onPressed: _download,
-                    icon: const Icon(Icons.download_rounded),
+                    tooltip: _displayPath == null &&
+                            (_localPath == null || _localPath!.isEmpty)
+                        ? 'Download'
+                        : (widget.attachment.contentType
+                                .toLowerCase()
+                                .startsWith('video/')
+                            ? 'Play'
+                            : 'Open'),
+                    onPressed: _displayPath == null &&
+                            (_localPath == null || _localPath!.isEmpty)
+                        ? _download
+                        : _openOrRetryLocal,
+                    icon: Icon(_displayPath == null &&
+                            (_localPath == null || _localPath!.isEmpty)
+                        ? Icons.download_rounded
+                        : (widget.attachment.contentType
+                                .toLowerCase()
+                                .startsWith('video/')
+                            ? Icons.play_circle_outline_rounded
+                            : Icons.file_open_rounded)),
                   ),
               ],
             ),

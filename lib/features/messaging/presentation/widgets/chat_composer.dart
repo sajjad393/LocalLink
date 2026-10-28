@@ -9,6 +9,10 @@ class ChatComposer extends StatelessWidget {
   final VoidCallback onPickAttachments;
   final VoidCallback onSend;
   final VoidCallback? onVoiceNote;
+  /// Bundle 133+ (approved mock): while recording, left slot = discard
+  /// (trash), right orb = send — WhatsApp-minimal, no red stop FAB.
+  final VoidCallback? onVoiceCancel;
+  final VoidCallback? onVoiceSend;
   final bool isRecording;
 
   /// Live mic level 0..32767 while [isRecording]; powers the in-composer
@@ -30,6 +34,8 @@ class ChatComposer extends StatelessWidget {
     required this.onPickAttachments,
     required this.onSend,
     this.onVoiceNote,
+    this.onVoiceCancel,
+    this.onVoiceSend,
     this.hasAttachments = false,
     this.isRecording = false,
     this.recordingAmplitude = 0,
@@ -65,11 +71,18 @@ class ChatComposer extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   IconButton(
-                    onPressed: isSending ? null : onPickAttachments,
-                    tooltip: 'Attach',
+                    // Recording: the attach slot becomes the discard button.
+                    onPressed: isRecording
+                        ? onVoiceCancel
+                        : (isSending ? null : onPickAttachments),
+                    tooltip: isRecording ? 'Discard voice note' : 'Attach',
                     icon: Icon(
-                      Icons.add_circle_outline_rounded,
-                      color: colors.onSurfaceVariant,
+                      isRecording
+                          ? Icons.delete_outline_rounded
+                          : Icons.add_circle_outline_rounded,
+                      color: isRecording
+                          ? colors.error
+                          : colors.onSurfaceVariant,
                       size: 26,
                     ),
                   ),
@@ -116,6 +129,18 @@ class ChatComposer extends StatelessWidget {
             valueListenable: controller,
             builder: (context, value, _) {
               final hasText = value.text.trim().isNotEmpty;
+              if (isRecording) {
+                // Bundle 133+ (approved mock): WhatsApp-minimal recording
+                // state — the right orb is SEND, the pink stop FAB is gone;
+                // discard lives in the bar's left slot.
+                return _RoundAction(
+                  onPressed: onVoiceSend,
+                  tooltip: 'Send voice note',
+                  gradient: LocalLinkBrand.linearGradient,
+                  icon: const Icon(Icons.send_rounded,
+                      color: Colors.white, size: 24),
+                );
+              }
               if (!hasText && !hasAttachments && onVoiceNote != null) {
                 return _RoundAction(
                   onPressed: isSending ? null : onVoiceNote,

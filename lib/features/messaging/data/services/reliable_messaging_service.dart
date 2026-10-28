@@ -1863,6 +1863,10 @@ class ReliableMessagingService {
         // --------------------------------------------------------------------
         // BUILD DELIVERED MESSAGE
         // --------------------------------------------------------------------
+        // Bundle 133 (divider fix): carry the receive-transport stamp through
+        // the rebuild — this constructor was discarding it (channel: null),
+        // so Wi-Fi Direct/LAN/Mesh messages saved with NO label and the
+        // chat thread never rendered the section dividers.
         message = Message(
           id: message.id,
           senderId: message.senderId,
@@ -1873,6 +1877,7 @@ class ReliableMessagingService {
           deliveredAt: receivedAtUtc.toIso8601String(),
           serverSeq: message.serverSeq,
           attachments: directAttachments,
+          channel: message.channel,
         );
 
         final existed = await store.messageExists(

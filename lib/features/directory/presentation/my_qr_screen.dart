@@ -2,9 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:flutter/material.dart';
 
@@ -55,7 +58,6 @@ class MyQrScreen extends StatelessWidget {
     // Bundle 118: card-based layout, avatar in the QR centre (error
     // correction H leaves 30% headroom so the overlay never breaks scans),
     // 3 short icon steps instead of prose, and copy/scan actions.
-    final scheme = Theme.of(context).colorScheme;
     final name = profile.displayName.isNotEmpty
         ? profile.displayName
         : (profile.username.isNotEmpty ? profile.username : 'LocalLink user');
@@ -101,117 +103,29 @@ class MyQrScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
             children: [
-              Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24)),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
-                  child: Column(
-                    children: [
-                      Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          QrImageView(
-                            data: payload,
-                            size: 232,
-                            errorCorrectionLevel: QrErrorCorrectLevel.H,
-                            backgroundColor: Colors.white,
-                          ),
-                          Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border:
-                                  Border.all(color: Colors.white, width: 5),
+              // Bundle 133: "Share code" now shares a PNG of the QR CARD
+              // itself (this wrapper renders the card into an image) instead
+              // of copying the raw JSON payload text. Clipboard copy remains
+              // one tap deeper via the paste-code dialog.
+              _QrCardWithShare(
+                payload: payload,
+                name: name,
+                username: profile.username,
+                initial: initial,
+                hasAvatar: hasAvatar,
+                avatarPath: profile.avatarUrl,
+                canScan: repository != null,
+                onScan: repository == null
+                    ? null
+                    : () => Navigator.push<void>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ContactQrScannerScreen(
+                              crypto: crypto,
+                              repository: repository!,
                             ),
-                            child: hasAvatar
-                                ? CircleAvatar(
-                                    radius: 28,
-                                    backgroundImage:
-                                        FileImage(File(profile.avatarUrl)),
-                                  )
-                                : CircleAvatar(
-                                    radius: 28,
-                                    backgroundColor: scheme.primary,
-                                    child: Text(
-                                      initial,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 26,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        name,
-                        style: Theme.of(context).textTheme.titleLarge,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '@${profile.username.isNotEmpty ? profile.username : 'locallink'} · LocalLink',
-                        style: Theme.of(context).textTheme.bodySmall,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              _QrStep(
-                icon: Icons.smartphone_outlined,
-                text: 'Open LocalLink on the other phone',
-              ),
-              _QrStep(
-                icon: Icons.center_focus_strong_outlined,
-                text: 'Point its camera at this code',
-              ),
-              _QrStep(
-                icon: Icons.check_circle_outline,
-                text: 'Contact is added instantly',
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () async {
-                        await Clipboard.setData(ClipboardData(text: payload));
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text(
-                                    'Code copied — paste it in any chat')),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.share_outlined, size: 18),
-                      label: const Text('Share code'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: repository == null
-                          ? null
-                          : () => Navigator.push<void>(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ContactQrScannerScreen(
-                                    crypto: crypto,
-                                    repository: repository!,
-                                  ),
-                                ),
-                              ),
-                      icon: const Icon(Icons.qr_code_scanner_outlined, size: 18),
-                      label: const Text('Scan instead'),
-                    ),
-                  ),
-                ],
+                        ),
               ),
             ],
           );
@@ -504,6 +418,177 @@ class _QrStep extends StatelessWidget {
                   Text(text, style: Theme.of(context).textTheme.bodyMedium)),
         ],
       ),
+    );
+  }
+}
+
+/// Bundle 133: the QR card + action row, with the card wrapped in a
+/// RepaintBoundary so "Share code" can snapshot it into a PNG and open the
+/// system share sheet — a picture the other phone can scan, instead of the
+/// raw JSON payload text it used to send.
+class _QrCardWithShare extends StatefulWidget {
+  final String payload;
+  final String name;
+  final String username;
+  final String initial;
+  final bool hasAvatar;
+  final String avatarPath;
+  final bool canScan;
+  final VoidCallback? onScan;
+
+  const _QrCardWithShare({
+    required this.payload,
+    required this.name,
+    required this.username,
+    required this.initial,
+    required this.hasAvatar,
+    required this.avatarPath,
+    required this.canScan,
+    required this.onScan,
+  });
+
+  @override
+  State<_QrCardWithShare> createState() => _QrCardWithShareState();
+}
+
+class _QrCardWithShareState extends State<_QrCardWithShare> {
+  final GlobalKey _cardKey = GlobalKey();
+  bool _sharing = false;
+
+  Future<void> _shareCardAsImage() async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      final boundaryContext = _cardKey.currentContext;
+      final boundary = boundaryContext?.findRenderObject();
+      if (boundaryContext == null || boundary is! RenderRepaintBoundary) {
+        return;
+      }
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (png == null) return;
+      final file = File(
+          '${Directory.systemTemp.path}/locallink_qr_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(png.buffer.asUint8List(), flush: true);
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'image/png')],
+        text: 'Scan this code to add me on LocalLink',
+      );
+    } catch (error) {
+      AppLogger.error('QR_SHARE_IMAGE_FAILED', error: error);
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        RepaintBoundary(
+          key: _cardKey,
+          child: Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+              child: Column(
+                children: [
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      QrImageView(
+                        data: widget.payload,
+                        size: 232,
+                        errorCorrectionLevel: QrErrorCorrectLevel.H,
+                        backgroundColor: Colors.white,
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border:
+                              Border.all(color: Colors.white, width: 5),
+                        ),
+                        child: widget.hasAvatar
+                            ? CircleAvatar(
+                                radius: 28,
+                                backgroundImage:
+                                    FileImage(File(widget.avatarPath)),
+                              )
+                            : CircleAvatar(
+                                radius: 28,
+                                backgroundColor: scheme.primary,
+                                child: Text(
+                                  widget.initial,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    widget.name,
+                    style: Theme.of(context).textTheme.titleLarge,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '@${widget.username.isNotEmpty ? widget.username : 'locallink'} · LocalLink',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        const _QrStep(
+          icon: Icons.smartphone_outlined,
+          text: 'Open LocalLink on the other phone',
+        ),
+        const _QrStep(
+          icon: Icons.center_focus_strong_outlined,
+          text: 'Point its camera at this code',
+        ),
+        const _QrStep(
+          icon: Icons.check_circle_outline,
+          text: 'Contact is added instantly',
+        ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: _sharing ? null : _shareCardAsImage,
+                icon: _sharing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.share_outlined, size: 18),
+                label: Text(_sharing ? 'Preparing…' : 'Share code'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: widget.canScan ? widget.onScan : null,
+                icon: const Icon(Icons.qr_code_scanner_outlined, size: 18),
+                label: const Text('Scan instead'),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

@@ -210,7 +210,9 @@ class MessengerSettingsScreen extends StatelessWidget {
               context,
               icon: Icons.admin_panel_settings_outlined,
               title: 'Admin panel',
-              subtitle: 'Administrative tools for authorized accounts',
+              // Bundle 134: works offline too — the panel itself locks its
+              // server-only modules when the server is unreachable.
+              subtitle: 'Local link + server tools (works on Wi-Fi Direct / mesh)',
               onTap: () => Navigator.push<void>(
                 context,
                 MaterialPageRoute(
@@ -218,6 +220,8 @@ class MessengerSettingsScreen extends StatelessWidget {
                     api: api,
                     viewMode: viewMode,
                     adminCapability: adminCapability,
+                    repositoryFactory: adminRepositoryFactory,
+                    store: store,
                   ),
                 ),
               ),

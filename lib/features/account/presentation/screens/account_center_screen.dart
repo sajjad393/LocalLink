@@ -148,14 +148,49 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                       ),
                       if (state.errorMessage != null) ...[
                         const SizedBox(height: LocalLinkSpacing.sm),
-                        LocalLinkInlineError(message: 'Your saved profile is shown. ${friendlyErrorMessage(state.errorMessage!)}', onRetry: _controller.load),
+                        // Bundle 133: an unreachable server is a STATE, not an
+                        // error — offline shows a calm note; a real failure
+                        // while connected keeps the red inline error.
+                        if (!widget.viewMode.state.serverConnected)
+                          Card(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.all(LocalLinkSpacing.md),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.cloud_off_outlined,
+                                      size: 18,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      "You're offline — saved profile shown. It refreshes by itself when the server answers.",
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          LocalLinkInlineError(
+                              message:
+                                  'Your saved profile is shown. ${friendlyErrorMessage(state.errorMessage!)}',
+                              onRetry: _controller.load),
                       ],
                       const SizedBox(height: LocalLinkSpacing.section),
                       const Text('Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                       const SizedBox(height: LocalLinkSpacing.sm),
                       _action(icon: Icons.person_outline, title: 'My profile', subtitle: 'Name, username and profile photo', onTap: _openProfile),
                       _action(icon: Icons.devices_outlined, title: 'Trusted devices', subtitle: 'Review and revoke signed-in phones', onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => DevicesScreen(accountRepository: widget.accountRepository, identityRepository: widget.identityRepository, api: widget.api, store: widget.store, crypto: widget.crypto, restoreService: widget.restoreService)))),
-                      _action(icon: Icons.qr_code_2, title: 'Transfer account', subtitle: 'Move this account to another phone', onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AccountTransferScreen(repository: widget.transferRepository)))),
+                      _action(icon: Icons.qr_code_2, title: 'Transfer account', subtitle: 'Move this account to another phone', onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AccountTransferScreen(repository: widget.transferRepository, viewMode: widget.viewMode)))),
                       const SizedBox(height: LocalLinkSpacing.md),
                       const Text('Data & security', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                       const SizedBox(height: LocalLinkSpacing.sm),

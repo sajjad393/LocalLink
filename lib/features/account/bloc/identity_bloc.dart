@@ -12,6 +12,10 @@ final class IdentityState extends Equatable {
   final bool isRotating;
   final String? errorMessage;
 
+  /// Bundle 133: local key rendered fine, server history unreachable — the
+  /// screen shows a calm note instead of an error.
+  final bool historyUnavailable;
+
   const IdentityState({
     this.currentVersion = 1,
     this.currentPublicKey = '',
@@ -19,6 +23,7 @@ final class IdentityState extends Equatable {
     this.isLoading = true,
     this.isRotating = false,
     this.errorMessage,
+    this.historyUnavailable = false,
   });
 
   IdentityState copyWith({
@@ -28,6 +33,7 @@ final class IdentityState extends Equatable {
     bool? isLoading,
     bool? isRotating,
     String? errorMessage,
+    bool? historyUnavailable,
     bool clearError = false,
   }) =>
       IdentityState(
@@ -37,6 +43,7 @@ final class IdentityState extends Equatable {
         isLoading: isLoading ?? this.isLoading,
         isRotating: isRotating ?? this.isRotating,
         errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+        historyUnavailable: historyUnavailable ?? this.historyUnavailable,
       );
 
   @override
@@ -47,6 +54,7 @@ final class IdentityState extends Equatable {
         isLoading,
         isRotating,
         errorMessage,
+        historyUnavailable,
       ];
 }
 
@@ -72,6 +80,7 @@ final class IdentityBloc extends Cubit<IdentityState> {
         currentVersion: result.keyVersion,
         currentPublicKey: result.publicKey,
         history: result.history,
+        historyUnavailable: result.historyUnavailable,
         isLoading: false,
       ));
     } catch (error) {

@@ -1402,6 +1402,32 @@ class LocalStore {
 
   Future<void> unblockUser(String userId) =>
       _db.delete('blocked_users', where: 'user_id=?', whereArgs: [userId]);
+
+  /// Bundle 135 (offline admin moderation): ban by DEVICE and by USER — the
+  /// device row is needed for peer-level checks (blocking by device id works
+  /// via isBlockedPeer's direct lookup), user rows cover message-level checks
+  /// for every device that account uses. Fully local, works on WD/mesh.
+  Future<void> blockDeviceAndUser(String deviceId) async {
+    if (deviceId.isEmpty) return;
+    await blockUser(deviceId);
+    final rows = await _db.rawQuery(
+        'SELECT DISTINCT user_id FROM directory_profiles WHERE device_id = ?',
+        [deviceId]);
+    for (final row in rows) {
+      final userId = row['user_id']?.toString() ?? '';
+      if (userId.isNotEmpty) await blockUser(userId);
+    }
+  }
+
+  /// Bundle 134 (admin panel / local moderation): list every blocked user with
+  /// best-effort names from the directory cache so the admin sees people, not
+  /// bare ids. Works fully offline — pure local query.
+  Future<List<Map<String, Object?>>> blockedUsersOverview() => _db.rawQuery(
+      'SELECT b.user_id AS user_id, b.blocked_at AS blocked_at, '
+      'p.username AS username, p.display_name AS display_name '
+      'FROM blocked_users b '
+      'LEFT JOIN directory_profiles p ON p.user_id = b.user_id '
+      'ORDER BY b.blocked_at DESC');
   Future<bool> isBlocked(String userId) async =>
       (await _db.query('blocked_users',
               where: 'user_id=?', whereArgs: [userId], limit: 1))
@@ -1903,6 +1929,9 @@ class LocalStore {
           status: m.status,
           deliveredAt: m.deliveredAt,
           serverSeq: m.serverSeq,
+          // Bundle 133+: carry the persisted receive transport so thread
+          // dividers survive every history reload (was dropped here).
+          channel: m.channel,
           attachments: atts));
     }
     return out;
@@ -2198,6 +2227,7 @@ class LocalStore {
       status: message.status,
       deliveredAt: message.deliveredAt,
       serverSeq: message.serverSeq,
+      channel: message.channel,
       attachments: attachments,
     );
   }

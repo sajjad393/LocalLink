@@ -1,7 +1,7 @@
 name: locallink
 publish_to: 'none'
 description: LocalLink offline LAN communication client.
-version: 2.0.0+33
+version: 2.0.4+37
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -22,6 +22,7 @@ dependencies:
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.1.1
   lottie: ^3.3.1
+  share_plus: ^10.1.4
 
   flutter_bloc: ^8.1.6
   equatable: ^2.0.7

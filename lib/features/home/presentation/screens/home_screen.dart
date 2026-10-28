@@ -21,6 +21,7 @@ import 'package:locallink/features/account/domain/identity_repository_contract.d
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
+import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/data/services/call_preflight_exception.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/calls/presentation/screens/calls_screen.dart';
@@ -597,6 +598,19 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  /// Bundle 136: green "return to call" path. Pressing back on the call
+  /// screen leaves the session alive at service level; this resumes the UI.
+  Future<void> _resumeCall() async {
+    final session = widget.calls.session;
+    if (session == null || session.isFinished || !mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+          builder: (_) =>
+              CallScreen(controller: widget.calls, initialSession: session)),
+    );
+  }
+
   Future<void> _openChat(Device device) async {
     await Navigator.push<void>(
       context,
@@ -606,7 +620,15 @@ class _HomeScreenState extends State<HomeScreen> {
               ChatBloc(repository: widget.messagingRepository, device: device),
           files: widget.files,
           notifications: widget.notifications,
+          calls: widget.calls,
           onStartCall: (peer) async {
+            // Bundle 136: a live call resumes instead of starting a new one.
+            final live = widget.calls.session;
+            if (live != null && !live.isFinished) {
+              if (!context.mounted) return;
+              await _resumeCall();
+              return;
+            }
             await widget.calls.startCall(peer);
             if (!context.mounted) return;
             final session = widget.calls.session;
@@ -626,6 +648,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _call(Device device) async {
     try {
+      // Bundle 136: a live call resumes instead of starting a new one.
+      final live = widget.calls.session;
+      if (live != null && !live.isFinished) {
+        await _resumeCall();
+        return;
+      }
       await widget.calls.startCall(device);
       if (!mounted) return;
       final session = widget.calls.session;
@@ -699,6 +727,7 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: Icons.chat_bubble_outline_rounded,
         onPressed: () => setState(() => _index = 2),
       ),
+      bottomNavigationBar: _OngoingCallBar(calls: widget.calls, onOpen: _resumeCall),
       body: LocalLinkBlocBuilder<HomeBloc, HomeState>(
         bloc: _controller,
         builder: (context, state) {
@@ -962,6 +991,112 @@ class _SyncNotice extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Bundle 136: green "Call in progress — tap to return" bar pinned under the
+/// Chats list (Scaffold bottomNavigationBar slot so adding it is zero-risk).
+/// The call session lives in CallSessionManager — back on CallScreen only
+/// hides the UI; this bar is the way back in.
+class _OngoingCallBar extends StatefulWidget {
+  final CallBloc calls;
+  final Future<void> Function() onOpen;
+  const _OngoingCallBar({required this.calls, required this.onOpen});
+
+  @override
+  State<_OngoingCallBar> createState() => _OngoingCallBarState();
+}
+
+class _OngoingCallBarState extends State<_OngoingCallBar> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    // Repaint on session events and every second while a call is live (timer
+    // text), so the bar appears/vanishes instantly and the clock ticks.
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  String _clock(CallSession session) {
+    final start = session.answeredAt ?? session.startedAt;
+    final seconds =
+        DateTime.now().difference(start).inSeconds.clamp(0, 359999);
+    final m = (seconds ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<CallSession?>(
+      stream: widget.calls.sessionStream,
+      initialData: widget.calls.session,
+      builder: (context, snapshot) {
+        final session = snapshot.data;
+        if (session == null || session.isFinished) {
+          return const SizedBox.shrink();
+        }
+        return SafeArea(
+          top: false,
+          child: GestureDetector(
+            onTap: () => widget.onOpen(),
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDFF3E6),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 3)),
+                ],
+              ),
+              child: Row(children: [
+                const CircleAvatar(
+                  radius: 17,
+                  backgroundColor: Color(0xFF1E7D4F),
+                  child:
+                      Icon(Icons.call, color: Colors.white, size: 17),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Call in progress',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF14532D))),
+                      const SizedBox(height: 1),
+                      Text(
+                          '${session.peerName} · ${_clock(session)} — Tap to return',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF3F6B50))),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: Color(0xFF3F6B50)),
+              ]),
+            ),
+          ),
+        );
+      },
     );
   }
 }
