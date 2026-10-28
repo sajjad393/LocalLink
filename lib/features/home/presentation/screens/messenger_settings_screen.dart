@@ -242,6 +242,7 @@ class MessengerSettingsScreen extends StatelessWidget {
             _row(
               context,
               icon: Icons.restart_alt,
+              title: 'Reset setup',
               subtitle: 'Clear this phone’s local setup and start again',
               destructive: true,
               onTap: () async {

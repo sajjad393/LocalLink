@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart';
 
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';

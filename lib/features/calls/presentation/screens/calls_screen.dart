@@ -9,7 +9,8 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
-import 'package:locallink/features/calls/data/models/call_session.dart';
+import 'package:locallink/features/calls/data/models/call_session.dart'
+    show CallSession;
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_history_tile.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';

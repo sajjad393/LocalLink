@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:locallink/core/services/local_store.dart';
-import 'package:locallink/core/theme/app_tokens.dart';
 
 /// Bundle 140: "Keep LocalLink running" — approved mock.
 /// Opt-in on tap only; once granted, options LOCK and only explain themselves
