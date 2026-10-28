@@ -91,6 +91,7 @@ object CallNotificationManager {
             Notification.Builder(context)
         }
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF209DEB.toInt()) // Bundle 141
             .setContentTitle("Incoming call")
             .setContentText(callerName.ifBlank { callerId })
             .setCategory(Notification.CATEGORY_CALL)

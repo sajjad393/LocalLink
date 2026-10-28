@@ -210,6 +210,7 @@ object LocalLinkNotificationManager {
             NotificationCompat.Builder(context)
         }
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF209DEB.toInt()) // Bundle 141: brand blue tint
             .setContentTitle(title.ifBlank { "LocalLink" })
             .setContentText(body.ifBlank { summary })
             .setContentIntent(openPending)
@@ -232,6 +233,7 @@ object LocalLinkNotificationManager {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     val publicVersion = Notification.Builder(context)
                         .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF209DEB.toInt()) // Bundle 141: brand blue tint
                         .setContentTitle(publicTitle.ifBlank { "LocalLink" })
                         .setContentText(publicBody.ifBlank { "New notification" })
                         .setCategory(Notification.CATEGORY_MESSAGE)
@@ -243,8 +245,8 @@ object LocalLinkNotificationManager {
             else -> builder.setVisibility(Notification.VISIBILITY_PUBLIC)
         }
 
-        val avatar = loadAvatar(context, avatarPath, initials)
-        if (avatar != null) builder.setLargeIcon(avatar)
+        // Bundle 141: no large icon on the right — the left logo glyph is the
+        // only icon (user request). avatarPath/initials stay in the channel API.
 
         val image = loadImage(imagePath)
         if (image != null && visibility == 1) {
@@ -307,6 +309,7 @@ object LocalLinkNotificationManager {
             NotificationCompat.Builder(context)
         }
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF209DEB.toInt()) // Bundle 141: brand blue tint
             .setContentTitle(title.ifBlank { "LocalLink" })
             .setContentText(body.ifBlank { "New messages" })
             .setCategory(Notification.CATEGORY_MESSAGE)
@@ -338,6 +341,7 @@ object LocalLinkNotificationManager {
             NotificationCompat.Builder(context)
         }
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF209DEB.toInt()) // Bundle 141: brand blue tint
             .setContentTitle(title)
             .setContentText(body)
             .setCategory(Notification.CATEGORY_STATUS)
@@ -412,38 +416,4 @@ object LocalLinkNotificationManager {
         }
     }
 
-    private fun loadAvatar(context: Context, avatarPath: String?, initials: String): Bitmap? {
-        val fromFile = loadImage(avatarPath)
-        if (fromFile != null) return fromFile
-        if (initials.trim().isNotEmpty()) return InitialsBitmap.create(initials, 128)
-        return try {
-            val drawable = context.applicationInfo.loadIcon(context.packageManager)
-            val bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
-            val canvas = android.graphics.Canvas(bitmap)
-            drawable.setBounds(0, 0, canvas.width, canvas.height)
-            drawable.draw(canvas)
-            bitmap
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private object InitialsBitmap {
-        fun create(value: String, size: Int): Bitmap? {
-            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            val canvas = android.graphics.Canvas(bitmap)
-            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.DKGRAY
-                textAlign = android.graphics.Paint.Align.CENTER
-                textSize = size * 0.42f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-            }
-            canvas.drawColor(android.graphics.Color.LTGRAY)
-            val metrics = paint.fontMetrics
-            val baseline = size / 2f - (metrics.ascent + metrics.descent) / 2f
-            val safe = value.trim().take(2).ifBlank { "L" }
-            canvas.drawText(safe.uppercase(), size / 2f, baseline, paint)
-            return bitmap
-        }
-    }
 }

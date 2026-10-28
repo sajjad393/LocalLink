@@ -75,15 +75,18 @@ object CallRingtoneManager {
         }
 
         runCatching {
-            player = MediaPlayer.create(context.applicationContext, R.raw.locallink_ringtone)?.apply {
+            // Bundle 141: attributes must be set BEFORE prepare(); the old
+            // MediaPlayer.create() path returned a prepared player, Android
+            // rejected the attributes ("state 8") and the tone played at media volume.
+            player = preparedPlayer(
+                context,
+                R.raw.locallink_ringtone,
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            )?.apply {
                 isLooping = true
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    val attributes = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                    setAudioAttributes(attributes)
-                }
                 setOnCompletionListener { if (wantsRinging) start() }
                 start()
             }
@@ -104,20 +107,35 @@ object CallRingtoneManager {
     fun startRingback(context: Context) {
         if (ringbackPlayer?.isPlaying == true) return
         runCatching {
-            ringbackPlayer = MediaPlayer.create(context.applicationContext, R.raw.locallink_ringback)?.apply {
+            ringbackPlayer = preparedPlayer(
+                context,
+                R.raw.locallink_ringback,
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            )?.apply {
                 isLooping = true
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build()
-                    )
-                }
                 setVolume(0.75f, 0.75f)
                 start()
             }
         }.onFailure { releaseRingbackOnly() }
+    }
+
+    // Bundle 141: idle -> setAudioAttributes -> setDataSource -> prepare.
+    private fun preparedPlayer(context: Context, rawRes: Int, attributes: AudioAttributes): MediaPlayer? {
+        val player = MediaPlayer()
+        return try {
+            player.setAudioAttributes(attributes)
+            context.applicationContext.resources.openRawResourceFd(rawRes).use { afd ->
+                player.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            }
+            player.prepare()
+            player
+        } catch (_: Exception) {
+            runCatching { player.release() }
+            null
+        }
     }
 
     @Synchronized
