@@ -1028,6 +1028,8 @@ class _OngoingCallBarState extends State<_OngoingCallBar> {
   }
 
   String _clock(CallSession session) {
+    // Bundle 137: the clock exists ONLY after the peer answers — "Calling…"
+    // while ringing (no timer pre-answer), per your report.
     final start = session.answeredAt ?? session.startedAt;
     final seconds =
         DateTime.now().difference(start).inSeconds.clamp(0, 359999);
@@ -1083,7 +1085,9 @@ class _OngoingCallBarState extends State<_OngoingCallBar> {
                               color: Color(0xFF14532D))),
                       const SizedBox(height: 1),
                       Text(
-                          '${session.peerName} · ${_clock(session)} — Tap to return',
+                          session.answeredAt == null
+                              ? '${session.peerName} · Calling… — Tap to return'
+                              : '${session.peerName} · ${_clock(session)} — Tap to return',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(

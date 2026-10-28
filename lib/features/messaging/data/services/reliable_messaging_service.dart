@@ -843,9 +843,6 @@ class ReliableMessagingService {
                 'original_name': file.name,
                 'content_type': file.contentType,
                 'size': file.size,
-                'sha256': '',
-                'width': 0,
-                'height': 0,
                 'is_image': file.contentType.startsWith('image/'),
               });
             }
@@ -1811,6 +1808,10 @@ class ReliableMessagingService {
         // --------------------------------------------------------------------
         final directAttachments = <Attachment>[];
 
+        // Bundle 138: resolving attachment rows must never abort the ack
+        // path — a receiver-side crash HERE left senders permanently pending
+        // (media stuck on WD/LAN). Resolve best-effort, ack regardless.
+        try {
         for (final attachment in message.attachments) {
           final stored = await store.directFile(
             attachment.id,
@@ -1840,6 +1841,16 @@ class ReliableMessagingService {
               ),
             );
           }
+        }
+
+        } catch (error, stackTrace) {
+          AppLogger.error(
+            'DIRECT_ATTACH_RESOLVE_FAILED',
+            error: error,
+            stackTrace: stackTrace,
+            detail: 'message=${message.id}',
+          );
+          directAttachments.clear();
         }
 
         // --------------------------------------------------------------------
@@ -1887,8 +1898,20 @@ class ReliableMessagingService {
         // --------------------------------------------------------------------
         // SAVE MESSAGE
         // --------------------------------------------------------------------
-        await LocalStore.timedOp(
-        'message_save', () => store.saveMessage(message));
+        // Bundle 138: a failed save still ACKs — the message is retried by the
+        // sender's queue anyway; an un-acked sender bubble pending forever is
+        // the bug we're killing.
+        try {
+          await LocalStore.timedOp(
+              'message_save', () => store.saveMessage(message));
+        } catch (error, stackTrace) {
+          AppLogger.error(
+            'DIRECT_MESSAGE_SAVE_FAILED',
+            error: error,
+            stackTrace: stackTrace,
+            detail: 'id=${message.id}',
+          );
+        }
 
         AppLogger.info(
           'DIRECT_MESSAGE_SAVED',

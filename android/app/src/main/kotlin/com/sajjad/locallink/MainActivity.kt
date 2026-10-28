@@ -306,6 +306,28 @@ class MainActivity : FlutterActivity() {
         }
 
         CallNotificationManager.initialize(this)
+
+        // Bundle 140: "Keep LocalLink running" — battery-exemption status /
+        // system dialog, and OEM autostart deep links (HiOS/MIUI/ColorOS/…).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "locallink/background").setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "batteryExempted" -> result.success(powerManager().isIgnoringBatteryOptimizations(packageName))
+                    "requestBatteryExemption" -> {
+                        if (!powerManager().isIgnoringBatteryOptimizations(packageName)) {
+                            startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                        result.success(null)
+                    }
+                    "openVendorSettings" -> result.success(openVendorBackgroundSettings())
+                    "keepAliveStart" -> { LocalLinkTransportService.start(this); result.success(null) }
+                    else -> result.notImplemented()
+                }
+            } catch (error: Exception) {
+                result.error("background", error.message, null)
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, callNotificationChannelName).setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
@@ -779,8 +801,64 @@ class MainActivity : FlutterActivity() {
         if (sink != null) sink.success(event) else pendingCallNotificationActions.add(event)
     }
 
+    // Bundle 140: background keep-alive helpers (see "locallink/background").
+    private fun powerManager(): android.os.PowerManager =
+        getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+
+    private fun openVendorBackgroundSettings(): String {
+        val candidates = listOf(
+            ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+            ComponentName("com.transsion.phonemanager", "com.transsion.phonemanager.appautostart.AutoStartActivity"),
+            ComponentName("com.transsion.phonemanager", "com.transsion.phonemanager.FunctionActivity"),
+            ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+            ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+            ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+        )
+        for (c in candidates) {
+            try {
+                startActivity(Intent().setComponent(c).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return "vendor"
+            } catch (_: Exception) {}
+        }
+        try {
+            startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return "battery"
+        } catch (_: Exception) {}
+        startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        return "app_settings"
+    }
+
     private fun dispatchNotificationIntent(intent: Intent?) {
         val safeIntent = intent ?: return
+
+        // Bundle 139: CALL notification actions (Accept/Reject) were dropped
+        // here — this handler previously only understood MESSAGE actions, so
+        // the call buttons silently did nothing. Feed the Dart call-action
+        // EventChannel directly; CallSessionManager validates the live session.
+        val callAction = when (safeIntent.action) {
+            CallNotificationManager.ACTION_ACCEPT -> "accept"
+            CallNotificationManager.ACTION_REJECT -> "reject"
+            else -> ""
+        }
+        if (callAction.isNotBlank()) {
+            val declared = safeIntent.getStringExtra(CallNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
+            val callId = safeIntent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID)?.trim().orEmpty()
+            val callerId = safeIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_ID)?.trim().orEmpty()
+            if (declared == callAction && callId.isNotBlank() && callerId.isNotBlank()) {
+                runOnUiThread {
+                    callNotificationEventSink?.success(
+                        mapOf(
+                            "action" to callAction,
+                            "call_id" to callId,
+                            "caller_id" to callerId,
+                        )
+                    )
+                }
+            }
+            return
+        }
+
         val action = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
         val nativeAction = when (safeIntent.action) {
             LocalLinkNotificationManager.ACTION_OPEN -> "open"

@@ -43,8 +43,8 @@ object LocalLinkNotificationManager {
     // Devices that created v2 while the bundled wav resource was absent are
     // stuck with a silent channel forever, so a fresh channel id is the only
     // reliable way to re-enable sound on upgrades.
-    private const val MESSAGE_CHANNEL_ID = "locallink_messages_v3"
-    private const val SYSTEM_CHANNEL_ID = "locallink_system_v3"
+    private const val MESSAGE_CHANNEL_ID = "locallink_messages_v4"
+    private const val SYSTEM_CHANNEL_ID = "locallink_system_v4"
     private const val MESSAGE_TAG = "locallink_message"
     private const val REQUEST_PERMISSION = 7744
 
@@ -58,7 +58,7 @@ object LocalLinkNotificationManager {
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = "New LocalLink direct and group messages"
-            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             enableVibration(true)
             val soundId = context.resources.getIdentifier(
                 "locallink_message",
@@ -88,7 +88,7 @@ object LocalLinkNotificationManager {
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
             description = "LocalLink security, pairing, and system updates"
-            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         manager.createNotificationChannel(systemChannel)
     }
@@ -209,7 +209,7 @@ object LocalLinkNotificationManager {
             @Suppress("DEPRECATION")
             NotificationCompat.Builder(context)
         }
-            .setSmallIcon(R.mipmap.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title.ifBlank { "LocalLink" })
             .setContentText(body.ifBlank { summary })
             .setContentIntent(openPending)
@@ -231,7 +231,7 @@ object LocalLinkNotificationManager {
                 builder.setVisibility(Notification.VISIBILITY_PRIVATE)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     val publicVersion = Notification.Builder(context)
-                        .setSmallIcon(R.mipmap.ic_launcher_foreground)
+                        .setSmallIcon(R.drawable.ic_notification)
                         .setContentTitle(publicTitle.ifBlank { "LocalLink" })
                         .setContentText(publicBody.ifBlank { "New notification" })
                         .setCategory(Notification.CATEGORY_MESSAGE)
@@ -306,7 +306,7 @@ object LocalLinkNotificationManager {
             @Suppress("DEPRECATION")
             NotificationCompat.Builder(context)
         }
-            .setSmallIcon(R.mipmap.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title.ifBlank { "LocalLink" })
             .setContentText(body.ifBlank { "New messages" })
             .setCategory(Notification.CATEGORY_MESSAGE)
@@ -337,7 +337,7 @@ object LocalLinkNotificationManager {
             @Suppress("DEPRECATION")
             NotificationCompat.Builder(context)
         }
-            .setSmallIcon(R.mipmap.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setCategory(Notification.CATEGORY_STATUS)

@@ -50,13 +50,14 @@ class _CallScreenState extends State<CallScreen> {
         CallState.ringing => session.direction == CallDirection.outgoing
             ? 'Ringing…'
             : 'Incoming call',
+        // Bundle 137: plain "Calling…" instead of "Trying to reach…".
         CallState.connecting =>
           session.direction == CallDirection.outgoing &&
                   !session.signalingConnected
-              ? 'Trying to reach…'
+              ? 'Calling…'
               : 'Connecting…',
         CallState.reconnecting => session.answeredAt == null
-            ? 'Trying to reach…'
+            ? 'Calling…'
             : 'Reconnecting…',
         CallState.connected => _formatDuration(
             (session.endedAt ?? DateTime.now())

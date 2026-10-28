@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/call.dart';
+import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 
 /// WhatsApp-style call history row: avatar, name, direction arrow + time.
 /// Bundle 99: no trailing call-back button — the ROW itself starts the call.
@@ -49,7 +51,16 @@ class CallHistoryTile extends StatelessWidget {
 
     return ListTile(
       contentPadding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-      leading: AccountAvatar(name: title, radius: 21),
+      leading: PresenceAvatar(
+        // Bundle 137: presence badge overlay, same as the chat header avatar.
+        avatar: AccountAvatar(name: title, radius: 21),
+        device: Device(
+            id: call.peerId(selfId),
+            name: title,
+            platform: 'android',
+            createdAt: '',
+            lastSeenAt: ''),
+      ),
       title: Text(
         title,
         maxLines: 1,
@@ -81,7 +92,20 @@ class CallHistoryTile extends StatelessWidget {
           ],
         ),
       ),
-      trailing: null, // bundle 99: row tap calls (no right-side button)
+      // Bundle 137: circled, outlined-phone redial button (chat-style look),
+      // per the approved mock — the row tap keeps calling too.
+      trailing: IconButton(
+        tooltip: 'Call back',
+        style: IconButton.styleFrom(
+          backgroundColor:
+              Theme.of(context).colorScheme.surfaceContainerHighest,
+          foregroundColor: Theme.of(context).colorScheme.onSurface,
+          shape: const CircleBorder(),
+          padding: const EdgeInsets.all(7),
+        ),
+        icon: const Icon(Icons.call_outlined, size: 19),
+        onPressed: onCall,
+      ),
       onTap: onCall,
     );
   }

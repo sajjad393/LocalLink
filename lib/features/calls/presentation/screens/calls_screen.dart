@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'dart:async';
+
 import 'package:locallink/core/widgets/brand_gradient_fab.dart';
 import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/device.dart';
@@ -7,6 +9,8 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
+import 'package:locallink/features/calls/data/models/call_session.dart';
+import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_history_tile.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
@@ -128,7 +132,10 @@ class _CallsScreenState extends State<CallsScreen> {
           icon: Icons.add_ic_call_rounded,
           onPressed: widget.onNewCall,
         ),
-        body: RefreshIndicator(
+        body: Column(children: [
+          _CallInProgressBar(controller: widget.controller),
+          Expanded(
+            child: RefreshIndicator(
           onRefresh: widget.controller.refreshHistory,
           child: state.history.isEmpty
               ? ListView(
@@ -151,7 +158,9 @@ class _CallsScreenState extends State<CallsScreen> {
                   ],
                 )
               : _groupedList(state.history, colors),
-        ),
+            ),
+          ),
+        ]),
       ),
     );
   }
@@ -219,6 +228,114 @@ class _CallsScreenState extends State<CallsScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 28),
       children: children,
+    );
+  }
+}
+
+
+/// Bundle 137: the same "Call in progress — tap to return" banner the Chats
+/// tab got in 136, plus their state fix: BEFORE the peer answers it reads
+/// "Calling {name}…" with NO clock; the timer starts at answeredAt only.
+class _CallInProgressBar extends StatefulWidget {
+  final CallBloc controller;
+  const _CallInProgressBar({required this.controller});
+
+  @override
+  State<_CallInProgressBar> createState() => _CallInProgressBarState();
+}
+
+class _CallInProgressBarState extends State<_CallInProgressBar> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  String _mmss(DateTime from) {
+    final seconds = DateTime.now().difference(from).inSeconds.clamp(0, 359999);
+    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<CallSession?>(
+      stream: widget.controller.sessionStream,
+      initialData: widget.controller.session,
+      builder: (context, snapshot) {
+        final session = snapshot.data;
+        if (session == null || session.isFinished) {
+          return const SizedBox.shrink();
+        }
+        final name = session.peerName.isEmpty ? 'LocalLink user' : session.peerName;
+        final answered = session.answeredAt;
+        final line = answered == null
+            ? '$name · Calling… — Tap to return'
+            : '$name · ${_mmss(answered)} — Tap to return';
+        return SafeArea(
+          top: false,
+          bottom: false,
+          child: GestureDetector(
+            onTap: () => Navigator.push<void>(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => CallScreen(
+                      controller: widget.controller, initialSession: session)),
+            ),
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDFF3E6),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 3)),
+                ],
+              ),
+              child: Row(children: [
+                const CircleAvatar(
+                  radius: 17,
+                  backgroundColor: Color(0xFF1E7D4F),
+                  child: Icon(Icons.call, color: Colors.white, size: 17),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Call in progress',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF14532D))),
+                      const SizedBox(height: 1),
+                      Text(line,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF3F6B50))),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: Color(0xFF3F6B50)),
+              ]),
+            ),
+          ),
+        );
+      },
     );
   }
 }

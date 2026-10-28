@@ -72,11 +72,27 @@ class WelcomeScreen extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Lottie.asset(
-                      'assets/animations/chat_hero.json',
-                      width: 190,
-                      height: 168,
-                      repeat: true,
+                    // Bundle 137 (approved mock): the real app mark on the
+                    // hero — white rounded card + splash logo, replacing the
+                    // generic chat animation.
+                    Container(
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(32),
+                        boxShadow: const [
+                          BoxShadow(
+                              color: Color(0x33000000),
+                              blurRadius: 24,
+                              offset: Offset(0, 10)),
+                        ],
+                      ),
+                      child: Image.asset(
+                        'assets/brand/splash_logo.png',
+                        width: 104,
+                        height: 104,
+                        filterQuality: FilterQuality.high,
+                      ),
                     ),
                     Text(
                       'LocalLink',
