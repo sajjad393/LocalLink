@@ -213,15 +213,20 @@ class _CallsScreenState extends State<CallsScreen> {
         }
       }
       children.add(
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          clipBehavior: Clip.hardEdge,
-          decoration: BoxDecoration(
+        // 140c: a Material (not a coloured Container) so the ListTile rows
+        // paint their tap ripple on it — fixes the debug assertion
+        // "ListTile background color or ink splashes may be invisible".
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Material(
             color: colors.surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: colors.outlineVariant.withOpacity(.5)),
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: BorderSide(color: colors.outlineVariant.withOpacity(.5)),
+            ),
+            child: Column(children: rows),
           ),
-          child: Column(children: rows),
         ),
       );
     });
