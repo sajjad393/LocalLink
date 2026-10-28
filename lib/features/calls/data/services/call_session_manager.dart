@@ -289,7 +289,10 @@ final class CallSessionManager implements CallGateway {
       direction: CallDirection.outgoing,
       state: CallState.connecting,
       startedAt: now,
-      speakerOn: true,
+      // Bundle 143: voice calls start on the EARPIECE (phone-call / WhatsApp
+      // behaviour) so the proximity sensor can blank the screen at the ear.
+      // Video switches to the loudspeaker automatically (_speakerForVideo).
+      speakerOn: false,
       directMode: true,
       transportMode: mode,
       signalingConnected: false,
@@ -452,6 +455,7 @@ final class CallSessionManager implements CallGateway {
         remoteVideoTextureId: (video['remote_texture_id'] as num?)?.toInt(),
         localVideoRotation: (video['rotation'] as num?)?.toInt() ?? 0,
       ));
+      await _speakerForVideo();
       return;
     }
     await transport.setVideoEnabled(session, enabled);
@@ -460,6 +464,7 @@ final class CallSessionManager implements CallGateway {
       videoSwitchRequested: false,
       videoSwitchDeclined: false,
     ));
+    if (enabled) await _speakerForVideo();
   }
 
   /// WhapApp-style: the local user accepted the peer's switch-to-video —
@@ -514,6 +519,7 @@ final class CallSessionManager implements CallGateway {
         remoteVideoTextureId: (video['remote_texture_id'] as num?)?.toInt(),
         peerVideoActive: true,
       ));
+      await _speakerForVideo();
     } catch (error) {
       AppLogger.error('CALL_VIDEO_ACCEPT_FAIL',
           detail: 'call=${session.id} peer=${session.peerId} err=$error');
@@ -786,7 +792,10 @@ final class CallSessionManager implements CallGateway {
       direction: CallDirection.incoming,
       state: CallState.ringing,
       startedAt: createdAt,
-      speakerOn: true,
+      // Bundle 143: voice calls start on the EARPIECE (phone-call / WhatsApp
+      // behaviour) so the proximity sensor can blank the screen at the ear.
+      // Video switches to the loudspeaker automatically (_speakerForVideo).
+      speakerOn: false,
       directMode: true,
       transportMode: CallTransportMode.offlineMesh,
       supportedMediaCodecs: advertised,
@@ -1657,6 +1666,47 @@ final class CallSessionManager implements CallGateway {
       final revision = ++_presentationRevision;
       unawaited(_clearIncomingPresentation(revision));
     }
+    _syncCallUi(session);
+  }
+
+  // Bundle 143: proximity screen-off + call-volume keys follow the session.
+  bool? _callUiInCall;
+  bool? _callUiProximity;
+
+  void _syncCallUi(CallSession? s) {
+    final live = s != null &&
+        !s.isFinished &&
+        s.state != CallState.ending &&
+        // An incoming call still ringing is not "on the call" yet: volume
+        // keys stay on the ringer and the screen stays on to answer.
+        !(s.direction == CallDirection.incoming &&
+            s.state == CallState.ringing);
+    // Ear-to-phone only: never blank the screen on speaker or any video.
+    final proximity = live &&
+        !s.videoEnabled &&
+        !s.peerVideoActive &&
+        !s.speakerOn;
+    if (live == _callUiInCall && proximity == _callUiProximity) return;
+    _callUiInCall = live;
+    _callUiProximity = proximity;
+    unawaited(audioPlatform
+        .setCallUi(inCall: live, proximity: proximity)
+        .catchError((Object _) {}));
+  }
+
+  /// Bundle 143: video is watched, not held to the ear — move to the
+  /// loudspeaker once when video starts (either side). The user can still
+  /// switch back with the speaker button.
+  Future<void> _speakerForVideo() async {
+    final session = _session;
+    if (session == null || session.isFinished || session.speakerOn) return;
+    try {
+      await audioPlatform.setSpeakerphoneOn(true);
+      final latest = _session;
+      if (latest != null && latest.id == session.id) {
+        _setSession(latest.copyWith(speakerOn: true));
+      }
+    } catch (_) {}
   }
 
   Future<void> _presentIncomingCall(CallSession session, int revision) async {

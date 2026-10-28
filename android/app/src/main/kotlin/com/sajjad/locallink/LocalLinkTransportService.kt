@@ -323,8 +323,11 @@ class LocalLinkTransportService : Service() {
     private fun configureTransport(deviceId:String,connected:Boolean,owner:Boolean,address:String?,peers:List<String>){if(deviceId.isBlank())return;transportDeviceId=deviceId.trim();knownPeers.clear();knownPeers.addAll(peers.filter{validTransportId(it)});transportRunning=true;persistState();startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to connected,"transport_active" to true,"group_owner" to owner));startOrStopTransportForConnection(connected,owner,address)}
     private fun updateRosterInternal(peerIds:List<String>){knownPeers.clear();peerIds.forEach{if(validTransportId(it))knownPeers.add(it.trim())};persistState()}
     private fun resumeTransport(connected:Boolean,owner:Boolean,address:String?){if(transportDeviceId.isNullOrBlank())return;transportRunning=true;persistState();startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to connected,"transport_active" to true,"group_owner" to owner));startOrStopTransportForConnection(connected,owner,address)}
-    private fun sendTransportInternal(target:String,map:Map<String,Any?>):Boolean{if(!transportRunning||!validTransportId(target))return false;val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,v)};return sendRoutedPayload(target,p)}
-    private fun broadcastTransportInternal(map:Map<String,Any?>):Boolean{val self=transportDeviceId?:return false;var ok=false;for((id,peer) in transportPeers){val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,v)};p.put("sender_id",self).put("recipient_id",id);if(sendToPeer(peer,p))ok=true};return ok||transportPeers.isEmpty()}
+    // Bundle 142: JSONObject.wrap — Android's org.json writes raw Kotlin List/Map
+    // values as their toString() text, so attachments arrived as a String and
+    // every media direct_message crashed the receiver's Message.fromJson.
+    private fun sendTransportInternal(target:String,map:Map<String,Any?>):Boolean{if(!transportRunning||!validTransportId(target))return false;val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,JSONObject.wrap(v))};return sendRoutedPayload(target,p)}
+    private fun broadcastTransportInternal(map:Map<String,Any?>):Boolean{val self=transportDeviceId?:return false;var ok=false;for((id,peer) in transportPeers){val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,JSONObject.wrap(v))};p.put("sender_id",self).put("recipient_id",id);if(sendToPeer(peer,p))ok=true};return ok||transportPeers.isEmpty()}
     private fun sendFileTransportInternal(target:String,path:String,fileId:String,messageId:String,fileName:String,contentType:String,cb:(Boolean,String?)->Unit){
         if(!transportRunning){cb(false,"transport is not configured");return}
         if(!validTransportId(target)||!validFileTransferId(fileId)||!validFileTransferId(messageId)){cb(false,"invalid file transfer identifier");return}
@@ -1031,7 +1034,13 @@ class LocalLinkTransportService : Service() {
                 "error" to exitDetail,
             ))
             unregisterPeer(connection.peerId, connection.socket)
-            transportEvent("peer_disconnected", mapOf("peer_id" to connection.peerId))
+            // Bundle 142: a superseded duplicate socket or a secondary link
+            // (LAN vs Wi-Fi Direct) closing is NOT a disconnect — another live
+            // link still serves this peer. Reporting it anyway made the UI and
+            // mesh state flap DISCONNECTED ~every few seconds.
+            if (transportPeers[connection.peerId] == null) {
+                transportEvent("peer_disconnected", mapOf("peer_id" to connection.peerId))
+            }
             transportEvent("topology", meshTopologySnapshot())
         }
     }

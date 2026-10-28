@@ -491,14 +491,31 @@ class MainActivity : FlutterActivity() {
                                 it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                                     it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO
                             }
-                            val target = if (enabled) speaker else bt
+                            // Bundle 143: speaker OFF used to pick Bluetooth only —
+                            // with no headset nothing was selected and audio stayed
+                            // on the loudspeaker. Fall back to the earpiece.
+                            val earpiece = devices.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
+                            val target = if (enabled) speaker else (bt ?: earpiece)
                             if (target != null) audioManager.setCommunicationDevice(target)
+                            else if (!enabled) audioManager.clearCommunicationDevice()
                         } else {
                             @Suppress("DEPRECATION") audioManager.isSpeakerphoneOn = enabled
                         }
                         result.success(null)
                     }
+                    // Bundle 143: in-call phone behaviour, driven by the Dart session.
+                    "setCallUi" -> {
+                        val inCall = call.argument<Boolean>("in_call") == true
+                        val proximity = call.argument<Boolean>("proximity") == true
+                        volumeControlStream = if (inCall) android.media.AudioManager.STREAM_VOICE_CALL
+                            else android.media.AudioManager.USE_DEFAULT_STREAM_TYPE
+                        setCallProximity(inCall && proximity)
+                        result.success(null)
+                    }
                     "clearCommunicationDevice" -> {
+                        // Bundle 143: call over — always hand screen + volume keys back.
+                        setCallProximity(false)
+                        volumeControlStream = android.media.AudioManager.USE_DEFAULT_STREAM_TYPE
                         if (android.os.Build.VERSION.SDK_INT >= 31) audioManager.clearCommunicationDevice()
                         @Suppress("DEPRECATION") audioManager.isSpeakerphoneOn = false
                         audioManager.mode = android.media.AudioManager.MODE_NORMAL
@@ -801,6 +818,36 @@ class MainActivity : FlutterActivity() {
         if (sink != null) sink.success(event) else pendingCallNotificationActions.add(event)
     }
 
+    // Bundle 143: proximity screen-off during earpiece voice calls. The OS
+    // turns the display off while the sensor is covered (phone at the ear)
+    // and back on when uncovered; touches are ignored while it is off.
+    private var proximityWakeLock: android.os.PowerManager.WakeLock? = null
+
+    private fun setCallProximity(enabled: Boolean) {
+        try {
+            val pm = powerManager()
+            if (enabled) {
+                if (!pm.isWakeLockLevelSupported(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) return
+                val lock = proximityWakeLock ?: pm.newWakeLock(
+                    android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK,
+                    "locallink:call_proximity",
+                ).also {
+                    it.setReferenceCounted(false)
+                    proximityWakeLock = it
+                }
+                // Hard cap so a lost "call ended" can never pin the sensor forever.
+                if (!lock.isHeld) lock.acquire(4 * 60 * 60 * 1000L)
+            } else {
+                proximityWakeLock?.let {
+                    // Wait for the phone to leave the ear before lighting the screen.
+                    if (it.isHeld) it.release(android.os.PowerManager.RELEASE_FLAG_WAIT_FOR_NO_PROXIMITY)
+                }
+            }
+        } catch (_: Exception) {
+            // Sensor/wakelock quirks on some ROMs must never break a call.
+        }
+    }
+
     // Bundle 140: background keep-alive helpers (see "locallink/background").
     private fun powerManager(): android.os.PowerManager =
         getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
@@ -979,6 +1026,7 @@ class MainActivity : FlutterActivity() {
     private fun queryName(uri:Uri):String?{var cursor:Cursor?=null;return try{cursor=contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null);if(cursor!=null&&cursor.moveToFirst())cursor.getString(0)else uri.lastPathSegment}finally{cursor?.close()}}
 
     override fun onDestroy(){
+        setCallProximity(false) // Bundle 143
         if (activeInstance === this) activeInstance = null
         callNotificationEventSink = null
         pendingCallNotificationActions.clear()

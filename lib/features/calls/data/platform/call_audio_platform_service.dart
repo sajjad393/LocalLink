@@ -9,6 +9,14 @@ class CallAudioPlatformService {
     await _channel.invokeMethod('setSpeakerphoneOn', {'enabled': enabled});
   }
 
+  /// Bundle 143: in-call phone behaviour.
+  /// [inCall] — volume keys control CALL volume (not media/ringer).
+  /// [proximity] — screen turns off near the ear (earpiece voice calls only).
+  Future<void> setCallUi({required bool inCall, required bool proximity}) async {
+    await _channel.invokeMethod(
+        'setCallUi', {'in_call': inCall, 'proximity': proximity});
+  }
+
   Future<void> clearCommunicationDevice() async {
     await _channel.invokeMethod('clearCommunicationDevice');
   }

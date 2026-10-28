@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -808,8 +809,16 @@ class ReliableMessagingService {
             final attachments = <Map<String, dynamic>>[];
 
             for (final attachment in pending) {
+              // Bundle 142: the sender's own chat bubble encrypts the staged
+              // file at rest (protectLegacyLocalFile -> '<path>.enc') and
+              // deletes the plaintext, so every retry failed with "Selected
+              // file is no longer available". Push a decrypted view instead.
+              final sendPath = await _sendablePath(
+                attachment['local_path'].toString(),
+                attachment['original_name'].toString(),
+              );
               final file = PickedFile(
-                path: attachment['local_path'].toString(),
+                path: sendPath,
                 name: attachment['original_name'].toString(),
                 contentType: attachment['content_type'].toString(),
                 size: int.tryParse(
@@ -1089,6 +1098,29 @@ class ReliableMessagingService {
       path = byId[local[0].id];
     }
     return path == null ? remote : remote.copyWith(localPath: path);
+  }
+
+  /// Bundle 142: plaintext staged path if it still exists, else a decrypted
+  /// view of its `.enc` twin (kept until the view dir is swept — native
+  /// resume/retransmit may re-read the path after this call returns).
+  Future<String> _sendablePath(String path, String originalName) async {
+    if (path.isEmpty || await File(path).exists()) return path;
+    final protectedPath = path.endsWith('.enc') ? path : '$path.enc';
+    if (!await File(protectedPath).exists()) return path;
+    try {
+      final ext = originalName.contains('.')
+          ? '.${originalName.split('.').last}'
+          : '.bin';
+      final view = await files.materializeForDisplay(protectedPath,
+          extension: ext);
+      AppLogger.info('DIRECT_FILE_SEND_FROM_PROTECTED',
+          detail: 'name=$originalName');
+      return view;
+    } catch (error, stackTrace) {
+      AppLogger.error('DIRECT_FILE_PROTECTED_VIEW_FAILED',
+          error: error, stackTrace: stackTrace);
+      return path;
+    }
   }
 
   Future<Message?> _resolveNetworkPayload(Map<String, dynamic> data) async {
@@ -1578,7 +1610,11 @@ class ReliableMessagingService {
       AppLogger.info(
         'DIRECT_EVENT_RECEIVED',
         detail: 'type=$eventType '
-            'message=${event['message_id']?.toString() ?? ''}',
+            'message=${event['message_id']?.toString() ?? ''}'
+            // Bundle 142: native names every link death — keep it.
+            '${event['transport'] != null ? ' transport=${event['transport']}' : ''}'
+            '${event['cause'] != null ? ' cause=${event['cause']}' : ''}'
+            '${event['error'] != null ? ' error=${event['error']}' : ''}',
       );
     }
 

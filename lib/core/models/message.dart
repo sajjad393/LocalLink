@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:locallink/core/models/attachment.dart';
 class Message {
   final String id;
@@ -39,8 +41,33 @@ class Message {
         status: json['status']?.toString() ?? 'sent',
         deliveredAt: json['delivered_at']?.toString(),
         serverSeq: int.tryParse(json['server_seq']?.toString() ?? '') ?? 0,
-        attachments: (json['attachments'] as List? ?? []).map((e) => Attachment.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+        attachments: _attachmentsFrom(json['attachments']),
       );
+
+  /// Bundle 142: tolerate `attachments` arriving as text (JSON string, or the
+  /// pre-142 native Java toString() form from a phone not yet updated) instead
+  /// of crashing the whole direct_message — the message is still saved and
+  /// ACKed, so the sender stops its endless retry loop.
+  static List<Attachment> _attachmentsFrom(Object? raw) {
+    Object? value = raw;
+    if (value is String) {
+      try {
+        value = jsonDecode(value);
+      } catch (_) {
+        return const [];
+      }
+    }
+    if (value is! List) return const [];
+    final out = <Attachment>[];
+    for (final e in value) {
+      if (e is Map) {
+        try {
+          out.add(Attachment.fromJson(Map<String, dynamic>.from(e)));
+        } catch (_) {}
+      }
+    }
+    return out;
+  }
 
   factory Message.fromDb(Map<String, dynamic> row) => Message(
         id: row['id']?.toString() ?? '',
