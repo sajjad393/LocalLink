@@ -1,8 +1,5 @@
 import 'dart:async';
 
-import 'package:locallink/features/connectivity/data/services/nearby_admin_status.dart';
-import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
-import 'package:locallink/core/services/session_key_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/config/app_config.dart';
 import 'package:locallink/core/network/api_http_client.dart';
@@ -35,10 +32,8 @@ import 'package:locallink/features/connectivity/data/services/wifi_radio_control
 import 'package:locallink/features/connectivity/data/repositories/mesh_repository.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_transport_service.dart';
-import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_fallback_service.dart';
-import 'package:locallink/features/connectivity/data/services/voice_relay_watch.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/files/data/repositories/file_transfer_repository.dart';
@@ -92,21 +87,9 @@ class AppDependencies {
         httpClient = httpClient ?? ApiHttpClient(),
         store = LocalStore(secureStorage: secureStorage ?? const SecureStorageService()),
         socket = WebSocketService(),
-        // Bundle 156: messages are sealed end to end on the way out and
-        // opened on the way in; the rest of the app sees plain payloads.
-        directTransport = SealingPeerTransport(WifiDirectTransportService()),
+        directTransport = WifiDirectTransportService(),
         wifiDirect = WifiDirectService(),
         crypto = IdentityCryptoService(secureStorage: secureStorage ?? const SecureStorageService()) {
-    final sealing = directTransport;
-    if (sealing is SealingPeerTransport) {
-      // Bundle 166 (5.2): fresh keys (daily session key + one-time key).
-      sealing.bind(
-        StoreSealKeySource(store: store, crypto: crypto),
-        sessions: SessionKeyService(
-          vault: SecureSessionKeyVault(this.secureStorage),
-        ),
-      );
-    }
     api = LocalLinkApi(store, socket, httpClient: this.httpClient);
     connectivityRepository = ConnectivityRepository(
       socket: socket,
@@ -134,8 +117,6 @@ class AppDependencies {
     meshRepository = MeshRepository(transport: directTransport);
     mesh = MeshBloc(repository: meshRepository);
     wifiDirectFallback = WifiDirectFallbackService(connectivityRepository);
-    // Bundle 161: the two nearby tests (off by default).
-    unawaited(NearbyExperiments.instance.load());
     routePolicy = LocalRoutePolicyService(
       directTransport,
       onRouteUnavailable: wifiDirectFallback.requestRoute,
@@ -145,10 +126,6 @@ class AppDependencies {
     // person who is already reachable.
     wifiDirectFallback.hasLocalRoute =
         (peerId) => routePolicy.routes[peerId]?.isAvailable ?? false;
-    // Bundle 158: phones on this Wi-Fi (a bridge is only for the others).
-    wifiDirectFallback.lanPeerIds = () => routePolicy.lanPeerIds;
-    // Bundle 157: Pair taps go through the one-shared-group rules.
-    connectivity.pairTapHandler = wifiDirectFallback.pairTap;
     authentication = AuthenticationRepository(api: api, store: store, connectivity: connectivityRepository);
     recoveryRepository = RecoveryRepository(api: api, store: store, crypto: crypto, connectivity: connectivityRepository);
     final restorationService = AccountRestorationService(store, api, crypto);
@@ -181,28 +158,6 @@ class AppDependencies {
       routePolicy: routePolicy,
     );
     calls = CallBloc(service: callService, repository: callRepository);
-    // Bundle 157: a group is never dissolved (merge) during a call.
-    // Bundle 167 (5.5): also not while someone else's call passes through
-    // this phone (a host carries its members' calls).
-    _voiceRelaySub = directTransport.events.listen((event) {
-      if (event['type'] == 'voice_relay') {
-        voiceRelay.note(event['active'] == true, DateTime.now());
-      }
-    });
-    wifiDirectFallback.isBusy = () =>
-        (calls.session?.isFinished == false) ||
-        voiceRelay.active(DateTime.now());
-    // Bundle 159.3: read-only nearby status for the admin view.
-    NearbyAdminStatus.loader = () async {
-      Map<String, dynamic>? topology;
-      try {
-        topology = await directTransport
-            .topology()
-            .timeout(const Duration(seconds: 5));
-      } catch (_) {}
-      return NearbyAdminSnapshot.from(
-          group: wifiDirectFallback.nearbyStatus(), topology: topology);
-    };
     messaging = ReliableMessagingService(
       store,
       api,
@@ -245,9 +200,6 @@ class AppDependencies {
   late final MeshRepositoryContract meshRepository;
   late final MeshBloc mesh;
   late final WifiDirectFallbackService wifiDirectFallback;
-  /// Bundle 167 (5.5): a call passes through this phone.
-  final VoiceRelayWatch voiceRelay = VoiceRelayWatch();
-  StreamSubscription<Map<String, dynamic>>? _voiceRelaySub;
   late final PairingService pairing;
   late final LocalRoutePolicyService routePolicy;
   late final AuthenticationRepositoryContract authentication;
@@ -340,7 +292,6 @@ class AppDependencies {
   void _publishNearbyIdentity() {
     final id = store.deviceId;
     if (id == null || id.isEmpty) return;
-    wifiDirectFallback.selfIdHash = NearbyTag.idFor(id);
     unawaited(connectivityRepository
         .setNearbyIdentity(NearbyTag.idFor(id))
         .catchError((Object _) {}));
@@ -408,7 +359,6 @@ class AppDependencies {
     await calls.close();
     await routePolicy.dispose();
     await wifiDirectFallback.dispose();
-    await _voiceRelaySub?.cancel();
     await pairing.dispose();
     await mesh.close();
     await connectivity.close();
