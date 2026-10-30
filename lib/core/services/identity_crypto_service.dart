@@ -173,6 +173,22 @@ class IdentityCryptoService {
     return next;
   }
 
+  /// Bundle 156: X25519 identity key pairs for the end-to-end message seal,
+  /// current version first, then older versions (they still open packets
+  /// sealed before a key rotation).
+  Future<List<SimpleKeyPair>> sealKeyPairs() async {
+    final out = <SimpleKeyPair>[];
+    final current = _keyPair;
+    if (current != null) out.add(current);
+    for (final version in await availableKeyVersions()) {
+      if (current != null && version == _keyVersion) continue;
+      try {
+        out.add(await _loadKeyPair(version));
+      } catch (_) {}
+    }
+    return out;
+  }
+
   Future<List<int>> availableKeyVersions() async {
     final all = await _secure.readAll();
     final versions = <int>[];

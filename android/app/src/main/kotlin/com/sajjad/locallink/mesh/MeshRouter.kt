@@ -18,6 +18,9 @@ class MeshRouter(
     private val transport: MeshTransport,
     private val enqueue: ((MeshPacket) -> Boolean)? = null,
     private val maxHops: Int = 8,
+    /** Bundle 156: false = this next hop may not carry this packet (a relay
+     *  link only carries sealed packets). Skipped quietly — not a failure. */
+    private val canCarry: ((String, MeshPacket) -> Boolean)? = null,
 ) {
     /** Validates an incoming packet before callers reserve it in replay state. */
     fun validateForProcessing(packet: MeshPacket, incomingPeerId: String? = null): Boolean {
@@ -69,6 +72,7 @@ class MeshRouter(
 
         for (route in candidates) {
             val peerId = route.nextHopNodeId
+            if (canCarry?.invoke(peerId, packet) == false) continue
             if (!peerRegistry.isAvailable(peerId)) {
                 routeTable.markRecoveringVia(peerId)
                 transport.onRouteFailure(packet.destinationNodeId, peerId)

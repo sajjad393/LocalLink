@@ -45,6 +45,10 @@ class WifiDirectTransportService implements PeerTransportContract {
 
   Future<void> updateKnownPeers(List<String> peerIds) => _channel.invokeMethod('updateKnownPeers', {'known_peers': peerIds});
 
+  /// Bundle 156: blocked people are never accepted as relay links.
+  Future<void> updateBlockedPeers(List<String> peerIds) =>
+      _channel.invokeMethod('updateBlockedPeers', {'blocked_peers': peerIds});
+
   @override
   Future<void> ensureTransportReady({
     required String deviceId,

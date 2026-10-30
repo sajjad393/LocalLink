@@ -268,6 +268,14 @@ class MainActivity : FlutterActivity() {
                             runOnUiThread { result.success(null) }
                         }, "locallink-known-peers").start()
                     }
+                    // Bundle 156: blocked people are never used as relays.
+                    "updateBlockedPeers" -> {
+                        val blocked = stringList(call.argument<List<*>>("blocked_peers"))
+                        Thread({
+                            LocalLinkTransportService.updateBlockedPeers(blocked)
+                            runOnUiThread { result.success(null) }
+                        }, "locallink-blocked-peers").start()
+                    }
                     "sendPairPayload" -> {
                         val target = call.argument<String>("target").orEmpty()
                         val pairKind = call.argument<String>("pair").orEmpty()
