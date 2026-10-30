@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:locallink/core/services/local_store.dart';
+import 'package:locallink/features/home/domain/background_brand_guide.dart';
 
 /// Bundle 140: "Keep LocalLink running" — approved mock.
 /// Opt-in on tap only; once granted, options LOCK and only explain themselves
@@ -20,6 +21,9 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
   bool _keepAlive = true;
   bool _batteryExempt = false;
   bool _busy = false;
+  // Bundle 163 (5.6): steps for this phone's brand (user can pick another).
+  static const _brandKey = 'background_brand_override';
+  BackgroundBrandGuide _brand = backgroundBrandByKey('other');
 
   static const _lockedToast =
       'LocalLink needs this to stay on — messages and calls must keep arriving '
@@ -41,6 +45,52 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
         _batteryExempt = exempt ?? false;
       });
     } catch (_) {/* best effort */}
+    await _loadBrand();
+  }
+
+  Future<void> _loadBrand() async {
+    try {
+      final picked = await widget.store.readSetting(_brandKey);
+      final guide = picked != null && picked.isNotEmpty
+          ? backgroundBrandByKey(picked)
+          : backgroundBrandFor(
+              await _bg.invokeMethod<String>('deviceBrand') ?? '');
+      if (mounted) setState(() => _brand = guide);
+    } catch (_) {/* stays on "Other phones" */}
+  }
+
+  Future<void> _pickBrand() async {
+    final key = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final g in kBackgroundBrandGuides)
+              ListTile(
+                title: Text(g.title),
+                trailing: g.key == _brand.key
+                    ? const Icon(Icons.check_rounded)
+                    : null,
+                onTap: () => Navigator.pop(sheetContext, g.key),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (key == null || !mounted) return;
+    await widget.store.writeSetting(_brandKey, key);
+    if (mounted) setState(() => _brand = backgroundBrandByKey(key));
+  }
+
+  Future<void> _openBrandSettings() async {
+    try {
+      await _bg.invokeMethod<String>(
+          'openBrandSettings', <String, Object?>{'brand': _brand.key});
+    } catch (_) {
+      _toast('Could not open your phone’s settings right now.');
+    }
   }
 
   void _toast(String text) {
@@ -70,14 +120,6 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
-  Future<void> _openVendor() async {
-    try {
-      await _bg.invokeMethod<String>('openVendorSettings');
-    } catch (_) {
-      _toast('Could not open your phone’s app settings right now.');
-    }
-  }
-
   void _explainRecentsLock() {
     showModalBottomSheet<void>(
       context: context,
@@ -99,6 +141,63 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
       ),
     );
   }
+
+  /// Bundle 163 (5.6): brand card - title, numbered steps, Open settings.
+  Widget _brandCard(ColorScheme scheme) => Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Your phone: ${_brand.title}',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 12),
+              for (var i = 0; i < _brand.steps.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 11,
+                        backgroundColor: scheme.primary.withValues(alpha: 0.12),
+                        child: Text('${i + 1}',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: scheme.primary)),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                          child: Text(_brand.steps[i],
+                              style: const TextStyle(fontSize: 14, height: 1.35))),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  FilledButton(
+                    onPressed: _openBrandSettings,
+                    child: const Text('Open settings'),
+                  ),
+                  TextButton(
+                    onPressed: _pickBrand,
+                    child: const Text('Other brand? Tap to pick'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
 
   Widget _icon(IconData icon, {Color? color}) => CircleAvatar(
       backgroundColor:
@@ -167,17 +266,6 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
                 onTap: _requestBattery,
               ),
               Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.5)),
-              // Row 3 — vendor settings deep link
-              ListTile(
-                leading: _icon(Icons.settings_suggest_rounded),
-                title: const Text('Phone vendor settings',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text(
-                    'Autostart and background activity (HiOS and others)'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: _openVendor,
-              ),
-              Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.5)),
               // Row 4 — recents lock how-to
               ListTile(
                 leading: _icon(Icons.lock_outline_rounded),
@@ -190,6 +278,15 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
               ),
             ]),
           ),
+          const SizedBox(height: 20),
+          Text('YOUR PHONE',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                  color: scheme.onSurface.withOpacity(0.55))),
+          const SizedBox(height: 10),
+          _brandCard(scheme),
           const SizedBox(height: 14),
           Text(
             'Battery-permission dialogs are shown only when you tap a row. '

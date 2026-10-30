@@ -23,6 +23,7 @@ import 'package:locallink/features/admin/presentation/screens/admin_settings_scr
 import 'package:locallink/features/admin/presentation/screens/admin_transfers_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_users_screen.dart';
 import 'package:locallink/features/admin/presentation/theme/admin_theme.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_list_page.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
 
 /// Bundle 134: the mobile admin area is ONE merged panel (approved mock):
@@ -54,6 +55,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   Timer? _tick;
   List<Device> _devices = const [];
   List<Map<String, Object?>> _blocked = const [];
+  // Bundle 163 (4.9): device list search + paging.
+  String _linkQuery = '';
+  int _linkShown = kAdminListPage;
 
   static const _modules = <_PanelModule>[
     _PanelModule('Dashboard', Icons.dashboard_outlined, 'Overview'),
@@ -426,6 +430,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               style: TextStyle(
                   fontSize: 13, color: scheme.onSurface.withOpacity(0.6))),
           const SizedBox(height: 10),
+          if (devices.length > kAdminListSearchFrom)
+            AdminListSearch(
+              onChanged: (q) => setState(() {
+                _linkQuery = q;
+                _linkShown = kAdminListPage;
+              }),
+            ),
           if (devices.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -434,7 +445,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                       style: TextStyle(
                           color: scheme.onSurface.withOpacity(0.6)))),
             ),
-          ...devices.take(50).map((d) {
+          ...adminListPage<Device>(devices,
+                  query: _linkQuery,
+                  shown: _linkShown,
+                  keys: (d) => [d.name, d.id])
+              .visible
+              .map((d) {
             final tag = _tagFor(d);
             final tint = kLinkTagColors[tag]!;
             final initials = d.name.trim().isEmpty
@@ -479,6 +495,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               const SizedBox(height: 8),
             ]);
           }),
+          AdminListMoreButton(
+            shown: _linkShown,
+            matched: adminListPage<Device>(devices,
+                    query: _linkQuery, shown: 0, keys: (d) => [d.name, d.id])
+                .matched,
+            onPressed: () =>
+                setState(() => _linkShown += kAdminListPage),
+          ),
           const SizedBox(height: 6),
         ]),
       ),

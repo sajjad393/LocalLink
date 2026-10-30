@@ -454,6 +454,9 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "openVendorSettings" -> result.success(openVendorBackgroundSettings())
+                    // Bundle 163 (5.6): brand help screen.
+                    "deviceBrand" -> result.success("${android.os.Build.MANUFACTURER} ${android.os.Build.BRAND}")
+                    "openBrandSettings" -> result.success(openBrandBackgroundSettings(call.argument<String>("brand").orEmpty()))
                     "keepAliveStart" -> { LocalLinkTransportService.start(this); result.success(null) }
                     else -> result.notImplemented()
                 }
@@ -1024,6 +1027,25 @@ class MainActivity : FlutterActivity() {
     // Bundle 140: background keep-alive helpers (see "locallink/background").
     private fun powerManager(): android.os.PowerManager =
         getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+
+    /** Bundle 163 (5.6): the brand's own page, else the app's info page. */
+    private fun openBrandBackgroundSettings(brand: String): String {
+        for ((pkg, cls) in VendorBackgroundIntents.candidates(brand)) {
+            try {
+                startActivity(Intent().setComponent(ComponentName(pkg, cls)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                android.util.Log.i("LocalLinkBackground", "BRAND_SETTINGS_OPENED brand=$brand page=$cls")
+                return "vendor"
+            } catch (_: Exception) {}
+        }
+        return try {
+            startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            android.util.Log.i("LocalLinkBackground", "BRAND_SETTINGS_OPENED brand=$brand page=app_info")
+            "app_settings"
+        } catch (_: Exception) {
+            "none"
+        }
+    }
 
     private fun openVendorBackgroundSettings(): String {
         val candidates = listOf(
