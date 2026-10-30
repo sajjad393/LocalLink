@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:locallink/app/background_runner.dart';
 import 'package:locallink/app/local_link_app.dart';
 import 'package:locallink/core/services/app_logger.dart';
 
@@ -33,3 +35,18 @@ void main() {
   runApp(const LocalLinkApp());
 }
 
+/// Bundle 169 (4.3): started by Android after a reboot, with no screen, until
+/// the app is opened (see BackgroundEngine.kt).
+@pragma('vm:entry-point')
+void backgroundMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  PlatformDispatcher.instance.onError = (error, stackTrace) {
+    AppLogger.error(
+      'uncaught_async_error',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    return true;
+  };
+  unawaited(BackgroundRunner().run());
+}

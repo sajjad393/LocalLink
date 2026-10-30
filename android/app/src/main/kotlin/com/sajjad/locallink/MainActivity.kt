@@ -36,6 +36,8 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val EXTRA_CALL_ACTION_CONSUMED = "call_action_consumed"
         @Volatile private var activeInstance: MainActivity? = null
+        /** Bundle 169 (4.3): the app screen exists. */
+        fun isOpen(): Boolean = activeInstance != null
 
         fun dispatchNotificationAction(intent: Intent): Boolean {
             val activity = activeInstance ?: return false
@@ -118,8 +120,12 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        // Bundle 169 (4.3): the app is opened - the after-reboot background
+        // engine stops first, so only one engine runs the app at a time.
+        BackgroundEngine.stop("app_opened")
         super.onCreate(savedInstanceState)
         activeInstance = this
+        BackgroundEngine.markAppOpened(this)
         // Bundle 164 (4.3): the app is open - the reboot notice is not needed.
         LocalLinkNotificationManager.cancelBootReconnect(this)
         // Bundle 124: the once-per-install battery-exemption dialog that used
