@@ -353,22 +353,11 @@ object LocalLinkNotificationManager {
     fun showReplySaved(context: Context, notificationId: Int) =
         showSystem(context, notificationId, "Reply saved", "It sends when you open LocalLink.", silent = true, tag = REPLY_SAVED_TAG)
 
-    fun cancelReplySaved(context: Context) = cancelByTag(context, REPLY_SAVED_TAG)
-
-    /** Bundle 164 (4.3): Android blocked the start after a reboot. */
-    const val BOOT_TAG = "locallink_boot"
-    const val BOOT_NOTIFICATION_ID = 7301
-
-    fun showBootReconnect(context: Context) =
-        showSystem(context, BOOT_NOTIFICATION_ID, "LocalLink is ready", "Tap to reconnect.", silent = true, tag = BOOT_TAG)
-
-    fun cancelBootReconnect(context: Context) = cancelByTag(context, BOOT_TAG)
-
-    private fun cancelByTag(context: Context, tag: String) {
+    fun cancelReplySaved(context: Context) {
         try {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                manager.activeNotifications.filter { it.tag == tag }.forEach { manager.cancel(it.tag, it.id) }
+                manager.activeNotifications.filter { it.tag == REPLY_SAVED_TAG }.forEach { manager.cancel(it.tag, it.id) }
             }
         } catch (_: Exception) {}
     }
