@@ -22,6 +22,12 @@ class MeshRouter(
     private val linkRank: ((String) -> Int)? = null,
     /** Bundle 158: make-before-break — proven routes are tried first. */
     private val routeProven: ((MeshRoute) -> Boolean)? = null,
+    /** Bundle 160 (two-level map): no route at all -> this neighbour (the
+     *  group host) may carry it, or null. Never used when routes exist. */
+    private val defaultNextHop: ((MeshPacket) -> String?)? = null,
+    /** Bundle 160: called with the destination when there is no route at
+     *  all (ask the neighbours "who can reach X?"). */
+    private val onNoRoute: ((String) -> Unit)? = null,
     /** Bundle 156: false = this next hop may not carry this packet (a relay
      *  link only carries sealed packets). Skipped quietly — not a failure.
      *  Kept LAST so a trailing lambda still means canCarry. */
@@ -98,6 +104,25 @@ class MeshRouter(
             if (transport.send(peerId, forwarded)) return MeshRouteResult.FORWARDED
             routeTable.markRecoveringVia(peerId)
             transport.onRouteFailure(packet.destinationNodeId, peerId)
+        }
+
+        if (usable.isEmpty()) {
+            try { onNoRoute?.invoke(packet.destinationNodeId) } catch (_: Exception) {}
+            val hop = try { defaultNextHop?.invoke(packet)?.trim() } catch (_: Exception) { null }
+            if (!hop.isNullOrEmpty() && hop != self && hop !in excluded &&
+                MeshIdPolicy.isValid(hop) &&
+                canCarry?.invoke(hop, packet) != false &&
+                peerRegistry.isAvailable(hop)
+            ) {
+                val forwarded = try {
+                    packet.copyForForwarding(hop, self, maxHops)
+                } catch (_: IllegalArgumentException) {
+                    null
+                }
+                if (forwarded != null && MeshLimits.hasValidHopBudget(forwarded.ttl, forwarded.hopCount, maxHops) &&
+                    transport.send(hop, forwarded)
+                ) return MeshRouteResult.FORWARDED
+            }
         }
 
         if (allowQueue && enqueue?.invoke(packet) == true) return MeshRouteResult.QUEUED
