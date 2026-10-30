@@ -116,6 +116,9 @@ class LocalLinkTransportService : Service() {
         /** Bundle 164 (5.8): strict mode - refuse contact links without the id check. */
         const val LINK_AUTH_PREFS = "locallink_link_auth"
         const val STRICT_KEY = "strict"
+        // Bundle 165: phones known to open locked file packets.
+        const val FILE_SEAL_PREFS = "locallink_file_seal"
+        const val FILE_SEAL_KEY = "peers"
         fun setStrictLinkCheck(context: Context, on: Boolean) {
             context.getSharedPreferences(LINK_AUTH_PREFS, Context.MODE_PRIVATE).edit().putBoolean(STRICT_KEY, on).apply()
             instance?.applyStrictInternal(on)
@@ -239,6 +242,16 @@ class LocalLinkTransportService : Service() {
     // Bundle 159.3: counts for the read-only admin view (no content).
     private val forwardedPackets = AtomicLong(0)
     private val forwardedVoiceFrames = AtomicLong(0)
+    // Bundle 165 (5.1): locked file packets through non-contact phones.
+    private val forwardedFileChunks = AtomicLong(0)
+    private val relayFileBudget = MeshRelayFileBudget()
+    private val fileSealPeers: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private val fileSealTrial: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    private val fileStalls = ConcurrentHashMap<String, Int>()
+    private val fileStallAt = ConcurrentHashMap<String, Long>()
+    private val fileRelayLogAt = ConcurrentHashMap<String, Long>()
+    // How the last file packet from each phone came (true = locked).
+    private val fileLastLocked = ConcurrentHashMap<String, Boolean>()
     private val relayDialAt = ConcurrentHashMap<String, Long>()
     private fun relayLinkCount(exceptPeerId: String? = null, transportName: String? = null): Int =
         allPhysicalPeerLinks().count { it.peerId != exceptPeerId && it.trust == MeshRelayPolicy.TRUST_RELAY && !it.socket.isClosed &&
@@ -268,6 +281,9 @@ class LocalLinkTransportService : Service() {
         // Bundle 159: locked voice only to phones that understand it (an
         // older phone would refuse it, or pause the link as a flood).
         if (MeshRelayPolicy.isSealedVoice(packet.type) && !link.voiceCapable) return false
+        // Bundle 165: a locked file packet only to a non-contact phone that
+        // understands it (an older one would refuse it).
+        if (!FileSealPolicy.canSendOnward(packet.type, link.trust, link.fileSealCapable)) return false
         return MeshRelayPolicy.canCarry(link.trust, packet.type)
     }
     /** Bundle 158: LAN next hop before Wi-Fi Direct (same hop count). */
@@ -481,6 +497,7 @@ class LocalLinkTransportService : Service() {
         if(android.os.Build.VERSION.SDK_INT>=29)startForeground(NOTIFICATION_ID,buildNotification(),ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)else startForeground(NOTIFICATION_ID,buildNotification())
         running=true;loadPersistedState();restoreDurableState()
         strictLinkCheck=getSharedPreferences(LINK_AUTH_PREFS,MODE_PRIVATE).getBoolean(STRICT_KEY,false)
+        loadFileSealPeers()
         if(transportRunning){startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to transportPeers.isNotEmpty(),"transport_active" to true,"group_owner" to transportGroupOwner));if(transportGroupOwner)ensureTransportServer()}
     }
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
@@ -1222,6 +1239,8 @@ class LocalLinkTransportService : Service() {
             .put("relay", if (MeshRelayPolicy.RELAY_ENABLED) 1 else 0)
             // Bundle 159: this phone can pass on and play locked call voice.
             .put("voice", 1)
+            // Bundle 165: this phone can pass on and open locked file packets.
+            .put("sf", 1)
             // Bundle 160: changes-only route updates + signed device id.
             .put("rd", 1)
             .put("lk", MeshLinkAuth.VERSION)
@@ -1264,6 +1283,7 @@ class LocalLinkTransportService : Service() {
         socket.soTimeout = 0
         return PeerConnection(peerId, socket, if (transportName == MeshTransportPolicy.WIFI_DIRECT) null else ownerAddress, reader, writer, transportName, socket.inetAddress?.hostAddress,
             trust = trust, sealCapable = challenge.optInt("seal", 0) == 1, voiceCapable = challenge.optInt("voice", 0) == 1,
+            fileSealCapable = challenge.optInt("sf", 0) == 1,
             routeDelta = challenge.optInt("rd", 0) == 1, verified = linkAuth.verdict == MeshLinkAuth.Verdict.VERIFIED)
     }
 
@@ -1293,6 +1313,8 @@ class LocalLinkTransportService : Service() {
             .put("relay", if (MeshRelayPolicy.RELAY_ENABLED) 1 else 0)
             // Bundle 159: this phone can pass on and play locked call voice.
             .put("voice", 1)
+            // Bundle 165: this phone can pass on and open locked file packets.
+            .put("sf", 1)
             // Bundle 160.
             .put("rd", 1)
             .put("lk", MeshLinkAuth.VERSION)
@@ -1321,6 +1343,7 @@ class LocalLinkTransportService : Service() {
         socket.soTimeout = 0
         return PeerConnection(peer, socket, if (transportName == MeshTransportPolicy.WIFI_DIRECT) null else socket.inetAddress?.hostAddress, reader, writer, transportName, socket.inetAddress?.hostAddress,
             trust = trust, sealCapable = hello.optInt("seal", 0) == 1, voiceCapable = hello.optInt("voice", 0) == 1,
+            fileSealCapable = hello.optInt("sf", 0) == 1,
             routeDelta = hello.optInt("rd", 0) == 1, verified = linkAuth.verdict == MeshLinkAuth.Verdict.VERIFIED)
     }
 
@@ -1336,6 +1359,7 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun registerPeer(connection:PeerConnection): Boolean {
+        if (connection.fileSealCapable && knownPeers.contains(connection.peerId)) noteFileSealCapable(connection.peerId)
         if (!MeshTransportPolicy.isSupportedTransport(connection.transportName)) {
             try { connection.socket.close() } catch (_: Exception) {}
             transportEvent("peer_link_rejected", mapOf(
@@ -1564,6 +1588,14 @@ class LocalLinkTransportService : Service() {
                                 if (fresh && parsed.destinationNodeId != transportDeviceId) {
                                     Log.i("RELAY", "RELAY call stream=${vs.take(6)} from=$from to=${parsed.destinationNodeId} calls=${relayVoiceBudget.activeStreams()}")
                                 }
+                            } else if (parsed != null && MeshRelayPolicy.isSealedFile(parsed.type)) {
+                                // Bundle 165: locked file packets have their own
+                                // budget; over it the packet is dropped (the
+                                // sender resends), the link is never paused.
+                                if (!relayFileBudget.allow(from, line.length)) {
+                                    if (relayFileBudget.shouldNoteFull(from)) Log.w("RELAY", "RELAY file budget full peer=$from (dropped, sender resends)")
+                                    continue
+                                }
                             } else if (!relayLimiter.allow(from, line.length)) {
                                 // Bundle 156: a flood pauses the relay for 10 minutes.
                                 Log.w("RELAY", "relay paused peer=$from reason=rate_limit")
@@ -1721,6 +1753,18 @@ class LocalLinkTransportService : Service() {
         when (result) {
             MeshRouteResult.LOCAL_DELIVERY -> deliverLocalPacket(packet)
             MeshRouteResult.FORWARDED -> {
+                // Bundle 165: locked file packets are counted only, with one
+                // log line per sender/receiver pair every 10 s.
+                if (MeshRelayPolicy.isSealedFile(packet.type)) {
+                    val total = forwardedFileChunks.incrementAndGet()
+                    val pair = "${packet.sourceNodeId}>${packet.destinationNodeId}"
+                    if (now - (fileRelayLogAt[pair] ?: 0L) >= 10_000L) {
+                        if (fileRelayLogAt.size > 64) fileRelayLogAt.clear()
+                        fileRelayLogAt[pair] = now
+                        Log.i("RELAY", "RELAY file passed on from=${packet.sourceNodeId} to=${packet.destinationNodeId} via=$from total=$total")
+                    }
+                    return
+                }
                 // Bundle 156: what passed through this phone for others
                 // (type and size only, never the content).
                 if (!isEphemeralCallMediaType(packet.type)) Log.i("RELAY", "passed on type=${packet.type} bytes=${packet.payload.toString().length} from=$from")
@@ -1762,9 +1806,16 @@ class LocalLinkTransportService : Service() {
             return
         }
         val payload = packet.toApplicationPayload()
+        // Bundle 165: a plain file packet from a newer phone says it can
+        // take locked ones too.
+        if (FileSeal.isFileType(packet.type)) {
+            fileLastLocked[packet.sourceNodeId] = false
+            if (packet.payload.optInt("sf", 0) == 1) noteFileSealCapable(packet.sourceNodeId)
+        }
         when (packet.type) {
             "call_media" -> handleIncomingCallMedia(packet)
             MeshRelayPolicy.SEALED_VOICE -> handleIncomingSealedVoice(packet)
+            MeshRelayPolicy.SEALED_FILE -> handleIncomingSealedFile(packet)
             "call_video_config" -> handleIncomingCallVideoConfig(packet)
             "call_video_frame" -> handleIncomingCallVideoFrame(packet)
             "call_video_quality" -> handleIncomingCallVideoControl(packet)
@@ -2006,6 +2057,100 @@ class LocalLinkTransportService : Service() {
         val inner = try { JSONObject(String(plain, Charsets.UTF_8)) } catch (_:Exception) { return }
         if (inner.optString("type") != "call_media") return
         handleIncomingCallMediaPayload(inner, packet.sourceNodeId, packet.hopCount, locked = true)
+    }
+
+    /**
+     * Bundle 165 (5.1): a locked file packet for this phone. It opens only
+     * with the link key shared with that contact; then it is handled exactly
+     * like the plain packet it carries.
+     */
+    private fun handleIncomingSealedFile(packet: MeshPacket) {
+        val self = transportDeviceId ?: return
+        val from = packet.sourceNodeId
+        if (blockedPeers.contains(from)) return
+        val p = packet.payload
+        val shared = MeshLinkAuth.match(linkKeys[from].orEmpty(), listOf(p.optString("k"))) ?: run {
+            if (fileLogDue("open>$from")) Log.w("RELAY", "RELAY file open failed from=$from reason=no_key")
+            return
+        }
+        val nonce = try { Base64.decode(p.optString("n"), Base64.NO_WRAP) } catch (_: Exception) { return }
+        val cipherText = try { Base64.decode(p.optString("c"), Base64.NO_WRAP) } catch (_: Exception) { return }
+        val plain = FileSeal.open(FileSeal.key(shared.key, from, self), from, self, nonce, cipherText) ?: run {
+            if (fileLogDue("open>$from")) Log.w("RELAY", "RELAY file open failed from=$from reason=bad_seal")
+            return
+        }
+        val inner = try { JSONObject(String(plain, Charsets.UTF_8)) } catch (_: Exception) { return }
+        val type = inner.optString("type")
+        if (!FileSeal.isFileType(type)) return
+        // The locked packet must be what that contact sent to me.
+        if (inner.optString("sender_id") != from || inner.optString("recipient_id") != self) return
+        noteFileSealCapable(from)
+        fileLastLocked[from] = true
+        inner.put("mesh_packet_id", packet.packetId)
+        when (type) {
+            "direct_file_chunk" -> handleIncomingFileChunk(from, inner)
+            "direct_file_progress" -> handleFileProgress(inner)
+            "direct_file_resume_request" -> handleFileResumeRequest(inner)
+            "direct_file_cancel" -> handleFileCancel(inner)
+            "direct_file_restart" -> handleFileRestart(inner)
+            else -> transportEvent("message", mapOf(
+                "payload" to inner.toString(),
+                "sender_id" to from,
+                "mesh_final_recipient" to true,
+                "mesh_packet_id" to packet.packetId,
+                "mesh_destination_id" to self,
+                "mesh_hop_count" to packet.hopCount,
+                "peer_clock_offset_ms" to (if (packet.hopCount <= 1) peerClockOffsetMs[from] else null),
+                "mesh_link_kind" to (transportPeers[from]?.transportName ?: "unknown"),
+            ))
+        }
+    }
+
+    /** Bundle 165: the locked form of a file packet, or null = send it plain. */
+    private fun sealFilePayload(target: String, payload: JSONObject): JSONObject? {
+        val self = transportDeviceId ?: return null
+        val shared = linkKeys[target].orEmpty().firstOrNull()
+        val nextHop = if (activePeerConnection(target) != null) target else routeTable[target]?.nextHopNodeId
+        val nextHopIsRelay = nextHop != null && activePeerConnection(nextHop)?.trust == MeshRelayPolicy.TRUST_RELAY
+        val replyLikeLast = if (payload.optString("type") in FileSealPolicy.REPLY_TYPES) fileLastLocked[target] else null
+        if (!FileSealPolicy.useSeal(shared != null, fileSealPeers.contains(target), nextHopIsRelay, fileSealTrial.contains(target), replyLikeLast)) return null
+        shared ?: return null
+        val inner = JSONObject(payload.toString()).put("recipient_id", target).put("sender_id", self)
+        val (nonce, cipherText) = try {
+            FileSeal.seal(FileSeal.key(shared.key, self, target), self, target, inner.toString().toByteArray(Charsets.UTF_8))
+        } catch (_: Exception) { return null }
+        return JSONObject()
+            .put("type", MeshRelayPolicy.SEALED_FILE)
+            .put("sender_id", self)
+            .put("recipient_id", target)
+            .put("k", shared.offer)
+            .put("n", Base64.encodeToString(nonce, Base64.NO_WRAP))
+            .put("c", Base64.encodeToString(cipherText, Base64.NO_WRAP))
+    }
+
+    /** Bundle 165: one log line per key every 10 s (never per chunk). */
+    private fun fileLogDue(key: String, now: Long = System.currentTimeMillis()): Boolean {
+        if (now - (fileRelayLogAt[key] ?: 0L) < 10_000L) return false
+        if (fileRelayLogAt.size > 64) fileRelayLogAt.clear()
+        fileRelayLogAt[key] = now
+        return true
+    }
+
+    private fun noteFileSealCapable(peerId: String) {
+        if (!validTransportId(peerId) || !fileSealPeers.add(peerId)) return
+        Log.i("RELAY", "RELAY file lock ready peer=$peerId")
+        try {
+            while (fileSealPeers.size > FileSealPolicy.MAX_KNOWN) fileSealPeers.remove(fileSealPeers.first())
+            getSharedPreferences(FILE_SEAL_PREFS, MODE_PRIVATE).edit().putStringSet(FILE_SEAL_KEY, HashSet(fileSealPeers)).apply()
+        } catch (_: Exception) {}
+    }
+
+    private fun loadFileSealPeers() {
+        try {
+            getSharedPreferences(FILE_SEAL_PREFS, MODE_PRIVATE).getStringSet(FILE_SEAL_KEY, null)?.forEach {
+                if (validTransportId(it) && fileSealPeers.size < FileSealPolicy.MAX_KNOWN) fileSealPeers.add(it)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun handleIncomingCallMedia(packet:MeshPacket) =
@@ -2810,6 +2955,13 @@ class LocalLinkTransportService : Service() {
         }
         val mediaType = normalized.optString("type").trim()
         if (!MeshIdPolicy.isValidType(mediaType)) return false
+        // Bundle 165 (5.1): a file packet travels locked when the other phone
+        // can open it, so any LocalLink phone can pass it on.
+        if (FileSeal.isFileType(mediaType)) {
+            val sealed = sealFilePayload(target, payload)
+            if (sealed != null) return sendRoutedPayload(target, sealed, reportDegraded, liveCallId)
+            normalized.put("sf", 1)
+        }
         val unsigned = try {
             MeshPacket.new(
                 sourceNodeId = self,
@@ -3020,7 +3172,8 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun enqueueMeshPacket(packet: MeshPacket): Boolean {
-        if (!isStoreForwardable(packet.type)) return false
+        // Bundle 165: my own locked file packets wait like plain chunks.
+        if (!isStoreForwardable(packet.type) && !FileSealPolicy.storeForwardable(packet.type, packet.sourceNodeId, transportDeviceId)) return false
         if (!MeshLimits.hasValidHopBudget(packet.ttl, packet.hopCount, meshPacketTtl)) return false
         if (!MeshLimits.isWithinPacketLifetime(packet.createdAt)) return false
         val target = packet.destinationNodeId
@@ -3349,6 +3502,8 @@ class LocalLinkTransportService : Service() {
             "lan_beacon_ms" to MeshTransportPolicy.lanBeaconIntervalMs(lanEndpoints.size),
             "forwarded_packets" to forwardedPackets.get(),
             "forwarded_voice_frames" to forwardedVoiceFrames.get(),
+            // Bundle 165: locked file packets passed on for others (count only).
+            "forwarded_file_chunks" to forwardedFileChunks.get(),
             "background_service" to LocalLinkTransportService.isRunning(),
             "service_uptime_ms" to (System.currentTimeMillis()-startedAt),
             "routes" to routeTable.snapshot(),
@@ -3791,6 +3946,8 @@ class LocalLinkTransportService : Service() {
         val routeDelta: Boolean = false,
         // Bundle 160: the peer proved its device id (link key HMAC).
         val verified: Boolean = false,
+        // Bundle 165: the peer understands locked file packets.
+        val fileSealCapable: Boolean = false,
     ) {
         @Synchronized fun send(json: JSONObject) {
             writer.write(json.toString())
@@ -4079,6 +4236,8 @@ class LocalLinkTransportService : Service() {
         val bits=bitsetDecode(p.optString("received_chunks"),t.totalChunks)
         for(i in bits.indices)if(bits[i])t.acknowledged[i]=true
         if(bits.any{it}) outgoingRetryCounts[t.transferId]=0
+        fileStalls.remove(t.transferId);fileStallAt.remove(t.transferId)
+        if(fileSealTrial.contains(t.recipientId)&&fileStalls.keys.none{k->outgoingTransfers[k]?.recipientId==t.recipientId})fileSealTrial.remove(t.recipientId)
         t.updatedAt=System.currentTimeMillis()
         if(missingChunkCount(t)==0){deleteOutgoingMeta(t);outgoingTransfers.remove(id);outgoingRetryCounts.remove(id);outgoingSendInFlight.remove(id);transportEvent("file_sent",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"file_id" to t.fileId,"size" to t.size,"sha256" to t.sha256))}
         else{persistOutgoingTransfer(t);transportEvent("file_progress",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"acked_chunks" to t.totalChunks-missingChunkCount(t),"total_chunks" to t.totalChunks));if(hasStaleMissingChunk(t))Thread{sendMissingChunks(t,true)}.start()}
@@ -4095,7 +4254,17 @@ class LocalLinkTransportService : Service() {
         // Bundle 144: same durable path as every other confirmation.
         synchronized(incomingFiles){sendFileAckNow(t)}
     }
-    private fun sendResumeRequests(){val now=System.currentTimeMillis();for(t in outgoingTransfers.values.toList())if(now-t.updatedAt>=DirectFileTransferPolicy.RESEND_AFTER_MS)try{sendRoutedPayload(t.recipientId,JSONObject().put("type","direct_file_resume_request").put("sender_id",transportDeviceId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("total_chunks",t.totalChunks))}catch(_:Exception){}}
+    private fun sendResumeRequests(){val now=System.currentTimeMillis();for(t in outgoingTransfers.values.toList())if(now-t.updatedAt>=DirectFileTransferPolicy.RESEND_AFTER_MS){noteFileStall(t,now);try{sendRoutedPayload(t.recipientId,JSONObject().put("type","direct_file_resume_request").put("sender_id",transportDeviceId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("total_chunks",t.totalChunks))}catch(_:Exception){}}}
+    /** Bundle 165: a stuck transfer counts one stall per resend period and
+     *  switches between plain and locked every few stalls. */
+    private fun noteFileStall(t:OutgoingFileTransfer,now:Long){
+        if(now-(fileStallAt[t.transferId]?:0L)<DirectFileTransferPolicy.RESEND_AFTER_MS)return
+        fileStallAt[t.transferId]=now
+        val stalls=fileStalls.merge(t.transferId,1,Int::plus)?:1
+        val flip=FileSealPolicy.flipFor(stalls)
+        val changed=if(flip)fileSealTrial.add(t.recipientId) else fileSealTrial.remove(t.recipientId)
+        if(changed)Log.i("RELAY","RELAY file stalled to=${t.recipientId} stalls=$stalls try=${if(fileSealPeers.contains(t.recipientId)!=flip)"locked" else "plain"}")
+    }
 
     override fun onDestroy(){stopCallVideoInternal("");stopCallMediaInternal("");meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();running=false;if(instance===this)instance=null;super.onDestroy()}
 }

@@ -94,6 +94,7 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
       ('Calls passed on now', '${s.relayVoiceCalls}'),
       ('Packets passed on', '${s.forwardedPackets}'),
       ('Voice frames passed on', '${s.forwardedVoiceFrames}'),
+      ('File parts passed on', '${s.forwardedFileChunks}'),
       // Bundle 161 (tests).
       ('Linked group / hotspot (test)', switch (s.localNet) {
         'linked' => s.localNetKind == 'hotspot' ? 'Hotspot' : 'Group',
