@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cryptography/cryptography.dart' show SimpleKeyPair;
 import 'package:flutter/foundation.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/link_key_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/message_seal_service.dart';
+import 'package:locallink/core/services/session_key_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_transport_service.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 
@@ -133,6 +135,13 @@ class SealingPeerTransport implements PeerTransportContract {
   /// Bundle 159: the per-call voice key field inside a call invite.
   static const String voiceKeyField = 'voice_key';
   static const String _capsSetting = 'seal_capable_peers_v1';
+
+  /// Bundle 166 (5.2): fresh keys.
+  static const String _freshSetting = 'fresh_seal_peers_v1';
+  static const String _peerSessionSetting = 'peer_session_keys_v1';
+
+  /// Inside a sealed message: the sender's current session key.
+  static const String sessionField = '_sp';
   static const Duration _probeEvery = Duration(minutes: 10);
 
   final PeerTransportContract inner;
@@ -144,14 +153,23 @@ class SealingPeerTransport implements PeerTransportContract {
   String _linkKeysPushed = '';
 
   final Set<String> _capable = <String>{};
+
+  // Bundle 166 (5.2): fresh keys.
+  SessionKeyService? _sessions;
+  final Set<String> _fresh = <String>{};
+  final Map<String, PeerSessionKey> _peerSessions = <String, PeerSessionKey>{};
+  final Map<String, DateTime> _resetAt = <String, DateTime>{};
+  final Map<String, List<_SentFresh>> _recentFresh = <String, List<_SentFresh>>{};
   final Map<String, DateTime> _probedAt = <String, DateTime>{};
   final Map<String, DateTime> _answeredAt = <String, DateTime>{};
   StreamController<Map<String, dynamic>>? _controller;
   StreamSubscription<Map<String, dynamic>?>? _subscription;
 
   /// Connects the key source (after the store and keys exist).
-  void bind(SealKeySource keys) {
+  /// [sessions] turns on fresh keys (5.2); without it the lock works as in 156.
+  void bind(SealKeySource keys, {SessionKeyService? sessions}) {
     _keys = keys;
+    _sessions = sessions;
     unawaited(_loadCapabilities());
     // Bundle 164 (5.7): a block / unblock reaches the link layer at once.
     _blockedSub ??= LocalStore.blockedChanges.listen((_) {
@@ -165,6 +183,12 @@ class SealingPeerTransport implements PeerTransportContract {
   Set<String> get capablePeers => Set.unmodifiable(_capable);
 
   bool isSealCapable(String peerId) => _capable.contains(peerId);
+
+  /// Bundle 166: this contact's app takes fresh keys.
+  bool isFreshCapable(String peerId) => _fresh.contains(peerId);
+
+  @visibleForTesting
+  PeerSessionKey? peerSession(String peerId) => _peerSessions[peerId];
 
   // ---------------------------------------------------------------- events
   @override
@@ -240,8 +264,16 @@ class SealingPeerTransport implements PeerTransportContract {
         recipientId: self,
         mine: await keys.ownKeys(),
         theirPublic: theirs,
+        sessionKey: _sessionLookup,
       );
     } on SealOpenException catch (e) {
+      // Bundle 166: the sender used a session key this phone no longer has
+      // (deleted, or the app data was cleared). Tell it the current one.
+      if (e.reason == 'unknown_session_key') {
+        AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=unknown_session_key');
+        unawaited(_sendReset(sender, outer['pk']?.toString() ?? ''));
+        return null;
+      }
       // Our key may have just been rotated: reload it once and retry.
       if (e.reason != 'unknown_recipient_key' || keys is! StoreSealKeySource) {
         AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=${e.reason}');
@@ -255,6 +287,7 @@ class SealingPeerTransport implements PeerTransportContract {
           recipientId: self,
           mine: await keys.ownKeys(),
           theirPublic: theirs,
+          sessionKey: _sessionLookup,
         );
       } on SealOpenException catch (e2) {
         AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=${e2.reason}');
@@ -262,7 +295,14 @@ class SealingPeerTransport implements PeerTransportContract {
       }
     }
     _setCapable(sender, true);
+    // Bundle 166: the sender's current session key rides inside.
+    final sp = PeerSessionKey.fromWire(inner.remove(sessionField));
+    if (sp != null) _notePeerSession(sender, sp);
     if (inner['type'] == probeType) {
+      if (inner['fs'] == 1) _setFresh(sender);
+      if (inner['reset'] == true) {
+        unawaited(_resendAfterReset(sender, inner['pk']?.toString() ?? ''));
+      }
       if (inner['ask'] == true) unawaited(_answerProbe(sender));
       return null;
     }
@@ -298,6 +338,107 @@ class SealingPeerTransport implements PeerTransportContract {
       final list = jsonDecode(raw);
       if (list is List) _capable.addAll(list.map((e) => e.toString()));
     } catch (_) {}
+    await _loadFresh();
+  }
+
+  // ------------------------------------------------- fresh keys (166)
+  Future<SimpleKeyPair?> _sessionLookup(String id) async =>
+      (await _sessions?.byId(id))?.pair;
+
+  void _setFresh(String peerId) {
+    if (_sessions == null || peerId.isEmpty || !_fresh.add(peerId)) return;
+    AppLogger.info('SEAL_FRESH', detail: 'fresh keys on peers=${_fresh.length}');
+    unawaited(_saveFresh());
+  }
+
+  void _notePeerSession(String peerId, PeerSessionKey key) {
+    if (_sessions == null) return;
+    _setFresh(peerId);
+    final old = _peerSessions[peerId];
+    if (old != null && (old.id == key.id || old.createdAtMs >= key.createdAtMs)) {
+      return;
+    }
+    _peerSessions[peerId] = key;
+    unawaited(_saveFresh());
+  }
+
+  Future<void> _loadFresh() async {
+    if (_sessions == null) return;
+    try {
+      final raw = await _keys?.readSetting(_freshSetting);
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw);
+        if (list is List) _fresh.addAll(list.map((e) => e.toString()));
+      }
+      final rawKeys = await _keys?.readSetting(_peerSessionSetting);
+      if (rawKeys != null && rawKeys.isNotEmpty) {
+        final map = jsonDecode(rawKeys);
+        if (map is Map) {
+          for (final entry in map.entries) {
+            final key = PeerSessionKey.fromWire(entry.value);
+            if (key != null) _peerSessions[entry.key.toString()] = key;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveFresh() async {
+    try {
+      await _keys?.writeSetting(_freshSetting, jsonEncode(_fresh.toList()));
+      await _keys?.writeSetting(_peerSessionSetting, jsonEncode({
+        for (final e in _peerSessions.entries) e.key: e.value.toWire(),
+      }));
+    } catch (_) {}
+  }
+
+  /// Tells [peerId] my current session key after its packet used one I no
+  /// longer have (at most once a minute per contact).
+  Future<void> _sendReset(String peerId, String badSessionId) async {
+    if (_sessions == null) return;
+    final now = DateTime.now();
+    final last = _resetAt[peerId];
+    if (last != null && now.difference(last) < const Duration(minutes: 1)) {
+      return;
+    }
+    _resetAt[peerId] = now;
+    AppLogger.info('SEAL_FRESH', detail: 'reset sent');
+    await _sendSealed(peerId, {
+      'type': probeType,
+      'v': 1,
+      'ask': false,
+      'fs': 1,
+      'reset': true,
+      'pk': badSessionId,
+    });
+  }
+
+  /// The other phone couldn't open what I sent with its old session key:
+  /// send the recent ones again with the new key (the app ignores
+  /// duplicates by message id).
+  Future<void> _resendAfterReset(String peerId, String badSessionId) async {
+    final recent = _recentFresh[peerId];
+    if (recent == null || badSessionId.isEmpty) return;
+    final again = recent.where((r) => r.sessionId == badSessionId).toList();
+    recent.removeWhere((r) => r.sessionId == badSessionId);
+    if (again.isEmpty) return;
+    AppLogger.info('SEAL_FRESH', detail: 'resend after reset count=${again.length}');
+    for (final r in again) {
+      await send(recipientId: peerId, payload: r.payload);
+    }
+  }
+
+  void _rememberFresh(String peerId, String sessionId, Map<String, dynamic> payload) {
+    if (!MessageSealService.queueableInnerTypes.contains(payload['type']?.toString())) {
+      return;
+    }
+    final now = DateTime.now();
+    final list = _recentFresh.putIfAbsent(peerId, () => <_SentFresh>[]);
+    list.removeWhere((r) => now.difference(r.at) > const Duration(minutes: 30));
+    list.add(_SentFresh(sessionId, Map<String, dynamic>.from(payload), now));
+    while (list.length > 30) {
+      list.removeAt(0);
+    }
   }
 
   Future<void> _saveCapabilities() async {
@@ -310,12 +451,21 @@ class SealingPeerTransport implements PeerTransportContract {
   /// messages. Older apps simply ignore the probe.
   Future<void> probe(String peerId) async {
     final keys = _keys;
-    if (keys == null || peerId.isEmpty || _capable.contains(peerId)) return;
+    if (keys == null || peerId.isEmpty) return;
+    // Bundle 166: also ask a sealing contact once whether it takes fresh keys.
+    if (_capable.contains(peerId) && (_sessions == null || _fresh.contains(peerId))) {
+      return;
+    }
     final last = _probedAt[peerId];
     final now = DateTime.now();
     if (last != null && now.difference(last) < _probeEvery) return;
     _probedAt[peerId] = now;
-    await _sendSealed(peerId, {'type': probeType, 'v': 1, 'ask': true});
+    await _sendSealed(peerId, {
+      'type': probeType,
+      'v': 1,
+      'ask': true,
+      if (_sessions != null) 'fs': 1,
+    });
   }
 
   Future<void> _answerProbe(String peerId) async {
@@ -325,7 +475,12 @@ class SealingPeerTransport implements PeerTransportContract {
       return;
     }
     _answeredAt[peerId] = now;
-    await _sendSealed(peerId, {'type': probeType, 'v': 1, 'ask': false});
+    await _sendSealed(peerId, {
+      'type': probeType,
+      'v': 1,
+      'ask': false,
+      if (_sessions != null) 'fs': 1,
+    });
   }
 
   Future<bool> _sendSealed(String peerId, Map<String, dynamic> payload) async {
@@ -351,6 +506,41 @@ class SealingPeerTransport implements PeerTransportContract {
       if (theirs == null) return null;
       final mine = await keys.ownKeys();
       if (mine.isEmpty) return null;
+      // Bundle 166 (5.2): fresh keys for a contact whose app takes them.
+      final sessions = _sessions;
+      final isProbe = payload['type'] == probeType;
+      if (sessions != null && (_fresh.contains(peerId) || isProbe)) {
+        final me = await sessions.current();
+        final body = <String, dynamic>{
+          ...payload,
+          sessionField: PeerSessionKey(me.id, me.publicKey, me.createdAtMs).toWire(),
+        };
+        final theirSession = _peerSessions[peerId];
+        if (!isProbe &&
+            _fresh.contains(peerId) &&
+            theirSession != null &&
+            SessionKeyPolicy.usable(theirSession.createdAtMs, DateTime.now())) {
+          _rememberFresh(peerId, theirSession.id, payload);
+          return await _sealer.sealFresh(
+            payload: body,
+            senderId: self,
+            recipientId: peerId,
+            mine: mine.first,
+            theirPublic: theirs,
+            theirSessionId: theirSession.id,
+            theirSessionPublic: theirSession.publicKey,
+          );
+        }
+        // No usable session key yet (or too old): the 156 lock this once;
+        // the answer brings the contact's current session key.
+        return await _sealer.seal(
+          payload: body,
+          senderId: self,
+          recipientId: peerId,
+          mine: mine.first,
+          theirPublic: theirs,
+        );
+      }
       return await _sealer.seal(
         payload: payload,
         senderId: self,
@@ -517,4 +707,13 @@ class SealingPeerTransport implements PeerTransportContract {
     _blockedSub = null;
     await inner.dispose();
   }
+}
+
+/// Bundle 166: a message recently sent with a contact's session key, kept
+/// for 30 minutes in memory in case that key turns out to be gone.
+class _SentFresh {
+  _SentFresh(this.sessionId, this.payload, this.at);
+  final String sessionId;
+  final Map<String, dynamic> payload;
+  final DateTime at;
 }
