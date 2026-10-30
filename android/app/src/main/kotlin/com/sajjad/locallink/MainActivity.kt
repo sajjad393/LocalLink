@@ -88,6 +88,7 @@ class MainActivity : FlutterActivity() {
     private var wifiReceiverRegistered = false
     // Bundle 155: "who is who" tags over Wi-Fi Direct service discovery.
     private var nearbyTags: NearbyTagManager? = null
+    private var localNet: LocalNetManager? = null // Bundle 161
     private var callNotificationEventSink: EventChannel.EventSink? = null
     private val pendingCallNotificationActions = mutableListOf<Map<String, Any>>()
     private var notificationEventSink: EventChannel.EventSink? = null
@@ -206,6 +207,8 @@ class MainActivity : FlutterActivity() {
         nearbyTags = NearbyTagManager(this, wifiManager, wifiChannel, { hasWifiPermission() }, onWifi = { onWifiNetwork() }) { event ->
             wifiEventSink?.success(event)
         }
+        // Bundle 161: linked groups + LocalLink hotspot (tests, off by default).
+        localNet = LocalNetManager.bind(this, { nearbyTags }) { event -> wifiEventSink?.success(event) }
         registerWifiReceiver()
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, wifiChannelName).setMethodCallHandler { call, result ->
@@ -229,6 +232,15 @@ class MainActivity : FlutterActivity() {
                 // Bundle 157: one shared group (create / join without pop-ups).
                 "setNearbyWanted" -> { nearbyTags?.setWanted(call.argument<List<String>>("ids")); result.success(null) }
                 "setNearbyBridge" -> { nearbyTags?.setBridge(call.argument<Boolean>("on") ?: false); result.success(null) }
+                // Bundle 161: linked groups + LocalLink hotspot (null = started, else a reason).
+                "joinLocalNet" -> result.success(localNet?.join(
+                    call.argument<String>("kind").orEmpty(), call.argument<String>("ssid").orEmpty(),
+                    call.argument<String>("key").orEmpty(), call.argument<String>("v6")) ?: null)
+                "leaveLocalNet" -> { localNet?.leave(call.argument<String>("reason") ?: "app"); result.success(null) }
+                "startLocalHotspot" -> result.success(if (hasWifiPermission()) localNet?.startHotspot() else "permission")
+                "stopLocalHotspot" -> { localNet?.stopHotspot(call.argument<String>("reason") ?: "app"); result.success(null) }
+                "setNearbyLinkTarget" -> { nearbyTags?.setLinkTarget(call.argument<String>("id")); result.success(null) }
+                "localNetStatus" -> result.success(localNet?.status() ?: emptyMap<String, Any?>())
                 "createNearbyGroup" -> createNearbyGroup(result)
                 "joinNearbyGroup" -> joinNearbyGroup(call.argument<String>("name"), call.argument<String>("key"), call.argument<String>("address"), call.argument<Boolean>("leave") ?: false, result)
                 "cancelConnect" -> wifiManager.cancelConnect(wifiChannel, actionResult(result))
@@ -1193,7 +1205,8 @@ class MainActivity : FlutterActivity() {
         return try{
             val cm=getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
             @Suppress("DEPRECATION")
-            cm.allNetworks.any{n->cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)==true}
+            // Bundle 161: the linked group / LocalLink hotspot network is not "on Wi-Fi".
+            cm.allNetworks.any{n->localNet?.owns(n)!=true&&cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)==true}
         }catch(_:Exception){false}
     }
 
@@ -1286,6 +1299,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy(){
         chatVideoPip.dispose() // Bundle 147
+        if (!isChangingConfigurations) { localNet?.dispose(); localNet = null } // Bundle 161
         setCallProximity(false) // Bundle 143
         if (activeInstance === this) activeInstance = null
         callNotificationEventSink = null

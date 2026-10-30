@@ -10,6 +10,7 @@ import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.sajjad.locallink.mesh.LocalNetPolicy
 import com.sajjad.locallink.mesh.NearbyGroupPolicy
 import com.sajjad.locallink.mesh.NearbyTagPolicy
 import java.util.concurrent.ConcurrentHashMap
@@ -44,6 +45,10 @@ class NearbyTagManager(
     private var wanted: List<String> = emptyList()
     // Bundle 158: this phone bridges its group and a normal Wi-Fi network.
     private var bridge = false
+    // Bundle 161: LocalLink hotspot (name + password) and linked group.
+    private var hotspotSsid: String? = null
+    private var hotspotKey: String? = null
+    private var linkTarget: String? = null
     private var lastDiscoveryAt = 0L
     private var lastPublished = ""
     private var listenersSet = false
@@ -144,6 +149,44 @@ class NearbyTagManager(
         publish()
     }
 
+    /** Bundle 161: advertise (or clear) this phone's LocalLink hotspot. */
+    fun setHotspot(ssid: String?, key: String?) {
+        val s = ssid?.takeIf { LocalNetPolicy.validSsid(it) }
+        val k = key?.takeIf { LocalNetPolicy.validKey(it) }
+        val on = s != null && k != null
+        if ((if (on) s else null) == hotspotSsid && (if (on) k else null) == hotspotKey) return
+        hotspotSsid = if (on) s else null
+        hotspotKey = if (on) k else null
+        Log.i(TAG, "hotspot tag ${if (on) "on" else "off"}")
+        publish()
+    }
+
+    /** Bundle 161: the short id of the group this phone links to (or null). */
+    fun setLinkTarget(id: String?) {
+        val clean = id?.trim()?.lowercase()?.takeIf { LocalNetPolicy.validLinkId(it) }
+        if (clean == linkTarget) return
+        linkTarget = clean
+        Log.i(TAG, "link tag ${clean ?: "off"}")
+        publish()
+    }
+
+    /** Bundle 161: the host's IPv6 link-local inside its group (`p2p-…`). */
+    private fun groupV6(): String? {
+        if (!host) return null
+        return try {
+            val names = java.net.NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+                .filter { it.isUp && it.name.startsWith("p2p-") }
+            names.asSequence()
+                .flatMap { it.inetAddresses.toList().asSequence() }
+                .filterIsInstance<java.net.Inet6Address>()
+                .filter { it.isLinkLocalAddress }
+                .map { (it.hostAddress ?: "").substringBefore('%').lowercase() }
+                .firstOrNull { LocalNetPolicy.validV6(it) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun emitGroup() {
         val role = if (host) "host" else if (member) "member" else "none"
         Log.i(TAG, "group state role=$role members=$members grp=${groupName ?: "-"}")
@@ -169,7 +212,8 @@ class NearbyTagManager(
             emitGroup()
         }
         val wifi = try { onWifi() } catch (_: Exception) { false }
-        val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge, charging, wifi)
+        val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge, charging, wifi,
+            v6 = groupV6(), hotspotSsid = hotspotSsid, hotspotKey = hotspotKey, linkTarget = linkTarget)
         val signature = txt.toString()
         if (!force && signature == lastPublished) return
         lastPublished = signature
@@ -189,7 +233,7 @@ class NearbyTagManager(
     private fun addService(info: WifiP2pDnsSdServiceInfo, txt: Map<String, String>) {
         try {
             manager.addLocalService(channel, info, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"} wf=${txt["wf"] ?: "0"}") }
+                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"} wf=${txt["wf"] ?: "0"} v6=${if (txt.containsKey("v6")) 1 else 0} hs=${if (txt.containsKey("hs")) 1 else 0} lt=${txt["lt"] ?: "-"}") }
                 override fun onFailure(reason: Int) {
                     lastPublished = ""
                     Log.w(TAG, "tag publish failed reason=$reason")

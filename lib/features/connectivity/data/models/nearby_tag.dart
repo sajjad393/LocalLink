@@ -40,6 +40,16 @@ class NearbyTag {
   /// Bundle 160: this phone is on a normal Wi-Fi network (`wf=1`).
   final bool wifi;
 
+  /// Bundle 161: a host's IPv6 link-local inside its group (`v6`).
+  final String? v6;
+
+  /// Bundle 161: this phone runs a LocalLink hotspot (`hs` / `hk`).
+  final String? hotspotSsid;
+  final String? hotspotKey;
+
+  /// Bundle 161: the short id of the group this phone links to (`lt`).
+  final String? linkTarget;
+
   const NearbyTag({
     required this.address,
     required this.idHash,
@@ -55,7 +65,18 @@ class NearbyTag {
     this.bridge = false,
     this.charging = false,
     this.wifi = false,
+    this.v6,
+    this.hotspotSsid,
+    this.hotspotKey,
+    this.linkTarget,
   });
+
+  /// Bundle 161: a LocalLink hotspot others can join.
+  bool get hasHotspot => hotspotSsid != null && hotspotKey != null;
+
+  /// Bundle 161: the short id of a group name (used in `lt`).
+  static String linkIdFor(String groupName) =>
+      sha256.convert(utf8.encode(groupName)).toString().substring(0, 8);
 
   /// Bundle 157: the short id used in the `w` (wanted) list.
   static String wantedIdFor(String idHash) =>
@@ -98,6 +119,10 @@ class NearbyTag {
       bridge: map['bridge'] == true,
       charging: map['charging'] == true,
       wifi: map['wifi'] == true,
+      v6: _text(map['v6']),
+      hotspotSsid: _text(map['hotspot_ssid']),
+      hotspotKey: _text(map['hotspot_key']),
+      linkTarget: _text(map['link_target']),
     );
   }
 

@@ -35,6 +35,17 @@ package com.sajjad.locallink.mesh
  * Bundle 159 adds `pwr=1`: this phone is on a charger, so on a tie it is
  * preferred as host or bridge (battery care). Older phones ignore it.
  *
+ * Bundle 161 adds (all optional, older phones ignore them):
+ *
+ *   v6=<host's IPv6 link-local>  hs=<hotspot name>  hk=<hotspot password>
+ *   lt=<short id of the group this phone links to>
+ *
+ * - `v6`: a host's own address inside its group, so a phone that is itself
+ *   a host can still reach it from the other group (both use 192.168.49.1).
+ * - `hs` / `hk`: this phone runs a LocalLink hotspot (test setting).
+ * - `lt`: this phone links its group to another group (test setting), so a
+ *   second phone doesn't link the same two groups.
+ *
  * Pure functions only, so the rules are easy to check.
  */
 object NearbyTagPolicy {
@@ -67,6 +78,11 @@ object NearbyTagPolicy {
         charging: Boolean = false,
         // Bundle 160: on a normal Wi-Fi network (blocked Wi-Fi check).
         wifi: Boolean = false,
+        // Bundle 161: linked groups + LocalLink hotspot (tests).
+        v6: String? = null,
+        hotspotSsid: String? = null,
+        hotspotKey: String? = null,
+        linkTarget: String? = null,
     ): Map<String, String> {
         val n = members.coerceIn(0, 64)
         val txt = linkedMapOf(
@@ -85,6 +101,12 @@ object NearbyTagPolicy {
         if (bridge && (host || member)) txt["br"] = "1"
         if (charging) txt["pwr"] = "1"
         if (wifi) txt["wf"] = "1"
+        if (host && LocalNetPolicy.validV6(v6)) txt["v6"] = v6!!
+        if (LocalNetPolicy.validSsid(hotspotSsid) && LocalNetPolicy.validKey(hotspotKey)) {
+            txt["hs"] = hotspotSsid!!
+            txt["hk"] = hotspotKey!!
+        }
+        if ((host || member) && LocalNetPolicy.validLinkId(linkTarget)) txt["lt"] = linkTarget!!
         return txt
     }
 
@@ -127,6 +149,17 @@ object NearbyTagPolicy {
         if (txt["pwr"] == "1") tag["charging"] = true
         // Bundle 160: on a normal Wi-Fi network.
         if (txt["wf"] == "1") tag["wifi"] = true
+        // Bundle 161: linked groups + LocalLink hotspot.
+        val v6 = txt["v6"]?.trim()?.lowercase()
+        if (host && LocalNetPolicy.validV6(v6)) tag["v6"] = v6!!
+        val hs = txt["hs"]
+        val hk = txt["hk"]
+        if (LocalNetPolicy.validSsid(hs) && LocalNetPolicy.validKey(hk)) {
+            tag["hotspot_ssid"] = hs!!
+            tag["hotspot_key"] = hk!!
+        }
+        val lt = txt["lt"]?.trim()?.lowercase()
+        if ((host || member) && LocalNetPolicy.validLinkId(lt)) tag["link_target"] = lt!!
         return tag
     }
 }

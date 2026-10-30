@@ -25,3 +25,27 @@ abstract interface class NearbyGroupControl {
 abstract interface class NearbyBridgeControl {
   Future<void> setNearbyBridge(bool on);
 }
+
+/// Bundle 161 (tests, off by default): a second Wi-Fi network for LocalLink
+/// — another nearby group joined as a normal Wi-Fi user, or a LocalLink
+/// hotspot. Results arrive as `local_net` / `hotspot` events.
+abstract interface class NearbyLocalNetControl {
+  /// [kind] = `group` or `hotspot`. Returns null when Android was asked
+  /// (it shows its own "Connect?" box), else a short reason.
+  Future<String?> joinLocalNet({
+    required String kind,
+    required String ssid,
+    required String key,
+    String? v6,
+  });
+
+  Future<void> leaveLocalNet(String reason);
+
+  /// Returns null when started (the result comes as a `hotspot` event).
+  Future<String?> startLocalHotspot();
+
+  Future<void> stopLocalHotspot(String reason);
+
+  /// `lt` in this phone's tag: the short id of the group it links to.
+  Future<void> setNearbyLinkTarget(String? id);
+}
