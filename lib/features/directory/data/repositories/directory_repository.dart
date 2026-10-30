@@ -18,7 +18,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   static const Duration _syncCooldown = Duration(seconds: 20);
   static const Duration _gossipLifetime = Duration(minutes: 5);
   static const int _gossipHops = 6;
-  static const int _maxSyncProfiles = 200;
+  /// Bundle 154: profile sharing used to stop at 200 rows (counted BEFORE
+  /// private/blocked rows were skipped). Now every shareable profile is sent,
+  /// newest first, in pages of [directorySyncPageSize], up to this cap.
+  static const int _maxSyncProfiles = 1024;
 
   final LocalStore store;
   final LocalLinkApi api;
@@ -402,7 +405,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final rows = <Map<String, dynamic>>[];
     final profiles = await store.directoryProfiles();
     final privateIds = await store.privateContactIds();
-    for (final row in profiles.take(_maxSyncProfiles)) {
+    for (final row in profiles) {
+      if (rows.length >= _maxSyncProfiles) break;
       final profile = DirectoryProfile.fromMap(row);
       if (!profile.isSigned || await store.isBlocked(profile.userId)) continue;
       // Bundle 90: a contact the local owner marked private is never
@@ -412,15 +416,22 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       if (payload != null) rows.add(payload);
     }
 
-    await transport.send(
-      recipientId: origin,
-      payload: {
-        'type': 'DIRECTORY_SYNC_RESPONSE',
-        'sync_id': message['sync_id'],
-        'origin_id': store.deviceId,
-        'profiles': rows,
-      },
-    );
+    // Bundle 154: pages keep each packet small. Older phones handle every
+    // page like a normal response (they ignore 'page'/'pages').
+    final pages = directorySyncPages(rows);
+    for (var i = 0; i < pages.length; i++) {
+      await transport.send(
+        recipientId: origin,
+        payload: {
+          'type': 'DIRECTORY_SYNC_RESPONSE',
+          'sync_id': message['sync_id'],
+          'origin_id': store.deviceId,
+          'profiles': pages[i],
+          'page': i + 1,
+          'pages': pages.length,
+        },
+      );
+    }
     await _forwardGossip(message);
   }
 
@@ -1065,4 +1076,20 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     await _updates.close();
     _started = false;
   }
+}
+
+/// Bundle 154: rows per DIRECTORY_SYNC_RESPONSE page.
+const int directorySyncPageSize = 50;
+
+/// Bundle 154: split sync rows into pages. Always at least one page (an
+/// empty one when there is nothing to share) so the requester still records
+/// that the sync completed — same as before paging existed.
+List<List<T>> directorySyncPages<T>(List<T> rows,
+    {int pageSize = directorySyncPageSize}) {
+  if (rows.isEmpty) return [<T>[]];
+  final size = pageSize < 1 ? 1 : pageSize;
+  return [
+    for (var i = 0; i < rows.length; i += size)
+      rows.sublist(i, i + size > rows.length ? rows.length : i + size),
+  ];
 }

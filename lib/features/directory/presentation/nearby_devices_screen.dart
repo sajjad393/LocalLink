@@ -18,6 +18,7 @@ import 'package:locallink/features/connectivity/data/models/wifi_direct_models.d
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/add_contact_screen.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
+import 'package:locallink/features/directory/presentation/nearby_list_plan.dart';
 
 class NearbyDevicesScreen extends StatefulWidget {
   final ConnectivityBloc connectivity;
@@ -55,6 +56,8 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
   // and a fresh pairing sends the user back to the People tab where the new
   // contact now appears instantly (ContactsBloc listens to profileUpdates).
   Set<String> _trustedIds = const <String>{};
+  // Bundle 154: blocked people never show on Nearby.
+  Set<String> _blockedIds = const <String>{};
   StreamSubscription<String>? _pairedSub;
   // Bundle 126: burst-duplicated accept packets used to fire the "paired"
   // stream once per copy — each copy re-popped this screen. Dedupe by a
@@ -85,11 +88,40 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
       final ids = await widget.pairing.trustedNodeIds();
       if (mounted) setState(() => _trustedIds = ids);
     } catch (_) {}
+    try {
+      final blocked = await widget.pairing.blockedNodeIds();
+      if (mounted) setState(() => _blockedIds = blocked);
+    } catch (_) {}
   }
 
+  /// Bundle 154: one place that decides which cards Nearby shows.
+  NearbyListPlan _plan(MeshState meshState, int wifiPeerCount) {
+    final meshPeers = meshState.peers.values.toList();
+    final discovered = meshPeers
+        .where((p) => p.state == 'DISCOVERED')
+        .toList(growable: false)
+      ..sort((a, b) => (b.lastSeenAt ?? 0).compareTo(a.lastSeenAt ?? 0));
+    final live = meshPeers.where((p) =>
+        p.state == 'CONNECTED' ||
+        p.state == 'AVAILABLE' ||
+        p.state == 'CONNECTING');
+    return planNearbyList(
+      discoveredNodeIds: [for (final p in discovered) p.nodeId],
+      liveNodeIds: [for (final p in live) p.nodeId],
+      trustedIds: _trustedIds,
+      blockedIds: _blockedIds,
+      wifiPeerCount: wifiPeerCount,
+    );
+  }
+
+  List<String> _unpairedDiscoveredIds() =>
+      _plan(widget.mesh.state, 0).addableNodeIds;
+
   /// Bundle 125: pairing succeeded (this phone's "_paired" event fired just
-  /// as the global toast shows "Connected with …") — Nearby was pushed from
-  /// the People tab, so popping lands exactly there.
+  /// as the global toast shows "Connected with …").
+  /// Bundle 154: Nearby now STAYS open so several people can be added in a
+  /// row — the new contact simply disappears from the list (the global
+  /// "Connected with … — say hi!" toast confirms it).
   void _onPaired(String displayName) {
     if (!mounted) return;
     final now = DateTime.now();
@@ -100,7 +132,6 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
     _lastPairHandledAt = now;
     try {
       unawaited(_refreshTrusted());
-      unawaited(Navigator.maybePop(context));
     } catch (_) {
       // Never let a pairing-completion reaction take the app down — the
       // contact is already saved; worst case the user navigates back by hand.
@@ -132,13 +163,48 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
       return;
     }
     _snack('Asking the other phone to accept…');
+    // Bundle 154 (F6): remember which unpaired phones were already visible,
+    // so the phone that appears right after this tap gets the request —
+    // already-paired phones nearby no longer block pairing.
+    final before = _unpairedDiscoveredIds().toSet();
     unawaited(c.connectWifiDirect(peer));
-    final discovered = widget.mesh.state.peers.values
-        .where((p) => p.state == 'DISCOVERED')
-        .toList(growable: false);
-    if (discovered.length == 1) {
-      await _requestPair(discovered.first);
+    String? target = pickPairTarget(
+        unpairedBefore: before, unpairedNow: _unpairedDiscoveredIds());
+    if (target == null || before.contains(target)) {
+      // Give the tapped phone up to ~12 s to show up on the local network.
+      for (var i = 0; i < 6 && mounted; i++) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (!mounted) return;
+        final now = _unpairedDiscoveredIds();
+        final fresh = now.where((id) => !before.contains(id)).toList();
+        if (fresh.length == 1) {
+          target = fresh.first;
+          break;
+        }
+        if (fresh.length > 1) {
+          target = null;
+          break;
+        }
+        target = pickPairTarget(unpairedBefore: before, unpairedNow: now);
+      }
     }
+    if (!mounted) return;
+    if (target == null) {
+      AppLogger.warning('PAIR_UI',
+          detail: 'PAIR_AMBIGUOUS count=${_unpairedDiscoveredIds().length}');
+      if (_unpairedDiscoveredIds().isNotEmpty) {
+        _snack('Tap Pair next to the phone you want to add.');
+      }
+      return;
+    }
+    MeshPeer? meshPeer;
+    for (final p in widget.mesh.state.peers.values) {
+      if (p.nodeId == target) {
+        meshPeer = p;
+        break;
+      }
+    }
+    if (meshPeer != null) await _requestPair(meshPeer);
   }
 
   /// Bundle 108: ask the discovered peer to pair — a signed identity packet
@@ -188,7 +254,13 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
     // Reuse the wifi-direct peer name when it is the only visible phone —
     // it is almost certainly the same device discovered over LAN.
     final wifiPeers = widget.connectivity.state.snapshot.wifiPeers;
-    final displayName = wifiPeers.length == 1 && wifiPeers.first.name.isNotEmpty
+    // Bundle 154: only when no paired contact is nearby either — otherwise
+    // the single Wi-Fi Direct name may belong to that contact.
+    final soloPlan = _plan(widget.mesh.state, wifiPeers.length);
+    final displayName = wifiPeers.length == 1 &&
+            soloPlan.pairedNearbyCount == 0 &&
+            soloPlan.addableNodeIds.length == 1 &&
+            wifiPeers.first.name.isNotEmpty
         ? wifiPeers.first.name
         : 'this phone';
     final transportChip = switch (peer.transport) {
@@ -329,10 +401,23 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                   ),
                 ),
               ),
-              Text(
-                peers.isEmpty ? 'Looking for nearby phones…' : '${peers.length} nearby ${peers.length == 1 ? 'phone' : 'phones'}',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium,
+              // Bundle 154: the title counts only phones you can still add.
+              ListenableBuilder(
+                listenable: PresenceHub.instance,
+                builder: (context, _) => BlocBuilder<MeshBloc, MeshState>(
+                  bloc: widget.mesh,
+                  builder: (context, meshState) {
+                    final n = _plan(meshState, peers.length)
+                        .addableCount(peers.length);
+                    return Text(
+                      n == 0
+                          ? 'Looking for nearby phones…'
+                          : '$n ${n == 1 ? 'phone' : 'phones'} you can add',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: LocalLinkSpacing.sm),
               Text(
@@ -347,79 +432,55 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                 builder: (context, _) => BlocBuilder<MeshBloc, MeshState>(
                 bloc: widget.mesh,
                 builder: (context, meshState) {
-                  final meshPeers = meshState.peers.values.toList();
-                  final discovered = meshPeers
-                      .where((p) => p.state == 'DISCOVERED')
-                      .toList(growable: false)
-                    ..sort((a, b) =>
-                        (b.lastSeenAt ?? 0).compareTo(a.lastSeenAt ?? 0));
-                  final live = meshPeers
-                      .where((p) =>
-                          p.state == 'CONNECTED' ||
-                          p.state == 'AVAILABLE' ||
-                          p.state == 'CONNECTING')
-                      .toList(growable: false);
-                  // Bundle 118: one card per phone. When a peer is visible on
-                  // both Wi-Fi Direct and the LAN beacon (same phone seen
-                  // twice), the LAN card wins — it carries the node id that
-                  // pairing needs.
-                  final wifiOnly = discovered.isEmpty ? peers : const [];
-                  final nothingFound = wifiOnly.isEmpty &&
-                      discovered.isEmpty &&
-                      live.isEmpty;
+                  // Bundle 154: Nearby shows ONLY phones you can still add.
+                  // Paired contacts (and blocked people) are hidden — their
+                  // live status already shows in People and Chats.
+                  final plan = _plan(meshState, peers.length);
+                  final byId = <String, MeshPeer>{
+                    for (final p in meshState.peers.values) p.nodeId: p,
+                  };
+                  final addable = [
+                    for (final id in plan.addableNodeIds)
+                      if (byId[id] != null) byId[id]!,
+                  ];
+                  final wifiOnly = plan.showWifiOnly ? peers : const [];
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (nothingFound)
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(LocalLinkSpacing.lg),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  backgroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .secondaryContainer,
-                                  child: Icon(Icons.radar_rounded,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSecondaryContainer),
-                                ),
-                                const SizedBox(width: LocalLinkSpacing.md),
-                                const Expanded(
-                                  child: Text(
-                                    'Nothing found yet — keep LocalLink open on the other phone.',
-                                  ),
-                                ),
-                              ],
-                            ),
+                      if (plan.emptyState == NearbyEmptyState.nothingFound)
+                        const _NearbyInfoCard(
+                          icon: Icons.radar_rounded,
+                          text:
+                              'Nothing found yet — keep LocalLink open on the other phone.',
+                        )
+                      else if (plan.emptyState ==
+                          NearbyEmptyState.everyoneAdded)
+                        _NearbyInfoCard(
+                          icon: Icons.how_to_reg_rounded,
+                          text:
+                              'Everyone nearby is already in your contacts.',
+                          action: TextButton(
+                            onPressed: () => Navigator.maybePop(context),
+                            child: const Text('See contacts'),
                           ),
                         )
                       else ...[
-                        ...discovered.map(
-                          (peer) {
-                            // Bundle 125: a phone this device already paired
-                            // with is never offered "Pair" again.
-                            final paired = _trustedIds.contains(peer.nodeId);
-                            return _NearbyCard(
-                              icon: paired
-                                  ? Icons.check_circle_outline_rounded
-                                  : Icons.wifi_find_rounded,
-                              title: _personName(peer.nodeId) ??
-                                  (peers.length == 1 && peers.first.name.isNotEmpty
-                                      ? peers.first.name
-                                      : 'LocalLink phone nearby ·…${_shortId(peer.nodeId)}'),
-                              subtitle: paired
-                                  ? 'Paired — find them in the People tab'
-                                  : 'Same Wi-Fi / LAN — not paired yet',
-                              action: paired
-                                  ? null
-                                  : FilledButton.tonal(
-                                      onPressed: () => _pairSheet(peer),
-                                      child: const Text('Pair'),
-                                    ),
-                            );
-                          },
+                        ...addable.map(
+                          (peer) => _NearbyCard(
+                            icon: Icons.wifi_find_rounded,
+                            title: _personName(peer.nodeId) ??
+                                (peers.length == 1 &&
+                                        addable.length == 1 &&
+                                        plan.pairedNearbyCount == 0 &&
+                                        peers.first.name.isNotEmpty
+                                    ? peers.first.name
+                                    : 'LocalLink phone nearby ·…${_shortId(peer.nodeId)}'),
+                            subtitle: 'Same Wi-Fi / LAN — not paired yet',
+                            action: FilledButton.tonal(
+                              onPressed: () => _pairSheet(peer),
+                              child: const Text('Pair'),
+                            ),
+                          ),
                         ),
                         ...wifiOnly.map(
                           (peer) => _NearbyCard(
@@ -442,19 +503,6 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                             ),
                           ),
                         ),
-                        ...live.map(
-                          (peer) => _NearbyCard(
-                            icon: Icons.check_circle_outline_rounded,
-                            // Bundle 148: the person's name and the same
-                            // status every other screen shows.
-                            title: _personName(peer.nodeId) ??
-                                'LocalLink phone ·…${_shortId(peer.nodeId)}',
-                            subtitle: PresenceHub.instance.statusOf(peer.nodeId) ==
-                                    PresenceStatus.nearby
-                                ? 'Nearby · ${_nearbyWhen(peer.lastSeenAt)}'
-                                : 'Found nearby — connecting…',
-                          ),
-                        ),
                       ],
                     ],
                   );
@@ -470,19 +518,41 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
   }
 }
 
-String _nearbyWhen(int? lastSeenAt) {
-  if (lastSeenAt == null || lastSeenAt <= 0) return 'seen just now';
-  final age = DateTime.now().millisecondsSinceEpoch - lastSeenAt;
-  if (age < 0) return 'seen just now';
-  if (age < 60000) return 'seen ${(age / 1000).round()}s ago';
-  return 'seen ${(age / 60000).round()}m ago';
-}
-
 /// Bundle 148: node id == device id, so a paired phone shows its person.
 String? _personName(String nodeId) => PresenceHub.instance.nameOf(nodeId);
 
 String _shortId(String id) =>
     id.length > 8 ? id.substring(id.length - 8) : id;
+
+/// Bundle 154: one simple info card (empty states) — icon, one line, and an
+/// optional small action.
+class _NearbyInfoCard extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Widget? action;
+  const _NearbyInfoCard({required this.icon, required this.text, this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(LocalLinkSpacing.lg),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: scheme.secondaryContainer,
+              child: Icon(icon, color: scheme.onSecondaryContainer),
+            ),
+            const SizedBox(width: LocalLinkSpacing.md),
+            Expanded(child: Text(text)),
+            if (action != null) action!,
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// Bundle 118: single compact card per nearby phone — one title, one short
 /// subtitle, at most one action. Replaces the old two-section layout

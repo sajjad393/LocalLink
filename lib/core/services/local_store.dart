@@ -1246,8 +1246,13 @@ class LocalStore {
           'SELECT p.*, c.custom_name AS custom_name FROM directory_profiles p '
           'LEFT JOIN contacts c ON c.user_id = p.user_id '
           'WHERE p.display_name LIKE ? OR p.username LIKE ? OR c.custom_name LIKE ? '
-          'ORDER BY p.display_name COLLATE NOCASE ASC LIMIT 50',
+          'ORDER BY p.display_name COLLATE NOCASE ASC LIMIT $directorySearchLimit',
           ['%$query%', '%$query%', '%$query%']);
+
+  /// Bundle 154: name search used to stop at 50 people. With 300+ users
+  /// nearby a short query ("ali") can match more; 200 keeps every realistic
+  /// match while the list stays light (typing more letters narrows it).
+  static const int directorySearchLimit = 200;
   Future<List<Map<String, dynamic>>> directoryProfiles() async =>
       _db.query('directory_profiles', orderBy: 'updated_at DESC');
   Future<void> addContact(String userId, String deviceId,
@@ -1432,6 +1437,20 @@ class LocalStore {
       (await _db.query('blocked_users',
               where: 'user_id=?', whereArgs: [userId], limit: 1))
           .isNotEmpty;
+  /// Bundle 154: every id that counts as blocked for a nearby phone — the
+  /// blocked user ids themselves (device ids land here too via
+  /// blockDeviceAndUser) plus the device ids of blocked users' profiles.
+  Future<Set<String>> blockedPeerIds() async {
+    final rows = await _db.rawQuery(
+        'SELECT user_id AS id FROM blocked_users '
+        'UNION SELECT p.device_id AS id FROM blocked_users b '
+        'JOIN directory_profiles p ON p.user_id = b.user_id');
+    return {
+      for (final row in rows)
+        if ((row['id']?.toString() ?? '').isNotEmpty) row['id'].toString(),
+    };
+  }
+
   Future<bool> isBlockedPeer(String peerId) async {
     if (peerId.isEmpty) return false;
     if (await isBlocked(peerId)) return true;

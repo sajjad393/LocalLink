@@ -351,6 +351,10 @@ final class PairingService {
         .toSet();
   }
 
+  /// Bundle 154: node ids of blocked people (by device id or by the user id
+  /// behind a device) — Nearby never shows them.
+  Future<Set<String>> blockedNodeIds() => _store.blockedPeerIds();
+
   // ---------------------------------------------------------------- IDENTITY
 
   /// Byte-identical to MyQrScreen._payload(): a v1 signed identity bundle.
