@@ -431,7 +431,17 @@ class FileTransferService {
 
   Future<String> protectLegacyLocalFile(String plaintextPath) async {
     final file = File(plaintextPath);
-    if (!await file.exists()) throw StateError('local file does not exist');
+    if (!await file.exists()) {
+      // Bundle 144: the plaintext was already protected on an earlier pass (send
+      // or first view) but the row still names it. Use that '.enc' copy: this
+      // was the sender's OWN photo/video/voice note stuck behind a download icon.
+      final protectedPath = '$plaintextPath.enc';
+      if (await File(protectedPath).exists() &&
+          await sensitiveFiles.isProtected(protectedPath)) {
+        return protectedPath;
+      }
+      throw StateError('local file does not exist');
+    }
     if (await sensitiveFiles.isProtected(plaintextPath)) return plaintextPath;
     final protectedPath = '$plaintextPath.enc';
     await sensitiveFiles.protectFile(plaintextPath, protectedPath);

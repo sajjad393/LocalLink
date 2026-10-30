@@ -289,10 +289,10 @@ final class CallSessionManager implements CallGateway {
       direction: CallDirection.outgoing,
       state: CallState.connecting,
       startedAt: now,
-      // Bundle 143: voice calls start on the EARPIECE (phone-call / WhatsApp
-      // behaviour) so the proximity sensor can blank the screen at the ear.
-      // Video switches to the loudspeaker automatically (_speakerForVideo).
-      speakerOn: false,
+      // Bundle 144: voice calls start on the SPEAKER again (user choice: the
+      // 143 earpiece default sounded filtered). The speaker button moves to
+      // the earpiece; proximity screen-off is active only then.
+      speakerOn: true,
       directMode: true,
       transportMode: mode,
       signalingConnected: false,
@@ -792,10 +792,10 @@ final class CallSessionManager implements CallGateway {
       direction: CallDirection.incoming,
       state: CallState.ringing,
       startedAt: createdAt,
-      // Bundle 143: voice calls start on the EARPIECE (phone-call / WhatsApp
-      // behaviour) so the proximity sensor can blank the screen at the ear.
-      // Video switches to the loudspeaker automatically (_speakerForVideo).
-      speakerOn: false,
+      // Bundle 144: voice calls start on the SPEAKER again (user choice: the
+      // 143 earpiece default sounded filtered). The speaker button moves to
+      // the earpiece; proximity screen-off is active only then.
+      speakerOn: true,
       directMode: true,
       transportMode: CallTransportMode.offlineMesh,
       supportedMediaCodecs: advertised,

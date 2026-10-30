@@ -975,7 +975,7 @@ class LocalLinkTransportService : Service() {
                 val line = try {
                     connection.reader.readLine()
                 } catch (_: SocketTimeoutException) {
-                    if (System.currentTimeMillis() - connection.lastPongAt >
+                    if (System.currentTimeMillis() - maxOf(connection.lastPongAt, connection.lastSeenAt) >
                         MeshTransportPolicy.HEARTBEAT_TIMEOUT_MS * 2) {
                         exitCause = "read_timeout_stale"
                         break
@@ -1012,6 +1012,10 @@ class LocalLinkTransportService : Service() {
                         routeDirectPacket(from, packet)
                     }
                     "ping" -> {
+                        // Bundle 144: the peer's clock rides every ping; Dart uses the
+                        // offset to place their messages at the sender's true time.
+                        val peerSentAt = packet.optLong("sent_at", 0L)
+                        if (peerSentAt > 0L) notePeerClock(connection.peerId, peerSentAt - System.currentTimeMillis())
                         activePeerConnection(connection.peerId)?.let { meshPeers.available(connection.peerId, it.transportName) }
                         connection.send(JSONObject().put("type", "pong").put("sent_at", System.currentTimeMillis()))
                     }
@@ -1178,6 +1182,8 @@ class LocalLinkTransportService : Service() {
                 "mesh_packet_id" to packet.packetId,
                 "mesh_destination_id" to self,
                 "mesh_hop_count" to packet.hopCount,
+                // Bundle 144: peer clock minus ours (ms), only for a direct hop.
+                "peer_clock_offset_ms" to (if (packet.hopCount <= 1) peerClockOffsetMs[packet.sourceNodeId] else null),
                 // Bundle 132 (G): the link kind that carried the last hop
                 // (wifi_direct | lan), so Dart can label the receive
                 // transport truthfully. Meaningful when hop_count == 1.
@@ -2151,7 +2157,10 @@ class LocalLinkTransportService : Service() {
                             peer.lastPingAt = now
                             peer.send(JSONObject().put("type", "ping").put("sent_at", now))
                             peer.writeStrikes = 0
-                            if (now - peer.lastPongAt > MeshTransportPolicy.HEARTBEAT_TIMEOUT_MS) {
+                            // Bundle 144: any inbound line proves the link is alive. During a
+                            // big transfer the pong queues behind file data; killing the link
+                            // then restarted the transfer (~19 deaths in the 2026-10-29 logs).
+                            if (now - maxOf(peer.lastPongAt, peer.lastSeenAt) > MeshTransportPolicy.HEARTBEAT_TIMEOUT_MS) {
                                 transportHeartbeatTimeouts.incrementAndGet()
                                 transportEvent("transport_heartbeat_timeout", mapOf(
                                     "peer_id" to peer.peerId,
@@ -2380,22 +2389,27 @@ class LocalLinkTransportService : Service() {
             val maxChunk = (size - offset).coerceAtLeast(0L).coerceAtMost(directChunkSize.toLong())
             if (size == 0L && (index != 0 || data.isNotEmpty())) return
             if (size > 0L && (offset < 0L || offset >= size || data.isEmpty() || data.size.toLong() > maxChunk || offset + data.size > size)) return
-            if (isCompletedTransfer(transferId, sha)) return
+            // Bundle 144: answer "all received" (throttled) instead of silence, so a sender
+            // whose final confirmation was lost still learns the file arrived.
+            if (isCompletedTransfer(transferId, sha)) { ackCompletedTransfer(originSenderId, transferId, sha, totalChunks); return }
             val transfer = incomingFiles[transferId] ?: createIncomingTransfer(transferId, fileId, messageId, originSenderId, fileName, contentType, size, sha, totalChunks)
             if (transfer.senderId != originSenderId || transfer.fileId != fileId || transfer.messageId != messageId || transfer.fileName != fileName || transfer.contentType != contentType || transfer.totalChunks != totalChunks || transfer.size != size || transfer.sha256 != sha) return
             if (transfer.received[index]) {
                 transfer.updatedAt = System.currentTimeMillis()
-                persistIncomingTransfer(transfer)
-                sendRoutedPayload(originSenderId,JSONObject().put("type","direct_file_progress").put("sender_id",self).put("recipient_id",originSenderId).put("transfer_id",transferId).put("sha256",sha).put("received_chunks",bitsetEncode(transfer.received)).put("total_chunks",totalChunks))
+                // Bundle 144: duplicates get at most one confirmation per second (each
+                // one used to trigger a full resend pass on the sender).
+                maybeSendFileAck(transfer, force = false)
                 return
             }
             try {
                 transfer.file.seek(offset)
                 transfer.file.write(data)
-                transfer.file.fd.sync()
-                transfer.received[index]=true;transfer.updatedAt=System.currentTimeMillis();persistIncomingTransfer(transfer);val receivedCount=transfer.received.count{it};sendRoutedPayload(originSenderId,JSONObject().put("type","direct_file_progress").put("sender_id",self).put("recipient_id",originSenderId).put("transfer_id",transferId).put("sha256",sha).put("received_chunks",bitsetEncode(transfer.received)).put("total_chunks",totalChunks))
-                transportEvent("file_progress", mapOf("transfer_id" to transferId, "message_id" to messageId, "received" to receivedCount, "total_chunks" to totalChunks, "bytes" to transfer.file.length(), "total" to size))
-                if (receivedCount != totalChunks) return
+                transfer.received[index]=true;transfer.updatedAt=System.currentTimeMillis();transfer.newSinceAck++;transfer.unsyncedChunks++
+                val receivedCount=transfer.received.count{it}
+                // Bundle 144: confirm every ACK_EVERY_CHUNKS new chunks / ACK_INTERVAL_MS.
+                // Each confirmation syncs + persists first, so a confirmed chunk is always
+                // durable. The FINAL confirmation goes out only after the sha256 check.
+                if (receivedCount != totalChunks) { maybeSendFileAck(transfer, force = false); return }
                 transfer.file.fd.sync()
                 transfer.file.close()
                 val actual = File(transfer.path)
@@ -2412,6 +2426,8 @@ class LocalLinkTransportService : Service() {
                     actual.delete()
                 }
                 incomingFiles.remove(transferId);deleteIncomingMeta(transfer);File(finalDir,".done_${transferId}_${sha}").writeText("ok",Charsets.UTF_8)
+                // Bundle 144: verified and stored -> now confirm everything to the sender.
+                ackCompletedTransfer(originSenderId, transferId, sha, totalChunks)
                 transportEvent("file_received", mapOf(
                     "transfer_id" to transferId, "message_id" to messageId, "file_id" to fileId,
                     "sender_id" to originSenderId, "recipient_id" to self, "file_name" to fileName,
@@ -2423,6 +2439,62 @@ class LocalLinkTransportService : Service() {
                 incomingFiles.remove(transferId)
             }
         }
+    }
+
+    // Bundle 144: throttled receiver confirmations. Returns true when one went out.
+    private fun maybeSendFileAck(t: IncomingFileTransfer, force: Boolean): Boolean {
+        val now = System.currentTimeMillis()
+        val due = force || t.newSinceAck >= DirectFileTransferPolicy.ACK_EVERY_CHUNKS ||
+            now - t.lastAckAt >= DirectFileTransferPolicy.ACK_INTERVAL_MS
+        if (!due) { scheduleFileAckFlush(t); return false }
+        sendFileAckNow(t)
+        return true
+    }
+
+    // Caller holds synchronized(incomingFiles). Sync + persist BEFORE confirming: the
+    // sender never forgets a chunk, so a confirmed-but-unsynced chunk lost in a crash
+    // would stall the transfer forever.
+    private fun sendFileAckNow(t: IncomingFileTransfer) {
+        val self = transportDeviceId ?: return
+        try { if (t.unsyncedChunks > 0) { t.file.fd.sync(); t.unsyncedChunks = 0 } } catch (_: Exception) {}
+        persistIncomingTransfer(t)
+        t.newSinceAck = 0
+        t.lastAckAt = System.currentTimeMillis()
+        val receivedCount = t.received.count { it }
+        sendRoutedPayload(t.senderId, JSONObject().put("type","direct_file_progress").put("sender_id",self).put("recipient_id",t.senderId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("received_chunks",bitsetEncode(t.received)).put("total_chunks",t.totalChunks))
+        transportEvent("file_progress", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId, "received" to receivedCount, "total_chunks" to t.totalChunks, "bytes" to minOf(receivedCount.toLong() * directChunkSize, t.size), "total" to t.size))
+    }
+
+    // A deferred confirmation still goes out within ACK_INTERVAL_MS even if no further
+    // chunk arrives (e.g. the last few chunks of a burst).
+    private fun scheduleFileAckFlush(t: IncomingFileTransfer) {
+        if (t.ackFlushScheduled) return
+        t.ackFlushScheduled = true
+        Thread({
+            try { Thread.sleep(DirectFileTransferPolicy.ACK_INTERVAL_MS) } catch (_: InterruptedException) {}
+            synchronized(incomingFiles) {
+                t.ackFlushScheduled = false
+                if (incomingFiles[t.transferId] === t) {
+                    try { sendFileAckNow(t) } catch (_: Exception) {}
+                }
+            }
+        }, "locallink-file-ack").start()
+    }
+
+    private val completedAckAt = ConcurrentHashMap<String, Long>()
+
+    private fun ackCompletedTransfer(senderId: String, transferId: String, sha: String, totalChunks: Int) {
+        val self = transportDeviceId ?: return
+        if (totalChunks < 1 || totalChunks > 4096) return
+        val now = System.currentTimeMillis()
+        val last = completedAckAt[transferId] ?: 0L
+        if (now - last < DirectFileTransferPolicy.ACK_INTERVAL_MS) return
+        completedAckAt[transferId] = now
+        if (completedAckAt.size > 256) {
+            val it = completedAckAt.entries.iterator()
+            while (it.hasNext()) { if (now - it.next().value > 10 * 60 * 1000L) it.remove() }
+        }
+        sendRoutedPayload(senderId, JSONObject().put("type","direct_file_progress").put("sender_id",self).put("recipient_id",senderId).put("transfer_id",transferId).put("sha256",sha).put("received_chunks",bitsetEncode(BooleanArray(totalChunks) { true })).put("total_chunks",totalChunks))
     }
 
     private fun isCompletedTransfer(transferId: String, sha256: String): Boolean {
@@ -2458,6 +2530,21 @@ class LocalLinkTransportService : Service() {
     private fun safeFileName(name: String): String {
         val clean = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
         return clean.take(160).ifEmpty { "attachment" }
+    }
+
+    private val peerClockOffsetMs = ConcurrentHashMap<String, Long>()
+    private val peerClockSamples = ConcurrentHashMap<String, ArrayDeque<Long>>()
+
+    // sample = peerClock - ourClock - transitDelay, and delay >= 0, so the HIGHEST recent
+    // sample is the best estimate (a ping stuck behind file data only reads lower).
+    // Window = last 12 pings (~1 min), so a changed peer clock is picked up quickly.
+    private fun notePeerClock(peerId: String, sample: Long) {
+        val q = peerClockSamples.getOrPut(peerId) { ArrayDeque() }
+        synchronized(q) {
+            q.addLast(sample)
+            while (q.size > 12) q.removeFirst()
+            peerClockOffsetMs[peerId] = q.max()
+        }
     }
 
     private fun transportEvent(type: String, data: Map<String, Any?> = emptyMap()) {
@@ -2606,6 +2693,11 @@ class LocalLinkTransportService : Service() {
         val file: RandomAccessFile,
         val received: BooleanArray,
         var updatedAt: Long,
+        // Bundle 144: throttled confirmations + batched disk sync.
+        @Volatile var lastAckAt: Long = 0L,
+        var newSinceAck: Int = 0,
+        var unsyncedChunks: Int = 0,
+        @Volatile var ackFlushScheduled: Boolean = false,
     )
 
     private data class LanEndpoint(
@@ -2635,7 +2727,7 @@ class LocalLinkTransportService : Service() {
         }
     }
 
-    private data class OutgoingFileTransfer(val transferId:String,val fileId:String,val messageId:String,val senderId:String,val recipientId:String,val filePath:String,val fileName:String,val contentType:String,val size:Long,val sha256:String,val totalChunks:Int,val acknowledged:BooleanArray,var updatedAt:Long)
+    private data class OutgoingFileTransfer(val transferId:String,val fileId:String,val messageId:String,val senderId:String,val recipientId:String,val filePath:String,val fileName:String,val contentType:String,val size:Long,val sha256:String,val totalChunks:Int,val acknowledged:BooleanArray,var updatedAt:Long,val lastSentAt:LongArray=LongArray(totalChunks))
 
     private fun stopTransportExplicit(){stopCallMediaInternal("");transportRunning=false;meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();transportGroupOwner=false;transportGroupOwnerAddress=null;ownerConnectInFlight.set(false);routeTable.clear();routeRecovery.clear();persistState();transportEvent("state",mapOf("connected" to false,"transport_active" to false,"service" to "stopped"))}
 
@@ -2786,6 +2878,8 @@ class LocalLinkTransportService : Service() {
         return t
     }
     private fun missingChunkCount(t:OutgoingFileTransfer)=t.acknowledged.count{!it}
+    // Bundle 144: only a chunk unconfirmed for RESEND_AFTER_MS since its last send needs a resend.
+    private fun hasStaleMissingChunk(t:OutgoingFileTransfer):Boolean{val now=System.currentTimeMillis();for(i in t.acknowledged.indices)if(!t.acknowledged[i]&&now-t.lastSentAt[i]>=DirectFileTransferPolicy.RESEND_AFTER_MS)return true;return false}
     private fun sendMissingChunks(t:OutgoingFileTransfer,onlyMissing:Boolean){
         if(!outgoingSendInFlight.add(t.transferId)) return
         try {
@@ -2804,22 +2898,26 @@ class LocalLinkTransportService : Service() {
                 transportEvent("file_failed",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"reason" to "retry_limit_exceeded"));return
             }
             var sentAny=false
+            var inFlightSkipped=false
             FileInputStream(f).use{input->
                 val buf=ByteArray(directChunkSize);var idx=0
                 while(true){
                     if(cancelledDirectTransfers.contains(t.transferId)){cancelledDirectTransfers.remove(t.transferId);transportEvent("file_cancelled",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"file_id" to t.fileId));return}
                     val n=input.read(buf);if(n<=0)break
                     if(onlyMissing&&t.acknowledged[idx]){idx++;continue}
+                    // Bundle 144: a chunk sent <10s ago is still in flight. Resending it
+                    // flooded the link (every ack re-sent EVERY unconfirmed chunk).
+                    if(System.currentTimeMillis()-t.lastSentAt[idx]<DirectFileTransferPolicy.RESEND_AFTER_MS){inFlightSkipped=true;idx++;continue}
                     val data=if(n==buf.size)buf else buf.copyOf(n)
                     val payload=JSONObject().put("type","direct_file_chunk").put("sender_id",t.senderId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("file_name",t.fileName).put("content_type",t.contentType).put("size",t.size).put("sha256",t.sha256).put("chunk_index",idx).put("total_chunks",t.totalChunks).put("data",Base64.encodeToString(data, Base64.NO_WRAP))
                     if(!sendRoutedPayload(t.recipientId,payload))break
-                    sentAny=true;idx++
+                    sentAny=true;val sentNow=System.currentTimeMillis();t.lastSentAt[idx]=sentNow;t.updatedAt=sentNow;idx++
                 }
             }
             if(t.size==0L&&!t.acknowledged[0]){
                 val p=JSONObject().put("type","direct_file_chunk").put("sender_id",t.senderId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("file_name",t.fileName).put("content_type",t.contentType).put("size",0).put("sha256",t.sha256).put("chunk_index",0).put("total_chunks",1).put("data","");sendRoutedPayload(t.recipientId,p);sentAny=true
             }
-            if(!sentAny) transportEvent("file_retry_scheduled",mapOf("transfer_id" to t.transferId,"attempt" to attempt))
+            if(!sentAny&&!inFlightSkipped) transportEvent("file_retry_scheduled",mapOf("transfer_id" to t.transferId,"attempt" to attempt))
             t.updatedAt=System.currentTimeMillis();persistOutgoingTransfer(t)
         } finally {
             outgoingSendInFlight.remove(t.transferId)
@@ -2866,15 +2964,21 @@ class LocalLinkTransportService : Service() {
         if(bits.any{it}) outgoingRetryCounts[t.transferId]=0
         t.updatedAt=System.currentTimeMillis()
         if(missingChunkCount(t)==0){deleteOutgoingMeta(t);outgoingTransfers.remove(id);outgoingRetryCounts.remove(id);outgoingSendInFlight.remove(id);transportEvent("file_sent",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"file_id" to t.fileId,"size" to t.size,"sha256" to t.sha256))}
-        else{persistOutgoingTransfer(t);transportEvent("file_progress",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"acked_chunks" to t.totalChunks-missingChunkCount(t),"total_chunks" to t.totalChunks));Thread{sendMissingChunks(t,true)}.start()}
+        else{persistOutgoingTransfer(t);transportEvent("file_progress",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"acked_chunks" to t.totalChunks-missingChunkCount(t),"total_chunks" to t.totalChunks));if(hasStaleMissingChunk(t))Thread{sendMissingChunks(t,true)}.start()}
     }
     private fun handleFileResumeRequest(p:JSONObject){
         val id=p.optString("transfer_id")
-        val t=incomingFiles[id]?:return
+        val t=incomingFiles[id]?:run{
+            // Bundle 144: already completed here -> tell the sender (its final ack was lost).
+            val sha=p.optString("sha256").trim().lowercase();val total=p.optInt("total_chunks",-1);val from=p.optString("sender_id").trim()
+            if(validFileTransferId(id)&&sha.length==64&&p.optString("recipient_id")==transportDeviceId&&validTransportId(from)&&isCompletedTransfer(id,sha))ackCompletedTransfer(from,id,sha,total)
+            return
+        }
         if(p.optString("sender_id")!=t.senderId||p.optString("recipient_id")!=transportDeviceId||p.optString("sha256")!=t.sha256||p.optInt("total_chunks",-1)!=t.totalChunks)return
-        sendRoutedPayload(t.senderId,JSONObject().put("type","direct_file_progress").put("sender_id",transportDeviceId).put("recipient_id",t.senderId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("received_chunks",bitsetEncode(t.received)).put("total_chunks",t.totalChunks))
+        // Bundle 144: same durable path as every other confirmation.
+        synchronized(incomingFiles){sendFileAckNow(t)}
     }
-    private fun sendResumeRequests(){for(t in outgoingTransfers.values.toList())try{sendRoutedPayload(t.recipientId,JSONObject().put("type","direct_file_resume_request").put("sender_id",transportDeviceId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("total_chunks",t.totalChunks))}catch(_:Exception){}}
+    private fun sendResumeRequests(){val now=System.currentTimeMillis();for(t in outgoingTransfers.values.toList())if(now-t.updatedAt>=DirectFileTransferPolicy.RESEND_AFTER_MS)try{sendRoutedPayload(t.recipientId,JSONObject().put("type","direct_file_resume_request").put("sender_id",transportDeviceId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("total_chunks",t.totalChunks))}catch(_:Exception){}}
 
     override fun onDestroy(){stopCallVideoInternal("");stopCallMediaInternal("");meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();running=false;if(instance===this)instance=null;super.onDestroy()}
 }

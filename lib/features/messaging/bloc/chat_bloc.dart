@@ -218,11 +218,24 @@ final class ChatBloc extends Cubit<ChatState> {
     if (!matches) return;
     final next = [...state.messages];
     final i = next.indexWhere((x) => x.id == m.id);
-    if (i < 0)
-      next.add(m);
-    else
+    if (i < 0) {
+      // Bundle 144: insert at its created time (same order as the stored
+      // history: created_at, id), so a late photo/voice note appears where it
+      // was sent. Scans from the end: usually zero steps.
+      var at = next.length;
+      while (at > 0 && _sortsAfter(next[at - 1], m)) {
+        at--;
+      }
+      next.insert(at, m);
+    } else {
       next[i] = m;
+    }
     if (!isClosed) emit(state.copyWith(messages: next));
+  }
+
+  static bool _sortsAfter(Message a, Message b) {
+    final c = a.createdAt.compareTo(b.createdAt);
+    return c > 0 || (c == 0 && a.id.compareTo(b.id) > 0);
   }
 
   @override

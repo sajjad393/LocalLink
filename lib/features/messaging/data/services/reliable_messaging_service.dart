@@ -1892,20 +1892,25 @@ class ReliableMessagingService {
         // --------------------------------------------------------------------
         // NORMALIZE SKEWED CLOCK
         //
-        // In server mode the server stamp dominates ordering, so a drifting
-        // phone clock never scrambles the timeline. In direct mode there is
-        // no neutral clock: messages sort strictly by the SENDER's
-        // created_at, and two phones hours apart interleave every rapid
-        // back-and-forth burst into a visually "mixed up" chat. Received
-        // messages join the timeline in ARRIVAL order (WhatsApp-style), so
-        // when the peer's stamp disagrees with our clock by more than ~90s
-        // we re-stamp it at local receipt time.
+        // Bundle 144: order by the SENDER's created time. The old rule
+        // re-stamped any message >90s off our clock at arrival time, which
+        // dropped every LATE delivery (slow media, queued while away) at the
+        // bottom. Native measures each direct peer's clock offset from its
+        // pings (peer_clock_offset_ms, 1-hop only) so a wrong phone clock
+        // still sorts correctly. Never later than arrival (+5s allowance).
         // --------------------------------------------------------------------
         final receivedAtUtc = DateTime.now().toUtc();
-        final stampDrift = message.createdAt.difference(receivedAtUtc).abs();
-        final normalizedCreatedAt = stampDrift > const Duration(seconds: 90)
-            ? receivedAtUtc
-            : message.createdAt;
+        final clockOffsetMs =
+            int.tryParse(event['peer_clock_offset_ms']?.toString() ?? '');
+        var normalizedCreatedAt = clockOffsetMs == null
+            ? message.createdAt.toUtc()
+            : message.createdAt
+                .toUtc()
+                .subtract(Duration(milliseconds: clockOffsetMs));
+        final latestAllowed = receivedAtUtc.add(const Duration(seconds: 5));
+        if (normalizedCreatedAt.isAfter(latestAllowed)) {
+          normalizedCreatedAt = latestAllowed;
+        }
 
         // --------------------------------------------------------------------
         // BUILD DELIVERED MESSAGE

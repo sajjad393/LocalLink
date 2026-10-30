@@ -19,7 +19,9 @@ class PresenceService {
   StreamSubscription<bool>? _socketSub;
   StreamSubscription? _serverErrorSub;
   StreamSubscription? _wifiSub;
+  StreamSubscription? _transportSub;
   Timer? _timer;
+  Timer? _forceRetry;
   DateTime? _lastPublishAt;
   DateTime? _rateLimitedUntil;
   String? _lastPublishedSignature;
@@ -63,6 +65,11 @@ class PresenceService {
         } catch (_) {}
       }
     });
+    // Bundle 144: a new direct link gets our presence at once (no-server mode
+    // otherwise showed the peer "offline" for up to 30s, or forever).
+    _transportSub = directTransport.events.listen((event) {
+      if (event['type'] == 'peer_connected') unawaited(publish(force: true));
+    }, onError: (Object _) {});
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       unawaited(_refreshWifiDirect());
       unawaited(publish());
@@ -84,7 +91,9 @@ class PresenceService {
 
 
   Future<void> publish({bool force = false}) async {
-    if (!_running || _sending || store.deviceId == null || store.deviceToken == null) return;
+    // Bundle 144: no deviceToken gate. The token is only for the server; a phone
+    // that never registered (offline-only) must still announce itself directly.
+    if (!_running || _sending || store.deviceId == null) return;
     final now = DateTime.now().toUtc();
     final cooldown = _rateLimitedUntil;
     if (cooldown != null && now.isBefore(cooldown)) return;
@@ -115,7 +124,17 @@ class PresenceService {
         last != null && now.difference(last) < const Duration(seconds: 30)) {
       return;
     }
-    if (last != null && now.difference(last) < const Duration(seconds: 5)) return;
+    if (last != null && now.difference(last) < const Duration(seconds: 5)) {
+      // Bundle 144: a forced publish (new link) inside the 5s floor is retried
+      // right after it instead of being dropped.
+      if (force && _forceRetry == null) {
+        _forceRetry = Timer(const Duration(seconds: 5) - now.difference(last), () {
+          _forceRetry = null;
+          unawaited(publish(force: true));
+        });
+      }
+      return;
+    }
     _sending = true;
     try {
       final statusUpdatedAt = now.toIso8601String();
@@ -132,7 +151,7 @@ class PresenceService {
         'signing_public_key': signingKey,
         'status_updated_at': statusUpdatedAt,
       };
-      if (serverConnected) {
+      if (serverConnected && store.deviceToken != null) {
         socket.send({
           'type': 'presence_update',
           'device_id': store.deviceId,
@@ -162,6 +181,10 @@ class PresenceService {
     _running = false;
     _timer?.cancel();
     _timer = null;
+    _forceRetry?.cancel();
+    _forceRetry = null;
+    await _transportSub?.cancel();
+    _transportSub = null;
     await _serverErrorSub?.cancel();
     _serverErrorSub = null;
     await _socketSub?.cancel();

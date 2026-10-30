@@ -9,6 +9,11 @@ internal object DirectFileTransferPolicy {
     const val MAX_ACTIVE_TRANSFER_BYTES = 256L * 1024L * 1024L
     const val IDLE_TIMEOUT_MS = 10L * 60L * 1000L
     const val MAX_RETRY_ATTEMPTS = 8
+    /** Bundle 144: a chunk is resent only when still unconfirmed this long after its last send. */
+    const val RESEND_AFTER_MS = 10_000L
+    /** Bundle 144: the receiver confirms every N new chunks, after ACK_INTERVAL_MS, or on completion. */
+    const val ACK_EVERY_CHUNKS = 8
+    const val ACK_INTERVAL_MS = 1_000L
     const val COMPLETION_MARKER_RETENTION_MS = 24L * 60L * 60L * 1000L
 
     fun expectedChunks(size: Long): Int {

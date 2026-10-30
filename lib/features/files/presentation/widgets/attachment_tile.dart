@@ -187,12 +187,14 @@ class _AttachmentTileState extends State<AttachmentTile> {
       final local = _localPath;
       if (local != null && local.isNotEmpty) {
         // Local file exists but the protected render failed once — retry
-        // that instead of downloading our own bytes back.
-        _prepareExistingPath();
+        // that instead of downloading our own bytes back. Bundle 144: then
+        // play straight away (one tap, not two).
+        await _prepareExistingPath();
+        if (!mounted || _displayPath == null) return;
+      } else {
+        await _download();
         return;
       }
-      await _download();
-      return;
     }
     try {
       const channel = MethodChannel('locallink/voice_notes');
