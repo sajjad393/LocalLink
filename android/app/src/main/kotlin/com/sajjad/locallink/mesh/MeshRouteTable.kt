@@ -39,7 +39,12 @@ class MeshRouteTable(
     fun upsert(destinationNodeId: String, route: MeshRoute): Boolean = synchronized(mutationLock) {
         if (!validateRoute(route, destinationNodeId)) return false
         val existingDestination = routes[destinationNodeId]
-        if (existingDestination == null && routes.size >= MeshLimits.MAX_ROUTE_TABLE_DESTINATIONS) return false
+        if (existingDestination == null && routes.size >= MeshLimits.MAX_ROUTE_TABLE_DESTINATIONS) {
+            // Bundle 160: map full — make room only by dropping the route that
+            // was used/seen least recently, and only if it is idle (not seen
+            // for ROUTE_EVICT_IDLE_MS). Fresh routes are never pushed out.
+            if (!evictIdleDestination(route.lastSeenAt)) return false
+        }
         // The destination bucket must only exist in `routes` once every
         // admission check below has passed; registering it earlier leaks an
         // empty placeholder that permanently consumes a destination slot.
@@ -210,6 +215,24 @@ class MeshRouteTable(
             if (destinationRoutes.isEmpty()) routes.remove(destination, destinationRoutes)
         }
         return affected.distinct()
+    }
+
+    /** Bundle 160: least-recently-seen idle destination out (caller holds mutationLock). */
+    private fun evictIdleDestination(now: Long): Boolean {
+        var victim: String? = null
+        var victimSeen = Long.MAX_VALUE
+        for ((destination, candidates) in routes) {
+            if (candidates.values.any { it.hopCount <= 1 }) continue // direct neighbours stay
+            val seen = candidates.values.maxOfOrNull { it.lastSeenAt } ?: Long.MIN_VALUE
+            if (seen < victimSeen) {
+                victimSeen = seen
+                victim = destination
+            }
+        }
+        val chosen = victim ?: return false
+        if (now - victimSeen < MeshLimits.ROUTE_EVICT_IDLE_MS) return false
+        routes.remove(chosen)
+        return true
     }
 
     private fun validateRoute(route: MeshRoute, destinationNodeId: String): Boolean {

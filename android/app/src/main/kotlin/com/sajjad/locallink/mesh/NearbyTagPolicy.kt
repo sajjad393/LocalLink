@@ -65,6 +65,8 @@ object NearbyTagPolicy {
         wanted: List<String> = emptyList(),
         bridge: Boolean = false,
         charging: Boolean = false,
+        // Bundle 160: on a normal Wi-Fi network (blocked Wi-Fi check).
+        wifi: Boolean = false,
     ): Map<String, String> {
         val n = members.coerceIn(0, 64)
         val txt = linkedMapOf(
@@ -82,6 +84,7 @@ object NearbyTagPolicy {
         if (w.isNotEmpty()) txt["w"] = w.joinToString(",")
         if (bridge && (host || member)) txt["br"] = "1"
         if (charging) txt["pwr"] = "1"
+        if (wifi) txt["wf"] = "1"
         return txt
     }
 
@@ -122,6 +125,8 @@ object NearbyTagPolicy {
         if (txt["br"] == "1" && (host || member)) tag["bridge"] = true
         // Bundle 159: on a charger.
         if (txt["pwr"] == "1") tag["charging"] = true
+        // Bundle 160: on a normal Wi-Fi network.
+        if (txt["wf"] == "1") tag["wifi"] = true
         return tag
     }
 }

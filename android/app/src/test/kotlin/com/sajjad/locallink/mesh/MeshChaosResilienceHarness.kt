@@ -70,7 +70,9 @@ object MeshChaosResilienceHarness {
     private fun routeTableNextHopFlood() {
         val table = routeTable()
         var accepted = 0
-        for (i in 0 until 200) {
+        // Bundle 160: the per-hop cap grew to 1024 (a member reaches the whole
+        // map through its host), so flood past it.
+        for (i in 0 until MeshLimits.MAX_ROUTES_PER_NEXT_HOP + 32) {
             if (table.upsert("D$i", route("D$i", "B", 2, i.toLong() + 1L))) accepted++
         }
         require(accepted == MeshLimits.MAX_ROUTES_PER_NEXT_HOP, "next-hop cap not enforced: $accepted")

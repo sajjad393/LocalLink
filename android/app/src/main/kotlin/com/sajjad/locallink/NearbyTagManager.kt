@@ -27,6 +27,8 @@ class NearbyTagManager(
     private val manager: WifiP2pManager,
     private val channel: WifiP2pManager.Channel,
     private val hasPermission: () -> Boolean,
+    /** Bundle 160: on a normal Wi-Fi network (published as `wf=1`). */
+    private val onWifi: () -> Boolean = { false },
     private val emit: (Map<String, Any?>) -> Unit,
 ) {
     private val main = Handler(Looper.getMainLooper())
@@ -166,7 +168,8 @@ class NearbyTagManager(
             Log.i(TAG, "charger ${if (nowCharging) "on" else "off"}")
             emitGroup()
         }
-        val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge, charging)
+        val wifi = try { onWifi() } catch (_: Exception) { false }
+        val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge, charging, wifi)
         val signature = txt.toString()
         if (!force && signature == lastPublished) return
         lastPublished = signature
@@ -186,7 +189,7 @@ class NearbyTagManager(
     private fun addService(info: WifiP2pDnsSdServiceInfo, txt: Map<String, String>) {
         try {
             manager.addLocalService(channel, info, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"}") }
+                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"} wf=${txt["wf"] ?: "0"}") }
                 override fun onFailure(reason: Int) {
                     lastPublished = ""
                     Log.w(TAG, "tag publish failed reason=$reason")

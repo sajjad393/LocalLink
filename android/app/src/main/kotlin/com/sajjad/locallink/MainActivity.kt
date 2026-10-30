@@ -203,7 +203,7 @@ class MainActivity : FlutterActivity() {
         }
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
         wifiChannel = wifiManager.initialize(this, mainLooper, null)
-        nearbyTags = NearbyTagManager(this, wifiManager, wifiChannel, { hasWifiPermission() }) { event ->
+        nearbyTags = NearbyTagManager(this, wifiManager, wifiChannel, { hasWifiPermission() }, onWifi = { onWifiNetwork() }) { event ->
             wifiEventSink?.success(event)
         }
         registerWifiReceiver()
@@ -281,6 +281,14 @@ class MainActivity : FlutterActivity() {
                             LocalLinkTransportService.updateBlockedPeers(blocked)
                             runOnUiThread { result.success(null) }
                         }, "locallink-blocked-peers").start()
+                    }
+                    // Bundle 160: per-contact link keys (signed device id).
+                    "updateLinkKeys" -> {
+                        val json = call.argument<String>("link_keys").orEmpty()
+                        Thread({
+                            val stored = LocalLinkTransportService.updateLinkKeys(json)
+                            runOnUiThread { result.success(stored) }
+                        }, "locallink-link-keys").start()
                     }
                     "sendPairPayload" -> {
                         val target = call.argument<String>("target").orEmpty()

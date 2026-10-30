@@ -28,11 +28,16 @@ object MeshLimits {
 
     // Mesh control-plane bounds. These prevent an authenticated peer from
     // consuming unbounded memory or CPU by flooding route advertisements.
-    const val MAX_ROUTE_TABLE_DESTINATIONS = 512
+    // Bundle 160: 300+ phones (two-level map). Was 512.
+    const val MAX_ROUTE_TABLE_DESTINATIONS = 1024
     const val MAX_ROUTES_PER_DESTINATION = 4
-    const val MAX_ROUTES_PER_NEXT_HOP = 64
+    // Bundle 160: a group member reaches everyone through its host, so one
+    // next hop must be able to carry the whole map. Was 64.
+    const val MAX_ROUTES_PER_NEXT_HOP = 1024
     const val MAX_ROUTE_ADVERTISEMENT_ROUTES = 128
-    const val MAX_ROUTE_ADVERTISEMENTS_PER_PEER = 30
+    // Bundle 160: deltas (every 5-10 s) + full pages (every 60 s). Was 30;
+    // older phones still send at most 6-12 per minute.
+    const val MAX_ROUTE_ADVERTISEMENTS_PER_PEER = 60
     const val ROUTE_ADVERTISEMENT_WINDOW_MS = 60_000L
     const val ROUTE_ADVERTISEMENT_MAX_AGE_MS = 90_000L
     const val ROUTE_ADVERTISEMENT_FUTURE_SKEW_MS = 5_000L
@@ -42,6 +47,10 @@ object MeshLimits {
     const val MAX_ROUTE_CHANGES_BEFORE_HOLDDOWN = 3
     const val ROUTE_HOLDDOWN_MS = 15_000L
     const val ROUTE_STALE_GRACE_MS = 5_000L
+    /** Bundle 160: when the map is full, a route not seen for this long may
+     *  make room for a new one. Fresh routes are never pushed out, so a
+     *  flood of fake routes can't wipe real ones. */
+    const val ROUTE_EVICT_IDLE_MS = 60_000L
     const val MAX_ROUTE_RECOVERY_DESTINATIONS = MAX_ROUTE_TABLE_DESTINATIONS
 
     /** Validates an origin-created TTL. Zero is never a valid new packet TTL. */

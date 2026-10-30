@@ -85,6 +85,7 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
       ('Nearby phones seen', '${s.nearbyTags}'),
       ('Waiting for a route', '${s.waiting}'),
       ('Direct links', '${s.directLinks}'),
+      ('Links with checked id', '${s.verifiedLinks}'),
       ('Relay links (not contacts)', '${s.relayLinks}'),
       ('Calls passed on now', '${s.relayVoiceCalls}'),
       ('Packets passed on', '${s.forwardedPackets}'),
@@ -94,6 +95,16 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         header,
+        if (s.wifiBlocked)
+          Card(
+            color: theme.colorScheme.secondaryContainer,
+            child: const ListTile(
+              dense: true,
+              leading: Icon(Icons.wifi_off),
+              title: Text('This Wi-Fi blocks phones from seeing each other'),
+              subtitle: Text('Using nearby groups instead.'),
+            ),
+          ),
         Card(
           child: Column(
             children: [
