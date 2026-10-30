@@ -6,6 +6,7 @@ import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
+import 'package:locallink/core/widgets/messenger_list_group.dart';
 
 class MessengerConversationTile extends StatelessWidget {
   final String title;
@@ -114,19 +115,8 @@ class MessengerConversationTile extends StatelessWidget {
         : null;
     final callButton = onCall == null
         ? null
-        : IconButton(
-            tooltip: 'Call',
-            onPressed: onCall,
-            style: IconButton.styleFrom(
-              backgroundColor: Theme.of(context)
-                  .colorScheme
-                  .primary
-                  .withOpacity(0.10),
-              foregroundColor: Theme.of(context).colorScheme.primary,
-              minimumSize: const Size.square(44),
-            ),
-            icon: const Icon(Icons.call_outlined),
-          );
+        // Bundle 153: shared call button (same look on the Calls tab).
+        : MessengerCallButton(onPressed: onCall);
     final moreButton = onMore == null
         ? null
         : IconButton(

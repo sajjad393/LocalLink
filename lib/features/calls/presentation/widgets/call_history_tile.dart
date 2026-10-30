@@ -4,6 +4,7 @@ import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
+import 'package:locallink/core/widgets/messenger_list_group.dart';
 
 /// WhatsApp-style call history row: avatar, name, direction arrow + time.
 /// Bundle 99: no trailing call-back button — the ROW itself starts the call.
@@ -50,7 +51,8 @@ class CallHistoryTile extends StatelessWidget {
                 size: 16, color: colors.onSurfaceVariant));
 
     return ListTile(
-      contentPadding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+      // Bundle 153: right padding 16 so the call button lines up with Chats.
+      contentPadding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       leading: PresenceAvatar(
         // Bundle 137: presence badge overlay, same as the chat header avatar.
         avatar: AccountAvatar(name: title, radius: 21),
@@ -65,11 +67,11 @@ class CallHistoryTile extends StatelessWidget {
         title,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontWeight: FontWeight.w500,
-          fontSize: 15.5,
-          color: missed ? colors.error : colors.onSurface,
-        ),
+        // Bundle 153: bold name, same style as the Chats list.
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: missed ? colors.error : colors.onSurface,
+            ),
       ),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 2),
@@ -92,20 +94,9 @@ class CallHistoryTile extends StatelessWidget {
           ],
         ),
       ),
-      // Bundle 137: circled, outlined-phone redial button (chat-style look),
-      // per the approved mock — the row tap keeps calling too.
-      trailing: IconButton(
-        tooltip: 'Call back',
-        style: IconButton.styleFrom(
-          backgroundColor:
-              Theme.of(context).colorScheme.surfaceContainerHighest,
-          foregroundColor: Theme.of(context).colorScheme.onSurface,
-          shape: const CircleBorder(),
-          padding: const EdgeInsets.all(7),
-        ),
-        icon: const Icon(Icons.call_outlined, size: 19),
-        onPressed: onCall,
-      ),
+      // Bundle 153: the same light-blue call button as the Chats list (the
+      // row tap keeps calling too).
+      trailing: MessengerCallButton(tooltip: 'Call back', onPressed: onCall),
       onTap: onCall,
     );
   }

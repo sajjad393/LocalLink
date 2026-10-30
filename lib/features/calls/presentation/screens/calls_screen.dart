@@ -10,6 +10,7 @@ import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
+import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart'
     show CallSession;
@@ -219,20 +220,8 @@ class _CallsScreenState extends State<CallsScreen> {
     }
     final children = <Widget>[];
     groups.forEach((label, records) {
-      children.add(
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              letterSpacing: .3,
-              color: colors.onSurfaceVariant,
-            ),
-          ),
-        ),
-      );
+      // Bundle 153: shared small grey label (same as "Conversations").
+      children.add(MessengerGroupLabel(label));
       // One filled card per date bucket (Settings-style grouping): rows live
       // together inside a rounded white container with hairline dividers.
       final rows = <Widget>[];
@@ -249,31 +238,9 @@ class _CallsScreenState extends State<CallsScreen> {
           missed: _isMissed(records[i]),
           onCall: () => _redial(records[i]),
         ));
-        if (i < records.length - 1) {
-          rows.add(Divider(
-            height: 1,
-            indent: 76,
-            color: colors.outlineVariant.withOpacity(.35),
-          ));
-        }
       }
-      children.add(
-        // 140c: a Material (not a coloured Container) so the ListTile rows
-        // paint their tap ripple on it — fixes the debug assertion
-        // "ListTile background color or ink splashes may be invisible".
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Material(
-            color: colors.surface,
-            clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-              side: BorderSide(color: colors.outlineVariant.withOpacity(.5)),
-            ),
-            child: Column(children: rows),
-          ),
-        ),
-      );
+      // Bundle 153: shared outlined box (same as the Chats list).
+      children.add(MessengerListGroup(children: rows));
     });
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),

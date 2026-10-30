@@ -16,7 +16,7 @@ import 'package:locallink/core/widgets/brand_gradient_fab.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
-import 'package:locallink/core/widgets/messenger_section_header.dart';
+import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
@@ -714,12 +714,8 @@ class _HomeScreenState extends State<HomeScreen> {
         automaticallyImplyLeading: false,
         title: const Text('Chats'),
         actions: [
+          // Bundle 153: no gear here (Settings is a tab), same as Calls.
           ConnectionStatusIndicator(controller: widget.connectivityController),
-          IconButton(
-            tooltip: 'Settings',
-            onPressed: () => setState(() => _index = 3),
-            icon: const Icon(Icons.settings_outlined),
-          ),
         ],
       ),
       floatingActionButton: BrandGradientFab(
@@ -756,13 +752,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           'on the server now.'),
                 if (widget.store.isOfflinePending && _offlineBannerVisible)
                   _offlineAccountBanner(),
-                MessengerSectionHeader(
-                  title: 'Conversations',
-                  actionLabel: state.devices.isNotEmpty ? 'People' : null,
-                  onAction: state.devices.isNotEmpty
-                      ? () => setState(() => _index = 2)
-                      : null,
-                ),
+                // Bundle 153: small grey label like "Today" on Calls; the
+                // People link is gone (People is a tab).
+                const MessengerGroupLabel('Conversations'),
                 if (_visibleDevices(state).isEmpty && state.groups.isEmpty)
                   const SizedBox(
                     height: 420,
@@ -827,34 +819,9 @@ class _HomeScreenState extends State<HomeScreen> {
       .where((device) => _chatPeerIds.contains(device.id))
       .toList();
 
-  /// Groups conversation rows into the same rounded-container language the
-  /// settings screen uses (subtle surface, 20 radius, hairline separators).
-  Widget _conversationGroup(BuildContext context, List<Widget> tiles) {
-    final colors = Theme.of(context).colorScheme;
-    final separated = <Widget>[];
-    for (var i = 0; i < tiles.length; i++) {
-      if (i > 0) {
-        separated.add(
-          Divider(height: 1, indent: 72, color: colors.outlineVariant.withValues(alpha: 0.4)),
-        );
-      }
-      separated.add(tiles[i]);
-    }
-    // Material provides the ListTile ink/background layer; the Container only
-    // draws border + radius + horizontal margin.
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.35)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: colors.surfaceContainer.withValues(alpha: 0.65),
-        child: Column(children: separated),
-      ),
-    );
-  }
+  /// Bundle 153: the same outlined box as the Calls tab.
+  Widget _conversationGroup(BuildContext context, List<Widget> tiles) =>
+      MessengerListGroup(dividerIndent: 72, children: tiles);
 
   Widget _callsTab() => CallsScreen(
         controller: widget.calls,
