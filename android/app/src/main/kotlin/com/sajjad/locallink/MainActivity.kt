@@ -359,6 +359,20 @@ class MainActivity : FlutterActivity() {
                         "managed_device" to managed,
                         "can_control" to managed
                     ))
+                    // Bundle 159: the Wi-Fi off card opens the Wi-Fi panel
+                    // (Android 10+) or the Wi-Fi settings screen.
+                    "open_settings" -> {
+                        val action = if (Build.VERSION.SDK_INT >= 29) android.provider.Settings.Panel.ACTION_WIFI else android.provider.Settings.ACTION_WIFI_SETTINGS
+                        try {
+                            startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            result.success(true)
+                        } catch (_: Exception) {
+                            try {
+                                startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                result.success(true)
+                            } catch (_: Exception) { result.success(false) }
+                        }
+                    }
                     "enforce" -> {
                         if (!managed) {
                             result.success(mapOf("supported" to true, "enabled" to wifi.isWifiEnabled, "managed_device" to false, "can_control" to false))
@@ -655,7 +669,8 @@ class MainActivity : FlutterActivity() {
                             result.error("PERMISSION", "Call audio: microphone permission needed. Allow it on the prompt, then answer the call again.", null)
                             return@setMethodCallHandler
                         }
-                        LocalLinkTransportService.startCallMedia(callId, peerId, codec)
+                        // Bundle 159: per-call voice key (memory only, never logged).
+                        LocalLinkTransportService.startCallMedia(callId, peerId, codec, call.argument<String>("voice_key"))
                         result.success(null)
                     }
                     "stop" -> {

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:locallink/features/connectivity/presentation/widgets/nearby_ready_card.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
@@ -752,6 +753,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           'on the server now.'),
                 if (widget.store.isOfflinePending && _offlineBannerVisible)
                   _offlineAccountBanner(),
+                // Bundle 159.1: "Allow nearby devices" / "Turn on Wi-Fi",
+                // only when nearby chat can't work.
+                const NearbyReadyCard(),
                 // Bundle 153: small grey label like "Today" on Calls; the
                 // People link is gone (People is a tab).
                 const MessengerGroupLabel('Conversations'),

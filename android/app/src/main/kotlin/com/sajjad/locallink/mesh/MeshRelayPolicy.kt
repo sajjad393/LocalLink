@@ -21,6 +21,10 @@ object MeshRelayPolicy {
     /** Sealed, best effort (presence, heartbeats, probes). */
     const val SEALED_LIVE: String = "sealed_x"
 
+    /** Bundle 159: locked call voice (only the two call phones hold the key).
+     *  Live only: never queued, never stored. */
+    const val SEALED_VOICE: String = "sealed_v"
+
     /** Kill switch for relay links (D11). */
     const val RELAY_ENABLED: Boolean = true
 
@@ -39,9 +43,12 @@ object MeshRelayPolicy {
 
     fun isSealed(type: String?): Boolean = type == SEALED || type == SEALED_LIVE
 
+    /** Bundle 159: a locked voice frame. */
+    fun isSealedVoice(type: String?): Boolean = type == SEALED_VOICE
+
     /** May a link with [trust] carry a packet of [type] (either direction)? */
     fun canCarry(trust: String, type: String?): Boolean =
-        trust == TRUST_CONTACT || (trust == TRUST_RELAY && isSealed(type))
+        trust == TRUST_CONTACT || (trust == TRUST_RELAY && (isSealed(type) || isSealedVoice(type)))
 
     /**
      * Trust for a peer at handshake time, or null = refuse the link.

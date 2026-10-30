@@ -1,7 +1,7 @@
 name: locallink
 publish_to: 'none'
 description: LocalLink offline LAN communication client.
-version: 2.0.26+59
+version: 2.0.27+60
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

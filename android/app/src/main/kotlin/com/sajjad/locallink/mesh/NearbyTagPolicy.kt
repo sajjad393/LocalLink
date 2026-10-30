@@ -32,6 +32,9 @@ package com.sajjad.locallink.mesh
  * normal Wi-Fi network and passes messages between the two). Only sent by a
  * phone in a group; older phones ignore it.
  *
+ * Bundle 159 adds `pwr=1`: this phone is on a charger, so on a tie it is
+ * preferred as host or bridge (battery care). Older phones ignore it.
+ *
  * Pure functions only, so the rules are easy to check.
  */
 object NearbyTagPolicy {
@@ -61,6 +64,7 @@ object NearbyTagPolicy {
         groupKey: String? = null,
         wanted: List<String> = emptyList(),
         bridge: Boolean = false,
+        charging: Boolean = false,
     ): Map<String, String> {
         val n = members.coerceIn(0, 64)
         val txt = linkedMapOf(
@@ -77,6 +81,7 @@ object NearbyTagPolicy {
         val w = cleanWanted(wanted)
         if (w.isNotEmpty()) txt["w"] = w.joinToString(",")
         if (bridge && (host || member)) txt["br"] = "1"
+        if (charging) txt["pwr"] = "1"
         return txt
     }
 
@@ -115,6 +120,8 @@ object NearbyTagPolicy {
         if (wanted.isNotEmpty()) tag["wanted"] = wanted
         // Bundle 158: the group's bridge (only meaningful in a group).
         if (txt["br"] == "1" && (host || member)) tag["bridge"] = true
+        // Bundle 159: on a charger.
+        if (txt["pwr"] == "1") tag["charging"] = true
         return tag
     }
 }

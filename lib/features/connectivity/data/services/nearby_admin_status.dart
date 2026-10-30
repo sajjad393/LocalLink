@@ -32,28 +32,7 @@ class NearbyAdminSnapshot {
   final int relayVoiceCalls;
   final int forwardedPackets;
   final int forwardedVoiceFrames;
-
-  /// Bundle 165: locked file packets passed on for others (count only).
-  final int forwardedFileChunks;
   final List<NearbyAdminRoute> routes;
-
-  /// Bundle 160: this Wi-Fi blocks phones from seeing each other.
-  final bool wifiBlocked;
-
-  /// Bundle 160: links whose device id was proven (signed id).
-  final int verifiedLinks;
-
-  /// Bundle 161 (tests): `off` / `joining` / `linked`, and `group` /
-  /// `hotspot`.
-  final String localNet;
-  final String? localNetKind;
-  final bool hotspot;
-
-  /// Bundle 161: phones linked to this phone over a linked group / hotspot.
-  final int localNetPeers;
-
-  /// Bundle 161 (3.3): this member keeps only its group + contacts.
-  final bool compactMap;
 
   const NearbyAdminSnapshot({
     this.role = 'none',
@@ -68,15 +47,7 @@ class NearbyAdminSnapshot {
     this.relayVoiceCalls = 0,
     this.forwardedPackets = 0,
     this.forwardedVoiceFrames = 0,
-    this.forwardedFileChunks = 0,
     this.routes = const <NearbyAdminRoute>[],
-    this.wifiBlocked = false,
-    this.verifiedLinks = 0,
-    this.localNet = 'off',
-    this.localNetKind,
-    this.hotspot = false,
-    this.localNetPeers = 0,
-    this.compactMap = false,
   });
 
   /// Short id for display (first 8 characters).
@@ -124,15 +95,7 @@ class NearbyAdminSnapshot {
       relayVoiceCalls: _int(t['relay_voice_calls']),
       forwardedPackets: _int(t['forwarded_packets']),
       forwardedVoiceFrames: _int(t['forwarded_voice_frames']),
-      forwardedFileChunks: _int(t['forwarded_file_chunks']),
       routes: List.unmodifiable(routes),
-      wifiBlocked: g['wifi_blocked'] == true,
-      verifiedLinks: _int(t['verified_links']),
-      localNet: g['local_net']?.toString() ?? 'off',
-      localNetKind: g['local_net_kind']?.toString(),
-      hotspot: g['hotspot'] == true,
-      localNetPeers: _int(t['local_net_peers']),
-      compactMap: t['compact_map'] == true,
     );
   }
 }
