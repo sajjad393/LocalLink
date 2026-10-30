@@ -217,9 +217,7 @@ class IdentityCryptoService {
           key.startsWith(_importedSeedPrefix) ||
           key.startsWith(_importedPublicPrefix) ||
           key == _directorySigningSeedKey ||
-          key == _directorySigningPublicKey ||
-          // Bundle 166: fresh-key session keys go with the identity.
-          key.startsWith('locallink_session_x25519_')) {
+          key == _directorySigningPublicKey) {
         await _secure.delete(key: key);
       }
     }

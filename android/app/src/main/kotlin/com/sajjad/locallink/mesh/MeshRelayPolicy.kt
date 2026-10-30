@@ -21,14 +21,6 @@ object MeshRelayPolicy {
     /** Sealed, best effort (presence, heartbeats, probes). */
     const val SEALED_LIVE: String = "sealed_x"
 
-    /** Bundle 159: locked call voice (only the two call phones hold the key).
-     *  Live only: never queued, never stored. */
-    const val SEALED_VOICE: String = "sealed_v"
-
-    /** Bundle 165: a locked file packet (photo, video, file, or its acks).
-     *  Only the two contacts hold the key. */
-    const val SEALED_FILE: String = "sealed_f"
-
     /** Kill switch for relay links (D11). */
     const val RELAY_ENABLED: Boolean = true
 
@@ -47,15 +39,9 @@ object MeshRelayPolicy {
 
     fun isSealed(type: String?): Boolean = type == SEALED || type == SEALED_LIVE
 
-    /** Bundle 159: a locked voice frame. */
-    fun isSealedVoice(type: String?): Boolean = type == SEALED_VOICE
-
-    /** Bundle 165: a locked file packet. */
-    fun isSealedFile(type: String?): Boolean = type == SEALED_FILE
-
     /** May a link with [trust] carry a packet of [type] (either direction)? */
     fun canCarry(trust: String, type: String?): Boolean =
-        trust == TRUST_CONTACT || (trust == TRUST_RELAY && (isSealed(type) || isSealedVoice(type) || isSealedFile(type)))
+        trust == TRUST_CONTACT || (trust == TRUST_RELAY && isSealed(type))
 
     /**
      * Trust for a peer at handshake time, or null = refuse the link.
@@ -72,10 +58,9 @@ object MeshRelayPolicy {
         isPaused: Boolean = false,
     ): String? {
         if (peerId.isBlank()) return null
-        // Bundle 164 (5.7): a blocked person never connects - not as a
-        // contact and not as a relay.
-        if (isBlocked) return null
+        // Contacts: unchanged behaviour (blocking is handled by the app).
         if (isContact) return TRUST_CONTACT
+        if (isBlocked) return null
         if (!RELAY_ENABLED || !peerOffersRelay || isPaused) return null
         if (relayLinks >= MAX_RELAY_LINKS) return null
         return TRUST_RELAY
