@@ -15,6 +15,7 @@ class ConnectivityRepository
         ConnectivityRepositoryContract,
         NearbyGroupControl,
         NearbyBridgeControl,
+        NearbyCallFlagControl,
         NearbyLocalNetControl {
   final WebSocketService socket;
   final WifiDirectService wifiDirect;
@@ -90,6 +91,9 @@ class ConnectivityRepository
 
   @override
   Future<void> setNearbyBridge(bool on) => wifiDirect.setNearbyBridge(on);
+
+  @override
+  Future<void> setNearbyInCall(bool on) => wifiDirect.setNearbyInCall(on);
 
   @override
   Future<void> createNearbyGroup() => wifiDirect.createNearbyGroup();

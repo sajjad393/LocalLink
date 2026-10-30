@@ -244,6 +244,8 @@ class LocalLinkTransportService : Service() {
     private val forwardedVoiceFrames = AtomicLong(0)
     // Bundle 165 (5.1): locked file packets through non-contact phones.
     private val forwardedFileChunks = AtomicLong(0)
+    // Bundle 167 (5.5): voice of someone else's call passes through here.
+    private val voiceRelay = VoiceRelayTracker()
     private val relayFileBudget = MeshRelayFileBudget()
     private val fileSealPeers: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val fileSealTrial: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -1770,8 +1772,14 @@ class LocalLinkTransportService : Service() {
                 if (!isEphemeralCallMediaType(packet.type)) Log.i("RELAY", "passed on type=${packet.type} bytes=${packet.payload.toString().length} from=$from")
                 // Bundle 159: a locked voice frame is counted only (50 a
                 // second would flood the app with events).
-                if (MeshRelayPolicy.isSealedVoice(packet.type)) {
+                // Bundle 167: plain call voice too (it used to send one app
+                // event per frame); both mark "a call passes through here".
+                if (MeshRelayPolicy.isSealedVoice(packet.type) || packet.type == "call_media") {
                     forwardedVoiceFrames.incrementAndGet()
+                    if (voiceRelay.onForward(now)) {
+                        Log.i("RELAY", "RELAY voice passing through on")
+                        transportEvent("voice_relay", mapOf("active" to true))
+                    }
                     return
                 }
                 forwardedPackets.incrementAndGet()
@@ -3334,6 +3342,11 @@ class LocalLinkTransportService : Service() {
                         }
                     }
                     sendResumeRequests()
+                    // Bundle 167: no call voice passed through for a while.
+                    if (voiceRelay.onTick(now)) {
+                        Log.i("RELAY", "RELAY voice passing through off")
+                        transportEvent("voice_relay", mapOf("active" to false))
+                    }
                     for (peer in allPhysicalPeerLinks()) {
                         try {
                             peer.lastPingAt = now

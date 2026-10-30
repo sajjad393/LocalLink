@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 
 /// Bundle 157: this phone's place in a Wi-Fi Direct group.
@@ -154,8 +156,13 @@ class NearbyGroupInput {
 /// Bundle 159 (battery): on a tie, a phone on a charger goes first (as host
 /// or bridge); otherwise the smaller id, as before (D4). True when
 /// ([aHash], [aCharging]) goes before ([bHash], [bCharging]).
+///
+/// Bundle 167 (5.5): a phone in a voice call ([aCall] / [bCall]) goes before
+/// everyone, so after the host left the call heals first.
 bool nearbyGoesFirst(
-    String aHash, bool aCharging, String bHash, bool bCharging) {
+    String aHash, bool aCharging, String bHash, bool bCharging,
+    {bool aCall = false, bool bCall = false}) {
+  if (aCall != bCall) return aCall;
   if (aCharging != bCharging) return aCharging;
   return aHash.compareTo(bHash) < 0;
 }
@@ -238,6 +245,10 @@ abstract final class NearbyGroupRules {
 
   /// D4 is over after this long.
   static const int lostWindowMs = 60 * 1000;
+
+  /// Bundle 167 (5.5): a phone in a call waits only this long (instead of
+  /// the random 1-4 s) after the host left.
+  static const int lostCallJitterMs = 300;
 
   /// An empty group (nobody joined) closes after this long, when nobody is
   /// wanted.
@@ -465,8 +476,12 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
 
       // 4. D4: the host of my group left.
       final sinceLost = input.now - input.lostAt;
+      // Bundle 167 (5.5): a phone in a call hardly waits.
+      final jitter = input.busy
+          ? min(input.lostJitterMs, NearbyGroupRules.lostCallJitterMs)
+          : input.lostJitterMs;
       if (input.lostAt > 0 && sinceLost <= NearbyGroupRules.lostWindowMs) {
-        if (sinceLost < input.lostJitterMs) {
+        if (sinceLost < jitter) {
           return const NearbyGroupAction.none('host_left_wait');
         }
         final best = bestGroup();
@@ -479,12 +494,14 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
         ];
         final mates = [for (final t in mateTags) t.idHash];
         // Bundle 159: a mate on a charger goes first, then the smallest id.
+        // Bundle 167: a mate in a call goes before chargers and ids.
         final smallest = mateTags.every((m) => nearbyGoesFirst(
-            input.selfHash, input.selfCharging, m.idHash, m.charging));
+            input.selfHash, input.selfCharging, m.idHash, m.charging,
+            aCall: input.busy, bCall: m.inCall));
         if (mates.isNotEmpty && smallest) {
           return const NearbyGroupAction.create('host_left_new_host');
         }
-        if (sinceLost >= input.lostJitterMs + NearbyGroupRules.lostFallbackMs &&
+        if (sinceLost >= jitter + NearbyGroupRules.lostFallbackMs &&
             (mates.isNotEmpty || input.waiting.isNotEmpty)) {
           return const NearbyGroupAction.create('host_left_no_new_host');
         }

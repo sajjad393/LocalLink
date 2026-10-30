@@ -820,6 +820,12 @@ final class WifiDirectFallbackService {
       await _publishWanted(waiting);
       if (_pendingKind != null && !userTap) return;
       _coolingUntil.removeWhere((_, until) => until <= now);
+      // Bundle 167 (5.5): tell nearby phones a call goes on here.
+      final busy = _isBusy();
+      if (busy != _callFlag) {
+        _callFlag = busy;
+        unawaited(_setCallFlag(busy));
+      }
       final plan = planNearbyGroup(NearbyGroupInput(
         selfHash: self,
         now: now,
@@ -838,7 +844,7 @@ final class WifiDirectFallbackService {
         lostAt: _lostAt,
         lostJitterMs: _lostJitterMs,
         lostMates: _lostMates,
-        busy: _isBusy(),
+        busy: busy,
         lanPeers: _lanHashes(),
         bridgeAllowed: !_bridging && now >= _bridgeOffUntil,
         bridgeSeen: {..._bridgeSeen},
@@ -968,6 +974,18 @@ final class WifiDirectFallbackService {
     _bridging = false;
     AppLogger.info('NEARBY', detail: 'group bridge off reason=$reason');
     await _setBridgeFlag(false);
+  }
+
+  /// Bundle 167: last `call=1` flag sent to the native tag.
+  bool _callFlag = false;
+
+  Future<void> _setCallFlag(bool on) async {
+    final c = connectivity;
+    if (c is! NearbyCallFlagControl) return;
+    AppLogger.info('NEARBY', detail: 'call flag ${on ? 'on' : 'off'}');
+    try {
+      await (c as NearbyCallFlagControl).setNearbyInCall(on);
+    } catch (_) {}
   }
 
   Future<void> _setBridgeFlag(bool on) async {

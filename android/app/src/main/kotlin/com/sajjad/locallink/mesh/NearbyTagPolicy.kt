@@ -83,6 +83,9 @@ object NearbyTagPolicy {
         hotspotSsid: String? = null,
         hotspotKey: String? = null,
         linkTarget: String? = null,
+        // Bundle 167 (5.5): a voice call is going on here (it goes first as
+        // the new host when the old host leaves).
+        inCall: Boolean = false,
     ): Map<String, String> {
         val n = members.coerceIn(0, 64)
         val txt = linkedMapOf(
@@ -107,6 +110,7 @@ object NearbyTagPolicy {
             txt["hk"] = hotspotKey!!
         }
         if ((host || member) && LocalNetPolicy.validLinkId(linkTarget)) txt["lt"] = linkTarget!!
+        if (inCall) txt["call"] = "1"
         return txt
     }
 
@@ -160,6 +164,8 @@ object NearbyTagPolicy {
         }
         val lt = txt["lt"]?.trim()?.lowercase()
         if ((host || member) && LocalNetPolicy.validLinkId(lt)) tag["link_target"] = lt!!
+        // Bundle 167: a voice call is going on there.
+        if (txt["call"] == "1") tag["in_call"] = true
         return tag
     }
 }

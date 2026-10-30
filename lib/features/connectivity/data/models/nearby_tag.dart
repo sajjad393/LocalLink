@@ -37,6 +37,9 @@ class NearbyTag {
   /// Bundle 159: this phone is on a charger (`pwr=1`).
   final bool charging;
 
+  /// Bundle 167 (5.5): a voice call goes on (or through) that phone.
+  final bool inCall;
+
   /// Bundle 160: this phone is on a normal Wi-Fi network (`wf=1`).
   final bool wifi;
 
@@ -64,6 +67,7 @@ class NearbyTag {
     this.wanted = const <String>[],
     this.bridge = false,
     this.charging = false,
+    this.inCall = false,
     this.wifi = false,
     this.v6,
     this.hotspotSsid,
@@ -118,6 +122,7 @@ class NearbyTag {
           : const <String>[],
       bridge: map['bridge'] == true,
       charging: map['charging'] == true,
+      inCall: map['in_call'] == true,
       wifi: map['wifi'] == true,
       v6: _text(map['v6']),
       hotspotSsid: _text(map['hotspot_ssid']),

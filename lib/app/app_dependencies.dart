@@ -38,6 +38,7 @@ import 'package:locallink/features/connectivity/data/services/wifi_direct_transp
 import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_fallback_service.dart';
+import 'package:locallink/features/connectivity/data/services/voice_relay_watch.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/files/data/repositories/file_transfer_repository.dart';
@@ -181,7 +182,16 @@ class AppDependencies {
     );
     calls = CallBloc(service: callService, repository: callRepository);
     // Bundle 157: a group is never dissolved (merge) during a call.
-    wifiDirectFallback.isBusy = () => calls.session != null;
+    // Bundle 167 (5.5): also not while someone else's call passes through
+    // this phone (a host carries its members' calls).
+    _voiceRelaySub = directTransport.events.listen((event) {
+      if (event['type'] == 'voice_relay') {
+        voiceRelay.note(event['active'] == true, DateTime.now());
+      }
+    });
+    wifiDirectFallback.isBusy = () =>
+        (calls.session?.isFinished == false) ||
+        voiceRelay.active(DateTime.now());
     // Bundle 159.3: read-only nearby status for the admin view.
     NearbyAdminStatus.loader = () async {
       Map<String, dynamic>? topology;
@@ -235,6 +245,9 @@ class AppDependencies {
   late final MeshRepositoryContract meshRepository;
   late final MeshBloc mesh;
   late final WifiDirectFallbackService wifiDirectFallback;
+  /// Bundle 167 (5.5): a call passes through this phone.
+  final VoiceRelayWatch voiceRelay = VoiceRelayWatch();
+  StreamSubscription<Map<String, dynamic>>? _voiceRelaySub;
   late final PairingService pairing;
   late final LocalRoutePolicyService routePolicy;
   late final AuthenticationRepositoryContract authentication;
@@ -395,6 +408,7 @@ class AppDependencies {
     await calls.close();
     await routePolicy.dispose();
     await wifiDirectFallback.dispose();
+    await _voiceRelaySub?.cancel();
     await pairing.dispose();
     await mesh.close();
     await connectivity.close();
