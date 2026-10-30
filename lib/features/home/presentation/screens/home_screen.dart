@@ -39,7 +39,6 @@ import 'package:locallink/features/files/domain/file_transfer_repository_contrac
 import 'package:locallink/features/groups/domain/group_messaging_repository_contract.dart';
 import 'package:locallink/features/groups/domain/group_repository_contract.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
-import 'package:locallink/features/groups/presentation/widgets/create_group_dialog.dart';
 import 'package:locallink/features/home/bloc/home_bloc.dart';
 import 'package:locallink/features/home/domain/home_repository_contract.dart';
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
@@ -689,29 +688,6 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(content: Text(_cleanError(error))),
       );
     }
-  }
-
-  Future<void> _createGroup() async {
-    final result = await showDialog<CreateGroupResult>(
-      context: context,
-      builder: (_) => CreateGroupDialog(devices: _controller.devices),
-    );
-    if (!mounted || result == null) return;
-    final group = await _controller.createGroup(result.name, result.memberIds);
-    if (!mounted || group == null) return;
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => GroupChatScreen(
-          group: group,
-          localDeviceId: widget.store.deviceId ?? '',
-          messaging: widget.groupMessaging,
-          groups: widget.groupRepository,
-          files: widget.files,
-          notifications: widget.notifications,
-        ),
-      ),
-    );
   }
 
   String _cleanError(Object error) {

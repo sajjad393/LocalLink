@@ -11,13 +11,11 @@ import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/error_toast.dart';
-import 'package:locallink/core/widgets/messenger_section_header.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
-import 'package:locallink/features/directory/presentation/add_contact_screen.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/directory/presentation/nearby_list_plan.dart';
 
@@ -374,16 +372,6 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
     }
   }
 
-  void _openAddContact() {
-    Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            AddContactScreen(repository: widget.directory, crypto: widget.crypto),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return BlocListener<ConnectivityBloc, ConnectivityState>(
@@ -417,7 +405,7 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                               height: 96 + (i * 48) + 42 * math.sin((controller.value + i / 3) * math.pi * 2).abs(),
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(.12), width: 2),
+                                border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: .12), width: 2),
                               ),
                             ),
                         DecoratedBox(

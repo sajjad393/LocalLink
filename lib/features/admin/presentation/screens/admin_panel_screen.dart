@@ -251,7 +251,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               Text(
                 'Local blocklist — applies on this phone immediately, online or offline.',
                 style: TextStyle(
-                    fontSize: 12, color: scheme.onSurface.withOpacity(0.65)),
+                    fontSize: 12, color: scheme.onSurface.withValues(alpha: 0.65)),
               ),
               const SizedBox(height: 12),
               if (_blocked.isEmpty)
@@ -260,7 +260,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                   child: Center(
                       child: Text('No blocked devices',
                           style: TextStyle(
-                              color: scheme.onSurface.withOpacity(0.6)))),
+                              color: scheme.onSurface.withValues(alpha: 0.6)))),
                 ),
               ..._blocked.map((row) {
                 final label =
@@ -396,7 +396,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: scheme.outlineVariant.withOpacity(0.5))),
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -405,7 +405,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           const SizedBox(height: 2),
           Text('Live view of where traffic can go',
               style: TextStyle(
-                  fontSize: 13, color: scheme.onSurface.withOpacity(0.6))),
+                  fontSize: 13, color: scheme.onSurface.withValues(alpha: 0.6))),
           const SizedBox(height: 14),
           LinkPathsMap(nodes: nodes, serverOnline: online),
         ]),
@@ -419,7 +419,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: scheme.outlineVariant.withOpacity(0.5))),
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -428,7 +428,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           const SizedBox(height: 3),
           Text('${devices.length} device(s) reachable via Wi-Fi Direct / mesh',
               style: TextStyle(
-                  fontSize: 13, color: scheme.onSurface.withOpacity(0.6))),
+                  fontSize: 13, color: scheme.onSurface.withValues(alpha: 0.6))),
           const SizedBox(height: 10),
           if (devices.length > kAdminListSearchFrom)
             AdminListSearch(
@@ -443,7 +443,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               child: Center(
                   child: Text('No other device seen yet',
                       style: TextStyle(
-                          color: scheme.onSurface.withOpacity(0.6)))),
+                          color: scheme.onSurface.withValues(alpha: 0.6)))),
             ),
           ...adminListPage<Device>(devices,
                   query: _linkQuery,
@@ -466,7 +466,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               Row(children: [
                 CircleAvatar(
                     radius: 20,
-                    backgroundColor: tint.withOpacity(0.16),
+                    backgroundColor: tint.withValues(alpha: 0.16),
                     child: Text(initials,
                         style: TextStyle(
                             color: Color.lerp(tint, Colors.black, 0.2),
@@ -483,7 +483,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                   tooltip: 'Block',
                   visualDensity: VisualDensity.compact,
                   style: IconButton.styleFrom(
-                      backgroundColor: scheme.error.withOpacity(0.08),
+                      backgroundColor: scheme.error.withValues(alpha: 0.08),
                       foregroundColor: scheme.error,
                       padding: const EdgeInsets.all(8)),
                   icon: const Icon(Icons.shield_outlined, size: 18),
@@ -491,7 +491,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                 ),
               ]),
               const SizedBox(height: 8),
-              Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.4)),
+              Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.4)),
               const SizedBox(height: 8),
             ]);
           }),
@@ -512,7 +512,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   Widget _transportChip(LinkTag tag, Color tint) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-            color: tint.withOpacity(0.14),
+            color: tint.withValues(alpha: 0.14),
             borderRadius: BorderRadius.circular(8)),
         child: Text(linkTagLabel(tag),
             style: TextStyle(
@@ -526,7 +526,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         margin: const EdgeInsets.only(bottom: 6),
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: scheme.outlineVariant.withOpacity(0.5))),
+            side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -535,7 +535,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           ),
           ListTile(
             leading: CircleAvatar(
-                backgroundColor: scheme.primary.withOpacity(0.12),
+                backgroundColor: scheme.primary.withValues(alpha: 0.12),
                 child: Icon(Icons.shield_outlined, color: scheme.primary)),
             title: const Text('Blocked devices',
                 style: TextStyle(fontWeight: FontWeight.w600)),
@@ -554,17 +554,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.5)),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         CircleAvatar(
             radius: 15,
             backgroundColor:
-                locked ? scheme.surfaceContainerHighest : scheme.primary.withOpacity(0.12),
+                locked ? scheme.surfaceContainerHighest : scheme.primary.withValues(alpha: 0.12),
             child: Icon(locked ? Icons.lock_outline : module.icon,
                 size: 16,
                 color: locked
-                    ? scheme.onSurface.withOpacity(0.45)
+                    ? scheme.onSurface.withValues(alpha: 0.45)
                     : scheme.primary)),
         const Spacer(),
         Text(module.title,
@@ -574,14 +574,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
                 color: locked
-                    ? scheme.onSurface.withOpacity(0.5)
+                    ? scheme.onSurface.withValues(alpha: 0.5)
                     : scheme.onSurface)),
         const SizedBox(height: 2),
         Text(locked ? 'Requires server connection' : module.subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-                fontSize: 10.5, color: scheme.onSurface.withOpacity(0.55))),
+                fontSize: 10.5, color: scheme.onSurface.withValues(alpha: 0.55))),
       ]),
     );
     return Opacity(
