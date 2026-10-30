@@ -254,7 +254,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v2 · bundles 104-149 (2026-10-30)');
+        detail: 'v2 · bundles 104-151 (2026-10-30)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -284,6 +284,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         // unreachable at signup). Mesh chat/calls work without a server.
         await _deps.initializeLocalOnlyServices();
         _listenForIncomingCalls();
+        // Bundle 151: notification taps work for phone-only accounts too.
+        _listenForNotificationOpens();
       }
 
       final signedOut = await _deps.store.isSignedOut();
@@ -295,6 +297,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         _startupError = null;
       });
       AppLogger.info('startup_ready');
+      _flushPendingNotificationOpen();
     } catch (error, stackTrace) {
       AppLogger.error(
         'startup_initialization_failed',
@@ -398,12 +401,42 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     _notificationSub ??= _deps.notifications.openRequests.listen(_openNotificationTarget);
   }
 
+  /// Bundle 151: a tap that arrives while the app is still starting waits
+  /// here and runs once the home screen is up.
+  LocalLinkNotificationAction? _pendingNotificationOpen;
+
+  void _flushPendingNotificationOpen() {
+    final pending = _pendingNotificationOpen;
+    if (pending == null) return;
+    _pendingNotificationOpen = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_openNotificationTarget(pending));
+    });
+  }
+
   Future<void> _openNotificationTarget(LocalLinkNotificationAction action) async {
-    if (!mounted || !_configured) return;
+    if (!mounted) return;
+    final navigator = _navigatorKey.currentState;
+    if (!_ready || !_configured || navigator == null) {
+      _pendingNotificationOpen = action; // newest tap wins
+      return;
+    }
+    final policy = _deps.notifications.policy;
+    // Never move away from a ringing or live call: the app just comes up.
+    if (policy.shouldBeSilent) {
+      AppLogger.info('NOTIFICATION_OPEN_SKIPPED', detail: 'reason=call');
+      return;
+    }
+    final messageId = action.messageId.isEmpty ? null : action.messageId;
     if (action.conversationType == NotificationConversationType.direct) {
+      // That chat is already open: stay there (no second copy).
+      if (policy.activeDirectConversationId == action.conversationId) return;
       final device = await _deps.store.deviceById(action.conversationId);
       if (device == null || device.id == _deps.store.deviceId) return;
-      await _navigatorKey.currentState?.push(
+      if (!mounted) return;
+      // Another chat open: back to Home first, then open this one.
+      navigator.popUntil((route) => route.isFirst);
+      await navigator.push(
         MaterialPageRoute(
           builder: (_) => ChatScreen(
             controller: ChatBloc(
@@ -412,7 +445,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
             ),
             files: _deps.files,
             notifications: _deps.notifications,
-            initialMessageId: action.messageId,
+            initialMessageId: messageId,
             initialAttachmentId: action.attachmentId,
           ),
         ),
@@ -421,9 +454,11 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     }
 
     if (action.conversationType == NotificationConversationType.group) {
+      if (policy.activeGroupConversationId == action.conversationId) return;
       final group = await _deps.store.groupById(action.conversationId);
-      if (group == null) return;
-      await _navigatorKey.currentState?.push(
+      if (group == null || !mounted) return;
+      navigator.popUntil((route) => route.isFirst);
+      await navigator.push(
         MaterialPageRoute(
           builder: (_) => GroupChatScreen(
             group: group,
@@ -432,7 +467,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
             groups: _deps.groupRepository,
             files: _deps.files,
             notifications: _deps.notifications,
-            initialMessageId: action.messageId,
+            initialMessageId: messageId,
             initialAttachmentId: action.attachmentId,
           ),
         ),
@@ -446,6 +481,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     final signedOut = await _deps.store.isSignedOut();
     if (!mounted) return;
     setState(() => _configured = configured && !signedOut);
+    _flushPendingNotificationOpen();
   }
 
   Future<void> _finishOnboarding() async {

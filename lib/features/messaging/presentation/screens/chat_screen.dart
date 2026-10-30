@@ -505,6 +505,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                   // and outgoing rows never open a section.
                                   final sectionLabel = _transportSectionLabelAt(visibleMessages, index, state.localDeviceId);
                                   return Column(
+                                    // Bundle 150: one row = one message, so a
+                                    // row never inherits another message's
+                                    // media state when new messages arrive.
+                                    key: ValueKey<String>('msg:${message.id}'),
                                     children: [
                                       if (sectionLabel != null)
                                         _TransportDivider(label: sectionLabel),

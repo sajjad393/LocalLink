@@ -41,6 +41,19 @@ class MainActivity : FlutterActivity() {
             activity.runOnUiThread { activity.dispatchCallNotificationIntent(intent, "receiver") }
             return true
         }
+
+        /**
+         * Bundle 151: message Reply / Mark-read from the notification receiver.
+         * (The call entry above sent these to the CALL handler, which dropped
+         * them.) Call actions keep using [dispatchNotificationAction].
+         */
+        fun dispatchMessageNotificationAction(intent: Intent): Boolean {
+            val activity = activeInstance ?: return false
+            activity.runOnUiThread { activity.dispatchNotificationIntent(intent) }
+            return true
+        }
+
+        private const val EXTRA_MESSAGE_ACTION_CONSUMED = "message_notification_action_consumed"
     }
 
     private val channelName = "locallink/files"
@@ -986,13 +999,22 @@ class MainActivity : FlutterActivity() {
             else -> ""
         }
         if (action.isBlank() || action != nativeAction) return
+        // Bundle 151: handle each tap once (a recreated activity replays its
+        // intent; reopening from Recents replays the old launch intent).
+        if (safeIntent.getBooleanExtra(EXTRA_MESSAGE_ACTION_CONSUMED, false)) return
+        if ((safeIntent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+        safeIntent.putExtra(EXTRA_MESSAGE_ACTION_CONSUMED, true)
         val conversationType = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_CONVERSATION_TYPE)?.trim().orEmpty()
         val conversationId = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_CONVERSATION_ID)?.trim().orEmpty()
         val messageId = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_MESSAGE_ID)?.trim().orEmpty()
         val senderId = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_SENDER_ID)?.trim().orEmpty()
         val recipientId = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_RECIPIENT_ID)?.trim().orEmpty()
         val notificationId = safeIntent.getIntExtra(LocalLinkNotificationManager.EXTRA_NOTIFICATION_ID, 0)
-        if (conversationType !in setOf("direct", "group") || conversationId.isBlank() || messageId.isBlank() || senderId.isBlank() || recipientId.isBlank() || notificationId <= 0) return
+        if (conversationType !in setOf("direct", "group") || conversationId.isBlank() || notificationId <= 0) return
+        // Bundle 151: a bundle tap ("open") has no message id - open the chat
+        // only. Reply / Mark-read always need the exact message.
+        if (action != "open" && (messageId.isBlank() || senderId.isBlank() || recipientId.isBlank())) return
+        android.util.Log.i("LocalLinkNotify", "NOTIFICATION_TAP action=$action type=$conversationType summary=${messageId.isBlank()} engine=${notificationEventSink != null}")
         val event = mutableMapOf<String, Any?>(
             "action" to action,
             "notification_id" to notificationId,

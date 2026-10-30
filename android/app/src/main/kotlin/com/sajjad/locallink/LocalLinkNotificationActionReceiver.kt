@@ -61,7 +61,8 @@ class LocalLinkNotificationActionReceiver : BroadcastReceiver() {
             }
         }
 
-        if (MainActivity.dispatchNotificationAction(dispatchIntent)) return
+        // Bundle 151: message actions go to the MESSAGE handler.
+        if (MainActivity.dispatchMessageNotificationAction(dispatchIntent)) return
         dispatchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         context.startActivity(dispatchIntent)
     }

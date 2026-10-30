@@ -204,6 +204,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             final previous = index == 0 ? null : DateTime.tryParse(state.messages[index - 1].createdAt)?.toLocal();
                             final showDate = parsed != null && (previous == null || previous.day != parsed.day || previous.month != parsed.month || previous.year != parsed.year);
                             return Column(
+                              // Bundle 150: stable row per message.
+                              key: ValueKey<String>('gmsg:${message.id}'),
                               children: [
                                 if (showDate) MessengerDateDivider(date: parsed),
                                 GestureDetector(

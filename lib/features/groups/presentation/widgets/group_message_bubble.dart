@@ -62,6 +62,7 @@ class GroupMessageBubble extends StatelessWidget {
                   child: Text(message.body,
                       style: TextStyle(color: foreground))),
             ...message.attachments.map((attachment) => AttachmentTile(
+                  key: ValueKey<String>('att:${message.id}:${attachment.id}'),
                   attachment: attachment,
                   transfer: files,
                   messageId: message.id,

@@ -150,11 +150,21 @@ class VideoInfoCache {
 
   static VideoInfo? peek(String cacheKey) => _cache[cacheKey];
 
+  @visibleForTesting
+  static void resetForTest() {
+    _cache.clear();
+    _inFlight.clear();
+  }
+
   static Future<VideoInfo?> load(String path, String cacheKey) {
     final hit = _cache[cacheKey];
     if (hit != null) return Future<VideoInfo?>.value(hit);
-    return _inFlight[cacheKey] ??= _read(path, cacheKey)
-        .whenComplete(() => _inFlight.remove(cacheKey));
+    // Bundle 150: block body. `() => _inFlight.remove(k)` returned the very
+    // future being completed, so it waited on itself forever (blank video
+    // bubble until a refresh).
+    return _inFlight[cacheKey] ??= _read(path, cacheKey).whenComplete(() {
+      _inFlight.remove(cacheKey);
+    });
   }
 
   static Future<VideoInfo?> _read(String path, String cacheKey) async {

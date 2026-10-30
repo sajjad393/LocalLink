@@ -23,6 +23,7 @@ class ChatPhoto extends StatefulWidget {
     this.hintHeight = 0,
     this.uploading = false,
     this.title,
+    this.uploadOverlay,
   });
 
   final String path;
@@ -31,6 +32,9 @@ class ChatPhoto extends StatefulWidget {
   final int hintHeight;
   final bool uploading;
   final String? title;
+
+  /// Bundle 150: drawn while [uploading] (blue ring with %). Null = default.
+  final Widget? uploadOverlay;
 
   @override
   State<ChatPhoto> createState() => _ChatPhotoState();
@@ -157,7 +161,8 @@ class _ChatPhotoState extends State<ChatPhoto> {
                   onTap: widget.uploading ? null : _open,
                 ),
               ),
-              if (widget.uploading) const _PhotoUploadOverlay(),
+              if (widget.uploading)
+                widget.uploadOverlay ?? const _PhotoUploadOverlay(),
             ],
           ),
         ),

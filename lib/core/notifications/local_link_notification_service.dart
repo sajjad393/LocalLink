@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/services/local_store.dart';
@@ -8,6 +10,7 @@ import 'package:locallink/core/notifications/local_link_notification_platform.da
 import 'package:locallink/core/notifications/notification_action.dart';
 import 'package:locallink/core/notifications/notification_identity_resolver.dart';
 import 'package:locallink/core/notifications/notification_id.dart';
+import 'package:locallink/core/notifications/notification_media_text.dart';
 import 'package:locallink/core/notifications/notification_policy.dart';
 import 'package:locallink/core/notifications/notification_preferences.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
@@ -41,8 +44,12 @@ final class LocalLinkNotificationService {
   StreamSubscription<CallSession?>? _callSubscription;
   StreamSubscription<String>? _deletedMessageSubscription;
   StreamSubscription<LocalLinkNotificationAction>? _actionSubscription;
-  final StreamController<LocalLinkNotificationAction> _openRequests =
-      StreamController<LocalLinkNotificationAction>.broadcast();
+  // Bundle 151: an "open chat" request made before the app listens (cold
+  // start from a notification tap) is kept and handed over on listen.
+  late final StreamController<LocalLinkNotificationAction> _openRequests =
+      StreamController<LocalLinkNotificationAction>.broadcast(
+          onListen: _flushPendingOpen);
+  LocalLinkNotificationAction? _pendingOpen;
   final Map<String, DateTime> _lastAlertAt = <String, DateTime>{};
   final List<DateTime> _globalAlertTimes = <DateTime>[];
   Timer? _cleanupTimer;
@@ -487,6 +494,12 @@ final class LocalLinkNotificationService {
 
   Future<void> _handleAction(LocalLinkNotificationAction action) async {
     if (_disposed) return;
+    // Bundle 151: a tap opens the chat even when the exact message is gone
+    // or the tap was on the bundle ("3 new messages").
+    if (action.action == NotificationActionType.open) {
+      await _handleOpen(action);
+      return;
+    }
     switch (action.conversationType) {
       case NotificationConversationType.direct:
         await _handleDirectAction(action);
@@ -602,6 +615,93 @@ final class LocalLinkNotificationService {
     }
   }
 
+  /// Bundle 151: tap on a message or bundle notification -> open that chat.
+  /// Only our own notification ids for this chat are accepted; blocked
+  /// contacts and groups we are not in are ignored.
+  Future<void> _handleOpen(LocalLinkNotificationAction action) async {
+    final localId = store.deviceId;
+    final cid = action.conversationId;
+    final isDirect =
+        action.conversationType == NotificationConversationType.direct;
+    final isGroup =
+        action.conversationType == NotificationConversationType.group;
+    if (localId == null || cid.isEmpty || (!isDirect && !isGroup)) return;
+
+    final nid = int.tryParse(action.notificationId) ?? 0;
+    final mid = action.messageId;
+    final summaryId = isDirect
+        ? notificationIdForDirectSummary(cid)
+        : notificationIdForGroupSummary(cid);
+    final messageNid = mid.isEmpty
+        ? null
+        : (isDirect
+            ? notificationIdForDirectMessage(cid, mid)
+            : notificationIdForGroupMessage(cid, mid));
+    if (nid <= 0 || (nid != summaryId && nid != messageNid)) return;
+
+    var focus = false;
+    if (isDirect) {
+      if (await store.isBlockedPeer(cid)) return;
+      if (await store.deviceById(cid) == null) return;
+      if (mid.isNotEmpty) {
+        final m = await store.messageById(mid);
+        if (m != null && m.senderId == cid && m.recipientId == localId) {
+          await _markDirectMessageRead(m);
+          focus = true;
+        }
+      }
+    } else {
+      final members = await store.groupMembers(cid);
+      if (!members.any((row) => row['device_id']?.toString() == localId)) {
+        return;
+      }
+      if (mid.isNotEmpty) {
+        final m = await store.groupMessageById(mid);
+        if (m != null &&
+            m.groupId == cid &&
+            !await store.isBlockedPeer(m.senderId)) {
+          await _markGroupMessageRead(m);
+          focus = true;
+        }
+      }
+    }
+
+    _emitOpen(focus
+        ? action
+        : LocalLinkNotificationAction(
+            action: NotificationActionType.open,
+            conversationType: action.conversationType,
+            notificationId: action.notificationId,
+            messageId: '',
+            conversationId: cid,
+            senderId: action.senderId,
+            recipientId: action.recipientId,
+          ));
+  }
+
+  void _emitOpen(LocalLinkNotificationAction action) {
+    if (_openRequests.isClosed) return;
+    if (_openRequests.hasListener) {
+      _openRequests.add(action);
+    } else {
+      _pendingOpen = action; // only the newest tap matters
+    }
+  }
+
+  void _flushPendingOpen() {
+    final pending = _pendingOpen;
+    if (pending == null) return;
+    _pendingOpen = null;
+    scheduleMicrotask(() {
+      if (!_openRequests.isClosed) _openRequests.add(pending);
+    });
+  }
+
+  /// Test hook: run a native notification action through the same checks.
+  @visibleForTesting
+  Future<void> handleActionForTest(LocalLinkNotificationAction action) =>
+      _handleAction(action);
+
   Future<void> _markDirectMessageRead(Message message) async {
     await store.markMessageRead(message.id);
     await store.removeNotificationStateForMessage(message.id);
@@ -656,19 +756,13 @@ final class LocalLinkNotificationService {
   int notificationIdForGroupSummary(String groupId) =>
       LocalLinkNotificationId.groupSummary(groupId);
 
-  String _bodyForMessage(Message message) {
-    if (message.body.trim().isNotEmpty) return message.body.trim();
-    if (message.attachments.any((a) => a.isImage)) return '📷 Photo';
-    if (message.attachments.isNotEmpty) return '📎 Attachment';
-    return 'New message';
-  }
+  // Bundle 151: "Image received", "Video received", "Document received",
+  // "Voice message received" (+ ": caption").
+  String _bodyForMessage(Message message) =>
+      notificationBodyFor(message.body, message.attachments);
 
-  String _bodyForGroupMessage(GroupMessage message) {
-    if (message.body.trim().isNotEmpty) return message.body.trim();
-    if (message.attachments.any((a) => a.isImage)) return '📷 Photo';
-    if (message.attachments.isNotEmpty) return '📎 Attachment';
-    return 'New message';
-  }
+  String _bodyForGroupMessage(GroupMessage message) =>
+      notificationBodyFor(message.body, message.attachments);
 
   AttachmentTarget? _firstLocalImage(Message message) {
     for (final attachment in message.attachments) {

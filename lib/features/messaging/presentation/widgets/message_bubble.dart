@@ -70,6 +70,7 @@ class MessageBubble extends StatelessWidget {
                   ),
                 ...message.attachments.map(
                   (attachment) => AttachmentTile(
+                    key: ValueKey<String>('att:${message.id}:${attachment.id}'),
                     attachment: attachment,
                     transfer: files,
                     messageId: message.id,

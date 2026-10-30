@@ -16,6 +16,7 @@ import 'package:locallink/features/connectivity/domain/connectivity_repository_c
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/features/connectivity/domain/local_route.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
+import 'package:locallink/features/files/data/services/media_progress_hub.dart';
 
 class ReliableMessagingService {
   final LocalStore store;
@@ -1568,6 +1569,8 @@ class ReliableMessagingService {
     'route_invalidated',
     'route_update',
     'link_update',
+    // Bundle 150: about one per second per transfer (blue progress ring).
+    'file_progress',
   };
   final Map<String, int> _hotDirectEventCounts = <String, int>{};
   DateTime? _hotDirectEventWindowStart;
@@ -1621,9 +1624,39 @@ class ReliableMessagingService {
     }
 
     // ------------------------------------------------------------------------
+    // Bundle 150: LIVE FILE PROGRESS (blue ring in the chat bubble)
+    // Receiver: bytes/total. Sender: acked_chunks/total_chunks.
+    // ------------------------------------------------------------------------
+    if (eventType == 'file_progress') {
+      final messageId = event['message_id']?.toString() ?? '';
+      final total = int.tryParse(event['total']?.toString() ?? '');
+      final bytes = int.tryParse(event['bytes']?.toString() ?? '');
+      if (total != null && bytes != null) {
+        MediaProgressHub.instance.update(messageId, done: bytes, total: total);
+      } else {
+        final chunks =
+            int.tryParse(event['total_chunks']?.toString() ?? '') ?? 0;
+        final acked =
+            int.tryParse(event['acked_chunks']?.toString() ?? '') ?? 0;
+        MediaProgressHub.instance.update(messageId, done: acked, total: chunks);
+      }
+      return;
+    }
+    if (eventType == 'file_sent' ||
+        eventType == 'file_failed' ||
+        eventType == 'file_cancelled' ||
+        eventType == 'file_expired') {
+      final messageId = event['message_id']?.toString() ?? '';
+      if (messageId.isNotEmpty) MediaProgressHub.instance.clear(messageId);
+      // fall through: other handlers below may still use these events.
+    }
+
+    // ------------------------------------------------------------------------
     // DIRECT FILE RECEIVED
     // ------------------------------------------------------------------------
     if (eventType == 'file_received') {
+      final doneId = event['message_id']?.toString() ?? '';
+      if (doneId.isNotEmpty) MediaProgressHub.instance.clear(doneId);
       final fileId = event['file_id']?.toString();
       final messageId = event['message_id']?.toString();
       final path = event['path']?.toString();

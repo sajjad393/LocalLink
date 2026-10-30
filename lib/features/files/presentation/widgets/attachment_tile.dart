@@ -10,9 +10,12 @@ import 'package:locallink/features/files/domain/file_transfer_repository_contrac
 import 'package:locallink/features/files/bloc/file_transfer_bloc.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
+import 'package:locallink/features/files/data/services/media_progress_hub.dart';
+import 'blue_progress_ring.dart';
 import 'chat_photo.dart';
 import 'chat_video_controller.dart';
 import 'chat_video_player.dart';
+import 'media_frame.dart';
 import 'media_playback_coordinator.dart';
 import 'media_view_cache.dart';
 
@@ -51,6 +54,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
   // Bundle 147: the decrypted view comes from MediaViewCache (decrypted once,
   // shared, kept while shown). This tile holds one reference to it.
   String? _viewKey;
+  // Bundle 150: one quiet retry when opening the local file fails.
+  int _prepareFailures = 0;
 
   @override
   void initState() {
@@ -59,6 +64,36 @@ class _AttachmentTileState extends State<AttachmentTile> {
     _controller = FileTransferBloc(repository: widget.transfer);
     _prepareExistingPath();
     _maybeAutoDownload();
+  }
+
+  /// Bundle 150: the message usually arrives BEFORE its file (Wi-Fi). When
+  /// the file lands, the chat rebuilds this tile with the saved path — show
+  /// it at once instead of waiting for a refresh.
+  @override
+  void didUpdateWidget(AttachmentTile old) {
+    super.didUpdateWidget(old);
+    final next = widget.attachment.localPath;
+    if (next != null &&
+        next.isNotEmpty &&
+        next != old.attachment.localPath &&
+        next != _localPath &&
+        _displayPath == null) {
+      AppLogger.info('ATTACHMENT_PATH_ARRIVED',
+          detail: 'file=${widget.attachment.id}');
+      _localPath = next;
+      _prepareFailures = 0;
+      unawaited(_prepareExistingPath());
+    }
+  }
+
+  /// Bundle 150: still coming over Wi-Fi — no local file yet and no server
+  /// link, so a server download can only fail ("Something went wrong").
+  bool get _arrivingDirect {
+    if (widget.uploading || widget.groupMessageId != null) return false;
+    final local = _localPath;
+    if (local != null && local.isNotEmpty) return false;
+    final url = widget.attachment.downloadUrl;
+    return url == null || url.isEmpty;
   }
 
   /// WhatsApp behaviour: small media starts downloading the moment the
@@ -96,6 +131,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
     final cached = _localPath;
     final hasLocal = cached != null && cached.isNotEmpty;
     if (hasLocal || widget.uploading) return;
+    // Bundle 150: arriving over Wi-Fi — it shows by itself when it lands.
+    if (_arrivingDirect) return;
     // Auto-fetch anything small: images, voice notes and (bundle 145)
     // videos up to 10 MB (WhatsApp parity). Bigger ones wait for a tap.
     final inlineCandidate = widget.attachment.isImage || _isAudio || _isVideo;
@@ -120,6 +157,15 @@ class _AttachmentTileState extends State<AttachmentTile> {
       if (view == null) return;
       setState(() => _displayPath = view);
     } catch (error) {
+      // Bundle 150: the file can still be settling (just written / just
+      // protected). Retry once quietly before giving up.
+      if (_prepareFailures++ == 0) {
+        Future<void>.delayed(const Duration(milliseconds: 800), () {
+          if (mounted && _displayPath == null) {
+            unawaited(_prepareExistingPath());
+          }
+        });
+      }
       // Bundle 133+: never degrade silently again — this catch was pinning
       // the sender's OWN media behind a download icon with zero diagnostics
       // (the voice-note/video screenshot bug).
@@ -169,6 +215,12 @@ class _AttachmentTileState extends State<AttachmentTile> {
 
 
   Future<void> _download() async {
+    if (_arrivingDirect) {
+      // Bundle 150: nothing to download from the server; it is on its way.
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+          content: Text('Still receiving over Wi-Fi. It will appear by itself.')));
+      return;
+    }
     try {
       // The controller creates the operation id internally; the local view
       // observes the newest operation after each state notification.
@@ -322,6 +374,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                 hintWidth: widget.attachment.width,
                 hintHeight: widget.attachment.height,
                 uploading: widget.uploading,
+                uploadOverlay: _sendOverlay(),
                 title: widget.attachment.originalName,
               );
             }
@@ -336,6 +389,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                 hintWidth: widget.attachment.width,
                 hintHeight: widget.attachment.height,
                 uploading: widget.uploading,
+                uploadOverlay: _sendOverlay(),
                 // Playing holds its own reference, so the video keeps going
                 // in the mini player after this bubble is gone.
                 onRetainFile: viewKey == null
@@ -351,6 +405,10 @@ class _AttachmentTileState extends State<AttachmentTile> {
           final progress = _progress;
           final running = progress?.status == FileTransferStatus.running;
           if (_isVideo) return _videoPlaceholder(progress, running);
+          // Bundle 150: photos never fall back to the grey file row.
+          if (widget.attachment.isImage) {
+            return _photoPlaceholder(progress, running);
+          }
           if (_isAudio) {
             final colors = Theme.of(context).colorScheme;
             final totalMs = _audioDurationMs > 0 ? _audioDurationMs : 0;
@@ -540,8 +598,6 @@ class _AttachmentTileState extends State<AttachmentTile> {
     final hint = a.width > 0 && a.height > 0 ? a.width / a.height : null;
     final size = ChatVideoPlayer.frameSize(cached?.aspectRatio ?? hint);
     final hasLocal = _localPath != null && _localPath!.isNotEmpty;
-    final total =
-        progress != null && progress.total > 0 ? progress.total : a.size;
     Widget circle(IconData icon, String tip, VoidCallback onTap, Key key) =>
         Material(
           color: Colors.black54,
@@ -561,32 +617,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
           ),
         );
     final Widget center;
-    if (running) {
-      center = SizedBox(
-        width: 60,
-        height: 60,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            SizedBox(
-              width: 56,
-              height: 56,
-              child: CircularProgressIndicator(
-                value: progress?.fraction,
-                strokeWidth: 3.5,
-                color: Colors.white,
-                backgroundColor: Colors.white30,
-              ),
-            ),
-            IconButton(
-              key: const Key('chat_video_cancel'),
-              tooltip: 'Cancel download',
-              onPressed: _cancel,
-              icon: const Icon(Icons.close, color: Colors.white, size: 22),
-            ),
-          ],
-        ),
-      );
+    final ring = _ringCenter(progress, running);
+    if (ring != null) {
+      center = FittedBox(fit: BoxFit.scaleDown, child: ring);
     } else if (hasLocal || widget.uploading) {
       center = circle(Icons.play_arrow_rounded, 'Play', _openOrRetryLocal,
           const Key('chat_video_prepare'));
@@ -595,9 +628,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
           const Key('chat_video_download'));
     }
     final thumb = cached?.thumbnail;
-    final sizeChip = running
-        ? '${(progress!.completed / (1024 * 1024)).toStringAsFixed(1)} / ${formatVideoBytes(total)}'
-        : _sizeLabel(a.size);
+    // Bundle 150: the ring's own label shows "% · MB" while it runs.
+    final sizeChip = ring == null ? _sizeLabel(a.size) : null;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: ClipRRect(
@@ -635,13 +667,157 @@ class _AttachmentTileState extends State<AttachmentTile> {
                         Duration(milliseconds: cached.durationMs)),
                   ),
                 ),
-              Positioned(
-                right: 8,
-                bottom: 8,
-                child: VideoChip(
-                    key: const Key('chat_video_progress_chip'),
-                    label: sizeChip),
+              if (sizeChip != null)
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: VideoChip(
+                      key: const Key('chat_video_progress_chip'),
+                      label: sizeChip),
+                ),
+              if (!running && progress?.error != null)
+                Positioned(
+                  left: 8,
+                  right: 8,
+                  top: 8,
+                  child: Text(
+                    progress!.error!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 11.5),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Bundle 150: blue ring for the middle of a photo/video bubble, or null
+  /// when nothing is moving (then the bubble shows play / download).
+  Widget? _ringCenter(TransferProgress? progress, bool running) {
+    final size = widget.attachment.size;
+    if (running) {
+      final known = progress != null && progress.total > 0;
+      final total = known ? progress.total : size;
+      return BlueProgressRing(
+        key: const Key('chat_media_download_ring'),
+        fraction: known ? progress.fraction : null,
+        label: mediaProgressLabel(progress?.completed ?? 0, total),
+        onCancel: _cancel,
+      );
+    }
+    if (_arrivingDirect) {
+      return _LiveRing(
+        key: const Key('chat_media_receiving'),
+        messageId: widget.messageId,
+        sizeBytes: size,
+        icon: Icons.arrow_downward_rounded,
+        idleLabel: _idle('Receiving…', size),
+      );
+    }
+    if (widget.uploading) {
+      return _LiveRing(
+        key: const Key('chat_media_sending'),
+        messageId: widget.messageId,
+        sizeBytes: size,
+        icon: Icons.arrow_upward_rounded,
+        idleLabel: _idle('Sending…', size),
+      );
+    }
+    return null;
+  }
+
+  String _idle(String text, int size) =>
+      size > 0 ? '$text · ${_sizeLabel(size)}' : text;
+
+  /// Bundle 150: drawn over the sender's own photo/video while it is sent.
+  Widget _sendOverlay() => ColoredBox(
+        color: Colors.black38,
+        child: Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: _LiveRing(
+              key: const Key('chat_media_sending'),
+              messageId: widget.messageId,
+              sizeBytes: widget.attachment.size,
+              icon: Icons.arrow_upward_rounded,
+              idleLabel: _idle('Sending…', widget.attachment.size),
+            ),
+          ),
+        ),
+      );
+
+  /// Bundle 150: photo not viewable yet. Same frame as the photo (real
+  /// shape when known), blue ring while it moves, never the grey file row.
+  Widget _photoPlaceholder(TransferProgress? progress, bool running) {
+    final a = widget.attachment;
+    final known = MediaSizeCache.get(_videoCacheKey);
+    final frame = known != null
+        ? MediaFrame.fit(known.width, known.height)
+        : MediaFrame.fit(a.width, a.height);
+    final hasLocal = _localPath != null && _localPath!.isNotEmpty;
+    final ring = _ringCenter(progress, running);
+    Widget button(IconData icon, String tip, VoidCallback onTap, Key key) =>
+        Material(
+          color: Colors.black54,
+          shape: const CircleBorder(),
+          child: InkWell(
+            key: key,
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: Tooltip(
+                message: tip,
+                child: Icon(icon, color: Colors.white, size: 30),
               ),
+            ),
+          ),
+        );
+    final Widget? center;
+    if (ring != null) {
+      center = ring;
+    } else if (hasLocal) {
+      // Own / saved photo being opened: normally a blink. Offer a retry
+      // only if opening failed twice.
+      center = _prepareFailures >= 2
+          ? button(Icons.refresh_rounded, 'Try again', _openOrRetryLocal,
+              const Key('chat_photo_prepare'))
+          : null;
+    } else {
+      center = button(Icons.download_rounded, 'Download', _download,
+          const Key('chat_photo_download'));
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          key: const Key('chat_photo_placeholder'),
+          width: frame.width,
+          height: frame.height,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const ColoredBox(color: Color(0xFF2A2F3A)),
+              if (center == null)
+                Center(
+                  child: Icon(Icons.image_rounded,
+                      color: Colors.white.withValues(alpha: .25), size: 34),
+                )
+              else
+                Center(
+                  child: FittedBox(fit: BoxFit.scaleDown, child: center),
+                ),
+              if (ring == null)
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: VideoChip(label: _sizeLabel(a.size)),
+                ),
               if (!running && progress?.error != null)
                 Positioned(
                   left: 8,
@@ -665,5 +841,40 @@ class _AttachmentTileState extends State<AttachmentTile> {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+}
+
+/// Bundle 150: blue ring fed by live Wi-Fi progress for [messageId]. Turns
+/// (no %) until the first number arrives, then fills to 100%.
+class _LiveRing extends StatelessWidget {
+  const _LiveRing({
+    super.key,
+    required this.messageId,
+    required this.sizeBytes,
+    required this.icon,
+    required this.idleLabel,
+  });
+
+  final String messageId;
+  final int sizeBytes;
+  final IconData icon;
+  final String idleLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<MediaProgress?>(
+      valueListenable: MediaProgressHub.instance.watch(messageId),
+      builder: (context, p, _) {
+        if (p == null) return BlueProgressRing(icon: icon, label: idleLabel);
+        // Sender reports chunks, receiver bytes: show MB from the real size.
+        final total = sizeBytes > 0 ? sizeBytes : p.total;
+        final done = sizeBytes > 0 ? (p.fraction * sizeBytes).round() : p.done;
+        return BlueProgressRing(
+          fraction: p.fraction,
+          icon: icon,
+          label: mediaProgressLabel(done, total),
+        );
+      },
+    );
   }
 }

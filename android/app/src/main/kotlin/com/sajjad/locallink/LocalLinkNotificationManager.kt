@@ -150,9 +150,8 @@ object LocalLinkNotificationManager {
         ) return
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val openIntent = actionIntent(
+        val openIntent = openActivityIntent(
             context = context,
-            action = ACTION_OPEN,
             notificationId = notificationId,
             conversationType = conversationType,
             conversationId = conversationId,
@@ -184,9 +183,12 @@ object LocalLinkNotificationManager {
             attachmentId = attachmentId,
         )
 
-        val openPending = PendingIntent.getBroadcast(
+        // Bundle 151: the tap opens the app DIRECTLY. Android 12+ blocks an
+        // activity started from a broadcast receiver after a notification
+        // tap ("trampoline"), so the old receiver path did nothing.
+        val openPending = PendingIntent.getActivity(
             context,
-            requestCode(notificationId, 0),
+            notificationId,
             openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -316,6 +318,24 @@ object LocalLinkNotificationManager {
             .setGroup(groupKey(conversationType, conversationId))
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
+            // Bundle 151: tapping the bundle ("3 new messages") opens that chat.
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    context,
+                    notificationId,
+                    openActivityIntent(
+                        context = context,
+                        notificationId = notificationId,
+                        conversationType = conversationType,
+                        conversationId = conversationId,
+                        messageId = "",
+                        senderId = "",
+                        recipientId = "",
+                        attachmentId = null,
+                    ),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            )
 
         if (silent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) builder.setSilent(true)
         when (visibility) {
@@ -347,6 +367,18 @@ object LocalLinkNotificationManager {
             .setCategory(Notification.CATEGORY_STATUS)
             .setAutoCancel(true)
             .setPriority(Notification.PRIORITY_DEFAULT)
+        // Bundle 151: a general notification only brings the app to the front
+        // (where it was) - no navigation.
+        bringToFrontIntent(context)?.let { launch ->
+            builder.setContentIntent(
+                PendingIntent.getActivity(
+                    context,
+                    21000 + (notificationId and 0x3ff),
+                    launch,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            )
+        }
         if (silent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) builder.setSilent(true)
         manager.notify(notificationId, builder.build())
     }
@@ -391,7 +423,9 @@ object LocalLinkNotificationManager {
         attachmentId: String?,
     ): Intent = Intent(context, LocalLinkNotificationActionReceiver::class.java).apply {
         this.action = action
-        putExtra(EXTRA_ACTION, action.removePrefix("com.sajjad.locallink.ACTION_").lowercase())
+        // Bundle 151: was "reply_message_notification" etc., which the
+        // receiver never accepted (it expects "reply" / "mark_read").
+        putExtra(EXTRA_ACTION, shortAction(action))
         putExtra(EXTRA_NOTIFICATION_ID, notificationId)
         putExtra(EXTRA_CONVERSATION_TYPE, conversationType)
         putExtra(EXTRA_CONVERSATION_ID, conversationId)
@@ -400,6 +434,55 @@ object LocalLinkNotificationManager {
         putExtra(EXTRA_RECIPIENT_ID, recipientId)
         if (!attachmentId.isNullOrBlank()) putExtra(EXTRA_ATTACHMENT_ID, attachmentId)
     }
+
+    /** Bundle 151: the short action name the receiver and MainActivity check. */
+    fun shortAction(action: String): String = when (action) {
+        ACTION_OPEN -> "open"
+        ACTION_REPLY -> "reply"
+        ACTION_MARK_READ -> "mark_read"
+        else -> ""
+    }
+
+    /**
+     * Bundle 151: tap on a message (or bundle) notification -> MainActivity
+     * directly, carrying which chat to open. Blank [messageId] = bundle tap
+     * (open the conversation only).
+     */
+    private fun openActivityIntent(
+        context: Context,
+        notificationId: Int,
+        conversationType: String,
+        conversationId: String,
+        messageId: String,
+        senderId: String,
+        recipientId: String,
+        attachmentId: String?,
+    ): Intent = Intent(context, MainActivity::class.java).apply {
+        this.action = ACTION_OPEN
+        // Unique per notification, so two taps never share (and overwrite)
+        // one PendingIntent - a tap always opens ITS chat. (Not setData():
+        // Flutter would treat a data URI as a deep-link route.)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            identifier = "locallink-open-$conversationType-$notificationId"
+        }
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+            Intent.FLAG_ACTIVITY_CLEAR_TOP
+        putExtra(EXTRA_ACTION, "open")
+        putExtra(EXTRA_NOTIFICATION_ID, notificationId)
+        putExtra(EXTRA_CONVERSATION_TYPE, conversationType)
+        putExtra(EXTRA_CONVERSATION_ID, conversationId)
+        putExtra(EXTRA_MESSAGE_ID, messageId)
+        putExtra(EXTRA_SENDER_ID, senderId)
+        putExtra(EXTRA_RECIPIENT_ID, recipientId)
+        if (!attachmentId.isNullOrBlank()) putExtra(EXTRA_ATTACHMENT_ID, attachmentId)
+    }
+
+    /** Bundle 151: the launcher intent = bring the existing app to the front. */
+    private fun bringToFrontIntent(context: Context): Intent? =
+        context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        }
 
     private fun groupKey(type: String, conversationId: String): String =
         "locallink:$type:$conversationId"

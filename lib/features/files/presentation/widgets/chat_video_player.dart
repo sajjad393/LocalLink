@@ -40,6 +40,7 @@ class ChatVideoPlayer extends StatefulWidget {
     this.infoLoader = VideoInfoCache.load,
     this.coordinator,
     this.hub,
+    this.uploadOverlay,
   });
 
   final String path;
@@ -54,6 +55,9 @@ class ChatVideoPlayer extends StatefulWidget {
   final VideoInfoLoader infoLoader;
   final MediaPlaybackCoordinator? coordinator;
   final ChatVideoHub? hub;
+
+  /// Bundle 150: drawn while [uploading] (blue ring with %). Null = default.
+  final Widget? uploadOverlay;
 
   /// Bundle 147: the video's real shape, scaled to fit 250 x 360 (no crop).
   static Size frameSize(double? aspect) => MediaFrame.fitAspect(aspect);
@@ -384,7 +388,8 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
                     ),
                   ),
                 ),
-              if (widget.uploading) const _UploadOverlay(),
+              if (widget.uploading)
+                widget.uploadOverlay ?? const _UploadOverlay(),
             ],
           ),
         ),

@@ -11,8 +11,13 @@ final class LocalLinkNotificationPlatform {
   static const EventChannel _actionsChannel =
       EventChannel('locallink/notification_actions');
 
-  final StreamController<LocalLinkNotificationAction> _actions =
-      StreamController<LocalLinkNotificationAction>.broadcast();
+  // Bundle 151: a tap that starts the app arrives before the notification
+  // service listens. Keep it (only the newest few) and hand it over on listen.
+  late final StreamController<LocalLinkNotificationAction> _actions =
+      StreamController<LocalLinkNotificationAction>.broadcast(
+          onListen: _flushEarly);
+  final List<LocalLinkNotificationAction> _early =
+      <LocalLinkNotificationAction>[];
   StreamSubscription<dynamic>? _nativeActionSubscription;
   bool _disposed = false;
 
@@ -21,7 +26,13 @@ final class LocalLinkNotificationPlatform {
       (event) {
         if (_disposed || event is! Map) return;
         try {
-          _actions.add(LocalLinkNotificationAction.fromMap(event));
+          final action = LocalLinkNotificationAction.fromMap(event);
+          if (_actions.hasListener) {
+            _actions.add(action);
+          } else {
+            _early.add(action);
+            if (_early.length > 8) _early.removeAt(0);
+          }
         } catch (_) {
           // Invalid or stale notification intents are ignored at the boundary.
         }
@@ -31,6 +42,18 @@ final class LocalLinkNotificationPlatform {
   }
 
   Stream<LocalLinkNotificationAction> get actions => _actions.stream;
+
+  void _flushEarly() {
+    if (_early.isEmpty) return;
+    final queued = List<LocalLinkNotificationAction>.of(_early);
+    _early.clear();
+    // After the listener is attached.
+    scheduleMicrotask(() {
+      for (final action in queued) {
+        if (!_actions.isClosed) _actions.add(action);
+      }
+    });
+  }
 
   Future<void> initialize() async {
     if (_disposed) return;
