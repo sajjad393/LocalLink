@@ -26,6 +26,13 @@ abstract interface class NearbyBridgeControl {
   Future<void> setNearbyBridge(bool on);
 }
 
+/// Bundle 167 (5.5): advertise that a voice call goes on here (`call=1`), so
+/// this phone goes first as the new host if the host leaves. Own interface
+/// so older fakes keep working.
+abstract interface class NearbyCallFlagControl {
+  Future<void> setNearbyInCall(bool on);
+}
+
 /// Bundle 161 (tests, off by default): a second Wi-Fi network for LocalLink
 /// — another nearby group joined as a normal Wi-Fi user, or a LocalLink
 /// hotspot. Results arrive as `local_net` / `hotspot` events.

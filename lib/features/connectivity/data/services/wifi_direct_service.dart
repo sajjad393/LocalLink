@@ -55,6 +55,9 @@ class WifiDirectService {
   /// Bundle 158: advertise `br=1` (this phone bridges its group and Wi-Fi).
   Future<void> setNearbyBridge(bool on) =>
       _channel.invokeMethod('setNearbyBridge', {'on': on});
+  /// Bundle 167 (5.5): advertise `call=1` (a voice call goes on here).
+  Future<void> setNearbyInCall(bool on) =>
+      _channel.invokeMethod('setNearbyInCall', {'on': on});
   Future<void> joinNearbyGroup({
     String? name,
     String? key,
