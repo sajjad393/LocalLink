@@ -282,6 +282,20 @@ final class CallSessionManager implements CallGateway {
         'This user identity is not trusted for local calling',
       );
     }
+    // Bundle 158 (D1): voice calls go at most 3 hops; further away the
+    // sound breaks up, so show the usual "couldn't reach" instead.
+    LocalRouteResult? callRoute;
+    try {
+      callRoute = await routePolicy.resolve(device.id);
+    } catch (_) {}
+    if (callRoute != null && VoiceCallHopPolicy.tooFar(callRoute)) {
+      AppLogger.info('CALL_TOO_FAR',
+          detail: 'hops=${callRoute.hopCount} max=${VoiceCallHopPolicy.maxHops}');
+      throw const CallPreflightException(
+        CallPreflightCode.noLocalRoute,
+        "Couldn't reach them — try again",
+      );
+    }
     final mode = CallTransportSelectionPolicy.select(localRouteAvailable: true);
     final id = _newCallId();
     final now = DateTime.now();
@@ -1989,4 +2003,16 @@ final class CallSessionManager implements CallGateway {
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
     return 'call-${bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
   }
+}
+
+/// Bundle 158 (plan 158.2, D1): messages go up to 8 hops, voice calls at
+/// most 3. Only a relayed route longer than that blocks a call; no route at
+/// all keeps the old behaviour (the invite waits for a route).
+abstract final class VoiceCallHopPolicy {
+  static const int maxHops = 3;
+
+  static bool tooFar(LocalRouteResult route) =>
+      route.kind == LocalRouteKind.mesh &&
+      route.hopCount != null &&
+      route.hopCount! > maxHops;
 }

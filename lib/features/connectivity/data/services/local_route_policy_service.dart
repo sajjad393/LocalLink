@@ -23,6 +23,10 @@ final class LocalRoutePolicyService {
       StreamController<LocalRouteResult>.broadcast();
   final Map<String, LocalRouteResult> _routes = {};
 
+  /// Bundle 158: LocalLink phones seen on this Wi-Fi (from the topology).
+  Set<String> _lanPeerIds = const <String>{};
+  Set<String> get lanPeerIds => _lanPeerIds;
+
   StreamSubscription<Map<String, dynamic>>? _subscription;
   bool _started = false;
   bool _disposed = false;
@@ -127,6 +131,8 @@ final class LocalRoutePolicyService {
                 route['next_hop'])
             ?.toString()
             .trim(),
+        // Bundle 158: hops to them (voice calls go at most 3).
+        hopCount: _intValue(route['hop_count'] ?? route['cost']),
         transportState: LocalTransportState.available,
       );
     }
@@ -168,6 +174,15 @@ final class LocalRoutePolicyService {
   }
 
   void _publishRoutes(Map<String, dynamic> topology) {
+    final lan = topology['lan_ids'];
+    if (lan is List) {
+      _lanPeerIds = {
+        for (final id in lan)
+          if (id.toString().trim().isNotEmpty) id.toString().trim(),
+      };
+    } else if (topology.isEmpty) {
+      _lanPeerIds = const <String>{};
+    }
     final peerIds = <String>{
       ..._maps(topology['peers']).map(_peerId),
       ..._maps(topology['routes']).map(_routeDestination),

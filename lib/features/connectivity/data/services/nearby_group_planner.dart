@@ -112,6 +112,16 @@ class NearbyGroupInput {
   /// A call is going on: never dissolve a group under it.
   final bool busy;
 
+  /// Bundle 158: tag ids (16 hex) of LocalLink phones seen on this Wi-Fi.
+  final Set<String> lanPeers;
+
+  /// Bundle 158: this phone may bridge now (false for 10 min after it could
+  /// not keep Wi-Fi and a group at the same time).
+  final bool bridgeAllowed;
+
+  /// Bundle 158: group name -> last time a bridge (`br=1`) was seen in it.
+  final Map<String, int> bridgeSeen;
+
   const NearbyGroupInput({
     required this.selfHash,
     required this.now,
@@ -131,6 +141,9 @@ class NearbyGroupInput {
     this.lostJitterMs = 2000,
     this.lostMates = const <String>{},
     this.busy = false,
+    this.lanPeers = const <String>{},
+    this.bridgeAllowed = false,
+    this.bridgeSeen = const <String, int>{},
   });
 }
 
@@ -159,6 +172,14 @@ abstract final class NearbyGroupRules {
   /// The Pair target hasn't come into our group by itself after this long:
   /// invite it once the classic way.
   static const int pairInviteAfterMs = 25 * 1000;
+
+  /// Bundle 158: phones off our Wi-Fi must be seen this long before a Wi-Fi
+  /// phone bridges to them (tags and LAN beacons settle).
+  static const int bridgeSettleMs = 10 * 1000;
+
+  /// Bundle 158: a backup bridge only after the bridge was missing this
+  /// long; each Wi-Fi phone with a smaller id gets this much head start.
+  static const int bridgeBackupMs = 30 * 1000;
 }
 
 /// Bundle 157: one shared group for all nearby LocalLink phones.
@@ -388,13 +409,105 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
 
       // 5. No Local Wi-Fi: everyone nearby in one group.
       if (lastReason != null) return NearbyGroupAction.none(lastReason);
-      if (input.onWifiNetwork) return const NearbyGroupAction.none('lan_first');
+      if (input.onWifiNetwork) {
+        // Bundle 158: on Wi-Fi, bridge to LocalLink phones that are NOT on
+        // this Wi-Fi (one bridge per group).
+        if (input.bridgeAllowed) {
+          final bridge = _planBridge(input, fresh, joinable);
+          if (bridge != null) return bridge;
+        }
+        return const NearbyGroupAction.none('lan_first');
+      }
       final best = bestGroup();
       if (best != null) {
         return NearbyGroupAction.join(best, 'join_nearby_group');
       }
       return const NearbyGroupAction.none('idle');
   }
+}
+
+/// Bundle 158 (plan 158.1): a phone on Wi-Fi that sees LocalLink phones NOT
+/// on that Wi-Fi joins their group (or, when they are not in a group, starts
+/// one for them) while staying on Wi-Fi, so both sides reach each other.
+///
+/// * one bridge per group: a group that shows `br=1`, or has a phone that is
+///   also on our Wi-Fi, needs no bridge;
+/// * a backup only after the bridge was missing for 30 s;
+/// * among Wi-Fi phones that could bridge, the smallest id goes first; each
+///   bigger id waits 30 s more (so a phone that can't bridge never blocks).
+/// Returns null when there is nothing to bridge.
+NearbyGroupAction? _planBridge(NearbyGroupInput input, List<NearbyTag> fresh,
+    bool Function(NearbyTag) joinable) {
+  final off = [
+    for (final t in fresh)
+      if (t.groupAware && !input.lanPeers.contains(t.idHash)) t,
+  ];
+  if (off.isEmpty) return null;
+  // Other Wi-Fi phones that could bridge too (idle, on our Wi-Fi).
+  final rank = [
+    for (final t in fresh)
+      if (input.lanPeers.contains(t.idHash) &&
+          t.groupAware &&
+          !t.host &&
+          !t.member &&
+          t.idHash.compareTo(input.selfHash) < 0)
+        t,
+  ].length;
+  final headStart = rank * NearbyGroupRules.bridgeBackupMs;
+  String? waitReason;
+
+  // A. Their group: join it.
+  final hosts = [
+    for (final t in off)
+      if (t.host && t.group != null) t
+  ]..sort((a, b) => a.members != b.members
+      ? b.members.compareTo(a.members)
+      : a.idHash.compareTo(b.idHash));
+  for (final host in hosts) {
+    final inGroup = [
+      for (final t in fresh)
+        if (t.group == host.group) t
+    ];
+    if (inGroup.any((t) => input.lanPeers.contains(t.idHash))) continue;
+    if (inGroup.any((t) => t.bridge)) {
+      waitReason ??= 'bridge_exists';
+      continue;
+    }
+    if (!joinable(host)) {
+      waitReason ??= 'bridge_group_full';
+      continue;
+    }
+    final last = input.bridgeSeen[host.group];
+    final since = last ?? (input.firstSeen[host.address] ?? input.now);
+    final need = (last != null
+            ? NearbyGroupRules.bridgeBackupMs
+            : NearbyGroupRules.bridgeSettleMs) +
+        headStart;
+    if (input.now - since < need) {
+      waitReason ??= last != null ? 'bridge_backup_wait' : 'bridge_wait';
+      continue;
+    }
+    return NearbyGroupAction.join(
+        host, last != null ? 'bridge_backup_join' : 'bridge_join');
+  }
+
+  // B. They are not in a group: start one for them (they join it, D2).
+  final idle = [
+    for (final t in off)
+      if (!t.host && !t.member) t
+  ];
+  if (idle.isNotEmpty) {
+    var earliest = input.now;
+    for (final t in idle) {
+      final at = input.firstSeen[t.address] ?? input.now;
+      if (at < earliest) earliest = at;
+    }
+    if (input.now - earliest >= NearbyGroupRules.bridgeSettleMs + headStart) {
+      return const NearbyGroupAction.create('bridge_create');
+    }
+    waitReason ??= 'bridge_wait';
+  }
+  return waitReason == null ? null : NearbyGroupAction.none(waitReason);
 }
 
 /// Bundle 157: at most 1 create/join per 10 s; after 3 failures in a row,

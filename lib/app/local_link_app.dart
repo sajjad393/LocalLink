@@ -64,6 +64,14 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         return profile?['user_id']?.toString();
       },
       nameResolver: _deps.store.peerDisplayName,
+      // Bundle 158: Nearby = a local path right now (direct or relayed).
+      localPaths: _deps.routePolicy.routeChanges
+          .map((r) => MapEntry(r.peerId, r.isAvailable)),
+      initialPaths: [
+        for (final r in _deps.routePolicy.routes.values)
+          MapEntry(r.peerId, r.isAvailable),
+      ],
+      refreshPaths: _deps.routePolicy.refresh,
     );
     _router = AppRouter(
       dependencies: _deps,

@@ -18,6 +18,10 @@ final class LocalRouteResult {
   final String? nextHopId;
   final LocalTransportState transportState;
 
+  /// Bundle 158: hops on a relayed (mesh) route; null when unknown. Direct
+  /// links are 1 hop.
+  final int? hopCount;
+
   const LocalRouteResult({
     required this.kind,
     required this.peerId,
@@ -25,6 +29,7 @@ final class LocalRouteResult {
     this.expiresAt,
     this.nextHopId,
     this.transportState = LocalTransportState.unavailable,
+    this.hopCount,
   });
 
   bool get isAvailable => kind != LocalRouteKind.none;
@@ -37,7 +42,8 @@ final class LocalRouteResult {
       other.lastSeenAt == lastSeenAt &&
       other.expiresAt == expiresAt &&
       other.nextHopId == nextHopId &&
-      other.transportState == transportState;
+      other.transportState == transportState &&
+      other.hopCount == hopCount;
 
   @override
   int get hashCode => Object.hash(
@@ -47,5 +53,6 @@ final class LocalRouteResult {
         expiresAt,
         nextHopId,
         transportState,
+        hopCount,
       );
 }

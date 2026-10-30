@@ -28,6 +28,10 @@ package com.sajjad.locallink.mesh
  * - `w`: up to 3 short ids (first 8 hex chars) of people this phone wants in
  *   its group (a Pair tap, or contacts with messages waiting).
  *
+ * Bundle 158 adds `br=1`: this phone is the group's BRIDGE (it is also on a
+ * normal Wi-Fi network and passes messages between the two). Only sent by a
+ * phone in a group; older phones ignore it.
+ *
  * Pure functions only, so the rules are easy to check.
  */
 object NearbyTagPolicy {
@@ -56,6 +60,7 @@ object NearbyTagPolicy {
         groupName: String? = null,
         groupKey: String? = null,
         wanted: List<String> = emptyList(),
+        bridge: Boolean = false,
     ): Map<String, String> {
         val n = members.coerceIn(0, 64)
         val txt = linkedMapOf(
@@ -71,6 +76,7 @@ object NearbyTagPolicy {
         if (host && NearbyGroupPolicy.validPassphrase(groupKey)) txt["k"] = groupKey!!
         val w = cleanWanted(wanted)
         if (w.isNotEmpty()) txt["w"] = w.joinToString(",")
+        if (bridge && (host || member)) txt["br"] = "1"
         return txt
     }
 
@@ -107,6 +113,8 @@ object NearbyTagPolicy {
         if (host && NearbyGroupPolicy.validPassphrase(key)) tag["key"] = key!!
         val wanted = cleanWanted(txt["w"]?.split(","))
         if (wanted.isNotEmpty()) tag["wanted"] = wanted
+        // Bundle 158: the group's bridge (only meaningful in a group).
+        if (txt["br"] == "1" && (host || member)) tag["bridge"] = true
         return tag
     }
 }

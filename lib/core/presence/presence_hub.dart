@@ -40,6 +40,12 @@ class _Seen {
 /// Server events only touch the server path, so a server drop never turns a
 /// nearby person Offline. One 5 s tick flips every screen at the same time.
 /// Several devices of one person share the best status of any of them.
+///
+/// Bundle 158 (true status): once the mesh reports paths, **Nearby** means
+/// "there is a local path to them right now" — direct (same Wi-Fi / Wi-Fi
+/// Direct) or relayed through other phones. When the path goes away they stay
+/// Nearby for [pathGrace] (20 s: a group host change or a route switch never
+/// flickers), then Online (server) or Offline.
 class PresenceHub extends ChangeNotifier {
   PresenceHub({
     DateTime Function()? clock,
@@ -59,6 +65,17 @@ class PresenceHub extends ChangeNotifier {
   final Set<String> _resolving = <String>{};
   final Map<String, PresenceStatus> _lastShown = <String, PresenceStatus>{};
 
+  /// Bundle 158: is there a local path (direct or relayed) right now?
+  final Map<String, bool> _pathUp = <String, bool>{};
+  final Map<String, DateTime> _pathDownAt = <String, DateTime>{};
+
+  /// Bundle 158: Nearby is kept this long after the last local path ended.
+  static const Duration pathGrace = Duration(seconds: 20);
+
+  /// Bundle 158: re-reads the mesh paths (routes also expire silently).
+  Future<void> Function()? refreshPaths;
+  int _tickCount = 0;
+
   Future<String?> Function(String deviceId)? userResolver;
   Future<String?> Function(String deviceId)? nameResolver;
   String? Function()? localDeviceId;
@@ -76,11 +93,27 @@ class PresenceHub extends ChangeNotifier {
     String? Function()? localDeviceId,
     Future<String?> Function(String deviceId)? userResolver,
     Future<String?> Function(String deviceId)? nameResolver,
+    Stream<MapEntry<String, bool>>? localPaths,
+    Iterable<MapEntry<String, bool>> initialPaths =
+        const <MapEntry<String, bool>>[],
+    Future<void> Function()? refreshPaths,
   }) {
     this.localDeviceId = localDeviceId ?? this.localDeviceId;
     this.userResolver = userResolver ?? this.userResolver;
     this.nameResolver = nameResolver ?? this.nameResolver;
+    this.refreshPaths = refreshPaths ?? this.refreshPaths;
     if (_subs.isNotEmpty) return;
+    for (final p in initialPaths) {
+      notePath(p.key, up: p.value);
+    }
+    if (localPaths != null) {
+      _subs.add(
+        localPaths.listen(
+          (p) => notePath(p.key, up: p.value),
+          onError: (Object _) {},
+        ),
+      );
+    }
     _subs
       ..add(directEvents.listen(onDirectEvent, onError: (Object _) {}))
       ..add(serverMessages.listen(onServerMessage, onError: (Object _) {}))
@@ -89,7 +122,16 @@ class PresenceHub extends ChangeNotifier {
           if (!connected) serverLinkLost();
         }, onError: (Object _) {}),
       );
-    _tick ??= Timer.periodic(const Duration(seconds: 5), (_) => checkExpiry());
+    _tick ??= Timer.periodic(const Duration(seconds: 5), (_) {
+      // Bundle 158: every 10 s re-read the paths (expired routes).
+      if ((_tickCount++).isOdd) {
+        final refresh = this.refreshPaths;
+        if (refresh != null) {
+          unawaited(refresh().catchError((Object _) {}));
+        }
+      }
+      checkExpiry();
+    });
   }
 
   /// Account reset: forget everyone (streams stay attached).
@@ -100,6 +142,8 @@ class PresenceHub extends ChangeNotifier {
     _names.clear();
     _resolving.clear();
     _lastShown.clear();
+    _pathUp.clear();
+    _pathDownAt.clear();
     _queueNotify();
   }
 
@@ -117,6 +161,10 @@ class PresenceHub extends ChangeNotifier {
     _names.clear();
     _resolving.clear();
     _lastShown.clear();
+    _pathUp.clear();
+    _pathDownAt.clear();
+    _tickCount = 0;
+    refreshPaths = null;
     userResolver = null;
     nameResolver = null;
     localDeviceId = null;
@@ -149,6 +197,21 @@ class PresenceHub extends ChangeNotifier {
   void noteNearby(String deviceId) {
     if (!_accept(deviceId)) return;
     (_seen[deviceId] ??= _Seen()).nearbyAt = _now();
+    _changed(deviceId);
+  }
+
+  /// Bundle 158: the mesh says there is ([up]) or is no longer a local path
+  /// (direct or relayed) to [deviceId].
+  void notePath(String deviceId, {required bool up}) {
+    if (!_accept(deviceId)) return;
+    final was = _pathUp[deviceId];
+    if (was == up) return;
+    _pathUp[deviceId] = up;
+    if (up) {
+      _pathDownAt.remove(deviceId);
+    } else if (was == true) {
+      _pathDownAt[deviceId] = _now();
+    }
     _changed(deviceId);
   }
 
@@ -254,7 +317,11 @@ class PresenceHub extends ChangeNotifier {
   /// the same moment.
   void checkExpiry() {
     var changed = false;
-    for (final id in <String>{..._seen.keys, ..._lastShown.keys}) {
+    for (final id in <String>{
+      ..._seen.keys,
+      ..._lastShown.keys,
+      ..._pathUp.keys,
+    }) {
       final now = _deviceStatus(id);
       if (_lastShown[id] != now) {
         _lastShown[id] = now;
@@ -268,12 +335,28 @@ class PresenceHub extends ChangeNotifier {
 
   PresenceStatus _deviceStatus(String id) {
     final seen = _seen[id];
-    if (seen == null) return PresenceStatus.offline;
+    final path = _pathUp[id];
+    if (seen == null && path == null) return PresenceStatus.offline;
     final now = _now();
     bool fresh(DateTime? at) => at != null && now.difference(at) <= window;
-    if (fresh(seen.nearbyAt)) return PresenceStatus.nearby;
-    if (fresh(seen.serverAt)) return PresenceStatus.online;
+    if (_nearbyNow(id, seen, path, now)) return PresenceStatus.nearby;
+    if (fresh(seen?.serverAt)) return PresenceStatus.online;
     return PresenceStatus.offline;
+  }
+
+  bool _nearbyNow(String id, _Seen? seen, bool? path, DateTime now) {
+    if (path == true) return true;
+    if (path == false) {
+      // Bundle 158: the mesh knows there is no path. Keep Nearby for 20 s
+      // after the path (or the last thing received directly) ended.
+      DateTime? last = _pathDownAt[id];
+      final got = seen?.nearbyAt;
+      if (got != null && (last == null || got.isAfter(last))) last = got;
+      return last != null && now.difference(last) < pathGrace;
+    }
+    // No path report yet (mesh not running): what we received directly.
+    final at = seen?.nearbyAt;
+    return at != null && now.difference(at) <= window;
   }
 
   bool _accept(String deviceId) {
