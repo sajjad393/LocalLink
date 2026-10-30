@@ -11,7 +11,10 @@ import 'package:locallink/features/connectivity/domain/connectivity_repository_c
 import 'package:locallink/features/connectivity/domain/nearby_group_control.dart';
 
 class ConnectivityRepository
-    implements ConnectivityRepositoryContract, NearbyGroupControl {
+    implements
+        ConnectivityRepositoryContract,
+        NearbyGroupControl,
+        NearbyBridgeControl {
   final WebSocketService socket;
   final WifiDirectService wifiDirect;
   final PeerTransportContract directTransport;
@@ -83,6 +86,9 @@ class ConnectivityRepository
   @override
   Future<void> setNearbyWanted(List<String> ids) =>
       wifiDirect.setNearbyWanted(ids);
+
+  @override
+  Future<void> setNearbyBridge(bool on) => wifiDirect.setNearbyBridge(on);
 
   @override
   Future<void> createNearbyGroup() => wifiDirect.createNearbyGroup();

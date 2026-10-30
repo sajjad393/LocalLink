@@ -31,6 +31,9 @@ class NearbyTag {
   /// Bundle 157: short ids (8 hex) of people this phone wants in its group.
   final List<String> wanted;
 
+  /// Bundle 158: this phone is its group's bridge to a normal Wi-Fi network.
+  final bool bridge;
+
   const NearbyTag({
     required this.address,
     required this.idHash,
@@ -43,6 +46,7 @@ class NearbyTag {
     this.group,
     this.key,
     this.wanted = const <String>[],
+    this.bridge = false,
   });
 
   /// Bundle 157: the short id used in the `w` (wanted) list.
@@ -83,6 +87,7 @@ class NearbyTag {
                 if (RegExp(r'^[0-9a-f]{8}$').hasMatch(w.toString())) w.toString()
             ]
           : const <String>[],
+      bridge: map['bridge'] == true,
     );
   }
 

@@ -18,8 +18,13 @@ class MeshRouter(
     private val transport: MeshTransport,
     private val enqueue: ((MeshPacket) -> Boolean)? = null,
     private val maxHops: Int = 8,
+    /** Bundle 158: LAN (0) before Wi-Fi Direct (1) for the same hop count. */
+    private val linkRank: ((String) -> Int)? = null,
+    /** Bundle 158: make-before-break — proven routes are tried first. */
+    private val routeProven: ((MeshRoute) -> Boolean)? = null,
     /** Bundle 156: false = this next hop may not carry this packet (a relay
-     *  link only carries sealed packets). Skipped quietly — not a failure. */
+     *  link only carries sealed packets). Skipped quietly — not a failure.
+     *  Kept LAST so a trailing lambda still means canCarry. */
     private val canCarry: ((String, MeshPacket) -> Boolean)? = null,
 ) {
     /** Validates an incoming packet before callers reserve it in replay state. */
@@ -65,10 +70,16 @@ class MeshRouter(
             if (!incomingPeerId.isNullOrBlank()) add(incomingPeerId)
             addAll(path)
         }
-        val candidates = routeTable.allFor(packet.destinationNodeId)
+        val usable = routeTable.allFor(packet.destinationNodeId)
             .filter { it.nextHopNodeId !in excluded }
             .filter { it.hopCount <= packet.ttl }
             .filter { route -> route.path.drop(1).none(excluded::contains) }
+        // Bundle 158: proven first, fewest hops, LAN before Wi-Fi Direct.
+        val candidates = MeshRouteChoicePolicy.order(
+            usable,
+            linkRank ?: { MeshRouteChoicePolicy.RANK_UNKNOWN },
+            routeProven ?: { true },
+        )
 
         for (route in candidates) {
             val peerId = route.nextHopNodeId

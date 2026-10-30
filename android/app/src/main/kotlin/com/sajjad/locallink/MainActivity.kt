@@ -228,6 +228,7 @@ class MainActivity : FlutterActivity() {
                 "getNearbyTags" -> result.success(nearbyTags?.snapshot() ?: emptyList<Map<String, Any>>())
                 // Bundle 157: one shared group (create / join without pop-ups).
                 "setNearbyWanted" -> { nearbyTags?.setWanted(call.argument<List<String>>("ids")); result.success(null) }
+                "setNearbyBridge" -> { nearbyTags?.setBridge(call.argument<Boolean>("on") ?: false); result.success(null) }
                 "createNearbyGroup" -> createNearbyGroup(result)
                 "joinNearbyGroup" -> joinNearbyGroup(call.argument<String>("name"), call.argument<String>("key"), call.argument<String>("address"), call.argument<Boolean>("leave") ?: false, result)
                 "cancelConnect" -> wifiManager.cancelConnect(wifiChannel, actionResult(result))

@@ -19,3 +19,9 @@ abstract interface class NearbyGroupControl {
     bool leave = false,
   });
 }
+
+/// Bundle 158: advertise this phone as its group's bridge (`br=1`). Kept as
+/// its own interface so older fakes keep working.
+abstract interface class NearbyBridgeControl {
+  Future<void> setNearbyBridge(bool on);
+}

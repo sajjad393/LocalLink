@@ -52,6 +52,9 @@ class WifiDirectService {
       _channel.invokeMethod('setNearbyWanted', {'ids': ids});
   Future<void> createNearbyGroup() =>
       _channel.invokeMethod('createNearbyGroup');
+  /// Bundle 158: advertise `br=1` (this phone bridges its group and Wi-Fi).
+  Future<void> setNearbyBridge(bool on) =>
+      _channel.invokeMethod('setNearbyBridge', {'on': on});
   Future<void> joinNearbyGroup({
     String? name,
     String? key,

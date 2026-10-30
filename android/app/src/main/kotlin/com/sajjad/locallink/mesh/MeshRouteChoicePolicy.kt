@@ -25,8 +25,6 @@ object MeshRouteChoicePolicy {
     fun linkRank(transportName: String?): Int = when (transportName) {
         MeshTransportPolicy.LAN -> RANK_LAN
         MeshTransportPolicy.WIFI_DIRECT -> RANK_WIFI_DIRECT
-        // Bundle 161: a linked group / hotspot link ranks like Wi-Fi Direct.
-        MeshTransportPolicy.LOCAL_NET -> RANK_WIFI_DIRECT
         else -> RANK_UNKNOWN
     }
 
