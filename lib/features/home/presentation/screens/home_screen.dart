@@ -1,14 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:locallink/features/connectivity/presentation/widgets/nearby_ready_card.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:locallink/core/models/chat_preview.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
@@ -39,6 +37,7 @@ import 'package:locallink/features/files/domain/file_transfer_repository_contrac
 import 'package:locallink/features/groups/domain/group_messaging_repository_contract.dart';
 import 'package:locallink/features/groups/domain/group_repository_contract.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
+import 'package:locallink/features/groups/presentation/widgets/create_group_dialog.dart';
 import 'package:locallink/features/home/bloc/home_bloc.dart';
 import 'package:locallink/features/home/domain/home_repository_contract.dart';
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
@@ -143,9 +142,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // disagree with the shade). Polled cheaply and refreshed on open/return.
   Map<String, int> _unreadDirectCounts = const {};
   Map<String, int> _unreadGroupCounts = const {};
-  // Bundle 163 (4.7): last message per chat for the Chats list.
-  Map<String, ChatPreview> _directPreviews = const {};
-  Map<String, ChatPreview> _groupPreviews = const {};
   Timer? _unreadTimer;
 
   // Bundle 102: offline-pending account state (session-scoped UI).
@@ -246,20 +242,10 @@ class _HomeScreenState extends State<HomeScreen> {
         final unread = await widget.store.unreadGroupMessages(g.id);
         if (unread.isNotEmpty) group[g.id] = unread.length;
       }
-      var directPreviews = _directPreviews;
-      var groupPreviews = _groupPreviews;
-      try {
-        directPreviews = await widget.store.directChatPreviews();
-        groupPreviews = await widget.store.groupChatPreviews();
-      } catch (_) {
-        // Preview is best-effort; keep the last good one.
-      }
       if (!mounted) return;
       setState(() {
         _unreadDirectCounts = direct;
         _unreadGroupCounts = group;
-        _directPreviews = directPreviews;
-        _groupPreviews = groupPreviews;
       });
     } catch (_) {
       // Badge refresh is best-effort; never break the chat list over it.
@@ -647,11 +633,11 @@ class _HomeScreenState extends State<HomeScreen> {
               return;
             }
             await widget.calls.startCall(peer);
-            if (!mounted) return;
+            if (!context.mounted) return;
             final session = widget.calls.session;
             if (session == null) return;
             await Navigator.push<void>(
-              this.context,
+              context,
               MaterialPageRoute(
                 builder: (_) => CallScreen(
                     controller: widget.calls, initialSession: session),
@@ -688,6 +674,29 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(content: Text(_cleanError(error))),
       );
     }
+  }
+
+  Future<void> _createGroup() async {
+    final result = await showDialog<CreateGroupResult>(
+      context: context,
+      builder: (_) => CreateGroupDialog(devices: _controller.devices),
+    );
+    if (!mounted || result == null) return;
+    final group = await _controller.createGroup(result.name, result.memberIds);
+    if (!mounted || group == null) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupChatScreen(
+          group: group,
+          localDeviceId: widget.store.deviceId ?? '',
+          messaging: widget.groupMessaging,
+          groups: widget.groupRepository,
+          files: widget.files,
+          notifications: widget.notifications,
+        ),
+      ),
+    );
   }
 
   String _cleanError(Object error) {
@@ -743,9 +752,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           'on the server now.'),
                 if (widget.store.isOfflinePending && _offlineBannerVisible)
                   _offlineAccountBanner(),
-                // Bundle 159.1: "Allow nearby devices" / "Turn on Wi-Fi",
-                // only when nearby chat can't work.
-                const NearbyReadyCard(),
                 // Bundle 153: small grey label like "Today" on Calls; the
                 // People link is gone (People is a tab).
                 const MessengerGroupLabel('Conversations'),
@@ -761,8 +767,44 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   )
                 else
-                  _conversationGroup(
-                      context, _sortedConversationTiles(context, state)),
+                  _conversationGroup(context, <Widget>[
+                    ...state.groups.map(
+                      (group) => MessengerConversationTile(
+                      title: group.name,
+                      subtitle: 'Group conversation',
+                      group: group,
+                      unreadCount: _unreadGroupCounts[group.id] ?? 0,
+                      onTap: () => Navigator.push<void>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => GroupChatScreen(
+                            group: group,
+                            localDeviceId: widget.store.deviceId ?? '',
+                            messaging: widget.groupMessaging,
+                            groups: widget.groupRepository,
+                            files: widget.files,
+                            notifications: widget.notifications,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                    ..._visibleDevices(state).map(
+                      (device) => ListenableBuilder(
+                        listenable: PresenceHub.instance,
+                        builder: (context, _) => MessengerConversationTile(
+                          // People-facing titles show the profile nickname; a
+                          // device label ("My Android Phone") is never a person.
+                          title: state.deviceLabels[device.id] ?? 'Unknown user',
+                          subtitle: _deviceSubtitle(device),
+                          device: device,
+                          unreadCount: _unreadDirectCounts[device.id] ?? 0,
+                          onTap: () => _openChat(device),
+                          onCall: () => _call(device),
+                        ),
+                      ),
+                    ),
+                  ]),
               ],
             ),
           );
@@ -770,94 +812,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  /// Bundle 163 (4.7): groups and people in one list, newest message first.
-  /// Chats with no stored message keep their old order at the bottom.
-  List<Widget> _sortedConversationTiles(BuildContext context, HomeState state) {
-    final localId = widget.store.deviceId ?? '';
-    final entries = <(DateTime?, int, Widget)>[];
-    var order = 0;
-    for (final group in state.groups) {
-      final preview = _groupPreviews[group.id];
-      entries.add((
-        preview?.createdAt,
-        order++,
-        MessengerConversationTile(
-          title: group.name,
-          subtitle: preview == null
-              ? 'Group conversation'
-              : chatPreviewText(preview,
-                  localDeviceId: localId,
-                  senderName: state.deviceLabels[preview.senderId]),
-          subtitleIcon: _previewIcon(preview),
-          time: preview == null ? null : chatPreviewTime(preview.createdAt),
-          group: group,
-          unreadCount: _unreadGroupCounts[group.id] ?? 0,
-          onTap: () => Navigator.push<void>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => GroupChatScreen(
-                group: group,
-                localDeviceId: widget.store.deviceId ?? '',
-                messaging: widget.groupMessaging,
-                groups: widget.groupRepository,
-                files: widget.files,
-                notifications: widget.notifications,
-              ),
-            ),
-          ).whenComplete(_refreshUnreadCounts),
-        ),
-      ));
-    }
-    for (final device in _visibleDevices(state)) {
-      final preview = _directPreviews[device.id];
-      entries.add((
-        preview?.createdAt,
-        order++,
-        ListenableBuilder(
-          listenable: PresenceHub.instance,
-          builder: (context, _) => MessengerConversationTile(
-            // People-facing titles show the profile nickname; a
-            // device label ("My Android Phone") is never a person.
-            title: state.deviceLabels[device.id] ?? 'Unknown user',
-            // Status stays on the photo badge; the line shows the last
-            // message (status text only when there is none yet).
-            subtitle: preview == null
-                ? _deviceSubtitle(device)
-                : chatPreviewText(preview, localDeviceId: localId),
-            subtitleIcon: _previewIcon(preview),
-            time: preview == null ? null : chatPreviewTime(preview.createdAt),
-            device: device,
-            unreadCount: _unreadDirectCounts[device.id] ?? 0,
-            onTap: () => _openChat(device),
-            onCall: () => _call(device),
-          ),
-        ),
-      ));
-    }
-    entries.sort((a, b) {
-      final at = a.$1, bt = b.$1;
-      if (at != null && bt != null) {
-        final c = bt.compareTo(at);
-        if (c != 0) return c;
-      } else if (at != null) {
-        return -1;
-      } else if (bt != null) {
-        return 1;
-      }
-      return a.$2.compareTo(b.$2);
-    });
-    return entries.map((e) => e.$3).toList(growable: false);
-  }
-
-  static IconData? _previewIcon(ChatPreview? preview) =>
-      switch (preview == null ? null : chatPreviewMediaKind(preview)) {
-        'Photo' => Icons.photo_camera_outlined,
-        'Video' => Icons.videocam_outlined,
-        'Voice message' => Icons.mic_none_rounded,
-        'Document' => Icons.description_outlined,
-        _ => null,
-      };
 
   /// Conversations = only devices with an existing message thread. Everyone
   /// else stays reachable from the People tab (directory search, nearby).
