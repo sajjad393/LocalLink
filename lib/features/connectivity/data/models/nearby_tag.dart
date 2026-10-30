@@ -34,6 +34,9 @@ class NearbyTag {
   /// Bundle 158: this phone is its group's bridge to a normal Wi-Fi network.
   final bool bridge;
 
+  /// Bundle 159: this phone is on a charger (`pwr=1`).
+  final bool charging;
+
   const NearbyTag({
     required this.address,
     required this.idHash,
@@ -47,6 +50,7 @@ class NearbyTag {
     this.key,
     this.wanted = const <String>[],
     this.bridge = false,
+    this.charging = false,
   });
 
   /// Bundle 157: the short id used in the `w` (wanted) list.
@@ -88,6 +92,7 @@ class NearbyTag {
             ]
           : const <String>[],
       bridge: map['bridge'] == true,
+      charging: map['charging'] == true,
     );
   }
 

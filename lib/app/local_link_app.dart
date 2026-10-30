@@ -566,6 +566,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // CANCELLED the native full-screen call notification instead of showing
     // it — users on another app saw nothing at all.
     _deps.calls.onAppLifecycleState(state);
+    // Bundle 159 (battery): slower nearby search while the app is hidden.
+    _deps.wifiDirectFallback.setForeground(state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive);
     if (state != AppLifecycleState.resumed) {
       unawaited(_deps.files.cleanupSensitiveArtifacts());
     }

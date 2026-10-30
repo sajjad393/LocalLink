@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/features/connectivity/data/services/nearby_admin_status.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/config/app_config.dart';
 import 'package:locallink/core/network/api_http_client.dart';
@@ -171,6 +172,17 @@ class AppDependencies {
     calls = CallBloc(service: callService, repository: callRepository);
     // Bundle 157: a group is never dissolved (merge) during a call.
     wifiDirectFallback.isBusy = () => calls.session != null;
+    // Bundle 159.3: read-only nearby status for the admin view.
+    NearbyAdminStatus.loader = () async {
+      Map<String, dynamic>? topology;
+      try {
+        topology = await directTransport
+            .topology()
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      return NearbyAdminSnapshot.from(
+          group: wifiDirectFallback.nearbyStatus(), topology: topology);
+    };
     messaging = ReliableMessagingService(
       store,
       api,

@@ -5,8 +5,15 @@ import 'package:flutter/services.dart';
 class CallMediaPlatformService {
   static const MethodChannel _channel = MethodChannel('locallink/call_media');
 
-  Future<void> start({required String callId, required String peerId, String codec = 'auto'}) async {
-    await _channel.invokeMethod('start', {'call_id': callId, 'peer_id': peerId, 'codec': codec});
+  /// Bundle 159: [voiceKey] (base64, 32 bytes) locks the call sound so
+  /// phones in the middle can't hear it. Memory only; never logged.
+  Future<void> start({required String callId, required String peerId, String codec = 'auto', String? voiceKey}) async {
+    await _channel.invokeMethod('start', {
+      'call_id': callId,
+      'peer_id': peerId,
+      'codec': codec,
+      if (voiceKey != null && voiceKey.isNotEmpty) 'voice_key': voiceKey,
+    });
   }
 
   Future<Map<String, dynamic>> startVideo({required String callId, required String peerId, bool enableCamera = true}) async {

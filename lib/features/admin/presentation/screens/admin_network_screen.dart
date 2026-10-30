@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
+import 'package:locallink/features/connectivity/presentation/widgets/nearby_admin_panel.dart';
 
 class AdminNetworkScreen extends StatelessWidget {
   const AdminNetworkScreen({super.key});
@@ -50,6 +51,9 @@ class AdminNetworkScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              // Bundle 159.3: this phone's nearby network (read only).
+              const SizedBox(height: 16),
+              const NearbyAdminPanel(),
             ],
           ),
         );

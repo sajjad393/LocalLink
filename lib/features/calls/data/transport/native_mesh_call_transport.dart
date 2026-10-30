@@ -27,6 +27,10 @@ final class NativeMeshCallTransport implements CallTransport {
   String? _callId;
   bool _active = false;
 
+  /// Bundle 159: the call manager hands over the per-call voice key here
+  /// (memory only). Null or no key = plain voice, as before.
+  String? Function(String callId)? voiceKeyFor;
+
   @override
   CallTransportMode get mode => CallTransportMode.offlineMesh;
 
@@ -84,10 +88,17 @@ final class NativeMeshCallTransport implements CallTransport {
     _active = true;
     try {
       await audio.setSpeakerphoneOn(session.speakerOn);
-      await media.start(callId: session.id, peerId: session.peerId, codec: session.mediaCodec);
+      // Bundle 159: the per-call voice key, when both phones agreed to lock.
+      final voiceKey = voiceKeyFor?.call(session.id);
+      await media.start(
+          callId: session.id,
+          peerId: session.peerId,
+          codec: session.mediaCodec,
+          voiceKey: voiceKey);
       // Bundle 146: one line per call so phone logs show the audio format.
       AppLogger.info('CALL_MEDIA_START',
-          detail: 'call=${session.id} codec=${session.mediaCodec} rate=16000');
+          detail: 'call=${session.id} codec=${session.mediaCodec} rate=16000 '
+              'voice_lock=${voiceKey != null}');
     } catch (_) {
       _active = false;
       _callId = null;

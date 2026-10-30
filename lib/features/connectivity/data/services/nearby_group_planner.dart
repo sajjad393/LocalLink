@@ -122,6 +122,9 @@ class NearbyGroupInput {
   /// Bundle 158: group name -> last time a bridge (`br=1`) was seen in it.
   final Map<String, int> bridgeSeen;
 
+  /// Bundle 159: this phone is on a charger (preferred host/bridge on a tie).
+  final bool selfCharging;
+
   const NearbyGroupInput({
     required this.selfHash,
     required this.now,
@@ -144,7 +147,52 @@ class NearbyGroupInput {
     this.lanPeers = const <String>{},
     this.bridgeAllowed = false,
     this.bridgeSeen = const <String, int>{},
+    this.selfCharging = false,
   });
+}
+
+/// Bundle 159 (battery): on a tie, a phone on a charger goes first (as host
+/// or bridge); otherwise the smaller id, as before (D4). True when
+/// ([aHash], [aCharging]) goes before ([bHash], [bCharging]).
+bool nearbyGoesFirst(
+    String aHash, bool aCharging, String bHash, bool bCharging) {
+  if (aCharging != bCharging) return aCharging;
+  return aHash.compareTo(bHash) < 0;
+}
+
+/// Bundle 159 (battery, plan 159.2 + D7): how often to search for nearby
+/// phones, in ms (0 = no regular search).
+/// * something is going on (Pair tap, a join in progress, host just left):
+///   every 8 s;
+/// * app open: every 15 s while someone waits or this phone is alone
+///   without Wi-Fi, else every 60 s (in a group, to see merges);
+/// * app in the background: 60 s while someone waits, 3 min in a group or
+///   alone without Wi-Fi, and OFF when nobody waits and this phone is on
+///   Wi-Fi alone (everyone it needs is already reachable).
+abstract final class NearbySearchCadence {
+  static const int urgentMs = 8 * 1000;
+  static const int foregroundMs = 15 * 1000;
+  static const int foregroundIdleMs = 60 * 1000;
+  static const int backgroundWaitingMs = 60 * 1000;
+  static const int backgroundIdleMs = 3 * 60 * 1000;
+
+  static int everyMs({
+    required bool urgent,
+    required bool foreground,
+    required bool inGroup,
+    required bool onWifi,
+    required bool waiting,
+  }) {
+    if (urgent) return urgentMs;
+    if (foreground) {
+      return (waiting || (!inGroup && !onWifi))
+          ? foregroundMs
+          : foregroundIdleMs;
+    }
+    if (waiting) return backgroundWaitingMs;
+    if (inGroup || !onWifi) return backgroundIdleMs;
+    return 0;
+  }
 }
 
 /// Rule constants (plan, Phase 4).
@@ -224,14 +272,17 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
     return null;
   }
 
-  /// Biggest group with space; a tie goes to the smaller id.
+  /// Biggest group with space; a tie goes to a host on a charger, then the
+  /// smaller id (Bundle 159).
   NearbyTag? bestGroup() {
     NearbyTag? best;
     for (final t in fresh) {
       if (!joinable(t)) continue;
       if (best == null ||
           t.members > best.members ||
-          (t.members == best.members && t.idHash.compareTo(best.idHash) < 0)) {
+          (t.members == best.members &&
+              nearbyGoesFirst(
+                  t.idHash, t.charging, best.idHash, best.charging))) {
         best = t;
       }
     }
@@ -311,7 +362,8 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
           if (input.now - since < NearbyGroupRules.mergeSeenMs) continue;
           final theyWin = other.members > input.myMembers ||
               (other.members == input.myMembers &&
-                  other.idHash.compareTo(input.selfHash) < 0);
+                  nearbyGoesFirst(other.idHash, other.charging,
+                      input.selfHash, input.selfCharging));
           if (!theyWin) continue;
           if (other.members + input.myMembers + 1 > nearbyGroupSoftLimit ||
               other.full) {
@@ -374,8 +426,11 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
         if (best != null) {
           return NearbyGroupAction.join(best, 'waiting_join_nearby_group');
         }
-        if (t.wants(input.selfHash) && input.selfHash.compareTo(t.idHash) > 0) {
-          // We want each other: only the smaller id creates the group.
+        if (t.wants(input.selfHash) &&
+            !nearbyGoesFirst(
+                input.selfHash, input.selfCharging, t.idHash, t.charging)) {
+          // We want each other: only one creates the group (on a charger
+          // first, then the smaller id).
           lastReason = 'waiting_other_creates';
           continue;
         }
@@ -392,11 +447,14 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
         if (best != null) {
           return NearbyGroupAction.join(best, 'host_left_join_new_host');
         }
-        final mates = [
+        final mateTags = [
           for (final t in fresh)
-            if (input.lostMates.contains(t.idHash)) t.idHash,
+            if (input.lostMates.contains(t.idHash)) t,
         ];
-        final smallest = mates.every((m) => input.selfHash.compareTo(m) < 0);
+        final mates = [for (final t in mateTags) t.idHash];
+        // Bundle 159: a mate on a charger goes first, then the smallest id.
+        final smallest = mateTags.every((m) => nearbyGoesFirst(
+            input.selfHash, input.selfCharging, m.idHash, m.charging));
         if (mates.isNotEmpty && smallest) {
           return const NearbyGroupAction.create('host_left_new_host');
         }
@@ -450,7 +508,8 @@ NearbyGroupAction? _planBridge(NearbyGroupInput input, List<NearbyTag> fresh,
           t.groupAware &&
           !t.host &&
           !t.member &&
-          t.idHash.compareTo(input.selfHash) < 0)
+          nearbyGoesFirst(
+              t.idHash, t.charging, input.selfHash, input.selfCharging))
         t,
   ].length;
   final headStart = rank * NearbyGroupRules.bridgeBackupMs;

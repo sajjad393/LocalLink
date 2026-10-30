@@ -24,6 +24,10 @@ final class WifiRadioControlService {
     return WifiRadioStatus.fromMap(Map<dynamic, dynamic>.from(raw as Map));
   }
 
+  /// Bundle 159: opens the Wi-Fi panel / settings (the user turns it on).
+  Future<bool> openSettings() async =>
+      await _channel.invokeMethod<bool>('open_settings') ?? false;
+
   Future<WifiRadioStatus> enforce(String policy) async {
     final normalized = policy.trim().toLowerCase();
     if (normalized != 'forced_on' && normalized != 'forced_off') return status();
