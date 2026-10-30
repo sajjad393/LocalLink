@@ -87,7 +87,7 @@ final class NativeMeshCallTransport implements CallTransport {
       await media.start(callId: session.id, peerId: session.peerId, codec: session.mediaCodec);
       // Bundle 146: one line per call so phone logs show the audio format.
       AppLogger.info('CALL_MEDIA_START',
-          detail: 'call=${session.id} codec=pcm_s16le rate=16000 requested=${session.mediaCodec}');
+          detail: 'call=${session.id} codec=${session.mediaCodec} rate=16000');
     } catch (_) {
       _active = false;
       _callId = null;
@@ -134,6 +134,8 @@ final class NativeMeshCallTransport implements CallTransport {
       if (stats.isNotEmpty) {
         AppLogger.info('CALL_MEDIA_STATS',
             detail: 'call=${session.id} codec=${stats['codec']} '
+                'send=${stats['send_codec'] ?? '-'} rx=${stats['rx_codec'] ?? '-'} '
+                'fallback=${(stats['opus_fallback'] ?? '').toString().isEmpty ? '-' : stats['opus_fallback']} '
                 'sent=${stats['sent_packets']} played=${stats['received_packets']} '
                 'lost=${stats['lost_packets']} dropped=${stats['dropped_packets']}');
       }

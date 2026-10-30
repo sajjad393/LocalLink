@@ -167,6 +167,9 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Bundle 149: run the one-time Opus self-test early, in the background,
+        // so the first call never waits for it.
+        Thread { CallOpusCodec.usable() }.apply { name = "locallink-opus-selftest"; isDaemon = true }.start()
         chatVideoPip.register(flutterEngine.dartExecutor.binaryMessenger) // Bundle 147
         // Stable per-device identity survives app reinstall/data-clear (resets
         // only on factory reset or signing-key change). Used to re-bind this
@@ -626,8 +629,13 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "stats" -> result.success(LocalLinkTransportService.callMediaStats(call.argument<String>("call_id")?.trim().orEmpty()))
-                    // Bundle 146: PCM only until Opus is fixed (CallOpusCodec kept for later).
-                    "supported_codecs" -> result.success(listOf("pcm_s16le"))
+                    // Bundle 149: offer opus2 only when this phone passed the Opus
+                    // self-test (tone comes back loud and at the right pitch).
+                    // The test runs once, off the main thread; PCM is always offered.
+                    "supported_codecs" -> Thread {
+                        val codecs = if (CallOpusCodec.usable()) listOf(CallOpus2Format.CODEC, CallOpus2Format.PCM) else listOf(CallOpus2Format.PCM)
+                        runOnUiThread { try { result.success(codecs) } catch (_: Throwable) {} }
+                    }.apply { name = "locallink-opus-selftest"; isDaemon = true }.start()
                     "video_start" -> {
                         val callId = call.argument<String>("call_id")?.trim().orEmpty()
                         val peerId = call.argument<String>("peer_id")?.trim().orEmpty()

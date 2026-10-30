@@ -1,3 +1,4 @@
+// Bundle 149: opus2 negotiation (+ legacy opus -> PCM).
 // Bundle 146: PCM-only calls, notification Accept -> call screen request,
 // single accept, cold-start Accept, lock-screen sync, call_end_ack, and the
 // Calls tab call button.
@@ -36,6 +37,10 @@ import 'support/phase5_fakes.dart';
 // ---------------------------------------------------------------------------
 
 final List<MethodCall> mediaCalls = <MethodCall>[];
+
+/// Bundle 149: what the native side answers to 'supported_codecs'. Default:
+/// a phone with only the legacy (broken) 'opus' -> the app must pick PCM.
+List<String> supportedCodecsReply = <String>['pcm_s16le', 'opus'];
 final List<MethodCall> notificationCalls = <MethodCall>[];
 
 void installChannelMocks() {
@@ -46,8 +51,7 @@ void installChannelMocks() {
     mediaCalls.add(call);
     switch (call.method) {
       case 'supported_codecs':
-        // A device that WOULD support Opus: the app must still pick PCM.
-        return <String>['pcm_s16le', 'opus'];
+        return supportedCodecsReply;
       case 'stats':
         return <String, dynamic>{
           'codec': 'pcm_s16le',
@@ -306,6 +310,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
+    supportedCodecsReply = <String>['pcm_s16le', 'opus'];
     mediaCalls.clear();
     notificationCalls.clear();
     installChannelMocks();
@@ -355,6 +360,142 @@ void main() {
       expect(starts, hasLength(1));
       expect((starts.single.arguments as Map)['codec'], 'pcm_s16le');
       expect(h.manager.session?.mediaCodec, 'pcm_s16le');
+    });
+  });
+
+  group('149: opus2 voice', () {
+    late ManagerHarness h;
+    setUp(() async {
+      supportedCodecsReply = <String>['opus2', 'pcm_s16le'];
+      h = await ManagerHarness.create();
+    });
+    tearDown(() async => h.dispose());
+
+    void inviteWith(String callId, List<String> codecs) => h.signal(<String, dynamic>{
+          'type': 'call_invite',
+          'call_id': callId,
+          'direct': true,
+          'mesh_call': true,
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+          'supported_media_codecs': codecs,
+        });
+
+    String startedCodec() {
+      final starts = mediaCalls.where((c) => c.method == 'start').toList();
+      expect(starts, hasLength(1));
+      return (starts.single.arguments as Map)['codec'] as String;
+    }
+
+    test('invite offers opus2 first, PCM always included', () async {
+      await h.manager.startCall(peerDevice());
+      await pumpEvents();
+      final invite = h.sentOfType('call_invite').single;
+      expect(invite['supported_media_codecs'], <String>['opus2', 'pcm_s16le']);
+      await h.manager.endCall(reason: 'canceled');
+      await pumpEvents();
+    });
+
+    test('both phones opus2 -> receiver answers opus2 and starts opus2',
+        () async {
+      inviteWith('call-o1', <String>['opus2', 'pcm_s16le']);
+      await pumpEvents();
+      await h.manager.acceptIncoming();
+      await pumpEvents();
+      expect(h.sentOfType('call_accept').first['selected_media_codec'], 'opus2');
+      expect(startedCodec(), 'opus2');
+    });
+
+    test('caller starts opus2 when the receiver picked opus2', () async {
+      await h.manager.startCall(peerDevice());
+      await pumpEvents();
+      h.signal(<String, dynamic>{
+        'type': 'call_accept',
+        'call_id': h.manager.session!.id,
+        'selected_media_codec': 'opus2',
+      });
+      await pumpEvents();
+      expect(startedCodec(), 'opus2');
+      expect(h.manager.session?.mediaCodec, 'opus2');
+    });
+
+    test('older build (opus + pcm only) -> PCM, never the broken opus',
+        () async {
+      inviteWith('call-o2', <String>['opus', 'pcm_s16le']);
+      await pumpEvents();
+      await h.manager.acceptIncoming();
+      await pumpEvents();
+      expect(h.sentOfType('call_accept').first['selected_media_codec'], 'pcm_s16le');
+      expect(startedCodec(), 'pcm_s16le');
+    });
+
+    test('invite without a codec list -> PCM', () async {
+      h.signal(<String, dynamic>{
+        'type': 'call_invite',
+        'call_id': 'call-o3',
+        'direct': true,
+        'mesh_call': true,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      await pumpEvents();
+      await h.manager.acceptIncoming();
+      await pumpEvents();
+      expect(startedCodec(), 'pcm_s16le');
+    });
+
+    test('caller still answers old opus with PCM', () async {
+      await h.manager.startCall(peerDevice());
+      await pumpEvents();
+      h.signal(<String, dynamic>{
+        'type': 'call_accept',
+        'call_id': h.manager.session!.id,
+        'selected_media_codec': 'opus',
+      });
+      await pumpEvents();
+      expect(startedCodec(), 'pcm_s16le');
+    });
+  });
+
+  group('149: phone failed the Opus self-test', () {
+    late ManagerHarness h;
+    setUp(() async {
+      supportedCodecsReply = <String>['pcm_s16le'];
+      h = await ManagerHarness.create();
+    });
+    tearDown(() async => h.dispose());
+
+    test('offers PCM only and answers an opus2 caller with PCM', () async {
+      await h.manager.startCall(peerDevice());
+      await pumpEvents();
+      expect(h.sentOfType('call_invite').single['supported_media_codecs'],
+          <String>['pcm_s16le']);
+      await h.manager.endCall(reason: 'canceled');
+      await pumpEvents();
+      mediaCalls.clear();
+      h.signal(<String, dynamic>{
+        'type': 'call_invite',
+        'call_id': 'call-o4',
+        'direct': true,
+        'mesh_call': true,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'supported_media_codecs': <String>['opus2', 'pcm_s16le'],
+      });
+      await pumpEvents();
+      await h.manager.acceptIncoming();
+      await pumpEvents();
+      expect(h.sentOfType('call_accept').last['selected_media_codec'], 'pcm_s16le');
+    });
+
+    test('caller that offered PCM only ignores an opus2 answer', () async {
+      await h.manager.startCall(peerDevice());
+      await pumpEvents();
+      h.signal(<String, dynamic>{
+        'type': 'call_accept',
+        'call_id': h.manager.session!.id,
+        'selected_media_codec': 'opus2',
+      });
+      await pumpEvents();
+      final starts = mediaCalls.where((c) => c.method == 'start').toList();
+      expect((starts.single.arguments as Map)['codec'], 'pcm_s16le');
     });
   });
 

@@ -1019,14 +1019,17 @@ final class CallSessionManager implements CallGateway {
       final selectedCodec =
           msg['selected_media_codec']?.toString().trim().toLowerCase();
       if (_transport == null) {
-        // Bundle 146: PCM only. An older receiver may still answer 'opus';
-        // its own native side then falls back as well (see A4), so both
-        // directions stay on PCM.
-        if (selectedCodec != null && selectedCodec != _callCodec) {
+        // Bundle 149: opus2 only if the receiver picked it AND we offered it.
+        // The legacy 142-145 'opus' (or anything unknown) means PCM; the old
+        // receiver's own native side falls back to PCM as well.
+        final useOpus = selectedCodec == _opusCodec &&
+            session.supportedMediaCodecs.contains(_opusCodec);
+        final used = useOpus ? _opusCodec : _pcmCodec;
+        if (selectedCodec != null && selectedCodec != used) {
           AppLogger.info('CALL_CODEC_FORCED',
-              detail: 'selected=$selectedCodec used=$_callCodec');
+              detail: 'selected=$selectedCodec used=$used');
         }
-        final current = session.copyWith(mediaCodec: _callCodec);
+        final current = session.copyWith(mediaCodec: used);
         _setSession(current);
         _transport = transportFactory.resolve(requested: current.transportMode);
         await _transport!.start(current);
@@ -1950,22 +1953,35 @@ final class CallSessionManager implements CallGateway {
     });
   }
 
-  // Bundle 146: calls use plain 16 kHz PCM only. Since 142 the codec list
-  // arrived as a real list and both phones picked Opus, whose MediaCodec
-  // adapter is broken (decoder crash on the caller -> silence; 48 kHz output
-  // played at 16 kHz on the receiver -> slow "tiger" voice). Advertising PCM
-  // only also keeps mixed versions safe: an older build picks PCM because the
-  // intersection is PCM. Proper Opus returns later under a new codec name.
-  static const String _callCodec = 'pcm_s16le';
+  // Bundle 149: voice codecs.
+  // * pcm_s16le: plain 16 kHz audio, always offered, works with every build.
+  // * opus2: the fixed Opus (about 10x less data, better on weak links and
+  //   through relays). Offered only when the native side passed its Opus
+  //   self-test. The broken 142-145 'opus' name is never offered or used, so
+  //   older builds (which only know 'opus'/'pcm_s16le') always land on PCM.
+  static const String _pcmCodec = 'pcm_s16le';
+  static const String _opusCodec = 'opus2';
 
-  Future<List<String>> _supportedMediaCodecs() async => const [_callCodec];
+  Future<List<String>> _supportedMediaCodecs() async {
+    List<String> native;
+    try {
+      native = await mediaPlatform
+          .supportedCodecs()
+          .timeout(const Duration(seconds: 2), onTimeout: () => const [_pcmCodec]);
+    } catch (_) {
+      native = const [_pcmCodec];
+    }
+    return [if (native.contains(_opusCodec)) _opusCodec, _pcmCodec];
+  }
 
   Future<String> _negotiateCodec(List<String> remoteCodecs) async {
-    if (remoteCodecs.contains('opus')) {
-      AppLogger.info('CALL_CODEC_FORCED',
-          detail: 'remote=${remoteCodecs.join(',')} used=$_callCodec');
-    }
-    return _callCodec;
+    final local = await _supportedMediaCodecs();
+    final used = local.contains(_opusCodec) && remoteCodecs.contains(_opusCodec)
+        ? _opusCodec
+        : _pcmCodec;
+    AppLogger.info('CALL_CODEC_PICKED',
+        detail: 'local=${local.join(',')} remote=${remoteCodecs.join(',')} used=$used');
+    return used;
   }
 
   String _newCallId() {

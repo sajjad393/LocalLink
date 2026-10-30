@@ -88,6 +88,8 @@ class LocalLinkTransportService : Service() {
         private const val CALL_FRAME_BYTES = CALL_SAMPLE_RATE * CALL_FRAME_MS / 1000 * 2
         private const val CALL_JITTER_BUFFER_MS = 60L
         private const val CALL_MAX_JITTER_FRAMES = 12
+        /** Bundle 149: codecs a call_media packet may carry. */
+        private val CALL_MEDIA_CODECS = setOf("pcm_s16le", "opus2")
         @Volatile private var instance: LocalLinkTransportService? = null
         @Volatile private var listener: EventListener? = null
         @Volatile private var running = false
@@ -1211,8 +1213,8 @@ class LocalLinkTransportService : Service() {
             return
         }
         stopCallMediaInternal("")
-        if (requested == "opus") Log.i("LocalLinkCall", "CALL_MEDIA_CODEC_FORCED call=$callId requested=opus used=pcm_s16le")
         val session = CallMediaSession(callId, peerId, requested)
+        Log.i("LocalLinkCall", "CALL_MEDIA_CODEC call=$callId requested=${requested.ifBlank { "-" }} used=${session.codec}")
         synchronized(callMediaLock) { callMedia = session }
         acquireCallLocks()
         session.start()
@@ -1400,7 +1402,10 @@ class LocalLinkTransportService : Service() {
         val ttl = payload.optInt("ttl", -1)
         val codec = payload.optString("codec").trim().lowercase()
         if (sampleRate !in 8_000..48_000 || frameMs !in 5..60 || ttl !in 0..32) return
-        if (sampleRate != CALL_SAMPLE_RATE || frameMs != CALL_FRAME_MS || codec != current.codec) return
+        // Bundle 149: each packet says its own codec, so either phone can drop
+        // back to PCM mid-call and the other still plays it.
+        if (sampleRate != CALL_SAMPLE_RATE || frameMs != CALL_FRAME_MS || codec !in CALL_MEDIA_CODECS) return
+        if (payload.has("opus2_rx") && !payload.optBoolean("opus2_rx", true)) current.peerCannotDecodeOpus()
         val encoded = payload.optString("audio_payload").trim()
         if (encoded.isBlank()) return
         val replayKey = "${current.callId}\u0000${packet.sourceNodeId}\u0000$sequence"
@@ -1417,7 +1422,7 @@ class LocalLinkTransportService : Service() {
             val oldest = callMediaRecent.entries.minByOrNull { it.value }
             if (oldest != null) callMediaRecent.remove(oldest.key, oldest.value)
         }
-        current.enqueue(sequence, timestamp, audio)
+        current.enqueue(sequence, timestamp, audio, codec)
         transportEvent("call_media_received", mapOf("call_id" to current.callId, "sequence" to sequence, "bytes" to audio.size, "hop_count" to packet.hopCount, "codec" to codec))
     }
 
@@ -1426,11 +1431,18 @@ class LocalLinkTransportService : Service() {
         val peerId:String,
         val requestedCodec:String,
     ) {
-        // Bundle 146: always PCM. The MediaCodec Opus path crashed the decoder
-        // (caller heard nothing) and played 48 kHz output on a 16 kHz track
-        // (receiver heard a slow, deep voice). An old peer asking for opus is
-        // answered with PCM; the packet codec check keeps both sides aligned.
-        val codec:String = "pcm_s16le"
+        // Bundle 149: `opus2` only when both phones negotiated it AND this
+        // phone passed the Opus self-test (CallOpusCodec.usable). The legacy
+        // 142-145 "opus" name always means PCM. The codec actually SENT can
+        // still drop to PCM mid-call (encoder error, or the peer reports it
+        // cannot decode); see sendCodec.
+        val codec:String = if (requestedCodec == CallOpus2Format.CODEC && CallOpusCodec.usable()) CallOpus2Format.CODEC else CallOpus2Format.PCM
+        @Volatile var sendCodec:String = codec; private set
+        @Volatile private var lastRxCodec:String = ""
+        /** False once our opus2 decoder failed: told to the peer in every packet. */
+        @Volatile private var opusRxOk = true
+        @Volatile private var fallbackReason = ""
+        private var opusDecodeMisses = 0
         private val running = AtomicBoolean(false)
         val isRunning: Boolean get() = running.get()
         private val sequence = AtomicLong(0)
@@ -1454,13 +1466,17 @@ class LocalLinkTransportService : Service() {
         private var jitterMs:Double = 0.0
         private var opusEncoder: CallOpusCodec.Encoder? = null
         private var opusDecoder: CallOpusCodec.Decoder? = null
+        private var opusDecoderFailed = false
 
         fun start() {
             if (!running.compareAndSet(false,true)) return
             try {
-                if (codec == "opus") {
-                    opusEncoder = CallOpusCodec.createEncoder(CALL_SAMPLE_RATE, 1, 24_000)
-                    opusDecoder = CallOpusCodec.createDecoder(CALL_SAMPLE_RATE, 1)
+                if (codec == CallOpus2Format.CODEC) {
+                    try {
+                        opusEncoder = CallOpusCodec.createEncoder()
+                    } catch (e: Throwable) {
+                        fallBackToPcm("encoder_create_${e.javaClass.simpleName}")
+                    }
                 }
                 val minRecord = AudioRecord.getMinBufferSize(CALL_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
                 if (minRecord <= 0) throw IllegalStateException("AudioRecord is unavailable")
@@ -1499,6 +1515,7 @@ class LocalLinkTransportService : Service() {
             recorder?.release(); track?.release(); recorder=null; track=null
             abandonCallAudioFocus()
             opusEncoder?.close(); opusDecoder?.close(); opusEncoder=null; opusDecoder=null
+            opusDecoderFailed = false; opusDecodeMisses = 0
             captureThread=null; playbackThread=null
             expectedSequence = 0L
             playbackSequenceInitialized = false
@@ -1554,14 +1571,79 @@ class LocalLinkTransportService : Service() {
                     if(r<=0) { dropped.incrementAndGet(); continue }
                     if (muted) { buffer.fill(0, 0, r); }
                     val data=if(r==buffer.size)buffer.copyOf() else buffer.copyOf(r)
-                    val encodedAudio=if (codec == "opus") { opusEncoder?.encode(data) } else data
-                    if (encodedAudio == null || encodedAudio.isEmpty()) { dropped.incrementAndGet(); continue }
-                    val seq=sequence.getAndIncrement()
-                    val ts=System.currentTimeMillis()
-                    val encoded=Base64.encodeToString(encodedAudio, Base64.NO_WRAP)
-                    val payload=JSONObject().put("type","call_media").put("sender_id",transportDeviceId).put("recipient_id",peerId).put("call_id",callId).put("sequence",seq).put("timestamp_ms",ts).put("sample_rate",CALL_SAMPLE_RATE).put("frame_ms",CALL_FRAME_MS).put("codec",codec).put("ttl",8).put("audio_payload",encoded)
-                    if(sendCallMediaPacket(peerId,callId,payload)) sent.incrementAndGet() else dropped.incrementAndGet()
+                    if (sendCodec != CallOpus2Format.CODEC && opusEncoder != null) {
+                        opusEncoder?.close(); opusEncoder = null
+                    }
+                    val encoder = opusEncoder
+                    if (sendCodec == CallOpus2Format.CODEC && encoder != null) {
+                        // Bundle 149: an encoder may return 0, 1 or more packets.
+                        val packets = try { encoder.encode(data) } catch (e: Exception) {
+                            fallBackToPcm("encoder_${e.javaClass.simpleName}")
+                            null
+                        }
+                        if (packets != null) {
+                            for (packet in packets) sendAudioPacket(packet, CallOpus2Format.CODEC)
+                            continue
+                        }
+                    }
+                    sendAudioPacket(data, CallOpus2Format.PCM)
                 } catch (_:InterruptedException) { break } catch (_:Exception) { dropped.incrementAndGet(); if(!running.get()) break }
+            }
+        }
+
+        private fun sendAudioPacket(audio:ByteArray, packetCodec:String) {
+            if (audio.isEmpty()) return
+            val seq=sequence.getAndIncrement()
+            val ts=System.currentTimeMillis()
+            val encoded=Base64.encodeToString(audio, Base64.NO_WRAP)
+            val payload=JSONObject().put("type","call_media").put("sender_id",transportDeviceId).put("recipient_id",peerId).put("call_id",callId).put("sequence",seq).put("timestamp_ms",ts).put("sample_rate",CALL_SAMPLE_RATE).put("frame_ms",CALL_FRAME_MS).put("codec",packetCodec).put("ttl",8).put("audio_payload",encoded)
+            if (codec == CallOpus2Format.CODEC) payload.put("opus2_rx", opusRxOk)
+            if(sendCallMediaPacket(peerId,callId,payload)) sent.incrementAndGet() else dropped.incrementAndGet()
+        }
+
+        /**
+         * Bundle 149: stop SENDING opus2 for the rest of this call. Any
+         * thread; the encoder itself is closed on the capture thread.
+         */
+        private fun fallBackToPcm(reason:String) {
+            if (sendCodec == CallOpus2Format.PCM || !running.get()) return
+            sendCodec = CallOpus2Format.PCM
+            fallbackReason = reason
+            Log.w("LocalLinkCall", "CALL_OPUS_FALLBACK call=$callId reason=$reason")
+        }
+
+        /** The other phone says it cannot play our opus2: send PCM instead. */
+        fun peerCannotDecodeOpus() { if (sendCodec == CallOpus2Format.CODEC) fallBackToPcm("peer_cannot_decode") }
+
+        /** Our opus2 decoder is broken: tell the peer (opus2_rx=false). */
+        private fun markOpusRxBroken(reason:String) {
+            if (!opusRxOk || !running.get()) return
+            opusRxOk = false
+            Log.w("LocalLinkCall", "CALL_OPUS_RX_FAILED call=$callId reason=$reason")
+        }
+
+        /** Playback thread only. Returns 16 kHz mono PCM, or null. */
+        private fun decodeOpus(packet:ByteArray): ByteArray? {
+            if (opusDecoderFailed) return null
+            val decoder = opusDecoder ?: try {
+                CallOpusCodec.createDecoder().also { opusDecoder = it }
+            } catch (e: Throwable) {
+                opusDecoderFailed = true
+                markOpusRxBroken("decoder_create_${e.javaClass.simpleName}")
+                return null
+            }
+            return try {
+                val pcm = decoder.decode(packet)
+                if (pcm == null || pcm.isEmpty()) {
+                    // A couple of empty outputs at the start are normal.
+                    if (++opusDecodeMisses >= 25) markOpusRxBroken("no_output")
+                } else {
+                    opusDecodeMisses = 0
+                }
+                pcm
+            } catch (e: Exception) {
+                if (++opusDecodeMisses >= 25) markOpusRxBroken("decoder_${e.javaClass.simpleName}")
+                null
             }
         }
 
@@ -1589,7 +1671,7 @@ class LocalLinkTransportService : Service() {
                 } ?: continue
                 if(frame.sequence > expectedSequence) { lost.addAndGet(frame.sequence-expectedSequence); expectedSequence=frame.sequence+1 } else if(frame.sequence < expectedSequence) continue else expectedSequence++
                 try {
-                    val pcm = if (codec == "opus") opusDecoder?.decode(frame.audio) else frame.audio
+                    val pcm = if (frame.codec == CallOpus2Format.CODEC) decodeOpus(frame.audio) else frame.audio
                     if (pcm == null || pcm.isEmpty()) { dropped.incrementAndGet(); continue }
                     track?.write(pcm,0,pcm.size,AudioTrack.WRITE_BLOCKING); received.incrementAndGet()
                 } catch (_:Exception) { dropped.incrementAndGet() }
@@ -1598,7 +1680,8 @@ class LocalLinkTransportService : Service() {
 
         fun setMuted(value:Boolean) { muted=value }
 
-        fun enqueue(seq:Long, timestamp:Long, audio:ByteArray) {
+        fun enqueue(seq:Long, timestamp:Long, audio:ByteArray, packetCodec:String = CallOpus2Format.PCM) {
+            lastRxCodec = packetCodec
             val arrival = System.currentTimeMillis()
             if (!playbackSequenceInitialized) {
                 expectedSequence = seq
@@ -1614,17 +1697,17 @@ class LocalLinkTransportService : Service() {
             lastSenderTimestampMs = timestamp
             synchronized(playbackLock) {
                 if(playbackQueue.size >= CALL_MAX_JITTER_FRAMES) { playbackQueue.poll(); dropped.incrementAndGet() }
-                playbackQueue.add(AudioFrame(seq,timestamp,System.currentTimeMillis(),audio)); playbackLock.notifyAll()
+                playbackQueue.add(AudioFrame(seq,timestamp,System.currentTimeMillis(),audio,packetCodec)); playbackLock.notifyAll()
             }
         }
 
         fun stats():Map<String,Any?> {
             val s=sent.get(); val r=received.get(); val l=lost.get(); val total=r+l
-            return mapOf("sent_packets" to s, "received_packets" to r, "lost_packets" to l, "dropped_packets" to dropped.get(), "packet_loss_percent" to if(total>0) l*100.0/total else 0.0, "queued_frames" to synchronized(playbackLock){playbackQueue.size}, "jitter_ms" to jitterMs, "codec" to codec, "frame_ms" to CALL_FRAME_MS, "sample_rate" to CALL_SAMPLE_RATE, "muted" to muted)
+            return mapOf("sent_packets" to s, "received_packets" to r, "lost_packets" to l, "dropped_packets" to dropped.get(), "packet_loss_percent" to if(total>0) l*100.0/total else 0.0, "queued_frames" to synchronized(playbackLock){playbackQueue.size}, "jitter_ms" to jitterMs, "codec" to codec, "send_codec" to sendCodec, "rx_codec" to lastRxCodec, "opus_rx_ok" to opusRxOk, "opus_fallback" to fallbackReason, "frame_ms" to CALL_FRAME_MS, "sample_rate" to CALL_SAMPLE_RATE, "muted" to muted)
         }
     }
 
-    private data class AudioFrame(val sequence:Long,val timestampMs:Long,val receivedAtMs:Long,val audio:ByteArray)
+    private data class AudioFrame(val sequence:Long,val timestampMs:Long,val receivedAtMs:Long,val audio:ByteArray,val codec:String = CallOpus2Format.PCM)
 
     private fun buildRouteAdvertisement(peerId: String): JSONObject {
         val self = transportDeviceId ?: ""
