@@ -480,6 +480,10 @@ class _ChatScreenState extends State<ChatScreen> {
                             children: [
                               ListView.builder(
                                 controller: _scrollController,
+                                // Bundle 147: keep ~1.5 screens of bubbles built above/below so
+                                // photos/videos are ready before they scroll in.
+                                // ignore: deprecated_member_use
+                                cacheExtent: 1200,
                                 physics: const AlwaysScrollableScrollPhysics(),
                                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                                 padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.lg),

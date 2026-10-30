@@ -1,10 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:sqflite_sqlcipher/sqflite.dart';
 import 'package:locallink/core/security/secure_storage_service.dart';
+import 'package:locallink/core/services/app_logger.dart';
 
 /// Encrypts app-managed local files at rest with an Android Keystore-backed
 /// storage key. Plaintext material is created only as an explicit temporary
@@ -19,8 +23,19 @@ class SensitiveFileProtectionService {
   static const Duration stalePlaintextRetention = Duration(minutes: 5);
   static const Duration staleProtectedTempRetention = Duration(hours: 1);
 
+  /// Bundle 147: decrypted view copies currently in use (the media view
+  /// cache keeps this up to date). The cleanup sweep skips them.
+  static final Set<String> pinnedViews = <String>{};
+
+  @visibleForTesting
+  static Future<void> encryptFileForTest(String source, String part, List<int> key) =>
+      Isolate.run(() => _encryptFileWorker(source, part, key, _magic));
+
+  @visibleForTesting
+  static Future<void> decryptFileForTest(String protected, String view, List<int> key) =>
+      Isolate.run(() => _decryptFileWorker(protected, view, key, _magic));
+
   final SecureStorageService secureStorage;
-  final AesGcm _aes = AesGcm.with256bits();
   final Random _random = Random.secure();
 
   SensitiveFileProtectionService({SecureStorageService? secureStorage})
@@ -50,23 +65,18 @@ class SensitiveFileProtectionService {
     if (!await source.exists()) throw StateError('local source file does not exist');
     _assertLocalProtectedPath(source.path);
     _assertLocalProtectedPath(output.path);
-    final plaintext = await source.readAsBytes();
-    final box = await _aes.encrypt(plaintext, secretKey: await _key(), aad: utf8.encode(_magic));
-    final encoded = <int>[
-      ...utf8.encode(_magic),
-      box.nonce.length,
-      box.mac.bytes.length,
-      ...box.nonce,
-      ...box.mac.bytes,
-      ...box.cipherText,
-    ];
-    final part = File('${output.path}$protectedPartSuffix');
-    await part.writeAsBytes(encoded, flush: true);
+    final keyBytes = await (await _key()).extractBytes();
+    final part = '${output.path}$protectedPartSuffix';
+    // Bundle 147: encryption is CPU-heavy pure Dart; it runs off the UI
+    // thread so sending a photo/video never freezes the screen.
+    await _runOffUi('encrypt', () => Isolate.run(
+        () => _encryptFileWorker(source.path, part, keyBytes, _magic)),
+        () => _encryptFileWorker(source.path, part, keyBytes, _magic));
     try {
       if (await output.exists()) await output.delete();
-      await part.rename(output.path);
+      await File(part).rename(output.path);
     } catch (_) {
-      try { await part.delete(); } catch (_) {}
+      try { await File(part).delete(); } catch (_) {}
       rethrow;
     }
   }
@@ -75,26 +85,7 @@ class SensitiveFileProtectionService {
     final input = File(protectedPath);
     _assertLocalProtectedPath(input.path);
     if (!await input.exists()) throw StateError('protected file does not exist');
-    final bytes = await input.readAsBytes();
-    final magic = utf8.encode(_magic);
-    if (bytes.length < magic.length + 2 ||
-        bytes.sublist(0, magic.length).join(',') != magic.join(',')) {
-      throw const FormatException('invalid protected local file');
-    }
-    var offset = magic.length;
-    final nonceLength = bytes[offset++];
-    final macLength = bytes[offset++];
-    if (nonceLength < 8 || macLength < 12 || bytes.length <= offset + nonceLength + macLength) {
-      throw const FormatException('invalid protected local file envelope');
-    }
-    final nonce = bytes.sublist(offset, offset + nonceLength); offset += nonceLength;
-    final mac = bytes.sublist(offset, offset + macLength); offset += macLength;
-    final cipherText = bytes.sublist(offset);
-    final plain = await _aes.decrypt(
-      SecretBox(cipherText, nonce: nonce, mac: Mac(mac)),
-      secretKey: await _key(),
-      aad: utf8.encode(_magic),
-    );
+    final keyBytes = await (await _key()).extractBytes();
     // Always materialize decrypted views into the dedicated attachment view
     // directory, never beside a native direct-file backing object.
     final databaseRoot = await getDatabasesPath();
@@ -102,9 +93,37 @@ class SensitiveFileProtectionService {
     await root.create(recursive: true);
     final id = List<int>.generate(12, (_) => _random.nextInt(256)).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     final normalizedExtension = _safeViewExtension(extension);
-    final view = File('${root.path}/$viewPrefix$id$normalizedExtension');
-    await view.writeAsBytes(plain, flush: true);
-    return view.path;
+    final view = '${root.path}/$viewPrefix$id$normalizedExtension';
+    // Bundle 147: the whole-file decrypt ran on the UI thread (0.1 s per MB
+    // even on a fast CPU) every time a photo/video bubble scrolled into view.
+    await _runOffUi('decrypt', () => Isolate.run(
+        () => _decryptFileWorker(input.path, view, keyBytes, _magic)),
+        () => _decryptFileWorker(input.path, view, keyBytes, _magic));
+    return view;
+  }
+
+  /// Runs [isolated]; if the isolate itself cannot start (never expected on
+  /// Android) the same work runs inline. Errors from the work (bad file,
+  /// wrong key, auth failure) are rethrown unchanged.
+  Future<void> _runOffUi(String what, Future<void> Function() isolated,
+      Future<void> Function() inline) async {
+    final started = DateTime.now();
+    try {
+      await isolated();
+    } on FormatException {
+      rethrow;
+    } on StateError {
+      rethrow;
+    } on SecretBoxAuthenticationError {
+      rethrow;
+    } on FileSystemException {
+      rethrow;
+    } catch (error) {
+      AppLogger.warning('MEDIA_${what.toUpperCase()}_FALLBACK', detail: '$error');
+      await inline();
+    }
+    final ms = DateTime.now().difference(started).inMilliseconds;
+    if (ms > 300) AppLogger.info('MEDIA_${what.toUpperCase()}_SLOW', detail: 'ms=$ms');
   }
 
   /// Removes decrypted views and temporary plaintext artifacts that may survive
@@ -119,6 +138,9 @@ class SensitiveFileProtectionService {
         if (entry is! File) continue;
         final name = entry.path.split(Platform.pathSeparator).last;
         try {
+          // Bundle 147: views still on screen / playing (view cache, mini
+          // player, picture-in-picture) are never swept from under them.
+          if (pinnedViews.contains(entry.path)) continue;
           final modified = await entry.lastModified();
           if (name.startsWith(viewPrefix) && modified.isBefore(cutoff)) {
             await entry.delete();
@@ -168,4 +190,53 @@ class SensitiveFileProtectionService {
       return false;
     }
   }
+}
+
+// ---- Bundle 147: isolate workers (top-level so they can run in Isolate.run).
+// The on-disk format is unchanged:
+// magic | nonce length | mac length | nonce | mac | cipher text.
+
+Future<void> _encryptFileWorker(
+    String sourcePath, String partPath, List<int> keyBytes, String magicText) async {
+  final plaintext = await File(sourcePath).readAsBytes();
+  final magic = utf8.encode(magicText);
+  final box = await AesGcm.with256bits()
+      .encrypt(plaintext, secretKey: SecretKey(keyBytes), aad: magic);
+  final out = BytesBuilder(copy: false)
+    ..add(magic)
+    ..addByte(box.nonce.length)
+    ..addByte(box.mac.bytes.length)
+    ..add(box.nonce)
+    ..add(box.mac.bytes)
+    ..add(box.cipherText);
+  await File(partPath).writeAsBytes(out.takeBytes(), flush: true);
+}
+
+Future<void> _decryptFileWorker(
+    String protectedPath, String viewPath, List<int> keyBytes, String magicText) async {
+  final bytes = await File(protectedPath).readAsBytes();
+  final magic = utf8.encode(magicText);
+  if (bytes.length < magic.length + 2) {
+    throw const FormatException('invalid protected local file');
+  }
+  for (var i = 0; i < magic.length; i++) {
+    if (bytes[i] != magic[i]) throw const FormatException('invalid protected local file');
+  }
+  var offset = magic.length;
+  final nonceLength = bytes[offset++];
+  final macLength = bytes[offset++];
+  if (nonceLength < 8 || macLength < 12 || bytes.length <= offset + nonceLength + macLength) {
+    throw const FormatException('invalid protected local file envelope');
+  }
+  final nonce = Uint8List.sublistView(bytes, offset, offset + nonceLength);
+  offset += nonceLength;
+  final mac = Uint8List.sublistView(bytes, offset, offset + macLength);
+  offset += macLength;
+  final cipherText = Uint8List.sublistView(bytes, offset);
+  final plain = await AesGcm.with256bits().decrypt(
+    SecretBox(cipherText, nonce: nonce, mac: Mac(mac)),
+    secretKey: SecretKey(keyBytes),
+    aad: magic,
+  );
+  await File(viewPath).writeAsBytes(plain, flush: true);
 }

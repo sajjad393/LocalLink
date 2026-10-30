@@ -6,10 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/features/files/data/models/file_transfer_models.dart';
 import 'package:locallink/features/files/presentation/widgets/attachment_tile.dart';
-import 'package:locallink/features/files/presentation/widgets/chat_video_controller.dart';
 import 'package:locallink/features/files/presentation/widgets/chat_video_player.dart';
-import 'package:locallink/features/files/presentation/widgets/media_playback_coordinator.dart';
+import 'package:locallink/features/files/presentation/widgets/media_view_cache.dart';
 
+import 'support/chat_video_fakes.dart';
 import 'support/phase5_fakes.dart';
 
 class _SlowFiles extends FakeFilesRepository {
@@ -36,99 +36,9 @@ Attachment video(int size) => Attachment(
     id: 'f-$size', originalName: 'clip.mp4', contentType: 'video/mp4',
     size: size, sha256: 'a' * 64);
 
-class FakeVideoController extends ChangeNotifier implements ChatVideoController {
-  FakeVideoController(this.path, {this.duration = const Duration(seconds: 31)});
-
-  final String path;
-  final Duration duration;
-  bool _init = false, _playing = false, _muted = false, closed = false;
-  Duration _pos = Duration.zero;
-  final List<Duration> seeks = <Duration>[];
-
-  @override
-  ChatVideoState get state => ChatVideoState(
-        initialized: _init,
-        playing: _playing,
-        position: _pos,
-        duration: _init ? duration : Duration.zero,
-        aspectRatio: 16 / 9,
-      );
-
-  @override
-  bool get muted => _muted;
-
-  @override
-  Future<void> initialize() async {
-    _init = true;
-    notifyListeners();
-  }
-
-  @override
-  Future<void> play() async {
-    _playing = true;
-    notifyListeners();
-  }
-
-  @override
-  Future<void> pause() async {
-    _playing = false;
-    notifyListeners();
-  }
-
-  @override
-  Future<void> seekTo(Duration position) async {
-    seeks.add(position);
-    _pos = position;
-    notifyListeners();
-  }
-
-  @override
-  Future<void> setMuted(bool muted) async {
-    _muted = muted;
-    notifyListeners();
-  }
-
-  @override
-  Widget buildView() => const ColoredBox(key: Key('fake_view'), color: Colors.blue);
-
-  @override
-  Future<void> close() async => closed = true;
-}
-
-class Rig {
-  final controllers = <FakeVideoController>[];
-  final released = <String>[];
-  final coordinator = MediaPlaybackCoordinator();
-
-  ChatVideoPlayer player(String path, {bool uploading = false}) => ChatVideoPlayer(
-        key: ValueKey(path),
-        path: path,
-        cacheKey: 'k-$path',
-        sizeBytes: 6920601, // 6.6 MB
-        uploading: uploading,
-        coordinator: coordinator,
-        onReleaseFile: released.add,
-        infoLoader: (p, k) async =>
-            const VideoInfo(durationMs: 31000, width: 1280, height: 720),
-        controllerFactory: (p) {
-          final c = FakeVideoController(p);
-          controllers.add(c);
-          return c;
-        },
-      );
-}
-
-Widget host(List<Widget> children) => MaterialApp(
-      home: Scaffold(body: ListView(children: children)),
-    );
-
-Future<void> tapKey(WidgetTester t, String key, {int index = 0}) async {
-  await t.tap(find.byKey(Key(key)).at(index));
-  await t.pump();
-  await t.pump();
-}
-
 void main() {
+  setUp(MediaViewCache.instance.resetForTest);
+
   testWidgets('ready: length + size chips, nothing created until tapped', (t) async {
     final r = Rig();
     await t.pumpWidget(host([r.player('/v/a.mp4')]));
@@ -137,7 +47,8 @@ void main() {
     expect(find.text('6.6 MB'), findsOneWidget);
     expect(r.controllers, isEmpty);
     await t.pumpWidget(const SizedBox());
-    expect(r.released, ['/v/a.mp4'], reason: 'view copy freed even if never played');
+    expect(r.retained, 0, reason: 'never played: the tile keeps the only hold');
+    expect(r.released, isEmpty);
   });
 
   testWidgets('tap plays inline; pause; controls fade after 3 s and come back', (t) async {
@@ -164,7 +75,9 @@ void main() {
     await t.pump(const Duration(seconds: 4));
     expect(controls().opacity, 1, reason: 'paused: controls stay');
     await t.pumpWidget(const SizedBox());
-    expect(c.closed, isTrue);
+    expect(c.closed, isTrue, reason: 'paused + bubble gone: stops (no mini)');
+    expect(r.hub.mini, isNull);
+    expect(r.retained, 1);
     expect(r.released, ['/v/a.mp4']);
   });
 
@@ -271,6 +184,12 @@ void main() {
     expect(r.released, isEmpty);
     await tapKey(t, 'chat_video_fs_back');
     await t.pumpAndSettle();
+    // Bundle 147: Back while playing keeps it going in the mini player.
+    expect(c.closed, isFalse);
+    expect(r.hub.mini, isNotNull);
+    expect(c.state.playing, isTrue);
+    r.hub.closeMini();
+    await t.pump();
     expect(c.closed, isTrue);
     expect(r.released, ['/v/a.mp4']);
   });
@@ -301,9 +220,12 @@ void main() {
     await t.pumpWidget(const SizedBox());
   });
 
-  test('frame size: natural aspect, 250 wide, height clamped', () {
+  test('frame size: real shape, fits 250 x 360, never cropped', () {
+    expect(ChatVideoPlayer.frameSize(16 / 9).width, 250);
     expect(ChatVideoPlayer.frameSize(16 / 9).height, closeTo(140.6, .1));
     expect(ChatVideoPlayer.frameSize(9 / 16).height, 360);
+    expect(ChatVideoPlayer.frameSize(9 / 16).width, closeTo(202.5, .1),
+        reason: 'tall video: narrower bubble, not 250 wide + cropped');
     expect(ChatVideoPlayer.frameSize(null).width, 250);
     expect(formatVideoClock(const Duration(seconds: 3725)), '1:02:05');
   });

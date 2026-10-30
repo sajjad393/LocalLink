@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/services.dart';
 
@@ -11,9 +10,11 @@ import 'package:locallink/features/files/domain/file_transfer_repository_contrac
 import 'package:locallink/features/files/bloc/file_transfer_bloc.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
+import 'chat_photo.dart';
 import 'chat_video_controller.dart';
 import 'chat_video_player.dart';
 import 'media_playback_coordinator.dart';
+import 'media_view_cache.dart';
 
 class AttachmentTile extends StatefulWidget {
   final Attachment attachment;
@@ -47,8 +48,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
   int _audioDurationMs = 0;
   int _audioPositionMs = 0;
   Timer? _audioTimer;
-  // Bundle 145: the inline video player owns (and deletes) this view copy.
-  String? _videoHandedOff;
+  // Bundle 147: the decrypted view comes from MediaViewCache (decrypted once,
+  // shared, kept while shown). This tile holds one reference to it.
+  String? _viewKey;
 
   @override
   void initState() {
@@ -114,15 +116,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
         localPath = await widget.transfer.protectLegacyLocalFile(localPath);
         if (mounted) setState(() => _localPath = localPath);
       }
-      final ext = widget.attachment.originalName.contains('.')
-          ? '.${widget.attachment.originalName.split('.').last}'
-          : '.bin';
-      final view = await widget.transfer
-          .materializeForDisplay(localPath, extension: ext);
-      if (!mounted) {
-        await widget.transfer.deleteLocalFile(view);
-        return;
-      }
+      final view = await _acquireView(localPath);
+      if (view == null) return;
       setState(() => _displayPath = view);
     } catch (error) {
       // Bundle 133+: never degrade silently again — this catch was pinning
@@ -134,8 +129,36 @@ class _AttachmentTileState extends State<AttachmentTile> {
     }
   }
 
-  void _onChanged() {
-    if (mounted) setState(() {});
+  String get _ext => widget.attachment.originalName.contains('.')
+      ? '.${widget.attachment.originalName.split('.').last}'
+      : '.bin';
+
+  /// Bundle 147: shared decrypted view for [protectedPath] (decryption runs
+  /// off the UI thread). Returns null when this tile is already gone.
+  Future<String?> _acquireView(String protectedPath) async {
+    final key = '$protectedPath|$_ext';
+    final view = await MediaViewCache.instance.acquire(
+      key,
+      () => widget.transfer.materializeForDisplay(protectedPath, extension: _ext),
+      delete: widget.transfer.deleteLocalFile,
+    );
+    if (!mounted) {
+      MediaViewCache.instance.release(key);
+      return null;
+    }
+    if (_viewKey == key) {
+      MediaViewCache.instance.release(key); // already holding this one
+    } else {
+      _releaseView();
+      _viewKey = key;
+    }
+    return view;
+  }
+
+  void _releaseView() {
+    final key = _viewKey;
+    _viewKey = null;
+    if (key != null) MediaViewCache.instance.release(key);
   }
 
   TransferProgress? get _progress {
@@ -163,15 +186,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
         setState(() {});
       }
       final path = await future;
-      final ext = widget.attachment.originalName.contains('.')
-          ? '.${widget.attachment.originalName.split('.').last}'
-          : '.bin';
-      final view =
-          await widget.transfer.materializeForDisplay(path, extension: ext);
-      if (!mounted) {
-        await widget.transfer.deleteLocalFile(view);
-        return;
-      }
+      final view = await _acquireView(path);
+      if (view == null) return;
       setState(() {
         _localPath = path;
         _displayPath = view;
@@ -279,10 +295,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
 
   @override
   void dispose() {
-    final view = _displayPath;
-    if (view != null && view.isNotEmpty && view != _videoHandedOff) {
-      widget.transfer.deleteLocalFile(view);
-    }
+    // Bundle 147: give the view back to the cache instead of deleting it,
+    // so scrolling back shows it at once (no second decrypt).
+    _releaseView();
     MediaPlaybackCoordinator.instance.release(this);
     _audioTimer?.cancel();
     if (_playing) { const MethodChannel('locallink/voice_notes').invokeMethod('stop'); }
@@ -295,14 +310,24 @@ class _AttachmentTileState extends State<AttachmentTile> {
     return LocalLinkBlocBuilder(
         bloc: _controller,
         builder: (context, state) {
+          // Bundle 147: no synchronous file check in build (it ran on every
+          // frame while scrolling); the cache keeps shown views on disk.
           final displayPath = _displayPath;
-          if (displayPath != null && File(displayPath).existsSync()) {
+          if (displayPath != null) {
             if (widget.attachment.isImage) {
-              return _imageWithUploadOverlay(displayPath);
+              return ChatPhoto(
+                key: ValueKey<String>(displayPath),
+                path: displayPath,
+                sizeKey: _videoCacheKey,
+                hintWidth: widget.attachment.width,
+                hintHeight: widget.attachment.height,
+                uploading: widget.uploading,
+                title: widget.attachment.originalName,
+              );
             }
             if (_isVideo) {
               // Bundle 145: inline player (same for sender and receiver).
-              _videoHandedOff = displayPath;
+              final viewKey = _viewKey;
               return ChatVideoPlayer(
                 key: ValueKey<String>(displayPath),
                 path: displayPath,
@@ -311,8 +336,14 @@ class _AttachmentTileState extends State<AttachmentTile> {
                 hintWidth: widget.attachment.width,
                 hintHeight: widget.attachment.height,
                 uploading: widget.uploading,
-                onReleaseFile: (p) =>
-                    unawaited(widget.transfer.deleteLocalFile(p)),
+                // Playing holds its own reference, so the video keeps going
+                // in the mini player after this bubble is gone.
+                onRetainFile: viewKey == null
+                    ? null
+                    : () => MediaViewCache.instance.retain(viewKey),
+                onReleaseFile: viewKey == null
+                    ? null
+                    : (_) => MediaViewCache.instance.release(viewKey),
               );
             }
           }
@@ -498,63 +529,6 @@ class _AttachmentTileState extends State<AttachmentTile> {
             ),
           );
         });
-  }
-
-  /// Outgoing affordance: while [AttachmentTile.uploading] is true the image
-  /// local copy is shown dimmed with a circular upload ring on top — the same
-  /// pattern as the receiver's download ring below.
-  _imageWithUploadOverlay(String displayPath) {
-    final uploading = widget.uploading;
-    // Natural aspect: use stored EXIF dims when known; never stretch.
-    final w = widget.attachment.width;
-    final h = widget.attachment.height;
-    const maxW = 250.0;
-    final double imgW = (w > 0 && h > 0) ? maxW : maxW;
-    final double imgH = (w > 0 && h > 0)
-        ? (maxW * h / w).clamp(140.0, 360.0)
-        : 180.0;
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          width: imgW,
-          height: imgH,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.file(File(displayPath), fit: BoxFit.cover),
-              if (uploading)
-                Container(
-                  color: Colors.black38,
-                  child: Center(
-                    child: SizedBox(
-                      width: 72,
-                      height: 72,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          CircularProgressIndicator(
-                            // Indeterminate: outbox flush doesn't expose a
-                            // per-byte upload stream; the ring still signals
-                            // "sending" truthfully while queued/uploading.
-                            value: null,
-                            strokeWidth: 4,
-                            color: Colors.white,
-                            backgroundColor: Colors.white30,
-                          ),
-                          const Icon(Icons.arrow_upward_rounded,
-                              color: Colors.white, size: 28),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   /// Bundle 145: video not viewable yet. Arriving: dimmed thumbnail (or

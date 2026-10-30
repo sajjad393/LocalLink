@@ -76,6 +76,8 @@ class MainActivity : FlutterActivity() {
     private val pendingCallNotificationActions = mutableListOf<Map<String, Any>>()
     private var notificationEventSink: EventChannel.EventSink? = null
     private val pendingNotificationActions = mutableListOf<Map<String, Any?>>()
+    // Bundle 147: chat video picture-in-picture (never during calls).
+    private val chatVideoPip by lazy { ChatVideoPip(this) }
 
     private val wifiReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -165,6 +167,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        chatVideoPip.register(flutterEngine.dartExecutor.binaryMessenger) // Bundle 147
         // Stable per-device identity survives app reinstall/data-clear (resets
         // only on factory reset or signing-key change). Used to re-bind this
         // physical phone to its existing device row and to restore the account.
@@ -1086,7 +1089,19 @@ class MainActivity : FlutterActivity() {
     }
     private fun queryName(uri:Uri):String?{var cursor:Cursor?=null;return try{cursor=contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null);if(cursor!=null&&cursor.moveToFirst())cursor.getString(0)else uri.lastPathSegment}finally{cursor?.close()}}
 
+    // Bundle 147: Home pressed while a chat video plays (Android 8-11).
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        chatVideoPip.onUserLeaveHint()
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        chatVideoPip.onModeChanged(isInPictureInPictureMode, lifecycle)
+    }
+
     override fun onDestroy(){
+        chatVideoPip.dispose() // Bundle 147
         setCallProximity(false) // Bundle 143
         if (activeInstance === this) activeInstance = null
         callNotificationEventSink = null

@@ -192,6 +192,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                         )
                       : ListView.builder(
                           controller: _scrollController,
+                          // Bundle 147: keep ~1.5 screens of bubbles built above/below so
+                          // photos/videos are ready before they scroll in.
+                          // ignore: deprecated_member_use
+                          cacheExtent: 1200,
                           padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.lg),
                           itemCount: state.messages.length,
                           itemBuilder: (_, index) {

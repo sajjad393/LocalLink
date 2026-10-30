@@ -3,7 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:flutter/scheduler.dart';
+
 import 'chat_video_controller.dart';
+import 'chat_video_hub.dart';
+import 'media_frame.dart';
 import 'media_playback_coordinator.dart';
 
 /// Bundle 145: WhatsApp-like video inside the chat bubble.
@@ -13,8 +17,14 @@ import 'media_playback_coordinator.dart';
 /// after 3 s). One medium plays at a time ([MediaPlaybackCoordinator]).
 /// Full screen reuses the SAME controller, so back returns to the same spot.
 ///
-/// [path] is the temporary decrypted view copy. [onReleaseFile] fires once
-/// nothing needs it any more (bubble gone AND full screen closed).
+/// [path] is the decrypted view copy (shared via MediaViewCache). Playing
+/// takes an extra hold on it ([onRetainFile]); [onReleaseFile] gives that
+/// hold back once nothing shows the video any more (bubble, full screen,
+/// mini player, PiP).
+///
+/// Bundle 147: the playing session lives in [ChatVideoHub], so the video can
+/// leave the bubble: scrolled away / chat closed while playing → it keeps
+/// playing in the floating mini player.
 class ChatVideoPlayer extends StatefulWidget {
   const ChatVideoPlayer({
     super.key,
@@ -24,10 +34,12 @@ class ChatVideoPlayer extends StatefulWidget {
     this.hintWidth = 0,
     this.hintHeight = 0,
     this.uploading = false,
+    this.onRetainFile,
     this.onReleaseFile,
     this.controllerFactory = defaultChatVideoControllerFactory,
     this.infoLoader = VideoInfoCache.load,
     this.coordinator,
+    this.hub,
   });
 
   final String path;
@@ -36,78 +48,57 @@ class ChatVideoPlayer extends StatefulWidget {
   final int hintWidth;
   final int hintHeight;
   final bool uploading;
+  final VoidCallback? onRetainFile;
   final void Function(String path)? onReleaseFile;
   final ChatVideoControllerFactory controllerFactory;
   final VideoInfoLoader infoLoader;
   final MediaPlaybackCoordinator? coordinator;
+  final ChatVideoHub? hub;
 
-  static const double maxWidth = 250;
-
-  /// Natural aspect, max 250 wide, height clamped like photos.
-  static Size frameSize(double? aspect) {
-    final a = (aspect != null && aspect.isFinite && aspect > 0) ? aspect : 16 / 9;
-    return Size(maxWidth, (maxWidth / a).clamp(140.0, 360.0));
-  }
+  /// Bundle 147: the video's real shape, scaled to fit 250 x 360 (no crop).
+  static Size frameSize(double? aspect) => MediaFrame.fitAspect(aspect);
 
   @override
   State<ChatVideoPlayer> createState() => _ChatVideoPlayerState();
 }
 
-/// Owns the controller for as long as the bubble OR the full-screen page
-/// needs it, and is the playback owner in the coordinator.
-class _VideoSession {
-  _VideoSession(this.controller, this.path, this.coordinator, this.onRelease);
-
-  final ChatVideoController controller;
-  final String path;
-  final MediaPlaybackCoordinator coordinator;
-  final void Function(String path)? onRelease;
-  bool inlineAlive = true;
-  bool fullscreenOpen = false;
-  bool closed = false;
-
-  Future<void> play() async {
-    coordinator.claim(this, () => unawaited(_safe(controller.pause)));
-    await controller.play();
-  }
-
-  Future<void> pause() async {
-    coordinator.release(this);
-    await controller.pause();
-  }
-
-  void maybeClose() {
-    if (closed || inlineAlive || fullscreenOpen) return;
-    closed = true;
-    coordinator.release(this);
-    unawaited(_safe(controller.close));
-    onRelease?.call(path);
-  }
-
-  static Future<void> _safe(Future<void> Function() f) async {
-    try {
-      await f();
-    } catch (_) {}
-  }
-}
-
-class _ChatVideoPlayerState extends State<ChatVideoPlayer>
-    with WidgetsBindingObserver {
+class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
   VideoInfo? _info;
-  _VideoSession? _session;
+  ChatVideoSession? _session;
   bool _starting = false;
   bool _controlsVisible = true;
   Timer? _hideTimer;
+  ScrollPosition? _scroll;
+  bool _scrollCheckQueued = false;
 
   MediaPlaybackCoordinator get _coordinator =>
       widget.coordinator ?? MediaPlaybackCoordinator.instance;
+  ChatVideoHub get _hub => widget.hub ?? ChatVideoHub.instance;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _info = VideoInfoCache.peek(widget.cacheKey);
     if (_info == null) _loadInfo();
+    // Scrolled back to a bubble whose video is in the mini player: show
+    // "Playing in mini player" (tap brings it back here).
+    final mini = _hub.mini;
+    if (mini != null && mini.path == widget.path && !mini.closed) {
+      mini.inlineAlive = true;
+      _session = mini;
+      _bind(mini);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final p = Scrollable.maybeOf(context)?.position;
+    if (!identical(p, _scroll)) {
+      _scroll?.removeListener(_onScroll);
+      _scroll = p;
+      p?.addListener(_onScroll);
+    }
   }
 
   Future<void> _loadInfo() async {
@@ -115,37 +106,94 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer>
     if (mounted && info != null) setState(() => _info = info);
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Never keep playing behind the lock screen / another app.
-    if (state != AppLifecycleState.resumed) {
-      final s = _session;
-      if (s != null && !s.closed && s.controller.state.playing) {
-        unawaited(s.pause());
-      }
-    }
-  }
+  // Bundle 147: no per-bubble app-lifecycle pause any more. ChatVideoHub
+  // decides for the whole app (PiP over other apps, otherwise pause).
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
+    _scroll?.removeListener(_onScroll);
     final s = _session;
-    if (s == null) {
-      widget.onReleaseFile?.call(widget.path);
-    } else {
-      s.controller.removeListener(_onController);
+    if (s != null) {
+      _unbind(s);
       s.inlineAlive = false;
-      // Closing stops playback; with full screen open it keeps playing there
-      // and the full-screen exit closes it.
-      s.maybeClose();
+      if (!s.closed && !s.fullscreenOpen && !s.inMini && s.playing) {
+        // Chat closed / bubble recycled while playing: keep playing in the
+        // mini player instead of stopping.
+        _hub.showMini(s);
+      } else {
+        s.maybeClose();
+      }
     }
     super.dispose();
   }
 
-  void _onController() {
+  void _bind(ChatVideoSession s) {
+    s.controller.addListener(_onController);
+    s.addListener(_onSession);
+  }
+
+  void _unbind(ChatVideoSession s) {
+    s.controller.removeListener(_onController);
+    s.removeListener(_onSession);
+  }
+
+  /// Hub changed the session: closed (mini/full-screen X) → back to the
+  /// thumbnail; moved to/from the mini player → redraw.
+  void _onSession() {
     final s = _session;
     if (s == null || !mounted) return;
+    if (s.closed) {
+      _unbind(s);
+      _hideTimer?.cancel();
+      setState(() {
+        _session = null;
+        _controlsVisible = true;
+      });
+      return;
+    }
+    if (!s.inMini && !s.fullscreenOpen) {
+      _showControls(autoHide: s.playing);
+    } else {
+      setState(() {});
+    }
+  }
+
+  void _onScroll() {
+    if (_scrollCheckQueued) return;
+    final s = _session;
+    if (s == null || s.closed || s.inMini || s.fullscreenOpen || !s.playing) {
+      return;
+    }
+    _scrollCheckQueued = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _scrollCheckQueued = false;
+      _checkVisible();
+    });
+    SchedulerBinding.instance.ensureVisualUpdate();
+  }
+
+  /// Scrolled completely out of view while playing → mini player.
+  void _checkVisible() {
+    final s = _session;
+    if (!mounted || s == null || s.closed || s.inMini || s.fullscreenOpen ||
+        !s.playing) {
+      return;
+    }
+    final box = context.findRenderObject();
+    final viewport = Scrollable.maybeOf(context)?.context.findRenderObject();
+    if (box is! RenderBox || viewport is! RenderBox) return;
+    if (!box.attached || !box.hasSize || !viewport.attached || !viewport.hasSize) {
+      return;
+    }
+    final mine = box.localToGlobal(Offset.zero) & box.size;
+    final view = viewport.localToGlobal(Offset.zero) & viewport.size;
+    if (!mine.overlaps(view)) _hub.showMini(s);
+  }
+
+  void _onController() {
+    final s = _session;
+    if (s == null || !mounted || s.closed) return;
     final st = s.controller.state;
     if (st.completed || (!st.playing && _coordinator.isOwner(s) && st.duration > Duration.zero && st.position >= st.duration)) {
       _coordinator.release(s);
@@ -163,12 +211,10 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer>
     if (_starting || widget.uploading) return;
     setState(() => _starting = true);
     final controller = widget.controllerFactory(widget.path);
-    final session = _VideoSession(
-        controller, widget.path, _coordinator, widget.onReleaseFile);
     try {
       await controller.initialize();
     } catch (_) {
-      unawaited(_VideoSession._safe(controller.close));
+      unawaited(_closeQuietly(controller));
       if (mounted) {
         setState(() => _starting = false);
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -177,15 +223,33 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer>
       return;
     }
     if (!mounted) {
-      unawaited(_VideoSession._safe(controller.close));
+      unawaited(_closeQuietly(controller));
       return;
     }
-    controller.addListener(_onController);
+    final hint = widget.hintWidth > 0 && widget.hintHeight > 0
+        ? widget.hintWidth / widget.hintHeight
+        : null;
+    widget.onRetainFile?.call();
+    final session = ChatVideoSession(
+      controller: controller,
+      path: widget.path,
+      coordinator: _coordinator,
+      onRelease: widget.onReleaseFile,
+      aspectHint: _info?.aspectRatio ?? hint,
+    );
+    _hub.register(session);
+    _bind(session);
     setState(() {
       _session = session;
       _starting = false;
     });
     await _play();
+  }
+
+  static Future<void> _closeQuietly(ChatVideoController c) async {
+    try {
+      await c.close();
+    } catch (_) {}
   }
 
   Future<void> _play() async {
@@ -227,18 +291,23 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer>
   }
 
   void _onSurfaceTap() {
-    if (_session == null) {
+    final s = _session;
+    if (s == null) {
       unawaited(_start());
       return;
     }
+    if (s.inMini) {
+      // "Playing in mini player": tap brings it back into the bubble.
+      _hub.returnInline(s);
+      return;
+    }
     if (_controlsVisible) {
-      final playing = _session!.controller.state.playing;
-      if (playing) {
+      if (s.controller.state.playing) {
         _hideTimer?.cancel();
         setState(() => _controlsVisible = false);
       }
     } else {
-      _showControls(autoHide: _session!.controller.state.playing);
+      _showControls(autoHide: s.controller.state.playing);
     }
   }
 
@@ -246,24 +315,7 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer>
     final s = _session;
     if (s == null) return;
     _hideTimer?.cancel();
-    s.fullscreenOpen = true;
-    await Navigator.of(context).push(PageRouteBuilder<void>(
-      opaque: true,
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (_, __, ___) => ChatVideoFullscreen(
-        controller: s.controller,
-        onPlay: s.play,
-        onPause: s.pause,
-      ),
-      transitionsBuilder: (_, a, __, child) =>
-          FadeTransition(opacity: a, child: child),
-    ));
-    s.fullscreenOpen = false;
-    if (!mounted || !s.inlineAlive) {
-      s.maybeClose();
-      return;
-    }
-    _showControls(autoHide: s.controller.state.playing);
+    await _hub.openFullscreen(s, context: context);
   }
 
   @override
@@ -275,7 +327,8 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer>
     final size = ChatVideoPlayer.frameSize(info?.aspectRatio ?? hint);
     final s = _session;
     final st = s?.controller.state;
-    final active = s != null && st != null && st.initialized;
+    final inMini = s != null && s.inMini;
+    final active = s != null && st != null && st.initialized && !inMini;
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -296,7 +349,10 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer>
                   ),
                 )
               else
-                _Thumbnail(bytes: info?.thumbnail),
+                Opacity(
+                  opacity: inMini ? .45 : 1,
+                  child: _Thumbnail(bytes: info?.thumbnail),
+                ),
               Positioned.fill(
                 child: GestureDetector(
                   key: const Key('chat_video_surface'),
@@ -304,7 +360,9 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer>
                   onTap: _onSurfaceTap,
                 ),
               ),
-              if (!active && !widget.uploading)
+              if (inMini)
+                const IgnorePointer(child: _InMiniLabel()),
+              if (!active && !inMini && !widget.uploading)
                 _ReadyOverlay(
                   durationMs: info?.durationMs ?? 0,
                   sizeBytes: widget.sizeBytes,
@@ -330,6 +388,31 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Bundle 147: shown on the bubble while its video plays in the mini player.
+class _InMiniLabel extends StatelessWidget {
+  const _InMiniLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.picture_in_picture_alt_rounded,
+              color: Colors.white, size: 30),
+          SizedBox(height: 6),
+          Text(
+            'Playing in mini player',
+            key: Key('chat_video_in_mini'),
+            style: TextStyle(
+                color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600),
+          ),
+        ],
       ),
     );
   }
@@ -677,7 +760,8 @@ class _UploadOverlay extends StatelessWidget {
 }
 
 /// Full screen (mock 4): same controller, black background, seek,
-/// play/pause, back/forward 10 s. Rotates with the phone (the app has no
+/// play/pause, back/forward 10 s. Bundle 147: minimize (mini player) and X
+/// (stop); Back goes to the mini player while playing. Rotates with the phone (the app has no
 /// orientation lock); system bars hidden while open.
 class ChatVideoFullscreen extends StatefulWidget {
   const ChatVideoFullscreen({
@@ -793,15 +877,36 @@ class _ChatVideoFullscreenState extends State<ChatVideoFullscreen> {
                   child: SafeArea(
                     child: Column(
                       children: [
-                        Align(
-                          alignment: Alignment.topLeft,
-                          child: IconButton(
-                            key: const Key('chat_video_fs_back'),
-                            tooltip: 'Back',
-                            icon: const Icon(Icons.arrow_back_rounded,
-                                color: Colors.white),
-                            onPressed: () => Navigator.of(context).maybePop(),
-                          ),
+                        Row(
+                          children: [
+                            IconButton(
+                              key: const Key('chat_video_fs_back'),
+                              tooltip: 'Back',
+                              icon: const Icon(Icons.arrow_back_rounded,
+                                  color: Colors.white),
+                              onPressed: () => Navigator.of(context)
+                                  .maybePop(FullscreenExit.back),
+                            ),
+                            const Spacer(),
+                            // Bundle 147: keep watching in the mini player.
+                            IconButton(
+                              key: const Key('chat_video_fs_minimize'),
+                              tooltip: 'Mini player',
+                              icon: const Icon(
+                                  Icons.picture_in_picture_alt_rounded,
+                                  color: Colors.white),
+                              onPressed: () => Navigator.of(context)
+                                  .maybePop(FullscreenExit.minimize),
+                            ),
+                            IconButton(
+                              key: const Key('chat_video_fs_close'),
+                              tooltip: 'Close video',
+                              icon: const Icon(Icons.close_rounded,
+                                  color: Colors.white),
+                              onPressed: () => Navigator.of(context)
+                                  .maybePop(FullscreenExit.close),
+                            ),
+                          ],
                         ),
                         const Spacer(),
                         Padding(

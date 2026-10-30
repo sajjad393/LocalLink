@@ -14,6 +14,8 @@ import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
+import 'package:locallink/features/files/presentation/widgets/chat_video_hub.dart';
+import 'package:locallink/features/files/presentation/widgets/media_view_cache.dart';
 
 class LocalLinkApp extends StatefulWidget {
   const LocalLinkApp({super.key});
@@ -47,6 +49,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Bundle 147: mini video player + picture-in-picture for chat videos.
+    ChatVideoHub.instance.attach(navigatorKey: _navigatorKey);
     _router = AppRouter(
       dependencies: _deps,
       onSaved: _finishOnboarding,
@@ -236,7 +240,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v2 · bundles 104-146 (2026-10-30)');
+        detail: 'v2 · bundles 104-147 (2026-10-30)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -295,6 +299,10 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
 
   void _listenForIncomingCalls() {
     _callSub ??= _deps.calls.sessionStream.listen((session) {
+      // Bundle 147: a call (ringing or live) pauses chat video, hides the
+      // mini player and blocks picture-in-picture.
+      ChatVideoHub.instance
+          .setCallActive(session != null && !session.isFinished);
       if (!mounted || session == null) return;
       _maybeShowIncomingCall();
       if (session.isFinished && _shownIncomingCallId == session.id) {
@@ -459,6 +467,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   }
 
   Future<void> _resetAccount() async {
+    ChatVideoHub.instance.stopAll();
+    MediaViewCache.instance.forgetAll();
     try {
       await _deps.calls.endCall(reason: 'account_reset');
     } catch (_) {}
@@ -582,6 +592,12 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       themeMode: _themeMode,
       initialRoute: _configured ? AppRoutes.home : AppRoutes.welcome,
       onGenerateRoute: _router.onGenerateRoute,
+      // Bundle 147: floating mini video player above every screen; while
+      // Android shows the PiP window only the video is drawn.
+      builder: (context, child) => ChatVideoShell(
+        hub: ChatVideoHub.instance,
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }
