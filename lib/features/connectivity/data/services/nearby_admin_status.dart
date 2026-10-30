@@ -32,6 +32,9 @@ class NearbyAdminSnapshot {
   final int relayVoiceCalls;
   final int forwardedPackets;
   final int forwardedVoiceFrames;
+
+  /// Bundle 165: locked file packets passed on for others (count only).
+  final int forwardedFileChunks;
   final List<NearbyAdminRoute> routes;
 
   /// Bundle 160: this Wi-Fi blocks phones from seeing each other.
@@ -65,6 +68,7 @@ class NearbyAdminSnapshot {
     this.relayVoiceCalls = 0,
     this.forwardedPackets = 0,
     this.forwardedVoiceFrames = 0,
+    this.forwardedFileChunks = 0,
     this.routes = const <NearbyAdminRoute>[],
     this.wifiBlocked = false,
     this.verifiedLinks = 0,
@@ -120,6 +124,7 @@ class NearbyAdminSnapshot {
       relayVoiceCalls: _int(t['relay_voice_calls']),
       forwardedPackets: _int(t['forwarded_packets']),
       forwardedVoiceFrames: _int(t['forwarded_voice_frames']),
+      forwardedFileChunks: _int(t['forwarded_file_chunks']),
       routes: List.unmodifiable(routes),
       wifiBlocked: g['wifi_blocked'] == true,
       verifiedLinks: _int(t['verified_links']),
