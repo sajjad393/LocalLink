@@ -37,6 +37,10 @@ final class ConnectivityBloc extends Cubit<ConnectivityState> {
   bool _started = false;
   bool _closed = false;
 
+  /// Bundle 157: set by the app to send Pair taps through the shared-group
+  /// rules (join their group, or bring them into ours, no pop-ups).
+  Future<void> Function(WifiDirectPeer peer)? pairTapHandler;
+
   ConnectivityBloc({required this.repository}) : super(ConnectivityState(snapshot: ConnectivitySnapshot.initial()));
 
   ConnectivitySnapshot get snapshot => state.snapshot;
@@ -112,6 +116,12 @@ final class ConnectivityBloc extends Cubit<ConnectivityState> {
     if (_closed) return;
     if (peer.address.trim().isEmpty) {
       emit(state.copyWith(error: 'This nearby phone cannot be connected right now.'));
+      return;
+    }
+    // Bundle 157: the shared-group rules handle the tap when available.
+    final handler = pairTapHandler;
+    if (handler != null) {
+      await _runBusy(() => handler(peer));
       return;
     }
     // Bundle 155: a user's own Pair tap. Join a host's group when the tag

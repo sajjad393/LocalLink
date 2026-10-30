@@ -133,6 +133,8 @@ class AppDependencies {
     // person who is already reachable.
     wifiDirectFallback.hasLocalRoute =
         (peerId) => routePolicy.routes[peerId]?.isAvailable ?? false;
+    // Bundle 157: Pair taps go through the one-shared-group rules.
+    connectivity.pairTapHandler = wifiDirectFallback.pairTap;
     authentication = AuthenticationRepository(api: api, store: store, connectivity: connectivityRepository);
     recoveryRepository = RecoveryRepository(api: api, store: store, crypto: crypto, connectivity: connectivityRepository);
     final restorationService = AccountRestorationService(store, api, crypto);
@@ -165,6 +167,8 @@ class AppDependencies {
       routePolicy: routePolicy,
     );
     calls = CallBloc(service: callService, repository: callRepository);
+    // Bundle 157: a group is never dissolved (merge) during a call.
+    wifiDirectFallback.isBusy = () => calls.session != null;
     messaging = ReliableMessagingService(
       store,
       api,
@@ -299,6 +303,7 @@ class AppDependencies {
   void _publishNearbyIdentity() {
     final id = store.deviceId;
     if (id == null || id.isEmpty) return;
+    wifiDirectFallback.selfIdHash = NearbyTag.idFor(id);
     unawaited(connectivityRepository
         .setNearbyIdentity(NearbyTag.idFor(id))
         .catchError((Object _) {}));

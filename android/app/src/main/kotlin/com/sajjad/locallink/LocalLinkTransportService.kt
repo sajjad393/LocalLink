@@ -188,16 +188,29 @@ class LocalLinkTransportService : Service() {
     private val blockedPeers = ConcurrentHashMap.newKeySet<String>()
     private val relayLimiter = MeshRelayRateLimiter()
     private val relayDialAt = ConcurrentHashMap<String, Long>()
-    private fun relayLinkCount(exceptPeerId: String? = null): Int =
-        transportPeers.values.count { it.peerId != exceptPeerId && it.trust == MeshRelayPolicy.TRUST_RELAY && !it.socket.isClosed }
-    private fun trustForPeer(peerId: String, offersRelay: Boolean): String? = MeshRelayPolicy.trustFor(
-        peerId = peerId,
-        isContact = knownPeers.contains(peerId),
-        isBlocked = blockedPeers.contains(peerId),
-        peerOffersRelay = offersRelay,
-        relayLinks = relayLinkCount(exceptPeerId = peerId),
-        isPaused = relayLimiter.isPaused(peerId),
-    )
+    private fun relayLinkCount(exceptPeerId: String? = null, transportName: String? = null): Int =
+        allPhysicalPeerLinks().count { it.peerId != exceptPeerId && it.trust == MeshRelayPolicy.TRUST_RELAY && !it.socket.isClosed &&
+            (transportName == null || it.transportName == transportName) }
+    // Bundle 157: a group host must take every member of its shared group
+    // (up to the soft limit), so Wi-Fi Direct has its own relay budget; LAN
+    // relay neighbours stay at 3.
+    private fun trustForPeer(peerId: String, offersRelay: Boolean, transportName: String): String? {
+        val trust = MeshRelayPolicy.trustFor(
+            peerId = peerId,
+            isContact = knownPeers.contains(peerId),
+            isBlocked = blockedPeers.contains(peerId),
+            peerOffersRelay = offersRelay,
+            relayLinks = 0,
+            isPaused = relayLimiter.isPaused(peerId),
+        )
+        if (trust != MeshRelayPolicy.TRUST_RELAY) return trust
+        val used = relayLinkCount(exceptPeerId = peerId, transportName = transportName)
+        if (used >= NearbyGroupPolicy.maxRelayLinks(transportName)) {
+            Log.i("RELAY", "relay refused peer=$peerId reason=full transport=$transportName links=$used")
+            return null
+        }
+        return trust
+    }
     private fun routerCanCarry(peerId: String, packet: MeshPacket): Boolean {
         val link = activePeerConnection(peerId) ?: return true
         return MeshRelayPolicy.canCarry(link.trust, packet.type)
@@ -634,7 +647,7 @@ class LocalLinkTransportService : Service() {
     private fun shouldDialRelay(self: String, nodeId: String, now: Long): Boolean {
         if (!MeshRelayPolicy.RELAY_ENABLED || blockedPeers.contains(nodeId) || relayLimiter.isPaused(nodeId, now)) return false
         if (!MeshRelayPolicy.shouldDialRelay(self, nodeId)) return false
-        if (relayLinkCount() >= MeshRelayPolicy.MAX_RELAY_LINKS) return false
+        if (relayLinkCount(transportName = MeshTransportPolicy.LAN) >= MeshRelayPolicy.MAX_RELAY_LINKS) return false
         val last = relayDialAt[nodeId] ?: 0L
         if (now - last < MeshRelayPolicy.RELAY_DIAL_COOLDOWN_MS) return false
         relayDialAt[nodeId] = now
@@ -831,7 +844,7 @@ class LocalLinkTransportService : Service() {
         if (expectedPeerId != null && peerId != expectedPeerId) return null
         if (!validTransportId(peerId) || peerId == id) return null
         // Bundle 156: contacts as before; a stranger only as a relay link.
-        val trust = trustForPeer(peerId, challenge.optInt("relay", 0) == 1) ?: return null
+        val trust = trustForPeer(peerId, challenge.optInt("relay", 0) == 1, transportName) ?: return null
         writer.write(JSONObject().put("type", "auth")
             .put("device_id", id)
             .put("node_id", id)
@@ -858,7 +871,7 @@ class LocalLinkTransportService : Service() {
         if (peer.isBlank() || peer == self) return null
         if (!validTransportId(peer)) return null
         // Bundle 156: contacts as before; a stranger only as a relay link.
-        val trust = trustForPeer(peer, hello.optInt("relay", 0) == 1) ?: return null
+        val trust = trustForPeer(peer, hello.optInt("relay", 0) == 1, transportName) ?: return null
         writer.write(JSONObject().put("type", "challenge")
             .put("peer_id", self)
             .put("node_id", self)

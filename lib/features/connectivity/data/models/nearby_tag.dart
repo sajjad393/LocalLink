@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
+/// D9: soft limit of members per group host (never kick anyone above it).
+const int nearbyGroupSoftLimit = 8;
+
 /// Bundle 155: a LocalLink "who is who" tag seen over Wi-Fi Direct service
 /// discovery. Maps a Wi-Fi Direct address to a LocalLink person (by a short
 /// hash of the device id — the raw id never goes over the air).
@@ -16,6 +19,18 @@ class NearbyTag {
   final bool full;
   final int seenAt;
 
+  /// Bundle 157: this phone's app joins shared groups by itself.
+  final bool groupAware;
+
+  /// Bundle 157: the Wi-Fi Direct group it hosts or is a member of.
+  final String? group;
+
+  /// Bundle 157: the host's group password (host tags only).
+  final String? key;
+
+  /// Bundle 157: short ids (8 hex) of people this phone wants in its group.
+  final List<String> wanted;
+
   const NearbyTag({
     required this.address,
     required this.idHash,
@@ -24,7 +39,21 @@ class NearbyTag {
     this.members = 0,
     this.full = false,
     this.seenAt = 0,
+    this.groupAware = false,
+    this.group,
+    this.key,
+    this.wanted = const <String>[],
   });
+
+  /// Bundle 157: the short id used in the `w` (wanted) list.
+  static String wantedIdFor(String idHash) =>
+      idHash.length > 8 ? idHash.substring(0, 8) : idHash;
+
+  /// Does this tag ask [idHash] to join its group?
+  bool wants(String idHash) => wanted.contains(wantedIdFor(idHash));
+
+  /// A host that others can join right now.
+  bool get openHost => host && !full && members < nearbyGroupSoftLimit;
 
   /// Short, stable hash of a device id (first 16 hex chars of SHA-256).
   /// Same value on every phone, so a tag can be matched to a contact.
@@ -45,7 +74,21 @@ class NearbyTag {
       members: (map['members'] as num?)?.toInt() ?? 0,
       full: map['full'] == true,
       seenAt: (map['seen_at'] as num?)?.toInt() ?? 0,
+      groupAware: map['gv'] == true,
+      group: _text(map['group']),
+      key: _text(map['key']),
+      wanted: map['wanted'] is List
+          ? [
+              for (final w in map['wanted'] as List)
+                if (RegExp(r'^[0-9a-f]{8}$').hasMatch(w.toString())) w.toString()
+            ]
+          : const <String>[],
     );
+  }
+
+  static String? _text(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
   }
 
   static List<NearbyTag> listFromEvent(Object? raw) => raw is List
@@ -88,7 +131,7 @@ class NearbyTagRegistry extends ChangeNotifier {
   static Map<String, String> _simplify(Map<String, NearbyTag> tags) => {
         for (final e in tags.entries)
           e.key:
-              '${e.value.idHash}|${e.value.host}|${e.value.member}|${e.value.members}|${e.value.full}',
+              '${e.value.idHash}|${e.value.host}|${e.value.member}|${e.value.members}|${e.value.full}|${e.value.group}',
       };
 
   @visibleForTesting
