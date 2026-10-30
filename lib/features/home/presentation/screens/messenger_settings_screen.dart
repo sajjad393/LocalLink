@@ -13,6 +13,7 @@ import 'package:locallink/features/admin/data/services/admin_capability_service.
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_login_screen.dart';
 import 'package:locallink/features/home/presentation/screens/background_run_screen.dart';
+import 'package:locallink/features/home/presentation/screens/nearby_experiments_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/notifications/presentation/screens/notification_settings_screen.dart';
@@ -236,6 +237,19 @@ class MessengerSettingsScreen extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                   builder: (_) => BackgroundRunScreen(store: store),
+                ),
+              ),
+            ),
+            // Bundle 161: two nearby tests, off by default.
+            _row(
+              context,
+              icon: Icons.science_outlined,
+              title: 'Nearby tests',
+              subtitle: 'Link full groups, share a hotspot',
+              onTap: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const NearbyExperimentsScreen(),
                 ),
               ),
             ),

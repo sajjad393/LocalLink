@@ -90,6 +90,15 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
       ('Calls passed on now', '${s.relayVoiceCalls}'),
       ('Packets passed on', '${s.forwardedPackets}'),
       ('Voice frames passed on', '${s.forwardedVoiceFrames}'),
+      // Bundle 161 (tests).
+      ('Linked group / hotspot (test)', switch (s.localNet) {
+        'linked' => s.localNetKind == 'hotspot' ? 'Hotspot' : 'Group',
+        'joining' => 'Joining…',
+        _ => 'No',
+      }),
+      ('Sharing a hotspot (test)', s.hotspot ? 'Yes' : 'No'),
+      ('Phones linked this way', '${s.localNetPeers}'),
+      ('Short route list', s.compactMap ? 'Yes' : 'No'),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

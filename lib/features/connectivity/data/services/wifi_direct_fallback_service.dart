@@ -6,7 +6,9 @@ import 'package:locallink/core/diagnostics/app_diagnostics.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
+import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_group_planner.dart';
+import 'package:locallink/features/connectivity/data/services/nearby_local_net_planner.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 import 'package:locallink/features/connectivity/domain/nearby_group_control.dart';
 
@@ -190,6 +192,10 @@ final class WifiDirectFallbackService {
         'plan': _lastPlanReason,
         // Bundle 160: this Wi-Fi blocks phones from seeing each other.
         'wifi_blocked': _wifiBlocked,
+        // Bundle 161 (tests): linked group / LocalLink hotspot.
+        'local_net': _lnState,
+        'local_net_kind': _lnKind,
+        'hotspot': _hotspotOn,
       };
 
   /// Called on every app lifecycle change.
@@ -238,6 +244,38 @@ final class WifiDirectFallbackService {
   /// Then no bridging for this long (plan 158.1).
   static const int bridgeOffMs = 10 * 60 * 1000;
 
+  // ------------------------------------------- Bundle 161 linked networks
+  /// The two Settings tests (off by default).
+  NearbyExperiments experiments = NearbyExperiments.instance;
+
+  /// `group` / `hotspot` while joining or linked.
+  String? _lnKind;
+  String? _lnTo;
+  String? _lnFromGroup;
+
+  /// `off` / `joining` / `linked`.
+  String _lnState = 'off';
+  int _lnOffUntil = 0;
+  bool _lnUnsupported = false;
+  bool _hotspotOn = false;
+  int _hotspotOffUntil = 0;
+  bool _lnBusy = false;
+  bool _listening = false;
+
+  NearbyLocalNetControl? get _localNet {
+    final c = connectivity;
+    return c is NearbyLocalNetControl ? c as NearbyLocalNetControl : null;
+  }
+
+  @visibleForTesting
+  String get localNetState => _lnState;
+  @visibleForTesting
+  String? get localNetKind => _lnKind;
+  @visibleForTesting
+  bool get hotspotOn => _hotspotOn;
+  @visibleForTesting
+  int get localNetOffUntil => _lnOffUntil;
+
   @visibleForTesting
   bool get bridging => _bridging;
   @visibleForTesting
@@ -277,6 +315,20 @@ final class WifiDirectFallbackService {
     _started = true;
     _wifiSubscription = connectivity.wifiDirectEvents.listen(_handleWifiEvent);
     if (groupMode) _armGroupTimer();
+    if (_localNet != null && !_listening) {
+      _listening = true;
+      experiments.addListener(_onExperimentsChanged);
+    }
+  }
+
+  /// Bundle 161: a test switch changed — act now, not at the next tick.
+  void _onExperimentsChanged() {
+    if (_disposed) return;
+    if (groupMode) {
+      unawaited(_evaluateGroup());
+    } else {
+      unawaited(_checkLocalNet(_clock()));
+    }
   }
 
   /// Bundle 157: the user tapped Pair on a nearby Wi-Fi Direct phone.
@@ -328,6 +380,10 @@ final class WifiDirectFallbackService {
 
   Future<void> dispose() async {
     _disposed = true;
+    if (_listening) {
+      _listening = false;
+      experiments.removeListener(_onExperimentsChanged);
+    }
     _groupTimer?.cancel();
     _groupTimer = null;
     _waitingSince.clear();
@@ -364,6 +420,14 @@ final class WifiDirectFallbackService {
     }
     if (type == 'my_group') {
       _applyMyGroup(event);
+      return;
+    }
+    if (type == 'local_net') {
+      _applyLocalNetEvent(event);
+      return;
+    }
+    if (type == 'hotspot') {
+      _applyHotspotEvent(event);
       return;
     }
     if (type == 'connection') {
@@ -751,6 +815,7 @@ final class WifiDirectFallbackService {
       _checkPending(now);
       _checkWifiBlocked(now);
       await _checkBridge(now);
+      await _checkLocalNet(now);
       final waiting = _waitingHashes();
       await _publishWanted(waiting);
       if (_pendingKind != null && !userTap) return;
@@ -940,6 +1005,191 @@ final class WifiDirectFallbackService {
     // Wi-Fi went away later (walked off): stay in the group as a normal
     // member — never break routes.
     await _stopBridge('wifi_off');
+  }
+
+  // ------------------------------------------------ Bundle 161 (tests)
+
+  /// Follows the two Settings tests: our own hotspot, and joining another
+  /// group / a LocalLink hotspot when groups cannot merge.
+  Future<void> _checkLocalNet(int now) async {
+    final ln = _localNet;
+    final self = _selfHash;
+    if (ln == null || self == null || _disposed || _lnBusy) return;
+    final plan = planLocalNet(LocalNetInput(
+      selfHash: self,
+      now: now,
+      role: _role.name,
+      myGroup: _myGroup,
+      myMembers: _myMembers,
+      onUsableWifi: _usableWifi,
+      tags: _tags.values.toList(growable: false),
+      firstSeen: {..._firstSeen},
+      linkGroupsOn: experiments.linkGroups,
+      shareHotspotOn: experiments.shareHotspot,
+      hotspotOn: _hotspotOn,
+      hotspotAllowed: now >= _hotspotOffUntil,
+      linkedKind: _lnKind,
+      linkedTo: _lnTo,
+      linkedFromGroup: _lnFromGroup,
+      offUntil: _lnOffUntil,
+      unsupported: _lnUnsupported,
+      busy: _pendingKind != null || (isBusy?.call() ?? false),
+    ));
+    _publishLocalNetStatus(now);
+    if (!plan.acts) return;
+    _lnBusy = true;
+    try {
+      switch (plan.kind) {
+        case LocalNetActionKind.startHotspot:
+          _hotspotOn = true;
+          experiments.updateStatus(hotspotState: 'starting');
+          AppLogger.info('NEARBY', detail: 'hotspot start reason=${plan.reason}');
+          final why = await ln.startLocalHotspot();
+          if (why != null) _hotspotFailed(why, now);
+        case LocalNetActionKind.stopHotspot:
+          _hotspotOn = false;
+          experiments.updateStatus(hotspotState: 'off');
+          AppLogger.info('NEARBY', detail: 'hotspot stop reason=${plan.reason}');
+          await ln.stopLocalHotspot(plan.reason);
+        case LocalNetActionKind.leave:
+          AppLogger.info('NEARBY',
+              detail: 'local_net leave kind=$_lnKind reason=${plan.reason}');
+          _clearLocalNet();
+          await ln.leaveLocalNet(plan.reason);
+          await ln.setNearbyLinkTarget(null);
+        case LocalNetActionKind.linkGroup:
+        case LocalNetActionKind.joinHotspot:
+          final t = plan.target!;
+          final group = plan.kind == LocalNetActionKind.linkGroup;
+          final ssid = group ? t.group! : t.hotspotSsid!;
+          final key = group ? t.key! : t.hotspotKey!;
+          _lnKind = group ? 'group' : 'hotspot';
+          _lnTo = ssid;
+          _lnFromGroup = _myGroup;
+          _lnState = 'joining';
+          AppLogger.info('NEARBY',
+              detail: 'local_net join kind=$_lnKind target=${t.idHash} '
+                  'reason=${plan.reason} v6=${t.v6 != null}');
+          // Claim the pair at once so group-mates don't link it too.
+          if (group) await ln.setNearbyLinkTarget(NearbyTag.linkIdFor(ssid));
+          final why = await ln.joinLocalNet(
+              kind: _lnKind!, ssid: ssid, key: key, v6: group ? t.v6 : null);
+          if (why != null) await _localNetFailed(why, now);
+        case LocalNetActionKind.none:
+          break;
+      }
+    } catch (error) {
+      AppLogger.info('NEARBY', detail: 'local_net error=$error');
+      if (plan.kind == LocalNetActionKind.startHotspot) {
+        _hotspotFailed('error', now);
+      } else if (plan.kind == LocalNetActionKind.linkGroup ||
+          plan.kind == LocalNetActionKind.joinHotspot) {
+        await _localNetFailed('error', now);
+      }
+    } finally {
+      _lnBusy = false;
+      _publishLocalNetStatus(now);
+    }
+  }
+
+  void _clearLocalNet() {
+    _lnKind = null;
+    _lnTo = null;
+    _lnFromGroup = null;
+    _lnState = 'off';
+  }
+
+  Future<void> _localNetFailed(String reason, int now) async {
+    final wasGroup = _lnKind == 'group';
+    _clearLocalNet();
+    if (reason == 'unsupported_os') {
+      _lnUnsupported = true;
+    } else {
+      _lnOffUntil = now + LocalNetRules.failRestMs;
+    }
+    experiments.updateStatus(reason: reason);
+    AppLogger.info('NEARBY', detail: 'local_net failed reason=$reason');
+    // Give the network back to Android (a held request keeps Wi-Fi busy).
+    try {
+      await _localNet?.leaveLocalNet('failed');
+    } catch (_) {}
+    if (wasGroup) {
+      try {
+        await _localNet?.setNearbyLinkTarget(null);
+      } catch (_) {}
+    }
+  }
+
+  void _hotspotFailed(String reason, int now) {
+    _hotspotOn = false;
+    _hotspotOffUntil = now + LocalNetRules.failRestMs;
+    experiments.updateStatus(hotspotState: 'failed', reason: reason);
+    AppLogger.info('NEARBY', detail: 'hotspot failed reason=$reason');
+  }
+
+  void _applyLocalNetEvent(Map<dynamic, dynamic> event) {
+    final state = event['state']?.toString();
+    final reason = event['reason']?.toString();
+    final now = _clock();
+    switch (state) {
+      case 'linked':
+        if (_lnKind != null) _lnState = 'linked';
+      case 'link_lost':
+        if (_lnKind != null) _lnState = 'joining';
+      case 'failed':
+        if (_lnKind != null) unawaited(_localNetFailed(reason ?? 'failed', now));
+      case 'left':
+        if (_lnKind != null) {
+          // The other network went away by itself: rest a little.
+          final wasGroup = _lnKind == 'group';
+          _clearLocalNet();
+          _lnOffUntil = now + LocalNetRules.lostRestMs;
+          if (wasGroup) {
+            unawaited(_localNet?.setNearbyLinkTarget(null).catchError((_) {}));
+          }
+        }
+    }
+    AppLogger.info('NEARBY',
+        detail: 'local_net event state=$state reason=$reason');
+    _publishLocalNetStatus(now);
+  }
+
+  void _applyHotspotEvent(Map<dynamic, dynamic> event) {
+    final state = event['state']?.toString();
+    final reason = event['reason']?.toString();
+    final now = _clock();
+    switch (state) {
+      case 'on':
+        _hotspotOn = true;
+        experiments.updateStatus(hotspotState: 'on');
+      case 'failed':
+        _hotspotFailed(reason ?? 'failed', now);
+      case 'off':
+        if (_hotspotOn && experiments.shareHotspot) {
+          // Android stopped it while the switch is on: don't loop.
+          _hotspotFailed(reason ?? 'stopped', now);
+        } else {
+          _hotspotOn = false;
+          experiments.updateStatus(hotspotState: 'off');
+        }
+    }
+  }
+
+  void _publishLocalNetStatus(int now) {
+    final String link;
+    if (!experiments.linkGroups) {
+      link = 'off';
+    } else if (_lnUnsupported) {
+      link = 'unsupported';
+    } else if (_lnKind != null) {
+      link = _lnState;
+    } else if (now < _lnOffUntil) {
+      link = 'resting';
+    } else {
+      link = 'waiting';
+    }
+    experiments.updateStatus(
+        linkState: link, linkKind: _lnKind, clearKind: _lnKind == null);
   }
 
   void _record(String state, {int? count}) {
