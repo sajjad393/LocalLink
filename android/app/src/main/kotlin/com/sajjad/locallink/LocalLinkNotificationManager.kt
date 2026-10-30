@@ -347,7 +347,22 @@ object LocalLinkNotificationManager {
         manager.notify(MESSAGE_TAG, notificationId, builder.build())
     }
 
-    fun showSystem(context: Context, notificationId: Int, title: String, body: String, silent: Boolean) {
+    /** Bundle 162 (4.1): "Reply saved" after a reply while the app was closed. */
+    const val REPLY_SAVED_TAG = "locallink_reply_saved"
+
+    fun showReplySaved(context: Context, notificationId: Int) =
+        showSystem(context, notificationId, "Reply saved", "It sends when you open LocalLink.", silent = true, tag = REPLY_SAVED_TAG)
+
+    fun cancelReplySaved(context: Context) {
+        try {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                manager.activeNotifications.filter { it.tag == REPLY_SAVED_TAG }.forEach { manager.cancel(it.tag, it.id) }
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun showSystem(context: Context, notificationId: Int, title: String, body: String, silent: Boolean, tag: String? = null) {
         if (notificationId <= 0 || title.isBlank()) return
         initialize(context)
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -380,7 +395,7 @@ object LocalLinkNotificationManager {
             )
         }
         if (silent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) builder.setSilent(true)
-        manager.notify(notificationId, builder.build())
+        if (tag != null) manager.notify(tag, notificationId, builder.build()) else manager.notify(notificationId, builder.build())
     }
 
     fun cancel(context: Context, notificationId: Int) {

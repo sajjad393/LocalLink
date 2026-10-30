@@ -18,7 +18,6 @@ void main() {
     addTearDown(cubit.close);
 
     cubit.setAdminCapability(true);
-    expect(cubit.enterAdminView(), isFalse);
     cubit.setServerConnected(true);
     expect(cubit.enterAdminView(), isTrue);
     expect(cubit.state.mode, AppViewMode.admin);
@@ -61,7 +60,9 @@ void main() {
 
     expect(cubit.state, const AppViewModeState());
   });
-  test('server disconnect forces an active admin view back to user view', () {
+  // Bundle 162 (6.1): stay in the admin view when the server drops; the
+  // panel locks its server-only parts (Bundle 134).
+  test('server disconnect keeps the admin view, server marked offline', () {
     final cubit = AppViewModeCubit();
     addTearDown(cubit.close);
 
@@ -70,9 +71,23 @@ void main() {
     expect(cubit.enterAdminView(), isTrue);
 
     cubit.setServerConnected(false);
-    expect(cubit.state.mode, AppViewMode.user);
+    expect(cubit.state.mode, AppViewMode.admin);
+    expect(cubit.state.serverConnected, isFalse);
     expect(cubit.state.adminCapable, isTrue);
-    expect(cubit.canEnterAdminView, isFalse);
+    expect(cubit.canEnterAdminView, isTrue);
+
+    cubit.setServerConnected(true);
+    expect(cubit.state.mode, AppViewMode.admin);
+    expect(cubit.state.serverConnected, isTrue);
+  });
+
+  test('an admin can open the admin view while offline (Bundle 134)', () {
+    final cubit = AppViewModeCubit();
+    addTearDown(cubit.close);
+
+    cubit.setAdminCapability(true);
+    expect(cubit.enterAdminView(), isTrue);
+    expect(cubit.state.serverConnected, isFalse);
   });
 
 }

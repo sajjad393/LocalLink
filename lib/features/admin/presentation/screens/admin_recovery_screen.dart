@@ -14,7 +14,7 @@ class AdminRecoveryScreen extends StatelessWidget {
     final code = result['recovery_credential']?.toString() ?? '';
     await showDialog<void>(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (dialogContext) => AlertDialog(
                 title: Text(
                     reissue ? 'Recovery code reissued' : 'Recovery approved'),
                 content: SelectableText(code.isEmpty
@@ -22,9 +22,10 @@ class AdminRecoveryScreen extends StatelessWidget {
                     : 'Give this one-time code to the user:\n\n$code\n\nExpires: ${result['expires_at'] ?? ''}'),
                 actions: [
                   TextButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () => Navigator.pop(dialogContext),
                       child: const Text('Done'))
                 ]));
+    if (!context.mounted) return;
     await context.read<AdminBloc>().load();
   }
 

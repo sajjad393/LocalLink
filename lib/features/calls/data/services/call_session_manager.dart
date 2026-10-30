@@ -406,6 +406,9 @@ final class CallSessionManager implements CallGateway {
         mediaCodec: selectedCodec,
         transportMode: CallTransportMode.offlineMesh,
         directMode: true,
+        // Bundle 162 (4.8): answered now — the screen shows 00:00 at once.
+        // Voice only (video is paused and left exactly as it was).
+        answeredAt: live.videoEnabled ? null : DateTime.now(),
       ));
       // Fire-and-forget: a stalled store must not hold the callee on
       // 'Connecting…' while the microphone is already live below.
@@ -1062,6 +1065,12 @@ final class CallSessionManager implements CallGateway {
       return;
     try {
       _ringTimer?.cancel();
+      // Bundle 162 (4.8): they answered — the screen shows 00:00 at once
+      // instead of "Ringing…" while the sound starts.
+      // Voice only (video is paused and left exactly as it was).
+      if (session.answeredAt == null && !session.videoEnabled) {
+        _setSession(session.copyWith(answeredAt: DateTime.now()));
+      }
       final selectedCodec =
           msg['selected_media_codec']?.toString().trim().toLowerCase();
       if (_transport == null) {
@@ -1075,7 +1084,7 @@ final class CallSessionManager implements CallGateway {
           AppLogger.info('CALL_CODEC_FORCED',
               detail: 'selected=$selectedCodec used=$used');
         }
-        final current = session.copyWith(mediaCodec: used);
+        final current = (_session ?? session).copyWith(mediaCodec: used);
         _setSession(current);
         // Bundle 159: lock only if the other phone agreed (older apps
         // don't send voice_lock and keep plain voice).

@@ -700,6 +700,23 @@ class ReliableMessagingService {
     }
   }
 
+  /// Bundle 162 (4.6): user tapped Resend on a failed message.
+  Future<bool> resendFailed(String id) async {
+    final ok = await store.requeueFailedOutbox(id);
+    AppLogger.info('MESSAGE_RESEND', detail: 'id=$id ok=$ok');
+    if (!ok) return false;
+    final queued = await store.messageById(id);
+    if (queued != null) _incoming.add(queued);
+    unawaited(flush());
+    return true;
+  }
+
+  /// Bundle 162 (4.6): user tapped Delete on a failed message.
+  Future<void> deleteFailed(String id) async {
+    await store.deleteFailedOutbox(id);
+    AppLogger.info('MESSAGE_FAILED_DELETED', detail: 'id=$id');
+  }
+
   Future<void> flush() async {
     if (_flushing) {
       // Watchdog: a hung upload/send must not block the queue forever —
@@ -1210,6 +1227,13 @@ class ReliableMessagingService {
             // retrying can never succeed, so drop it from the queue.
             errorText.contains('already belongs to different');
         await store.updateOutboxStatus(id, permanent ? 'failed' : 'queued');
+        if (permanent) {
+          // Bundle 162 (4.6): show the red mark in the chat so the user can
+          // tap it and pick Resend or Delete.
+          await store.updateMessageStatus(id, status: 'failed');
+          final failed = await store.messageById(id);
+          if (failed != null) _incoming.add(failed);
+        }
         AppLogger.info(
           'MESSAGE_ERROR_CLASSIFIED',
           detail: 'id=$id permanent=$permanent code=$errorCode',

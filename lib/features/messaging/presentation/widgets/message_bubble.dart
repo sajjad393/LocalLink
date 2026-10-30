@@ -13,6 +13,9 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onLongPress;
   final List<MessageReaction> reactions;
 
+  /// Bundle 162 (4.6): tap on a failed (red !) message of mine.
+  final VoidCallback? onFailedTap;
+
   const MessageBubble({
     super.key,
     required this.message,
@@ -20,7 +23,11 @@ class MessageBubble extends StatelessWidget {
     required this.files,
     this.onLongPress,
     this.reactions = const [],
+    this.onFailedTap,
   });
+
+  bool get _canResend =>
+      isMine && onFailedTap != null && message.status.toLowerCase() == 'failed';
 
   @override
   Widget build(BuildContext context) {
@@ -41,9 +48,12 @@ class MessageBubble extends StatelessWidget {
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Semantics(
         label: message.body.isEmpty ? 'Message with attachment' : message.body,
-        button: onLongPress != null,
-        hint: onLongPress != null ? 'Long press for message actions' : null,
+        button: onLongPress != null || _canResend,
+        hint: _canResend
+            ? 'Message not sent. Tap to resend or delete'
+            : (onLongPress != null ? 'Long press for message actions' : null),
         child: GestureDetector(
+          onTap: _canResend ? onFailedTap : null,
           onLongPress: onLongPress,
           child: Container(
             constraints: BoxConstraints(maxWidth: maxWidth),

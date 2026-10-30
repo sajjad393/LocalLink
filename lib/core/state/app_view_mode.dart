@@ -40,11 +40,10 @@ final class AppViewModeCubit extends Cubit<AppViewModeState> {
   /// the panel itself locks its server-only modules while offline.
   bool get canEnterAdminView => state.adminCapable;
 
+  /// Bundle 162 (6.1): a server drop no longer throws the admin out of the
+  /// admin view — it stays, and the panel locks its server-only parts
+  /// (same rule as entering offline, Bundle 134).
   void setServerConnected(bool connected) {
-    if (!connected && state.mode == AppViewMode.admin) {
-      emit(state.copyWith(mode: AppViewMode.user, serverConnected: false));
-      return;
-    }
     emit(state.copyWith(serverConnected: connected));
   }
 
@@ -57,7 +56,7 @@ final class AppViewModeCubit extends Cubit<AppViewModeState> {
   }
 
   bool enterAdminView() {
-    if (!state.adminCapable || !state.serverConnected) return false;
+    if (!canEnterAdminView) return false;
     emit(state.copyWith(mode: AppViewMode.admin));
     return true;
   }

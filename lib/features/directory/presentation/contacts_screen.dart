@@ -91,9 +91,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
           onStartCall: (_) async {
             await widget.calls.startCall(device);
             final session = widget.calls.session;
-            if (session != null && context.mounted) {
-              await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => CallScreen(controller: widget.calls, initialSession: session)));
-            }
+            if (session == null || !mounted) return;
+            await Navigator.push<void>(this.context, MaterialPageRoute(builder: (_) => CallScreen(controller: widget.calls, initialSession: session)));
           },
         ),
       ),
@@ -297,19 +296,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
             FilledButton(
               onPressed: () async {
+                // Bundle 162: the dialog is closed below, so its context is
+                // gone — use this screen's messenger.
+                final messenger = ScaffoldMessenger.of(this.context);
                 Navigator.pop(context);
                 try {
                   await widget.directory
                       .setContactPrivate(profile.userId, isPrivate);
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  messenger.showSnackBar(SnackBar(
                     content: Text(isPrivate
                         ? name + ' marked private'
                         : name + ' is public again'),
                   ));
                 } catch (e) {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                       SnackBar(content: Text('Could not update privacy: ' + e.toString())));
                 }
               },

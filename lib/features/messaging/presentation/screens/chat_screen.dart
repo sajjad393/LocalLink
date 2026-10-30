@@ -285,6 +285,48 @@ class _ChatScreenState extends State<ChatScreen> {
       // to the Chats list, Calls tab, Contacts and Nearby screen.
       PresenceHub.instance.labelOf(device.id);
 
+  /// Bundle 162 (4.6): tap on the red (!) - "Message not sent" sheet.
+  Future<void> _showFailedActions(String messageId) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Message not sent',
+                  style: Theme.of(sheetContext).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: const Icon(Icons.refresh_rounded),
+                title: const Text('Resend'),
+                onTap: () => Navigator.pop(sheetContext, 'resend'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded),
+                title: const Text('Delete'),
+                onTap: () => Navigator.pop(sheetContext, 'delete'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    final bloc = widget.controller;
+    if (choice == 'resend') {
+      final ok = await bloc.resendFailed(messageId);
+      if (!mounted || ok) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This message cannot be resent')));
+    } else if (choice == 'delete') {
+      await bloc.deleteFailed(messageId);
+    }
+  }
+
   Future<void> _showMessageActions(String body, String messageId) async {
     const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
     final selected = await showModalBottomSheet<String>(
@@ -519,6 +561,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                         files: widget.files,
                                         reactions: state.reactions[message.id] ?? const [],
                                         onLongPress: () => _showMessageActions(message.body, message.id),
+                                        onFailedTap: () => _showFailedActions(message.id),
                                       ),
                                     ],
                                   );

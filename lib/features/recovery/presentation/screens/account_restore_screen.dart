@@ -100,7 +100,7 @@ class _AccountRestoreScreenState extends State<AccountRestoreScreen> {
                             : () async {
                                 final pass = await _passphraseDialog(title: 'Create encrypted key backup', confirm: true);
                                 if (pass == null) return;
-                                if (await _controller.createBackup(pass) && mounted) {
+                                if (await _controller.createBackup(pass) && context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Encrypted identity backup saved to the LocalLink server')));
                                 }
                               },
@@ -113,7 +113,8 @@ class _AccountRestoreScreenState extends State<AccountRestoreScreen> {
                             : () async {
                                 String? pass;
                                 if (m.cryptoBackupAvailable) pass = await _passphraseDialog(title: 'Restore encrypted identity backup', confirm: false);
-                                if (mounted && await _controller.restore(passphrase: pass)) {
+                                if (!context.mounted) return;
+                                if (await _controller.restore(passphrase: pass) && context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account data restored')));
                                 }
                               },

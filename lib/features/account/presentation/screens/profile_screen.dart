@@ -262,13 +262,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !context.mounted) return;
     try {
       await widget.authentication!.signOut();
     } catch (_) {}
-    if (!mounted) return;
+    if (!context.mounted) return;
     await widget.onSignedOut!();
-    if (!mounted) return;
+    if (!context.mounted) return;
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 

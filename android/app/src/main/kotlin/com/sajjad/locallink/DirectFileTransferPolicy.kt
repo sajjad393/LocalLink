@@ -25,4 +25,18 @@ internal object DirectFileTransferPolicy {
     fun validTransferSize(size: Long): Boolean = size in 0L..MAX_DIRECT_FILE_SIZE
 
     fun activeBytes(sizes: Collection<Long>): Long = sizes.sumOf { it.coerceAtLeast(0L) }
+
+    /** Bundle 162 (4.5): a received file that fails its check is sent again
+     *  from zero this many times, then it fails for real (no endless spinner). */
+    const val MAX_HASH_RESTARTS = 1
+
+    /** "restart" or "give_up" after [restartsSoFar] restarts. */
+    fun onHashMismatch(restartsSoFar: Int): String =
+        if (restartsSoFar < MAX_HASH_RESTARTS) "restart" else "give_up"
+
+    /** Sender side: every chunk must be sent again. */
+    fun resetForRestart(acknowledged: BooleanArray, lastSentAt: LongArray) {
+        acknowledged.fill(false)
+        lastSentAt.fill(0L)
+    }
 }

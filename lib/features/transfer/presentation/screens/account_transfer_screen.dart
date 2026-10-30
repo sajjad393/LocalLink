@@ -95,7 +95,7 @@ class _AccountTransferScreenState extends State<AccountTransferScreen> {
               const SizedBox(height: 14),
               OutlinedButton.icon(onPressed: _controller.remaining <= Duration.zero ? _controller.start : null, icon: const Icon(Icons.refresh), label: const Text('Generate a new QR')),
               const SizedBox(height: 8),
-              OutlinedButton.icon(onPressed: _controller.cancelling ? null : () async { if (await _controller.cancel() && mounted) Navigator.pop(context); }, icon: _controller.cancelling ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.cancel_outlined), label: const Text('Cancel transfer')),
+              OutlinedButton.icon(onPressed: _controller.cancelling ? null : () async { if (await _controller.cancel() && context.mounted) Navigator.pop(context); }, icon: _controller.cancelling ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.cancel_outlined), label: const Text('Cancel transfer')),
             ],
           );
         },

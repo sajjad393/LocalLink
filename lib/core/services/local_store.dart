@@ -1589,6 +1589,30 @@ class LocalStore {
     );
   }
 
+  /// Bundle 162 (4.6): Resend on a failed message. Status merge never moves
+  /// down from 'failed', so this resets the outbox row and the message row
+  /// directly. Returns false when there is no failed outbox row to resend.
+  Future<bool> requeueFailedOutbox(String id) async {
+    if (id.isEmpty) return false;
+    final n = await _db.rawUpdate(
+      "UPDATE outbox SET status='queued',attempt_count=0,last_attempt_at=NULL "
+      "WHERE id=? AND status='failed'",
+      [id],
+    );
+    if (n == 0) return false;
+    await _db.update('messages', {'status': 'queued'},
+        where: 'id=?', whereArgs: [id]);
+    return true;
+  }
+
+  /// Bundle 162 (4.6): Delete on a failed message - drop it from the queue
+  /// and from the chat.
+  Future<void> deleteFailedOutbox(String id) async {
+    if (id.isEmpty) return;
+    await removeOutbox(id);
+    await deleteMessage(id);
+  }
+
   Future<void> markOutboxAttempt(String id) async => _db.rawUpdate(
         "UPDATE outbox SET status='sending',attempt_count=attempt_count+1,last_attempt_at=? WHERE id=?",
         [DateTime.now().toUtc().toIso8601String(), id],

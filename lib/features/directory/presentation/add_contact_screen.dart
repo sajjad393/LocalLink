@@ -409,7 +409,7 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
                     await widget.repository
                         .setContactPrivate(profile.userId, makePrivate);
                   } catch (e) {
-                    if (!mounted) return;
+                    if (!mounted || !context.mounted) return;
                     setState(() => _isPrivate = !makePrivate);
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                         content: Text('Could not update privacy: $e')));

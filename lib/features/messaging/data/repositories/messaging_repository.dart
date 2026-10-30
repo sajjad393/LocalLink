@@ -65,6 +65,12 @@ final class MessagingRepository implements MessagingRepositoryContract {
   Future<List<MessageReaction>> reactions(String messageId) => service.reactions(messageId);
 
   @override
+  Future<bool> resendFailed(String messageId) => service.resendFailed(messageId);
+
+  @override
+  Future<void> deleteFailed(String messageId) => service.deleteFailed(messageId);
+
+  @override
   Future<void> send(
     String recipientId,
     String body, {

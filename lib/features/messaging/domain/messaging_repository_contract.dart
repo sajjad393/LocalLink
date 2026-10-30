@@ -28,4 +28,10 @@ abstract interface class MessagingRepositoryContract {
   Stream<MessageReaction> get reactionIncoming;
   Future<void> react(String recipientId, String messageId, String emoji);
   Future<List<MessageReaction>> reactions(String messageId);
+
+  /// Bundle 162 (4.6): send a failed message again. False = nothing to resend.
+  Future<bool> resendFailed(String messageId);
+
+  /// Bundle 162 (4.6): remove a failed message from the queue and the chat.
+  Future<void> deleteFailed(String messageId);
 }

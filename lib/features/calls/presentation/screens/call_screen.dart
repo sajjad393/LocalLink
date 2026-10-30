@@ -55,7 +55,16 @@ class _CallScreenState extends State<CallScreen> {
 
   String _cleanError(Object error) => cleanBlocError(error);
 
+  /// Bundle 162 (4.8): a voice call that was answered shows its timer from
+  /// 00:00 at once, not "Connecting…" / "Ringing…" while the sound starts.
+  bool _answeredVoice(CallSession session) =>
+      session.answeredAt != null && !session.videoEnabled;
+
   String _statusTextFor(CallSession session) => switch (session.state) {
+        CallState.ringing || CallState.connecting
+            when _answeredVoice(session) =>
+          _formatDuration(
+              DateTime.now().difference(session.answeredAt!).inSeconds),
         CallState.ringing => session.direction == CallDirection.outgoing
             ? 'Ringing…'
             : 'Incoming call',

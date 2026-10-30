@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/services/local_store.dart';
@@ -202,6 +204,7 @@ class _SetupScreenState extends State<SetupScreen> {
 
   Future<void> _runRestoreWithProgress({String? passphrase}) async {
     while (mounted) {
+      if (!mounted) return;
       final detail = ValueNotifier<String>('Starting restore…');
       final done = showDialog<bool>(
         context: context,
@@ -262,7 +265,9 @@ class _SetupScreenState extends State<SetupScreen> {
         );
         if (retry != true) return;
       } finally {
-        detail.dispose();
+        // Bundle 162: the closing dialog still listens for a moment.
+        unawaited(done.whenComplete(() => Future<void>.delayed(
+            const Duration(seconds: 1), detail.dispose)));
       }
     }
   }

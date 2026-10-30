@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.app.RemoteInput
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 
 /** Converts notification actions into validated Flutter-layer events. */
 class LocalLinkNotificationActionReceiver : BroadcastReceiver() {
@@ -63,6 +64,29 @@ class LocalLinkNotificationActionReceiver : BroadcastReceiver() {
 
         // Bundle 151: message actions go to the MESSAGE handler.
         if (MainActivity.dispatchMessageNotificationAction(dispatchIntent)) return
+        // Bundle 162 (4.1): the app screen is closed. Android 12+ blocks
+        // opening it from a notification button, so Reply / Mark read are
+        // saved and handed to the app when it starts — never lost.
+        if (action != "open" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (action == "reply" && replyText.isNullOrBlank()) return
+            NotificationActionOutbox.add(context, mapOf(
+                "action" to action,
+                "notification_id" to notificationId,
+                "conversation_type" to conversationType,
+                "conversation_id" to conversationId,
+                "message_id" to messageId,
+                "sender_id" to senderId,
+                "recipient_id" to recipientId,
+                "attachment_id" to intent.getStringExtra(LocalLinkNotificationManager.EXTRA_ATTACHMENT_ID)?.takeIf { it.isNotBlank() },
+                "reply_text" to replyText?.takeIf { it.isNotBlank() },
+            ))
+            android.util.Log.i("LocalLinkNotify", "NOTIFICATION_ACTION_SAVED action=$action pending=${NotificationActionOutbox.count(context)}")
+            LocalLinkNotificationManager.cancel(context, notificationId)
+            if (action == "reply") {
+                LocalLinkNotificationManager.showReplySaved(context, notificationId)
+            }
+            return
+        }
         dispatchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         context.startActivity(dispatchIntent)
     }

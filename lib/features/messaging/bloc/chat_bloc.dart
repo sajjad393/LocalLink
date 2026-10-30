@@ -181,6 +181,32 @@ final class ChatBloc extends Cubit<ChatState> {
     }
   }
 
+  /// Bundle 162 (4.6): Resend from the failed-message sheet.
+  Future<bool> resendFailed(String messageId) async {
+    if (isClosed || messageId.isEmpty) return false;
+    try {
+      return await repository.resendFailed(messageId);
+    } catch (e) {
+      if (!isClosed) emit(state.copyWith(error: cleanBlocError(e)));
+      return false;
+    }
+  }
+
+  /// Bundle 162 (4.6): Delete from the failed-message sheet.
+  Future<void> deleteFailed(String messageId) async {
+    if (isClosed || messageId.isEmpty) return;
+    try {
+      await repository.deleteFailed(messageId);
+      if (isClosed) return;
+      emit(state.copyWith(
+          messages: state.messages
+              .where((m) => m.id != messageId)
+              .toList(growable: false)));
+    } catch (e) {
+      if (!isClosed) emit(state.copyWith(error: cleanBlocError(e)));
+    }
+  }
+
   void _onReaction(MessageReaction reaction) {
     if (isClosed) return;
     final current = [...(state.reactions[reaction.messageId] ?? const <MessageReaction>[])];
