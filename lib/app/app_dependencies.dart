@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:locallink/features/connectivity/data/services/nearby_admin_status.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
+import 'package:locallink/core/services/session_key_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/config/app_config.dart';
 import 'package:locallink/core/network/api_http_client.dart';
@@ -97,7 +98,13 @@ class AppDependencies {
         crypto = IdentityCryptoService(secureStorage: secureStorage ?? const SecureStorageService()) {
     final sealing = directTransport;
     if (sealing is SealingPeerTransport) {
-      sealing.bind(StoreSealKeySource(store: store, crypto: crypto));
+      // Bundle 166 (5.2): fresh keys (daily session key + one-time key).
+      sealing.bind(
+        StoreSealKeySource(store: store, crypto: crypto),
+        sessions: SessionKeyService(
+          vault: SecureSessionKeyVault(this.secureStorage),
+        ),
+      );
     }
     api = LocalLinkApi(store, socket, httpClient: this.httpClient);
     connectivityRepository = ConnectivityRepository(

@@ -39,6 +39,10 @@ class MessageSealService {
 
   static const int version = 1;
 
+  /// Bundle 166 (5.2): fresh keys - a one-time key per message plus the
+  /// receiver's daily session key (see SessionKeyService).
+  static const int freshVersion = 2;
+
   /// Store-and-forward class (chat, receipts, call signals).
   static const String sealedType = 'sealed';
 
@@ -163,6 +167,100 @@ class MessageSealService {
     };
   }
 
+  static List<int> _aad2(
+    String outer,
+    String senderId,
+    String recipientId,
+    String sk,
+    String rk,
+    String pk,
+    String ek,
+  ) =>
+      utf8.encode('v$freshVersion|$outer|$senderId|$recipientId|$sk|$rk|$pk|$ek');
+
+  Future<SecretKey> _freshKey({
+    required List<int> dhSession,
+    required List<int> dhIdentity,
+    required String senderId,
+    required String recipientId,
+    required String sk,
+    required String rk,
+    required String pk,
+    required String ek,
+  }) =>
+      _hkdf.deriveKey(
+        secretKey: SecretKey([...dhSession, ...dhIdentity]),
+        nonce: utf8.encode('locallink-seal-v$freshVersion'),
+        info: utf8.encode('v$freshVersion|$senderId|$recipientId|$sk|$rk|$pk|$ek'),
+      );
+
+  /// Bundle 166 (5.2): seals [payload] with fresh keys.
+  ///
+  /// key = HKDF( X25519(one-time key, receiver's session key)
+  ///           | X25519(my identity key, receiver's identity key) )
+  /// The one-time key is made here and forgotten when this returns, so
+  /// later nobody - not even this phone - can work the key out again
+  /// without the receiver's session key, which is deleted after 3 days.
+  /// The identity part still proves who sent it.
+  Future<Map<String, dynamic>> sealFresh({
+    required Map<String, dynamic> payload,
+    required String senderId,
+    required String recipientId,
+    required SealKeyPair mine,
+    required List<int> theirPublic,
+    required String theirSessionId,
+    required List<int> theirSessionPublic,
+    String? outerType,
+  }) async {
+    if (theirPublic.length != 32 || theirSessionPublic.length != 32) {
+      throw ArgumentError('recipient keys must be 32 bytes');
+    }
+    final innerType = payload['type']?.toString();
+    final outer =
+        outerType ??
+        (queueableInnerTypes.contains(innerType) ? sealedType : sealedLiveType);
+    final sk = keyId(mine.publicKey);
+    final rk = keyId(theirPublic);
+    final pk = theirSessionId;
+    final once = await _x25519.newKeyPair();
+    final ekBytes = (await once.extractPublicKey()).bytes;
+    final ek = _b64(ekBytes);
+    final dhSession = await (await _x25519.sharedSecretKey(
+      keyPair: once,
+      remotePublicKey: SimplePublicKey(theirSessionPublic, type: KeyPairType.x25519),
+    )).extractBytes();
+    final dhIdentity = await (await _x25519.sharedSecretKey(
+      keyPair: mine.pair,
+      remotePublicKey: SimplePublicKey(theirPublic, type: KeyPairType.x25519),
+    )).extractBytes();
+    final key = await _freshKey(
+      dhSession: dhSession,
+      dhIdentity: dhIdentity,
+      senderId: senderId,
+      recipientId: recipientId,
+      sk: sk,
+      rk: rk,
+      pk: pk,
+      ek: ek,
+    );
+    final box = await _aes.encrypt(
+      utf8.encode(jsonEncode(payload)),
+      secretKey: key,
+      nonce: _aes.newNonce(),
+      aad: _aad2(outer, senderId, recipientId, sk, rk, pk, ek),
+    );
+    return <String, dynamic>{
+      'type': outer,
+      'v': freshVersion,
+      'sk': sk,
+      'rk': rk,
+      'pk': pk,
+      'e': ek,
+      'n': _b64(box.nonce),
+      'c': _b64([...box.cipherText, ...box.mac.bytes]),
+    };
+  }
+
   /// Opens a sealed packet that arrived from [senderId] for [recipientId].
   /// [mine] = this phone's key pairs (current and older versions).
   /// Throws [SealOpenException] when it can't be opened.
@@ -172,10 +270,14 @@ class MessageSealService {
     required String recipientId,
     required List<SealKeyPair> mine,
     required List<int> theirPublic,
+    Future<SimpleKeyPair?> Function(String sessionId)? sessionKey,
   }) async {
     final outer = sealed['type']?.toString();
     if (!isSealedType(outer)) throw const SealOpenException('not_sealed');
-    if (sealed['v'] != version) throw const SealOpenException('version');
+    final v = sealed['v'];
+    if (v != version && v != freshVersion) {
+      throw const SealOpenException('version');
+    }
     final sk = sealed['sk']?.toString() ?? '';
     final rk = sealed['rk']?.toString() ?? '';
     SealKeyPair? own;
@@ -202,14 +304,52 @@ class MessageSealService {
     }
     // Keys are derived in the SENDER→RECEIVER direction on both phones: the
     // receiver uses its own private key with the sender's public key.
-    final key = await _key(
-      mine: own,
-      theirPublic: theirPublic,
-      senderId: senderId,
-      recipientId: recipientId,
-      sk: sk,
-      rk: rk,
-    );
+    final SecretKey key;
+    final List<int> aad;
+    if (v == freshVersion) {
+      // Bundle 166: fresh keys - my session key (by id) with the sender's
+      // one-time key, plus both identity keys.
+      final pk = sealed['pk']?.toString() ?? '';
+      final ek = sealed['e']?.toString() ?? '';
+      final List<int> ekBytes;
+      try {
+        ekBytes = _unb64(ek);
+      } catch (_) {
+        throw const SealOpenException('bad_encoding');
+      }
+      if (ekBytes.length != 32) throw const SealOpenException('bad_size');
+      final session = sessionKey == null ? null : await sessionKey(pk);
+      if (session == null) throw const SealOpenException('unknown_session_key');
+      final dhSession = await (await _x25519.sharedSecretKey(
+        keyPair: session,
+        remotePublicKey: SimplePublicKey(ekBytes, type: KeyPairType.x25519),
+      )).extractBytes();
+      final dhIdentity = await (await _x25519.sharedSecretKey(
+        keyPair: own.pair,
+        remotePublicKey: SimplePublicKey(theirPublic, type: KeyPairType.x25519),
+      )).extractBytes();
+      key = await _freshKey(
+        dhSession: dhSession,
+        dhIdentity: dhIdentity,
+        senderId: senderId,
+        recipientId: recipientId,
+        sk: sk,
+        rk: rk,
+        pk: pk,
+        ek: ek,
+      );
+      aad = _aad2(outer!, senderId, recipientId, sk, rk, pk, ek);
+    } else {
+      key = await _key(
+        mine: own,
+        theirPublic: theirPublic,
+        senderId: senderId,
+        recipientId: recipientId,
+        sk: sk,
+        rk: rk,
+      );
+      aad = _aad(outer!, senderId, recipientId, sk, rk);
+    }
     final List<int> clear;
     try {
       clear = await _aes.decrypt(
@@ -219,7 +359,7 @@ class MessageSealService {
           mac: Mac(data.sublist(data.length - 16)),
         ),
         secretKey: key,
-        aad: _aad(outer!, senderId, recipientId, sk, rk),
+        aad: aad,
       );
     } on SecretBoxAuthenticationError {
       throw const SealOpenException('auth_failed');
