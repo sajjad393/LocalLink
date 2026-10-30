@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -280,9 +281,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _presenceLabel(Device device) =>
-      // Presence with path, app-wide: Nearby (direct link survives a dead
-      // server/router) vs Online (server path only) vs Offline.
-      device.presenceLabel();
+      // Bundle 148: the one app-wide live status (PresenceHub) — identical
+      // to the Chats list, Calls tab, Contacts and Nearby screen.
+      PresenceHub.instance.labelOf(device.id);
 
   Future<void> _showMessageActions(String body, String messageId) async {
     const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -422,7 +423,13 @@ class _ChatScreenState extends State<ChatScreen> {
                                     letterSpacing: .1,
                                   ),
                             ),
-                            Text(_presenceLabel(device), style: Theme.of(context).textTheme.bodySmall),
+                            ListenableBuilder(
+                              listenable: PresenceHub.instance,
+                              builder: (context, _) => Text(
+                                _presenceLabel(device),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
                           ],
                         ),
                       ),

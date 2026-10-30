@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
@@ -159,7 +160,16 @@ class PresenceAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final channel = device.presenceChannel();
+    // Bundle 148: live status from the one app-wide PresenceHub, so the
+    // Chats list, chat header and Calls tab always show the same thing.
+    return ListenableBuilder(
+      listenable: PresenceHub.instance,
+      builder: (context, _) => _badge(context),
+    );
+  }
+
+  Widget _badge(BuildContext context) {
+    final channel = PresenceHub.instance.channelOf(device.id);
     final colors = Theme.of(context).colorScheme;
     final (chipColor, icon) = switch (channel) {
       'nearby' => (colors.primary, Icons.wifi_rounded),

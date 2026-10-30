@@ -190,23 +190,6 @@ final class ChatBloc extends Cubit<ChatState> {
     emit(state.copyWith(reactions: next));
   }
 
-  void updatePresence(Map<String, dynamic> event) {
-    if (event['device_id']?.toString() != state.device.id) return;
-    final d = Device.fromJson({
-      'id': state.device.id,
-      'name': state.device.name,
-      'platform': state.device.platform,
-      'created_at': state.device.createdAt,
-      'last_seen_at':
-          event['last_seen_at']?.toString() ?? state.device.lastSeenAt,
-      'network_status': event['network_status'],
-      'server_connected': event['server_connected'] == true,
-      'wifi_direct_connected': event['wifi_direct_connected'] == true,
-      'status_updated_at': event['status_updated_at']?.toString() ?? ''
-    });
-    if (!isClosed) emit(state.copyWith(device: d));
-  }
-
   void clearError() {
     if (!isClosed && state.error != null) emit(state.copyWith(clearError: true));
   }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
@@ -340,7 +341,10 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: LocalLinkSpacing.lg),
-              BlocBuilder<MeshBloc, MeshState>(
+              // Bundle 148: names + live status come from PresenceHub.
+              ListenableBuilder(
+                listenable: PresenceHub.instance,
+                builder: (context, _) => BlocBuilder<MeshBloc, MeshState>(
                 bloc: widget.mesh,
                 builder: (context, meshState) {
                   final meshPeers = meshState.peers.values.toList();
@@ -401,9 +405,10 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                               icon: paired
                                   ? Icons.check_circle_outline_rounded
                                   : Icons.wifi_find_rounded,
-                              title: peers.length == 1 && peers.first.name.isNotEmpty
-                                  ? peers.first.name
-                                  : 'LocalLink phone nearby ·…${peer.nodeId.length > 8 ? peer.nodeId.substring(peer.nodeId.length - 8) : peer.nodeId}',
+                              title: _personName(peer.nodeId) ??
+                                  (peers.length == 1 && peers.first.name.isNotEmpty
+                                      ? peers.first.name
+                                      : 'LocalLink phone nearby ·…${_shortId(peer.nodeId)}'),
                               subtitle: paired
                                   ? 'Paired — find them in the People tab'
                                   : 'Same Wi-Fi / LAN — not paired yet',
@@ -440,16 +445,21 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                         ...live.map(
                           (peer) => _NearbyCard(
                             icon: Icons.check_circle_outline_rounded,
-                            title:
-                                'Connected ·…${peer.nodeId.length > 8 ? peer.nodeId.substring(peer.nodeId.length - 8) : peer.nodeId}',
-                            subtitle:
-                                '${peer.state.toLowerCase()} — ${_nearbyTransportLabel(peer.transport)} · ${_nearbyWhen(peer.lastSeenAt)}',
+                            // Bundle 148: the person's name and the same
+                            // status every other screen shows.
+                            title: _personName(peer.nodeId) ??
+                                'LocalLink phone ·…${_shortId(peer.nodeId)}',
+                            subtitle: PresenceHub.instance.statusOf(peer.nodeId) ==
+                                    PresenceStatus.nearby
+                                ? 'Nearby · ${_nearbyWhen(peer.lastSeenAt)}'
+                                : 'Found nearby — connecting…',
                           ),
                         ),
                       ],
                     ],
                   );
                 },
+              ),
               ),
             ],
           ),
@@ -468,11 +478,11 @@ String _nearbyWhen(int? lastSeenAt) {
   return 'seen ${(age / 60000).round()}m ago';
 }
 
-String _nearbyTransportLabel(String transport) => switch (transport) {
-      'lan' => 'same Wi-Fi / LAN',
-      'wifi_direct' => 'Wi-Fi Direct',
-      _ => 'local network',
-    };
+/// Bundle 148: node id == device id, so a paired phone shows its person.
+String? _personName(String nodeId) => PresenceHub.instance.nameOf(nodeId);
+
+String _shortId(String id) =>
+    id.length > 8 ? id.substring(id.length - 8) : id;
 
 /// Bundle 118: single compact card per nearby phone — one title, one short
 /// subtitle, at most one action. Replaces the old two-section layout

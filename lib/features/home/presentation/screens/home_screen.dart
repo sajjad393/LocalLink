@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/services.dart';
@@ -704,9 +705,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _deviceSubtitle(Device device) =>
-      // Presence with path: Nearby (direct link) vs Online (server) vs
-      // Offline — one rule everywhere: locally-stamped liveness only.
-      device.presenceLabel();
+      // Bundle 148: the one app-wide live status (PresenceHub).
+      PresenceHub.instance.labelOf(device.id);
 
   Widget _chatsTab() {
     return Scaffold(
@@ -798,15 +798,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                     ..._visibleDevices(state).map(
-                      (device) => MessengerConversationTile(
-                        // People-facing titles show the profile nickname; a
-                        // device label ("My Android Phone") is never a person.
-                        title: state.deviceLabels[device.id] ?? 'Unknown user',
-                        subtitle: _deviceSubtitle(device),
-                        device: device,
-                        unreadCount: _unreadDirectCounts[device.id] ?? 0,
-                        onTap: () => _openChat(device),
-                        onCall: () => _call(device),
+                      (device) => ListenableBuilder(
+                        listenable: PresenceHub.instance,
+                        builder: (context, _) => MessengerConversationTile(
+                          // People-facing titles show the profile nickname; a
+                          // device label ("My Android Phone") is never a person.
+                          title: state.deviceLabels[device.id] ?? 'Unknown user',
+                          subtitle: _deviceSubtitle(device),
+                          device: device,
+                          unreadCount: _unreadDirectCounts[device.id] ?? 0,
+                          onTap: () => _openChat(device),
+                          onCall: () => _call(device),
+                        ),
                       ),
                     ),
                   ]),

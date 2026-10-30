@@ -120,8 +120,10 @@ class PresenceService {
       'signing_public_key': signingKey,
     });
     final last = _lastPublishAt;
+    // Bundle 148: 25 s (not 30 s) so the 30 s timer never skips a beat by a
+    // few milliseconds — a skipped beat meant a 60 s gap and a status flicker.
     if (!force && _lastPublishedSignature == signature &&
-        last != null && now.difference(last) < const Duration(seconds: 30)) {
+        last != null && now.difference(last) < const Duration(seconds: 25)) {
       return;
     }
     if (last != null && now.difference(last) < const Duration(seconds: 5)) {

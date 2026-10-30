@@ -15,6 +15,7 @@ import 'package:locallink/features/directory/data/services/pairing_service.dart'
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
 import 'package:locallink/features/files/presentation/widgets/chat_video_hub.dart';
+import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/features/files/presentation/widgets/media_view_cache.dart';
 
 class LocalLinkApp extends StatefulWidget {
@@ -51,6 +52,19 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     // Bundle 147: mini video player + picture-in-picture for chat videos.
     ChatVideoHub.instance.attach(navigatorKey: _navigatorKey);
+    // Bundle 148: one live status (Nearby / Online / Offline) for every
+    // screen, judged from what THIS phone receives and over which path.
+    PresenceHub.instance.attach(
+      directEvents: _deps.directTransport.events,
+      serverMessages: _deps.socket.messages,
+      serverConnection: _deps.socket.connectionState,
+      localDeviceId: () => _deps.store.deviceId,
+      userResolver: (id) async {
+        final profile = await _deps.store.directoryProfileByDeviceId(id);
+        return profile?['user_id']?.toString();
+      },
+      nameResolver: _deps.store.peerDisplayName,
+    );
     _router = AppRouter(
       dependencies: _deps,
       onSaved: _finishOnboarding,
@@ -240,7 +254,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v2 · bundles 104-147 (2026-10-30)');
+        detail: 'v2 · bundles 104-148 (2026-10-30)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -468,6 +482,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
 
   Future<void> _resetAccount() async {
     ChatVideoHub.instance.stopAll();
+    PresenceHub.instance.forgetPeople();
     MediaViewCache.instance.forgetAll();
     try {
       await _deps.calls.endCall(reason: 'account_reset');

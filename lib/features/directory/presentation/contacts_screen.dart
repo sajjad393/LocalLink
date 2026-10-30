@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/widgets/messenger_conversation_tile.dart' show PresenceAvatar;
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
@@ -222,7 +223,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
       tiles.add(
         ListTile(
           minVerticalPadding: LocalLinkSpacing.sm,
-          leading: AccountAvatar(name: title, radius: 24),
+          // Bundle 148: same live status badge as Chats / Calls.
+          leading: profile.deviceId.isEmpty
+              ? AccountAvatar(name: title, radius: 24)
+              : PresenceAvatar(
+                  avatar: AccountAvatar(name: title, radius: 24),
+                  device: _device(profile),
+                ),
           title: Text(title, style: Theme.of(context).textTheme.titleSmall),
           subtitle: Text('@${profile.username}',
               maxLines: 1, overflow: TextOverflow.ellipsis),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/group.dart';
@@ -61,8 +62,15 @@ final class HomeBloc extends Cubit<HomeState> {
   bool _closed = false;
   bool _localDiscoveryAttempted = false;
 
-  HomeBloc({required this.repository, this.onServerSyncUnavailable})
-      : super(const HomeState());
+  HomeBloc({
+    required this.repository,
+    this.onServerSyncUnavailable,
+    PresenceHub? presence,
+  })  : presence = presence ?? PresenceHub.instance,
+        super(const HomeState());
+
+  /// Bundle 148: the one live status source every screen reads.
+  final PresenceHub presence;
 
   List<Device> get devices => state.devices;
   List<LocalGroup> get groups => state.groups;
@@ -107,6 +115,11 @@ final class HomeBloc extends Cubit<HomeState> {
           .toList();
       for (final device in devices) {
         if (_closed) return;
+        // Bundle 148: the server's list says only whether a person is
+        // connected to the SERVER right now — never touches Nearby.
+        if (device.id != repository.localDeviceId) {
+          presence.serverReport(device.id, connected: device.serverConnected);
+        }
         await repository.cacheDevice(device);
         if (wasReportedOnline(device)) {
           unawaited(repository.markDeviceSeen(device.id));
@@ -297,6 +310,7 @@ final class HomeBloc extends Cubit<HomeState> {
       } catch (_) {
         userId = null;
       }
+      presence.linkUser(device.id, userId);
       if (userId == null || userId.isEmpty) {
         standalone.add(device);
         continue;
@@ -311,8 +325,10 @@ final class HomeBloc extends Cubit<HomeState> {
 
   /// Picks which device should represent a user in the conversation list: an
   /// online device wins, otherwise the one seen most recently.
-  static bool _isBetterConversationPeer(Device a, Device b) {
-    bool online(Device d) => d.isOnline();
+  bool _isBetterConversationPeer(Device a, Device b) {
+    // Bundle 148: same live rule as every screen (per device, not merged).
+    bool online(Device d) =>
+        presence.statusOfDevice(d.id) != PresenceStatus.offline;
     if (online(a) != online(b)) return online(a);
     return a.lastSeenAt.compareTo(b.lastSeenAt) > 0;
   }

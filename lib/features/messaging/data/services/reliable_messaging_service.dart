@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/message.dart';
@@ -1380,6 +1381,7 @@ class ReliableMessagingService {
         // A server-relayed message implies the peer's client is alive now:
         // count it as liveness for the binary Online window.
         unawaited(store.touchDevicePresence(message.senderId, viaServer: true));
+        PresenceHub.instance.noteServer(message.senderId); // Bundle 148
       }
       if (message == null) {
         AppLogger.error(
@@ -1838,6 +1840,7 @@ class ReliableMessagingService {
         // Mesh delivery just proved the peer is alive: refresh its binary
         // presence stamp (our clock, not theirs).
         unawaited(store.touchDevicePresence(message.senderId, viaMesh: true));
+        PresenceHub.instance.noteNearby(message.senderId); // Bundle 148
 
         // --------------------------------------------------------------------
         // RESOLVE DIRECT ATTACHMENTS
@@ -2038,6 +2041,8 @@ class ReliableMessagingService {
         // Their ack travelled back over the mesh: the acking peer is alive.
         unawaited(store.touchDevicePresence(data['sender_id']?.toString() ?? '',
             viaMesh: true));
+        PresenceHub.instance
+            .noteNearby(data['sender_id']?.toString() ?? ''); // Bundle 148
 
         final now = DateTime.now().toUtc();
 

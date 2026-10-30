@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/widgets/local_link_status_badge.dart';
 
@@ -12,7 +13,9 @@ import 'package:locallink/core/widgets/local_link_status_badge.dart';
 /// or via server), outline grey when offline/unknown.
 Color deviceStatusColor(BuildContext context, Device device) {
   final colors = Theme.of(context).colorScheme;
-  return device.presenceChannel() == 'offline' ? colors.outline : colors.primary;
+  return PresenceHub.instance.channelOf(device.id) == 'offline'
+      ? colors.outline
+      : colors.primary;
 }
 
 class DeviceStatusIndicator extends StatelessWidget {
@@ -25,14 +28,20 @@ class DeviceStatusIndicator extends StatelessWidget {
     this.showLabel = true,
   });
 
-  String get _channel => device.presenceChannel();
+  String get _channel => PresenceHub.instance.channelOf(device.id);
   bool get _online => _channel != 'offline';
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+        // Bundle 148: rebuild whenever the app-wide live status changes.
+        listenable: PresenceHub.instance,
+        builder: (context, _) => _build(context),
+      );
+
+  Widget _build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final color = _online ? colors.primary : colors.outline;
-    final label = device.presenceLabel();
+    final label = PresenceHub.instance.labelOf(device.id);
     final icon = switch (_channel) {
       'nearby' => Icons.wifi_rounded,
       'server' => Icons.public_rounded,
