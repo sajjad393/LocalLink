@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:locallink/core/models/call.dart';
@@ -160,7 +159,13 @@ final class CallSessionManager implements CallGateway {
       final queuedAt = _lifecycleQueuedAt[key] ?? DateTime.now();
       final callId = entry.value['call_id']?.toString() ?? '';
       final inbound = _lifecycleInboundRxAt[callId];
-      final settled = inbound != null && inbound.isAfter(queuedAt);
+      // Bundle 146: an answered call whose audio is arriving proves the
+      // accept landed; stop resending it (logs showed 20 s of resends).
+      final mediaProves = key.startsWith('call_accept|') &&
+          _session?.id == callId &&
+          _mediaIsLive;
+      final settled =
+          (inbound != null && inbound.isAfter(queuedAt)) || mediaProves;
       final expired =
           DateTime.now().difference(queuedAt) > const Duration(seconds: 20);
       if (settled || expired) {
@@ -320,19 +325,45 @@ final class CallSessionManager implements CallGateway {
     });
   }
 
+  // Bundle 146: two accepts for the same call (notification + screen, or a
+  // duplicate notification dispatch) both passed the 'ringing' check while
+  // the first waited on a slow store, so media started twice (the receiver's
+  // audio restarted ~1 s after accept in the logs).
+  String? _acceptingCallId;
+
   Future<void> acceptIncoming() async {
     final session = _session;
     if (session == null ||
         session.direction != CallDirection.incoming ||
         session.state != CallState.ringing) return;
+    if (_acceptingCallId == session.id) {
+      AppLogger.info('CALL_ACCEPT_DUPLICATE_IGNORED', detail: 'call=${session.id}');
+      return;
+    }
+    _acceptingCallId = session.id;
+    try {
+      await _acceptIncomingOnce(session);
+    } finally {
+      if (_acceptingCallId == session.id) _acceptingCallId = null;
+    }
+  }
+
+  Future<void> _acceptIncomingOnce(CallSession session) async {
     if (await store.isBlockedPeer(session.peerId)) {
       await rejectIncoming(reason: 'blocked');
+      return;
+    }
+    // The store wait above can be slow; the call may have ended meanwhile.
+    final live = _session;
+    if (live == null ||
+        live.id != session.id ||
+        live.state != CallState.ringing) {
       return;
     }
     try {
       _cancelCallTimers();
       final selectedCodec = await _negotiateCodec(session.supportedMediaCodecs);
-      _setSession(session.copyWith(
+      _setSession(live.copyWith(
         state: CallState.connecting,
         mediaCodec: selectedCodec,
         transportMode: CallTransportMode.offlineMesh,
@@ -552,6 +583,11 @@ final class CallSessionManager implements CallGateway {
     if (_disposed) return;
     _disposed = true;
     _cancelCallTimers();
+    _clearPendingNotificationAccept();
+    unawaited(notificationPlatform.setCallLockScreen(
+        show: false, turnScreenOn: false));
+    await _callScreenRequestController.close();
+    await _callUnavailableController.close();
     _routeChurnSummaryTimer?.cancel();
     _routeChurnSummaryTimer = null;
     _routeChurnPending.clear();
@@ -810,26 +846,152 @@ final class CallSessionManager implements CallGateway {
     }));
   }
 
+  // Bundle 146: notification Accept opens the call screen.
+  // The app reads [requestedCallScreenId] (or listens to [callScreenRequests])
+  // and pushes CallScreen for a LIVE call, not only a ringing one.
+  final _callScreenRequestController = StreamController<String>.broadcast();
+  final _callUnavailableController = StreamController<String>.broadcast();
+  String? _requestedCallScreenId;
+  String? _pendingUnavailableNotice;
+  CallNotificationAction? _pendingNotificationAccept;
+  Timer? _pendingNotificationAcceptTimer;
+  @visibleForTesting
+  static Duration coldAcceptWindow = const Duration(seconds: 10);
+
+  @override
+  Stream<String> get callScreenRequests => _callScreenRequestController.stream;
+  @override
+  Stream<String> get callUnavailableNotices =>
+      _callUnavailableController.stream;
+  @override
+  String? get requestedCallScreenId => _requestedCallScreenId;
+
+  @override
+  void clearCallScreenRequest(String callId) {
+    if (_requestedCallScreenId == callId) _requestedCallScreenId = null;
+  }
+
+  @override
+  String? takeCallUnavailableNotice() {
+    final notice = _pendingUnavailableNotice;
+    _pendingUnavailableNotice = null;
+    return notice;
+  }
+
+  void _requestCallScreen(String callId) {
+    _requestedCallScreenId = callId;
+    if (!_callScreenRequestController.isClosed) {
+      _callScreenRequestController.add(callId);
+    }
+  }
+
+  void _noticeCallUnavailable(String callId, String reason) {
+    AppLogger.info('CALL_NOTIFICATION_ACCEPT_UNAVAILABLE',
+        detail: 'call=$callId reason=$reason');
+    _pendingUnavailableNotice = callId;
+    if (!_callUnavailableController.isClosed) {
+      _callUnavailableController.add(callId);
+    }
+    // The Accept intent may have lifted the app over the lock screen; with no
+    // call to show, hand the lock screen back.
+    if (_session == null || _session!.isFinished) {
+      _lastLockScreenShow = null;
+      _syncCallLockScreen(_session);
+    }
+  }
+
+  void _clearPendingNotificationAccept() {
+    _pendingNotificationAcceptTimer?.cancel();
+    _pendingNotificationAcceptTimer = null;
+    _pendingNotificationAccept = null;
+  }
+
   Future<void> _handleNotificationAction(CallNotificationAction action) async {
+    AppLogger.info('CALL_NOTIFICATION_ACTION',
+        detail: 'action=${action.type.name} call=${action.callId} '
+            'app=${_appInForeground ? 'foreground' : 'background'} '
+            'session=${_session?.id == action.callId ? _session!.state.name : (_session == null ? 'none' : 'other')}');
     final session = _session;
-    if (session == null ||
+    final matches = session != null &&
+        session.id == action.callId &&
+        session.peerId == action.callerId;
+
+    if (action.type == CallNotificationActionType.accept) {
+      if (session == null) {
+        // Cold start: the app was swiped away while ringing, the Accept
+        // intent restarted it, and no session exists yet. Wait briefly for a
+        // matching ringing session (re-delivered invite), then give up with
+        // a visible notice instead of hanging.
+        _clearPendingNotificationAccept();
+        _pendingNotificationAccept = action;
+        _pendingNotificationAcceptTimer = Timer(coldAcceptWindow, () {
+          final pending = _pendingNotificationAccept;
+          if (pending == null || _disposed) return;
+          _clearPendingNotificationAccept();
+          _noticeCallUnavailable(pending.callId, 'no_session');
+        });
+        return;
+      }
+      if (!matches || session.isFinished) {
+        _noticeCallUnavailable(
+            action.callId, matches ? 'finished' : 'other_call');
+        return;
+      }
+      if (session.direction != CallDirection.incoming) return;
+      if (session.state != CallState.ringing) {
+        // Already accepted (duplicate action or in-app accept): just make
+        // sure the call screen is shown.
+        _requestCallScreen(session.id);
+        return;
+      }
+      if (await store.isBlockedPeer(session.peerId)) {
+        await rejectIncoming(reason: 'blocked');
+        return;
+      }
+      // Request first so the session change that acceptIncoming() emits
+      // already carries the request to the app.
+      _requestCallScreen(session.id);
+      try {
+        await acceptIncoming();
+      } catch (_) {}
+      final after = _session;
+      if (after == null || after.id != session.id || after.isFinished) {
+        clearCallScreenRequest(session.id);
+      }
+      return;
+    }
+
+    // Reject
+    if (!matches ||
         session.isFinished ||
         session.direction != CallDirection.incoming ||
-        session.state != CallState.ringing ||
-        session.id != action.callId ||
-        session.peerId != action.callerId) return;
-    if (await store.isBlockedPeer(session.peerId)) {
-      await rejectIncoming(reason: 'blocked');
+        session.state != CallState.ringing) {
       return;
     }
     try {
-      switch (action.type) {
-        case CallNotificationActionType.accept:
-          await acceptIncoming();
-        case CallNotificationActionType.reject:
-          await rejectIncoming();
-      }
+      await rejectIncoming();
     } catch (_) {}
+  }
+
+  // Bundle 146: the app may show over the lock screen while a call is live
+  // (incoming ringing, or any answered call). Before, cancelling the incoming
+  // notification on accept dropped the call screen behind the lock screen.
+  bool? _lastLockScreenShow;
+  bool? _lastLockScreenTurnOn;
+
+  void _syncCallLockScreen(CallSession? s) {
+    final live = s != null && !s.isFinished;
+    final ringingIn = live &&
+        s.direction == CallDirection.incoming &&
+        s.state == CallState.ringing;
+    final show = live &&
+        (s.direction == CallDirection.incoming || s.answeredAt != null);
+    final turnOn = ringingIn;
+    if (show == _lastLockScreenShow && turnOn == _lastLockScreenTurnOn) return;
+    _lastLockScreenShow = show;
+    _lastLockScreenTurnOn = turnOn;
+    unawaited(notificationPlatform.setCallLockScreen(
+        show: show, turnScreenOn: turnOn));
   }
 
   bool _signalTargetsThisSession(Map<String, dynamic> msg, CallSession session,
@@ -857,10 +1019,14 @@ final class CallSessionManager implements CallGateway {
       final selectedCodec =
           msg['selected_media_codec']?.toString().trim().toLowerCase();
       if (_transport == null) {
-        final current =
-            (selectedCodec == 'opus' || selectedCodec == 'pcm_s16le')
-                ? session.copyWith(mediaCodec: selectedCodec)
-                : session;
+        // Bundle 146: PCM only. An older receiver may still answer 'opus';
+        // its own native side then falls back as well (see A4), so both
+        // directions stay on PCM.
+        if (selectedCodec != null && selectedCodec != _callCodec) {
+          AppLogger.info('CALL_CODEC_FORCED',
+              detail: 'selected=$selectedCodec used=$_callCodec');
+        }
+        final current = session.copyWith(mediaCodec: _callCodec);
         _setSession(current);
         _transport = transportFactory.resolve(requested: current.transportMode);
         await _transport!.start(current);
@@ -893,6 +1059,13 @@ final class CallSessionManager implements CallGateway {
         !_signalTargetsThisSession(msg, session, requireRemoteSender: true))
       return;
     final reason = msg['reason']?.toString();
+    // Bundle 146: tell the peer its call_end arrived so it stops resending.
+    // Best-effort, never retried; older builds ignore the unknown type.
+    unawaited(_sendSignal({
+      'type': 'call_end_ack',
+      'call_id': session.id,
+      'recipient_id': session.peerId,
+    }));
     await _finishLocal(
         CallState.ended, reason?.isNotEmpty == true ? reason! : 'ended',
         notifyServer: false);
@@ -1667,6 +1840,15 @@ final class CallSessionManager implements CallGateway {
       unawaited(_clearIncomingPresentation(revision));
     }
     _syncCallUi(session);
+    _syncCallLockScreen(session);
+    final pending = _pendingNotificationAccept;
+    if (pending != null &&
+        isRinging &&
+        session.id == pending.callId &&
+        session.peerId == pending.callerId) {
+      _clearPendingNotificationAccept();
+      scheduleMicrotask(() => unawaited(_handleNotificationAction(pending)));
+    }
   }
 
   // Bundle 143: proximity screen-off + call-volume keys follow the session.
@@ -1768,21 +1950,22 @@ final class CallSessionManager implements CallGateway {
     });
   }
 
-  Future<List<String>> _supportedMediaCodecs() async {
-    final codecs = await mediaPlatform.supportedCodecs();
-    final normalized = codecs
-        .map((e) => e.trim().toLowerCase())
-        .where((e) => e == 'opus' || e == 'pcm_s16le')
-        .toSet()
-        .toList();
-    return normalized.isEmpty ? const ['pcm_s16le'] : normalized;
-  }
+  // Bundle 146: calls use plain 16 kHz PCM only. Since 142 the codec list
+  // arrived as a real list and both phones picked Opus, whose MediaCodec
+  // adapter is broken (decoder crash on the caller -> silence; 48 kHz output
+  // played at 16 kHz on the receiver -> slow "tiger" voice). Advertising PCM
+  // only also keeps mixed versions safe: an older build picks PCM because the
+  // intersection is PCM. Proper Opus returns later under a new codec name.
+  static const String _callCodec = 'pcm_s16le';
 
+  Future<List<String>> _supportedMediaCodecs() async => const [_callCodec];
 
   Future<String> _negotiateCodec(List<String> remoteCodecs) async {
-    final local = await _supportedMediaCodecs();
-    if (remoteCodecs.contains('opus') && local.contains('opus')) return 'opus';
-    return 'pcm_s16le';
+    if (remoteCodecs.contains('opus')) {
+      AppLogger.info('CALL_CODEC_FORCED',
+          detail: 'remote=${remoteCodecs.join(',')} used=$_callCodec');
+    }
+    return _callCodec;
   }
 
   String _newCallId() {

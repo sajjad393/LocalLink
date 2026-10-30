@@ -603,6 +603,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _resumeCall() async {
     final session = widget.calls.session;
     if (session == null || session.isFinished || !mounted) return;
+    // Bundle 146: never stack a second call screen for the same call.
+    if (CallScreen.visibleCallId == session.id) return;
     await Navigator.push<void>(
       context,
       MaterialPageRoute(

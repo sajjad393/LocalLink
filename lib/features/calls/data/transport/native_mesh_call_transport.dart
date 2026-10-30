@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:locallink/core/security/identity_trust_service.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/calls/data/platform/call_audio_platform_service.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/data/platform/call_media_platform_service.dart';
@@ -84,6 +85,9 @@ final class NativeMeshCallTransport implements CallTransport {
     try {
       await audio.setSpeakerphoneOn(session.speakerOn);
       await media.start(callId: session.id, peerId: session.peerId, codec: session.mediaCodec);
+      // Bundle 146: one line per call so phone logs show the audio format.
+      AppLogger.info('CALL_MEDIA_START',
+          detail: 'call=${session.id} codec=pcm_s16le rate=16000 requested=${session.mediaCodec}');
     } catch (_) {
       _active = false;
       _callId = null;
@@ -121,6 +125,19 @@ final class NativeMeshCallTransport implements CallTransport {
 
   @override
   Future<void> stop(CallSession session) async {
+    // Bundle 146: audio totals at the end of every call (played=0 means the
+    // speaker never got a frame - the 142-145 Opus symptom).
+    try {
+      final stats = await media
+          .stats(callId: session.id)
+          .timeout(const Duration(milliseconds: 400));
+      if (stats.isNotEmpty) {
+        AppLogger.info('CALL_MEDIA_STATS',
+            detail: 'call=${session.id} codec=${stats['codec']} '
+                'sent=${stats['sent_packets']} played=${stats['received_packets']} '
+                'lost=${stats['lost_packets']} dropped=${stats['dropped_packets']}');
+      }
+    } catch (_) {}
     try {
       await media.stop(callId: session.id);
     } finally {

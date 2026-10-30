@@ -61,6 +61,19 @@ class CallNotificationPlatformService {
     } catch (_) {}
   }
 
+  /// Bundle 146: keep the call UI above the lock screen while a call is live.
+  /// [turnScreenOn] is only true while an incoming call rings.
+  Future<void> setCallLockScreen(
+      {required bool show, required bool turnScreenOn}) async {
+    if (_disposed) return;
+    try {
+      await _channel.invokeMethod<void>('setCallLockScreen', {
+        'show': show,
+        'turn_screen_on': turnScreenOn,
+      });
+    } catch (_) {}
+  }
+
   Future<void> cancelAll() async {
     if (_disposed) return;
     try {

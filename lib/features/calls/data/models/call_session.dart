@@ -123,7 +123,7 @@ class CallSession {
     this.directMode = false,
     this.transportMode = CallTransportMode.auto,
     this.mediaCodec = 'auto',
-    this.supportedMediaCodecs = const ['opus', 'pcm_s16le'],
+    this.supportedMediaCodecs = const ['pcm_s16le'], // Bundle 146: PCM only
     this.videoEnabled = false,
     this.localVideoTextureId,
     this.remoteVideoTextureId,

@@ -24,5 +24,15 @@ abstract interface class CallGateway {
   Future<void> switchCamera();
   Future<void> toggleSpeaker();
   void onAppLifecycleState(AppLifecycleState state);
+
+  /// Bundle 146: notification Accept asks the app to show the call screen
+  /// for a live call (it is no longer 'ringing' by then).
+  Stream<String> get callScreenRequests;
+  String? get requestedCallScreenId;
+  void clearCallScreenRequest(String callId);
+
+  /// Bundle 146: an Accept arrived for a call that no longer exists.
+  Stream<String> get callUnavailableNotices;
+  String? takeCallUnavailableNotice();
   Future<void> dispose();
 }

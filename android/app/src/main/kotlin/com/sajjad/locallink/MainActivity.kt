@@ -33,11 +33,12 @@ import java.util.UUID
 
 class MainActivity : FlutterActivity() {
     companion object {
+        private const val EXTRA_CALL_ACTION_CONSUMED = "call_action_consumed"
         @Volatile private var activeInstance: MainActivity? = null
 
         fun dispatchNotificationAction(intent: Intent): Boolean {
             val activity = activeInstance ?: return false
-            activity.runOnUiThread { activity.dispatchNotificationIntent(intent) }
+            activity.runOnUiThread { activity.dispatchCallNotificationIntent(intent, "receiver") }
             return true
         }
     }
@@ -404,6 +405,15 @@ class MainActivity : FlutterActivity() {
                         CallNotificationManager.cancelAll(this)
                         result.success(null)
                     }
+                    // Bundle 146: Dart keeps the call UI above the lock screen
+                    // while a call is live and releases it when the call ends.
+                    "setCallLockScreen" -> {
+                        setCallLockScreen(
+                            call.argument<Boolean>("show") == true,
+                            call.argument<Boolean>("turn_screen_on") == true,
+                        )
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
@@ -613,7 +623,8 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "stats" -> result.success(LocalLinkTransportService.callMediaStats(call.argument<String>("call_id")?.trim().orEmpty()))
-                    "supported_codecs" -> result.success(listOf("pcm_s16le") + if (CallOpusCodec.isSupported(16_000, 1)) listOf("opus") else emptyList())
+                    // Bundle 146: PCM only until Opus is fixed (CallOpusCodec kept for later).
+                    "supported_codecs" -> result.success(listOf("pcm_s16le"))
                     "video_start" -> {
                         val callId = call.argument<String>("call_id")?.trim().orEmpty()
                         val peerId = call.argument<String>("peer_id")?.trim().orEmpty()
@@ -697,7 +708,7 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        dispatchCallNotificationIntent(intent)
+        dispatchCallNotificationIntent(intent, "activity")
         dispatchNotificationIntent(intent)
     }
 
@@ -801,7 +812,7 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        dispatchCallNotificationIntent(intent)
+        dispatchCallNotificationIntent(intent, "activity")
         dispatchNotificationIntent(intent)
     }
 
@@ -847,23 +858,38 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun dispatchCallNotificationIntent(intent: Intent?) {
+    fun setCallLockScreen(show: Boolean, turnScreenOn: Boolean) {
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(show)
+            setTurnScreenOn(turnScreenOn)
+        }
+    }
+
+    private fun dispatchCallNotificationIntent(intent: Intent?, source: String = "activity") {
         val safeIntent = intent ?: return
         val action = when (safeIntent.action) {
             CallNotificationManager.ACTION_OPEN -> "open"
             CallNotificationManager.ACTION_ACCEPT -> "accept"
             CallNotificationManager.ACTION_REJECT -> "reject"
-            else -> safeIntent.getStringExtra(CallNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
+            else -> return
         }
-        if (action.isBlank()) return
-        if (Build.VERSION.SDK_INT >= 27 && action == "open") {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-            return
-        }
-        if (action != "accept" && action != "reject") return
+        // Bundle 146: each call intent is handled ONCE. onCreate re-runs on a
+        // recreated activity with the same intent, and the old receiver path
+        // plus onNewIntent could both forward the same Accept.
+        if (safeIntent.getBooleanExtra(EXTRA_CALL_ACTION_CONSUMED, false)) return
+        // Reopening from Recents replays the original launch intent; an old
+        // Accept must not be applied (or reported as unavailable) again.
+        if ((safeIntent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+        safeIntent.putExtra(EXTRA_CALL_ACTION_CONSUMED, true)
         val callId = safeIntent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID)?.trim().orEmpty()
         val callerId = safeIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_ID)?.trim().orEmpty()
+        android.util.Log.i("LocalLinkCall", "CALL_NOTIFICATION_ACTION action=$action source=$source call=$callId engine=${callNotificationEventSink != null}")
+        if (action == "open" || action == "accept") {
+            // Show over the lock screen right away; Dart keeps it while the
+            // call is live and releases it when the call ends.
+            setCallLockScreen(true, true)
+        }
+        if (action == "open") return
         if (callId.isBlank() || callerId.isBlank()) return
         val event = mapOf(
             "action" to action,
@@ -935,32 +961,11 @@ class MainActivity : FlutterActivity() {
     private fun dispatchNotificationIntent(intent: Intent?) {
         val safeIntent = intent ?: return
 
-        // Bundle 139: CALL notification actions (Accept/Reject) were dropped
-        // here — this handler previously only understood MESSAGE actions, so
-        // the call buttons silently did nothing. Feed the Dart call-action
-        // EventChannel directly; CallSessionManager validates the live session.
-        val callAction = when (safeIntent.action) {
-            CallNotificationManager.ACTION_ACCEPT -> "accept"
-            CallNotificationManager.ACTION_REJECT -> "reject"
-            else -> ""
-        }
-        if (callAction.isNotBlank()) {
-            val declared = safeIntent.getStringExtra(CallNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
-            val callId = safeIntent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID)?.trim().orEmpty()
-            val callerId = safeIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_ID)?.trim().orEmpty()
-            if (declared == callAction && callId.isNotBlank() && callerId.isNotBlank()) {
-                runOnUiThread {
-                    callNotificationEventSink?.success(
-                        mapOf(
-                            "action" to callAction,
-                            "call_id" to callId,
-                            "caller_id" to callerId,
-                        )
-                    )
-                }
-            }
-            return
-        }
+        // Bundle 146: call actions (open/accept/reject) are handled only by
+        // dispatchCallNotificationIntent, so an Accept reaches Dart once.
+        if (safeIntent.action == CallNotificationManager.ACTION_ACCEPT ||
+            safeIntent.action == CallNotificationManager.ACTION_REJECT ||
+            safeIntent.action == CallNotificationManager.ACTION_OPEN) return
 
         val action = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
         val nativeAction = when (safeIntent.action) {

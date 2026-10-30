@@ -1201,8 +1201,18 @@ class LocalLinkTransportService : Service() {
     private fun startCallMediaInternal(callId:String, peerId:String, codec:String?) {
         require(callId.length in 1..128) { "invalid call id" }
         require(peerId.length in 1..128) { "invalid peer id" }
+        val requested = codec?.trim()?.lowercase().orEmpty()
+        // Bundle 146: a second start for the SAME live call must not tear the
+        // microphone/speaker down and rebuild them (seen ~1 s after accept).
+        val existing = synchronized(callMediaLock) { callMedia }
+        if (existing != null && existing.callId == callId && existing.peerId == peerId && existing.isRunning) {
+            Log.i("LocalLinkCall", "CALL_MEDIA_START_SKIPPED call=$callId reason=already_running codec=${existing.codec}")
+            transportEvent("call_media_started", mapOf("call_id" to callId, "peer_id" to peerId, "sample_rate" to CALL_SAMPLE_RATE, "frame_ms" to CALL_FRAME_MS, "codec" to existing.codec))
+            return
+        }
         stopCallMediaInternal("")
-        val session = CallMediaSession(callId, peerId, codec?.trim()?.lowercase().orEmpty())
+        if (requested == "opus") Log.i("LocalLinkCall", "CALL_MEDIA_CODEC_FORCED call=$callId requested=opus used=pcm_s16le")
+        val session = CallMediaSession(callId, peerId, requested)
         synchronized(callMediaLock) { callMedia = session }
         acquireCallLocks()
         session.start()
@@ -1416,8 +1426,13 @@ class LocalLinkTransportService : Service() {
         val peerId:String,
         val requestedCodec:String,
     ) {
-        val codec:String = if (requestedCodec == "opus" && CallOpusCodec.isSupported(CALL_SAMPLE_RATE, 1)) "opus" else "pcm_s16le"
+        // Bundle 146: always PCM. The MediaCodec Opus path crashed the decoder
+        // (caller heard nothing) and played 48 kHz output on a 16 kHz track
+        // (receiver heard a slow, deep voice). An old peer asking for opus is
+        // answered with PCM; the packet codec check keeps both sides aligned.
+        val codec:String = "pcm_s16le"
         private val running = AtomicBoolean(false)
+        val isRunning: Boolean get() = running.get()
         private val sequence = AtomicLong(0)
         private val sent = AtomicLong(0)
         private val received = AtomicLong(0)

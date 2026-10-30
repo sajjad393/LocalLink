@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 
 import 'package:locallink/core/widgets/brand_gradient_fab.dart';
+import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
@@ -12,6 +14,7 @@ import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart'
     show CallSession;
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
+import 'package:locallink/features/calls/data/services/call_preflight_exception.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_history_tile.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
@@ -89,9 +92,38 @@ class _CallsScreenState extends State<CallsScreen> {
     return '$h:$m ${v.hour >= 12 ? 'PM' : 'AM'}';
   }
 
+  bool _starting = false;
+
+  String _cleanError(Object error) {
+    if (error is CallPreflightException) return error.userMessage;
+    return cleanBlocError(error);
+  }
+
+  Future<void> _openCallScreen(CallSession session, String reason) async {
+    // Bundle 146: never stack a second call screen for the same call.
+    if (CallScreen.visibleCallId == session.id) return;
+    AppLogger.info('CALL_SCREEN_OPEN', detail: 'reason=$reason call=${session.id}');
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            CallScreen(controller: widget.controller, initialSession: session),
+      ),
+    );
+  }
+
+  /// Bundle 146: the Calls tab call button now behaves like Home/Chat:
+  /// a live call is resumed, a new call opens the call screen right away
+  /// ("Calling…"), and failures show a message instead of nothing.
   Future<void> _redial(CallRecord call) async {
     final peerId = _peerId(call);
-    if (peerId.isEmpty) return;
+    if (peerId.isEmpty || _starting) return;
+    final live = widget.controller.session;
+    if (live != null && !live.isFinished) {
+      await _openCallScreen(live, 'calls_tab_resume');
+      return;
+    }
+    _starting = true;
     try {
       await widget.controller.startCall(
         Device(
@@ -104,7 +136,20 @@ class _CallsScreenState extends State<CallsScreen> {
           lastSeenAt: DateTime.now().toIso8601String(),
         ),
       );
-    } catch (_) {}
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_cleanError(error))),
+        );
+      }
+      return;
+    } finally {
+      _starting = false;
+    }
+    if (!mounted) return;
+    final session = widget.controller.session;
+    if (session == null || session.isFinished) return;
+    await _openCallScreen(session, 'calls_tab');
   }
 
   @override
@@ -291,12 +336,16 @@ class _CallInProgressBarState extends State<_CallInProgressBar> {
           top: false,
           bottom: false,
           child: GestureDetector(
-            onTap: () => Navigator.push<void>(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => CallScreen(
-                      controller: widget.controller, initialSession: session)),
-            ),
+            onTap: () {
+              // Bundle 146: no second call screen for the same call.
+              if (CallScreen.visibleCallId == session.id) return;
+              Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => CallScreen(
+                        controller: widget.controller, initialSession: session)),
+              );
+            },
             child: Container(
               margin: const EdgeInsets.fromLTRB(14, 8, 14, 8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

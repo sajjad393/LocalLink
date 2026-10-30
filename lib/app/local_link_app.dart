@@ -32,6 +32,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   String? _startupError;
   AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
   StreamSubscription<CallSession?>? _callSub;
+  StreamSubscription<String>? _callScreenRequestSub; // Bundle 146
+  StreamSubscription<String>? _callUnavailableSub; // Bundle 146
   StreamSubscription<LocalLinkNotificationAction>? _notificationSub;
   // Bundle 108: pair-request dialog host + pairing-complete toasts.
   StreamSubscription<PairRequest>? _pairingRequestSub;
@@ -234,7 +236,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v2 · bundles 104-145 (2026-10-30)');
+        detail: 'v2 · bundles 104-146 (2026-10-30)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -299,17 +301,46 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         _shownIncomingCallId = null;
       }
     });
+    // Bundle 146: notification Accept asks for the call screen of a live call.
+    _callScreenRequestSub ??=
+        _deps.calls.callScreenRequests.listen((_) => _maybeShowIncomingCall());
+    _callUnavailableSub ??=
+        _deps.calls.callUnavailableNotices.listen((_) => _showCallUnavailable());
     _maybeShowIncomingCall();
+    _showCallUnavailable();
   }
 
+  /// Bundle 146 (B8): Accept for a call that no longer exists (app swiped away
+  /// while ringing) shows one short notice instead of nothing.
+  void _showCallUnavailable() {
+    if (!mounted || !_configured || _lifecycleState != AppLifecycleState.resumed) return;
+    if (_navigatorKey.currentState == null) return;
+    if (_deps.calls.takeCallUnavailableNotice() == null) return;
+    _showAppSnackBar('Call is no longer available');
+  }
+
+  /// Opens the call screen when (a) an incoming call is ringing, or
+  /// (b) Bundle 146: a live call was accepted from the notification (it is
+  /// 'connecting'/'connected' by now, so the old ringing-only rule skipped it
+  /// and the user landed on Home). Never pushes a second call screen.
   void _maybeShowIncomingCall() {
-    if (!mounted || !_configured || _lifecycleState != AppLifecycleState.resumed || _shownIncomingCallId != null) return;
+    if (!mounted || !_configured || _lifecycleState != AppLifecycleState.resumed) return;
     final session = _deps.calls.session;
-    if (session == null ||
-        session.direction != CallDirection.incoming ||
-        session.state != CallState.ringing) {
+    if (session == null || session.isFinished) return;
+    final ringingIncoming = session.direction == CallDirection.incoming &&
+        session.state == CallState.ringing;
+    final requested = _deps.calls.requestedCallScreenId == session.id;
+    if (!ringingIncoming && !requested) return;
+    if (_shownIncomingCallId == session.id ||
+        CallScreen.visibleCallId == session.id) {
+      if (requested) {
+        _deps.calls.clearCallScreenRequest(session.id);
+        AppLogger.info('CALL_SCREEN_SKIP',
+            detail: 'reason=already_visible call=${session.id}');
+      }
       return;
     }
+    if (_shownIncomingCallId != null) return;
 
     final navigator = _navigatorKey.currentState;
     if (navigator == null) {
@@ -320,6 +351,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     }
 
     _shownIncomingCallId = session.id;
+    _deps.calls.clearCallScreenRequest(session.id);
+    AppLogger.info('CALL_SCREEN_OPEN',
+        detail: 'reason=${requested ? 'notification_accept' : 'incoming'} call=${session.id}');
     unawaited(
       navigator
           .push(
@@ -486,6 +520,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     _pairingDoneSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_callSub?.cancel());
+    unawaited(_callScreenRequestSub?.cancel());
+    unawaited(_callUnavailableSub?.cancel());
     unawaited(_notificationSub?.cancel());
     unawaited(_deps.dispose());
     super.dispose();

@@ -62,7 +62,18 @@ object CallNotificationManager {
             putExtra(EXTRA_CALL_ID, callId)
             putExtra(EXTRA_CALLER_ID, callerId)
         }
-        val acceptIntent = actionIntent(context, ACTION_ACCEPT, callId, callerId)
+        // Bundle 146: Accept OPENS the app (activity PendingIntent). As a
+        // broadcast it accepted the call but never brought LocalLink to the
+        // front, and Android 12+ blocks starting an activity from a
+        // notification-action receiver ("trampoline"). Reject stays a
+        // broadcast: it needs no screen.
+        val acceptIntent = Intent(context, MainActivity::class.java).apply {
+            action = ACTION_ACCEPT
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_ACTION, "accept")
+            putExtra(EXTRA_CALL_ID, callId)
+            putExtra(EXTRA_CALLER_ID, callerId)
+        }
         val rejectIntent = actionIntent(context, ACTION_REJECT, callId, callerId)
 
         val openPending = PendingIntent.getActivity(
@@ -71,7 +82,7 @@ object CallNotificationManager {
             openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val acceptPending = PendingIntent.getBroadcast(
+        val acceptPending = PendingIntent.getActivity(
             context,
             requestCode(callId, 1),
             acceptIntent,
@@ -123,9 +134,9 @@ object CallNotificationManager {
     fun cancelIncoming(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.cancel(NOTIFICATION_ID)
-        if (Build.VERSION.SDK_INT >= 27 && context is MainActivity) {
-            context.clearCallLockScreen()
-        }
+        // Bundle 146: lock-screen visibility is no longer dropped here. Dart
+        // drives it for the whole live call (setCallLockScreen); clearing it on
+        // accept pushed the call screen back behind the lock screen.
     }
 
     fun cancelAll(context: Context) {

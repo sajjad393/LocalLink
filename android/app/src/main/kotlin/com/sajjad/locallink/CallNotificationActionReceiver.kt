@@ -18,6 +18,9 @@ class CallNotificationActionReceiver : BroadcastReceiver() {
         val callId = intent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID)?.trim().orEmpty()
         val callerId = intent.getStringExtra(CallNotificationManager.EXTRA_CALLER_ID)?.trim().orEmpty()
         if (callId.isEmpty() || callerId.isEmpty()) return
+        // Bundle 146: Accept now opens MainActivity directly; only Reject (and
+        // an Accept on a notification posted by an older build) lands here.
+        android.util.Log.i("LocalLinkCall", "CALL_NOTIFICATION_ACTION action=$action source=receiver call=$callId")
 
         val dispatchIntent = Intent(context, MainActivity::class.java).apply {
             this.action = intent.action

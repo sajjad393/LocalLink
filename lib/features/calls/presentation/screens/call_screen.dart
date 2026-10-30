@@ -14,6 +14,11 @@ import 'package:locallink/features/calls/presentation/widgets/call_video_view.da
 /// WhatsApp-style call screen, identical layout on both the caller and the
 /// receiver side once the call is answered.
 class CallScreen extends StatefulWidget {
+  /// Bundle 146: id of the call whose screen is on the navigator stack, so
+  /// notification Accept / Calls tab / "return to call" never push a second
+  /// call screen for the same call.
+  static String? visibleCallId;
+
   final call_bloc.CallBloc controller;
   final CallSession initialSession;
 
@@ -32,6 +37,7 @@ class _CallScreenState extends State<CallScreen> {
   @override
   void initState() {
     super.initState();
+    CallScreen.visibleCallId = widget.initialSession.id;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -39,6 +45,9 @@ class _CallScreenState extends State<CallScreen> {
 
   @override
   void dispose() {
+    if (CallScreen.visibleCallId == widget.initialSession.id) {
+      CallScreen.visibleCallId = null;
+    }
     _videoUiTimer?.cancel();
     _ticker?.cancel();
     super.dispose();

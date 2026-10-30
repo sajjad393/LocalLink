@@ -63,6 +63,12 @@ final class CallBloc extends Cubit<CallState> {
   Future<void> declineVideoSwitch() async => _run(service.declineVideoSwitch);
   Future<void> switchCamera() async => _run(service.switchCamera);
   void onAppLifecycleState(AppLifecycleState s) => service.onAppLifecycleState(s);
+  // Bundle 146: call-screen requests (notification Accept) + unavailable notice.
+  Stream<String> get callScreenRequests => service.callScreenRequests;
+  String? get requestedCallScreenId => service.requestedCallScreenId;
+  void clearCallScreenRequest(String callId) => service.clearCallScreenRequest(callId);
+  Stream<String> get callUnavailableNotices => service.callUnavailableNotices;
+  String? takeCallUnavailableNotice() => service.takeCallUnavailableNotice();
 
   void clearError() {
     if (!_closed && state.error != null) emit(state.copyWith(clearError: true));
