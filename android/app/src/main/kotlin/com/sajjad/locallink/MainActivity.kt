@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.Manifest
 import android.os.Build
 import android.net.wifi.p2p.WifiP2pConfig
+import com.sajjad.locallink.mesh.NearbyGroupPolicy
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pDeviceList
 import android.net.wifi.p2p.WifiP2pInfo
@@ -108,7 +109,7 @@ class MainActivity : FlutterActivity() {
                         requestConnectionInfo()
                     }
                 }
-                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> requestPeers()
+                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> { requestPeers(); nearbyTags?.onPeersChanged() }
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> requestConnectionInfo()
                 WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> wifiEventSink?.success(mapOf("type" to "device_changed"))
             }
@@ -225,6 +226,10 @@ class MainActivity : FlutterActivity() {
                     else result.error("INVALID_TAG_ID", "A valid nearby tag id is required", null)
                 }
                 "getNearbyTags" -> result.success(nearbyTags?.snapshot() ?: emptyList<Map<String, Any>>())
+                // Bundle 157: one shared group (create / join without pop-ups).
+                "setNearbyWanted" -> { nearbyTags?.setWanted(call.argument<List<String>>("ids")); result.success(null) }
+                "createNearbyGroup" -> createNearbyGroup(result)
+                "joinNearbyGroup" -> joinNearbyGroup(call.argument<String>("name"), call.argument<String>("key"), call.argument<String>("address"), call.argument<Boolean>("leave") ?: false, result)
                 "cancelConnect" -> wifiManager.cancelConnect(wifiChannel, actionResult(result))
                 "disconnect" -> wifiManager.removeGroup(wifiChannel, actionResult(result))
                 "connectionInfo" -> connectionInfo(result)
@@ -1122,7 +1127,7 @@ class MainActivity : FlutterActivity() {
     private fun unregisterWifiReceiver(){if(!wifiReceiverRegistered)return;try{unregisterReceiver(wifiReceiver)}catch(_:Exception){};wifiReceiverRegistered=false}
     private fun actionResult(result: MethodChannel.Result)=object:WifiP2pManager.ActionListener{override fun onSuccess(){result.success(null)}override fun onFailure(reason:Int){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}}
     private fun requestPeers(){if(!hasWifiPermission())return;wifiManager.requestPeers(wifiChannel){list:WifiP2pDeviceList->peerDevices=list.deviceList.toList();wifiEventSink?.success(mapOf("type" to "peers","peers" to peerDevices.map{peerMap(it)}))}}
-    private fun requestConnectionInfo(){if(!hasWifiPermission())return;wifiManager.requestConnectionInfo(wifiChannel){info:WifiP2pInfo->val connected=info.groupFormed;val address=if(connected)info.groupOwnerAddress?.hostAddress else null;wifiEventSink?.success(mapOf("type" to "connection","connection" to mapOf("connected" to connected,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to address)));nearbyTags?.onConnection(connected,info.isGroupOwner);LocalLinkTransportService.resume(this,connected,info.isGroupOwner,address)}}
+    private fun requestConnectionInfo(){if(!hasWifiPermission())return;wifiManager.requestConnectionInfo(wifiChannel){info:WifiP2pInfo->val connected=info.groupFormed;val address=if(connected)info.groupOwnerAddress?.hostAddress else null;wifiEventSink?.success(mapOf("type" to "connection","connection" to mapOf("connected" to connected,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to address,"wifiNetwork" to onWifiNetwork(),"sdk" to Build.VERSION.SDK_INT)));nearbyTags?.onConnection(connected,info.isGroupOwner);LocalLinkTransportService.resume(this,connected,info.isGroupOwner,address)}}
     private fun peerMap(device:WifiP2pDevice)=mapOf("name" to device.deviceName,"address" to device.deviceAddress,"status" to device.status)
     private fun discoverPeers(result:MethodChannel.Result){
         if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
@@ -1156,7 +1161,88 @@ class MainActivity : FlutterActivity() {
             wifiManager.connect(wifiChannel,WifiP2pConfig().apply{deviceAddress=normalized;groupOwnerIntent=ownerIntent},actionResult(result))
         }
     }
-    private fun connectionInfo(result:MethodChannel.Result){if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return};wifiManager.requestConnectionInfo(wifiChannel){info->result.success(mapOf("connected" to info.groupFormed,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to if(info.groupFormed)info.groupOwnerAddress?.hostAddress else null))}}
+    private fun connectionInfo(result:MethodChannel.Result){if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return};wifiManager.requestConnectionInfo(wifiChannel){info->result.success(mapOf("connected" to info.groupFormed,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to if(info.groupFormed)info.groupOwnerAddress?.hostAddress else null,"wifiNetwork" to onWifiNetwork(),"sdk" to Build.VERSION.SDK_INT))}}
+
+    /** Bundle 157: is this phone on a normal Wi-Fi network (router or
+     *  hotspot)? Wi-Fi Direct groups are not counted. Local Wi-Fi first. */
+    private fun onWifiNetwork():Boolean{
+        return try{
+            val cm=getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            @Suppress("DEPRECATION")
+            cm.allNetworks.any{n->cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)==true}
+        }catch(_:Exception){false}
+    }
+
+    /** Bundle 157: start a new shared group and become its host. Android 10+
+     *  gets a fresh name + password (published in the tag, so others join
+     *  without a pop-up); older phones let Android pick them (read back from
+     *  the group info). Never while already in a group. */
+    private fun createNearbyGroup(result:MethodChannel.Result){
+        if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
+        wifiManager.requestConnectionInfo(wifiChannel){info->
+            if(info.groupFormed){
+                android.util.Log.i("NEARBY","group create skipped reason=already_in_group host=${info.isGroupOwner}")
+                result.error("IN_GROUP","This phone is already in a nearby group",null)
+                return@requestConnectionInfo
+            }
+            val listener=object:WifiP2pManager.ActionListener{
+                override fun onSuccess(){android.util.Log.i("NEARBY","group create ok");result.success(null)}
+                override fun onFailure(reason:Int){android.util.Log.w("NEARBY","group create failed reason=$reason");result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}
+            }
+            try{
+                if(Build.VERSION.SDK_INT>=29){
+                    val name=NearbyGroupPolicy.newNetworkName()
+                    val config=WifiP2pConfig.Builder().setNetworkName(name).setPassphrase(NearbyGroupPolicy.newPassphrase()).enablePersistentMode(false).build()
+                    android.util.Log.i("NEARBY","group create grp=$name")
+                    wifiManager.createGroup(wifiChannel,config,listener)
+                }else{
+                    android.util.Log.i("NEARBY","group create legacy")
+                    wifiManager.createGroup(wifiChannel,listener)
+                }
+            }catch(e:Exception){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: ${e.message}",null)}
+        }
+    }
+
+    /** Bundle 157: join a nearby shared group. Android 10+ with the group's
+     *  name + password joins like a normal Wi-Fi network (no pop-up). Older
+     *  phones (or no password) use the classic connect to the host (one
+     *  pop-up). A phone in a group never leaves it unless [leave] (merge into
+     *  a bigger group, or the user's own Pair tap). */
+    private fun joinNearbyGroup(name:String?,key:String?,address:String?,leave:Boolean,result:MethodChannel.Result){
+        if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
+        val target=address?.trim().orEmpty()
+        val credentials=Build.VERSION.SDK_INT>=29&&NearbyGroupPolicy.validNetworkName(name)&&NearbyGroupPolicy.validPassphrase(key)
+        if(!credentials&&!Regex("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$").matches(target)){result.error("INVALID_ADDRESS","A valid Wi-Fi Direct device address is required",null);return}
+        wifiManager.requestConnectionInfo(wifiChannel){info->
+            if(!NearbyGroupPolicy.mayChangeGroup(info.groupFormed,info.isGroupOwner,leave)){
+                android.util.Log.i("NEARBY","group join skipped reason=member_keeps_group host=${info.isGroupOwner}")
+                result.error("IN_GROUP_AS_MEMBER","This phone stays in its current nearby group",null)
+                return@requestConnectionInfo
+            }
+            val doJoin={
+                val listener=object:WifiP2pManager.ActionListener{
+                    override fun onSuccess(){android.util.Log.i("NEARBY","group join requested");result.success(null)}
+                    override fun onFailure(reason:Int){android.util.Log.w("NEARBY","group join failed reason=$reason");result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}
+                }
+                try{
+                    if(credentials){
+                        android.util.Log.i("NEARBY","group join grp=$name mode=password")
+                        wifiManager.connect(wifiChannel,WifiP2pConfig.Builder().setNetworkName(name!!).setPassphrase(key!!).enablePersistentMode(false).build(),listener)
+                    }else{
+                        android.util.Log.i("NEARBY","group join target=$target mode=classic intent=0")
+                        wifiManager.connect(wifiChannel,WifiP2pConfig().apply{deviceAddress=target;groupOwnerIntent=0},listener)
+                    }
+                }catch(e:Exception){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: ${e.message}",null)}
+            }
+            if(info.groupFormed){
+                android.util.Log.i("NEARBY","group leave before join host=${info.isGroupOwner}")
+                wifiManager.removeGroup(wifiChannel,object:WifiP2pManager.ActionListener{
+                    override fun onSuccess(){android.os.Handler(mainLooper).postDelayed({doJoin()},1500L)}
+                    override fun onFailure(reason:Int){android.os.Handler(mainLooper).postDelayed({doJoin()},1500L)}
+                })
+            }else doJoin()
+        }
+    }
 
     private fun copyToCache(uri: Uri): Map<String,Any>{
         val resolver=contentResolver; val name=queryName(uri)?:"attachment"; val mime=resolver.getType(uri)?:"application/octet-stream"; val safeName=name.replace(Regex("[^A-Za-z0-9._-]"),"_"); val pickDir=File(filesDir,"locallink_picks").apply{mkdirs()}; val outFile=File(pickDir,"locallink_${UUID.randomUUID()}_$safeName"); resolver.openInputStream(uri).use{input->requireNotNull(input){"Could not open selected file"};FileOutputStream(outFile).use{output->input.copyTo(output)}}; return mapOf("path" to outFile.absolutePath,"name" to name,"content_type" to mime,"size" to outFile.length())

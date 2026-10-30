@@ -189,7 +189,9 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
             wantedTagId: wanted,
             hashOf: _tagIdOf);
     if (wanted != null && target == null) {
-      for (var i = 0; i < 6 && mounted; i++) {
+      // Bundle 157: the other phone joins the shared group by itself; give
+      // it up to ~40 s to show up.
+      for (var i = 0; i < 20 && mounted; i++) {
         await Future<void>.delayed(const Duration(seconds: 2));
         if (!mounted) return;
         target = pickPairTarget(

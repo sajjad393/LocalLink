@@ -47,6 +47,23 @@ class WifiDirectService {
   /// Bundle 155: publish this phone's "who is who" tag id.
   Future<void> setNearbyIdentity(String tagId) =>
       _channel.invokeMethod('setNearbyIdentity', {'id': tagId});
+  /// Bundle 157: one shared group.
+  Future<void> setNearbyWanted(List<String> ids) =>
+      _channel.invokeMethod('setNearbyWanted', {'ids': ids});
+  Future<void> createNearbyGroup() =>
+      _channel.invokeMethod('createNearbyGroup');
+  Future<void> joinNearbyGroup({
+    String? name,
+    String? key,
+    required String address,
+    bool leave = false,
+  }) =>
+      _channel.invokeMethod('joinNearbyGroup', {
+        'name': name,
+        'key': key,
+        'address': address,
+        'leave': leave,
+      });
   Future<void> cancelConnect() => _channel.invokeMethod('cancelConnect');
   Future<void> disconnect() => _channel.invokeMethod('disconnect');
 

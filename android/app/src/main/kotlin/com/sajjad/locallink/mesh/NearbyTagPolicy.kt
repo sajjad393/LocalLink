@@ -16,6 +16,18 @@ package com.sajjad.locallink.mesh
  *   pull it away — that would break its routes).
  * - `n`: members in the host's group; `full=1` at the soft limit.
  *
+ * Bundle 157 (one shared group) adds optional keys; 155 phones ignore them:
+ *
+ *   gv=1  g=<group network name>  k=<group password, host only>  w=<wanted ids>
+ *
+ * - `gv=1`: this app joins shared groups by itself (no pop-ups).
+ * - `g`: the Wi-Fi Direct group this phone hosts or is a member of.
+ * - `k`: the host's group password, so others join without a pop-up
+ *   (Android 10+). Joining the radio group alone gives no access: every link
+ *   still needs the authenticated handshake, and messages are sealed (156).
+ * - `w`: up to 3 short ids (first 8 hex chars) of people this phone wants in
+ *   its group (a Pair tap, or contacts with messages waiting).
+ *
  * Pure functions only, so the rules are easy to check.
  */
 object NearbyTagPolicy {
@@ -31,17 +43,42 @@ object NearbyTagPolicy {
 
     fun validId(id: String?): Boolean = id != null && idPattern.matches(id)
 
-    fun encode(id: String, host: Boolean, member: Boolean, members: Int): Map<String, String> {
+    /** Bundle 157: max people in the `w` (wanted) list. */
+    const val MAX_WANTED = 3
+    const val WANTED_ID_LENGTH = 8
+    private val wantedPattern = Regex("^[0-9a-f]{8}$")
+
+    fun encode(
+        id: String,
+        host: Boolean,
+        member: Boolean,
+        members: Int,
+        groupName: String? = null,
+        groupKey: String? = null,
+        wanted: List<String> = emptyList(),
+    ): Map<String, String> {
         val n = members.coerceIn(0, 64)
-        return linkedMapOf(
+        val txt = linkedMapOf(
             "v" to VERSION,
             "id" to id,
             "host" to if (host) "1" else "0",
             "m" to if (member && !host) "1" else "0",
             "n" to (if (host) n else 0).toString(),
             "full" to if (host && n >= GROUP_SOFT_LIMIT) "1" else "0",
+            "gv" to "1",
         )
+        if ((host || member) && NearbyGroupPolicy.validNetworkName(groupName)) txt["g"] = groupName!!
+        if (host && NearbyGroupPolicy.validPassphrase(groupKey)) txt["k"] = groupKey!!
+        val w = cleanWanted(wanted)
+        if (w.isNotEmpty()) txt["w"] = w.joinToString(",")
+        return txt
     }
+
+    fun cleanWanted(wanted: List<String>?): List<String> = (wanted ?: emptyList())
+        .map { it.trim().lowercase().take(WANTED_ID_LENGTH) }
+        .filter { wantedPattern.matches(it) }
+        .distinct()
+        .take(MAX_WANTED)
 
     /** Returns null for anything that is not a valid LocalLink v1 tag. */
     fun decode(fullDomainName: String?, txt: Map<String, String>?, address: String?, now: Long): Map<String, Any>? {
@@ -51,14 +88,25 @@ object NearbyTagPolicy {
         val id = txt["id"]?.trim()?.lowercase()
         if (!validId(id)) return null
         val n = txt["n"]?.toIntOrNull()?.coerceIn(0, 64) ?: 0
-        return mapOf(
+        val host = txt["host"] == "1"
+        val member = txt["m"] == "1"
+        val tag = linkedMapOf<String, Any>(
             "address" to address.trim().lowercase(),
             "id" to id!!,
-            "host" to (txt["host"] == "1"),
-            "member" to (txt["m"] == "1"),
+            "host" to host,
+            "member" to member,
             "members" to n,
             "full" to (txt["full"] == "1"),
             "seen_at" to now,
+            // Bundle 157 (optional keys).
+            "gv" to (txt["gv"] == "1"),
         )
+        val group = txt["g"]
+        if ((host || member) && NearbyGroupPolicy.validNetworkName(group)) tag["group"] = group!!
+        val key = txt["k"]
+        if (host && NearbyGroupPolicy.validPassphrase(key)) tag["key"] = key!!
+        val wanted = cleanWanted(txt["w"]?.split(","))
+        if (wanted.isNotEmpty()) tag["wanted"] = wanted
+        return tag
     }
 }
