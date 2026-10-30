@@ -108,6 +108,60 @@ class MainActivity : FlutterActivity() {
         // (ZTE SuperKiller etc.) still honor the exemption once granted.
     }
 
+    // Bundle 145: first frame (JPEG, <= maxPx), length and display size of a chat
+    // video, read from the app's own temporary decrypted view copy. Off the UI thread.
+    private fun readVideoInfo(path: String?, maxPx: Int, result: MethodChannel.Result) {
+        val file = path?.let { File(it) }
+        val dataDir = try { File(applicationInfo.dataDir).canonicalPath } catch (_: Exception) { "" }
+        if (file == null || !file.isFile || dataDir.isEmpty() ||
+            !file.canonicalPath.startsWith(dataDir + File.separator)) {
+            result.error("VIDEO_INFO_FAILED", "invalid file", null)
+            return
+        }
+        val bound = maxPx.coerceIn(64, 1280)
+        Thread({
+            val retriever = android.media.MediaMetadataRetriever()
+            val out: Map<String, Any>? = try {
+                retriever.setDataSource(file.absolutePath)
+                val duration = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                val rawW = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                val rawH = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                val rotation = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                var frame: android.graphics.Bitmap? = if (Build.VERSION.SDK_INT >= 27)
+                    retriever.getScaledFrameAtTime(0L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, bound, bound)
+                else retriever.getFrameAtTime(0L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                val f0 = frame
+                if (f0 != null && (f0.width > bound || f0.height > bound)) {
+                    val scale = bound.toFloat() / maxOf(f0.width, f0.height)
+                    val scaled = android.graphics.Bitmap.createScaledBitmap(f0,
+                        maxOf(1, (f0.width * scale).toInt()), maxOf(1, (f0.height * scale).toInt()), true)
+                    if (scaled !== f0) f0.recycle()
+                    frame = scaled
+                }
+                // Frames come out already rotated; without one, swap for 90/270.
+                val quarter = rotation == 90 || rotation == 270
+                val f = frame
+                val displayW = f?.width ?: if (quarter) rawH else rawW
+                val displayH = f?.height ?: if (quarter) rawW else rawH
+                val bytes = if (f != null) {
+                    val os = java.io.ByteArrayOutputStream()
+                    f.compress(android.graphics.Bitmap.CompressFormat.JPEG, 78, os)
+                    f.recycle()
+                    os.toByteArray()
+                } else ByteArray(0)
+                mapOf("duration_ms" to duration, "width" to rawW, "height" to rawH, "rotation" to rotation,
+                    "display_width" to displayW, "display_height" to displayH, "thumbnail" to bytes)
+            } catch (_: Exception) {
+                null
+            } finally {
+                try { retriever.release() } catch (_: Exception) {}
+            }
+            runOnUiThread {
+                if (out == null) result.error("VIDEO_INFO_FAILED", "unreadable video", null) else result.success(out)
+            }
+        }, "locallink-video-info").start()
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         // Stable per-device identity survives app reinstall/data-clear (resets
@@ -620,6 +674,8 @@ class MainActivity : FlutterActivity() {
                     "play" -> playVoiceNote(call.argument<String>("path"), result)
                     "pause" -> { voicePlayer?.pause(); result.success(null) }
                     "stop" -> { voicePlayer?.stop(); voicePlayer?.release(); voicePlayer = null; result.success(null) }
+                    // Bundle 145: chat video thumbnail + length + display size.
+                    "video_info" -> readVideoInfo(call.argument<String>("path"), call.argument<Int>("max_px") ?: 480, result)
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) { result.error("VOICE_NOTE_ERROR", e.message, null) }

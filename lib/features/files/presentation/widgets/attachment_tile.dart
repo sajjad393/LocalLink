@@ -11,6 +11,9 @@ import 'package:locallink/features/files/domain/file_transfer_repository_contrac
 import 'package:locallink/features/files/bloc/file_transfer_bloc.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
+import 'chat_video_controller.dart';
+import 'chat_video_player.dart';
+import 'media_playback_coordinator.dart';
 
 class AttachmentTile extends StatefulWidget {
   final Attachment attachment;
@@ -44,6 +47,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
   int _audioDurationMs = 0;
   int _audioPositionMs = 0;
   Timer? _audioTimer;
+  // Bundle 145: the inline video player owns (and deletes) this view copy.
+  String? _videoHandedOff;
 
   @override
   void initState() {
@@ -68,12 +73,30 @@ class _AttachmentTileState extends State<AttachmentTile> {
         name.endsWith('.opus');
   }
 
+  /// Bundle 145: videos play inside the bubble.
+  bool get _isVideo {
+    final mime = widget.attachment.contentType.toLowerCase();
+    if (mime.startsWith('video/')) return true;
+    final name = widget.attachment.originalName.toLowerCase();
+    return name.endsWith('.mp4') ||
+        name.endsWith('.m4v') ||
+        name.endsWith('.mov') ||
+        name.endsWith('.3gp') ||
+        name.endsWith('.webm') ||
+        name.endsWith('.mkv');
+  }
+
+  String get _videoCacheKey => widget.attachment.id.isNotEmpty
+      ? widget.attachment.id
+      : widget.attachment.sha256;
+
   void _maybeAutoDownload() {
     final cached = _localPath;
     final hasLocal = cached != null && cached.isNotEmpty;
     if (hasLocal || widget.uploading) return;
-    // Auto-fetch anything small: images AND voice notes (WhatsApp parity).
-    final inlineCandidate = widget.attachment.isImage || _isAudio;
+    // Auto-fetch anything small: images, voice notes and (bundle 145)
+    // videos up to 10 MB (WhatsApp parity). Bigger ones wait for a tap.
+    final inlineCandidate = widget.attachment.isImage || _isAudio || _isVideo;
     if (inlineCandidate && widget.attachment.size <= 10 * 1024 * 1024) {
       // Post-frame so the tile's own progress state binds first.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -199,10 +222,14 @@ class _AttachmentTileState extends State<AttachmentTile> {
     try {
       const channel = MethodChannel('locallink/voice_notes');
       if (_playing) {
+        MediaPlaybackCoordinator.instance.release(this);
         await channel.invokeMethod('pause');
         _audioTimer?.cancel();
         if (mounted) setState(() => _playing = false);
       } else {
+        // Bundle 145: one medium at a time; a playing video (or another
+        // voice note) pauses first.
+        MediaPlaybackCoordinator.instance.claim(this, _pauseAudioForOther);
         final duration = await channel.invokeMethod<int>('play', {'path': _displayPath});
         final durationMs = duration ?? 0;
         _audioTimer?.cancel();
@@ -222,6 +249,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                 _audioPositionMs = 0;
                 _playing = false;
                 timer.cancel();
+                MediaPlaybackCoordinator.instance.release(this);
               }
             });
           });
@@ -230,6 +258,16 @@ class _AttachmentTileState extends State<AttachmentTile> {
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyErrorMessage(error))));
     }
+  }
+
+  void _pauseAudioForOther() {
+    _audioTimer?.cancel();
+    if (_playing) {
+      unawaited(const MethodChannel('locallink/voice_notes')
+          .invokeMethod('pause')
+          .catchError((Object _) => null));
+    }
+    if (mounted) setState(() => _playing = false);
   }
 
   String _fmtClock(int ms) {
@@ -242,9 +280,10 @@ class _AttachmentTileState extends State<AttachmentTile> {
   @override
   void dispose() {
     final view = _displayPath;
-    if (view != null && view.isNotEmpty) {
+    if (view != null && view.isNotEmpty && view != _videoHandedOff) {
       widget.transfer.deleteLocalFile(view);
     }
+    MediaPlaybackCoordinator.instance.release(this);
     _audioTimer?.cancel();
     if (_playing) { const MethodChannel('locallink/voice_notes').invokeMethod('stop'); }
     _controller.close();
@@ -261,10 +300,26 @@ class _AttachmentTileState extends State<AttachmentTile> {
             if (widget.attachment.isImage) {
               return _imageWithUploadOverlay(displayPath);
             }
+            if (_isVideo) {
+              // Bundle 145: inline player (same for sender and receiver).
+              _videoHandedOff = displayPath;
+              return ChatVideoPlayer(
+                key: ValueKey<String>(displayPath),
+                path: displayPath,
+                cacheKey: _videoCacheKey,
+                sizeBytes: widget.attachment.size,
+                hintWidth: widget.attachment.width,
+                hintHeight: widget.attachment.height,
+                uploading: widget.uploading,
+                onReleaseFile: (p) =>
+                    unawaited(widget.transfer.deleteLocalFile(p)),
+              );
+            }
           }
 
           final progress = _progress;
           final running = progress?.status == FileTransferStatus.running;
+          if (_isVideo) return _videoPlaceholder(progress, running);
           if (_isAudio) {
             final colors = Theme.of(context).colorScheme;
             final totalMs = _audioDurationMs > 0 ? _audioDurationMs : 0;
@@ -493,6 +548,136 @@ class _AttachmentTileState extends State<AttachmentTile> {
                         ],
                       ),
                     ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Bundle 145: video not viewable yet. Arriving: dimmed thumbnail (or
+  /// grey), progress ring with X, "4.1 / 11.8 MB". Bigger than 10 MB:
+  /// download button. Own file being prepared: play button.
+  Widget _videoPlaceholder(TransferProgress? progress, bool running) {
+    final cached = VideoInfoCache.peek(_videoCacheKey);
+    final a = widget.attachment;
+    final hint = a.width > 0 && a.height > 0 ? a.width / a.height : null;
+    final size = ChatVideoPlayer.frameSize(cached?.aspectRatio ?? hint);
+    final hasLocal = _localPath != null && _localPath!.isNotEmpty;
+    final total =
+        progress != null && progress.total > 0 ? progress.total : a.size;
+    Widget circle(IconData icon, String tip, VoidCallback onTap, Key key) =>
+        Material(
+          color: Colors.black54,
+          shape: const CircleBorder(),
+          child: InkWell(
+            key: key,
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: Tooltip(
+                message: tip,
+                child: Icon(icon, color: Colors.white, size: 32),
+              ),
+            ),
+          ),
+        );
+    final Widget center;
+    if (running) {
+      center = SizedBox(
+        width: 60,
+        height: 60,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 56,
+              height: 56,
+              child: CircularProgressIndicator(
+                value: progress?.fraction,
+                strokeWidth: 3.5,
+                color: Colors.white,
+                backgroundColor: Colors.white30,
+              ),
+            ),
+            IconButton(
+              key: const Key('chat_video_cancel'),
+              tooltip: 'Cancel download',
+              onPressed: _cancel,
+              icon: const Icon(Icons.close, color: Colors.white, size: 22),
+            ),
+          ],
+        ),
+      );
+    } else if (hasLocal || widget.uploading) {
+      center = circle(Icons.play_arrow_rounded, 'Play', _openOrRetryLocal,
+          const Key('chat_video_prepare'));
+    } else {
+      center = circle(Icons.download_rounded, 'Download', _download,
+          const Key('chat_video_download'));
+    }
+    final thumb = cached?.thumbnail;
+    final sizeChip = running
+        ? '${(progress!.completed / (1024 * 1024)).toStringAsFixed(1)} / ${formatVideoBytes(total)}'
+        : _sizeLabel(a.size);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const ColoredBox(color: Colors.black),
+              if (thumb != null)
+                Opacity(
+                  opacity: .55,
+                  child: Image.memory(thumb,
+                      fit: BoxFit.cover, gaplessPlayback: true),
+                )
+              else
+                ColoredBox(
+                  color: const Color(0xFF2A2F3A),
+                  child: Align(
+                    alignment: const Alignment(0, -.6),
+                    child: Icon(Icons.videocam_rounded,
+                        color: Colors.white.withValues(alpha: .25), size: 30),
+                  ),
+                ),
+              Center(child: center),
+              if (cached != null && cached.durationMs > 0)
+                Positioned(
+                  left: 8,
+                  bottom: 8,
+                  child: VideoChip(
+                    icon: Icons.videocam_rounded,
+                    label: formatVideoClock(
+                        Duration(milliseconds: cached.durationMs)),
+                  ),
+                ),
+              Positioned(
+                right: 8,
+                bottom: 8,
+                child: VideoChip(
+                    key: const Key('chat_video_progress_chip'),
+                    label: sizeChip),
+              ),
+              if (!running && progress?.error != null)
+                Positioned(
+                  left: 8,
+                  right: 8,
+                  top: 8,
+                  child: Text(
+                    progress!.error!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 11.5),
                   ),
                 ),
             ],
