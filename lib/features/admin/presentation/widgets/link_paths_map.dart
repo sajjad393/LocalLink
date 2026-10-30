@@ -55,7 +55,7 @@ class LinkPathsMap extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           child: Container(
             height: 300,
-            color: scheme.surfaceContainerHigh.withOpacity(0.55),
+            color: scheme.surfaceContainerHigh.withValues(alpha: 0.55),
             child: CustomPaint(
               painter: _LinkPathsPainter(
                 nodes: nodes,
@@ -81,7 +81,7 @@ class LinkPathsMap extends StatelessWidget {
                 Text(linkTagLabel(tag),
                     style: TextStyle(
                         fontSize: 11,
-                        color: scheme.onSurface.withOpacity(0.72))),
+                        color: scheme.onSurface.withValues(alpha: 0.72))),
               ]),
           ],
         ),
@@ -202,7 +202,7 @@ class _LinkPathsPainter extends CustomPainter {
   }
 
   void _grid(Canvas canvas, Size size) {
-    final paint = Paint()..color = labelColor.withOpacity(0.06);
+    final paint = Paint()..color = labelColor.withValues(alpha: 0.06);
     const gap = 22.0;
     for (var y = gap; y < size.height; y += gap) {
       for (var x = gap; x < size.width; x += gap) {
@@ -218,7 +218,6 @@ class _LinkPathsPainter extends CustomPainter {
     final s = _self(size);
     final sv = _server(size);
     final place = _placements(size);
-    final byId = {for (final n in nodes) n.id: n};
 
     // ---- edges ---------------------------------------------------------
     // Server link from self (dashed red/grey when down, green when up).
@@ -236,7 +235,7 @@ class _LinkPathsPainter extends CustomPainter {
       _stroke(
           canvas,
           _arc(sv, pos, bend: 0.16),
-          kLinkTagColors[LinkTag.server]!.withOpacity(0.85),
+          kLinkTagColors[LinkTag.server]!.withValues(alpha: 0.85),
           1.6);
     }
 
@@ -249,11 +248,11 @@ class _LinkPathsPainter extends CustomPainter {
       var from = meshNodes.first;
       for (var i = 1; i < meshNodes.length; i++) {
         _stroke(canvas, _arc(from, meshNodes[i], bend: 0.10),
-            kLinkTagColors[LinkTag.mesh]!.withOpacity(0.75), 1.8);
+            kLinkTagColors[LinkTag.mesh]!.withValues(alpha: 0.75), 1.8);
         from = meshNodes[i];
       }
       _stroke(canvas, _arc(from, s, bend: 0.12),
-          kLinkTagColors[LinkTag.mesh]!.withOpacity(0.75), 1.8);
+          kLinkTagColors[LinkTag.mesh]!.withValues(alpha: 0.75), 1.8);
     }
 
     // Yellow / teal arcs straight: self → device.
@@ -261,7 +260,7 @@ class _LinkPathsPainter extends CustomPainter {
       if (n.tag == LinkTag.mesh || n.tag == LinkTag.server) continue;
       final color = kLinkTagColors[n.tag]!;
       _stroke(canvas, _arc(s, place[n.id]!, bend: 0.20),
-          color.withOpacity(0.80), 1.9);
+          color.withValues(alpha: 0.80), 1.9);
     }
 
     // ---- server cloud --------------------------------------------------
@@ -278,8 +277,8 @@ class _LinkPathsPainter extends CustomPainter {
     for (final n in nodes) {
       final pos = place[n.id]!;
       final color = kLinkTagColors[n.tag]!;
-      _glassyCircle(canvas, pos, _nodeRadius, color.withOpacity(0.25),
-          color.withOpacity(0.9));
+      _glassyCircle(canvas, pos, _nodeRadius, color.withValues(alpha: 0.25),
+          color.withValues(alpha: 0.9));
       _text(canvas, Icons.person, pos,
           size: 12, color: Color.lerp(color, Colors.black, 0.25)!);
       _label(canvas, pos + const Offset(0, _nodeRadius + 11), n.label);
@@ -326,7 +325,7 @@ class _LinkPathsPainter extends CustomPainter {
             inherit: false,
             fontSize: tiny ? 8.5 : (strong ? 11.5 : 9.5),
             fontWeight: strong ? FontWeight.w700 : FontWeight.w500,
-            color: labelColor.withOpacity(strong ? 0.9 : 0.75)),
+            color: labelColor.withValues(alpha: strong ? 0.9 : 0.75)),
       ),
       textDirection: TextDirection.ltr,
     )..layout(maxWidth: 92);
@@ -337,7 +336,7 @@ class _LinkPathsPainter extends CustomPainter {
         height: tp.height + pad.vertical);
     canvas.drawRRect(
         RRect.fromRectAndRadius(pill, const Radius.circular(6)),
-        Paint()..color = Colors.white.withOpacity(0.85));
+        Paint()..color = Colors.white.withValues(alpha: 0.85));
     tp.paint(
         canvas,
         center - Offset(tp.width / 2, tp.height / 2));

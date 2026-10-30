@@ -486,7 +486,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                                     color: (i / 24) <= playbackFraction
                                         ? colors.primary
                                         : colors.onSurfaceVariant
-                                            .withOpacity(.35),
+                                            .withValues(alpha: .35),
                                     borderRadius: BorderRadius.circular(2),
                                   ),
                                 ),

@@ -2,10 +2,8 @@ import 'dart:async';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/errors/error_message.dart';
 import 'package:locallink/core/services/locallink_api.dart' as api;
-import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
 
 typedef CoreRecoveryState = api.AccountRecoveryState;

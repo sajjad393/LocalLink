@@ -63,7 +63,7 @@ class GroupComposer extends StatelessWidget {
               Expanded(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: colors.surfaceContainerHighest.withOpacity(.62),
+                    color: colors.surfaceContainerHighest.withValues(alpha: .62),
                     borderRadius: BorderRadius.circular(LocalLinkRadius.xl),
                   ),
                   child: LocalLinkTextField(

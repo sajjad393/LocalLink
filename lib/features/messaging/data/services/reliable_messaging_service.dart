@@ -1144,7 +1144,7 @@ class ReliableMessagingService {
 
   Future<Message?> _resolveNetworkPayload(Map<String, dynamic> data) async {
     try {
-      return _resolveMessage(Message.fromJson(data));
+      return await _resolveMessage(Message.fromJson(data));
     } catch (error, stackTrace) {
       AppLogger.error('NETWORK_MESSAGE_PARSE_EXCEPTION',
           error: error, stackTrace: stackTrace);
@@ -1256,8 +1256,6 @@ class ReliableMessagingService {
         'MESSAGE_ACK_RECEIVED',
         detail: 'id=$id',
       );
-
-      final pending = await store.pendingAttachments(id);
 
       final existed = await store.messageExists(id);
 
@@ -1692,7 +1690,7 @@ class ReliableMessagingService {
         path,
         senderId,
       ].any(
-        (v) => v == null || v!.isEmpty,
+        (v) => v == null || v.isEmpty,
       )) {
         AppLogger.warning(
           'DIRECT_FILE_EVENT_INVALID',

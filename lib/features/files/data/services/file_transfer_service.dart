@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:http/io_client.dart' as http_io;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -213,54 +212,6 @@ class FileTransferService {
     void Function(TransferProgress progress)? onProgress,
   }) => download(attachment, transferId: transferId, onProgress: onProgress);
 
-  Future<List<int>> _downloadBytes(String relative,
-      {String? transferId,
-      void Function(TransferProgress progress)? onProgress,
-      required int expectedSize}) async {
-    final uri =
-        SecurityPolicy.resolveLocalResource(relative, baseAddress: baseUrl);
-    final request = http.Request('GET', uri);
-    request.headers.addAll(_headers());
-    final client = _newHttpClient();
-    if (transferId != null && transferId.isNotEmpty)
-      _activeClients[transferId] = client;
-    try {
-      final response =
-          await client.send(request).timeout(const Duration(minutes: 3));
-      if (response.statusCode != 200)
-        throw Exception('Download failed (${response.statusCode})');
-      final buffer = <int>[];
-      var received = 0;
-      await for (final chunk in response.stream) {
-        received += chunk.length;
-        if (received > expectedSize + 1024 * 1024)
-          throw StateError('download exceeds expected bounds');
-        buffer.addAll(chunk);
-        onProgress?.call(TransferProgress(
-            operationId: transferId ?? 'untracked-download',
-            direction: FileTransferDirection.download,
-            completed: received,
-            total: response.contentLength ?? 0,
-            status: FileTransferStatus.running));
-      }
-      return buffer;
-    } finally {
-      _activeClients.remove(transferId);
-      client.close();
-    }
-  }
-
-  Future<String> _attachmentTargetPath(
-      Attachment attachment, bool thumbnail) async {
-    final root = await getDatabasesPath();
-    final dir = Directory('$root/attachments');
-    await dir.create(recursive: true);
-    final safe = _safeAttachmentId(attachment.id);
-    final ext = _safeExtension(
-        attachment.originalName, attachment.contentType, thumbnail);
-    return '${dir.path}/$safe${thumbnail ? '-thumb' : ''}$ext';
-  }
-
   Future<void> sendDirectFile({
     required String recipientId,
     required String messageId,
@@ -290,7 +241,6 @@ class FileTransferService {
     );
   }
 
-  @override
   Future<String> stageOutgoingFile({
     required PickedFile file,
     required String fileId,
@@ -411,7 +361,10 @@ class FileTransferService {
       await part.delete();
       return protectedTarget;
     } catch (_) {
-      await part.delete().catchError((_) {});
+      // Bundle 168: a failed delete must not hide the real error.
+      try {
+        await part.delete();
+      } catch (_) {}
       if (transferId != null && _cancelledTransfers.remove(transferId)) {
         throw const FileTransferCancelledException();
       }

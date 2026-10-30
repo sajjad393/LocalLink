@@ -79,7 +79,7 @@ class LocalLinkInfoCard extends StatelessWidget {
                 const SizedBox(height: LocalLinkSpacing.xs),
                 Text(
                   message,
-                  style: TextStyle(color: foreground.withOpacity(0.78)),
+                  style: TextStyle(color: foreground.withValues(alpha: 0.78)),
                 ),
               ],
             ),

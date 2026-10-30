@@ -23,7 +23,7 @@ class LocalLinkTheme {
       visualDensity: VisualDensity.adaptivePlatformDensity,
     );
 
-    final divider = scheme.outlineVariant.withOpacity(brightness == Brightness.dark ? 0.6 : 0.72);
+    final divider = scheme.outlineVariant.withValues(alpha: brightness == Brightness.dark ? 0.6 : 0.72);
 
     return base.copyWith(
       scaffoldBackgroundColor: scheme.surface,
@@ -75,11 +75,11 @@ class LocalLinkTheme {
         height: 72,
         elevation: 0,
         backgroundColor: scheme.surface,
-        indicatorColor: scheme.primary.withOpacity(dark ? 0.22 : 0.12),
+        indicatorColor: scheme.primary.withValues(alpha: dark ? 0.22 : 0.12),
         iconTheme: WidgetStatePropertyAll(
           IconThemeData(color: scheme.onSurfaceVariant),
         ),
-        labelTextStyle: MaterialStatePropertyAll(
+        labelTextStyle: WidgetStatePropertyAll(
           base.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
       ),
@@ -94,7 +94,7 @@ class LocalLinkTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: scheme.surfaceContainerHighest.withOpacity(brightness == Brightness.dark ? 0.58 : 0.62),
+        fillColor: scheme.surfaceContainerHighest.withValues(alpha: brightness == Brightness.dark ? 0.58 : 0.62),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: LocalLinkSpacing.lg,
           vertical: LocalLinkSpacing.md,
@@ -175,7 +175,7 @@ class LocalLinkTheme {
         ),
         trackColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? scheme.primary.withOpacity(0.35)
+              ? scheme.primary.withValues(alpha: 0.35)
               : null,
         ),
       ),

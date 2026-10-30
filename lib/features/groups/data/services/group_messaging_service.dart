@@ -252,18 +252,6 @@ class GroupMessagingService {
   }
 }
 
-extension on GroupMessage {
-  GroupMessage copyWith({String? body}) => GroupMessage(
-        id: id,
-        groupId: groupId,
-        senderId: senderId,
-        body: body ?? this.body,
-        createdAt: createdAt,
-        serverSeq: serverSeq,
-        attachments: attachments,
-      );
-}
-
 extension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }

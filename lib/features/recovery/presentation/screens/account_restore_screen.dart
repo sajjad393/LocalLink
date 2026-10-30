@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
-import 'package:locallink/core/widgets/local_link_button.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/recovery/bloc/account_restore_bloc.dart';
 

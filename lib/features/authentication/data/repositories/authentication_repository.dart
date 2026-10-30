@@ -338,7 +338,6 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
   @override
   Future<bool> isSignedOut() => _store.isSignedOut();
 
-  @override
   Future<AuthResult> reEnrollDevice({
     required String username,
     required String password,

@@ -61,10 +61,10 @@ class ChatComposer extends StatelessWidget {
             child: Container(
               constraints: const BoxConstraints(minHeight: 52),
               decoration: BoxDecoration(
-                color: colors.surfaceContainerHighest.withOpacity(.78),
+                color: colors.surfaceContainerHighest.withValues(alpha: .78),
                 borderRadius: BorderRadius.circular(26),
                 border: Border.all(
-                  color: colors.outlineVariant.withOpacity(.45),
+                  color: colors.outlineVariant.withValues(alpha: .45),
                 ),
               ),
               child: Row(
@@ -266,7 +266,7 @@ class _RecordingWaveBars extends StatelessWidget {
           width: 3,
           height: h,
           decoration: BoxDecoration(
-            color: theme.colorScheme.error.withOpacity(.85),
+            color: theme.colorScheme.error.withValues(alpha: .85),
             borderRadius: BorderRadius.circular(2),
           ),
         ),

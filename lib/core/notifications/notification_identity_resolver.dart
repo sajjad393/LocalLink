@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:locallink/core/services/local_store.dart';
-import 'package:locallink/core/models/group.dart';
 
 final class NotificationIdentity {
   final String displayName;

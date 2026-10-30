@@ -317,7 +317,7 @@ class LocalLinkApi {
     String? pairingCode,
   }) async {
     final id = deviceId ?? store.deviceId ?? store.generateDeviceId();
-    final response = await await http.post(
+    final response = await http.post(
       Uri.parse('$baseUrl/api/v1/auth/register'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -355,7 +355,7 @@ class LocalLinkApi {
     String? pairingCode,
   }) async {
     final id = deviceId ?? store.deviceId ?? store.generateDeviceId();
-    final response = await await http.post(
+    final response = await http.post(
       Uri.parse('$baseUrl/api/v1/auth/login'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -392,7 +392,7 @@ class LocalLinkApi {
   }
 
   Future<void> logoutAccount() async {
-    final response = await await http.post(Uri.parse('$baseUrl/api/v1/auth/logout'), headers: _headers()).timeout(const Duration(seconds: 6));
+    final response = await http.post(Uri.parse('$baseUrl/api/v1/auth/logout'), headers: _headers()).timeout(const Duration(seconds: 6));
     if (response.statusCode != 200) throw Exception(_error(response));
   }
 
@@ -602,7 +602,7 @@ class LocalLinkApi {
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<Map<String, dynamic>> rotateIdentityKey(String publicKey, {String? idempotencyKey}) async {
-    final response = await await http.post(
+    final response = await http.post(
       Uri.parse('$baseUrl/api/v1/device-key/rotate'),
       headers: {..._headers(), 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
       body: jsonEncode({'public_key': publicKey}),
@@ -620,7 +620,7 @@ class LocalLinkApi {
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<AccountTransferStart> startAccountTransfer({String? idempotencyKey}) async {
-    final response = await await http.post(
+    final response = await http.post(
       Uri.parse('$baseUrl/api/v1/account/transfer/start'),
       headers: {..._headers(), 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
     ).timeout(const Duration(seconds: 8));
@@ -629,7 +629,7 @@ class LocalLinkApi {
   }
 
   Future<void> cancelAccountTransfer(String transferId) async {
-    final response = await await http.post(
+    final response = await http.post(
       Uri.parse('$baseUrl/api/v1/account/transfer/cancel'),
       headers: {..._headers(), 'Content-Type': 'application/json'},
       body: jsonEncode({'transfer_id': transferId}),
@@ -647,7 +647,7 @@ class LocalLinkApi {
     bool revokeSourceDevice = true,
     String? idempotencyKey,
   }) async {
-    final response = await await http.post(
+    final response = await http.post(
       Uri.parse('${normalizeServerAddress(server)}/api/v1/account/transfer/complete'),
       headers: {'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
       body: jsonEncode({
@@ -667,7 +667,7 @@ class LocalLinkApi {
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<AccountRecoveryStart> createAccountRecovery({required String username, String password = '', String recoveryCode = '', required String deviceId, required String deviceName, required String identityPublicKey, String? idempotencyKey}) async {
     final server = normalizeServerAddress(store.serverAddress ?? '');
-    final response = await await http.post(
+    final response = await http.post(
       Uri.parse('$server/api/v1/account/recovery/request'),
       headers: {'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
       body: jsonEncode({'username': username.trim().toLowerCase(), if (password.isNotEmpty) 'password': password, if (recoveryCode.isNotEmpty) 'recovery_code': recoveryCode.trim(), 'device_id': deviceId, 'device_name': deviceName.trim(), 'platform': 'android', 'identity_public_key': identityPublicKey}),
@@ -678,7 +678,7 @@ class LocalLinkApi {
 
   Future<AccountRecoveryState> accountRecoveryStatus({required String server, required String requestId, required String requestSecret}) async {
     final base = normalizeServerAddress(server);
-    final response = await await http.post(
+    final response = await http.post(
       Uri.parse('$base/api/v1/account/recovery/status'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({'request_id': requestId, 'request_secret': requestSecret}),
@@ -690,7 +690,7 @@ class LocalLinkApi {
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<AccountRecoveryResult> completeAccountRecovery({required String server, required String requestId, required String requestSecret, required String recoveryCredential, required String deviceId, required String deviceName, required String identityPublicKey, String? idempotencyKey}) async {
     final base = normalizeServerAddress(server);
-    final response = await await http.post(
+    final response = await http.post(
       Uri.parse('$base/api/v1/account/recovery/complete'),
       headers: {'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
       body: jsonEncode({'request_id': requestId, 'request_secret': requestSecret, 'recovery_credential': recoveryCredential.trim(), 'device_id': deviceId, 'device_name': deviceName.trim(), 'platform': 'android', 'identity_public_key': identityPublicKey}),
@@ -709,7 +709,7 @@ class LocalLinkApi {
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<String> rotateRecoveryCode({String? idempotencyKey}) async {
-    final response = await await http.post(Uri.parse('$baseUrl/api/v1/account/recovery-code/rotate'), headers: {..._headers(), 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()}).timeout(const Duration(seconds: 8));
+    final response = await http.post(Uri.parse('$baseUrl/api/v1/account/recovery-code/rotate'), headers: {..._headers(), 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()}).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
     final code = (jsonDecode(response.body) as Map)['recovery_code']?.toString() ?? '';
     if (code.isEmpty) throw Exception('Server returned no recovery code');
@@ -717,7 +717,7 @@ class LocalLinkApi {
   }
 
   Future<void> disableRecoveryCode() async {
-    final response = await await http.post(Uri.parse('$baseUrl/api/v1/account/recovery-code/disable'), headers: _headers()).timeout(const Duration(seconds: 8));
+    final response = await http.post(Uri.parse('$baseUrl/api/v1/account/recovery-code/disable'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));
   }
 
@@ -810,7 +810,7 @@ class LocalLinkApi {
       );
 
   Future<void> revokeAccountDevice(String deviceId) async {
-    final response = await await http.post(
+    final response = await http.post(
       Uri.parse('$baseUrl/api/v1/account/devices/revoke'),
       headers: {..._headers(), 'Content-Type': 'application/json'},
       body: jsonEncode({'device_id': deviceId}),
@@ -903,7 +903,7 @@ class LocalLinkApi {
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<LocalGroup> createGroup(String name, List<String> memberIds, {String? idempotencyKey}) async {
-    final response = await await http.post(Uri.parse('$baseUrl/api/v1/groups'), headers:{..._headers(),'Content-Type':'application/json','Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()}, body:jsonEncode({'name':name.trim(),'member_ids':memberIds})).timeout(const Duration(seconds:8));
+    final response = await http.post(Uri.parse('$baseUrl/api/v1/groups'), headers:{..._headers(),'Content-Type':'application/json','Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()}, body:jsonEncode({'name':name.trim(),'member_ids':memberIds})).timeout(const Duration(seconds:8));
     if (response.statusCode != 201) throw Exception(_error(response));
     return LocalGroup.fromJson(jsonDecode(response.body) as Map<String,dynamic>);
   }
@@ -917,7 +917,7 @@ class LocalLinkApi {
 
   Future<bool> addGroupMember(String groupId, String deviceId) async {
     final uri = Uri.parse('$baseUrl/api/v1/groups/members').replace(queryParameters: {'group_id': groupId});
-    final response = await await http.post(uri, headers: {..._headers(), 'Content-Type': 'application/json'}, body: jsonEncode({'device_id': deviceId})).timeout(const Duration(seconds: 5));
+    final response = await http.post(uri, headers: {..._headers(), 'Content-Type': 'application/json'}, body: jsonEncode({'device_id': deviceId})).timeout(const Duration(seconds: 5));
     if (response.statusCode != 200 && response.statusCode != 201) throw Exception(_error(response));
     return response.statusCode == 201;
   }
@@ -944,7 +944,7 @@ class LocalLinkApi {
 
   Future<GroupMessage> createGroupMessage(String groupId, String body, {String? id, String? createdAt, List<String> attachmentIds = const []}) async {
     final effectiveCreatedAt = createdAt ?? DateTime.now().toUtc().toIso8601String();
-    final response=await await http.post(Uri.parse('$baseUrl/api/v1/group-messages'),headers:{..._headers(),'Content-Type':'application/json'},body:jsonEncode({'id':id,'group_id':groupId,'body':body,'created_at':effectiveCreatedAt, if (attachmentIds.isNotEmpty) 'attachment_ids': attachmentIds})).timeout(const Duration(seconds:8));
+    final response=await http.post(Uri.parse('$baseUrl/api/v1/group-messages'),headers:{..._headers(),'Content-Type':'application/json'},body:jsonEncode({'id':id,'group_id':groupId,'body':body,'created_at':effectiveCreatedAt, if (attachmentIds.isNotEmpty) 'attachment_ids': attachmentIds})).timeout(const Duration(seconds:8));
     if(response.statusCode!=200&&response.statusCode!=201) throw Exception(_error(response));
     return GroupMessage.fromJson(jsonDecode(response.body) as Map<String,dynamic>);
   }

@@ -36,7 +36,7 @@ class CallRepository implements CallRepositoryContract {
       for (final call in remote) {
         await store.saveCall(call);
       }
-      return store.calls();
+      return await store.calls();
     } catch (_) {
       return store.calls();
     }

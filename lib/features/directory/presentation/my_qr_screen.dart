@@ -6,12 +6,10 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:flutter/material.dart';
 
-import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -602,7 +600,7 @@ class ScanOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     const r = Radius.circular(20);
-    final dim = Paint()..color = Colors.black.withOpacity(0.55);
+    final dim = Paint()..color = Colors.black.withValues(alpha: 0.55);
     final hole = Path()
       ..fillType = PathFillType.evenOdd
       ..addRect(Offset.zero & size)

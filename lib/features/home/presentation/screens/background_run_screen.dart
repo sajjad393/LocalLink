@@ -201,7 +201,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
 
   Widget _icon(IconData icon, {Color? color}) => CircleAvatar(
       backgroundColor:
-          (color ?? Theme.of(context).colorScheme.primary).withOpacity(0.12),
+          (color ?? Theme.of(context).colorScheme.primary).withValues(alpha: 0.12),
       child: Icon(icon,
           color: color ?? Theme.of(context).colorScheme.primary, size: 20));
 
@@ -218,14 +218,14 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1,
-                  color: scheme.onSurface.withOpacity(0.55))),
+                  color: scheme.onSurface.withValues(alpha: 0.55))),
           const SizedBox(height: 10),
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
                 side:
-                    BorderSide(color: scheme.outlineVariant.withOpacity(0.5))),
+                    BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
             child: Column(children: [
               // Row 1 — master switch (locks ON after grant)
               SwitchListTile(
@@ -244,7 +244,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
                   await _enableKeepAlive();
                 },
               ),
-              Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.5)),
+              Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
               // Row 2 — battery exemption (locks after grant)
               ListTile(
                 leading: _icon(
@@ -265,7 +265,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
                         : const Icon(Icons.chevron_right)),
                 onTap: _requestBattery,
               ),
-              Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.5)),
+              Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
               // Row 4 — recents lock how-to
               ListTile(
                 leading: _icon(Icons.lock_outline_rounded),
@@ -284,7 +284,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1,
-                  color: scheme.onSurface.withOpacity(0.55))),
+                  color: scheme.onSurface.withValues(alpha: 0.55))),
           const SizedBox(height: 10),
           _brandCard(scheme),
           const SizedBox(height: 14),
@@ -292,7 +292,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
             'Battery-permission dialogs are shown only when you tap a row. '
             'Nothing is enabled silently.',
             style: TextStyle(
-                fontSize: 12, color: scheme.onSurface.withOpacity(0.55)),
+                fontSize: 12, color: scheme.onSurface.withValues(alpha: 0.55)),
           ),
         ],
       ),

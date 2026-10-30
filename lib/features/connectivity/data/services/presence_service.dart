@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:locallink/core/network/api_http_client.dart';
 
-import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/websocket_service.dart';
