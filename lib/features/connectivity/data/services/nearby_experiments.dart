@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Bundle 161: the two nearby tests in Settings > Advanced. Both are OFF by
@@ -16,6 +19,13 @@ class NearbyExperiments extends ChangeNotifier {
 
   static const String linkGroupsKey = 'nearby_test_link_groups';
   static const String shareHotspotKey = 'nearby_test_share_hotspot';
+
+  /// Bundle 164 (5.8): strict mode - only id-checked contacts connect.
+  static const String strictLinkCheckKey = 'nearby_strict_link_check';
+  static const MethodChannel _transport =
+      MethodChannel('locallink/wifi_direct_transport');
+  bool _strictLinkCheck = false;
+  bool get strictLinkCheck => _strictLinkCheck;
 
   bool _linkGroups = false;
   bool _shareHotspot = false;
@@ -44,11 +54,30 @@ class NearbyExperiments extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       _linkGroups = prefs.getBool(linkGroupsKey) ?? false;
       _shareHotspot = prefs.getBool(shareHotspotKey) ?? false;
+      _strictLinkCheck = prefs.getBool(strictLinkCheckKey) ?? false;
     } catch (_) {
-      // Prefs not available (tests): both stay off.
+      // Prefs not available (tests): all stay off.
     }
     _loaded = true;
     notifyListeners();
+    // Keep the native side in step (it also saves it for after a reboot).
+    unawaited(_pushStrict(_strictLinkCheck));
+  }
+
+  Future<void> setStrictLinkCheck(bool on) async {
+    if (_strictLinkCheck == on) return;
+    _strictLinkCheck = on;
+    notifyListeners();
+    await _save(strictLinkCheckKey, on);
+    await _pushStrict(on);
+  }
+
+  Future<void> _pushStrict(bool on) async {
+    try {
+      await _transport.invokeMethod<void>('setStrictLinkCheck', {'on': on});
+    } catch (_) {
+      // Not on Android / service not ready: applied on next start.
+    }
   }
 
   Future<void> setLinkGroups(bool on) async {
@@ -130,6 +159,7 @@ class NearbyExperiments extends ChangeNotifier {
   void resetForTest() {
     _linkGroups = false;
     _shareHotspot = false;
+    _strictLinkCheck = false;
     _loaded = false;
     _linkState = 'off';
     _linkKind = null;

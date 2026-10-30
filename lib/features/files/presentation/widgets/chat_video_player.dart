@@ -431,7 +431,11 @@ class _Thumbnail extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = bytes;
     if (b != null) {
-      return Image.memory(b, fit: BoxFit.cover, gaplessPlayback: true);
+      // Bundle 164 (4.4): a broken picture falls back to the dark box.
+      return Image.memory(b,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => const _Thumbnail());
     }
     return ColoredBox(
       color: const Color(0xFF2A2F3A),
