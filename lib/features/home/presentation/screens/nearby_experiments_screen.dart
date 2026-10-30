@@ -44,7 +44,7 @@ class NearbyExperimentsScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Text(
                 'These are tests. They help when many phones are around and '
-                'there is no Wi-Fi. Both are off unless you turn them on.',
+                'there is no Wi-Fi. All are off unless you turn them on.',
                 style: theme.textTheme.bodyMedium,
               ),
             ),
@@ -100,6 +100,39 @@ class NearbyExperimentsScreen extends StatelessWidget {
                     return;
                   }
                   await x.setShareHotspot(on);
+                },
+              ),
+            ),
+            // Bundle 164 (5.8): strict mode, off by default.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
+              child: Text('Safety', style: theme.textTheme.titleSmall),
+            ),
+            Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: SwitchListTile(
+                key: const Key('nearby_strict_link_check'),
+                secondary: const Icon(Icons.verified_user_outlined),
+                title: const Text('Only checked contacts (strict mode)'),
+                subtitle: const Text(
+                    'Nearby, a contact connects only when the app can check '
+                    'it is really them. Contacts on an old LocalLink (159 or '
+                    'older) can\'t connect nearby until they update.'),
+                isThreeLine: true,
+                value: x.strictLinkCheck,
+                onChanged: (on) async {
+                  if (on &&
+                      !await _confirm(
+                        context,
+                        'Turn on strict mode?',
+                        'Turn this on when all your contacts have the new '
+                            'LocalLink. Contacts on an older app will not '
+                            'connect nearby. Messages through the server '
+                            'still work.',
+                      )) {
+                    return;
+                  }
+                  await x.setStrictLinkCheck(on);
                 },
               ),
             ),
