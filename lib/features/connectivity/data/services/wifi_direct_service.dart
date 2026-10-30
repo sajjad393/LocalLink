@@ -33,8 +33,20 @@ class WifiDirectService {
         .toList();
   }
 
-  Future<void> connect(String address) =>
-      _channel.invokeMethod('connect', {'address': address});
+  /// Bundle 155: intent 15 = want to host, 0 = want to join (was an invalid
+  /// 50, so the host was random). A group member only leaves its group when
+  /// [allowLeaveGroup] is true (a user's own tap).
+  Future<void> connect(String address,
+          {bool wantHost = false, bool allowLeaveGroup = true}) =>
+      _channel.invokeMethod('connect', {
+        'address': address,
+        'intent': wantHost ? 15 : 0,
+        'allowLeaveGroup': allowLeaveGroup,
+      });
+
+  /// Bundle 155: publish this phone's "who is who" tag id.
+  Future<void> setNearbyIdentity(String tagId) =>
+      _channel.invokeMethod('setNearbyIdentity', {'id': tagId});
   Future<void> cancelConnect() => _channel.invokeMethod('cancelConnect');
   Future<void> disconnect() => _channel.invokeMethod('disconnect');
 

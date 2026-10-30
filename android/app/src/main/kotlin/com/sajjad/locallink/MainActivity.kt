@@ -85,6 +85,8 @@ class MainActivity : FlutterActivity() {
     private var remoteVideoSurface: Surface? = null
     private var peerDevices: List<WifiP2pDevice> = emptyList()
     private var wifiReceiverRegistered = false
+    // Bundle 155: "who is who" tags over Wi-Fi Direct service discovery.
+    private var nearbyTags: NearbyTagManager? = null
     private var callNotificationEventSink: EventChannel.EventSink? = null
     private val pendingCallNotificationActions = mutableListOf<Map<String, Any>>()
     private var notificationEventSink: EventChannel.EventSink? = null
@@ -200,6 +202,9 @@ class MainActivity : FlutterActivity() {
         }
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
         wifiChannel = wifiManager.initialize(this, mainLooper, null)
+        nearbyTags = NearbyTagManager(this, wifiManager, wifiChannel, { hasWifiPermission() }) { event ->
+            wifiEventSink?.success(event)
+        }
         registerWifiReceiver()
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, wifiChannelName).setMethodCallHandler { call, result ->
@@ -213,7 +218,13 @@ class MainActivity : FlutterActivity() {
                 "requestEnable" -> requestWifiPermission(result)
                 "discoverPeers" -> discoverPeers(result)
                 "getPeers" -> result.success(peerDevices.map { peerMap(it) })
-                "connect" -> connectPeer(call.argument<String>("address"), result)
+                "connect" -> connectPeer(call.argument<String>("address"), call.argument<Int>("intent"), call.argument<Boolean>("allowLeaveGroup"), result)
+                // Bundle 155: identity tag (short hash of the device id) + current tags.
+                "setNearbyIdentity" -> {
+                    if (nearbyTags?.setIdentity(call.argument<String>("id")) == true) result.success(null)
+                    else result.error("INVALID_TAG_ID", "A valid nearby tag id is required", null)
+                }
+                "getNearbyTags" -> result.success(nearbyTags?.snapshot() ?: emptyList<Map<String, Any>>())
                 "cancelConnect" -> wifiManager.cancelConnect(wifiChannel, actionResult(result))
                 "disconnect" -> wifiManager.removeGroup(wifiChannel, actionResult(result))
                 "connectionInfo" -> connectionInfo(result)
@@ -1103,14 +1114,39 @@ class MainActivity : FlutterActivity() {
     private fun unregisterWifiReceiver(){if(!wifiReceiverRegistered)return;try{unregisterReceiver(wifiReceiver)}catch(_:Exception){};wifiReceiverRegistered=false}
     private fun actionResult(result: MethodChannel.Result)=object:WifiP2pManager.ActionListener{override fun onSuccess(){result.success(null)}override fun onFailure(reason:Int){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}}
     private fun requestPeers(){if(!hasWifiPermission())return;wifiManager.requestPeers(wifiChannel){list:WifiP2pDeviceList->peerDevices=list.deviceList.toList();wifiEventSink?.success(mapOf("type" to "peers","peers" to peerDevices.map{peerMap(it)}))}}
-    private fun requestConnectionInfo(){if(!hasWifiPermission())return;wifiManager.requestConnectionInfo(wifiChannel){info:WifiP2pInfo->val connected=info.groupFormed;val address=if(connected)info.groupOwnerAddress?.hostAddress else null;wifiEventSink?.success(mapOf("type" to "connection","connection" to mapOf("connected" to connected,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to address)));LocalLinkTransportService.resume(this,connected,info.isGroupOwner,address)}}
+    private fun requestConnectionInfo(){if(!hasWifiPermission())return;wifiManager.requestConnectionInfo(wifiChannel){info:WifiP2pInfo->val connected=info.groupFormed;val address=if(connected)info.groupOwnerAddress?.hostAddress else null;wifiEventSink?.success(mapOf("type" to "connection","connection" to mapOf("connected" to connected,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to address)));nearbyTags?.onConnection(connected,info.isGroupOwner);LocalLinkTransportService.resume(this,connected,info.isGroupOwner,address)}}
     private fun peerMap(device:WifiP2pDevice)=mapOf("name" to device.deviceName,"address" to device.deviceAddress,"status" to device.status)
-    private fun discoverPeers(result:MethodChannel.Result){if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return};wifiManager.discoverPeers(wifiChannel,actionResult(result))}
-    private fun connectPeer(address:String?,result:MethodChannel.Result){
+    private fun discoverPeers(result:MethodChannel.Result){
+        if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
+        wifiManager.discoverPeers(wifiChannel,object:WifiP2pManager.ActionListener{
+            override fun onSuccess(){
+                result.success(null)
+                // Bundle 155: also look for LocalLink tags (who is who).
+                nearbyTags?.scheduleDiscovery()
+            }
+            override fun onFailure(reason:Int){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}
+        })
+    }
+    /** Bundle 155: `groupOwnerIntent` must be 0..15 (it was 50 = invalid, so
+     *  the host was random). 15 = this phone wants to host, 0 = wants to join.
+     *  A phone that is a MEMBER of a group never leaves it for an automatic
+     *  attempt (allowLeaveGroup=false) — that would break its routes. */
+    private fun connectPeer(address:String?,intent:Int?,allowLeaveGroup:Boolean?,result:MethodChannel.Result){
         if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
         val normalized=address?.trim().orEmpty()
         if(!Regex("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$").matches(normalized)){result.error("INVALID_ADDRESS","A valid Wi-Fi Direct device address is required",null);return}
-        wifiManager.connect(wifiChannel,WifiP2pConfig().apply{deviceAddress=normalized;groupOwnerIntent=50},actionResult(result))
+        val ownerIntent=(intent?:7).coerceIn(0,15)
+        val mayLeave=allowLeaveGroup?:true
+        wifiManager.requestConnectionInfo(wifiChannel){info->
+            val role=if(!info.groupFormed)"none" else if(info.isGroupOwner)"host" else "member"
+            if(info.groupFormed&&!info.isGroupOwner&&!mayLeave){
+                android.util.Log.i("NEARBY","connect skipped target=$normalized reason=member_keeps_group")
+                result.error("IN_GROUP_AS_MEMBER","This phone stays in its current nearby group",null)
+                return@requestConnectionInfo
+            }
+            android.util.Log.i("NEARBY","connect target=$normalized intent=$ownerIntent role=$role leave=$mayLeave")
+            wifiManager.connect(wifiChannel,WifiP2pConfig().apply{deviceAddress=normalized;groupOwnerIntent=ownerIntent},actionResult(result))
+        }
     }
     private fun connectionInfo(result:MethodChannel.Result){if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return};wifiManager.requestConnectionInfo(wifiChannel){info->result.success(mapOf("connected" to info.groupFormed,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to if(info.groupFormed)info.groupOwnerAddress?.hostAddress else null))}}
 

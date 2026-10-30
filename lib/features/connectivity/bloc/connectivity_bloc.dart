@@ -5,6 +5,7 @@ import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/features/connectivity/data/models/connectivity_snapshot.dart';
 import 'package:locallink/features/connectivity/data/models/discovered_server.dart';
 import 'package:locallink/features/connectivity/data/models/network_snapshot.dart';
+import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 import 'package:locallink/core/diagnostics/app_diagnostics.dart';
@@ -113,7 +114,12 @@ final class ConnectivityBloc extends Cubit<ConnectivityState> {
       emit(state.copyWith(error: 'This nearby phone cannot be connected right now.'));
       return;
     }
-    await _runBusy(() => repository.connectWifiDirect(peer.address));
+    // Bundle 155: a user's own Pair tap. Join a host's group when the tag
+    // says that phone hosts one; otherwise ask to host (D2: the phone that
+    // taps Pair becomes the host).
+    final tag = NearbyTagRegistry.instance.tagFor(peer.address);
+    await _runBusy(() => repository.connectWifiDirect(peer.address,
+        wantHost: !(tag?.host ?? false), allowLeaveGroup: true));
   }
 
   Future<void> disconnectWifiDirect() async {
@@ -145,6 +151,9 @@ final class ConnectivityBloc extends Cubit<ConnectivityState> {
           ? raw.whereType<Map>().map((p) => WifiDirectPeer.fromMap(Map<dynamic, dynamic>.from(p))).toList()
           : const <WifiDirectPeer>[];
       _update(snapshot.copyWith(wifiPeers: peers));
+    } else if (type == 'services') {
+      // Bundle 155: who-is-who tags for the Nearby screen.
+      NearbyTagRegistry.instance.ingest(NearbyTag.listFromEvent(event['peers']));
     } else if (type == 'connection') {
       final raw = event['connection'];
       if (raw is! Map) return;

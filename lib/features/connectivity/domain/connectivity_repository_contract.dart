@@ -19,7 +19,15 @@ abstract interface class ConnectivityRepositoryContract {
   Future<void> startWifiDirectDiscovery();
   Future<List<WifiDirectPeer>> wifiDirectPeers();
   Future<WifiDirectConnection> wifiDirectConnectionInfo();
-  Future<void> connectWifiDirect(String address);
+  /// Bundle 155: [wantHost] true = ask to become the group host (intent 15),
+  /// false = ask to join (intent 0). [allowLeaveGroup] false = a phone that is
+  /// a member of a group never leaves it (automatic attempts).
+  Future<void> connectWifiDirect(String address,
+      {bool wantHost = false, bool allowLeaveGroup = true});
+
+  /// Bundle 155: this phone's "who is who" tag id (short hash of the device
+  /// id), advertised over Wi-Fi Direct service discovery.
+  Future<void> setNearbyIdentity(String tagId);
   Future<void> cancelWifiDirectConnect();
   Future<void> disconnectWifiDirect();
   Future<bool> isWifiDirectTransportStarted();

@@ -34,6 +34,7 @@ import 'package:locallink/features/connectivity/data/services/wifi_direct_servic
 import 'package:locallink/features/connectivity/data/services/wifi_direct_transport_service.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_fallback_service.dart';
+import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/files/data/repositories/file_transfer_repository.dart';
 import 'package:locallink/features/files/data/services/file_transfer_service.dart';
@@ -121,6 +122,10 @@ class AppDependencies {
       onRouteUnavailable: wifiDirectFallback.requestRoute,
       onRouteAvailable: wifiDirectFallback.cancelWaiting,
     );
+    // Bundle 155: Local Wi-Fi / mesh first — Wi-Fi Direct does nothing for a
+    // person who is already reachable.
+    wifiDirectFallback.hasLocalRoute =
+        (peerId) => routePolicy.routes[peerId]?.isAvailable ?? false;
     authentication = AuthenticationRepository(api: api, store: store, connectivity: connectivityRepository);
     recoveryRepository = RecoveryRepository(api: api, store: store, crypto: crypto, connectivity: connectivityRepository);
     final restorationService = AccountRestorationService(store, api, crypto);
@@ -239,6 +244,7 @@ class AppDependencies {
     viewMode.setServerConnected(false);
     await mesh.start();
     await wifiDirectFallback.start();
+    _publishNearbyIdentity();
     pairing.start();
     // Bundle 109: prime Wi-Fi Direct probing for trusted devices right after
     // boot — friends nearby link up without anyone opening Nearby.
@@ -262,6 +268,7 @@ class AppDependencies {
     viewMode.setServerConnected(socket.isConnected);
     await mesh.start();
     await wifiDirectFallback.start();
+    _publishNearbyIdentity();
     pairing.start();
     // Bundle 109: prime Wi-Fi Direct probing for trusted devices right after
     // boot — friends nearby link up without anyone opening Nearby.
@@ -281,6 +288,15 @@ class AppDependencies {
   /// The fallback service self-throttles (45s rediscovery, 20s retry
   /// cooldown, single-peer connect rule, 10-minute waiter expiry), so this
   /// is a hint, not a hammer.
+  /// Bundle 155: advertise this phone's "who is who" tag on Wi-Fi Direct.
+  void _publishNearbyIdentity() {
+    final id = store.deviceId;
+    if (id == null || id.isEmpty) return;
+    unawaited(connectivityRepository
+        .setNearbyIdentity(NearbyTag.idFor(id))
+        .catchError((Object _) {}));
+  }
+
   void primeTrustedRoutes() {
     unawaited(() async {
       try {

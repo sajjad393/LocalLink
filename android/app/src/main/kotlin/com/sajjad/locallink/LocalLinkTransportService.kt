@@ -884,6 +884,10 @@ class LocalLinkTransportService : Service() {
         return true
     }
 
+    // Bundle 155 note: only links to the PREVIOUS Wi-Fi Direct group are
+    // closed here (they are already dead after a group change). Local Wi-Fi
+    // and mesh links are never touched, so this is not what dropped the
+    // second nearby phone — that was the invalid host choice (intent 50).
     private fun closeWifiDirectClientLinks() {
         val affected = mutableSetOf<String>()
         for ((peerId, links) in peerLinks) {

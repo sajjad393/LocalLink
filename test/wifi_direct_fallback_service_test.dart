@@ -31,9 +31,13 @@ class _FakeConnectivityRepository implements ConnectivityRepositoryContract {
   @override
   Future<void> cancelWifiDirectConnect() async {}
   @override
-  Future<void> connectWifiDirect(String address) async {
+  Future<void> connectWifiDirect(String address,
+      {bool wantHost = false, bool allowLeaveGroup = true}) async {
     connectedAddress = address;
   }
+
+  @override
+  Future<void> setNearbyIdentity(String tagId) async {}
 
   @override
   Future<List<DiscoveredServer>> discoverServers({Duration? timeout}) async =>

@@ -68,7 +68,14 @@ class ConnectivityRepository implements ConnectivityRepositoryContract {
       wifiDirect.connectionInfo();
 
   @override
-  Future<void> connectWifiDirect(String address) => wifiDirect.connect(address);
+  Future<void> connectWifiDirect(String address,
+          {bool wantHost = false, bool allowLeaveGroup = true}) =>
+      wifiDirect.connect(address,
+          wantHost: wantHost, allowLeaveGroup: allowLeaveGroup);
+
+  @override
+  Future<void> setNearbyIdentity(String tagId) =>
+      wifiDirect.setNearbyIdentity(tagId);
 
   @override
   Future<void> cancelWifiDirectConnect() => wifiDirect.cancelConnect();

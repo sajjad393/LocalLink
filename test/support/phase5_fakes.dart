@@ -426,7 +426,11 @@ class FakeConnectivity implements ConnectivityRepositoryContract {
       );
 
   @override
-  Future<void> connectWifiDirect(String address) async {}
+  Future<void> connectWifiDirect(String address,
+      {bool wantHost = false, bool allowLeaveGroup = true}) async {}
+
+  @override
+  Future<void> setNearbyIdentity(String tagId) async {}
 
   @override
   Future<void> cancelWifiDirectConnect() async {}
