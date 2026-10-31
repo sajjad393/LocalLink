@@ -115,6 +115,9 @@ object BackgroundEngine {
         }
     }
 
+    /** Bundle 176 (4): hand a call notification action (Reject) to this engine. */
+    fun dispatchCallAction(event: Map<String, Any?>): Boolean = channels?.dispatchCallAction(event) ?: false
+
     /** Stops the background engine (the app was opened, or Dart had nothing to do). */
     fun stop(reason: String) {
         if (Looper.myLooper() != Looper.getMainLooper()) {

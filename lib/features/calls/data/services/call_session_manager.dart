@@ -12,6 +12,7 @@ import 'package:locallink/core/services/websocket_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/data/models/call_notification_action.dart';
+import 'package:locallink/features/calls/data/platform/call_handover_platform_service.dart';
 import 'package:locallink/features/calls/data/platform/call_audio_platform_service.dart';
 import 'package:locallink/features/calls/data/platform/call_media_platform_service.dart';
 import 'package:locallink/features/calls/data/services/call_failure_reason.dart';
@@ -205,6 +206,7 @@ final class CallSessionManager implements CallGateway {
     required this.mediaPlatform,
     IdentityTrustService? identityTrust,
     LocalRoutePolicyService? routePolicy,
+    this.handover,
   })  : identityTrust = identityTrust ?? const IdentityTrustService(),
         routePolicy = routePolicy ?? LocalRoutePolicyService(directTransport) {
     transportFactory = CallTransportFactory(
@@ -214,6 +216,9 @@ final class CallSessionManager implements CallGateway {
     );
     transportFactory.nativeMesh.voiceKeyFor = (callId) => _voiceKeys[callId];
   }
+
+  /// Bundle 176 (3): ringing-call hand-over between app engines (null = off).
+  final CallHandoverPlatformService? handover;
 
   // Bundle 159: per-call voice keys (callId -> base64 key). Memory only,
   // never saved or logged. A key is used only when BOTH phones agreed
@@ -251,6 +256,18 @@ final class CallSessionManager implements CallGateway {
         .listen((msg) => unawaited(_handleServerCallSignal(msg)));
     unawaited(_synchronizeIncomingPresentation());
     unawaited(syncHistory());
+    unawaited(_takeHandover());
+  }
+
+  /// Bundle 176 (3): a call that rang in the other engine (no-screen engine
+  /// before the app opened, or the app before it was swiped away) rings here
+  /// now. Ended calls and repeats are refused by the normal invite checks.
+  Future<void> _takeHandover() async {
+    final invite = await handover?.take();
+    if (invite == null || _disposed) return;
+    AppLogger.info('CALL_HANDOVER_TAKEN',
+        detail: 'call=${invite['call_id'] ?? ''}');
+    await _handleLocalCallSignal(invite);
   }
 
   void onAppLifecycleState(AppLifecycleState state) {
@@ -898,6 +915,8 @@ final class CallSessionManager implements CallGateway {
     if (voiceKey != null) _voiceKeys[callId] = voiceKey;
     await _persistSession();
     _startRingTimer(outgoing: false);
+    // Bundle 176 (3): if this engine stops while ringing, the next one rings on.
+    unawaited(handover?.park(callId, msg));
     unawaited(_sendSignal({
       'type': 'call_invite_ack',
       'call_id': callId,
@@ -1998,6 +2017,10 @@ final class CallSessionManager implements CallGateway {
     final isRinging = session != null &&
         session.direction == CallDirection.incoming &&
         session.state == CallState.ringing;
+    // Bundle 176 (3): answered, declined, missed or ended - nothing to hand over.
+    if (wasRinging && (!isRinging || previous.id != session.id)) {
+      unawaited(handover?.clear(previous.id));
+    }
     if (isRinging && (!wasRinging || previous?.id != session.id)) {
       final revision = ++_presentationRevision;
       unawaited(_presentIncomingCall(session, revision));

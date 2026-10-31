@@ -27,6 +27,9 @@ class BackgroundChannels(
 ) {
     private val main = Handler(Looper.getMainLooper())
     private var transportSink: EventChannel.EventSink? = null
+    // Bundle 176: Reject on the call notification while the app is closed.
+    private var callActionSink: EventChannel.EventSink? = null
+    @Volatile private var ringing = false
     private val transportListener = object : LocalLinkTransportService.EventListener {
         override fun onTransportEvent(type: String, data: Map<String, Any?>) {
             main.post { transportSink?.success(data) }
@@ -84,6 +87,55 @@ class BackgroundChannels(
         }
         EventChannel(messenger, "locallink/notification_actions").setStreamHandler(QuietStream)
 
+        // Bundle 176 (1, 2): incoming calls ring with no screen. Same channel
+        // names as MainActivity; the call itself is answered in the app
+        // (Accept opens it and the ringing call is handed over).
+        MethodChannel(messenger, "locallink/call_notifications").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "showIncoming" -> {
+                    val callId = call.argument<String>("call_id")?.trim().orEmpty()
+                    val callerId = call.argument<String>("caller_id")?.trim().orEmpty()
+                    if (callId.isEmpty() || callerId.isEmpty()) {
+                        result.error("INVALID_CALL_NOTIFICATION", "call_id and caller_id are required", null)
+                    } else {
+                        CallNotificationManager.showIncoming(context, callId, callerId, call.argument<String>("caller_name")?.trim().orEmpty())
+                        Log.i(TAG, "BG_CALL_RINGING call=$callId")
+                        result.success(null)
+                    }
+                }
+                "cancelIncoming", "cancelAll" -> { CallNotificationManager.cancelIncoming(context); result.success(null) }
+                // Lock screen / permission need the open app.
+                "setCallLockScreen", "requestPermission" -> result.success(null)
+                else -> result.notImplemented()
+            }
+        }
+        EventChannel(messenger, "locallink/call_notification_actions").setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { callActionSink = events }
+            override fun onCancel(arguments: Any?) { callActionSink = null }
+        })
+        MethodChannel(messenger, "locallink/call_ringtone").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> { ringing = true; CallRingtoneManager.start(context); result.success(null) }
+                "stop" -> { ringing = false; CallRingtoneManager.stop(); result.success(null) }
+                // Outgoing calls are only made from the open app.
+                "ringback_start", "ringback_stop" -> result.success(null)
+                else -> result.notImplemented()
+            }
+        }
+        // Speaker / call screen settings belong to the open app.
+        MethodChannel(messenger, "locallink/call_audio").setMethodCallHandler { _, result -> result.success(null) }
+        MethodChannel(messenger, "locallink/call_media").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "supported_codecs" -> Thread {
+                    val codecs = if (CallOpusCodec.usable()) listOf(CallOpus2Format.CODEC, CallOpus2Format.PCM) else listOf(CallOpus2Format.PCM)
+                    main.post { try { result.success(codecs) } catch (_: Throwable) {} }
+                }.apply { name = "locallink-bg-opus-selftest"; isDaemon = true }.start()
+                "stop", "video_stop" -> result.success(null)
+                else -> result.error("APP_REQUIRED", "calls are answered in the open app", null)
+            }
+        }
+        MethodChannel(messenger, CallHandover.CHANNEL).setMethodCallHandler { call, result -> CallHandover.handle(call, result) }
+
         MethodChannel(messenger, "locallink/background_engine").setMethodCallHandler { call, result ->
             when (call.method) {
                 "ready" -> {
@@ -105,7 +157,18 @@ class BackgroundChannels(
     /** The engine is going away: never leave the transport talking to it. */
     fun release() {
         transportSink = null
+        callActionSink = null
         LocalLinkTransportService.clearEventListenerIf(transportListener)
+        // Bundle 176 (5): never leave the ringtone playing without an engine.
+        // The app engine starts it again if the call still rings.
+        if (ringing) { ringing = false; CallRingtoneManager.stop() }
+    }
+
+    /** Bundle 176 (4): a call notification action for this engine. False = nobody listens. */
+    fun dispatchCallAction(event: Map<String, Any?>): Boolean {
+        val sink = callActionSink ?: return false
+        main.post { try { sink.success(event) } catch (_: Exception) {} }
+        return true
     }
 
     private fun handleTransport(call: MethodCall, result: MethodChannel.Result) {

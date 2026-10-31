@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:locallink/app/app_dependencies.dart';
 import 'package:locallink/core/services/app_logger.dart';
 
@@ -10,8 +11,10 @@ import 'package:locallink/core/services/app_logger.dart';
 ///
 /// Runs: server connection, Local Wi-Fi / mesh messages, contacts and blocked
 /// list, the outbox and message notifications.
-/// Not here (they need the open app): calls, Wi-Fi Direct groups, pairing,
-/// presence, admin network rules.
+/// Bundle 176: incoming calls RING here (notification + ringtone, Reject
+/// works); Accept opens the app, which takes the ringing call over.
+/// Not here (they need the open app): talking on a call, outgoing calls,
+/// Wi-Fi Direct groups, pairing, presence, admin network rules.
 enum BackgroundStart { run, noAccount, signedOut }
 
 BackgroundStart decideBackgroundStart({
@@ -98,6 +101,14 @@ class BackgroundRunner {
         deps.groupMessagingService.start();
       }),
       (name: 'notifications', run: deps.notifications.start),
+      (
+        name: 'calls',
+        run: () async {
+          // Bundle 176 (1): no screen -> ring with the call notification.
+          deps.calls.onAppLifecycleState(AppLifecycleState.paused);
+          deps.calls.start();
+        },
+      ),
     ]);
     AppLogger.warning('BOOT_ENGINE_READY',
         detail: 'account=${configured ? 'server' : 'phone_only'} '

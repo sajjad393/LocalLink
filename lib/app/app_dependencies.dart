@@ -17,6 +17,7 @@ import 'package:locallink/features/account/data/repositories/account_repository.
 import 'package:locallink/features/account/data/repositories/identity_repository.dart';
 import 'package:locallink/features/calls/data/platform/call_audio_platform_service.dart';
 import 'package:locallink/features/calls/data/platform/call_ringtone_platform_service.dart';
+import 'package:locallink/features/calls/data/platform/call_handover_platform_service.dart';
 import 'package:locallink/features/calls/data/services/call_notification_platform_service.dart';
 import 'package:locallink/features/calls/data/services/call_ringtone_service.dart';
 import 'package:locallink/features/calls/data/platform/call_media_platform_service.dart';
@@ -179,6 +180,8 @@ class AppDependencies {
       notificationPlatform: callNotificationPlatform,
       mediaPlatform: callMediaPlatform,
       routePolicy: routePolicy,
+      // Bundle 176 (3): ringing calls move between the app and the no-screen engine.
+      handover: const CallHandoverPlatformService(),
     );
     calls = CallBloc(service: callService, repository: callRepository);
     // Bundle 157: a group is never dissolved (merge) during a call.

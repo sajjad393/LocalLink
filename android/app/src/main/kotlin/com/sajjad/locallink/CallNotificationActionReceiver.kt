@@ -29,11 +29,19 @@ class CallNotificationActionReceiver : BroadcastReceiver() {
             putExtra(CallNotificationManager.EXTRA_CALLER_ID, callerId)
         }
         if (MainActivity.dispatchNotificationAction(dispatchIntent)) return
+        // Bundle 176 (4): the app is closed but the no-screen engine rings this
+        // call - it declines properly (call history, caller told, ring stops).
+        if (action == "reject" && BackgroundEngine.dispatchCallAction(mapOf(
+                "action" to action, "call_id" to callId, "caller_id" to callerId))) {
+            android.util.Log.i("LocalLinkCall", "CALL_REJECT_BG_ENGINE call=$callId")
+            return
+        }
         // Bundle 162 (4.2): the app screen is closed. Android 12+ blocks
         // opening it from here, so Reject is done right here: stop ringing,
         // remove the call notification, tell the caller (voice signalling
         // only; video untouched).
         if (action == "reject") {
+            CallHandover.clear(callId) // Bundle 176: never hand a declined call over
             CallRingtoneManager.stop()
             CallNotificationManager.cancelIncoming(context)
             val pending = goAsync()

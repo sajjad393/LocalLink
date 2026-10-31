@@ -489,6 +489,8 @@ class MainActivity : FlutterActivity() {
         }
 
         CallNotificationManager.initialize(this)
+        // Bundle 176 (3): ringing call hand-over between engines.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CallHandover.CHANNEL).setMethodCallHandler { call, result -> CallHandover.handle(call, result) }
 
         // Bundle 140: "Keep LocalLink running" — battery-exemption status /
         // system dialog, and OEM autostart deep links (HiOS/MIUI/ColorOS/…).
