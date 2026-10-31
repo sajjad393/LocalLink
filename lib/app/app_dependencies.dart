@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:locallink/features/connectivity/data/services/nearby_admin_status.dart';
+import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/config/app_config.dart';
 import 'package:locallink/core/network/api_http_client.dart';
@@ -125,6 +126,8 @@ class AppDependencies {
     meshRepository = MeshRepository(transport: directTransport);
     mesh = MeshBloc(repository: meshRepository);
     wifiDirectFallback = WifiDirectFallbackService(connectivityRepository);
+    // Bundle 161: the two nearby tests (off by default).
+    unawaited(NearbyExperiments.instance.load());
     routePolicy = LocalRoutePolicyService(
       directTransport,
       onRouteUnavailable: wifiDirectFallback.requestRoute,

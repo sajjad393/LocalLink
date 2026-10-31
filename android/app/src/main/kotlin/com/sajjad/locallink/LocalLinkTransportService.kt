@@ -38,10 +38,13 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.security.KeyStore
 import java.security.MessageDigest
+import com.sajjad.locallink.mesh.LocalNetPolicy
+import com.sajjad.locallink.mesh.MeshTwoLevelMap
 import java.security.SecureRandom
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -112,6 +115,16 @@ class LocalLinkTransportService : Service() {
         fun updateBlockedPeers(peerIds:List<String>){instance?.updateBlockedInternal(peerIds)}
         /** Bundle 160: per-contact link keys (signed device id on the link hello). */
         fun updateLinkKeys(json:String):Boolean{val svc=instance?:return false;svc.updateLinkKeysInternal(json);return true}
+        /** Bundle 161: state changes of the linked group / hotspot link. */
+        @Volatile var localNetListener: ((Map<String, Any?>) -> Unit)? = null
+        /** Bundle 161: Android joined the other Wi-Fi network; dial the link. */
+        fun connectLocalNet(network: android.net.Network, kind: String, targets: List<String>, iface: String?): Boolean {
+            val svc = instance ?: return false
+            svc.connectLocalNetInternal(network, kind, targets, iface)
+            return true
+        }
+        fun closeLocalNet(reason: String) { instance?.closeLocalNetInternal(reason) }
+        fun localNetStatus(): Map<String, Any?> = instance?.localNetStatusInternal() ?: emptyMap()
         fun updateKnownPeers(context:Context,peerIds:List<String>){instance?.updateRosterInternal(peerIds)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_UPDATE_ROSTER;val ids=JSONArray();peerIds.forEach{ids.put(it)};putExtra("known_peers",ids.toString())})}
         fun updateConnection(context:Context,connected:Boolean,owner:Boolean,address:String?){instance?.startOrStopTransportForConnection(connected,owner,address)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_CONNECTION;putExtra("connected",connected);putExtra("group_owner",owner);putExtra("group_owner_address",address)})}
         fun resume(context:Context,connected:Boolean,owner:Boolean,address:String?){instance?.resumeTransport(connected,owner,address)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_RESUME;putExtra("connected",connected);putExtra("group_owner",owner);putExtra("group_owner_address",address)})}
@@ -254,10 +267,42 @@ class LocalLinkTransportService : Service() {
      *  packets that may wait (never call sound or file chunks). */
     private fun routerDefaultNextHop(packet: MeshPacket): String? {
         if (transportGroupOwner) return null
-        if (!isStoreForwardable(packet.type) || packet.type == "direct_file_chunk") return null
-        return allPhysicalPeerLinks().firstOrNull {
+        // Bundle 161: a compact member hands EVERYTHING to its host (it
+        // dropped far routes on purpose); otherwise only packets that may wait.
+        val compact = compactMember()
+        if (!MeshTwoLevelMap.defaultForAll(compact) &&
+            (!isStoreForwardable(packet.type) || packet.type == "direct_file_chunk")) return null
+        allPhysicalPeerLinks().firstOrNull {
             it.transportName == MeshTransportPolicy.WIFI_DIRECT && !it.socket.isClosed
-        }?.peerId
+        }?.let { return it.peerId }
+        // Bundle 161: a phone on a LocalLink hotspot uses the hotspot phone.
+        if (localNetKind == LocalNetPolicy.KIND_HOTSPOT && isStoreForwardable(packet.type) && packet.type != "direct_file_chunk") {
+            val hub = localNetPeerId ?: return null
+            if (peerLinks[hub]?.get(MeshTransportPolicy.LOCAL_NET)?.socket?.isClosed == false) return hub
+        }
+        return null
+    }
+
+    /** Bundle 161 (two-level map): only a member of a nearby group whose one
+     *  link is to the host (no Local Wi-Fi, no linked network). */
+    private fun compactMember(): Boolean {
+        val links = allPhysicalPeerLinks().filter { !it.socket.isClosed }
+        val host = links.firstOrNull { it.transportName == MeshTransportPolicy.WIFI_DIRECT }
+        return MeshTwoLevelMap.isCompactMember(transportGroupOwner, host != null, links.count { it !== host })
+    }
+    @Volatile private var lastCompactMap = false
+
+    /** Bundle 161: log map changes; full list again when no longer compact. */
+    private fun checkCompactMap() {
+        val compact = compactMember()
+        if (compact == lastCompactMap) return
+        val wasCompact = lastCompactMap
+        lastCompactMap = compact
+        Log.i("ROUTES", "map ${if (compact) "compact (group + contacts, rest via host)" else "full"}")
+        if (MeshTwoLevelMap.needsFullAgain(wasCompact, compact)) {
+            allPhysicalPeerLinks().filter { !it.socket.isClosed && it.routeDelta }
+                .forEach { requestFullRoutes(it.peerId, "full_map_again") }
+        }
     }
 
     /** Bundle 160: no route at all to [destination]. Ask the neighbours who
@@ -273,6 +318,8 @@ class LocalLinkTransportService : Service() {
                 connectLanPeer(destination, endpoint.host, endpoint.port)
             }
         }
+        // Bundle 161: a compact member's host already gets the packet.
+        if (MeshTwoLevelMap.skipLookup(compactMember())) return
         val askable = transportPeers.values.filter { it.routeDelta && !it.socket.isClosed }
         if (askable.isEmpty()) return
         val queryId = routeLookup.ask(destination, now) ?: return
@@ -577,6 +624,8 @@ class LocalLinkTransportService : Service() {
 
     private fun startLanTransport() {
         if (!transportRunning) return
+        // Bundle 161: a linked group or a hotspot phone dials us on 8991.
+        ensureLocalNetServer()
         if (!acquireLanMulticastLock()) return
         ensureLanServer()
         if (lanDiscoveryThread?.isAlive != true) {
@@ -611,6 +660,157 @@ class LocalLinkTransportService : Service() {
         if (lock.isHeld) lock.release()
         lanMulticastLock = null
     }
+
+    // ---------------------------------------------------------------
+    // Bundle 161: links over a second Wi-Fi network (linked group, hotspot)
+    // ---------------------------------------------------------------
+    @Volatile private var localNetServer: ServerSocket? = null
+    @Volatile private var localNetNetwork: android.net.Network? = null
+    @Volatile private var localNetKind: String? = null
+    @Volatile private var localNetTargets: List<String> = emptyList()
+    @Volatile private var localNetIface: String? = null
+    @Volatile private var localNetLeft = true
+    @Volatile private var localNetPeerId: String? = null
+    private val localNetRetries = AtomicInteger(0)
+    private val localNetInFlight = AtomicBoolean(false)
+
+    private fun ensureLocalNetServer() {
+        if (localNetServer != null) return
+        try {
+            val server = ServerSocket(MeshTransportPolicy.LOCAL_NET_PORT)
+            server.reuseAddress = true
+            localNetServer = server
+            Thread {
+                while (transportRunning && localNetServer == server) {
+                    try {
+                        val socket = server.accept()
+                        configureSocket(socket)
+                        Thread { handleIncomingTransportSafe(socket, MeshTransportPolicy.LOCAL_NET) }.start()
+                    } catch (_: Exception) {
+                        if (!transportRunning) break
+                    }
+                }
+            }.start()
+        } catch (e: Exception) {
+            Log.w("LOCAL_NET", "server failed port=${MeshTransportPolicy.LOCAL_NET_PORT} error=${e.message}")
+        }
+    }
+
+    /** Phones linked TO this phone (hotspot members, the other group's link). */
+    private fun localNetServerPeerCount(): Int = peerLinks.entries.count { (peerId, links) ->
+        val link = links[MeshTransportPolicy.LOCAL_NET]
+        link != null && !link.socket.isClosed && peerId != localNetPeerId
+    }
+
+    private fun emitLocalNet(state: String, extra: Map<String, Any?> = emptyMap()) {
+        val event = mapOf("type" to "local_net", "state" to state, "kind" to localNetKind) + extra
+        try { localNetListener?.invoke(event) } catch (_: Exception) {}
+    }
+
+    private fun connectLocalNetInternal(network: android.net.Network, kind: String, targets: List<String>, iface: String?) {
+        if (!LocalNetPolicy.validKind(kind)) return
+        closeLocalNetClientLink()
+        localNetNetwork = network
+        localNetKind = kind
+        localNetTargets = targets.take(4)
+        localNetIface = iface
+        localNetLeft = false
+        localNetRetries.set(0)
+        ensureLocalNetServer()
+        Log.i("LOCAL_NET", "network up kind=$kind targets=${targets.size} iface=${iface ?: "-"}")
+        dialLocalNet("joined")
+    }
+
+    private fun localNetAddress(target: String): java.net.InetAddress {
+        val plain = java.net.InetAddress.getByName(target)
+        if (plain is java.net.Inet6Address && plain.isLinkLocalAddress) {
+            val nif = localNetIface?.let { try { java.net.NetworkInterface.getByName(it) } catch (_: Exception) { null } }
+            if (nif != null) return java.net.Inet6Address.getByAddress(null, plain.address, nif)
+        }
+        return plain
+    }
+
+    private fun dialLocalNet(reason: String) {
+        val network = localNetNetwork ?: return
+        if (localNetLeft || !transportRunning) return
+        if (!localNetInFlight.compareAndSet(false, true)) return
+        val kind = localNetKind ?: LocalNetPolicy.KIND_GROUP
+        Thread {
+            try {
+                for (target in localNetTargets) {
+                    if (localNetLeft) return@Thread
+                    var socket: Socket? = null
+                    try {
+                        socket = network.socketFactory.createSocket()
+                        socket.connect(InetSocketAddress(localNetAddress(target), MeshTransportPolicy.LOCAL_NET_PORT), MeshTransportPolicy.SOCKET_CONNECT_TIMEOUT_MS)
+                        configureSocket(socket)
+                        val connection = authenticateClient(socket, target, MeshTransportPolicy.LOCAL_NET)
+                        if (connection == null) { try { socket.close() } catch (_: Exception) {}; continue }
+                        if (!registerPeer(connection)) { try { socket.close() } catch (_: Exception) {}; continue }
+                        localNetPeerId = connection.peerId
+                        localNetRetries.set(0)
+                        val via = if (target.contains(':')) "v6" else "v4"
+                        Log.i("LOCAL_NET", "linked kind=$kind peer=${connection.peerId.take(8)} via=$via reason=$reason")
+                        emitLocalNet("linked", mapOf("peer_id" to connection.peerId, "via" to via))
+                        Thread {
+                            try { readTransportLoop(connection) } finally { onLocalNetLinkClosed(connection.peerId) }
+                        }.start()
+                        return@Thread
+                    } catch (e: Exception) {
+                        try { socket?.close() } catch (_: Exception) {}
+                        Log.w("LOCAL_NET", "dial failed kind=$kind via=${if (target.contains(':')) "v6" else "v4"} error=${e.message}")
+                    }
+                }
+                onLocalNetDialFailed()
+            } finally {
+                localNetInFlight.set(false)
+            }
+        }.start()
+    }
+
+    private fun onLocalNetDialFailed() {
+        if (localNetLeft) return
+        val n = localNetRetries.incrementAndGet()
+        if (LocalNetPolicy.shouldRetry(localNetNetwork != null, n, localNetLeft)) {
+            Thread { Thread.sleep(LocalNetPolicy.RETRY_MS); dialLocalNet("retry_$n") }.start()
+        } else {
+            Log.i("LOCAL_NET", "gave up kind=$localNetKind tries=$n")
+            emitLocalNet("failed", mapOf("reason" to "connect_failed"))
+        }
+    }
+
+    private fun onLocalNetLinkClosed(peerId: String) {
+        if (localNetPeerId == peerId) localNetPeerId = null
+        if (localNetLeft) return
+        Log.i("LOCAL_NET", "link closed kind=$localNetKind peer=${peerId.take(8)}")
+        emitLocalNet("link_lost", mapOf("peer_id" to peerId))
+        onLocalNetDialFailed()
+    }
+
+    private fun closeLocalNetClientLink() {
+        val peer = localNetPeerId ?: return
+        localNetPeerId = null
+        val link = peerLinks[peer]?.get(MeshTransportPolicy.LOCAL_NET) ?: return
+        try { link.socket.close() } catch (_: Exception) {}
+    }
+
+    private fun closeLocalNetInternal(reason: String) {
+        if (localNetLeft && localNetNetwork == null) return
+        localNetLeft = true
+        localNetNetwork = null
+        closeLocalNetClientLink()
+        Log.i("LOCAL_NET", "left kind=$localNetKind reason=$reason")
+        emitLocalNet("left", mapOf("reason" to reason))
+        localNetKind = null
+        localNetTargets = emptyList()
+    }
+
+    private fun localNetStatusInternal(): Map<String, Any?> = mapOf(
+        "kind" to localNetKind,
+        "linked" to (localNetPeerId != null),
+        "peers" to localNetServerPeerCount(),
+        "server" to (localNetServer != null),
+    )
 
     private fun ensureLanServer() {
         if (lanServer != null) return
@@ -2430,6 +2630,11 @@ class LocalLinkTransportService : Service() {
         if (isDelta && !routeDeltaReceiver.onDelta(peerId, sessionId, dseq)) requestFullRoutes(peerId, "missed_update")
         val directVersion = directRouteVersions.computeIfAbsent(peerId) { AtomicLong(now) }.get()
         routeTable.upsert(peerId, MeshRoute(destinationNodeId = peerId, nextHopNodeId = peerId, hopCount = 1, expiresAt = now + DIRECT_ROUTE_TTL_MS, lastSeenAt = now, routeVersion = directVersion, path = listOf(self, peerId)))
+        // Bundle 161 (two-level map): a compact member keeps only its group,
+        // its contacts and routes from other neighbours.
+        val compactMap = compactMember()
+        val fromHost = compactMap && activePeerConnection(peerId)?.transportName == MeshTransportPolicy.WIFI_DIRECT
+        var trimmed = 0
         var accepted = 0
         val count = routes.length()
         for (i in 0 until count) {
@@ -2449,6 +2654,7 @@ class LocalLinkTransportService : Service() {
             val currentRoutes = routeTable.allFor(destination, now)
             val currentMaxVersion = currentRoutes.maxOfOrNull { it.routeVersion }
             if (currentMaxVersion != null && version > currentMaxVersion + MeshLimits.MAX_ROUTE_VERSION_ADVANCE_MS) continue
+            if (!MeshTwoLevelMap.keep(compactMap, fromHost, advertisedHops + 1, knownPeers.contains(destination))) { trimmed++; continue }
             val candidate = MeshRoute(
                 destinationNodeId = destination,
                 nextHopNodeId = peerId,
@@ -2498,7 +2704,7 @@ class LocalLinkTransportService : Service() {
                 Thread { flushMeshQueue() }.start()
             }
         }
-        transportEvent("route_update", mapOf("peer_id" to peerId, "advertised_routes" to count, "accepted_routes" to accepted, "withdrawn_routes" to withdrawn.size, "mode" to mode.ifBlank { "legacy" }))
+        transportEvent("route_update", mapOf("peer_id" to peerId, "advertised_routes" to count, "accepted_routes" to accepted, "withdrawn_routes" to withdrawn.size, "trimmed_routes" to trimmed, "mode" to mode.ifBlank { "legacy" }))
         if (accepted > 0 || withdrawn.isNotEmpty()) broadcastRouteAdvertisement(excludePeerId = peerId)
         transportEvent("topology", meshTopologySnapshot())
     }
@@ -2909,6 +3115,8 @@ class LocalLinkTransportService : Service() {
                     }
                     // Bundle 160: changes every 5-10 s, full map every 60 s.
                     sendRouteDeltas(triggered = false)
+                    // Bundle 161: compact map on/off.
+                    checkCompactMap()
                     lanNeededAt.entries.removeIf { now - it.value > 120_000L }
                     for ((nodeId, endpoint) in lanEndpoints) {
                         if (now - endpoint.lastSeenAt > MeshTransportPolicy.lanEndpointRetentionMs(lanEndpoints.size) && activePeerConnection(nodeId) == null) {
@@ -3081,6 +3289,11 @@ class LocalLinkTransportService : Service() {
             "send_failures" to transportSendFailures.get(),
             "heartbeat_timeouts" to transportHeartbeatTimeouts.get(),
             "lan_discovery_endpoint_count" to lanEndpoints.size,
+            // Bundle 161: two-level map + linked group / hotspot.
+            "compact_map" to lastCompactMap,
+            "local_net_kind" to localNetKind,
+            "local_net_linked" to (localNetPeerId != null && peerLinks[localNetPeerId!!]?.get(MeshTransportPolicy.LOCAL_NET)?.socket?.isClosed == false),
+            "local_net_peers" to localNetServerPeerCount(),
             // Bundle 158: phones seen on this Wi-Fi (bridge choice in Dart).
             "lan_ids" to lanEndpoints.keys.toList().sorted().take(64),
             // Bundle 159.3: relay counts for the admin view (no content).
@@ -3455,6 +3668,8 @@ class LocalLinkTransportService : Service() {
         peerLinks.clear()
         try { lanServer?.close() } catch (_: Exception) {}
         lanServer = null
+        try { localNetServer?.close() } catch (_: Exception) {}
+        localNetServer = null
         try { lanDiscoverySocket?.close() } catch (_: Exception) {}
         lanDiscoverySocket = null
         releaseLanMulticastLock()

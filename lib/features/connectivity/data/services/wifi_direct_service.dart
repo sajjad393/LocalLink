@@ -67,6 +67,27 @@ class WifiDirectService {
         'address': address,
         'leave': leave,
       });
+  /// Bundle 161: linked groups + LocalLink hotspot (tests).
+  Future<String?> joinLocalNet({
+    required String kind,
+    required String ssid,
+    required String key,
+    String? v6,
+  }) =>
+      _channel.invokeMethod<String>('joinLocalNet', {
+        'kind': kind,
+        'ssid': ssid,
+        'key': key,
+        'v6': v6,
+      });
+  Future<void> leaveLocalNet(String reason) =>
+      _channel.invokeMethod('leaveLocalNet', {'reason': reason});
+  Future<String?> startLocalHotspot() =>
+      _channel.invokeMethod<String>('startLocalHotspot');
+  Future<void> stopLocalHotspot(String reason) =>
+      _channel.invokeMethod('stopLocalHotspot', {'reason': reason});
+  Future<void> setNearbyLinkTarget(String? id) =>
+      _channel.invokeMethod('setNearbyLinkTarget', {'id': id});
   Future<void> cancelConnect() => _channel.invokeMethod('cancelConnect');
   Future<void> disconnect() => _channel.invokeMethod('disconnect');
 

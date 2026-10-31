@@ -49,7 +49,10 @@ object NearbyGroupPolicy {
         !groupFormed || leave
 
     /** Relay links allowed per transport (156 used 3 for everything). */
-    fun maxRelayLinks(transportName: String): Int =
-        if (transportName == MeshTransportPolicy.WIFI_DIRECT) NearbyTagPolicy.GROUP_SOFT_LIMIT + 1
-        else MeshRelayPolicy.MAX_RELAY_LINKS
+    fun maxRelayLinks(transportName: String): Int = when (transportName) {
+        MeshTransportPolicy.WIFI_DIRECT -> NearbyTagPolicy.GROUP_SOFT_LIMIT + 1
+        // Bundle 161: a hotspot holds non-contacts too (sealed packets only).
+        MeshTransportPolicy.LOCAL_NET -> LocalNetPolicy.MAX_RELAY_LINKS
+        else -> MeshRelayPolicy.MAX_RELAY_LINKS
+    }
 }

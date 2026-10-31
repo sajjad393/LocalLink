@@ -7,10 +7,15 @@ package com.sajjad.locallink.mesh
 object MeshTransportPolicy {
     const val WIFI_DIRECT: String = "wifi_direct"
     const val LAN: String = "lan"
+    /** Bundle 161: a link over another Wi-Fi network this phone joined as a
+     *  normal Wi-Fi user (another nearby group, or a LocalLink hotspot). */
+    const val LOCAL_NET: String = "local_net"
 
     const val WIFI_DIRECT_PORT: Int = 8988
     const val LAN_PORT: Int = 8989
     const val LAN_DISCOVERY_PORT: Int = 8990
+    /** Bundle 161: listening port for [LOCAL_NET] links. */
+    const val LOCAL_NET_PORT: Int = 8991
 
     const val DISCOVERY_PROTOCOL_VERSION: Int = 1
     const val LAN_BEACON_INTERVAL_MS: Long = 3_000L
@@ -60,12 +65,13 @@ object MeshTransportPolicy {
     /** One logical active link is kept per peer; LAN is preferred when both links exist. */
     fun transportPriority(name: String): Int = when (name) {
         LAN -> 20
+        LOCAL_NET -> 15
         WIFI_DIRECT -> 10
         else -> 0
     }
 
     fun isSupportedTransport(name: String): Boolean =
-        name == LAN || name == WIFI_DIRECT
+        name == LAN || name == WIFI_DIRECT || name == LOCAL_NET
 
     fun isValidPort(port: Int): Boolean = port in 1..65_535
 

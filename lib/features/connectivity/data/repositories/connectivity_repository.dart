@@ -14,7 +14,8 @@ class ConnectivityRepository
     implements
         ConnectivityRepositoryContract,
         NearbyGroupControl,
-        NearbyBridgeControl {
+        NearbyBridgeControl,
+        NearbyLocalNetControl {
   final WebSocketService socket;
   final WifiDirectService wifiDirect;
   final PeerTransportContract directTransport;
@@ -102,6 +103,30 @@ class ConnectivityRepository
   }) =>
       wifiDirect.joinNearbyGroup(
           name: name, key: key, address: address, leave: leave);
+
+  // Bundle 161: linked groups + LocalLink hotspot (tests).
+  @override
+  Future<String?> joinLocalNet({
+    required String kind,
+    required String ssid,
+    required String key,
+    String? v6,
+  }) =>
+      wifiDirect.joinLocalNet(kind: kind, ssid: ssid, key: key, v6: v6);
+
+  @override
+  Future<void> leaveLocalNet(String reason) => wifiDirect.leaveLocalNet(reason);
+
+  @override
+  Future<String?> startLocalHotspot() => wifiDirect.startLocalHotspot();
+
+  @override
+  Future<void> stopLocalHotspot(String reason) =>
+      wifiDirect.stopLocalHotspot(reason);
+
+  @override
+  Future<void> setNearbyLinkTarget(String? id) =>
+      wifiDirect.setNearbyLinkTarget(id);
 
   @override
   Future<void> cancelWifiDirectConnect() => wifiDirect.cancelConnect();
