@@ -133,6 +133,8 @@ class AppDependencies {
     // person who is already reachable.
     wifiDirectFallback.hasLocalRoute =
         (peerId) => routePolicy.routes[peerId]?.isAvailable ?? false;
+    // Bundle 158: phones on this Wi-Fi (a bridge is only for the others).
+    wifiDirectFallback.lanPeerIds = () => routePolicy.lanPeerIds;
     // Bundle 157: Pair taps go through the one-shared-group rules.
     connectivity.pairTapHandler = wifiDirectFallback.pairTap;
     authentication = AuthenticationRepository(api: api, store: store, connectivity: connectivityRepository);

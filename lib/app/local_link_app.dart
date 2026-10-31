@@ -262,7 +262,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v3 · 3.0.0 · bundles 104-169 (2026-10-31)');
+        detail: 'v2 · bundles 104-151 (2026-10-30)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -566,9 +566,6 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // CANCELLED the native full-screen call notification instead of showing
     // it — users on another app saw nothing at all.
     _deps.calls.onAppLifecycleState(state);
-    // Bundle 159 (battery): slower nearby search while the app is hidden.
-    _deps.wifiDirectFallback.setForeground(state == AppLifecycleState.resumed ||
-        state == AppLifecycleState.inactive);
     if (state != AppLifecycleState.resumed) {
       unawaited(_deps.files.cleanupSensitiveArtifacts());
     }

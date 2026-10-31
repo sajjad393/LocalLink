@@ -29,7 +29,6 @@ import 'package:locallink/features/calls/domain/call_gateway.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/features/connectivity/domain/local_route.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
-import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 
 final class CallSessionManager implements CallGateway {
   final LocalStore store;
@@ -207,29 +206,6 @@ final class CallSessionManager implements CallGateway {
       media: mediaPlatform,
       audio: audioPlatform,
     );
-    transportFactory.nativeMesh.voiceKeyFor = (callId) => _voiceKeys[callId];
-  }
-
-  // Bundle 159: per-call voice keys (callId -> base64 key). Memory only,
-  // never saved or logged. A key is used only when BOTH phones agreed
-  // (sealed invite carried it, the accept said voice_lock).
-  final Map<String, String> _voiceKeys = <String, String>{};
-
-  @visibleForTesting
-  String? voiceKeyForTest(String callId) => _voiceKeys[callId];
-
-  /// The caller's key for this call, only if the invite can travel locked.
-  String? _voiceKeyForInvite(CallSession session) {
-    final existing = _voiceKeys[session.id];
-    if (existing != null) return existing;
-    final transport = directTransport;
-    if (transport is! SealingPeerTransport ||
-        !transport.isSealCapable(session.peerId)) {
-      return null;
-    }
-    final key = CallVoiceKey.generate();
-    _voiceKeys[session.id] = key;
-    return key;
   }
 
   void start() {
@@ -406,9 +382,6 @@ final class CallSessionManager implements CallGateway {
         mediaCodec: selectedCodec,
         transportMode: CallTransportMode.offlineMesh,
         directMode: true,
-        // Bundle 162 (4.8): answered now — the screen shows 00:00 at once.
-        // Voice only (video is paused and left exactly as it was).
-        answeredAt: live.videoEnabled ? null : DateTime.now(),
       ));
       // Fire-and-forget: a stalled store must not hold the callee on
       // 'Connecting…' while the microphone is already live below.
@@ -424,8 +397,6 @@ final class CallSessionManager implements CallGateway {
         'transport_mode': CallTransportMode.offlineMesh.wireName,
         'mesh_call': true,
         'direct': true,
-        // Bundle 159: tells the caller to lock its sound too.
-        if (_voiceKeys.containsKey(session.id)) 'voice_lock': true,
       });
       await _markConnected();
     } catch (e, stackTrace) {
@@ -655,7 +626,6 @@ final class CallSessionManager implements CallGateway {
       } catch (_) {}
     }
     _transport = null;
-    _voiceKeys.clear();
     await transportFactory.dispose();
     await _historyController.close();
     await _sessionController.close();
@@ -880,11 +850,6 @@ final class CallSessionManager implements CallGateway {
       transportMode: CallTransportMode.offlineMesh,
       supportedMediaCodecs: advertised,
     ));
-    // Bundle 159: keep the caller's voice key (memory only) if valid.
-    final voiceKey =
-        CallVoiceKey.normalize(msg[SealingPeerTransport.voiceKeyField]);
-    _voiceKeys.clear();
-    if (voiceKey != null) _voiceKeys[callId] = voiceKey;
     await _persistSession();
     _startRingTimer(outgoing: false);
     unawaited(_sendSignal({
@@ -1065,12 +1030,6 @@ final class CallSessionManager implements CallGateway {
       return;
     try {
       _ringTimer?.cancel();
-      // Bundle 162 (4.8): they answered — the screen shows 00:00 at once
-      // instead of "Ringing…" while the sound starts.
-      // Voice only (video is paused and left exactly as it was).
-      if (session.answeredAt == null && !session.videoEnabled) {
-        _setSession(session.copyWith(answeredAt: DateTime.now()));
-      }
       final selectedCodec =
           msg['selected_media_codec']?.toString().trim().toLowerCase();
       if (_transport == null) {
@@ -1084,13 +1043,8 @@ final class CallSessionManager implements CallGateway {
           AppLogger.info('CALL_CODEC_FORCED',
               detail: 'selected=$selectedCodec used=$used');
         }
-        final current = (_session ?? session).copyWith(mediaCodec: used);
+        final current = session.copyWith(mediaCodec: used);
         _setSession(current);
-        // Bundle 159: lock only if the other phone agreed (older apps
-        // don't send voice_lock and keep plain voice).
-        if (msg['voice_lock'] != true) _voiceKeys.remove(session.id);
-        AppLogger.info('CALL_VOICE_LOCK',
-            detail: 'call=${session.id} locked=${_voiceKeys.containsKey(session.id)}');
         _transport = transportFactory.resolve(requested: current.transportMode);
         await _transport!.start(current);
       }
@@ -1431,10 +1385,6 @@ final class CallSessionManager implements CallGateway {
         'mesh_call': true,
         'direct': true,
         'supported_media_codecs': session.supportedMediaCodecs,
-        // Bundle 159: locks the call sound (travels only inside a sealed
-        // invite; SealingPeerTransport drops it otherwise).
-        if (_voiceKeyForInvite(session) case final key?)
-          SealingPeerTransport.voiceKeyField: key,
       });
       AppLogger.info('CALL_INVITE_SENT', detail: 'transport=${route.kind.name} queued=${!routeAvailable}');
     } catch (error, stackTrace) {
@@ -1554,10 +1504,8 @@ final class CallSessionManager implements CallGateway {
       };
       final ws = socket;
       if (relayable.contains(type) && ws != null && ws.isConnected) {
-        // Bundle 159: the voice key never goes to the server.
         final relayed = ws.send({
-          ...Map<String, dynamic>.from(msg)
-            ..remove(SealingPeerTransport.voiceKeyField),
+          ...msg,
           'sender_id': store.deviceId,
           'transport_mode': CallTransportMode.offlineMesh.wireName,
         });
@@ -1690,7 +1638,6 @@ final class CallSessionManager implements CallGateway {
       if (_transport != null) await _transport!.stop(session);
     } catch (_) {}
     _transport = null;
-    _voiceKeys.remove(session.id);
     if (notifyServer)
       unawaited(_sendSignal({
         'type': 'call_end',
@@ -2058,34 +2005,11 @@ final class CallSessionManager implements CallGateway {
   }
 }
 
-/// Bundle 159: per-call voice key helpers (32 random bytes, base64).
-abstract final class CallVoiceKey {
-  static const int bytes = 32;
-
-  static String generate([Random? random]) {
-    final r = random ?? Random.secure();
-    return base64Encode(List<int>.generate(bytes, (_) => r.nextInt(256)));
-  }
-
-  /// The key if [raw] is a valid 32-byte base64 key, else null.
-  static String? normalize(Object? raw) {
-    if (raw is! String || raw.isEmpty || raw.length > 64) return null;
-    try {
-      final decoded = base64Decode(raw);
-      return decoded.length == bytes ? base64Encode(decoded) : null;
-    } catch (_) {
-      return null;
-    }
-  }
-}
-
-/// Bundle 158 (plan 158.2, D1): messages go up to 8 hops; voice calls were
-/// limited to 3. Bundle 159 (D): the call sound is locked, so any LocalLink
-/// phone may pass it on and voice goes up to 8 hops too. Only a relayed
-/// route longer than that blocks a call; no route at all keeps the old
-/// behaviour (the invite waits for a route).
+/// Bundle 158 (plan 158.2, D1): messages go up to 8 hops, voice calls at
+/// most 3. Only a relayed route longer than that blocks a call; no route at
+/// all keeps the old behaviour (the invite waits for a route).
 abstract final class VoiceCallHopPolicy {
-  static const int maxHops = 8;
+  static const int maxHops = 3;
 
   static bool tooFar(LocalRouteResult route) =>
       route.kind == LocalRouteKind.mesh &&

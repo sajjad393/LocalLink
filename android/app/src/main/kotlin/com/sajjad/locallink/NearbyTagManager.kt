@@ -37,6 +37,8 @@ class NearbyTagManager(
     private var groupKey: String? = null
     private var ownerAddress: String? = null
     private var wanted: List<String> = emptyList()
+    // Bundle 158: this phone bridges its group and a normal Wi-Fi network.
+    private var bridge = false
     private var lastDiscoveryAt = 0L
     private var lastPublished = ""
     private var listenersSet = false
@@ -98,6 +100,14 @@ class NearbyTagManager(
         publish()
     }
 
+    /** Bundle 158: advertise (or stop advertising) `br=1`. */
+    fun setBridge(on: Boolean) {
+        if (on == bridge) return
+        bridge = on
+        Log.i(TAG, "bridge ${if (on) "on" else "off"}")
+        publish()
+    }
+
     private fun emitGroup() {
         val role = if (host) "host" else if (member) "member" else "none"
         Log.i(TAG, "group state role=$role members=$members grp=${groupName ?: "-"}")
@@ -113,7 +123,7 @@ class NearbyTagManager(
     fun publish(force: Boolean = false) {
         val id = tagId ?: return
         if (!hasPermission()) return
-        val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted)
+        val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge)
         val signature = txt.toString()
         if (!force && signature == lastPublished) return
         lastPublished = signature
@@ -133,7 +143,7 @@ class NearbyTagManager(
     private fun addService(info: WifiP2pDnsSdServiceInfo, txt: Map<String, String>) {
         try {
             manager.addLocalService(channel, info, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0}") }
+                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"}") }
                 override fun onFailure(reason: Int) {
                     lastPublished = ""
                     Log.w(TAG, "tag publish failed reason=$reason")

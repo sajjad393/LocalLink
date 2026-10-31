@@ -182,6 +182,27 @@ final class WifiDirectFallbackService {
   bool _groupBusy = false;
   Timer? _groupTimer;
 
+  // ---------------------------------------------------- Bundle 158 bridge
+  /// Device ids of LocalLink phones seen on this Wi-Fi (LAN beacons).
+  Iterable<String> Function()? lanPeerIds;
+  String? _pendingReason;
+  bool _bridging = false;
+  int _bridgeSince = 0;
+  int _bridgeOffUntil = 0;
+  final Map<String, int> _bridgeSeen = <String, int>{};
+
+  /// Wi-Fi lost this soon after bridging = this phone can't keep Wi-Fi and a
+  /// group at the same time.
+  static const int bridgeWifiCheckMs = 20 * 1000;
+
+  /// Then no bridging for this long (plan 158.1).
+  static const int bridgeOffMs = 10 * 60 * 1000;
+
+  @visibleForTesting
+  bool get bridging => _bridging;
+  @visibleForTesting
+  int get bridgeOffUntil => _bridgeOffUntil;
+
   NearbyGroupControl? get _group {
     final c = connectivity;
     return c is NearbyGroupControl ? c as NearbyGroupControl : null;
@@ -469,7 +490,10 @@ final class WifiDirectFallbackService {
       if (_myGroup != null && t.group == _myGroup && !t.host) {
         _mates.add(t.idHash);
       }
+      // Bundle 158: when each group last showed a bridge.
+      if (t.bridge && t.group != null) _bridgeSeen[t.group!] = now;
     }
+    _bridgeSeen.removeWhere((_, at) => now - at > bridgeOffMs);
     _tagState.removeWhere((a, _) => !present.contains(a));
     _firstSeen.removeWhere((a, _) => !present.contains(a));
   }
@@ -550,8 +574,15 @@ final class WifiDirectFallbackService {
     if (done) {
       _backoff.succeeded();
       if (_pendingHost != null) _joinFailures.remove(_pendingHost);
+      final reason = _pendingReason;
       _pendingKind = null;
       _pendingHost = null;
+      _pendingReason = null;
+      if (reason != null &&
+          reason.startsWith('bridge_') &&
+          kind != NearbyGroupActionKind.leave) {
+        _startBridge(now, reason);
+      }
       return;
     }
     if (now - _pendingSince > 25 * 1000) {
@@ -562,6 +593,15 @@ final class WifiDirectFallbackService {
 
   void _failPending(int now) {
     _backoff.failed(now);
+    final reason = _pendingReason;
+    _pendingReason = null;
+    if (reason != null && reason.startsWith('bridge_')) {
+      // Bundle 158: a bridge join/create that fails (busy radio, no
+      // Wi-Fi + group at once): no bridging for 10 min.
+      _bridgeOffUntil = now + bridgeOffMs;
+      AppLogger.info('NEARBY',
+          detail: 'group bridge_incapable reason=action_failed off_min=10');
+    }
     final host = _pendingHost;
     if (host != null) {
       final n = (_joinFailures[host] ?? 0) + 1;
@@ -665,6 +705,7 @@ final class WifiDirectFallbackService {
         _applyConnection(await connectivity.wifiDirectConnectionInfo());
       } catch (_) {}
       _checkPending(now);
+      await _checkBridge(now);
       final waiting = _waitingHashes();
       await _publishWanted(waiting);
       if (_pendingKind != null && !userTap) return;
@@ -688,6 +729,9 @@ final class WifiDirectFallbackService {
         lostJitterMs: _lostJitterMs,
         lostMates: _lostMates,
         busy: _isBusy(),
+        lanPeers: _lanHashes(),
+        bridgeAllowed: !_bridging && now >= _bridgeOffUntil,
+        bridgeSeen: {..._bridgeSeen},
       ));
       if (plan.reason != _lastPlanReason) {
         _lastPlanReason = plan.reason;
@@ -721,7 +765,13 @@ final class WifiDirectFallbackService {
       NearbyGroupControl group, NearbyGroupAction plan, int now) async {
     _backoff.acted(now);
     _pendingKind = plan.kind;
+    _pendingReason = plan.reason;
     _pendingSince = now;
+    if (plan.kind == NearbyGroupActionKind.leave && _bridging) {
+      // Our bridge group closed empty: nobody needed it, rest 10 min.
+      _bridgeOffUntil = now + bridgeOffMs;
+      await _stopBridge('group_closed');
+    }
     _pendingHost = plan.host?.address ?? plan.address;
     AppLogger.info('NEARBY',
         detail: 'group do=${plan.kind.name} reason=${plan.reason}'
@@ -756,6 +806,73 @@ final class WifiDirectFallbackService {
           detail: 'group ${plan.kind.name} failed error=$error');
       _failPending(now);
     }
+  }
+
+  // ------------------------------------------------ Bundle 158: the bridge
+
+  Set<String> _lanHashes() {
+    try {
+      return {
+        for (final id in lanPeerIds?.call() ?? const <String>[])
+          if (id.trim().isNotEmpty) NearbyTag.idFor(id),
+      };
+    } catch (_) {
+      return const <String>{};
+    }
+  }
+
+  void _startBridge(int now, String reason) {
+    if (_bridging) return;
+    _bridging = true;
+    _bridgeSince = now;
+    AppLogger.info('NEARBY',
+        detail: 'group bridge on reason=$reason role=${_role.name} '
+            'grp=${_myGroup ?? '-'}');
+    unawaited(_setBridgeFlag(true));
+  }
+
+  Future<void> _stopBridge(String reason) async {
+    if (!_bridging) return;
+    _bridging = false;
+    AppLogger.info('NEARBY', detail: 'group bridge off reason=$reason');
+    await _setBridgeFlag(false);
+  }
+
+  Future<void> _setBridgeFlag(bool on) async {
+    final c = connectivity;
+    if (c is! NearbyBridgeControl) return;
+    try {
+      await (c as NearbyBridgeControl).setNearbyBridge(on);
+    } catch (_) {}
+  }
+
+  /// Keeps the bridge honest: off when we left the group or lost Wi-Fi. Wi-Fi
+  /// lost within 20 s of bridging means this phone can't do both: leave the
+  /// group (Wi-Fi comes back), no bridging for 10 min.
+  Future<void> _checkBridge(int now) async {
+    if (!_bridging) return;
+    if (_role == NearbyGroupRole.none) {
+      await _stopBridge('left_group');
+      return;
+    }
+    if (_onWifiNetwork) return;
+    if (now - _bridgeSince <= bridgeWifiCheckMs) {
+      _bridgeOffUntil = now + bridgeOffMs;
+      AppLogger.info('NEARBY',
+          detail: 'group bridge_incapable reason=wifi_lost off_min=10');
+      await _stopBridge('incapable');
+      _pendingKind = NearbyGroupActionKind.leave;
+      _pendingReason = 'bridge_leave';
+      _pendingSince = now;
+      _pendingHost = null;
+      try {
+        await connectivity.disconnectWifiDirect();
+      } catch (_) {}
+      return;
+    }
+    // Wi-Fi went away later (walked off): stay in the group as a normal
+    // member — never break routes.
+    await _stopBridge('wifi_off');
   }
 
   void _record(String state, {int? count}) {

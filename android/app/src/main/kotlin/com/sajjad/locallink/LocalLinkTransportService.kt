@@ -215,6 +215,15 @@ class LocalLinkTransportService : Service() {
         val link = activePeerConnection(peerId) ?: return true
         return MeshRelayPolicy.canCarry(link.trust, packet.type)
     }
+    /** Bundle 158: LAN next hop before Wi-Fi Direct (same hop count). */
+    private fun routerLinkRank(peerId: String): Int =
+        MeshRouteChoicePolicy.linkRank(activePeerConnection(peerId)?.transportName)
+    /** Bundle 158: make-before-break — a route is proven once its next hop
+     *  answered a ping on one of its current links. */
+    private fun routerRouteProven(route: MeshRoute): Boolean =
+        peerLinks[route.nextHopNodeId]?.values?.any {
+            !it.socket.isClosed && MeshRouteChoicePolicy.linkProven(it.connectedAt, it.lastPongAt)
+        } ?: false
     private val callMediaLock = Any()
     @Volatile private var callMedia: CallMediaSession? = null
 
@@ -331,7 +340,7 @@ class LocalLinkTransportService : Service() {
         }
     }
     private val meshRouter by lazy {
-        MeshRouter({ transportDeviceId }, routeTable, meshPeers, meshTransport, ::enqueueMeshPacket, meshPacketTtl, ::routerCanCarry)
+        MeshRouter({ transportDeviceId }, routeTable, meshPeers, meshTransport, ::enqueueMeshPacket, meshPacketTtl, linkRank = ::routerLinkRank, routeProven = ::routerRouteProven, canCarry = ::routerCanCarry)
     }
     private val startedAt=System.currentTimeMillis()
 
@@ -971,6 +980,14 @@ class LocalLinkTransportService : Service() {
             ))
         }
         transportEvent("topology",meshTopologySnapshot())
+        // Bundle 158: ping the new link at once, so it is proven (pong) in
+        // one round trip and make-before-break can switch to it quickly.
+        Thread {
+            try {
+                connection.lastPingAt = System.currentTimeMillis()
+                connection.send(JSONObject().put("type", "ping").put("sent_at", connection.lastPingAt))
+            } catch (_: Exception) {}
+        }.start()
         Thread{flushMeshQueue()}.start()
         return true
     }
@@ -2246,8 +2263,22 @@ class LocalLinkTransportService : Service() {
                 transportEvent("mesh_queue_full", mapOf("target_id" to target, "queued_packets" to files.size, "queued_bytes" to bytes))
                 return false
             }
-            val id=meshQueueSequence.incrementAndGet();val now=System.currentTimeMillis();val packetExpiry=MeshLimits.packetExpiryAt(packet.createdAt);val record=JSONObject().put("target_id",target).put("packet_id",packet.packetId).put("queued_at",now).put("expires_at",minOf(packetExpiry, now + MeshLimits.MAX_PACKET_AGE_MS)).put("attempts",0).put("retry_after",now).put("payload_enc",encryptMeshAtRest(serialized))
-            val file = File(meshQueueDir, "${System.currentTimeMillis()}_${id.toString().padStart(8, '0')}_${UUID.randomUUID()}.json")
+            // Bundle 158: someone else's sealed packet is held only briefly
+            // (2 min, small cap). The sender's outbox keeps the message until
+            // the delivery ack, so it is sent again on a new route.
+            val relayHold = MeshRelayHoldPolicy.isRelayHold(packet.sourceNodeId, transportDeviceId, packet.type)
+            if (relayHold) {
+                val held = files.filter { f -> f.name.contains("_rh_") }
+                val size = serialized.toByteArray(Charsets.UTF_8).size.toLong()
+                if (!MeshRelayHoldPolicy.admits(held.size, held.sumOf { it.length() }, size)) {
+                    Log.i("RELAY", "relay hold full packets=${held.size} target=$target")
+                    transportEvent("mesh_relay_hold_full", mapOf("target_id" to target, "held_packets" to held.size))
+                    return false
+                }
+            }
+            val id=meshQueueSequence.incrementAndGet();val now=System.currentTimeMillis();val packetExpiry=MeshLimits.packetExpiryAt(packet.createdAt);val expiresAt=if(relayHold)MeshRelayHoldPolicy.expiresAt(now,packetExpiry) else minOf(packetExpiry, now + MeshLimits.MAX_PACKET_AGE_MS);val record=JSONObject().put("target_id",target).put("packet_id",packet.packetId).put("queued_at",now).put("expires_at",expiresAt).put("attempts",0).put("retry_after",now).put("payload_enc",encryptMeshAtRest(serialized))
+            if (relayHold) Log.i("RELAY", "relay hold packet=${packet.packetId.takeLast(8)} target=$target hold_ms=${expiresAt - now}")
+            val file = File(meshQueueDir, "${System.currentTimeMillis()}_${id.toString().padStart(8, '0')}_${if (relayHold) "rh_" else ""}${UUID.randomUUID()}.json")
             file.writeText(record.toString(), Charsets.UTF_8)
             transportEvent("mesh_queued", mapOf("target_id" to target, "packet_id" to packet.packetId, "queued_packets" to files.size + 1))
             transportEvent("topology", meshTopologySnapshot())
@@ -2519,6 +2550,8 @@ class LocalLinkTransportService : Service() {
             "send_failures" to transportSendFailures.get(),
             "heartbeat_timeouts" to transportHeartbeatTimeouts.get(),
             "lan_discovery_endpoint_count" to lanEndpoints.size,
+            // Bundle 158: phones seen on this Wi-Fi (bridge choice in Dart).
+            "lan_ids" to lanEndpoints.keys.toList().sorted().take(64),
             "background_service" to LocalLinkTransportService.isRunning(),
             "service_uptime_ms" to (System.currentTimeMillis()-startedAt),
             "routes" to routeTable.snapshot(),
