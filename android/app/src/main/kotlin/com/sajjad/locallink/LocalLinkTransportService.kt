@@ -98,6 +98,8 @@ class LocalLinkTransportService : Service() {
         @Volatile private var running = false
         fun isRunning() = running
         fun setEventListener(value: EventListener?) { listener=value }
+        /** Bundle 169 (4.3): the background engine lets go only of its own listener. */
+        fun clearEventListenerIf(value: EventListener) { if (listener === value) listener = null }
         fun start(context: Context) { startCommand(context,null) }
         fun stop(context: Context) { instance?.stopTransportExplicit(); context.stopService(Intent(context,LocalLinkTransportService::class.java)) }
         fun ensureReady(context:Context,deviceId:String,peerIds:List<String>){
