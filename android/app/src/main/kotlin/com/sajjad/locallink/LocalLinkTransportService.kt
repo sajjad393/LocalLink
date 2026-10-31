@@ -3213,7 +3213,7 @@ class LocalLinkTransportService : Service() {
                     return false
                 }
             }
-            val id=meshQueueSequence.incrementAndGet();val now=System.currentTimeMillis();val packetExpiry=MeshLimits.packetExpiryAt(packet.createdAt);val expiresAt=if(relayHold)MeshRelayHoldPolicy.expiresAt(now,packetExpiry) else minOf(packetExpiry, now + MeshLimits.MAX_PACKET_AGE_MS);val record=JSONObject().put("target_id",target).put("packet_id",packet.packetId).put("queued_at",now).put("expires_at",expiresAt).put("attempts",0).put("retry_after",now).put("payload_enc",encryptMeshAtRest(serialized))
+            val id=meshQueueSequence.incrementAndGet();val now=System.currentTimeMillis();val packetExpiry=MeshLimits.packetExpiryAt(packet.createdAt);val normalExpiresAt=if(relayHold)MeshRelayHoldPolicy.expiresAt(now,packetExpiry) else minOf(packetExpiry, now + MeshLimits.MAX_PACKET_AGE_MS);val expiresAt=MeshQueueLifetimePolicy.expiresAt(now,normalExpiresAt,packet.payload.optLong(MeshQueueLifetimePolicy.FIELD,0L),packet.sourceNodeId==transportDeviceId) /* Bundle 172: call invites leave the queue after 60 s */;val record=JSONObject().put("target_id",target).put("packet_id",packet.packetId).put("queued_at",now).put("expires_at",expiresAt).put("attempts",0).put("retry_after",now).put("payload_enc",encryptMeshAtRest(serialized))
             if (relayHold) Log.i("RELAY", "relay hold packet=${packet.packetId.takeLast(8)} target=$target hold_ms=${expiresAt - now}")
             val file = File(meshQueueDir, "${System.currentTimeMillis()}_${id.toString().padStart(8, '0')}_${if (relayHold) "rh_" else ""}${UUID.randomUUID()}.json")
             file.writeText(record.toString(), Charsets.UTF_8)

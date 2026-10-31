@@ -49,6 +49,10 @@ class MessageSealService {
   /// Best-effort class (presence, heartbeats, probes).
   static const String sealedLiveType = 'sealed_x';
 
+  /// Bundle 172: how long (ms) the native send queue may keep this message.
+  /// Copied outside the lock so the queue can read it (no private data).
+  static const String queueLifetimeField = 'qt';
+
   /// Inner types the native queue keeps when no route exists (same list as
   /// `isStoreForwardable` in LocalLinkTransportService.kt).
   static const Set<String> queueableInnerTypes = {

@@ -282,6 +282,15 @@ class PresenceHub extends ChangeNotifier {
     return best;
   }
 
+  /// Bundle 170: owner (user id) of a device, or null while unknown. Starts
+  /// the lookup on first ask; listeners are told when it arrives.
+  String? userOf(String deviceId) {
+    if (deviceId.isEmpty) return null;
+    _resolveUser(deviceId);
+    final user = _userOf[deviceId] ?? '';
+    return user.isEmpty ? null : user;
+  }
+
   /// Status of this one device only (no merging).
   PresenceStatus statusOfDevice(String deviceId) => _deviceStatus(deviceId);
 

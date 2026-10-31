@@ -18,6 +18,13 @@ class CallHistoryTile extends StatelessWidget {
   final bool missed;
   final VoidCallback? onCall;
 
+  /// Bundle 171: how many calls this row stands for ("sajjad (4)").
+  final int count;
+
+  /// Bundle 171: row tap for a grouped row (opens the list of calls).
+  /// When null the row tap calls back, as before.
+  final VoidCallback? onOpen;
+
   const CallHistoryTile({
     super.key,
     required this.call,
@@ -28,6 +35,8 @@ class CallHistoryTile extends StatelessWidget {
     required this.selfId,
     this.missed = false,
     this.onCall,
+    this.count = 1,
+    this.onOpen,
   });
 
   // 'Completed' is the default happy path, so it stays silent (mock 99):
@@ -63,16 +72,7 @@ class CallHistoryTile extends StatelessWidget {
             createdAt: '',
             lastSeenAt: ''),
       ),
-      title: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        // Bundle 153: bold name, same style as the Chats list.
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: missed ? colors.error : colors.onSurface,
-            ),
-      ),
+      title: _title(context, colors),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 2),
         child: Row(
@@ -97,7 +97,35 @@ class CallHistoryTile extends StatelessWidget {
       // Bundle 153: the same light-blue call button as the Chats list (the
       // row tap keeps calling too).
       trailing: MessengerCallButton(tooltip: 'Call back', onPressed: onCall),
-      onTap: onCall,
+      onTap: onOpen ?? onCall,
+    );
+  }
+
+  Widget _title(BuildContext context, ColorScheme colors) {
+    final name = Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      // Bundle 153: bold name, same style as the Chats list.
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: missed ? colors.error : colors.onSurface,
+          ),
+    );
+    if (count <= 1) return name;
+    // Bundle 171: grouped row — the count follows the name.
+    return Row(
+      children: [
+        Flexible(child: name),
+        const SizedBox(width: 6),
+        Text(
+          '($count)',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w400,
+                color: missed ? colors.error : colors.onSurfaceVariant,
+              ),
+        ),
+      ],
     );
   }
 }

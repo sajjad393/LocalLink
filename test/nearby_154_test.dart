@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/models/device.dart';
+import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
@@ -13,6 +14,7 @@ import 'package:locallink/features/directory/data/services/pairing_service.dart'
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/nearby_devices_screen.dart';
 import 'package:locallink/features/directory/presentation/nearby_list_plan.dart';
+import 'package:locallink/features/directory/presentation/nearby_search_animation.dart';
 
 import 'support/phase5_fakes.dart';
 
@@ -41,6 +43,12 @@ class _Store extends FakeStore {
 }
 
 class _Dir extends Fake implements DirectoryRepositoryContract {}
+
+/// Bundle 170: the Nearby permission is already granted.
+class _GrantedConnectivity extends FakeConnectivity {
+  @override
+  Future<bool> isWifiDirectPermissionGranted() async => true;
+}
 
 Device _device(String id, {String revokedAt = ''}) => Device(
       id: id,
@@ -183,12 +191,19 @@ void main() {
     });
   });
 
-  group('Nearby screen (bundle 154)', () {
+  // Bundle 170: the Nearby list now lives inside Add Contact
+  // (NearbyPeopleSection); the separate Nearby screen is gone.
+  group('Nearby list (bundle 154 + 170)', () {
+    tearDown(() => PresenceHub.instance.resetForTest());
+
     Future<(MeshBloc, ConnectivityBloc, PairingService)> pump(
       WidgetTester tester, {
       required List<Map<String, dynamic>> meshPeers,
       required List<String> paired,
       Set<String> blocked = const {},
+      bool granted = true,
+      String filter = '',
+      String selfUserId = '',
     }) async {
       tester.view.physicalSize = const Size(1080, 2280);
       tester.view.devicePixelRatio = 2.75;
@@ -198,7 +213,8 @@ void main() {
         ..blocked = blocked;
       final mesh = MeshBloc(
           repository: _MeshRepo({'node_id': 'self', 'mesh_peers': meshPeers}));
-      final connectivity = ConnectivityBloc(repository: FakeConnectivity());
+      final connectivity = ConnectivityBloc(
+          repository: granted ? _GrantedConnectivity() : FakeConnectivity());
       final pairing = PairingService(
         store: store,
         crypto: IdentityCryptoService(),
@@ -207,18 +223,24 @@ void main() {
       );
       await tester.runAsync(() => mesh.start());
       await tester.pumpWidget(MaterialApp(
-        home: NearbyDevicesScreen(
-          connectivity: connectivity,
-          mesh: mesh,
-          directory: _Dir(),
-          crypto: IdentityCryptoService(),
-          pairing: pairing,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: NearbyPeopleSection(
+              connectivity: connectivity,
+              mesh: mesh,
+              directory: _Dir(),
+              crypto: IdentityCryptoService(),
+              pairing: pairing,
+              filter: filter,
+              selfUserId: selfUserId,
+            ),
+          ),
         ),
       ));
       await tester.runAsync(() => Future<void>.delayed(
           const Duration(milliseconds: 50)));
       await tester.pump();
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       return (mesh, connectivity, pairing);
     }
 
@@ -247,9 +269,14 @@ void main() {
         'blockedx-00000009'
       });
       expect(find.text('Pair'), findsOneWidget);
-      expect(find.textContaining('0000ali1'), findsOneWidget);
+      // Bundle 170: a name (or "Nearby LocalLink user"), never a short id,
+      // and no transport words.
+      expect(find.text('Nearby LocalLink user'), findsOneWidget);
+      expect(find.text('Nearby · not added yet'), findsOneWidget);
+      expect(find.textContaining('0000ali1'), findsNothing);
+      expect(find.textContaining('Same Wi-Fi'), findsNothing);
       expect(find.textContaining('Paired'), findsNothing);
-      expect(find.text('1 phone you can add'), findsOneWidget);
+      expect(find.text('Nearby'), findsOneWidget);
       await finish(tester, deps);
     });
 
@@ -268,11 +295,61 @@ void main() {
 
     testWidgets('nothing found', (tester) async {
       final deps = await pump(tester, meshPeers: const [], paired: const []);
-      expect(
-          find.text(
-              'Nothing found yet — keep LocalLink open on the other phone.'),
+      // Bundle 170: the mesh animation replaces the radar.
+      expect(find.text('Looking for LocalLink phones…'), findsOneWidget);
+      expect(find.text('Both phones need Wi-Fi on'), findsOneWidget);
+      expect(find.byType(NearbySearchAnimation), findsOneWidget);
+      expect(find.text('Allow'), findsNothing);
+      await finish(tester, deps);
+    });
+
+    testWidgets('permission off shows the Allow card, no popup by itself',
+        (tester) async {
+      final deps = await pump(tester,
+          meshPeers: const [], paired: const [], granted: false);
+      expect(find.text('Allow nearby to see phones around you'),
           findsOneWidget);
-      expect(find.text('Looking for nearby phones…'), findsOneWidget);
+      expect(find.text('Allow'), findsOneWidget);
+      expect(find.text('Looking for LocalLink phones…'), findsNothing);
+      await finish(tester, deps);
+    });
+
+    testWidgets('your own other phone is hidden', (tester) async {
+      PresenceHub.instance.linkUser('myother-00000002', 'me-user');
+      final deps = await pump(tester, meshPeers: [
+        {'node_id': 'myother-00000002', 'state': 'DISCOVERED', 'transport': 'lan'},
+      ], paired: const [], selfUserId: 'me-user');
+      expect(find.text('Pair'), findsNothing);
+      expect(find.text('Looking for LocalLink phones…'), findsOneWidget);
+      await finish(tester, deps);
+    });
+
+    testWidgets('typing narrows the list to matching names', (tester) async {
+      PresenceHub.instance.nameResolver = (id) async =>
+          id == 'newphone-0000ali1' ? 'Ali Raza' : null;
+      final peers = [
+        {'node_id': 'newphone-0000ali1', 'state': 'DISCOVERED', 'transport': 'lan'},
+        {'node_id': 'newphone-000zain2', 'state': 'DISCOVERED', 'transport': 'lan'},
+      ];
+      var deps = await pump(tester, meshPeers: peers, paired: const []);
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Ali Raza'), findsOneWidget);
+      expect(find.text('Pair'), findsNWidgets(2));
+      await finish(tester, deps);
+
+      deps = await pump(tester, meshPeers: peers, paired: const [], filter: 'al');
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Ali Raza'), findsOneWidget);
+      expect(find.text('Pair'), findsOneWidget);
+      await finish(tester, deps);
+
+      deps = await pump(tester, meshPeers: peers, paired: const [], filter: 'qq');
+      expect(find.text('Pair'), findsNothing);
+      expect(find.text('Nearby'), findsNothing);
       await finish(tester, deps);
     });
   });

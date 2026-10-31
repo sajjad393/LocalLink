@@ -8,17 +8,35 @@ import 'package:locallink/features/directory/bloc/directory_bloc.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/my_qr_screen.dart';
+import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
+import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
+import 'package:locallink/features/directory/data/services/pairing_service.dart';
+import 'package:locallink/features/directory/presentation/nearby_devices_screen.dart';
+import 'package:locallink/features/directory/presentation/profile_view_rules.dart';
 
 class AddContactScreen extends StatefulWidget {
   final DirectoryRepositoryContract repository;
   final Future<void> Function(DirectoryProfile)? onStartChat;
   final IdentityCryptoService crypto;
 
+  /// Bundle 170: Nearby lives here now (the separate Nearby screen is
+  /// gone). When these are null the Nearby part is simply not shown.
+  final ConnectivityBloc? connectivity;
+  final MeshBloc? mesh;
+  final PairingService? pairing;
+
+  /// Bundle 170: this account's user id ("This is you", own phones hidden).
+  final String selfUserId;
+
   const AddContactScreen({
     super.key,
     required this.repository,
     required this.crypto,
     this.onStartChat,
+    this.connectivity,
+    this.mesh,
+    this.pairing,
+    this.selfUserId = '',
   });
 
   @override
@@ -118,6 +136,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
           profile: profile,
           repository: widget.repository,
           onStartChat: widget.onStartChat,
+          selfUserId: widget.selfUserId,
         ),
       ),
     );
@@ -152,7 +171,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
                   controller: query,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
-                    hintText: 'Search',
+                    hintText: 'Search name or @username',
                     filled: true,
                     prefixIcon: searching
                         ? const Padding(
@@ -197,46 +216,100 @@ class _AddContactScreenState extends State<AddContactScreen> {
         ),
       );
 
+  /// Bundle 170: search results first, then the Nearby people (always under
+  /// the search box, narrowed while typing). No match → "No one called …
+  /// found" and everyone nearby under "People nearby".
   Widget _buildResults(BuildContext context) {
-    if (query.text.trim().length < 2) {
-      return Center(
-        child: Text(
-          'Type at least 2 characters to search.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      );
-    }
-    if (_noMatch && !searching) {
-      return Center(
-        child: Text(
-          'No matching users found',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-      );
-    }
-    if (_results.isEmpty) return const SizedBox.shrink();
-    return ListView.separated(
-      itemCount: _results.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (context, index) {
-        final profile = _results[index];
-        return ListTile(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Theme.of(context).dividerColor),
+    final text = query.text.trim();
+    final typing = text.length >= 2;
+    final noMatch = typing && _noMatch && !searching;
+    final theme = Theme.of(context);
+    // A Column (not a lazy list) so the Nearby part keeps its state while
+    // results come and go above it.
+    return SingleChildScrollView(
+      child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (typing && _results.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Results',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
           ),
-          tileColor: Theme.of(context).colorScheme.surface,
-          leading: CircleAvatar(child: Text(_initial(profile))),
-          title: Text(profile.displayName.isEmpty
-              ? profile.username
-              : profile.displayName),
-          subtitle: Text('@${profile.username}'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _open(profile),
-        );
-      },
+          for (final profile in _results)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: theme.dividerColor),
+                ),
+                tileColor: theme.colorScheme.surface,
+                leading: CircleAvatar(child: Text(_initial(profile))),
+                title: Text(profile.displayName.isEmpty
+                    ? profile.username
+                    : profile.displayName),
+                subtitle: Text('@${profile.username}'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _open(profile),
+              ),
+            ),
+          const SizedBox(height: 8),
+        ],
+        if (noMatch)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'No one called "$text" found.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        if (_hasNearby)
+          NearbyPeopleSection(
+            key: _nearbyKey,
+            connectivity: widget.connectivity!,
+            mesh: widget.mesh!,
+            directory: widget.repository,
+            crypto: widget.crypto,
+            pairing: widget.pairing!,
+            selfUserId: widget.selfUserId,
+            title: noMatch ? 'People nearby' : 'Nearby',
+            filter: typing && !noMatch ? text : '',
+          )
+        else if (!typing)
+          Padding(
+            padding: const EdgeInsets.only(top: 24),
+            child: Text(
+              'Type at least 2 characters to search.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        if (noMatch)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+              'Or ask them to show their QR code',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+      ],
+      ),
     );
   }
+
+  /// Keeps one Nearby section (one search) for the life of this screen.
+  final GlobalKey _nearbyKey = GlobalKey();
+
+  bool get _hasNearby =>
+      widget.connectivity != null &&
+      widget.mesh != null &&
+      widget.pairing != null;
 }
 
 class DirectoryProfileView extends StatefulWidget {
@@ -244,11 +317,16 @@ class DirectoryProfileView extends StatefulWidget {
   final DirectoryRepositoryContract repository;
   final Future<void> Function(DirectoryProfile)? onStartChat;
 
+  /// Bundle 170: this account's user id — your own profile shows
+  /// "This is you" and no Add / Message / Block.
+  final String selfUserId;
+
   const DirectoryProfileView({
     super.key,
     required this.profile,
     required this.repository,
     this.onStartChat,
+    this.selfUserId = '',
   });
 
   @override
@@ -259,7 +337,16 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
   /// null until the contact-status probe resolves; hidden for non-contacts.
   bool? _isPrivate;
 
+  /// Bundle 170: null until the contacts list has been checked.
+  bool? _isContact;
+
   DirectoryProfile get profile => widget.profile;
+
+  ProfileRelation get _relation => profileRelation(
+        profileUserId: profile.userId,
+        selfUserId: widget.selfUserId,
+        isContact: _isContact ?? false,
+      );
 
   @override
   void initState() {
@@ -271,12 +358,15 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
     try {
       final rows = await widget.repository.contacts();
       final isContact = rows.any((p) => p.userId == profile.userId);
-      if (!isContact) return;
       if (!mounted) return;
+      setState(() => _isContact = isContact);
+      if (!isContact) return;
       setState(() => _isPrivate = false);
       final value = await widget.repository.contactPrivate(profile.userId);
       if (mounted) setState(() => _isPrivate = value);
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _isContact ??= false);
+    }
   }
 
   String _initial() {
@@ -334,7 +424,10 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
           const SnackBar(content: Text('Contact added')),
         );
         // Reveal the privacy toggle for the freshly added contact.
-        setState(() => _isPrivate ??= false);
+        setState(() {
+          _isContact = true;
+          _isPrivate ??= false;
+        });
         _loadPrivacy();
       }
     } catch (e) {
@@ -385,48 +478,118 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
             ),
             if (profile.username.isNotEmpty)
               Center(child: Text('@${profile.username}')),
+            // Bundle 170: who this is.
+            if (_isContact != null || _relation == ProfileRelation.self) ...[
+              const SizedBox(height: 10),
+              Center(child: _relationChip(context)),
+            ],
+            // Bundle 170: strangers see a masked number.
             if (profile.phoneNumber.isNotEmpty) ...[
               const SizedBox(height: 6),
-              Center(child: Text(profile.phoneNumber)),
+              Center(
+                child: Text(_relation == ProfileRelation.stranger
+                    ? maskPhone(profile.phoneNumber)
+                    : profile.phoneNumber),
+              ),
             ],
             const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () => _addContact(context),
-              icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('Add Contact'),
-            ),
-            if (_isPrivate != null)
-              SwitchListTile(
-                title: const Text('Searchable by others'),
-                subtitle: Text(_isPrivate!
-                    ? 'Private — this contact is not re-shared from your phone'
-                    : 'Public — shared onward so anyone searching can find them'),
-                value: !_isPrivate!,
-                onChanged: (value) async {
-                  final makePrivate = !value;
-                  setState(() => _isPrivate = makePrivate);
-                  try {
-                    await widget.repository
-                        .setContactPrivate(profile.userId, makePrivate);
-                  } catch (e) {
-                    if (!mounted || !context.mounted) return;
-                    setState(() => _isPrivate = !makePrivate);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text('Could not update privacy: $e')));
-                  }
-                },
-              ),
-            if (widget.onStartChat != null)
-              OutlinedButton.icon(
-                onPressed: () => widget.onStartChat!(profile),
-                icon: const Icon(Icons.chat_bubble_outline),
-                label: const Text('Message'),
-              ),
-            TextButton(
-              onPressed: () => _block(context),
-              child: const Text('Block user'),
-            ),
+            ..._actions(context),
           ],
         ),
+      );
+
+  Widget? _chipOrNull(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    switch (_relation) {
+      case ProfileRelation.self:
+        return Chip(
+          avatar: Icon(Icons.person, size: 18, color: scheme.onPrimaryContainer),
+          label: const Text('This is you'),
+          backgroundColor: scheme.primaryContainer,
+          side: BorderSide.none,
+        );
+      case ProfileRelation.contact:
+        return Chip(
+          avatar: Icon(Icons.check_circle, size: 18, color: scheme.primary),
+          label: const Text('In your contacts'),
+          side: BorderSide.none,
+        );
+      case ProfileRelation.stranger:
+        return null;
+    }
+  }
+
+  Widget _relationChip(BuildContext context) =>
+      _chipOrNull(context) ?? const SizedBox.shrink();
+
+  /// Bundle 170: buttons by who this is.
+  ///  * you        → none
+  ///  * contact    → Message (filled), privacy switch, Block (red)
+  ///  * stranger   → Add Contact (filled), Message (outlined), Block (red)
+  List<Widget> _actions(BuildContext context) {
+    if (_relation == ProfileRelation.self) return const <Widget>[];
+    // Wait for the contacts check so the buttons do not jump.
+    if (_isContact == null) return const <Widget>[SizedBox(height: 48)];
+    final scheme = Theme.of(context).colorScheme;
+    final contact = _relation == ProfileRelation.contact;
+    final block = TextButton(
+      style: TextButton.styleFrom(foregroundColor: scheme.error),
+      onPressed: () => _block(context),
+      child: const Text('Block user'),
+    );
+    if (contact) {
+      return [
+        if (widget.onStartChat != null)
+          FilledButton.icon(
+            onPressed: () => widget.onStartChat!(profile),
+            icon: const Icon(Icons.chat_bubble_outline),
+            label: const Text('Message'),
+          ),
+        if (_isPrivate != null) ...[
+          const SizedBox(height: 8),
+          _privacySwitch(context),
+        ],
+        const SizedBox(height: 8),
+        block,
+      ];
+    }
+    return [
+      FilledButton.icon(
+        onPressed: () => _addContact(context),
+        icon: const Icon(Icons.person_add_alt_1),
+        label: const Text('Add Contact'),
+      ),
+      if (widget.onStartChat != null) ...[
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => widget.onStartChat!(profile),
+          icon: const Icon(Icons.chat_bubble_outline),
+          label: const Text('Message'),
+        ),
+      ],
+      const SizedBox(height: 8),
+      block,
+    ];
+  }
+
+  Widget _privacySwitch(BuildContext context) => SwitchListTile(
+        title: const Text('Searchable by others'),
+        subtitle: Text(_isPrivate!
+            ? 'Private — this contact is not re-shared from your phone'
+            : 'Public — shared onward so anyone searching can find them'),
+        value: !_isPrivate!,
+        onChanged: (value) async {
+          final makePrivate = !value;
+          setState(() => _isPrivate = makePrivate);
+          try {
+            await widget.repository
+                .setContactPrivate(profile.userId, makePrivate);
+          } catch (e) {
+            if (!mounted || !context.mounted) return;
+            setState(() => _isPrivate = !makePrivate);
+            ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Could not update privacy: $e')));
+          }
+        },
       );
 }

@@ -17,6 +17,7 @@ import 'package:locallink/features/calls/data/platform/call_media_platform_servi
 import 'package:locallink/features/calls/data/services/call_failure_reason.dart';
 import 'package:locallink/features/calls/data/services/call_notification_platform_service.dart';
 import 'package:locallink/features/calls/data/services/call_ringtone_service.dart';
+import 'package:locallink/features/calls/data/services/call_stale_guard.dart';
 import 'package:locallink/features/calls/data/repositories/call_repository.dart';
 import 'package:locallink/features/calls/domain/call_repository_contract.dart';
 import 'package:locallink/features/calls/data/transport/call_transport.dart';
@@ -61,6 +62,10 @@ final class CallSessionManager implements CallGateway {
   /// see the clamp below.
   final Set<String> _seenInviteIds = <String>{};
   int _seenInviteCursor = 0;
+  // Bundle 172: calls known to be over — a late invite for one never rings.
+  final EndedCallMemory _endedCalls = EndedCallMemory();
+  // Bundle 172: one "that call is over" reply per call every 10 s at most.
+  final Map<String, DateTime> _callOverRepliedAt = <String, DateTime>{};
   bool _disposed = false;
   final WebSocketService? socket;
   StreamSubscription<dynamic>? _socketSub;
@@ -748,6 +753,12 @@ final class CallSessionManager implements CallGateway {
         msg['transport_mode']?.toString().trim().toLowerCase() ==
             CallTransportMode.offlineMesh.wireName;
     if (!localInvite) return;
+    // Bundle 172: this call already ended (its "call ended" came first, or
+    // it rang here before). A late copy from the send queue never rings.
+    if (_endedCalls.contains(callId)) {
+      AppLogger.info('CALL_INVITE_ALREADY_ENDED', detail: 'call=$callId');
+      return;
+    }
     final createdAtRaw =
         DateTime.tryParse(msg['created_at']?.toString() ?? '')?.toLocal();
     // Phone clocks on a mesh can drift by hours; the hard "age > 2min => reject"
@@ -892,6 +903,8 @@ final class CallSessionManager implements CallGateway {
       'call_id': callId,
       'recipient_id': peerId,
       'status': 'ringing',
+      // Bundle 172: useless after the ring time — leaves the queue then.
+      queueLifetimeField: inviteQueueLifetime.inMilliseconds,
     }));
   }
 
@@ -1059,8 +1072,16 @@ final class CallSessionManager implements CallGateway {
 
   Future<void> _handleAccept(Map<String, dynamic> msg) async {
     final session = _session;
-    if (session == null ||
-        session.direction != CallDirection.outgoing ||
+    final callId = msg['call_id']?.toString() ?? '';
+    // Bundle 172: an answer for a call that is over (cancelled before they
+    // picked up) must never start the sound. Tell them it is over instead.
+    if (session == null || session.id != callId || _isClosing(session)) {
+      if (shouldReplyCallOver(live: session, callId: callId)) {
+        _replyCallOver(msg, 'accept');
+      }
+      return;
+    }
+    if (session.direction != CallDirection.outgoing ||
         !_signalTargetsThisSession(msg, session, requireRemoteSender: true))
       return;
     try {
@@ -1119,8 +1140,34 @@ final class CallSessionManager implements CallGateway {
   Future<void> _handleEnd(Map<String, dynamic> msg) async {
     final session = _session;
     if (session == null ||
-        !_signalTargetsThisSession(msg, session, requireRemoteSender: true))
+        !_signalTargetsThisSession(msg, session, requireRemoteSender: true)) {
+      // Bundle 172: "call ended" arrived before its invite (the newer
+      // message left the queue first). Remember it so the late invite
+      // never rings.
+      final callId = msg['call_id']?.toString().trim() ?? '';
+      final sender = msg['sender_id']?.toString().trim() ?? '';
+      final selfId = store.deviceId?.trim() ?? '';
+      if (callId.isNotEmpty &&
+          sender.isNotEmpty &&
+          selfId.isNotEmpty &&
+          sender != selfId &&
+          msg['recipient_id']?.toString().trim() == selfId) {
+        _endedCalls.remember(callId);
+        AppLogger.info('CALL_END_BEFORE_INVITE_REMEMBERED',
+            detail: 'call=$callId');
+      }
       return;
+    }
+    if (session.isFinished) {
+      // Bundle 172: already over here — just confirm, never finish twice.
+      _endedCalls.remember(session.id);
+      unawaited(_sendSignal({
+        'type': 'call_end_ack',
+        'call_id': session.id,
+        'recipient_id': session.peerId,
+      }));
+      return;
+    }
     final reason = msg['reason']?.toString();
     // Bundle 146: tell the peer its call_end arrived so it stops resending.
     // Best-effort, never retried; older builds ignore the unknown type.
@@ -1338,6 +1385,15 @@ final class CallSessionManager implements CallGateway {
   Future<void> _handleInviteAck(Map<String, dynamic> msg) async {
     final session = _session;
     final selfId = store.deviceId;
+    // Bundle 172: their phone rings for a call that is over here (a late
+    // invite from the send queue) — tell it to stop at once.
+    final ackCallId = msg['call_id']?.toString() ?? '';
+    if (msg['status']?.toString() == 'ringing' &&
+        (session == null || session.id != ackCallId || session.isFinished) &&
+        shouldReplyCallOver(live: session, callId: ackCallId)) {
+      _replyCallOver(msg, 'ringing');
+      return;
+    }
     if (session == null ||
         selfId == null ||
         session.id != msg['call_id']?.toString() ||
@@ -1431,6 +1487,9 @@ final class CallSessionManager implements CallGateway {
         'mesh_call': true,
         'direct': true,
         'supported_media_codecs': session.supportedMediaCodecs,
+        // Bundle 172: an invite waits in the send queue 60 s at most, so a
+        // cancelled call never rings hours later.
+        queueLifetimeField: inviteQueueLifetime.inMilliseconds,
         // Bundle 159: locks the call sound (travels only inside a sealed
         // invite; SealingPeerTransport drops it otherwise).
         if (_voiceKeyForInvite(session) case final key?)
@@ -1468,6 +1527,8 @@ final class CallSessionManager implements CallGateway {
     final status = msg['status']?.toString() ?? '';
     final reason = msg['reason']?.toString() ?? '';
     if (status == 'connected') {
+      // Bundle 172: never start the sound for a call that is over.
+      if (_isClosing(session)) return;
       if (session.direction == CallDirection.outgoing &&
           session.state != CallState.connected) {
         await transportFactory.ensureReady();
@@ -1684,6 +1745,8 @@ final class CallSessionManager implements CallGateway {
     }
     final next =
         session.copyWith(state: state, endedAt: endedAt, reason: reason);
+    // Bundle 172: a late copy of this call's invite never rings again.
+    _endedCalls.remember(session.id);
     _setSession(next);
     await _persistSession();
     try {
@@ -1853,6 +1916,34 @@ final class CallSessionManager implements CallGateway {
   /// and heartbeat timer must stand down instead of resurrecting the call.
   bool _isClosing(CallSession session) =>
       session.isFinished || session.state == CallState.ending;
+
+  /// Bundle 172: "that call is over" — answer to a late ring/answer for a
+  /// call that is not happening here, so the other phone stops at once.
+  /// At most once per call every 10 s; never to ourselves.
+  void _replyCallOver(Map<String, dynamic> msg, String why) {
+    final callId = msg['call_id']?.toString().trim() ?? '';
+    final sender = msg['sender_id']?.toString().trim() ?? '';
+    final selfId = store.deviceId?.trim() ?? '';
+    if (callId.isEmpty || sender.isEmpty || selfId.isEmpty) return;
+    if (sender == selfId) return;
+    if (msg['recipient_id']?.toString().trim() != selfId) return;
+    final now = DateTime.now();
+    _callOverRepliedAt.removeWhere(
+        (_, at) => now.difference(at) > const Duration(seconds: 30));
+    final last = _callOverRepliedAt[callId];
+    if (last != null && now.difference(last) < const Duration(seconds: 10)) {
+      return;
+    }
+    _callOverRepliedAt[callId] = now;
+    _endedCalls.remember(callId);
+    AppLogger.info('CALL_OVER_REPLIED', detail: 'call=$callId why=$why');
+    unawaited(_sendSignal({
+      'type': 'call_end',
+      'call_id': callId,
+      'recipient_id': sender,
+      'reason': 'canceled',
+    }));
+  }
 
   void _cancelCallTimers() {
     _ringTimer?.cancel();

@@ -16,7 +16,6 @@ import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/add_contact_screen.dart';
-import 'package:locallink/features/directory/presentation/nearby_devices_screen.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
 import 'package:locallink/features/messaging/domain/messaging_repository_contract.dart';
@@ -36,6 +35,10 @@ class ContactsScreen extends StatefulWidget {
   final IdentityCryptoService crypto;
   final LocalLinkNotificationService notifications;
 
+  /// Bundle 170: this account's user id ("This is you" on your profile,
+  /// your own phones hidden from Nearby).
+  final String selfUserId;
+
   const ContactsScreen({
     required this.pairing,
     super.key,
@@ -47,6 +50,7 @@ class ContactsScreen extends StatefulWidget {
     required this.calls,
     required this.crypto,
     required this.notifications,
+    this.selfUserId = '',
   });
 
   @override
@@ -102,7 +106,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Future<void> _addContact() async {
     await Navigator.push<void>(
       context,
-      MaterialPageRoute(builder: (_) => AddContactScreen(repository: widget.directory, crypto: widget.crypto, onStartChat: _chat)),
+      // Bundle 170: Nearby lives inside Add Contact now.
+      MaterialPageRoute(builder: (_) => AddContactScreen(
+        repository: widget.directory,
+        crypto: widget.crypto,
+        onStartChat: _chat,
+        connectivity: widget.connectivity,
+        mesh: widget.mesh,
+        pairing: widget.pairing,
+        selfUserId: widget.selfUserId,
+      )),
     );
     await bloc.load();
   }
@@ -118,20 +131,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        // Bundle 170: the separate Nearby button is gone — the + button
+        // opens Add Contact, which shows the people nearby.
         title: const Text('Contacts'),
-        actions: [
-          IconButton(
-            tooltip: 'Nearby',
-            onPressed: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => NearbyDevicesScreen(
-              connectivity: widget.connectivity,
-              mesh: widget.mesh,
-              directory: widget.directory,
-              crypto: widget.crypto,
-              pairing: widget.pairing,
-            ))),
-            icon: const Icon(Icons.wifi_find),
-          ),
-        ],
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'add_contact_fab',

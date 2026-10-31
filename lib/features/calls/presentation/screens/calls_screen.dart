@@ -17,6 +17,8 @@ import 'package:locallink/features/calls/data/models/call_session.dart'
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/calls/data/services/call_preflight_exception.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_history_tile.dart';
+import 'package:locallink/features/calls/presentation/call_history_groups.dart';
+import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 
@@ -224,19 +226,24 @@ class _CallsScreenState extends State<CallsScreen> {
       children.add(MessengerGroupLabel(label));
       // One filled card per date bucket (Settings-style grouping): rows live
       // together inside a rounded white container with hairline dividers.
+      // Bundle 171: back-to-back calls with the same person share a row.
       final rows = <Widget>[];
-      for (var i = 0; i < records.length; i++) {
+      for (final group in groupCallHistory(records,
+          selfId: widget.selfId, isMissed: _isMissed)) {
+        final call = group.latest;
         rows.add(CallHistoryTile(
-          call: records[i],
+          call: call,
           selfId: widget.selfId,
-          title: _title(records[i]),
-          status: _status(records[i]),
-          date: _timeLabel(records[i].startedAt),
-          duration: records[i].durationSeconds > 0
-              ? _duration(records[i].durationSeconds)
+          title: _title(call),
+          status: _status(call),
+          date: _timeLabel(call.startedAt),
+          duration: call.durationSeconds > 0
+              ? _duration(call.durationSeconds)
               : null,
-          missed: _isMissed(records[i]),
-          onCall: () => _redial(records[i]),
+          missed: _isMissed(call),
+          count: group.count,
+          onCall: () => _redial(call),
+          onOpen: group.count > 1 ? () => _openGroup(group) : null,
         ));
       }
       // Bundle 153: shared outlined box (same as the Chats list).
@@ -246,6 +253,93 @@ class _CallsScreenState extends State<CallsScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 28),
       children: children,
+    );
+  }
+
+  /// Bundle 171: one line per call in the grouped-row sheet, e.g.
+  /// "Outgoing · Canceled" or "Incoming · Completed 2:15".
+  String _sheetLine(CallRecord call) {
+    final way = call.isOutgoing(widget.selfId) ? 'Outgoing' : 'Incoming';
+    final status = _status(call);
+    final length =
+        call.durationSeconds > 0 ? ' ${_duration(call.durationSeconds)}' : '';
+    return '$way · $status$length';
+  }
+
+  /// Bundle 171: tap on a grouped row — a small sheet with every call
+  /// (newest first). The call button calls back (voice, as before).
+  Future<void> _openGroup(CallGroup group) async {
+    final call = group.latest;
+    final name = _title(call);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        final colors = theme.colorScheme;
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(sheetContext).size.height * 0.7,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ListTile(
+                  leading: AccountAvatar(name: name, radius: 21),
+                  title: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                      '${_dayLabel(call.startedAt)} · ${group.count} calls'),
+                  trailing: MessengerCallButton(
+                    tooltip: 'Call back',
+                    onPressed: () {
+                      Navigator.of(sheetContext).pop();
+                      _redial(call);
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: 16),
+                    children: [
+                      for (final c in group.calls)
+                        ListTile(
+                          dense: true,
+                          leading: _isMissed(c)
+                              ? Icon(Icons.call_received_rounded,
+                                  size: 18, color: colors.error)
+                              : c.isOutgoing(widget.selfId)
+                                  ? const Icon(Icons.call_made_rounded,
+                                      size: 18, color: Color(0xFF25D366))
+                                  : Icon(Icons.call_received_rounded,
+                                      size: 18,
+                                      color: colors.onSurfaceVariant),
+                          title: Text(
+                            _sheetLine(c),
+                            style: TextStyle(
+                                color: _isMissed(c) ? colors.error : null),
+                          ),
+                          trailing: Text(_timeLabel(c.startedAt),
+                              style: theme.textTheme.bodySmall),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

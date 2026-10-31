@@ -645,6 +645,135 @@ void main() {
     });
   });
 
+  // Bundle 172: a cancelled call must never ring later or start the sound.
+  group('172: no ghost call after a cancel', () {
+    late ManagerHarness h;
+    setUp(() async => h = await ManagerHarness.create());
+    tearDown(() async => h.dispose());
+
+    List<Map<String, dynamic>> endsFor(String callId) => h
+        .sentOfType('call_end')
+        .where((m) => m['call_id'] == callId)
+        .toList();
+
+    test('a late answer after cancel starts no sound and says call is over',
+        () async {
+      await h.manager.startCall(peerDevice());
+      await pumpEvents();
+      final callId = h.manager.session!.id;
+      await h.manager.endCall(reason: 'canceled');
+      await pumpEvents();
+      expect(h.manager.session!.state, CallState.canceled);
+      final before = endsFor(callId).length;
+      mediaCalls.clear();
+      h.signal(<String, dynamic>{
+        'type': 'call_accept',
+        'call_id': callId,
+        'selected_media_codec': 'pcm_s16le',
+      });
+      await pumpEvents();
+      expect(mediaCalls.where((c) => c.method == 'start'), isEmpty,
+          reason: 'the sound must not start for a cancelled call');
+      expect(h.manager.session!.state, CallState.canceled);
+      expect(h.manager.session!.answeredAt, isNull);
+      final after = endsFor(callId);
+      expect(after.length, before + 1);
+      expect(after.last['reason'], 'canceled');
+    });
+
+    test('their phone ringing for a cancelled call is told to stop', () async {
+      await h.manager.startCall(peerDevice());
+      await pumpEvents();
+      final callId = h.manager.session!.id;
+      await h.manager.endCall(reason: 'canceled');
+      await pumpEvents();
+      final before = endsFor(callId).length;
+      h.signal(<String, dynamic>{
+        'type': 'call_invite_ack',
+        'call_id': callId,
+        'status': 'ringing',
+      });
+      await pumpEvents();
+      expect(endsFor(callId).length, before + 1);
+      expect(h.manager.session!.state, CallState.canceled);
+    });
+
+    test('a ringing reply for an unknown call is told to stop (once)',
+        () async {
+      h.signal(<String, dynamic>{
+        'type': 'call_invite_ack',
+        'call_id': 'old-call-9',
+        'status': 'ringing',
+      });
+      await pumpEvents();
+      h.signal(<String, dynamic>{
+        'type': 'call_invite_ack',
+        'call_id': 'old-call-9',
+        'status': 'ringing',
+      });
+      await pumpEvents();
+      expect(endsFor('old-call-9'), hasLength(1));
+    });
+
+    test('call ended arriving BEFORE its invite: the invite never rings',
+        () async {
+      h.signal(<String, dynamic>{
+        'type': 'call_end',
+        'call_id': 'call-late',
+        'reason': 'canceled',
+      });
+      await pumpEvents();
+      h.invite('call-late');
+      await pumpEvents();
+      expect(h.manager.session, isNull);
+      expect(h.sentOfType('call_invite_ack'), isEmpty);
+    });
+
+    test('a call_end for a call already over is confirmed, not finished twice',
+        () async {
+      h.invite('call-f');
+      await pumpEvents();
+      h.notifications.reject('call-f');
+      await pumpEvents();
+      final state = h.manager.session!.state;
+      final endedAt = h.manager.session!.endedAt;
+      h.signal(<String, dynamic>{'type': 'call_end', 'call_id': 'call-f'});
+      await pumpEvents();
+      expect(h.manager.session!.state, state);
+      expect(h.manager.session!.endedAt, endedAt);
+      expect(h.sentOfType('call_end_ack'), hasLength(1));
+    });
+
+    test('invites and ringing replies ask to leave the queue after 60 s',
+        () async {
+      await h.manager.startCall(peerDevice());
+      await pumpEvents();
+      expect(h.sentOfType('call_invite').single['qt'], 60000);
+      await h.manager.endCall(reason: 'canceled');
+      await pumpEvents();
+      h.invite('call-q');
+      await pumpEvents();
+      expect(h.sentOfType('call_invite_ack').single['qt'], 60000);
+    });
+
+    test('a normal answered call still works', () async {
+      await h.manager.startCall(peerDevice());
+      await pumpEvents();
+      final callId = h.manager.session!.id;
+      h.signal(<String, dynamic>{
+        'type': 'call_accept',
+        'call_id': callId,
+        'selected_media_codec': 'pcm_s16le',
+      });
+      await pumpEvents();
+      expect(mediaCalls.where((c) => c.method == 'start'), hasLength(1));
+      expect(h.manager.session!.state, CallState.connected);
+      expect(endsFor(callId), isEmpty);
+      await h.manager.endCall();
+      await pumpEvents();
+    });
+  });
+
   group('F: Calls tab call button', () {
     late FakeGateway gateway;
     late CallBloc bloc;
@@ -724,6 +853,40 @@ void main() {
       expect(gateway.startCalls, 1);
       expect(find.byType(CallScreen), findsNothing);
       expect(find.byType(SnackBar), findsOneWidget);
+      await unmount(tester);
+    });
+
+    // Bundle 171: back-to-back calls share one row; tap opens the list.
+    testWidgets('repeated calls show one row with a count and a sheet',
+        (tester) async {
+      final repo = HistoryRepository();
+      for (var i = 1; i <= 3; i++) {
+        repo.records.insert(
+            0,
+            CallRecord(
+              id: 'again-$i',
+              callerId: 'self-device',
+              calleeId: 'peer-1',
+              status: 'canceled',
+              startedAt: DateTime(2026, 10, 29, 10, i),
+              peerName: 'Peer One',
+            ));
+      }
+      bloc = CallBloc(service: gateway, repository: repo);
+      await pumpCallsTab(tester);
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+      expect(find.text('(4)'), findsOneWidget);
+      expect(find.byTooltip('Call back'), findsOneWidget);
+      await tester.tap(find.text('(4)'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('4 calls', findRichText: true), findsNothing);
+      expect(find.textContaining('· 4 calls'), findsOneWidget);
+      expect(find.text('Outgoing · Canceled'), findsNWidgets(3));
+      expect(find.text('Outgoing · Completed 0:30'), findsOneWidget);
+      expect(gateway.startCalls, 0, reason: 'opening the row never calls');
       await unmount(tester);
     });
   });

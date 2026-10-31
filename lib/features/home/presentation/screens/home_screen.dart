@@ -886,6 +886,7 @@ class _HomeScreenState extends State<HomeScreen> {
         calls: widget.calls,
         crypto: widget.crypto,
         notifications: widget.notifications,
+        selfUserId: widget.store.accountId ?? '',
       );
 
   void _changeThemeMode(ThemeMode mode) {

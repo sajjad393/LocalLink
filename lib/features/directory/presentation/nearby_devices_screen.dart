@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,8 +17,23 @@ import 'package:locallink/features/connectivity/data/models/wifi_direct_models.d
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/directory/presentation/nearby_list_plan.dart';
+import 'package:locallink/features/directory/presentation/nearby_search_animation.dart';
+import 'package:locallink/features/directory/presentation/profile_view_rules.dart';
 
-class NearbyDevicesScreen extends StatefulWidget {
+/// Bundle 170: the Nearby list now lives INSIDE Add Contact (the separate
+/// Nearby screen and its button on Contacts are gone). This section shows
+/// the phones you can still add, under the search box:
+///
+/// * [filter] narrows the list while the user types (real names only);
+///   when nothing matches the section hides itself.
+/// * Nobody found yet → the mesh search animation (replaces the radar).
+/// * Someone found → a link draws to them, their circle pops in, then the
+///   card slides up into the list and the mesh shrinks to 3 dots by the
+///   title.
+/// * Nearby permission off → a small "Allow" card; no popup by itself.
+/// * Pair works as before and the list stays, so several people can be
+///   added in a row. Your own other phones are never listed.
+class NearbyPeopleSection extends StatefulWidget {
   final ConnectivityBloc connectivity;
 
   /// Mesh presence feed (LAN beacon discovery + Wi-Fi Direct). Used to
@@ -27,49 +41,66 @@ class NearbyDevicesScreen extends StatefulWidget {
   /// paired, so discovery never dead-ends for roster-unknown peers.
   final MeshBloc mesh;
 
-  /// Bundle 107: pairing becomes actionable — the Pair sheet can open Add
-  /// contact (QR scan / search) directly instead of showing instructions.
   final DirectoryRepositoryContract directory;
   final IdentityCryptoService crypto;
 
   /// Bundle 108: auto-pairing over the local network (beacon channel).
   final PairingService pairing;
 
-  const NearbyDevicesScreen({
+  /// Section title ("Nearby", or "People nearby" after a search miss).
+  final String title;
+
+  /// Text typed in the search box ('' = show everyone).
+  final String filter;
+
+  /// This account's user id — phones of the same account are hidden.
+  final String selfUserId;
+
+  const NearbyPeopleSection({
     super.key,
     required this.connectivity,
     required this.mesh,
     required this.directory,
     required this.crypto,
     required this.pairing,
+    this.title = 'Nearby',
+    this.filter = '',
+    this.selfUserId = '',
   });
 
   @override
-  State<NearbyDevicesScreen> createState() => _NearbyDevicesScreenState();
+  State<NearbyPeopleSection> createState() => _NearbyPeopleSectionState();
 }
 
-class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTickerProviderStateMixin {
-  late final AnimationController controller;
+class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
+    with SingleTickerProviderStateMixin {
   // Bundle 125: node ids of phones already paired with this device — a
-  // paired phone inside the DISCOVERED list must never offer "Pair" again,
-  // and a fresh pairing sends the user back to the People tab where the new
-  // contact now appears instantly (ContactsBloc listens to profileUpdates).
+  // paired phone inside the DISCOVERED list must never offer "Pair" again.
   Set<String> _trustedIds = const <String>{};
   // Bundle 154: blocked people never show on Nearby.
   Set<String> _blockedIds = const <String>{};
   StreamSubscription<String>? _pairedSub;
   // Bundle 126: burst-duplicated accept packets used to fire the "paired"
-  // stream once per copy — each copy re-popped this screen. Dedupe by a
-  // short window: a real second pairing minutes later still auto-pops.
+  // stream once per copy. Dedupe by a short window.
   DateTime? _lastPairHandledAt;
+
+  // Bundle 170: nearby permission (null = not checked yet).
+  bool? _permission;
+
+  // Bundle 170: the "someone found" moment.
+  late final AnimationController _found = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+  final DateTime _openedAt = DateTime.now();
+  bool _sawLooking = false;
+  bool _celebrating = false;
+  String _celebrateInitial = '';
 
   @override
   void initState() {
     super.initState();
-    final reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
-    controller = AnimationController(vsync: this, duration: const Duration(seconds: 2));
-    if (!reduceMotion) controller.repeat();
-    widget.connectivity.discoverWifiDirect();
+    unawaited(_startSearch(askPermission: false));
     unawaited(_refreshTrusted());
     _pairedSub = widget.pairing.paired.listen(_onPaired);
   }
@@ -78,8 +109,29 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
   void dispose() {
     unawaited(_pairedSub?.cancel());
     _pairedSub = null;
-    controller.dispose();
+    _found.dispose();
     super.dispose();
+  }
+
+  /// Bundle 170: the search starts by itself only when the permission is
+  /// already granted — otherwise the Allow card asks (no automatic popup).
+  Future<void> _startSearch({required bool askPermission}) async {
+    final c = widget.connectivity;
+    bool granted;
+    try {
+      granted = await c.hasWifiDirectPermission();
+    } catch (_) {
+      granted = false;
+    }
+    if (!granted && askPermission) {
+      try {
+        await c.requestWifiDirectEnable();
+        granted = await c.hasWifiDirectPermission();
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() => _permission = granted);
+    if (granted) unawaited(c.discoverWifiDirect());
   }
 
   Future<void> _refreshTrusted() async {
@@ -286,17 +338,15 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
     // Bundle 154: only when no paired contact is nearby either — otherwise
     // the single Wi-Fi Direct name may belong to that contact.
     final soloPlan = _plan(widget.mesh.state, wifiPeers);
-    final displayName = wifiPeers.length == 1 &&
-            soloPlan.pairedNearbyCount == 0 &&
-            soloPlan.addableNodeIds.length == 1 &&
-            wifiPeers.first.name.isNotEmpty
-        ? wifiPeers.first.name
-        : 'this phone';
-    final transportChip = switch (peer.transport) {
-      'lan' => 'same Wi-Fi',
-      'wifi_direct' => 'Wi-Fi Direct',
-      _ => 'local network',
-    };
+    // Bundle 170: the person's real name when known.
+    final knownName = _personName(peer.nodeId) ??
+        (wifiPeers.length == 1 &&
+                soloPlan.pairedNearbyCount == 0 &&
+                soloPlan.addableNodeIds.length == 1 &&
+                wifiPeers.first.name.isNotEmpty
+            ? wifiPeers.first.name
+            : null);
+    final displayName = knownName ?? 'this phone';
     final send = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
@@ -309,8 +359,12 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
             CircleAvatar(
               radius: 26,
               backgroundColor: scheme.primaryContainer,
-              child: Icon(Icons.phone_android_rounded,
-                  color: scheme.onPrimaryContainer),
+              child: knownName == null
+                  ? Icon(Icons.phone_android_rounded,
+                      color: scheme.onPrimaryContainer)
+                  : Text(initialOf(knownName),
+                      style: TextStyle(
+                          fontSize: 20, color: scheme.onPrimaryContainer)),
             ),
             const SizedBox(height: 12),
             Text('Pair with $displayName?',
@@ -344,7 +398,8 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
             ),
             const SizedBox(height: 4),
             Chip(
-              label: Text(transportChip),
+              // Bundle 170: no transport words — just Nearby.
+              label: const Text('Nearby'),
               visualDensity: VisualDensity.compact,
               side: BorderSide.none,
               backgroundColor: scheme.surfaceContainerHighest,
@@ -381,173 +436,239 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
       listener: (context, state) => ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(friendlyErrorMessage(state.error!)))),
       child: BlocBuilder<ConnectivityBloc, ConnectivityState>(
-      bloc: widget.connectivity,
-      builder: (context, state) {
-        final peers = state.snapshot.wifiPeers;
-        return Scaffold(
-          appBar: AppBar(title: const Text('Nearby')),
-          body: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, LocalLinkSpacing.md, LocalLinkSpacing.lg, LocalLinkSpacing.xxl),
-            children: [
-              SizedBox(
-                height: 230,
-                child: Center(
-                  child: AnimatedBuilder(
-                    animation: controller,
-                    builder: (_, __) => Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        if (!WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations)
-                          for (int i = 0; i < 3; i++)
-                            Container(
-                              width: 96 + (i * 48) + 42 * math.sin((controller.value + i / 3) * math.pi * 2).abs(),
-                              height: 96 + (i * 48) + 42 * math.sin((controller.value + i / 3) * math.pi * 2).abs(),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: .12), width: 2),
-                              ),
-                            ),
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primaryContainer,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Padding(padding: EdgeInsets.all(24), child: Icon(Icons.smartphone_rounded, size: 36)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              // Bundle 154: the title counts only phones you can still add.
-              ListenableBuilder(
-                listenable: Listenable.merge(
-                    [PresenceHub.instance, NearbyTagRegistry.instance]),
-                builder: (context, _) => BlocBuilder<MeshBloc, MeshState>(
-                  bloc: widget.mesh,
-                  builder: (context, meshState) {
-                    final n = _plan(meshState, peers).addableCount();
-                    return Text(
-                      n == 0
-                          ? 'Looking for nearby phones…'
-                          : '$n ${n == 1 ? 'phone' : 'phones'} you can add',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: LocalLinkSpacing.sm),
-              Text(
-                'Both phones need Wi-Fi on — pairing and chats work without the internet.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: LocalLinkSpacing.lg),
-              // Bundle 148: names + live status come from PresenceHub.
-              ListenableBuilder(
-                listenable: Listenable.merge(
-                    [PresenceHub.instance, NearbyTagRegistry.instance]),
-                builder: (context, _) => BlocBuilder<MeshBloc, MeshState>(
-                bloc: widget.mesh,
-                builder: (context, meshState) {
-                  // Bundle 154: Nearby shows ONLY phones you can still add.
-                  // Paired contacts (and blocked people) are hidden — their
-                  // live status already shows in People and Chats.
-                  final plan = _plan(meshState, peers);
-                  final byId = <String, MeshPeer>{
-                    for (final p in meshState.peers.values) p.nodeId: p,
-                  };
-                  final addable = [
-                    for (final id in plan.addableNodeIds)
-                      if (byId[id] != null) byId[id]!,
-                  ];
-                  final wifiOnly = [
-                    for (final p in peers)
-                      if (plan.wifiAddresses
-                          .contains(p.address.trim().toLowerCase()))
-                        p,
-                  ];
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (plan.emptyState == NearbyEmptyState.nothingFound)
-                        const _NearbyInfoCard(
-                          icon: Icons.radar_rounded,
-                          text:
-                              'Nothing found yet — keep LocalLink open on the other phone.',
-                        )
-                      else if (plan.emptyState ==
-                          NearbyEmptyState.everyoneAdded)
-                        _NearbyInfoCard(
-                          icon: Icons.how_to_reg_rounded,
-                          text:
-                              'Everyone nearby is already in your contacts.',
-                          action: TextButton(
-                            onPressed: () => Navigator.maybePop(context),
-                            child: const Text('See contacts'),
-                          ),
-                        )
-                      else ...[
-                        ...addable.map(
-                          (peer) => _NearbyCard(
-                            icon: Icons.wifi_find_rounded,
-                            title: _personName(peer.nodeId) ??
-                                (peers.length == 1 &&
-                                        addable.length == 1 &&
-                                        plan.pairedNearbyCount == 0 &&
-                                        peers.first.name.isNotEmpty
-                                    ? peers.first.name
-                                    : 'LocalLink phone nearby ·…${_shortId(peer.nodeId)}'),
-                            subtitle: 'Same Wi-Fi / LAN — not paired yet',
-                            action: FilledButton.tonal(
-                              onPressed: () => _pairSheet(peer),
-                              child: const Text('Pair'),
-                            ),
-                          ),
-                        ),
-                        ...wifiOnly.map(
-                          (peer) => _NearbyCard(
-                            icon: Icons.phone_android_rounded,
-                            title: peer.name.isEmpty
-                                ? 'Nearby LocalLink phone'
-                                : peer.name,
-                            subtitle: 'Not paired yet',
-                            action: FilledButton.tonal(
-                              onPressed: state.busy
-                                  ? null
-                                  : () => _pairWithWifiPeer(peer),
-                              child: state.busy
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2))
-                                  : const Text('Pair'),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  );
-                },
-              ),
-              ),
-            ],
+        bloc: widget.connectivity,
+        builder: (context, state) => ListenableBuilder(
+          // Bundle 148: names + live status come from PresenceHub.
+          listenable: Listenable.merge(
+              [PresenceHub.instance, NearbyTagRegistry.instance, _found]),
+          builder: (context, _) => BlocBuilder<MeshBloc, MeshState>(
+            bloc: widget.mesh,
+            builder: (context, meshState) =>
+                _content(context, state, meshState),
           ),
-        );
-      },
-    ),
+        ),
+      ),
+    );
+  }
+
+  /// Bundle 154 + 170: the people you can still add (paired, blocked and
+  /// your own other phones are hidden).
+  List<_NearbyEntry> _entries(MeshState meshState, List<WifiDirectPeer> peers) {
+    final plan = _plan(meshState, peers);
+    final byId = <String, MeshPeer>{
+      for (final p in meshState.peers.values) p.nodeId: p,
+    };
+    final self = widget.selfUserId;
+    final out = <_NearbyEntry>[];
+    for (final id in plan.addableNodeIds) {
+      final peer = byId[id];
+      if (peer == null) continue;
+      if (self.isNotEmpty && PresenceHub.instance.userOf(id) == self) continue;
+      final name = _personName(id) ??
+          (peers.length == 1 &&
+                  plan.addableNodeIds.length == 1 &&
+                  plan.pairedNearbyCount == 0 &&
+                  peers.first.name.isNotEmpty
+              ? peers.first.name
+              : null);
+      out.add(_NearbyEntry(key: 'm:$id', name: name, mesh: peer));
+    }
+    for (final p in peers) {
+      final address = p.address.trim().toLowerCase();
+      if (!plan.wifiAddresses.contains(address)) continue;
+      out.add(_NearbyEntry(
+          key: 'w:$address', name: p.name.isEmpty ? null : p.name, wifi: p));
+    }
+    return out;
+  }
+
+  Widget _content(
+      BuildContext context, ConnectivityState state, MeshState meshState) {
+    final peers = state.snapshot.wifiPeers;
+    final entries = _entries(meshState, peers);
+    final filter = widget.filter.trim();
+
+    // Typing: only the people whose name matches; nothing at all otherwise.
+    if (filter.isNotEmpty) {
+      final shown = [
+        for (final e in entries)
+          if (nearbyNameMatches(e.name, filter)) e,
+      ];
+      if (shown.isEmpty) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _header(context, dots: true),
+          for (final e in shown) _card(state, e),
+        ],
+      );
+    }
+
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final any = entries.isNotEmpty;
+    if (!any) {
+      _sawLooking = true;
+    } else if (_sawLooking && !_celebrating) {
+      _sawLooking = false;
+      // A person found right as the screen opens goes straight to the list;
+      // one found after a little search gets the "found" moment.
+      final waited = DateTime.now().difference(_openedAt) >
+          const Duration(milliseconds: 1200);
+      if (waited && !reduceMotion) {
+        _celebrating = true;
+        _celebrateInitial = initialOf(entries.first.name);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _found.forward(from: 0).whenCompleteOrCancel(() {
+            if (mounted) setState(() => _celebrating = false);
+          });
+        });
+      }
+    }
+
+    final plan = _plan(meshState, peers);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _header(context, dots: any && !_celebrating),
+        if (_permission == false) _permissionCard(context),
+        if (_celebrating)
+          _lookingBox(context,
+              foundProgress: _found.value, initial: _celebrateInitial)
+        else if (!any) ...[
+          if (plan.emptyState == NearbyEmptyState.everyoneAdded)
+            _NearbyInfoCard(
+              icon: Icons.how_to_reg_rounded,
+              text: 'Everyone nearby is already in your contacts.',
+              action: TextButton(
+                onPressed: () => Navigator.maybePop(context),
+                child: const Text('See contacts'),
+              ),
+            )
+          else if (_permission != false)
+            _lookingBox(context),
+        ] else
+          for (final e in entries) _card(state, e),
+      ],
+    );
+  }
+
+  Widget _header(BuildContext context, {required bool dots}) => Padding(
+        padding: const EdgeInsets.only(
+            top: LocalLinkSpacing.sm, bottom: LocalLinkSpacing.sm),
+        child: Row(
+          children: [
+            Text(
+              widget.title,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 8),
+            if (dots) const NearbyMiniMesh(),
+          ],
+        ),
+      );
+
+  Widget _lookingBox(BuildContext context,
+      {double foundProgress = 0, String initial = ''}) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 170,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.primaryContainer.withValues(alpha: .35),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: NearbySearchAnimation(
+              foundProgress: foundProgress,
+              foundInitial: initial,
+            ),
+          ),
+        ),
+        const SizedBox(height: LocalLinkSpacing.sm),
+        Text('Looking for LocalLink phones…',
+            textAlign: TextAlign.center, style: text.titleSmall),
+        const SizedBox(height: 2),
+        Text('Both phones need Wi-Fi on',
+            textAlign: TextAlign.center, style: text.bodySmall),
+      ],
+    );
+  }
+
+  Widget _permissionCard(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.tertiaryContainer.withValues(alpha: .6),
+      child: ListTile(
+        title: const Text('Allow nearby to see phones around you'),
+        subtitle: const Text('Only asked when you tap Allow'),
+        trailing: FilledButton(
+          onPressed: () => _startSearch(askPermission: true),
+          child: const Text('Allow'),
+        ),
+      ),
+    );
+  }
+
+  Widget _card(ConnectivityState state, _NearbyEntry e) {
+    final mesh = e.mesh;
+    final wifi = e.wifi;
+    final Widget action;
+    if (mesh != null) {
+      action = FilledButton.tonal(
+        onPressed: () => _pairSheet(mesh),
+        child: const Text('Pair'),
+      );
+    } else {
+      action = FilledButton.tonal(
+        onPressed: state.busy || wifi == null
+            ? null
+            : () => _pairWithWifiPeer(wifi),
+        child: state.busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2))
+            : const Text('Pair'),
+      );
+    }
+    // Bundle 170: each new card slides up into the list.
+    return TweenAnimationBuilder<double>(
+      key: ValueKey<String>(e.key),
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeOutCubic,
+      builder: (context, v, child) => Opacity(
+        opacity: v,
+        child: Transform.translate(offset: Offset(0, 24 * (1 - v)), child: child),
+      ),
+      child: _NearbyCard(
+        initial: initialOf(e.name ?? nearbyUnknownName),
+        title: e.name ?? nearbyUnknownName,
+        subtitle: nearbyCardSubtitle,
+        action: action,
+      ),
     );
   }
 }
 
+/// Bundle 170: one row of the Nearby list.
+class _NearbyEntry {
+  final String key;
+  final String? name;
+  final MeshPeer? mesh;
+  final WifiDirectPeer? wifi;
+  const _NearbyEntry({required this.key, this.name, this.mesh, this.wifi});
+}
+
 /// Bundle 148: node id == device id, so a paired phone shows its person.
 String? _personName(String nodeId) => PresenceHub.instance.nameOf(nodeId);
-
-String _shortId(String id) =>
-    id.length > 8 ? id.substring(id.length - 8) : id;
 
 /// Bundle 154: one simple info card (empty states) — icon, one line, and an
 /// optional small action.
@@ -579,16 +700,15 @@ class _NearbyInfoCard extends StatelessWidget {
   }
 }
 
-/// Bundle 118: single compact card per nearby phone — one title, one short
-/// subtitle, at most one action. Replaces the old two-section layout
-/// (Wi-Fi Direct "Connect" card + mesh "Pair" card).
+/// Bundle 118 + 170: single compact card per nearby phone — the person's
+/// initial, their name, one short subtitle and the Pair button.
 class _NearbyCard extends StatelessWidget {
-  final IconData icon;
+  final String initial;
   final String title;
   final String subtitle;
   final Widget? action;
   const _NearbyCard({
-    required this.icon,
+    required this.initial,
     required this.title,
     required this.subtitle,
     this.action,
@@ -598,9 +718,9 @@ class _NearbyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: ListTile(
-        leading: CircleAvatar(child: Icon(icon, size: 20)),
-        title: Text(title),
-        subtitle: Text(subtitle),
+        leading: CircleAvatar(child: Text(initial)),
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: action,
       ),
     );

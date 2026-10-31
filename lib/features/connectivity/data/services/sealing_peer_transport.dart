@@ -564,6 +564,11 @@ class SealingPeerTransport implements PeerTransportContract {
         MessageSealService.shouldSeal(payload['type']?.toString())) {
       final sealed = await _trySeal(recipientId, payload);
       if (sealed != null) {
+        // Bundle 172: the queue lifetime stays readable outside the lock.
+        final lifetime = payload[MessageSealService.queueLifetimeField];
+        if (lifetime is int && lifetime > 0) {
+          sealed[MessageSealService.queueLifetimeField] = lifetime;
+        }
         return inner.send(recipientId: recipientId, payload: sealed);
       }
     }
