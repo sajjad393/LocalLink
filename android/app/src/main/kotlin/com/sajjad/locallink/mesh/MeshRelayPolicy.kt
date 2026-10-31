@@ -25,6 +25,10 @@ object MeshRelayPolicy {
      *  Live only: never queued, never stored. */
     const val SEALED_VOICE: String = "sealed_v"
 
+    /** Bundle 165: a locked file packet (photo, video, file, or its acks).
+     *  Only the two contacts hold the key. */
+    const val SEALED_FILE: String = "sealed_f"
+
     /** Kill switch for relay links (D11). */
     const val RELAY_ENABLED: Boolean = true
 
@@ -46,9 +50,12 @@ object MeshRelayPolicy {
     /** Bundle 159: a locked voice frame. */
     fun isSealedVoice(type: String?): Boolean = type == SEALED_VOICE
 
+    /** Bundle 165: a locked file packet. */
+    fun isSealedFile(type: String?): Boolean = type == SEALED_FILE
+
     /** May a link with [trust] carry a packet of [type] (either direction)? */
     fun canCarry(trust: String, type: String?): Boolean =
-        trust == TRUST_CONTACT || (trust == TRUST_RELAY && (isSealed(type) || isSealedVoice(type)))
+        trust == TRUST_CONTACT || (trust == TRUST_RELAY && (isSealed(type) || isSealedVoice(type) || isSealedFile(type)))
 
     /**
      * Trust for a peer at handshake time, or null = refuse the link.
