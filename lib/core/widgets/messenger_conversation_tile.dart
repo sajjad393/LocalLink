@@ -22,13 +22,6 @@ class MessengerConversationTile extends StatelessWidget {
   final Device? device;
   final LocalGroup? group;
 
-  /// Bundle 163 (4.7): last message time on the right of the name
-  /// (null = none). Blue when there are unread messages.
-  final String? time;
-
-  /// Bundle 163 (4.7): small icon before the preview (photo, mic, ...).
-  final IconData? subtitleIcon;
-
   const MessengerConversationTile({
     super.key,
     required this.title,
@@ -42,8 +35,6 @@ class MessengerConversationTile extends StatelessWidget {
     this.unreadCount = 0,
     this.device,
     this.group,
-    this.time,
-    this.subtitleIcon,
   });
 
   @override
@@ -72,42 +63,18 @@ class MessengerConversationTile extends StatelessWidget {
               style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
-          if (time != null && time!.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            Text(
-              time!,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: unreadCount > 0
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontWeight: unreadCount > 0 ? FontWeight.w700 : FontWeight.w400,
-                  ),
-            ),
-          ],
         ],
       ),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 3),
-        child: Row(
-          children: [
-            if (subtitleIcon != null) ...[
-              Icon(subtitleIcon,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
-              const SizedBox(width: 4),
-            ],
-            Expanded(
-              child: Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ),
-          ],
+        child: Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context)
+              .textTheme
+              .bodyMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ),
       trailing: trailing ?? _buildTrailing(context),
