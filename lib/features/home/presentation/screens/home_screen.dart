@@ -634,11 +634,11 @@ class _HomeScreenState extends State<HomeScreen> {
               return;
             }
             await widget.calls.startCall(peer);
-            if (!context.mounted) return;
+            if (!mounted) return;
             final session = widget.calls.session;
             if (session == null) return;
             await Navigator.push<void>(
-              context,
+              this.context,
               MaterialPageRoute(
                 builder: (_) => CallScreen(
                     controller: widget.calls, initialSession: session),

@@ -615,6 +615,13 @@ class MainActivity : FlutterActivity() {
                 val queued = pendingNotificationActions.toList()
                 pendingNotificationActions.clear()
                 queued.forEach { events?.success(it) }
+                // Bundle 162 (4.1): Reply / Mark read saved while the app was closed.
+                val saved = NotificationActionOutbox.takeAll(this@MainActivity)
+                if (saved.isNotEmpty()) {
+                    android.util.Log.i("LocalLinkNotify", "NOTIFICATION_ACTIONS_RESTORED count=${saved.size}")
+                    LocalLinkNotificationManager.cancelReplySaved(this@MainActivity)
+                }
+                saved.forEach { events?.success(it) }
             }
             override fun onCancel(arguments: Any?) { notificationEventSink = null }
         })

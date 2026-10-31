@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
+
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
@@ -34,6 +36,14 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   bool _started = false;
   bool _syncInFlight = false;
   DateTime? _lastSyncAt;
+  DateTime? _lastNoRouteLogAt;
+
+  /// Bundle 162 (4.11): "no route to that phone yet" (native
+  /// PEER_UNAVAILABLE), however it was wrapped.
+  static bool isPeerUnavailableError(Object error) {
+    if (error is PlatformException) return error.code == 'PEER_UNAVAILABLE';
+    return error.toString().contains('PEER_UNAVAILABLE');
+  }
   bool _serverContactsSyncInFlight = false;
   // Edges received before the author's directory profile (and therefore the
   // signing key we must verify with) was cached. Re-attempted whenever a
@@ -189,6 +199,20 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     try {
       await _handleTransportEvent(event);
     } catch (error, stackTrace) {
+      // Bundle 162 (4.11): no route to that phone yet is normal — a quiet
+      // line at most once a minute, and the next route event syncs again.
+      // Anything else stays an error.
+      if (isPeerUnavailableError(error)) {
+        _lastSyncAt = null;
+        final now = DateTime.now();
+        final last = _lastNoRouteLogAt;
+        if (last == null || now.difference(last) >= const Duration(minutes: 1)) {
+          _lastNoRouteLogAt = now;
+          AppLogger.info('DIRECTORY_REPLY_NO_ROUTE',
+              detail: 'type=${event['type']?.toString() ?? ''} retry=on_route');
+        }
+        return;
+      }
       AppLogger.error(
         'DIRECTORY_EVENT_HANDLER_FAILED',
         error: error,

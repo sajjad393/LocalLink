@@ -414,6 +414,8 @@ class LocalLinkTransportService : Service() {
     private val cancelledIncomingTransfers = ConcurrentHashMap<String, Long>()
     private val outgoingSendInFlight = ConcurrentHashMap.newKeySet<String>()
     private val outgoingRetryCounts = ConcurrentHashMap<String, Int>()
+    /** Bundle 162 (4.5): restarts after a failed file check, per transfer. */
+    private val hashMismatchRestarts = ConcurrentHashMap<String, Int>()
     private val random = SecureRandom()
     private val meshQueueDir by lazy { File(filesDir,"locallink_mesh_queue").apply{mkdirs()} }
     private val seenMeshDir by lazy { File(filesDir,"locallink_seen_mesh").apply{mkdirs()} }
@@ -1732,6 +1734,7 @@ class LocalLinkTransportService : Service() {
             "direct_file_progress" -> handleFileProgress(payload)
             "direct_file_resume_request" -> handleFileResumeRequest(payload)
             "direct_file_cancel" -> handleFileCancel(payload)
+            "direct_file_restart" -> handleFileRestart(payload)
             else -> transportEvent("message", mapOf(
                 "payload" to payload.toString(),
                 "sender_id" to packet.sourceNodeId,
@@ -3423,6 +3426,10 @@ class LocalLinkTransportService : Service() {
                 if (actual.length() != size || sha256File(actual) != sha) {
                     actual.delete()
                     incomingFiles.remove(transferId)
+                    // Bundle 162 (4.5): no more silent delete. Ask the sender to
+                    // send it again from zero once; then fail for real.
+                    deleteIncomingMeta(transfer)
+                    onIncomingHashMismatch(transfer, self)
                     return
                 }
                 val finalDir = File(filesDir, "locallink_direct_files").apply { mkdirs() }
@@ -3964,6 +3971,51 @@ class LocalLinkTransportService : Service() {
         incoming?.let { try { it.file.close() } catch (_:Exception) {}; try { File(it.path).delete() } catch (_:Exception) {}; deleteIncomingMeta(it) }
         if(outgoing==null) cancelledDirectTransfers.remove(id)
         transportEvent("file_cancelled", mapOf("transfer_id" to id))
+    }
+
+    // Bundle 162 (4.5): a received file failed its check.
+    private fun onIncomingHashMismatch(t: IncomingFileTransfer, self: String) {
+        val restarts = hashMismatchRestarts[t.transferId] ?: 0
+        val decision = DirectFileTransferPolicy.onHashMismatch(restarts)
+        Log.w("LOCAL_LINK_TRANSPORT", "FILE_HASH_MISMATCH transfer=${t.transferId.take(12)} restarts=$restarts action=$decision")
+        val giveUp = decision == "give_up"
+        if (giveUp) {
+            hashMismatchRestarts.remove(t.transferId)
+            cancelledIncomingTransfers[t.transferId] = System.currentTimeMillis() + DirectFileTransferPolicy.IDLE_TIMEOUT_MS
+            transportEvent("file_failed", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId, "file_id" to t.fileId,
+                "sender_id" to t.senderId, "recipient_id" to self, "reason" to "hash_mismatch"))
+        } else {
+            hashMismatchRestarts[t.transferId] = restarts + 1
+            transportEvent("file_progress", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId,
+                "received" to 0, "total_chunks" to t.totalChunks, "bytes" to 0L, "total" to t.size, "restarted" to true))
+        }
+        sendRoutedPayload(t.senderId, JSONObject().put("type", "direct_file_restart")
+            .put("sender_id", self).put("recipient_id", t.senderId)
+            .put("transfer_id", t.transferId).put("file_id", t.fileId).put("message_id", t.messageId)
+            .put("sha256", t.sha256).put("total_chunks", t.totalChunks).put("give_up", giveUp))
+    }
+
+    // Bundle 162 (4.5): the receiver's copy failed its check — send every chunk
+    // again (once), or stop and report the failure.
+    private fun handleFileRestart(p: JSONObject) {
+        val id = p.optString("transfer_id")
+        val t = outgoingTransfers[id] ?: return
+        if (p.optString("sender_id") != t.recipientId || p.optString("sha256") != t.sha256 ||
+            p.optInt("total_chunks", -1) != t.totalChunks) return
+        if (p.optBoolean("give_up", false)) {
+            Log.w("LOCAL_LINK_TRANSPORT", "FILE_HASH_MISMATCH sender give_up transfer=${id.take(12)}")
+            deleteOutgoingMeta(t); outgoingTransfers.remove(id); outgoingRetryCounts.remove(id); outgoingSendInFlight.remove(id)
+            transportEvent("file_failed", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId, "reason" to "hash_mismatch"))
+            return
+        }
+        Log.w("LOCAL_LINK_TRANSPORT", "FILE_HASH_MISMATCH sender restart transfer=${id.take(12)}")
+        synchronized(t) { DirectFileTransferPolicy.resetForRestart(t.acknowledged, t.lastSentAt) }
+        outgoingRetryCounts[id] = 0
+        t.updatedAt = System.currentTimeMillis()
+        persistOutgoingTransfer(t)
+        transportEvent("file_progress", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId,
+            "acked_chunks" to 0, "total_chunks" to t.totalChunks))
+        Thread { sendMissingChunks(t, true) }.start()
     }
 
     private fun handleFileCancel(p:JSONObject){
