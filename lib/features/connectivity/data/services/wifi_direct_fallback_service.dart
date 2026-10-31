@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:locallink/core/diagnostics/app_diagnostics.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
+import 'package:locallink/features/connectivity/data/services/nearby_group_planner.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
+import 'package:locallink/features/connectivity/domain/nearby_group_control.dart';
 
 /// Bundle 155: what the automatic reconnect should do right now.
 class FallbackConnectPlan {
@@ -116,7 +120,14 @@ final class WifiDirectFallbackService {
     this.connectivity, {
     Duration rediscoveryInterval = const Duration(seconds: 45),
     this.hasLocalRoute,
-  }) : _rediscoveryInterval = rediscoveryInterval;
+    this.isBusy,
+    int Function()? clock,
+    Random? random,
+    Duration groupTick = const Duration(seconds: 5),
+  })  : _rediscoveryInterval = rediscoveryInterval,
+        _clock = clock ?? (() => DateTime.now().millisecondsSinceEpoch),
+        _random = random ?? Random(),
+        _groupTickInterval = groupTick;
 
   static const _retryCooldown = Duration(seconds: 20);
 
@@ -135,6 +146,60 @@ final class WifiDirectFallbackService {
   bool Function(String peerId)? hasLocalRoute;
 
   final ConnectivityRepositoryContract connectivity;
+
+  // ---------------------------------------------------- Bundle 157 state
+  /// A call is going on (a group is never dissolved under it).
+  bool Function()? isBusy;
+  final int Function() _clock;
+  final Random _random;
+  final Duration _groupTickInterval;
+  String? _selfHash;
+  NearbyGroupRole _role = NearbyGroupRole.none;
+  String? _myGroup;
+  int _myMembers = 0;
+  int _hostSince = 0;
+  bool _onWifiNetwork = false;
+  final Map<String, int> _firstSeen = <String, int>{};
+  final Map<String, String> _tagState = <String, String>{};
+  String? _pairTarget;
+  int _pairUntil = 0;
+  int _pairAt = 0;
+  bool _pairInvited = false;
+  bool _pendingUserTap = false;
+  int _lostAt = 0;
+  int _lostJitterMs = 2000;
+  Set<String> _lostMates = const <String>{};
+  final Set<String> _mates = <String>{};
+  final NearbyGroupBackoff _backoff = NearbyGroupBackoff();
+  NearbyGroupActionKind? _pendingKind;
+  String? _pendingHost;
+  int _pendingSince = 0;
+  final Map<String, int> _coolingUntil = <String, int>{};
+  final Map<String, int> _joinFailures = <String, int>{};
+  List<String> _lastWanted = const <String>[];
+  String _lastPlanReason = '';
+  int _lastGroupDiscoveryAt = 0;
+  bool _groupBusy = false;
+  Timer? _groupTimer;
+
+  NearbyGroupControl? get _group {
+    final c = connectivity;
+    return c is NearbyGroupControl ? c as NearbyGroupControl : null;
+  }
+
+  /// Bundle 157: shared groups are on when the native side supports them and
+  /// this phone's tag id is known.
+  bool get groupMode => _group != null && _selfHash != null;
+
+  /// Bundle 157: this phone's tag id (16 hex), set once identity is known.
+  set selfIdHash(String? value) {
+    final clean = value?.trim().toLowerCase();
+    _selfHash = (clean == null || clean.isEmpty) ? null : clean;
+    if (groupMode) _armGroupTimer();
+  }
+
+  @visibleForTesting
+  NearbyGroupRole get groupRole => _role;
   final Map<String, DateTime> _waitingSince = <String, DateTime>{};
   final Map<String, DateTime> _attemptedAddresses = <String, DateTime>{};
   final Map<String, NearbyTag> _tags = <String, NearbyTag>{};
@@ -150,6 +215,29 @@ final class WifiDirectFallbackService {
     if (_started || _disposed) return;
     _started = true;
     _wifiSubscription = connectivity.wifiDirectEvents.listen(_handleWifiEvent);
+    if (groupMode) _armGroupTimer();
+  }
+
+  /// Bundle 157: the user tapped Pair on a nearby Wi-Fi Direct phone.
+  /// Tagged phones with group support go through the shared-group rules
+  /// (join their group, or bring them into ours, no pop-ups); everything
+  /// else keeps the 155 connect.
+  Future<void> pairTap(WifiDirectPeer peer) async {
+    final address = peer.address.trim().toLowerCase();
+    final tag = _tags[address] ?? NearbyTagRegistry.instance.tagFor(address);
+    if (!groupMode || tag == null) {
+      await connectivity.connectWifiDirect(peer.address,
+          wantHost: !(tag?.host ?? false), allowLeaveGroup: true);
+      return;
+    }
+    _pairTarget = tag.idHash;
+    _pairAt = _clock();
+    _pairUntil = _pairAt + 60 * 1000;
+    _pairInvited = false;
+    AppLogger.info('NEARBY', detail: 'pair_tap target=${tag.idHash} '
+        'host=${tag.host} member=${tag.member} gv=${tag.groupAware}');
+    _armGroupTimer();
+    await _evaluateGroup(userTap: true);
   }
 
   Future<void> requestRoute(String peerId) async {
@@ -179,6 +267,8 @@ final class WifiDirectFallbackService {
 
   Future<void> dispose() async {
     _disposed = true;
+    _groupTimer?.cancel();
+    _groupTimer = null;
     _waitingSince.clear();
     _rediscoveryTimer?.cancel();
     _rediscoveryTimer = null;
@@ -203,7 +293,23 @@ final class WifiDirectFallbackService {
         ..clear()
         ..addAll({for (final t in tags) t.address: t});
       NearbyTagRegistry.instance.ingest(tags);
-      unawaited(_tryConnect(_lastPeers));
+      _trackTags(tags);
+      if (groupMode) {
+        unawaited(_evaluateGroup());
+      } else {
+        unawaited(_tryConnect(_lastPeers));
+      }
+      return;
+    }
+    if (type == 'my_group') {
+      _applyMyGroup(event);
+      return;
+    }
+    if (type == 'connection') {
+      final raw = event['connection'];
+      if (raw is Map) {
+        _applyConnection(WifiDirectConnection.fromMap(raw));
+      }
       return;
     }
     if (type != 'peers') return;
@@ -216,7 +322,11 @@ final class WifiDirectFallbackService {
             .toList(growable: false)
         : const <WifiDirectPeer>[];
     _lastPeers = peers;
-    unawaited(_tryConnect(peers));
+    if (groupMode) {
+      unawaited(_evaluateGroup());
+    } else {
+      unawaited(_tryConnect(peers));
+    }
   }
 
   /// Re-arms discovery while waiters exist. Skips ticks that would overlap
@@ -273,6 +383,10 @@ final class WifiDirectFallbackService {
   }
 
   Future<void> _tryConnect(List<WifiDirectPeer> peers) async {
+    if (groupMode) {
+      await _evaluateGroup();
+      return;
+    }
     if (_disposed || _waitingSince.isEmpty || _connectionInFlight) return;
     // Local Wi-Fi / mesh first: drop waiters that are already reachable.
     for (final id in _waitingSince.keys.toList()) {
@@ -326,6 +440,321 @@ final class WifiDirectFallbackService {
       );
     } finally {
       _connectionInFlight = false;
+    }
+  }
+
+  // ------------------------------------------------ Bundle 157: the group
+
+  void _armGroupTimer() {
+    if (_groupTimer != null || _disposed || !_started) return;
+    _groupTimer = Timer.periodic(_groupTickInterval, (_) {
+      if (_disposed) return;
+      unawaited(_groupTick());
+    });
+  }
+
+  /// Remembers when each tag was first seen in its current state (merge
+  /// waits until another host has been seen for a while), and who shares
+  /// my group (D4: they pick the new host if ours leaves).
+  void _trackTags(List<NearbyTag> tags) {
+    final now = _clock();
+    final present = <String>{};
+    for (final t in tags) {
+      present.add(t.address);
+      final state = '${t.host}|${t.member}|${t.group}';
+      if (_tagState[t.address] != state) {
+        _tagState[t.address] = state;
+        _firstSeen[t.address] = now;
+      }
+      if (_myGroup != null && t.group == _myGroup && !t.host) {
+        _mates.add(t.idHash);
+      }
+    }
+    _tagState.removeWhere((a, _) => !present.contains(a));
+    _firstSeen.removeWhere((a, _) => !present.contains(a));
+  }
+
+  void _applyMyGroup(Map<dynamic, dynamic> event) {
+    final role = switch (event['role']?.toString()) {
+      'host' => NearbyGroupRole.host,
+      'member' => NearbyGroupRole.member,
+      _ => NearbyGroupRole.none,
+    };
+    final name = event['name']?.toString();
+    if (name != null && name.isNotEmpty && name != _myGroup) _mates.clear();
+    _myGroup = (name == null || name.isEmpty) ? null : name;
+    _myMembers = (event['members'] as num?)?.toInt() ?? 0;
+    _setRole(role);
+    if (groupMode) unawaited(_evaluateGroup());
+  }
+
+  void _applyConnection(WifiDirectConnection c) {
+    _onWifiNetwork = c.wifiNetwork;
+    _setRole(!c.connected
+        ? NearbyGroupRole.none
+        : c.groupOwner
+            ? NearbyGroupRole.host
+            : NearbyGroupRole.member);
+  }
+
+  void _setRole(NearbyGroupRole role) {
+    final before = _role;
+    if (before == role) return;
+    final now = _clock();
+    _role = role;
+    if (role == NearbyGroupRole.host) _hostSince = now;
+    if (role != NearbyGroupRole.host) _hostSince = 0;
+    if (role == NearbyGroupRole.none) {
+      _myGroup = null;
+      _myMembers = 0;
+    }
+    final leaving = _pendingKind == NearbyGroupActionKind.leave ||
+        _pendingKind == NearbyGroupActionKind.leaveAndJoin;
+    if (before == NearbyGroupRole.member &&
+        role == NearbyGroupRole.none &&
+        !leaving) {
+      // D4: our host left. Wait 1–4 s, then join the new host — or, as the
+      // smallest id of the old group, become it.
+      _lostAt = now;
+      _lostJitterMs = 1000 + _random.nextInt(3001);
+      _lostMates = {..._mates}..remove(_selfHash);
+      AppLogger.info('NEARBY',
+          detail: 'group host_left mates=${_lostMates.length} '
+              'wait_ms=$_lostJitterMs');
+      _lastGroupDiscoveryAt = 0;
+    }
+    if (role != NearbyGroupRole.none) {
+      _lostAt = 0;
+      _mates.clear();
+    }
+    _checkPending(now);
+    AppLogger.info('NEARBY',
+        detail: 'group role ${before.name}->${role.name} '
+            'members=$_myMembers grp=${_myGroup ?? '-'}');
+  }
+
+  /// A create/join counts as done when the role changed the right way;
+  /// after 25 s without that it failed (back-off, and that host cools down).
+  void _checkPending(int now) {
+    final kind = _pendingKind;
+    if (kind == null) return;
+    final done = switch (kind) {
+      NearbyGroupActionKind.create => _role == NearbyGroupRole.host,
+      NearbyGroupActionKind.join ||
+      NearbyGroupActionKind.leaveAndJoin =>
+        _role == NearbyGroupRole.member,
+      NearbyGroupActionKind.leave => _role == NearbyGroupRole.none,
+      NearbyGroupActionKind.legacyConnect => _role != NearbyGroupRole.none,
+      NearbyGroupActionKind.none => true,
+    };
+    if (done) {
+      _backoff.succeeded();
+      if (_pendingHost != null) _joinFailures.remove(_pendingHost);
+      _pendingKind = null;
+      _pendingHost = null;
+      return;
+    }
+    if (now - _pendingSince > 25 * 1000) {
+      AppLogger.info('NEARBY', detail: 'group ${kind.name} timed_out');
+      _failPending(now);
+    }
+  }
+
+  void _failPending(int now) {
+    _backoff.failed(now);
+    final host = _pendingHost;
+    if (host != null) {
+      final n = (_joinFailures[host] ?? 0) + 1;
+      _joinFailures[host] = n;
+      // Two failed joins: treat that host as full for 10 minutes (D9).
+      _coolingUntil[host] = now + (n >= 2 ? 10 * 60 * 1000 : 20 * 1000);
+    }
+    _pendingKind = null;
+    _pendingHost = null;
+  }
+
+  Future<void> _groupTick() async {
+    if (!groupMode || _disposed) return;
+    final now = _clock();
+    _checkPending(now);
+    if (_pairTarget != null && now > _pairUntil) _pairTarget = null;
+    // The Pair target is in our group now: nothing more to do for it.
+    if (_pairTarget != null && _myGroup != null) {
+      for (final t in _tags.values) {
+        if (t.idHash == _pairTarget && t.group == _myGroup) {
+          _pairTarget = null;
+          break;
+        }
+      }
+    }
+    // How often to look for nearby tags: fast while something is going on,
+    // every 20 s alone without Local Wi-Fi, every 60 s in a group.
+    final urgent = _pairTarget != null ||
+        _pendingKind != null ||
+        (_lostAt > 0 && now - _lostAt <= NearbyGroupRules.lostWindowMs);
+    final everyMs = urgent
+        ? 8 * 1000
+        : _role != NearbyGroupRole.none
+            ? 60 * 1000
+            : (!_onWifiNetwork || _waitingSince.isNotEmpty)
+                ? 20 * 1000
+                : 60 * 1000;
+    if (everyMs > 0 &&
+        !_discoveryInFlight &&
+        now - _lastGroupDiscoveryAt >= everyMs) {
+      _lastGroupDiscoveryAt = now;
+      unawaited(_groupDiscovery());
+    }
+    await _evaluateGroup();
+  }
+
+  Future<void> _groupDiscovery() async {
+    if (_discoveryInFlight) return;
+    _discoveryInFlight = true;
+    try {
+      if (!await connectivity.isWifiDirectSupported()) return;
+      if (!await connectivity.isWifiDirectPermissionGranted()) return;
+      await connectivity.startWifiDirectDiscovery();
+    } catch (_) {
+      // Busy radio: the next tick tries again.
+    } finally {
+      _discoveryInFlight = false;
+    }
+  }
+
+  List<String> _waitingHashes() {
+    for (final id in _waitingSince.keys.toList()) {
+      if (_reachableLocally(id)) cancelWaiting(id);
+    }
+    final waiting = _waitingSince.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    return [for (final e in waiting) NearbyTag.idFor(e.key)];
+  }
+
+  Future<void> _publishWanted(List<String> waiting) async {
+    final group = _group;
+    if (group == null) return;
+    final wanted = <String>{
+      if (_pairTarget != null) NearbyTag.wantedIdFor(_pairTarget!),
+      for (final h in waiting) NearbyTag.wantedIdFor(h),
+    }.take(3).toList(growable: false);
+    if (listEquals(wanted, _lastWanted)) return;
+    _lastWanted = wanted;
+    try {
+      await group.setNearbyWanted(wanted);
+    } catch (_) {}
+  }
+
+  Future<void> _evaluateGroup({bool userTap = false}) async {
+    final group = _group;
+    final self = _selfHash;
+    if (group == null || self == null || _disposed) return;
+    if (_groupBusy) {
+      // Never drop a user's tap: run again right after this round.
+      if (userTap) _pendingUserTap = true;
+      return;
+    }
+    _groupBusy = true;
+    if (_pendingUserTap) {
+      userTap = true;
+      _pendingUserTap = false;
+    }
+    try {
+      final now = _clock();
+      try {
+        _applyConnection(await connectivity.wifiDirectConnectionInfo());
+      } catch (_) {}
+      _checkPending(now);
+      final waiting = _waitingHashes();
+      await _publishWanted(waiting);
+      if (_pendingKind != null && !userTap) return;
+      _coolingUntil.removeWhere((_, until) => until <= now);
+      final plan = planNearbyGroup(NearbyGroupInput(
+        selfHash: self,
+        now: now,
+        role: _role,
+        myGroup: _myGroup,
+        myMembers: _myMembers,
+        hostSince: _hostSince,
+        onWifiNetwork: _onWifiNetwork,
+        tags: _tags.values.toList(growable: false),
+        firstSeen: {..._firstSeen},
+        waiting: waiting,
+        pairTarget: _pairTarget,
+        pairAgeMs: now - _pairAt,
+        pairInviteAllowed: !_pairInvited,
+        cooling: _coolingUntil.keys.toSet(),
+        lostAt: _lostAt,
+        lostJitterMs: _lostJitterMs,
+        lostMates: _lostMates,
+        busy: _isBusy(),
+      ));
+      if (plan.reason != _lastPlanReason) {
+        _lastPlanReason = plan.reason;
+        AppLogger.info('NEARBY',
+            detail: 'group plan=${plan.kind.name} reason=${plan.reason} '
+                'role=${_role.name} members=$_myMembers '
+                'tags=${_tags.length}');
+      }
+      if (!plan.acts) return;
+      if (!_backoff.mayAct(now, userTap: userTap)) return;
+      if (plan.kind == NearbyGroupActionKind.legacyConnect &&
+          _pairTarget != null) {
+        _pairInvited = true;
+      }
+      await _runGroupAction(group, plan, now);
+    } finally {
+      _groupBusy = false;
+      if (_pendingUserTap && !_disposed) unawaited(_evaluateGroup());
+    }
+  }
+
+  bool _isBusy() {
+    try {
+      return isBusy?.call() ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _runGroupAction(
+      NearbyGroupControl group, NearbyGroupAction plan, int now) async {
+    _backoff.acted(now);
+    _pendingKind = plan.kind;
+    _pendingSince = now;
+    _pendingHost = plan.host?.address ?? plan.address;
+    AppLogger.info('NEARBY',
+        detail: 'group do=${plan.kind.name} reason=${plan.reason}'
+            '${plan.host != null ? ' host=${plan.host!.idHash} '
+                'members=${plan.host!.members} key=${plan.host!.key != null ? 1 : 0}' : ''}');
+    _record('group_${plan.kind.name}');
+    try {
+      switch (plan.kind) {
+        case NearbyGroupActionKind.join:
+        case NearbyGroupActionKind.leaveAndJoin:
+          final host = plan.host!;
+          // After 1 failed password join, use the classic connect.
+          final useKey = (_joinFailures[host.address] ?? 0) == 0;
+          await group.joinNearbyGroup(
+            name: useKey ? host.group : null,
+            key: useKey ? host.key : null,
+            address: host.address,
+            leave: plan.kind == NearbyGroupActionKind.leaveAndJoin,
+          );
+        case NearbyGroupActionKind.create:
+          await group.createNearbyGroup();
+        case NearbyGroupActionKind.leave:
+          await connectivity.disconnectWifiDirect();
+        case NearbyGroupActionKind.legacyConnect:
+          await connectivity.connectWifiDirect(plan.address!,
+              wantHost: plan.wantHost, allowLeaveGroup: false);
+        case NearbyGroupActionKind.none:
+          break;
+      }
+    } catch (error) {
+      AppLogger.info('NEARBY',
+          detail: 'group ${plan.kind.name} failed error=$error');
+      _failPending(now);
     }
   }
 

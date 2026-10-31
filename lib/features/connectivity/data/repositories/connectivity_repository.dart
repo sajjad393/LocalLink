@@ -8,8 +8,10 @@ import 'package:locallink/features/connectivity/data/services/network_monitor_se
 import 'package:locallink/features/connectivity/data/services/wifi_direct_service.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
+import 'package:locallink/features/connectivity/domain/nearby_group_control.dart';
 
-class ConnectivityRepository implements ConnectivityRepositoryContract {
+class ConnectivityRepository
+    implements ConnectivityRepositoryContract, NearbyGroupControl {
   final WebSocketService socket;
   final WifiDirectService wifiDirect;
   final PeerTransportContract directTransport;
@@ -76,6 +78,24 @@ class ConnectivityRepository implements ConnectivityRepositoryContract {
   @override
   Future<void> setNearbyIdentity(String tagId) =>
       wifiDirect.setNearbyIdentity(tagId);
+
+  // Bundle 157: one shared group.
+  @override
+  Future<void> setNearbyWanted(List<String> ids) =>
+      wifiDirect.setNearbyWanted(ids);
+
+  @override
+  Future<void> createNearbyGroup() => wifiDirect.createNearbyGroup();
+
+  @override
+  Future<void> joinNearbyGroup({
+    String? name,
+    String? key,
+    required String address,
+    bool leave = false,
+  }) =>
+      wifiDirect.joinNearbyGroup(
+          name: name, key: key, address: address, leave: leave);
 
   @override
   Future<void> cancelWifiDirectConnect() => wifiDirect.cancelConnect();

@@ -7,6 +7,7 @@ import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.sajjad.locallink.mesh.NearbyGroupPolicy
 import com.sajjad.locallink.mesh.NearbyTagPolicy
 import java.util.concurrent.ConcurrentHashMap
 
@@ -31,6 +32,12 @@ class NearbyTagManager(
     private var host = false
     private var member = false
     private var members = 0
+    // Bundle 157: the shared group this phone is in, and who it wants in it.
+    private var groupName: String? = null
+    private var groupKey: String? = null
+    private var ownerAddress: String? = null
+    private var wanted: List<String> = emptyList()
+    private var lastDiscoveryAt = 0L
     private var lastPublished = ""
     private var listenersSet = false
     private var discoveryScheduled = false
@@ -54,27 +61,59 @@ class NearbyTagManager(
     fun onConnection(groupFormed: Boolean, groupOwner: Boolean) {
         host = groupFormed && groupOwner
         member = groupFormed && !groupOwner
-        if (!host) {
+        if (!groupFormed) {
             members = 0
+            groupName = null
+            groupKey = null
+            ownerAddress = null
             publish()
+            emitGroup()
             return
         }
         if (!hasPermission()) return
         try {
+            // Bundle 157: the host publishes its group name + password (read
+            // back from Android, so it also works for groups made the old way);
+            // a member publishes only the name.
             manager.requestGroupInfo(channel) { group ->
-                members = group?.clientList?.size ?: 0
+                members = if (host) group?.clientList?.size ?: 0 else 0
+                groupName = group?.networkName?.takeIf { NearbyGroupPolicy.validNetworkName(it) }
+                groupKey = if (host) group?.passphrase?.takeIf { NearbyGroupPolicy.validPassphrase(it) } else null
+                ownerAddress = group?.owner?.deviceAddress
                 publish()
+                emitGroup()
             }
         } catch (e: SecurityException) {
             Log.w(TAG, "group info denied: ${e.message}")
             publish()
+            emitGroup()
         }
+    }
+
+    /** Bundle 157: up to 3 short ids of people this phone wants in its group. */
+    fun setWanted(ids: List<String>?) {
+        val clean = NearbyTagPolicy.cleanWanted(ids)
+        if (clean == wanted) return
+        wanted = clean
+        publish()
+    }
+
+    private fun emitGroup() {
+        val role = if (host) "host" else if (member) "member" else "none"
+        Log.i(TAG, "group state role=$role members=$members grp=${groupName ?: "-"}")
+        emit(mapOf(
+            "type" to "my_group",
+            "role" to role,
+            "name" to groupName,
+            "members" to members,
+            "owner_address" to ownerAddress,
+        ))
     }
 
     fun publish(force: Boolean = false) {
         val id = tagId ?: return
         if (!hasPermission()) return
-        val txt = NearbyTagPolicy.encode(id, host, member, members)
+        val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted)
         val signature = txt.toString()
         if (!force && signature == lastPublished) return
         lastPublished = signature
@@ -94,7 +133,7 @@ class NearbyTagManager(
     private fun addService(info: WifiP2pDnsSdServiceInfo, txt: Map<String, String>) {
         try {
             manager.addLocalService(channel, info, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]}") }
+                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0}") }
                 override fun onFailure(reason: Int) {
                     lastPublished = ""
                     Log.w(TAG, "tag publish failed reason=$reason")
@@ -117,8 +156,16 @@ class NearbyTagManager(
         }, delayMs)
     }
 
+    /** Bundle 157: a new phone appeared nearby — look at its tag soon
+     *  (at most once every 8 s). */
+    fun onPeersChanged() {
+        if (System.currentTimeMillis() - lastDiscoveryAt < 8_000L) return
+        scheduleDiscovery()
+    }
+
     private fun discover() {
         if (!hasPermission()) return
+        lastDiscoveryAt = System.currentTimeMillis()
         publish()
         try {
             if (!listenersSet) {
@@ -162,7 +209,7 @@ class NearbyTagManager(
         val tag = NearbyTagPolicy.decode(fullDomainName, txt, address, now) ?: return
         tags[tag["address"] as String] = tag
         tags.entries.removeIf { now - ((it.value["seen_at"] as? Long) ?: 0L) > NearbyTagPolicy.TAG_MAX_AGE_MS }
-        Log.i(TAG, "tag found id=${tag["id"]} addr=${tag["address"]} host=${tag["host"]} m=${tag["member"]} n=${tag["members"]}")
+        Log.i(TAG, "tag found id=${tag["id"]} addr=${tag["address"]} host=${tag["host"]} m=${tag["member"]} n=${tag["members"]} grp=${tag["group"] ?: "-"} key=${if (tag.containsKey("key")) 1 else 0}")
         emit(mapOf("type" to "services", "peers" to tags.values.toList()))
     }
 

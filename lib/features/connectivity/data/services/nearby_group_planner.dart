@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 
 /// Bundle 157: this phone's place in a Wi-Fi Direct group.
@@ -114,19 +112,6 @@ class NearbyGroupInput {
   /// A call is going on: never dissolve a group under it.
   final bool busy;
 
-  /// Bundle 158: tag ids (16 hex) of LocalLink phones seen on this Wi-Fi.
-  final Set<String> lanPeers;
-
-  /// Bundle 158: this phone may bridge now (false for 10 min after it could
-  /// not keep Wi-Fi and a group at the same time).
-  final bool bridgeAllowed;
-
-  /// Bundle 158: group name -> last time a bridge (`br=1`) was seen in it.
-  final Map<String, int> bridgeSeen;
-
-  /// Bundle 159: this phone is on a charger (preferred host/bridge on a tie).
-  final bool selfCharging;
-
   const NearbyGroupInput({
     required this.selfHash,
     required this.now,
@@ -146,86 +131,7 @@ class NearbyGroupInput {
     this.lostJitterMs = 2000,
     this.lostMates = const <String>{},
     this.busy = false,
-    this.lanPeers = const <String>{},
-    this.bridgeAllowed = false,
-    this.bridgeSeen = const <String, int>{},
-    this.selfCharging = false,
   });
-}
-
-/// Bundle 159 (battery): on a tie, a phone on a charger goes first (as host
-/// or bridge); otherwise the smaller id, as before (D4). True when
-/// ([aHash], [aCharging]) goes before ([bHash], [bCharging]).
-///
-/// Bundle 167 (5.5): a phone in a voice call ([aCall] / [bCall]) goes before
-/// everyone, so after the host left the call heals first.
-bool nearbyGoesFirst(
-    String aHash, bool aCharging, String bHash, bool bCharging,
-    {bool aCall = false, bool bCall = false}) {
-  if (aCall != bCall) return aCall;
-  if (aCharging != bCharging) return aCharging;
-  return aHash.compareTo(bHash) < 0;
-}
-
-/// Bundle 159 (battery, plan 159.2 + D7): how often to search for nearby
-/// phones, in ms (0 = no regular search).
-/// * something is going on (Pair tap, a join in progress, host just left):
-///   every 8 s;
-/// * app open: every 15 s while someone waits or this phone is alone
-///   without Wi-Fi, else every 60 s (in a group, to see merges);
-/// * app in the background: 60 s while someone waits, 3 min in a group or
-///   alone without Wi-Fi, and OFF when nobody waits and this phone is on
-///   Wi-Fi alone (everyone it needs is already reachable).
-/// Bundle 160 (plan 160.4): Wi-Fi that blocks phones from seeing each other
-/// (guest Wi-Fi, "client isolation").
-///
-/// On Wi-Fi for 60 s, no LocalLink phone heard on it for 60 s, while nearby
-/// tags show LocalLink phones that are on Wi-Fi too (`wf=1`): this Wi-Fi
-/// can't connect phones, so act as if not on Wi-Fi (join the nearby group).
-/// Ends at once when a phone is heard on the Wi-Fi again.
-abstract final class NearbyWifiCheck {
-  static const int blockedAfterMs = 60 * 1000;
-
-  /// [wifiSince] when this phone joined its Wi-Fi (0 = not on Wi-Fi);
-  /// [lastLanAt] last time a LocalLink phone was heard on it (0 = never).
-  static bool looksBlocked({
-    required bool onWifi,
-    required int wifiSince,
-    required int lastLanAt,
-    required int now,
-    required Iterable<NearbyTag> tags,
-  }) {
-    if (!onWifi || wifiSince <= 0) return false;
-    final quietSince = lastLanAt > wifiSince ? lastLanAt : wifiSince;
-    if (now - quietSince < blockedAfterMs) return false;
-    return tags.any((t) => t.groupAware && t.wifi);
-  }
-}
-
-abstract final class NearbySearchCadence {
-  static const int urgentMs = 8 * 1000;
-  static const int foregroundMs = 15 * 1000;
-  static const int foregroundIdleMs = 60 * 1000;
-  static const int backgroundWaitingMs = 60 * 1000;
-  static const int backgroundIdleMs = 3 * 60 * 1000;
-
-  static int everyMs({
-    required bool urgent,
-    required bool foreground,
-    required bool inGroup,
-    required bool onWifi,
-    required bool waiting,
-  }) {
-    if (urgent) return urgentMs;
-    if (foreground) {
-      return (waiting || (!inGroup && !onWifi))
-          ? foregroundMs
-          : foregroundIdleMs;
-    }
-    if (waiting) return backgroundWaitingMs;
-    if (inGroup || !onWifi) return backgroundIdleMs;
-    return 0;
-  }
 }
 
 /// Rule constants (plan, Phase 4).
@@ -246,10 +152,6 @@ abstract final class NearbyGroupRules {
   /// D4 is over after this long.
   static const int lostWindowMs = 60 * 1000;
 
-  /// Bundle 167 (5.5): a phone in a call waits only this long (instead of
-  /// the random 1-4 s) after the host left.
-  static const int lostCallJitterMs = 300;
-
   /// An empty group (nobody joined) closes after this long, when nobody is
   /// wanted.
   static const int emptyHostMs = 3 * 60 * 1000;
@@ -257,14 +159,6 @@ abstract final class NearbyGroupRules {
   /// The Pair target hasn't come into our group by itself after this long:
   /// invite it once the classic way.
   static const int pairInviteAfterMs = 25 * 1000;
-
-  /// Bundle 158: phones off our Wi-Fi must be seen this long before a Wi-Fi
-  /// phone bridges to them (tags and LAN beacons settle).
-  static const int bridgeSettleMs = 10 * 1000;
-
-  /// Bundle 158: a backup bridge only after the bridge was missing this
-  /// long; each Wi-Fi phone with a smaller id gets this much head start.
-  static const int bridgeBackupMs = 30 * 1000;
 }
 
 /// Bundle 157: one shared group for all nearby LocalLink phones.
@@ -309,17 +203,14 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
     return null;
   }
 
-  /// Biggest group with space; a tie goes to a host on a charger, then the
-  /// smaller id (Bundle 159).
+  /// Biggest group with space; a tie goes to the smaller id.
   NearbyTag? bestGroup() {
     NearbyTag? best;
     for (final t in fresh) {
       if (!joinable(t)) continue;
       if (best == null ||
           t.members > best.members ||
-          (t.members == best.members &&
-              nearbyGoesFirst(
-                  t.idHash, t.charging, best.idHash, best.charging))) {
+          (t.members == best.members && t.idHash.compareTo(best.idHash) < 0)) {
         best = t;
       }
     }
@@ -399,8 +290,7 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
           if (input.now - since < NearbyGroupRules.mergeSeenMs) continue;
           final theyWin = other.members > input.myMembers ||
               (other.members == input.myMembers &&
-                  nearbyGoesFirst(other.idHash, other.charging,
-                      input.selfHash, input.selfCharging));
+                  other.idHash.compareTo(input.selfHash) < 0);
           if (!theyWin) continue;
           if (other.members + input.myMembers + 1 > nearbyGroupSoftLimit ||
               other.full) {
@@ -463,11 +353,8 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
         if (best != null) {
           return NearbyGroupAction.join(best, 'waiting_join_nearby_group');
         }
-        if (t.wants(input.selfHash) &&
-            !nearbyGoesFirst(
-                input.selfHash, input.selfCharging, t.idHash, t.charging)) {
-          // We want each other: only one creates the group (on a charger
-          // first, then the smaller id).
+        if (t.wants(input.selfHash) && input.selfHash.compareTo(t.idHash) > 0) {
+          // We want each other: only the smaller id creates the group.
           lastReason = 'waiting_other_creates';
           continue;
         }
@@ -476,32 +363,23 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
 
       // 4. D4: the host of my group left.
       final sinceLost = input.now - input.lostAt;
-      // Bundle 167 (5.5): a phone in a call hardly waits.
-      final jitter = input.busy
-          ? min(input.lostJitterMs, NearbyGroupRules.lostCallJitterMs)
-          : input.lostJitterMs;
       if (input.lostAt > 0 && sinceLost <= NearbyGroupRules.lostWindowMs) {
-        if (sinceLost < jitter) {
+        if (sinceLost < input.lostJitterMs) {
           return const NearbyGroupAction.none('host_left_wait');
         }
         final best = bestGroup();
         if (best != null) {
           return NearbyGroupAction.join(best, 'host_left_join_new_host');
         }
-        final mateTags = [
+        final mates = [
           for (final t in fresh)
-            if (input.lostMates.contains(t.idHash)) t,
+            if (input.lostMates.contains(t.idHash)) t.idHash,
         ];
-        final mates = [for (final t in mateTags) t.idHash];
-        // Bundle 159: a mate on a charger goes first, then the smallest id.
-        // Bundle 167: a mate in a call goes before chargers and ids.
-        final smallest = mateTags.every((m) => nearbyGoesFirst(
-            input.selfHash, input.selfCharging, m.idHash, m.charging,
-            aCall: input.busy, bCall: m.inCall));
+        final smallest = mates.every((m) => input.selfHash.compareTo(m) < 0);
         if (mates.isNotEmpty && smallest) {
           return const NearbyGroupAction.create('host_left_new_host');
         }
-        if (sinceLost >= jitter + NearbyGroupRules.lostFallbackMs &&
+        if (sinceLost >= input.lostJitterMs + NearbyGroupRules.lostFallbackMs &&
             (mates.isNotEmpty || input.waiting.isNotEmpty)) {
           return const NearbyGroupAction.create('host_left_no_new_host');
         }
@@ -510,106 +388,13 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
 
       // 5. No Local Wi-Fi: everyone nearby in one group.
       if (lastReason != null) return NearbyGroupAction.none(lastReason);
-      if (input.onWifiNetwork) {
-        // Bundle 158: on Wi-Fi, bridge to LocalLink phones that are NOT on
-        // this Wi-Fi (one bridge per group).
-        if (input.bridgeAllowed) {
-          final bridge = _planBridge(input, fresh, joinable);
-          if (bridge != null) return bridge;
-        }
-        return const NearbyGroupAction.none('lan_first');
-      }
+      if (input.onWifiNetwork) return const NearbyGroupAction.none('lan_first');
       final best = bestGroup();
       if (best != null) {
         return NearbyGroupAction.join(best, 'join_nearby_group');
       }
       return const NearbyGroupAction.none('idle');
   }
-}
-
-/// Bundle 158 (plan 158.1): a phone on Wi-Fi that sees LocalLink phones NOT
-/// on that Wi-Fi joins their group (or, when they are not in a group, starts
-/// one for them) while staying on Wi-Fi, so both sides reach each other.
-///
-/// * one bridge per group: a group that shows `br=1`, or has a phone that is
-///   also on our Wi-Fi, needs no bridge;
-/// * a backup only after the bridge was missing for 30 s;
-/// * among Wi-Fi phones that could bridge, the smallest id goes first; each
-///   bigger id waits 30 s more (so a phone that can't bridge never blocks).
-/// Returns null when there is nothing to bridge.
-NearbyGroupAction? _planBridge(NearbyGroupInput input, List<NearbyTag> fresh,
-    bool Function(NearbyTag) joinable) {
-  final off = [
-    for (final t in fresh)
-      if (t.groupAware && !input.lanPeers.contains(t.idHash)) t,
-  ];
-  if (off.isEmpty) return null;
-  // Other Wi-Fi phones that could bridge too (idle, on our Wi-Fi).
-  final rank = [
-    for (final t in fresh)
-      if (input.lanPeers.contains(t.idHash) &&
-          t.groupAware &&
-          !t.host &&
-          !t.member &&
-          nearbyGoesFirst(
-              t.idHash, t.charging, input.selfHash, input.selfCharging))
-        t,
-  ].length;
-  final headStart = rank * NearbyGroupRules.bridgeBackupMs;
-  String? waitReason;
-
-  // A. Their group: join it.
-  final hosts = [
-    for (final t in off)
-      if (t.host && t.group != null) t
-  ]..sort((a, b) => a.members != b.members
-      ? b.members.compareTo(a.members)
-      : a.idHash.compareTo(b.idHash));
-  for (final host in hosts) {
-    final inGroup = [
-      for (final t in fresh)
-        if (t.group == host.group) t
-    ];
-    if (inGroup.any((t) => input.lanPeers.contains(t.idHash))) continue;
-    if (inGroup.any((t) => t.bridge)) {
-      waitReason ??= 'bridge_exists';
-      continue;
-    }
-    if (!joinable(host)) {
-      waitReason ??= 'bridge_group_full';
-      continue;
-    }
-    final last = input.bridgeSeen[host.group];
-    final since = last ?? (input.firstSeen[host.address] ?? input.now);
-    final need = (last != null
-            ? NearbyGroupRules.bridgeBackupMs
-            : NearbyGroupRules.bridgeSettleMs) +
-        headStart;
-    if (input.now - since < need) {
-      waitReason ??= last != null ? 'bridge_backup_wait' : 'bridge_wait';
-      continue;
-    }
-    return NearbyGroupAction.join(
-        host, last != null ? 'bridge_backup_join' : 'bridge_join');
-  }
-
-  // B. They are not in a group: start one for them (they join it, D2).
-  final idle = [
-    for (final t in off)
-      if (!t.host && !t.member) t
-  ];
-  if (idle.isNotEmpty) {
-    var earliest = input.now;
-    for (final t in idle) {
-      final at = input.firstSeen[t.address] ?? input.now;
-      if (at < earliest) earliest = at;
-    }
-    if (input.now - earliest >= NearbyGroupRules.bridgeSettleMs + headStart) {
-      return const NearbyGroupAction.create('bridge_create');
-    }
-    waitReason ??= 'bridge_wait';
-  }
-  return waitReason == null ? null : NearbyGroupAction.none(waitReason);
 }
 
 /// Bundle 157: at most 1 create/join per 10 s; after 3 failures in a row,
