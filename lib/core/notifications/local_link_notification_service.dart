@@ -488,7 +488,7 @@ final class LocalLinkNotificationService {
         ? groupName
         : preferences.privacyMode == NotificationPrivacyMode.senderOnly
             ? 'New messages'
-            : 'LocalLink';
+            : 'LinkUp';
     await platform.showSummary(
       notificationId: notificationIdForGroupSummary(groupId),
       conversationType: 'group',
@@ -877,7 +877,7 @@ final class LocalLinkNotificationService {
       case NotificationPrivacyMode.senderOnly:
         return isGroup ? (senderName ?? 'New message') : title;
       case NotificationPrivacyMode.hidden:
-        return 'LocalLink';
+        return 'LinkUp';
     }
   }
 
@@ -892,7 +892,7 @@ final class LocalLinkNotificationService {
       case NotificationPrivacyMode.senderOnly:
         return isGroup ? (senderName ?? 'New message') : title;
       case NotificationPrivacyMode.hidden:
-        return 'LocalLink';
+        return 'LinkUp';
     }
   }
 
@@ -908,7 +908,7 @@ final class LocalLinkNotificationService {
   }
 
   String _publicBody() => switch (preferences.privacyMode) {
-        NotificationPrivacyMode.full => 'LocalLink notification',
+        NotificationPrivacyMode.full => 'LinkUp notification',
         NotificationPrivacyMode.senderOnly => 'New message',
         NotificationPrivacyMode.hidden => 'New notification',
       };
@@ -944,7 +944,7 @@ final class LocalLinkNotificationService {
       case NotificationPrivacyMode.senderOnly:
         return displayName;
       case NotificationPrivacyMode.hidden:
-        return 'LocalLink';
+        return 'LinkUp';
     }
   }
 

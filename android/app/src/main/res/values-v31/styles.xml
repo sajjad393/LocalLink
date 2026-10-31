@@ -1,5 +1,5 @@
 <resources>
-    <!-- Android 12+ system splash: solid brand blue with the LocalLink glyph,
+    <!-- Android 12+ system splash: solid brand blue with the LinkUp glyph,
          then the gradient launch background until Flutter's first frame. -->
     <style name="LaunchTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowSplashScreenBackground">@color/brand_start</item>

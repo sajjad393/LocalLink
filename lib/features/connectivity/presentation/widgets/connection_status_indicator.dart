@@ -28,7 +28,7 @@ class ConnectionStatusIndicator extends StatelessWidget {
       return (label: 'Local network available', icon: Icons.wifi_outlined, color: colors.secondary);
     }
     if (snapshot.serverConnected) {
-      return (label: 'LocalLink connected', icon: Icons.hub_outlined, color: colors.primary);
+      return (label: 'LinkUp connected', icon: Icons.hub_outlined, color: colors.primary);
     }
     return (label: 'Searching for connection', icon: Icons.sync_problem_outlined, color: colors.outline);
   }

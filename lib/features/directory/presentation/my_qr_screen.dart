@@ -58,7 +58,7 @@ class MyQrScreen extends StatelessWidget {
     // 3 short icon steps instead of prose, and copy/scan actions.
     final name = profile.displayName.isNotEmpty
         ? profile.displayName
-        : (profile.username.isNotEmpty ? profile.username : 'LocalLink user');
+        : (profile.username.isNotEmpty ? profile.username : 'LinkUp user');
     final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
     final hasAvatar =
         profile.avatarUrl.isNotEmpty && File(profile.avatarUrl).existsSync();
@@ -181,7 +181,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
       stage = 'decode';
       final decoded = jsonDecode(raw);
       if (decoded is! Map || decoded['v']?.toString() != '1') {
-        throw const FormatException('Unsupported LocalLink QR code');
+        throw const FormatException('Unsupported LinkUp QR code');
       }
       final payload = Map<String, dynamic>.from(decoded);
       final profileMap = payload['profile'];
@@ -470,7 +470,7 @@ class _QrCardWithShareState extends State<_QrCardWithShare> {
       await file.writeAsBytes(png.buffer.asUint8List(), flush: true);
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'image/png')],
-        text: 'Scan this code to add me on LocalLink',
+        text: 'Scan this code to add me on LinkUp',
       );
     } catch (error) {
       AppLogger.error('QR_SHARE_IMAGE_FAILED', error: error);
@@ -538,7 +538,7 @@ class _QrCardWithShareState extends State<_QrCardWithShare> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '@${widget.username.isNotEmpty ? widget.username : 'locallink'} · LocalLink',
+                    '@${widget.username.isNotEmpty ? widget.username : 'linkup'} · LinkUp',
                     style: Theme.of(context).textTheme.bodySmall,
                     textAlign: TextAlign.center,
                   ),
@@ -550,7 +550,7 @@ class _QrCardWithShareState extends State<_QrCardWithShare> {
         const SizedBox(height: 20),
         const _QrStep(
           icon: Icons.smartphone_outlined,
-          text: 'Open LocalLink on the other phone',
+          text: 'Open LinkUp on the other phone',
         ),
         const _QrStep(
           icon: Icons.center_focus_strong_outlined,

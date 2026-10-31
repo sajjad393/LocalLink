@@ -9,7 +9,7 @@ void main() {
       'version': '1',
       'server_id': 'server-1',
       'fingerprint': fp,
-      'name': 'Office LocalLink',
+      'name': 'Office LinkUp',
       'pairing_required': true,
     });
     expect(info.serverId, 'server-1');

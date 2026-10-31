@@ -9,7 +9,7 @@ void main() {
     // Mount the splash EXACTLY the way startup does — bare, with no Scaffold.
     // Mount exactly like startup: MaterialApp(home: splash) — note no Scaffold.
     await tester.pumpWidget(const MaterialApp(home: LocalLinkSplashScreen()));
-    for (final text in ['LocalLink', 'Secure, local-first messaging']) {
+    for (final text in ['LinkUp', 'Secure, local-first messaging']) {
       // a Material ancestor must sit between the text and the root
       expect(
         find.ancestor(of: find.text(text), matching: find.byType(Material)),

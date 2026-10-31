@@ -133,7 +133,7 @@ class AccountRestorationService {
     bool restoreFiles = true,
     String? cryptoBackupPassphrase,
   }) async {
-    if (store.accountId == null || store.accountId!.isEmpty) throw Exception('This device is not linked to a LocalLink account');
+    if (store.accountId == null || store.accountId!.isEmpty) throw Exception('This device is not linked to a LinkUp account');
 
     final manifest = await loadManifest();
     var totalSteps = 1 +

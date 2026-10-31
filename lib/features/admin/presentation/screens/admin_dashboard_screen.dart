@@ -135,7 +135,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       context,
       title: 'Create database backup',
       message:
-          'A consistent copy of the LocalLink database will be written to the server backup directory.',
+          'A consistent copy of the LinkUp database will be written to the server backup directory.',
       confirmLabel: 'Create backup',
     );
     if (!confirmed || !context.mounted) return;
@@ -186,7 +186,7 @@ class _PageHeader extends StatelessWidget {
               const SizedBox(height: AdminSpace.xxs),
               Text(
                 generatedAt == null
-                    ? 'Operational metadata from the LocalLink server.'
+                    ? 'Operational metadata from the LinkUp server.'
                     : 'Updated ${adminRelativeTime(generatedAt)}'
                         '${refreshSeconds == null ? '' : ' · auto-refresh every ${refreshSeconds}s'}',
                 style:

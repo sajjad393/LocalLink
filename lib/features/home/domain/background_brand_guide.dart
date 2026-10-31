@@ -9,49 +9,49 @@ class BackgroundBrandGuide {
   const BackgroundBrandGuide(this.key, this.title, this.steps);
 }
 
-const _lock = 'Recents: lock LocalLink (tap its icon, choose Lock)';
+const _lock = 'Recents: lock LinkUp (tap its icon, choose Lock)';
 
 const List<BackgroundBrandGuide> kBackgroundBrandGuides = [
   BackgroundBrandGuide('xiaomi', 'Xiaomi / Redmi / POCO (MIUI / HyperOS)', [
     'Tap Open settings',
-    'Autostart: turn LocalLink ON',
+    'Autostart: turn LinkUp ON',
     'App info > Battery saver: choose No restrictions',
     _lock,
   ]),
   BackgroundBrandGuide('samsung', 'Samsung (One UI)', [
     'Tap Open settings',
     'Battery: choose Unrestricted',
-    'Settings > Battery > Background usage limits: LocalLink must not be in Sleeping or Deep sleeping apps',
+    'Settings > Battery > Background usage limits: LinkUp must not be in Sleeping or Deep sleeping apps',
     _lock,
   ]),
   BackgroundBrandGuide('oppo', 'Oppo / Realme / OnePlus (ColorOS)', [
     'Tap Open settings',
-    'Auto launch: turn LocalLink ON',
+    'Auto launch: turn LinkUp ON',
     'App info > Battery: Allow background activity',
     _lock,
   ]),
   BackgroundBrandGuide('vivo', 'Vivo / iQOO (Funtouch / OriginOS)', [
     'Tap Open settings',
-    'Background power use: allow LocalLink',
-    'Autostart: turn LocalLink ON',
+    'Background power use: allow LinkUp',
+    'Autostart: turn LinkUp ON',
     _lock,
   ]),
   BackgroundBrandGuide('huawei', 'Huawei / Honor (EMUI / MagicOS)', [
     'Tap Open settings',
-    'App launch: turn off Manage automatically for LocalLink',
+    'App launch: turn off Manage automatically for LinkUp',
     'Turn ON Auto-launch, Secondary launch and Run in background',
     _lock,
   ]),
   BackgroundBrandGuide('transsion', 'Tecno / Infinix / itel (HiOS / XOS)', [
     'Tap Open settings',
-    'Auto-start: turn LocalLink ON',
-    'Phone Master > Power saving: let LocalLink run in background',
+    'Auto-start: turn LinkUp ON',
+    'Phone Master > Power saving: let LinkUp run in background',
     _lock,
   ]),
   BackgroundBrandGuide('zte', 'ZTE / Nubia (MyOS)', [
     'Tap Open settings',
     'Battery: Allow background activity (No restrictions)',
-    'Power manager > Auto-start: allow LocalLink',
+    'Power manager > Auto-start: allow LinkUp',
     _lock,
   ]),
   BackgroundBrandGuide('other', 'Other phones (Pixel, Motorola, Nokia...)', [

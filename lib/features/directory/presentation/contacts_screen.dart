@@ -192,7 +192,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       icon: Icons.people_outline,
                       lottieAsset: 'assets/animations/empty_inbox.json',
                       title: query.isEmpty ? 'No contacts yet' : 'No people found',
-                      message: query.isEmpty ? 'Add a contact or discover nearby LocalLink phones.' : 'Try another name or username.',
+                      message: query.isEmpty ? 'Add a contact or discover nearby LinkUp phones.' : 'Try another name or username.',
                       actionLabel: query.isEmpty ? 'Add contact' : null,
                       onAction: query.isEmpty ? _addContact : null,
                     ),

@@ -53,7 +53,7 @@ class _RecoveryStatusScreenState extends State<RecoveryStatusScreen> {
               icon: Icons.mark_email_read_outlined,
               title: 'No pending recovery request',
               message:
-                  'Start recovery from the LocalLink welcome screen to create a new request.',
+                  'Start recovery from the LinkUp welcome screen to create a new request.',
               actionLabel: 'Back',
               onAction: () => Navigator.pop(context),
             );
@@ -106,7 +106,7 @@ class _RecoveryStatusScreenState extends State<RecoveryStatusScreen> {
                       ListTile(
                           title: const Text('Account'),
                           subtitle: Text(recoveryState.username.isEmpty
-                              ? 'LocalLink account'
+                              ? 'LinkUp account'
                               : '@${recoveryState.username}'),
                           leading: const Icon(Icons.person_outline)),
                       ListTile(
@@ -163,7 +163,7 @@ class _RecoveryStatusScreenState extends State<RecoveryStatusScreen> {
           'The request or its recovery credential is no longer valid.',
         'completed' => 'This recovery request has already been completed.',
         _ =>
-          'Keep the new phone connected to the private LocalLink network while waiting for approval.',
+          'Keep the new phone connected to the private LinkUp network while waiting for approval.',
       };
   String _short(String value) =>
       value.length <= 12 ? value : '${value.substring(0, 8)}…';

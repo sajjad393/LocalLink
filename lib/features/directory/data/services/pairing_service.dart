@@ -32,7 +32,7 @@ class PairRequest {
   });
 
   String get displayName =>
-      profile.displayName.isNotEmpty ? profile.displayName : 'LocalLink user';
+      profile.displayName.isNotEmpty ? profile.displayName : 'LinkUp user';
   String get username => profile.username;
 }
 
@@ -331,7 +331,7 @@ final class PairingService {
         deviceId: profile.deviceId,
         displayName: profile.displayName.isNotEmpty
             ? profile.displayName
-            : 'LocalLink user',
+            : 'LinkUp user',
       ));
     }
   }

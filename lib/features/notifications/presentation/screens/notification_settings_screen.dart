@@ -134,7 +134,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
             context,
             value: NotificationPrivacyMode.hidden,
             title: 'Hide sensitive content',
-            subtitle: 'Show a generic LocalLink notification',
+            subtitle: 'Show a generic LinkUp notification',
           ),
           const SizedBox(height: LocalLinkSpacing.lg),
           Text('Android controls', style: theme.textTheme.titleSmall),
@@ -153,7 +153,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           const SizedBox(height: LocalLinkSpacing.md),
           const LocalLinkInlineInfo(
             icon: Icons.lock_outline,
-            message: 'LocalLink keeps notification content separate from your chat content.',
+            message: 'LinkUp keeps notification content separate from your chat content.',
           ),
         ],
       ),

@@ -126,7 +126,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       bloc: _controller,
       builder: (context, state) {
         final profile = state.profile;
-        final displayName = profile?.displayName.isNotEmpty == true ? profile!.displayName : (widget.store.deviceName ?? 'LocalLink user');
+        final displayName = profile?.displayName.isNotEmpty == true ? profile!.displayName : (widget.store.deviceName ?? 'LinkUp user');
         return Scaffold(
           appBar: AppBar(title: const Text('Account')),
           body: RefreshIndicator(
@@ -142,7 +142,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                           contentPadding: const EdgeInsets.all(LocalLinkSpacing.lg),
                           leading: AccountAvatar(name: displayName, localPath: profile?.localAvatarPath ?? '', radius: 30),
                           title: Text(displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text(profile?.username.isNotEmpty == true ? '@${profile!.username}' : 'LocalLink account'),
+                          subtitle: Text(profile?.username.isNotEmpty == true ? '@${profile!.username}' : 'LinkUp account'),
                           trailing: const Icon(Icons.edit_outlined),
                           onTap: _openProfile,
                         ),

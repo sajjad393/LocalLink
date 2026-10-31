@@ -9,7 +9,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
 
     expect(find.byType(LocalLinkSplashScreen), findsOneWidget);
-    expect(find.text('LocalLink'), findsOneWidget);
+    expect(find.text('LinkUp'), findsOneWidget);
     expect(find.byType(Image), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
 
@@ -35,7 +35,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: LocalLinkSplashScreen()));
     await tester.pump();
 
-    expect(find.text('LocalLink'), findsOneWidget);
+    expect(find.text('LinkUp'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

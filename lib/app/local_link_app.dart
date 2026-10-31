@@ -125,7 +125,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v3 · 3.0.8 · bundles 104-177 (2026-11-01)');
+        detail: 'v3 · 3.0.9 · bundles 104-178 (2026-11-01)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -178,7 +178,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       if (!mounted) return;
       setState(() {
         _ready = true;
-        _startupError = 'LocalLink could not initialize safely. Close and reopen the app.';
+        _startupError = 'LinkUp could not initialize safely. Close and reopen the app.';
       });
     } finally {
       _initializing = false;
@@ -489,7 +489,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
                   const Icon(Icons.error_outline, size: 56),
                   const SizedBox(height: 16),
                   const Text(
-                    'LocalLink could not start',
+                    'LinkUp could not start',
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                     textAlign: TextAlign.center,
                   ),
@@ -510,7 +510,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: _navigatorKey,
-      title: 'LocalLink',
+      title: 'LinkUp',
       theme: LocalLinkTheme.light(),
       darkTheme: LocalLinkTheme.dark(),
       themeMode: _themeMode,

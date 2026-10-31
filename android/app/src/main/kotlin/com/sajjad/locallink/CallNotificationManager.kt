@@ -28,10 +28,10 @@ object CallNotificationManager {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "LocalLink incoming calls",
+            "LinkUp incoming calls",
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Incoming LocalLink calls"
+            description = "Incoming LinkUp calls"
             setSound(null, null)
             enableVibration(true)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC

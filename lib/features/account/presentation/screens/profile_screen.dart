@@ -284,7 +284,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final value = bloc.profile ?? profile;
-    final displayName = value?.displayName.isNotEmpty == true ? value!.displayName : 'LocalLink user';
+    final displayName = value?.displayName.isNotEmpty == true ? value!.displayName : 'LinkUp user';
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.onboarding ? 'Your profile' : 'Profile'),
@@ -392,7 +392,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: ListTile(
                 leading: CircleAvatar(backgroundColor: Theme.of(context).colorScheme.primaryContainer, child: const Icon(Icons.qr_code_2)),
                 title: const Text('My QR code'),
-                subtitle: const Text('Share your LocalLink identity with another phone.'),
+                subtitle: const Text('Share your LinkUp identity with another phone.'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: widget.crypto == null || value == null ? null : () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => MyQrScreen(profile: _directoryProfile(value), crypto: widget.crypto!, repository: widget.directoryRepository))),
               ),

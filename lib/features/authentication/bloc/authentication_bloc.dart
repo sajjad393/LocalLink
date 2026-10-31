@@ -218,7 +218,7 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
         lower.contains('network') ||
         lower.contains('connection') ||
         lower.contains('socket')) {
-      return 'Could not connect to LocalLink. Make sure the LocalLink server is available on your private network.';
+      return 'Could not connect to LinkUp. Make sure the LinkUp server is available on your private network.';
     }
     return value;
   }

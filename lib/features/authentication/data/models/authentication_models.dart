@@ -23,7 +23,7 @@ class PairingInfo {
         version: json['version']?.toString() ?? '1',
         serverId: json['server_id']?.toString() ?? '',
         fingerprint: json['fingerprint']?.toString() ?? '',
-        name: json['name']?.toString() ?? 'LocalLink Server',
+        name: json['name']?.toString() ?? 'LinkUp Server',
         pairingRequired: json['pairing_required'] == true,
       );
 }

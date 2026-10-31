@@ -163,8 +163,8 @@ class _CallScreenState extends State<CallScreen> {
 
   Widget _buildAudioLayout(CallSession session, String statusText) {
     final typeLabel = session.videoEnabled || session.peerVideoActive
-        ? 'LocalLink video call'
-        : 'LocalLink voice call';
+        ? 'LinkUp video call'
+        : 'LinkUp voice call';
     return Container(
       decoration: const BoxDecoration(gradient: CallPalette.backdrop),
       child: SafeArea(
@@ -294,7 +294,7 @@ class _CallScreenState extends State<CallScreen> {
 
   Widget _buildVideoLayout(CallSession session, String statusText) {
     final name =
-        session.peerName.isEmpty ? 'LocalLink user' : session.peerName;
+        session.peerName.isEmpty ? 'LinkUp user' : session.peerName;
     // Any rebuild counts as activity: keep the chrome visible briefly.
     _armVideoUiTimer();
     return GestureDetector(

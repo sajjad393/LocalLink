@@ -48,7 +48,7 @@ void main() {
       await tester.pumpWidget(_host(onCreateAccount: () {}, onLogIn: () {}));
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('LocalLink'), findsOneWidget);
+      expect(find.text('LinkUp'), findsOneWidget);
       expect(find.text(WelcomeView.tagline), findsOneWidget);
       expect(find.text('Messages, photos, videos'), findsOneWidget);
       expect(find.text('Nearby, Online or Offline'), findsOneWidget);
@@ -198,17 +198,21 @@ void main() {
     });
   });
 
-  test('logo mark path has two holes and fits its box', () {
-    const size = Size(237, 146);
+  test('logo mark path: LinkUp bubble + arrow, rings cut out (178)', () {
+    const size = Size(216, 258); // 72 x 86 grid units, 3 px each
+    Offset g(double x, double y) => Offset((x - 15) * 3, (y - 6) * 3);
     final path = LocalLinkLogoPainter.markPath(size);
     final bounds = path.getBounds();
     expect(bounds.left, closeTo(0, 0.5));
-    expect(bounds.right, closeTo(237, 0.5));
-    expect(bounds.height, closeTo(146, 0.5));
-    // ring band is filled, hole centres are empty, the middle overlap is filled
-    expect(path.contains(const Offset(20, 73)), isTrue);
-    expect(path.contains(const Offset(73, 73)), isFalse);
-    expect(path.contains(const Offset(164, 73)), isFalse);
-    expect(path.contains(const Offset(118, 73)), isTrue);
+    expect(bounds.right, closeTo(216, 0.5));
+    expect(bounds.top, closeTo(0, 0.5));
+    expect(bounds.bottom, closeTo(258, 0.5));
+    expect(path.contains(g(20, 40)), isTrue, reason: 'bubble');
+    expect(path.contains(g(74, 12)), isTrue, reason: 'arrow head');
+    expect(path.contains(g(74, 28)), isTrue, reason: 'arrow shaft');
+    expect(path.contains(g(29.5, 50)), isFalse, reason: 'left ring band');
+    expect(path.contains(g(70.5, 50)), isFalse, reason: 'right ring band');
+    expect(path.contains(g(42, 50)), isTrue, reason: 'ring centre stays');
+    expect(path.contains(g(20, 10)), isFalse, reason: 'outside');
   });
 }

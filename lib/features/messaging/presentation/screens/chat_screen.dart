@@ -456,7 +456,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              device.name.isEmpty ? 'LocalLink user' : device.name,
+                              device.name.isEmpty ? 'LinkUp user' : device.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodyLarge?.copyWith(

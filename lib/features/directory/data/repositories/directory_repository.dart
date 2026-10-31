@@ -698,7 +698,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final rawProfile = payload['profile'];
     final signature = payload['signature']?.toString() ?? '';
     if (version != 1 || rawProfile is! Map || signature.isEmpty) {
-      throw const FormatException('Invalid LocalLink QR code');
+      throw const FormatException('Invalid LinkUp QR code');
     }
 
     final profileMap = Map<String, dynamic>.from(rawProfile);
@@ -1179,7 +1179,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     _addedBy.add(FriendAdded(
         userId: userId,
         deviceId: deviceId,
-        displayName: name.isEmpty ? 'LocalLink user' : name));
+        displayName: name.isEmpty ? 'LinkUp user' : name));
   }
 
   @override

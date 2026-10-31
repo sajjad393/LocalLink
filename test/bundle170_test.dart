@@ -155,7 +155,7 @@ void main() {
           .readAsStringSync();
       expect(nearby.contains('class NearbyDevicesScreen'), isFalse);
       expect(nearby.contains('Same Wi-Fi'), isFalse);
-      expect(nearby.contains('LocalLink phone nearby'), isFalse);
+      expect(nearby.contains('LinkUp phone nearby'), isFalse);
       expect(nearby.contains('Icons.wifi_find'), isFalse);
     });
   });

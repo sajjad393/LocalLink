@@ -202,7 +202,7 @@ class _CallsScreenState extends State<CallsScreen> {
                         lottieAsset: LocalLinkAssets.lottieEmptyInbox,
                         title: 'No calls yet',
                         message:
-                            'Your recent LocalLink calls will appear here.',
+                            'Your recent LinkUp calls will appear here.',
                       ),
                       ),
                     ),
@@ -390,7 +390,7 @@ class _CallInProgressBarState extends State<_CallInProgressBar> {
         if (session == null || session.isFinished) {
           return const SizedBox.shrink();
         }
-        final name = session.peerName.isEmpty ? 'LocalLink user' : session.peerName;
+        final name = session.peerName.isEmpty ? 'LinkUp user' : session.peerName;
         final answered = session.answeredAt;
         final line = answered == null
             ? '$name · Calling… — Tap to return'

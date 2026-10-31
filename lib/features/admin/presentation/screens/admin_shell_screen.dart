@@ -467,7 +467,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('LocalLink',
+                    Text('LinkUp',
                         style: AdminText.bodyStrong
                             .copyWith(color: palette.textPrimary)),
                     Text('Admin console',

@@ -40,7 +40,7 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
     } catch (_) {}
 
     if (candidates.isEmpty) {
-      throw StateError('No LocalLink server is available on the local network.');
+      throw StateError('No LinkUp server is available on the local network.');
     }
 
     Object? lastError;
@@ -51,7 +51,7 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
         if (pinned != null &&
             pinned.isNotEmpty &&
             pinned.toUpperCase() != info.fingerprint.toUpperCase()) {
-          lastError = StateError('LocalLink server identity changed.');
+          lastError = StateError('LinkUp server identity changed.');
           continue;
         }
         if (!isServerTrusted(info)) {
@@ -69,7 +69,7 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
     final last = lastError;
     throw StateError(
       last == null
-          ? 'LocalLink server could not be verified.'
+          ? 'LinkUp server could not be verified.'
           : cleanBlocError(last),
     );
   }

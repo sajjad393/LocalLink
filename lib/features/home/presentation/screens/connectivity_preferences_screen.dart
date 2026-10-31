@@ -18,11 +18,11 @@ class _ConnectivityPreferencesScreenState extends State<ConnectivityPreferencesS
         value:_internetOnly,
         onChanged:_set,
         title:const Text('Internet / server only'),
-        subtitle:const Text('Avoid Wi-Fi Direct and mesh messaging. LocalLink uses the configured server connection when available; this does not guarantee that the server itself is on the public Internet.'),
+        subtitle:const Text('Avoid Wi-Fi Direct and mesh messaging. LinkUp uses the configured server connection when available; this does not guarantee that the server itself is on the public Internet.'),
         secondary:const Icon(Icons.public_outlined),
       )),
       const SizedBox(height:12),
-      const Card(child:Padding(padding:EdgeInsets.all(16),child:Text('When this is off, LocalLink can use the available local Wi-Fi, Wi-Fi Direct and mesh paths automatically.'))),
+      const Card(child:Padding(padding:EdgeInsets.all(16),child:Text('When this is off, LinkUp can use the available local Wi-Fi, Wi-Fi Direct and mesh paths automatically.'))),
     ]),
   );
 }

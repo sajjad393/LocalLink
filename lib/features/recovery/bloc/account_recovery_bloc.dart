@@ -161,7 +161,7 @@ final class AccountRecoveryBloc extends Cubit<AccountRecoveryState> {
         recoveryState: recoveryState,
         busy: false,
         statusMessage:
-            'Request submitted. Ask the LocalLink administrator to approve it and provide the recovery code.',
+            'Request submitted. Ask the LinkUp administrator to approve it and provide the recovery code.',
       ));
       startPolling();
     } catch (e) {
@@ -179,7 +179,7 @@ final class AccountRecoveryBloc extends Cubit<AccountRecoveryState> {
         lower.contains('network') ||
         lower.contains('connection') ||
         lower.contains('socket')) {
-      return 'Could not connect to LocalLink. Make sure the LocalLink server is available on your private network.';
+      return 'Could not connect to LinkUp. Make sure the LinkUp server is available on your private network.';
     }
     return value;
   }

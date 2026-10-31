@@ -63,7 +63,7 @@ class _AdminNetworkPolicyDialogState extends State<AdminNetworkPolicyDialog> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                        'LocalLink call and routing transport is local-only: LAN, Wi-Fi Direct and multi-hop mesh.',
+                        'LinkUp call and routing transport is local-only: LAN, Wi-Fi Direct and multi-hop mesh.',
                         style: TextStyle(fontSize: 12)),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String?>(

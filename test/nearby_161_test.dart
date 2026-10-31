@@ -277,7 +277,7 @@ void main() {
           LocalNetActionKind.linkGroup);
     });
 
-    test('joins a LocalLink hotspot first, never while sharing its own', () {
+    test('joins a LinkUp hotspot first, never while sharing its own', () {
       final spot = _tag('spot', hs: 'AndroidShare_1', hk: 'hotpass99');
       final a = planLocalNet(_in(tags: [spot, _fullA], myGroup: null, role: 'none'));
       expect(a.kind, LocalNetActionKind.joinHotspot);
@@ -355,7 +355,7 @@ void main() {
       await x.load();
       expect(x.linkGroups, isTrue);
       x.updateStatus(linkState: 'linked', linkKind: 'hotspot');
-      expect(x.linkStatusText, 'Joined a LocalLink hotspot');
+      expect(x.linkStatusText, 'Joined a LinkUp hotspot');
     });
 
     testWidgets('turning a test on asks first; Cancel keeps it off', (tester) async {
@@ -363,7 +363,7 @@ void main() {
       // Bundle 173: the switches live in the Admin panel now.
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: ListView(children: [NearbyTestSwitches(experiments: x)]))));
       expect(find.text('Link full groups'), findsOneWidget);
-      expect(find.text('Share a LocalLink hotspot'), findsOneWidget);
+      expect(find.text('Share a LinkUp hotspot'), findsOneWidget);
       await tester.tap(find.byKey(const Key('nearby_test_link_groups')));
       await tester.pumpAndSettle();
       expect(find.text('Link full groups?'), findsOneWidget);

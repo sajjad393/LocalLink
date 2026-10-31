@@ -80,7 +80,7 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
     if (pinned != null &&
         pinned.isNotEmpty &&
         pinned.toUpperCase() != info.fingerprint.toUpperCase()) {
-      return 'LocalLink server identity changed. Connection was blocked for safety.';
+      return 'LinkUp server identity changed. Connection was blocked for safety.';
     }
 
     return null;
@@ -112,7 +112,7 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
     } catch (_) {}
 
     if (candidates.isEmpty) {
-      throw StateError('No LocalLink server is available on the local network.');
+      throw StateError('No LinkUp server is available on the local network.');
     }
 
     Object? lastError;
@@ -141,7 +141,7 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
     final last = lastError;
     throw StateError(
       last == null
-          ? 'LocalLink server could not be verified.'
+          ? 'LinkUp server could not be verified.'
           : cleanBlocError(last),
     );
   }

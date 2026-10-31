@@ -45,7 +45,7 @@ class SecurityPolicy {
     }
     if (!isLocalOnlyHost(uri.host)) {
       throw const FormatException(
-        'LocalLink server must use a private, link-local, loopback, or explicitly local hostname',
+        'LinkUp server must use a private, link-local, loopback, or explicitly local hostname',
       );
     }
     if (uri.scheme == 'http' && !allowInsecureHttp) {
@@ -79,7 +79,7 @@ class SecurityPolicy {
         resolved.port != base.port ||
         !isLocalOnlyHost(resolved.host)) {
       throw const FormatException(
-          'Resource URL must remain on the configured LocalLink server');
+          'Resource URL must remain on the configured LinkUp server');
     }
     return resolved;
   }

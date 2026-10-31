@@ -41,7 +41,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
   BackgroundBrandGuide _brand = backgroundBrandByKey('other');
 
   static const _lockedToast =
-      'LocalLink needs this to stay on — messages and calls must keep arriving '
+      'LinkUp needs this to stay on — messages and calls must keep arriving '
       'in the background.';
 
   @override
@@ -141,7 +141,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
           const SizedBox(height: 6),
           const Text(
               'Your Android needs Location "All the time" for this. '
-              'LocalLink never saves where you are.',
+              'LinkUp never saves where you are.',
               style: TextStyle(fontSize: 13)),
           const SizedBox(height: 8),
           Row(children: [
@@ -275,12 +275,12 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
       builder: (context) => Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Lock LocalLink in Recents',
+          Text('Lock LinkUp in Recents',
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
           const Text(
             '1. Open the Recents (recent apps) screen.\n'
-            '2. Tap the LocalLink app icon at the top of its card.\n'
+            '2. Tap the LinkUp app icon at the top of its card.\n'
             '3. Choose “Lock”. A padlock stays on the card — the system '
             'won’t swipe the app away in “clear all”.',
             style: TextStyle(fontSize: 14, height: 1.5),
@@ -357,7 +357,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Keep LocalLink running')),
+      appBar: AppBar(title: const Text('Keep LinkUp running')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -442,7 +442,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
                 title: const Text('Lock app in recents',
                     style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: const Text(
-                    'Open Recents, tap the LocalLink icon, choose Lock'),
+                    'Open Recents, tap the LinkUp icon, choose Lock'),
                 trailing: const Icon(Icons.info_outline, size: 18),
                 onTap: _explainRecentsLock,
               ),

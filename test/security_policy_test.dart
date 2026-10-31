@@ -51,7 +51,7 @@ void main() {
     expect(SecurityPolicy.normalizeServerAddress('https://server.local:8443'), 'https://server.local:8443');
   });
 
-  test('keeps attachment resources on the configured LocalLink server', () {
+  test('keeps attachment resources on the configured LinkUp server', () {
     expect(
       SecurityPolicy.resolveLocalResource('/api/v1/files/1', baseAddress: 'https://192.168.1.20:8443').toString(),
       'https://192.168.1.20:8443/api/v1/files/1',

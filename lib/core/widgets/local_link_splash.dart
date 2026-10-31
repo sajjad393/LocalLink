@@ -83,7 +83,7 @@ class _LocalLinkSplashScreenState extends State<LocalLinkSplashScreen>
             FadeTransition(
               opacity: _fade,
               child: const Text(
-                'LocalLink',
+                'LinkUp',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 32,

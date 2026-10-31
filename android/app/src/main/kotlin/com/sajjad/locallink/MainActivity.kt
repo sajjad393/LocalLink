@@ -724,7 +724,7 @@ class MainActivity : FlutterActivity() {
                         // "Call failed". Ask with rationale like the other media permissions;
                         // the user grants it once and the next Answer connects normally.
                         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                            requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "Microphone access", "LocalLink needs the microphone so the other person can hear you on calls. Allow it, then answer the call again.")
+                            requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "Microphone access", "LinkUp needs the microphone so the other person can hear you on calls. Allow it, then answer the call again.")
                             result.error("PERMISSION", "Call audio: microphone permission needed. Allow it on the prompt, then answer the call again.", null)
                             return@setMethodCallHandler
                         }
@@ -762,7 +762,7 @@ class MainActivity : FlutterActivity() {
                         // the next step because the dialog is not blocking.
                         if (call.argument<Boolean>("enable_camera") != false &&
                             checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                            requestWithRationale(arrayOf(Manifest.permission.CAMERA), 7813, "Camera access", "LocalLink needs the camera so the other person can see you on video calls. Allow it, then tap video again.")
+                            requestWithRationale(arrayOf(Manifest.permission.CAMERA), 7813, "Camera access", "LinkUp needs the camera so the other person can see you on video calls. Allow it, then tap video again.")
                             result.error("CALL_MEDIA_ERROR", "Call video: camera permission needed. Allow it on the prompt, then tap video again.", null)
                             return@setMethodCallHandler
                         }
@@ -782,7 +782,7 @@ class MainActivity : FlutterActivity() {
                     "video_enabled" -> {
                         val videoEnabledArg = call.argument<Boolean>("enabled") != false
                         if (videoEnabledArg && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                            requestWithRationale(arrayOf(Manifest.permission.CAMERA), 7813, "Camera access", "LocalLink needs the camera so the other person can see you on video calls. Allow it, then tap video again.")
+                            requestWithRationale(arrayOf(Manifest.permission.CAMERA), 7813, "Camera access", "LinkUp needs the camera so the other person can see you on video calls. Allow it, then tap video again.")
                             result.error("CALL_MEDIA_ERROR", "Call video: camera permission needed. Allow it on the prompt, then tap video again.", null)
                             return@setMethodCallHandler
                         }
@@ -863,7 +863,7 @@ class MainActivity : FlutterActivity() {
 
     private fun startVoiceRecording(result: MethodChannel.Result) {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "Microphone access", "LocalLink needs the microphone so the other person can hear you on calls. Allow it, then start the call again.")
+            requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "Microphone access", "LinkUp needs the microphone so the other person can hear you on calls. Allow it, then start the call again.")
             result.error("PERMISSION", "Microphone permission is required", null)
             return
         }
@@ -1180,7 +1180,7 @@ class MainActivity : FlutterActivity() {
         }
 
         pendingWifiPermissionResult = result
-        requestWithRationale(permissions, wifiPermissionRequestCode, "Nearby device access", "LocalLink uses Wi-Fi Direct to call and chat with nearby phones without internet. Allow nearby-device access to continue.")
+        requestWithRationale(permissions, wifiPermissionRequestCode, "Nearby device access", "LinkUp uses Wi-Fi Direct to call and chat with nearby phones without internet. Allow nearby-device access to continue.")
     }
     /** Bundle 101: direct native-dialog runtime permission flow; denials are
      * settled by the Dart-side sequencer's 10-minute re-ask loop. */

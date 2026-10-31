@@ -327,7 +327,7 @@ class _BrandPanel extends StatelessWidget {
                         size: 20, color: Colors.white),
                   ),
                   const SizedBox(width: AdminSpace.md),
-                  const Text('LocalLink',
+                  const Text('LinkUp',
                       style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,

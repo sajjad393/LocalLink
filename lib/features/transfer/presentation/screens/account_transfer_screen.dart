@@ -76,9 +76,9 @@ class _AccountTransferScreenState extends State<AccountTransferScreen> {
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              const Text('Move this LocalLink account to another phone.', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+              const Text('Move this LinkUp account to another phone.', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              const Text('On the new phone, choose “Transfer account from old phone” and scan this QR code. Keep both phones on the same trusted LocalLink network.'),
+              const Text('On the new phone, choose “Transfer account from old phone” and scan this QR code. Keep both phones on the same trusted LinkUp network.'),
               const SizedBox(height: 24),
               if (transfer != null)
                 Center(

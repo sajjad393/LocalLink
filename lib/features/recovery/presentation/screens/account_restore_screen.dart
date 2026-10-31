@@ -100,7 +100,7 @@ class _AccountRestoreScreenState extends State<AccountRestoreScreen> {
                                 final pass = await _passphraseDialog(title: 'Create encrypted key backup', confirm: true);
                                 if (pass == null) return;
                                 if (await _controller.createBackup(pass) && context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Encrypted identity backup saved to the LocalLink server')));
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Encrypted identity backup saved to the LinkUp server')));
                                 }
                               },
                         icon: const Icon(Icons.lock_outline),

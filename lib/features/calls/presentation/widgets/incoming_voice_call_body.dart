@@ -59,7 +59,7 @@ class IncomingVoiceCallBody extends StatelessWidget {
         ),
         const SizedBox(height: 28),
         Text(
-          peerName.isEmpty ? 'LocalLink user' : peerName,
+          peerName.isEmpty ? 'LinkUp user' : peerName,
           textAlign: TextAlign.center,
           style: const TextStyle(
             color: CallPalette.textPrimary,

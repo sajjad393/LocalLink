@@ -99,7 +99,7 @@ class MessengerSettingsScreen extends StatelessWidget {
     final deviceLabel = store.deviceName?.trim() ?? '';
     final displayName = nickname.isNotEmpty
         ? nickname
-        : (deviceLabel.isNotEmpty ? deviceLabel : 'LocalLink user');
+        : (deviceLabel.isNotEmpty ? deviceLabel : 'LinkUp user');
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -230,7 +230,7 @@ class MessengerSettingsScreen extends StatelessWidget {
             _row(
               context,
               icon: Icons.power_settings_new_rounded,
-              title: 'Keep LocalLink running',
+              title: 'Keep LinkUp running',
               subtitle: 'Background service, battery exemption, reboot restart',
               onTap: () => Navigator.push<void>(
                 context,

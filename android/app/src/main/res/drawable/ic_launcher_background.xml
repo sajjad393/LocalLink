@@ -1,4 +1,4 @@
-<!-- Adaptive launcher icon background: LocalLink brand gradient. -->
+<!-- Adaptive launcher icon background: LinkUp brand gradient. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <gradient

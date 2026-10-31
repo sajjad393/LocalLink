@@ -594,7 +594,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
           ),
         ),
         const SizedBox(height: LocalLinkSpacing.sm),
-        Text('Looking for LocalLink phones…',
+        Text('Looking for LinkUp phones…',
             textAlign: TextAlign.center, style: text.titleSmall),
         const SizedBox(height: 2),
         Text('Both phones need Wi-Fi on',

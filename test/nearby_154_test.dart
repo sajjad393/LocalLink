@@ -271,7 +271,7 @@ void main() {
       expect(find.text('Add friend'), findsOneWidget);
       // Bundle 170: a name (or "Nearby LocalLink user"), never a short id,
       // and no transport words.
-      expect(find.text('Nearby LocalLink user'), findsOneWidget);
+      expect(find.text('Nearby LinkUp user'), findsOneWidget);
       expect(find.text('Nearby · not added yet'), findsOneWidget);
       expect(find.textContaining('0000ali1'), findsNothing);
       expect(find.textContaining('Same Wi-Fi'), findsNothing);
@@ -296,7 +296,7 @@ void main() {
     testWidgets('nothing found', (tester) async {
       final deps = await pump(tester, meshPeers: const [], paired: const []);
       // Bundle 170: the mesh animation replaces the radar.
-      expect(find.text('Looking for LocalLink phones…'), findsOneWidget);
+      expect(find.text('Looking for LinkUp phones…'), findsOneWidget);
       expect(find.text('Both phones need Wi-Fi on'), findsOneWidget);
       expect(find.byType(NearbySearchAnimation), findsOneWidget);
       expect(find.text('Allow'), findsNothing);
@@ -310,7 +310,7 @@ void main() {
       expect(find.text('Allow nearby to see phones around you'),
           findsOneWidget);
       expect(find.text('Allow'), findsOneWidget);
-      expect(find.text('Looking for LocalLink phones…'), findsNothing);
+      expect(find.text('Looking for LinkUp phones…'), findsNothing);
       await finish(tester, deps);
     });
 
@@ -320,7 +320,7 @@ void main() {
         {'node_id': 'myother-00000002', 'state': 'DISCOVERED', 'transport': 'lan'},
       ], paired: const [], selfUserId: 'me-user');
       expect(find.text('Add friend'), findsNothing);
-      expect(find.text('Looking for LocalLink phones…'), findsOneWidget);
+      expect(find.text('Looking for LinkUp phones…'), findsOneWidget);
       await finish(tester, deps);
     });
 

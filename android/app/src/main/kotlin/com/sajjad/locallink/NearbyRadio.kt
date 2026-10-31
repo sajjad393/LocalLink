@@ -240,7 +240,7 @@ object NearbyRadio {
             return
         }
         if (allowed != null && call.method !in allowed) {
-            result.error("APP_REQUIRED", "Open LocalLink for this", null)
+            result.error("APP_REQUIRED", "Open LinkUp for this", null)
             return
         }
         val m = manager

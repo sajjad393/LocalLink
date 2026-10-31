@@ -27,7 +27,7 @@ class AppearanceSettingsScreen extends StatelessWidget {
         ),
         children: [
           Text(
-            'Choose how LocalLink looks on this phone.',
+            'Choose how LinkUp looks on this phone.',
             style: theme.textTheme.bodyLarge,
           ),
           const SizedBox(height: LocalLinkSpacing.lg),

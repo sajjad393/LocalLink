@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Generate LocalLink Android brand assets (launcher icons + splash logos).
+"""Generate LinkUp Android brand assets (launcher icons + splash logos).
 
 Brand: blue -> cyan diagonal gradient (LocalLinkBrand.heroGradient tokens:
 #1E5BFF -> #23E0D8, topLeft -> bottomRight). Glyph: white chat bubble with a
-link glyph (two interlocked rings). On the legacy tile and the splash logo the
+link glyph (two interlocked rings) and an up arrow rising out of the bubble's
+top-right corner (Bundle 178, logo A). On the legacy tile and the splash logo the
 rings are filled with the brand gradient; on the adaptive foreground the rings
 are knocked out so the launcher-provided background shows through.
 
@@ -38,7 +39,7 @@ def diagonal_gradient(size: int) -> Image.Image:
 
 
 def glyph_mask(size: int, scale: float) -> Image.Image:
-    """Alpha mask (L) of the chat-bubble body + tail on a 100x100 unit grid."""
+    """Alpha mask (L) of the chat-bubble body + tail + up arrow (100x100 grid)."""
     grid = size * SS
     img = Image.new('L', (grid, grid), 0)
     d = ImageDraw.Draw(img)
@@ -48,10 +49,13 @@ def glyph_mask(size: int, scale: float) -> Image.Image:
     def U(x, y):
         return ((x - 50) * scale * s + cx, (y - 50) * scale * s + cy)
 
-    x0, y0 = U(15, 22)
-    x1, y1 = U(85, 70)
+    x0, y0 = U(15, 26)
+    x1, y1 = U(85, 74)
     d.rounded_rectangle([x0, y0, x1, y1], radius=14 * scale * s, fill=255)
-    d.polygon([U(30, 68), U(47, 68), U(31, 88)], fill=255)
+    d.polygon([U(30, 72), U(47, 72), U(31, 92)], fill=255)
+    # Bundle 178: the "Up" arrow (shaft + head) out of the top-right corner.
+    d.rectangle([U(69, 19)[0], U(69, 19)[1], U(79, 34)[0], U(79, 34)[1]], fill=255)
+    d.polygon([U(61, 21), U(87, 21), U(74, 6)], fill=255)
     return img
 
 
@@ -62,11 +66,11 @@ def rings_mask(size: int, scale: float) -> Image.Image:
     d = ImageDraw.Draw(img)
     s = grid / 100.0
     cx = cy = grid / 2
-    r_ring = 13 * scale * s
-    stroke = 6.5 * scale * s
+    r_ring = 12.5 * scale * s
+    stroke = 6.2 * scale * s
     for cx_u in (42, 58):
         gx = (cx_u - 50) * scale * s + cx
-        gy = (46 - 50) * scale * s + cy
+        gy = (50 - 50) * scale * s + cy
         d.ellipse([gx - r_ring, gy - r_ring, gx + r_ring, gy + r_ring],
                   outline=255, width=round(stroke))
     return img
@@ -126,7 +130,8 @@ def legacy_icon(size: int, rounded: bool) -> Image.Image:
 
 def foreground(size: int) -> Image.Image:
     """Adaptive foreground: glyph in the 66/108dp safe zone, rings knocked out."""
-    return glyph_layer(size, 0.62, True)
+    # 0.58 keeps the arrow tip inside the 66dp safe circle.
+    return glyph_layer(size, 0.58, True)
 
 
 def splash_logo(size: int) -> Image.Image:
@@ -146,7 +151,7 @@ def save(img: Image.Image, path: str) -> None:
 
 
 def main() -> None:
-    print('Generating LocalLink brand assets...')
+    print('Generating LinkUp brand assets...')
     for density, px in LEGACY.items():
         save(legacy_icon(px, rounded=True), os.path.join(RES, f'mipmap-{density}', 'ic_launcher.png'))
         save(legacy_icon(px, rounded=False), os.path.join(RES, f'mipmap-{density}', 'ic_launcher_round.png'))

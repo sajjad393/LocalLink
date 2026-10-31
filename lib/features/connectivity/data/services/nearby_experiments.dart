@@ -134,10 +134,10 @@ class NearbyExperiments extends ChangeNotifier {
     if (!_linkGroups) return 'Off';
     return switch (_linkState) {
       'joining' => _linkKind == 'hotspot'
-          ? 'Joining a LocalLink hotspot…'
+          ? 'Joining a LinkUp hotspot…'
           : 'Joining another group…',
       'linked' => _linkKind == 'hotspot'
-          ? 'Joined a LocalLink hotspot'
+          ? 'Joined a LinkUp hotspot'
           : 'Linked to another group',
       'resting' => 'Did not work, trying again later',
       'unsupported' => 'Needs Android 10 or newer',
@@ -149,7 +149,7 @@ class NearbyExperiments extends ChangeNotifier {
     if (!_shareHotspot) return 'Off';
     return switch (_hotspotState) {
       'starting' => 'Starting…',
-      'on' => 'On — nearby LocalLink phones can join',
+      'on' => 'On — nearby LinkUp phones can join',
       'failed' => 'Could not start, trying again later',
       _ => 'Waiting',
     };

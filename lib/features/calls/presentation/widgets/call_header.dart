@@ -31,7 +31,7 @@ class CallHeader extends StatelessWidget {
         AccountAvatar(name: session.peerName, radius: 78, iconSize: 56),
         const SizedBox(height: 28),
         Text(
-          session.peerName.isEmpty ? 'LocalLink user' : session.peerName,
+          session.peerName.isEmpty ? 'LinkUp user' : session.peerName,
           style: const TextStyle(
             color: CallPalette.textPrimary,
             fontSize: 30,

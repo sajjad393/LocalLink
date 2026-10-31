@@ -167,7 +167,7 @@ class _WelcomeContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Center(child: LocalLinkLogoMark(width: 124)),
+          const Center(child: LocalLinkLogoMark(width: 96)),
           const SizedBox(height: LocalLinkSpacing.lg),
           Center(
             child: ShaderMask(
@@ -176,7 +176,7 @@ class _WelcomeContent extends StatelessWidget {
                 colors: [LocalLinkBrand.gradientStart, Color(0xFF16B8D6)],
               ).createShader(rect),
               child: Text(
-                'LocalLink',
+                'LinkUp',
                 style: textTheme.headlineLarge?.copyWith(
                   fontSize: 32,
                   fontWeight: FontWeight.w900,

@@ -28,7 +28,7 @@ class DiscoveredServer {
       port: int.tryParse(json['port']?.toString() ?? '') ?? 8080,
       name: json['name']?.toString().trim().isNotEmpty == true
           ? json['name'].toString().trim()
-          : 'LocalLink Server',
+          : 'LinkUp Server',
       protocol: protocol,
     );
   }

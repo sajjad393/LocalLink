@@ -1,5 +1,5 @@
 <!-- Brand launch background: hero gradient (topLeft -> bottomRight) with the
-     centered LocalLink splash logo. Shown for the first frames before Flutter
+     centered LinkUp splash logo. Shown for the first frames before Flutter
      renders, and after the Android 12+ system splash is dismissed. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>

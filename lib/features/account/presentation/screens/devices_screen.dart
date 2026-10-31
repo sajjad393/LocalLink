@@ -113,7 +113,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      const Text('Devices signed in to this LocalLink account.', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const Text('Devices signed in to this LinkUp account.', style: TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 12),
                       ..._controller.devices.map(
                         (device) => Card(

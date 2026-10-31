@@ -35,7 +35,7 @@ String maskPhone(String raw) {
 }
 
 /// Name shown for a nearby phone whose person is not known yet.
-const String nearbyUnknownName = 'Nearby LocalLink user';
+const String nearbyUnknownName = 'Nearby LinkUp user';
 
 /// Subtitle of every nearby card (no transport words).
 const String nearbyCardSubtitle = 'Nearby · not added yet';

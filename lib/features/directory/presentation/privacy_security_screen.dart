@@ -95,7 +95,7 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
         SwitchListTile(
             title: const Text('Directory synchronization'),
             subtitle: const Text(
-                'Share your signed public profile through LocalLink'),
+                'Share your signed public profile through LinkUp'),
             value: sync,
             onChanged: (v) => setState(() => sync = v)),
         ListTile(

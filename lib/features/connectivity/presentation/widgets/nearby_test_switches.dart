@@ -51,7 +51,7 @@ class NearbyTestSwitches extends StatelessWidget {
               secondary: const Icon(Icons.hub_outlined),
               title: const Text('Link full groups'),
               subtitle: Text('Join full nearby groups as a Wi-Fi user and '
-                  'join a LocalLink hotspot. ${x.linkStatusText}'),
+                  'join a LinkUp hotspot. ${x.linkStatusText}'),
               value: x.linkGroups,
               onChanged: (on) async {
                 if (on &&
@@ -73,8 +73,8 @@ class NearbyTestSwitches extends StatelessWidget {
             child: SwitchListTile(
               key: const Key('nearby_test_share_hotspot'),
               secondary: const Icon(Icons.wifi_tethering),
-              title: const Text('Share a LocalLink hotspot'),
-              subtitle: Text('Other LocalLink phones join this one. No '
+              title: const Text('Share a LinkUp hotspot'),
+              subtitle: Text('Other LinkUp phones join this one. No '
                   'internet is shared. ${x.hotspotStatusText}'),
               value: x.shareHotspot,
               onChanged: (on) async {
@@ -83,7 +83,7 @@ class NearbyTestSwitches extends StatelessWidget {
                       context,
                       'Share a hotspot?',
                       'This uses more battery. Some phones cannot run '
-                          'it while on Wi-Fi. Only LocalLink phones with '
+                          'it while on Wi-Fi. Only LinkUp phones with '
                           '"Link full groups" on will join it.',
                     )) {
                   return;
@@ -121,7 +121,7 @@ class ExtraNearbySafetySwitch extends StatelessWidget {
               !await _confirmTurnOn(
                 context,
                 'Turn on extra nearby safety?',
-                'Contacts with an older LocalLink will not connect nearby '
+                'Contacts with an older LinkUp will not connect nearby '
                     'until they update. Messages through the internet '
                     'still work.',
               )) {

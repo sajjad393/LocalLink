@@ -1530,7 +1530,7 @@ class LocalStore {
       await _putSetting('device_id', _deviceId!);
     }
     if (_deviceName == null || _deviceName!.trim().isEmpty) {
-      _deviceName = 'My LocalLink phone';
+      _deviceName = 'My LinkUp phone';
       await _putSetting('device_name', _deviceName!);
     }
   }

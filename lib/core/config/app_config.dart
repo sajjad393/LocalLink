@@ -14,7 +14,7 @@ class AppConfig {
   const AppConfig({
     this.appName = const String.fromEnvironment(
       'LOCLINK_APP_NAME',
-      defaultValue: 'LocalLink',
+      defaultValue: 'LinkUp',
     ),
     this.platform = const String.fromEnvironment(
       'LOCLINK_PLATFORM',

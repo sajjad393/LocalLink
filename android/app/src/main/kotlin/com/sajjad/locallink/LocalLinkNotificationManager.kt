@@ -58,10 +58,10 @@ object LocalLinkNotificationManager {
 
         val messageChannel = NotificationChannel(
             MESSAGE_CHANNEL_ID,
-            "LocalLink messages",
+            "LinkUp messages",
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "New LocalLink direct and group messages"
+            description = "New LinkUp direct and group messages"
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             enableVibration(true)
             val soundId = context.resources.getIdentifier(
@@ -88,10 +88,10 @@ object LocalLinkNotificationManager {
 
         val systemChannel = NotificationChannel(
             SYSTEM_CHANNEL_ID,
-            "LocalLink system",
+            "LinkUp system",
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
-            description = "LocalLink security, pairing, and system updates"
+            description = "LinkUp security, pairing, and system updates"
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         manager.createNotificationChannel(systemChannel)
@@ -228,7 +228,7 @@ object LocalLinkNotificationManager {
         }
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF209DEB.toInt()) // Bundle 141: brand blue tint
-            .setContentTitle(title.ifBlank { "LocalLink" })
+            .setContentTitle(title.ifBlank { "LinkUp" })
             .setContentText(body.ifBlank { summary })
             .setContentIntent(openPending)
             // Deliberately no deleteIntent: dismissing a notification is not a
@@ -251,7 +251,7 @@ object LocalLinkNotificationManager {
                     val publicVersion = Notification.Builder(context)
                         .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF209DEB.toInt()) // Bundle 141: brand blue tint
-                        .setContentTitle(publicTitle.ifBlank { "LocalLink" })
+                        .setContentTitle(publicTitle.ifBlank { "LinkUp" })
                         .setContentText(publicBody.ifBlank { "New notification" })
                         .setCategory(Notification.CATEGORY_MESSAGE)
                         .setVisibility(Notification.VISIBILITY_PUBLIC)
@@ -327,7 +327,7 @@ object LocalLinkNotificationManager {
         }
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF209DEB.toInt()) // Bundle 141: brand blue tint
-            .setContentTitle(title.ifBlank { "LocalLink" })
+            .setContentTitle(title.ifBlank { "LinkUp" })
             .setContentText(body.ifBlank { "New messages" })
             .setCategory(Notification.CATEGORY_MESSAGE)
             .setGroup(groupKey(conversationType, conversationId))
@@ -366,7 +366,7 @@ object LocalLinkNotificationManager {
     const val REPLY_SAVED_TAG = "locallink_reply_saved"
 
     fun showReplySaved(context: Context, notificationId: Int) =
-        showSystem(context, notificationId, "Reply saved", "It sends when you open LocalLink.", silent = true, tag = REPLY_SAVED_TAG)
+        showSystem(context, notificationId, "Reply saved", "It sends when you open LinkUp.", silent = true, tag = REPLY_SAVED_TAG)
 
     fun cancelReplySaved(context: Context) = cancelByTag(context, REPLY_SAVED_TAG)
 
@@ -375,7 +375,7 @@ object LocalLinkNotificationManager {
     const val BOOT_NOTIFICATION_ID = 7301
 
     fun showBootReconnect(context: Context) =
-        showSystem(context, BOOT_NOTIFICATION_ID, "LocalLink is ready", "Tap to reconnect.", silent = true, tag = BOOT_TAG)
+        showSystem(context, BOOT_NOTIFICATION_ID, "LinkUp is ready", "Tap to reconnect.", silent = true, tag = BOOT_TAG)
 
     fun cancelBootReconnect(context: Context) = cancelByTag(context, BOOT_TAG)
 

@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/models/account_transfer.dart';
 
 void main() {
-  test('parses a valid LocalLink transfer payload', () {
+  test('parses a valid LinkUp transfer payload', () {
     final json = jsonEncode({
       'v': '1',
       'server_id': 'server-1',
