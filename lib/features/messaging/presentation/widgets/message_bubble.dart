@@ -111,7 +111,7 @@ class MessageBubble extends StatelessWidget {
                     Text(
                       _time(message.createdAt),
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: foreground.withOpacity(.62),
+                        color: foreground.withValues(alpha: .62),
                       ),
                     ),
                     if (isMine) ...[
