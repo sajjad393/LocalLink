@@ -128,6 +128,8 @@ class MainActivity : FlutterActivity() {
         BackgroundEngine.markAppOpened(this)
         // Bundle 164 (4.3): the app is open - the reboot notice is not needed.
         LocalLinkNotificationManager.cancelBootReconnect(this)
+        // Bundle 175 (5): 15-minute health check (KEEP: scheduled once).
+        BackgroundHealth.schedule(this)
         // Bundle 124: the once-per-install battery-exemption dialog that used
         // to fire here slapped first-time users on TOP of the register/login
         // screen with zero context. The dashboard permission sequencer
@@ -505,7 +507,15 @@ class MainActivity : FlutterActivity() {
                     // Bundle 163 (5.6): brand help screen.
                     "deviceBrand" -> result.success("${android.os.Build.MANUFACTURER} ${android.os.Build.BRAND}")
                     "openBrandSettings" -> result.success(openBrandBackgroundSettings(call.argument<String>("brand").orEmpty()))
-                    "keepAliveStart" -> { LocalLinkTransportService.start(this); result.success(null) }
+                    "keepAliveStart" -> { BackgroundHealth.setEnabled(this, true); LocalLinkTransportService.start(this); result.success(null) }
+                    // Bundle 175 (10): the STATUS card.
+                    "backgroundStatus" -> result.success(mapOf(
+                        "running" to LocalLinkTransportService.isRunning(),
+                        "notifications" to LocalLinkNotificationManager.notificationsEnabled(this),
+                        "battery_exempt" to powerManager().isIgnoringBatteryOptimizations(packageName),
+                        "last_denied" to (LocalLinkTransportService.lastForegroundDenied() ?: BackgroundHealth.lastDenied(this)),
+                        "enabled" to BackgroundHealth.isEnabled(this),
+                    ))
                     else -> result.notImplemented()
                 }
             } catch (error: Exception) {
@@ -1396,6 +1406,11 @@ class MainActivity : FlutterActivity() {
         transportEventSink=null
         pendingWifiPermissionResult = null
         unregisterWifiReceiver()
+        val keepsRunning = !isChangingConfigurations
         super.onDestroy()
+        // Bundle 175 (3): the screen is gone (Back exit / swipe) and its
+        // engine with it. The no-screen engine takes over so messages and
+        // notifications keep working. Short delay: the old engine finishes first.
+        if (keepsRunning) BackgroundEngine.startNoScreen(applicationContext, if (isFinishing) "app_closed" else "screen_destroyed", 800L)
     }
 }

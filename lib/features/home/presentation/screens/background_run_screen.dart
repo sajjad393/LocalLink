@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/home/domain/background_brand_guide.dart';
+import 'package:locallink/features/home/presentation/widgets/background_status_card.dart';
 
 /// Bundle 140: "Keep LocalLink running" — approved mock.
 /// Opt-in on tap only; once granted, options LOCK and only explain themselves
@@ -14,8 +15,14 @@ class BackgroundRunScreen extends StatefulWidget {
   State<BackgroundRunScreen> createState() => _BackgroundRunScreenState();
 }
 
-class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
+class _BackgroundRunScreenState extends State<BackgroundRunScreen>
+    with WidgetsBindingObserver {
   static const _bg = MethodChannel('locallink/background');
+  static const _notif = MethodChannel('locallink/notifications');
+  // Bundle 175 (10): STATUS card. Null until the first read.
+  bool? _running;
+  bool _notificationsOn = true;
+  bool _starting = false;
   static const _keepAliveKey = 'keep_alive_enabled';
 
   bool _keepAlive = true;
@@ -32,7 +39,51 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back from Settings (notifications / battery): read the status again.
+    if (state == AppLifecycleState.resumed) _loadStatus();
+  }
+
+  /// Bundle 175 (10): is the background service running right now?
+  Future<void> _loadStatus() async {
+    try {
+      final raw = await _bg.invokeMethod<Map<Object?, Object?>>('backgroundStatus');
+      if (!mounted || raw == null) return;
+      setState(() {
+        _running = raw['running'] == true;
+        _notificationsOn = raw['notifications'] != false;
+      });
+    } catch (_) {/* older native side: no card */}
+  }
+
+  Future<void> _startService() async {
+    setState(() => _starting = true);
+    try {
+      await _bg.invokeMethod<void>('keepAliveStart');
+    } catch (_) {}
+    // The service needs a moment to come up.
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    await _loadStatus();
+    if (mounted) setState(() => _starting = false);
+  }
+
+  Future<void> _allowNotifications() async {
+    try {
+      await _notif.invokeMethod<void>('openSettings');
+    } catch (_) {
+      _toast('Could not open notification settings right now.');
+    }
   }
 
   Future<void> _load() async {
@@ -46,6 +97,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
       });
     } catch (_) {/* best effort */}
     await _loadBrand();
+    await _loadStatus();
   }
 
   Future<void> _loadBrand() async {
@@ -213,6 +265,23 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (_running != null) ...[
+            Text('STATUS',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                    color: scheme.onSurface.withValues(alpha: 0.55))),
+            const SizedBox(height: 10),
+            BackgroundStatusCard(
+              running: _running!,
+              notifications: _notificationsOn,
+              starting: _starting,
+              onStart: _startService,
+              onAllowNotifications: _allowNotifications,
+            ),
+            const SizedBox(height: 20),
+          ],
           Text('BACKGROUND',
               style: TextStyle(
                   fontSize: 12,

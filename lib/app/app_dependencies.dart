@@ -416,7 +416,8 @@ class AppDependencies {
     await callRingtone.dispose();
     await presence.dispose();
     await networkPolicySync.dispose();
-    await directTransport.stop();
+    // Bundle 175 (9): closing the screen must never stop the background
+    // service - only Log out does (LocalLinkApp sign-out path).
     await _serverConnectionSubscription?.cancel();
     _serverConnectionSubscription = null;
     socket.dispose();

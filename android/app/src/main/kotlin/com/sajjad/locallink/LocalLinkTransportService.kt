@@ -74,7 +74,8 @@ class LocalLinkTransportService : Service() {
         private const val DIRECT_ROUTE_TTL_MS = 5 * 60_000L
         private const val ROUTE_ADVERTISEMENT_INTERVAL_MS = 10_000L
         private const val LAN_BEACON_MAX_SIZE = 2_048
-        private const val CHANNEL_ID = "locallink_transport"
+        private const val CHANNEL_ID = "locallink_background"
+        private const val OLD_CHANNEL_ID = "locallink_transport"
         private const val NOTIFICATION_ID = 2201
         private const val PREFS = "locallink_transport_state"
         private const val STATE_BLOB = "encrypted_state"
@@ -97,9 +98,41 @@ class LocalLinkTransportService : Service() {
         @Volatile private var listener: EventListener? = null
         @Volatile private var running = false
         fun isRunning() = running
-        fun setEventListener(value: EventListener?) { listener=value }
+        /** Bundle 175 (2): events that came while nobody listened go to the new listener first. */
+        fun setEventListener(value: EventListener?) {
+            synchronized(inboxLock) {
+                listener = value
+                if (value == null) return
+                val waiting = inbox.drain(System.currentTimeMillis())
+                if (waiting.isEmpty()) return
+                Log.i(BG_TAG, "EVENT_INBOX_REPLAY n=${waiting.size} dropped=${inbox.dropped}")
+                for (item in waiting) {
+                    try { value.onTransportEvent(item.type, item.data) } catch (_: Exception) {}
+                }
+            }
+        }
         /** Bundle 169 (4.3): the background engine lets go only of its own listener. */
-        fun clearEventListenerIf(value: EventListener) { if (listener === value) listener = null }
+        fun clearEventListenerIf(value: EventListener) { synchronized(inboxLock) { if (listener === value) listener = null } }
+        private const val BG_TAG = "LocalLinkBoot"
+        private val inboxLock = Any()
+        private val inbox = EventInbox()
+        /** Bundle 175 (2): true when the event had to wait in the inbox (no listener). */
+        private fun deliverEvent(type: String, data: Map<String, Any?>): Boolean {
+            val target: EventListener
+            synchronized(inboxLock) {
+                val current = listener
+                if (current == null) {
+                    if (!inbox.add(type, data, System.currentTimeMillis())) return false
+                    if (inbox.size == 1 || inbox.size % 50 == 0) Log.i(BG_TAG, "EVENT_INBOX_HOLD type=$type waiting=${inbox.size}")
+                    return true
+                }
+                target = current
+            }
+            target.onTransportEvent(type, data)
+            return false
+        }
+        /** Bundle 175 (10): for the status card. */
+        fun inboxWaiting(): Int = synchronized(inboxLock) { inbox.size }
         fun start(context: Context) { startCommand(context,null) }
         fun stop(context: Context) { instance?.stopTransportExplicit(); context.stopService(Intent(context,LocalLinkTransportService::class.java)) }
         fun ensureReady(context:Context,deviceId:String,peerIds:List<String>){
@@ -166,6 +199,11 @@ class LocalLinkTransportService : Service() {
         fun clearStorage(){instance?.clearTransportStorage()}
         /** Bundle 164 (4.3): after a reboot. Returns the reason when Android said no (null = started). */
         fun startFromBoot(context: Context): String? = startCommand(context, null)
+        /** Bundle 175 (5): the health check asks for a start. Null = started. */
+        fun startFromHealth(context: Context): String? = startCommand(context, null)
+        /** Bundle 175 (10): last time Android refused a foreground start. */
+        fun lastForegroundDenied(): String? = lastDenyReason
+        @Volatile private var lastDenyReason: String? = null
 
         private fun startCommand(context:Context,intent:Intent?):String?{
             val i=intent?:Intent(context,LocalLinkTransportService::class.java)
@@ -498,15 +536,102 @@ class LocalLinkTransportService : Service() {
     }
     private val startedAt=System.currentTimeMillis()
 
+    // Bundle 175: foreground start, network watcher, no-screen engine.
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var foregroundOk = false
+    @Volatile private var micForeground = false
+    @Volatile private var destroying = false
+    @Volatile private var lastEngineAskAt = 0L
+    private var networkWatcher: ServiceNetworkWatcher? = null
+    @Volatile private var lanBeaconNow = false
+
+    /**
+     * Bundle 175 (1, 7): the only place that calls startForeground. Android
+     * 12+ may refuse it (background restart without the battery exemption):
+     * that used to crash the app in a loop. Now it is logged and handled.
+     * [mic] adds the microphone type during a voice call (Android 11+ gives
+     * a background app a silent microphone without it).
+     */
+    private fun enterForeground(mic: Boolean): Boolean {
+        return try {
+            val n = buildNotification()
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                if (mic && android.os.Build.VERSION.SDK_INT >= 30) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                startForeground(NOTIFICATION_ID, n, types)
+            } else startForeground(NOTIFICATION_ID, n)
+            true
+        } catch (e: Exception) {
+            val reason = e.javaClass.simpleName
+            Log.w(BG_TAG, "FGS_START_DENIED mic=$mic reason=$reason")
+            if (!mic) lastDenyReason = reason
+            false
+        }
+    }
+
+    /** Bundle 175 (7): microphone type on only while voice call media runs. */
+    private fun setCallMicForeground(on: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT < 30 || !foregroundOk || destroying) return
+        if (on == micForeground) return
+        if (on && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Log.w(BG_TAG, "CALL_FGS_MIC skipped reason=no_record_permission")
+            return
+        }
+        val ok = enterForeground(on)
+        if (ok) micForeground = on
+        Log.i(BG_TAG, "CALL_FGS_MIC ${if (on) "on" else "off"} ok=$ok")
+    }
+
+    /** Bundle 175 (3): ask for the no-screen engine (rate-limited for events). */
+    private fun requestNoScreenEngine(reason: String, delayMs: Long = 0L) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (reason == "event" && now - lastEngineAskAt < 30_000L) return
+        lastEngineAskAt = now
+        try { BackgroundEngine.startNoScreen(applicationContext, reason, delayMs) } catch (_: Throwable) {}
+    }
+
+    /** Bundle 175 (4): Wi-Fi came back - find nearby phones again now. */
+    private fun onNetworkChange(snap: NetworkChangePolicy.Snapshot, action: NetworkChangePolicy.Action) {
+        Log.i(BG_TAG, "NET_CHANGE wifi=${snap.wifi} internet=${snap.internet} wifi_up=${action.wifiUp} wifi_down=${action.wifiDown}")
+        if (action.wifiUp && transportRunning) {
+            Thread({
+                try { startLanTransport(); lanBeaconNow = true } catch (e: Exception) { Log.w(BG_TAG, "NET_CHANGE lan_restart_failed reason=${e.javaClass.simpleName}") }
+            }, "locallink-net-change").start()
+        }
+        transportEvent("network_changed", mapOf("wifi" to snap.wifi, "internet" to snap.internet, "wifi_up" to action.wifiUp, "wifi_down" to action.wifiDown))
+    }
+
     override fun onCreate(){
         super.onCreate();instance=this;createNotificationChannel()
-        if(android.os.Build.VERSION.SDK_INT>=29)startForeground(NOTIFICATION_ID,buildNotification(),ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)else startForeground(NOTIFICATION_ID,buildNotification())
+        foregroundOk=enterForeground(false)
+        if(!foregroundOk){
+            // Bundle 175 (1): Android said no. Stop cleanly, try again later.
+            if(instance===this)instance=null
+            BackgroundHealth.recoverSoon(applicationContext,lastDenyReason?:"denied")
+            stopSelf()
+            return
+        }
+        BackgroundHealth.clearDenied(applicationContext)
         running=true;loadPersistedState();restoreDurableState()
         strictLinkCheck=getSharedPreferences(LINK_AUTH_PREFS,MODE_PRIVATE).getBoolean(STRICT_KEY,false)
         loadFileSealPeers()
         if(transportRunning){startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to transportPeers.isNotEmpty(),"transport_active" to true,"group_owner" to transportGroupOwner));if(transportGroupOwner)ensureTransportServer()}
+        // Bundle 175 (4): one network watcher, inside this one service.
+        networkWatcher=ServiceNetworkWatcher(this,::onNetworkChange).also{it.start()}
+        // Bundle 175 (3): started with no screen (restart after a kill, boot):
+        // the no-screen engine reads messages and shows notifications.
+        if(!MainActivity.isOpen())requestNoScreenEngine("service_start",1_000L)
+    }
+
+    /** Bundle 175 (3): swiped away from Recents. The service stays (stopWithTask=false). */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.i(BG_TAG, "TASK_REMOVED service_stays=true")
+        requestNoScreenEngine("task_removed", 1_500L)
     }
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
+        // Bundle 175 (1): Android refused the foreground start - the recovery work tries again.
+        if(!foregroundOk){stopSelf(startId);return START_NOT_STICKY}
         when(intent?.action){
             ACTION_ENSURE->ensureIdentityInternal(intent.getStringExtra("device_id") ?: "",parseKnownPeers(intent.getStringExtra("known_peers")))
             ACTION_CONFIGURE->{val peers=parseKnownPeers(intent.getStringExtra("known_peers"));configureTransport(intent.getStringExtra("device_id") ?: "",intent.getBooleanExtra("connected",false),intent.getBooleanExtra("group_owner",false),intent.getStringExtra("group_owner_address"),peers)}
@@ -517,8 +642,22 @@ class LocalLinkTransportService : Service() {
     }
     private fun parseKnownPeers(raw:String?):List<String>{if(raw.isNullOrBlank())return emptyList();val out=mutableListOf<String>();try{val a=JSONArray(raw);for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))out.add(id)}}catch(_:Exception){};return out}
     override fun onBind(intent:Intent?):IBinder?=null
-    private fun createNotificationChannel(){if(android.os.Build.VERSION.SDK_INT<26)return;getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL_ID,"LocalLink peer transport",NotificationManager.IMPORTANCE_LOW).apply{description="Keeps LocalLink peer communication available while the app is in the background";setShowBadge(false)})}
-    private fun buildNotification():Notification{val li=packageManager.getLaunchIntentForPackage(packageName);val pi=li?.let{PendingIntent.getActivity(this,2202,it,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)};val b=if(android.os.Build.VERSION.SDK_INT>=26)Notification.Builder(this,CHANNEL_ID)else Notification.Builder(this);return b.setSmallIcon(R.drawable.ic_notification).setColor(0xFF209DEB.toInt()).setContentTitle("LocalLink peer network active").setContentText("Offline peer communication is available").setOngoing(true).setCategory(Notification.CATEGORY_SERVICE).setContentIntent(pi).setPriority(Notification.PRIORITY_LOW).build()}
+    // Bundle 175 (8): as quiet as Android allows (MIN: folded at the bottom,
+    // no top-bar icon, no sound). A channel's importance can't be lowered
+    // after it exists, so this is a new channel; the old one is removed.
+    private fun createNotificationChannel(){if(android.os.Build.VERSION.SDK_INT<26)return;val nm=getSystemService(NotificationManager::class.java);try{nm.deleteNotificationChannel(OLD_CHANNEL_ID)}catch(_:Exception){};nm.createNotificationChannel(NotificationChannel(CHANNEL_ID,"Background service",NotificationManager.IMPORTANCE_MIN).apply{description="Lets messages arrive while LocalLink is closed";setShowBadge(false);setSound(null,null);enableVibration(false);enableLights(false)})}
+    private fun buildNotification():Notification{
+        val li=packageManager.getLaunchIntentForPackage(packageName)
+        val pi=li?.let{PendingIntent.getActivity(this,2202,it,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)}
+        @Suppress("DEPRECATION") val b=if(android.os.Build.VERSION.SDK_INT>=26)Notification.Builder(this,CHANNEL_ID)else Notification.Builder(this)
+        b.setSmallIcon(R.drawable.ic_notification).setColor(0xFF209DEB.toInt())
+            .setContentTitle("LocalLink is running").setContentText("Messages can arrive while the app is closed")
+            .setOngoing(true).setShowWhen(false).setOnlyAlertOnce(true).setCategory(Notification.CATEGORY_SERVICE).setContentIntent(pi)
+        @Suppress("DEPRECATION") b.setPriority(Notification.PRIORITY_MIN)
+        if(pi!=null){@Suppress("DEPRECATION") b.addAction(Notification.Action.Builder(0,"Open",pi).build())}
+        if(android.os.Build.VERSION.SDK_INT>=31)b.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_DEFERRED)
+        return b.build()
+    }
 
     private fun configureTransport(deviceId:String,connected:Boolean,owner:Boolean,address:String?,peers:List<String>){if(deviceId.isBlank())return;transportDeviceId=deviceId.trim();knownPeers.clear();knownPeers.addAll(peers.filter{validTransportId(it)});transportRunning=true;persistState();startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to connected,"transport_active" to true,"group_owner" to owner));startOrStopTransportForConnection(connected,owner,address)}
     private fun updateRosterInternal(peerIds:List<String>){knownPeers.clear();peerIds.forEach{if(validTransportId(it))knownPeers.add(it.trim())};persistState();upgradeRelayLinksToContacts()}
@@ -906,7 +1045,8 @@ class LocalLinkTransportService : Service() {
             var nextBeaconAt = 0L
             while (transportRunning && lanDiscoverySocket == socket) {
                 val now = System.currentTimeMillis()
-                if (now >= nextBeaconAt) {
+                if (now >= nextBeaconAt || lanBeaconNow) {
+                    lanBeaconNow = false // Bundle 175 (4): Wi-Fi came back
                     broadcastLanBeacon(socket)
                     // Bundle 160: 3 s / 10 s / 15 s by phones seen, ±20%.
                     val phones = lanEndpoints.size
@@ -1883,6 +2023,7 @@ class LocalLinkTransportService : Service() {
         Log.i("LocalLinkCall", "CALL_MEDIA_CODEC call=$callId requested=${requested.ifBlank { "-" }} used=${session.codec} voice_lock=${voiceKey != null}")
         synchronized(callMediaLock) { callMedia = session }
         acquireCallLocks()
+        setCallMicForeground(true) // Bundle 175 (7)
         session.start()
         transportEvent("call_media_started", mapOf("call_id" to callId, "peer_id" to peerId, "sample_rate" to CALL_SAMPLE_RATE, "frame_ms" to CALL_FRAME_MS, "codec" to session.codec))
     }
@@ -1898,6 +2039,7 @@ class LocalLinkTransportService : Service() {
         // Idle connections must never hold the CPU or radio awake: this runs
         // on every call end, hang-up, and media session stop.
         releaseCallLocks()
+        if (micForeground && synchronized(callMediaLock) { callMedia == null }) setCallMicForeground(false) // Bundle 175 (7)
         callMediaRecent.clear()
     }
 
@@ -3774,7 +3916,9 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun transportEvent(type: String, data: Map<String, Any?> = emptyMap()) {
-        listener?.onTransportEvent(type, mapOf("type" to type, *data.entries.map { it.key to it.value }.toTypedArray()))
+        val full = mapOf("type" to type, *data.entries.map { it.key to it.value }.toTypedArray())
+        // Bundle 175 (2, 3): nobody listens (app closed) -> keep it and wake the no-screen engine.
+        if (deliverEvent(type, full) && !destroying) requestNoScreenEngine("event")
     }
 
     private fun unregisterPeer(peerId: String, socket: Socket) {
@@ -4291,5 +4435,5 @@ class LocalLinkTransportService : Service() {
         if(changed)Log.i("RELAY","RELAY file stalled to=${t.recipientId} stalls=$stalls try=${if(fileSealPeers.contains(t.recipientId)!=flip)"locked" else "plain"}")
     }
 
-    override fun onDestroy(){stopCallVideoInternal("");stopCallMediaInternal("");meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();running=false;if(instance===this)instance=null;super.onDestroy()}
+    override fun onDestroy(){destroying=true;networkWatcher?.stop();networkWatcher=null;stopCallVideoInternal("");stopCallMediaInternal("");meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();running=false;if(instance===this)instance=null;super.onDestroy()}
 }

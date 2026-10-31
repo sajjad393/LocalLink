@@ -1845,6 +1845,13 @@ class ReliableMessagingService {
       );
     }
 
+    // Bundle 175 (4): Wi-Fi / internet changed (native watcher, debounced).
+    // Queued messages try again now instead of waiting for the retry tick.
+    if (eventType == 'network_changed') {
+      unawaited(_safeFlush('network_changed'));
+      return;
+    }
+
     // ------------------------------------------------------------------------
     // Bundle 150: LIVE FILE PROGRESS (blue ring in the chat bubble)
     // Receiver: bytes/total. Sender: acked_chunks/total_chunks.

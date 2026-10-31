@@ -26,6 +26,7 @@ object BackgroundEngine {
     private val main = Handler(Looper.getMainLooper())
     private var engine: FlutterEngine? = null
     private var channels: BackgroundChannels? = null
+    @Volatile private var idleAt = 0L
 
     fun isRunning(): Boolean = engine != null
 
@@ -58,6 +59,40 @@ object BackgroundEngine {
             Log.i(TAG, "BOOT_ENGINE_SKIPPED reason=$skip")
             return skip
         }
+        return launch(app, "BOOT_ENGINE_START")
+    }
+
+    /**
+     * Bundle 175 (3): the screen went away (swipe, Back exit, restart after a
+     * kill, a nearby event nobody reads). Same engine, same rules: only one
+     * engine runs the app at a time; opening the app stops this one.
+     */
+    fun startNoScreen(context: Context, reason: String, delayMs: Long = 0L): String? {
+        val app = context.applicationContext
+        if (delayMs > 0L || Looper.myLooper() != Looper.getMainLooper()) {
+            main.postDelayed({ startNoScreen(app, reason) }, delayMs)
+            return "posted"
+        }
+        val opened = try {
+            app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_OPENED_VERSION, 0L)
+        } catch (_: Exception) { 0L }
+        val skip = BackgroundEnginePolicy.noScreenSkipReason(
+            enabled = BackgroundHealth.isEnabled(app),
+            serviceRunning = LocalLinkTransportService.isRunning(),
+            appOpen = MainActivity.isOpen(),
+            running = engine != null,
+            openedVersion = opened,
+            currentVersion = versionCode(app),
+            idleBlocked = android.os.SystemClock.elapsedRealtime() - idleAt < BackgroundEnginePolicy.IDLE_BLOCK_MS && idleAt > 0L,
+        )
+        if (skip != null) {
+            if (skip != "running" && skip != "app_open") Log.i(TAG, "BG_ENGINE_SKIPPED reason=$skip trigger=$reason")
+            return skip
+        }
+        return launch(app, "BG_ENGINE_START reason=$reason")
+    }
+
+    private fun launch(app: Context, logLine: String): String? {
         return try {
             val started = FlutterEngine(app)
             val bound = BackgroundChannels(app) { reason -> stop(reason) }
@@ -70,7 +105,7 @@ object BackgroundEngine {
             )
             engine = started
             channels = bound
-            Log.i(TAG, "BOOT_ENGINE_START")
+            Log.i(TAG, logLine)
             null
         } catch (t: Throwable) {
             Log.w(TAG, "BOOT_ENGINE_FAILED reason=${t.javaClass.simpleName}")
@@ -88,6 +123,8 @@ object BackgroundEngine {
         }
         val running = engine ?: return
         engine = null
+        // Bundle 175 (3): Dart had nothing to do - don't restart it for every event.
+        idleAt = if (reason.startsWith("idle_")) android.os.SystemClock.elapsedRealtime() else 0L
         channels?.release()
         channels = null
         try { running.destroy() } catch (_: Exception) {}

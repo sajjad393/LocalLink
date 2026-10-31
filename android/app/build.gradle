@@ -67,6 +67,8 @@ android {
 }
 
 dependencies {
+    // Bundle 175 (5): health check only (never sockets / messages).
+    implementation "androidx.work:work-runtime:2.9.1"
     testImplementation "junit:junit:4.13.2"
     // Real org.json for local unit tests: the mocked android.jar stubs org.json
     // (returns null with returnDefaultValues=true), which broke every mesh
