@@ -151,7 +151,7 @@ void main() {
       expect(contacts.contains('Icons.wifi_find'), isFalse);
       expect(contacts.contains('connectivity: widget.connectivity'), isTrue);
       final nearby = File(
-              'lib/features/directory/presentation/nearby_devices_screen.dart')
+              'lib/features/directory/presentation/nearby_people_section.dart')
           .readAsStringSync();
       expect(nearby.contains('class NearbyDevicesScreen'), isFalse);
       expect(nearby.contains('Same Wi-Fi'), isFalse);

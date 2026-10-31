@@ -10,7 +10,6 @@ void main() {
 
   const assets = <String>[
     'assets/animations/chat_hero.json',
-    'assets/animations/radar_pulse.json',
     'assets/animations/empty_inbox.json',
   ];
 

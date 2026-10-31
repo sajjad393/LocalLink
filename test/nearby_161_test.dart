@@ -11,7 +11,7 @@ import 'package:locallink/features/connectivity/data/services/nearby_local_net_p
 import 'package:locallink/features/connectivity/data/services/wifi_direct_fallback_service.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 import 'package:locallink/features/connectivity/domain/nearby_group_control.dart';
-import 'package:locallink/features/home/presentation/screens/nearby_experiments_screen.dart';
+import 'package:locallink/features/connectivity/presentation/widgets/nearby_test_switches.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Bundle 161: linked groups, LocalLink hotspot (tests, off by default).
@@ -360,7 +360,8 @@ void main() {
 
     testWidgets('turning a test on asks first; Cancel keeps it off', (tester) async {
       final x = NearbyExperiments.instance;
-      await tester.pumpWidget(MaterialApp(home: NearbyExperimentsScreen(experiments: x)));
+      // Bundle 173: the switches live in the Admin panel now.
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: ListView(children: [NearbyTestSwitches(experiments: x)]))));
       expect(find.text('Link full groups'), findsOneWidget);
       expect(find.text('Share a LocalLink hotspot'), findsOneWidget);
       await tester.tap(find.byKey(const Key('nearby_test_link_groups')));

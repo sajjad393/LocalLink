@@ -26,7 +26,7 @@ void main() {
     });
 
     test('motion assets are declared by the token set', () {
-      expect(LocalLinkAssets.lottieLoadingRadar, contains('radar_pulse'));
+      // Bundle 173: the old radar animation was removed (unused).
       expect(LocalLinkAssets.lottieEmptyInbox, contains('empty_inbox'));
     });
   });

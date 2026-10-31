@@ -6,6 +6,7 @@ import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
+import 'package:locallink/features/connectivity/presentation/widgets/nearby_test_switches.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/models/admin_session.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
@@ -318,6 +319,18 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               _mapCard(scheme, onLink, online),
               _onThisLinkCard(scheme, onLink),
               _moderationCard(scheme),
+              const SizedBox(height: 20),
+              // Bundle 173: the 2 nearby tests, testers only (still OFF).
+              const Text(
+                'Nearby tests (testers only)',
+                key: Key('admin_nearby_tests'),
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2),
+              ),
+              const SizedBox(height: 8),
+              const NearbyTestSwitches(),
               const SizedBox(height: 20),
               Text(
                 online

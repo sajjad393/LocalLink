@@ -10,6 +10,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/features/directory/data/contact_edge.dart';
+import 'package:locallink/features/directory/data/own_profile_match.dart';
 import 'package:locallink/features/directory/data/shareable_profile_filter.dart';
 import 'package:locallink/features/directory/data/phone_number_normalizer.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
@@ -536,6 +537,47 @@ class DirectoryRepository implements DirectoryRepositoryContract {
 
   @override
   Future<DirectoryProfile?> findByPhone(String phone) async {
+    final found = await _findByPhoneAnyone(phone);
+    // Bundle 173: my own number never finds me.
+    if (found != null && await _isMe(found)) return null;
+    return found;
+  }
+
+  /// Bundle 173: keys of this phone, read once.
+  String? _ownSigningKey;
+  String? _ownIdentityKey;
+
+  /// Bundle 173: true when [profile] is me - my account id, or an old copy
+  /// of my profile (same @username, this phone, or my keys).
+  Future<bool> _isMe(DirectoryProfile profile) async {
+    try {
+      _ownSigningKey ??= await crypto.signingPublicKey();
+      _ownIdentityKey ??= await crypto.publicKey();
+    } catch (_) {
+      _ownSigningKey ??= '';
+      _ownIdentityKey ??= '';
+    }
+    var username = store.username ?? '';
+    if (username.trim().isEmpty) {
+      try {
+        username = (await store.profile())?.username ?? '';
+      } catch (_) {}
+    }
+    final reason = ownProfileMatch(
+      profile: profile,
+      selfUserId: store.accountId ?? '',
+      selfUsername: username,
+      selfDeviceId: store.deviceId ?? '',
+      selfSigningKey: _ownSigningKey ?? '',
+      selfIdentityKey: _ownIdentityKey ?? '',
+    );
+    if (reason != null && reason != 'id') {
+      AppLogger.info('DIRECTORY_SELF_HIDDEN', detail: 'reason=$reason');
+    }
+    return reason != null;
+  }
+
+  Future<DirectoryProfile?> _findByPhoneAnyone(String phone) async {
     final normalized = PhoneNumberNormalizer.normalize(phone);
     if (normalized.isEmpty) {
       throw const FormatException('Invalid phone number');
@@ -573,7 +615,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       final id = row['user_id']?.toString() ?? '';
       if (row['discoverable_by_name']?.toString() == '0' ||
           id == store.accountId ||
-          await store.isBlocked(id)) {
+          await store.isBlocked(id) ||
+          await _isMe(DirectoryProfile.fromMap(row))) {
         continue;
       }
       local.add(DirectoryProfile.fromMap(row));
@@ -589,6 +632,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
           continue;
         }
         final result = _fromServerProfile(remote);
+        if (await _isMe(result)) continue;
         await _saveServerProfile(result);
         results.add(result);
       }
@@ -603,7 +647,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       final id = row['user_id']?.toString() ?? '';
       if (row['discoverable_by_name']?.toString() == '0' ||
           id == store.accountId ||
-          await store.isBlocked(id)) {
+          await store.isBlocked(id) ||
+          await _isMe(DirectoryProfile.fromMap(row))) {
         continue;
       }
       results.add(DirectoryProfile.fromMap(row));

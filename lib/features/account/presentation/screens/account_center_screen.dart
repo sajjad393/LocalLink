@@ -19,6 +19,7 @@ import 'package:locallink/features/account/presentation/screens/profile_screen.d
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
+import 'package:locallink/features/connectivity/presentation/widgets/nearby_test_switches.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/recovery/presentation/screens/account_restore_screen.dart';
@@ -196,6 +197,13 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                       const SizedBox(height: LocalLinkSpacing.sm),
                       _action(icon: Icons.restore_outlined, title: 'Account data', subtitle: 'Restore information and encrypted backup', onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AccountRestoreScreen(service: widget.restoreService)))),
                       _action(icon: Icons.vpn_key_outlined, title: 'Identity key', subtitle: 'Review and rotate the account identity key', onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => CryptoMigrationScreen(identityRepository: widget.identityRepository)))),
+                      // Bundle 173: strict mode, plain words (was in "Nearby tests").
+                      const Card(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          child: ExtraNearbySafetySwitch(),
+                        ),
+                      ),
                       Card(
                         color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         child: const ListTile(

@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/core/models/device.dart';
+import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/features/directory/bloc/directory_bloc.dart';
@@ -11,7 +14,7 @@ import 'package:locallink/features/directory/presentation/my_qr_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
-import 'package:locallink/features/directory/presentation/nearby_devices_screen.dart';
+import 'package:locallink/features/directory/presentation/nearby_people_section.dart';
 import 'package:locallink/features/directory/presentation/profile_view_rules.dart';
 
 class AddContactScreen extends StatefulWidget {
@@ -56,11 +59,44 @@ class _AddContactScreenState extends State<AddContactScreen> {
   /// Token of the request whose results may land; stale responses die here.
   int _searchSeq = 0;
 
+  /// Bundle 173: who is already a contact ("Added" instead of "Add").
+  Set<String> _contactIds = const <String>{};
+
   @override
   void initState() {
     super.initState();
     bloc = DirectoryBloc(widget.repository);
     query.addListener(_onQueryChanged);
+    _loadContacts();
+  }
+
+  Future<void> _loadContacts() async {
+    try {
+      final rows = await widget.repository.contacts();
+      if (!mounted) return;
+      setState(() => _contactIds = rows.map((p) => p.userId).toSet());
+    } catch (_) {
+      // Unknown: every result simply shows "Add".
+    }
+  }
+
+  /// Bundle 173: Add straight from the search card (same name box as the
+  /// profile page).
+  Future<void> _addFromResults(DirectoryProfile profile) async {
+    final customName =
+        await showSaveContactDialog(context, profile.displayName);
+    if (customName == null || !mounted) return;
+    try {
+      await widget.repository
+          .addContact(profile.userId, customName: customName.trim());
+      if (!mounted) return;
+      setState(() => _contactIds = {..._contactIds, profile.userId});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contact added')),
+      );
+    } catch (e) {
+      if (mounted) _showError(cleanBlocError(e));
+    }
   }
 
   @override
@@ -128,8 +164,8 @@ class _AddContactScreenState extends State<AddContactScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _open(DirectoryProfile profile) {
-    Navigator.push<void>(
+  Future<void> _open(DirectoryProfile profile) async {
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => DirectoryProfileView(
@@ -140,6 +176,8 @@ class _AddContactScreenState extends State<AddContactScreen> {
         ),
       ),
     );
+    // Bundle 173: they may have been added on the profile page.
+    if (mounted) await _loadContacts();
   }
 
   Future<void> _scan() async {
@@ -239,23 +277,15 @@ class _AddContactScreenState extends State<AddContactScreen> {
                   ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
+          // Bundle 173: same card as Nearby + status dot + Add button.
           for (final profile in _results)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: theme.dividerColor),
-                ),
-                tileColor: theme.colorScheme.surface,
-                leading: CircleAvatar(child: Text(_initial(profile))),
-                title: Text(profile.displayName.isEmpty
-                    ? profile.username
-                    : profile.displayName),
-                subtitle: Text('@${profile.username}'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _open(profile),
-              ),
+            SearchResultCard(
+              key: ValueKey('search_result_${profile.userId}'),
+              profile: profile,
+              initial: _initial(profile),
+              isContact: _contactIds.contains(profile.userId),
+              onOpen: () => _open(profile),
+              onAdd: () => _addFromResults(profile),
             ),
           const SizedBox(height: 8),
         ],
@@ -376,42 +406,8 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
     return value.isEmpty ? '?' : value[0].toUpperCase();
   }
 
-  /// Bundle 111: choose the LOCAL display name at add time. Cancelling
-  /// aborts the add; clearing the field keeps the profile name as-is.
-  Future<String?> _contactNameDialog(BuildContext context) {
-    final controller =
-        TextEditingController(text: profile.displayName);
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Save contact as'),
-        content: TextField(
-          controller: controller,
-          autocorrect: false,
-          maxLength: 40,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Name on this phone',
-            hintText: 'Only you will see this name',
-          ),
-          onSubmitted: (value) => Navigator.pop(dialogContext, value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Add contact'),
-          ),
-        ],
-      ),
-    ).then((value) {
-      controller.dispose();
-      return value;
-    });
-  }
+  Future<String?> _contactNameDialog(BuildContext context) =>
+      showSaveContactDialog(context, profile.displayName);
 
   Future<void> _addContact(BuildContext context) async {
     final customName = await _contactNameDialog(context);
@@ -592,4 +588,116 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
           }
         },
       );
+}
+
+/// Bundle 111: choose the LOCAL display name at add time. Cancelling
+/// aborts the add; clearing the field keeps the profile name as-is.
+Future<String?> showSaveContactDialog(BuildContext context, String initialName) {
+  final controller =
+      TextEditingController(text: initialName);
+  return showDialog<String>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Save contact as'),
+      content: TextField(
+        controller: controller,
+        autocorrect: false,
+        maxLength: 40,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Name on this phone',
+          hintText: 'Only you will see this name',
+        ),
+        onSubmitted: (value) => Navigator.pop(dialogContext, value),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, controller.text),
+          child: const Text('Add contact'),
+        ),
+      ],
+    ),
+  ).then((value) {
+    controller.dispose();
+    return value;
+  });
+}
+
+/// Bundle 173: one search result - the same filled card as Nearby, the
+/// usual status dot on the photo, and Add (or "Added" for a contact).
+class SearchResultCard extends StatelessWidget {
+  final DirectoryProfile profile;
+  final String initial;
+  final bool isContact;
+  final VoidCallback onOpen;
+  final VoidCallback onAdd;
+
+  const SearchResultCard({
+    super.key,
+    required this.profile,
+    required this.initial,
+    required this.isContact,
+    required this.onOpen,
+    required this.onAdd,
+  });
+
+  static String statusWord(String channel) => switch (channel) {
+        'nearby' => 'Nearby',
+        'server' => 'Online',
+        _ => 'Offline',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = CircleAvatar(child: Text(initial));
+    final name =
+        profile.displayName.isEmpty ? profile.username : profile.displayName;
+    final hasDevice = profile.deviceId.trim().isNotEmpty;
+    final now = DateTime.now().toUtc().toIso8601String();
+    return Card(
+      child: ListTile(
+        onTap: onOpen,
+        leading: hasDevice
+            ? PresenceAvatar(
+                avatar: avatar,
+                device: Device(
+                  id: profile.deviceId,
+                  name: name,
+                  platform: '',
+                  createdAt: now,
+                  lastSeenAt: now,
+                ),
+              )
+            : avatar,
+        title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: ListenableBuilder(
+          listenable: PresenceHub.instance,
+          builder: (context, _) {
+            final status = isContact
+                ? 'Contact'
+                : hasDevice
+                    ? statusWord(
+                        PresenceHub.instance.channelOf(profile.deviceId))
+                    : 'Offline';
+            return Text('@${profile.username} · $status',
+                maxLines: 1, overflow: TextOverflow.ellipsis);
+          },
+        ),
+        trailing: isContact
+            ? Text('Added',
+                key: const Key('search_result_added'),
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant))
+            : FilledButton.tonal(
+                key: const Key('search_result_add'),
+                onPressed: onAdd,
+                child: const Text('Add'),
+              ),
+      ),
+    );
+  }
 }

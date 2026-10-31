@@ -12,7 +12,7 @@ import 'package:locallink/features/connectivity/domain/mesh_repository_contract.
 import 'package:locallink/features/directory/data/repositories/directory_repository.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
-import 'package:locallink/features/directory/presentation/nearby_devices_screen.dart';
+import 'package:locallink/features/directory/presentation/nearby_people_section.dart';
 import 'package:locallink/features/directory/presentation/nearby_list_plan.dart';
 import 'package:locallink/features/directory/presentation/nearby_search_animation.dart';
 

@@ -26,7 +26,7 @@ import 'package:locallink/features/directory/presentation/profile_view_rules.dar
 ///
 /// * [filter] narrows the list while the user types (real names only);
 ///   when nothing matches the section hides itself.
-/// * Nobody found yet → the mesh search animation (replaces the radar).
+/// * Nobody found yet → the mesh search animation.
 /// * Someone found → a link draws to them, their circle pops in, then the
 ///   card slides up into the list and the mesh shrinks to 3 dots by the
 ///   title.

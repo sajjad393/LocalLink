@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
-import 'package:locallink/features/home/presentation/screens/nearby_experiments_screen.dart';
+import 'package:locallink/features/connectivity/presentation/widgets/nearby_test_switches.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -51,13 +51,12 @@ void main() {
         (tester) async {
       final x = NearbyExperiments.instance;
       await tester.pumpWidget(
-          MaterialApp(home: NearbyExperimentsScreen(experiments: x)));
-      await tester.scrollUntilVisible(
-          find.byKey(const Key('nearby_strict_link_check')), 200);
-      expect(find.text('Only checked contacts (strict mode)'), findsOneWidget);
+          // Bundle 173: plain words, under Privacy & security.
+          MaterialApp(home: Scaffold(body: ExtraNearbySafetySwitch(experiments: x))));
+      expect(find.text('Extra nearby safety'), findsOneWidget);
       await tester.tap(find.byKey(const Key('nearby_strict_link_check')));
       await tester.pumpAndSettle();
-      expect(find.text('Turn on strict mode?'), findsOneWidget);
+      expect(find.text('Turn on extra nearby safety?'), findsOneWidget);
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       expect(x.strictLinkCheck, isFalse);
