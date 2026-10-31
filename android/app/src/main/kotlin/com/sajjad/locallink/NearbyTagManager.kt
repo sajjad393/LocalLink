@@ -57,6 +57,8 @@ class NearbyTagManager(
     private var batteryMarkAt = 0L
     private var batteryMarkLevel = -1
     @Volatile private var charging = false
+    // Bundle 167 (5.5): a voice call goes on (or through) this phone.
+    @Volatile private var inCall = false
 
     /** Bundle 159: (charging, level 0-100 or -1). Never throws. */
     private fun batteryState(): Pair<Boolean, Int> = try {
@@ -141,6 +143,14 @@ class NearbyTagManager(
         publish()
     }
 
+    /** Bundle 167 (5.5): advertise (or stop advertising) `call=1`. */
+    fun setInCall(on: Boolean) {
+        if (on == inCall) return
+        inCall = on
+        Log.i(TAG, "call tag ${if (on) "on" else "off"}")
+        publish()
+    }
+
     /** Bundle 158: advertise (or stop advertising) `br=1`. */
     fun setBridge(on: Boolean) {
         if (on == bridge) return
@@ -213,7 +223,7 @@ class NearbyTagManager(
         }
         val wifi = try { onWifi() } catch (_: Exception) { false }
         val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge, charging, wifi,
-            v6 = groupV6(), hotspotSsid = hotspotSsid, hotspotKey = hotspotKey, linkTarget = linkTarget)
+            v6 = groupV6(), hotspotSsid = hotspotSsid, hotspotKey = hotspotKey, linkTarget = linkTarget, inCall = inCall)
         val signature = txt.toString()
         if (!force && signature == lastPublished) return
         lastPublished = signature
@@ -233,7 +243,7 @@ class NearbyTagManager(
     private fun addService(info: WifiP2pDnsSdServiceInfo, txt: Map<String, String>) {
         try {
             manager.addLocalService(channel, info, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"} wf=${txt["wf"] ?: "0"} v6=${if (txt.containsKey("v6")) 1 else 0} hs=${if (txt.containsKey("hs")) 1 else 0} lt=${txt["lt"] ?: "-"}") }
+                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"} wf=${txt["wf"] ?: "0"} v6=${if (txt.containsKey("v6")) 1 else 0} hs=${if (txt.containsKey("hs")) 1 else 0} lt=${txt["lt"] ?: "-"} call=${txt["call"] ?: "0"}") }
                 override fun onFailure(reason: Int) {
                     lastPublished = ""
                     Log.w(TAG, "tag publish failed reason=$reason")

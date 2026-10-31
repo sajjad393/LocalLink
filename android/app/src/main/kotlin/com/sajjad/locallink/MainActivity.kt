@@ -262,6 +262,8 @@ class MainActivity : FlutterActivity() {
                 // Bundle 157: one shared group (create / join without pop-ups).
                 "setNearbyWanted" -> { nearbyTags?.setWanted(call.argument<List<String>>("ids")); result.success(null) }
                 "setNearbyBridge" -> { nearbyTags?.setBridge(call.argument<Boolean>("on") ?: false); result.success(null) }
+                // Bundle 167 (5.5): a voice call goes on here.
+                "setNearbyInCall" -> { nearbyTags?.setInCall(call.argument<Boolean>("on") ?: false); result.success(null) }
                 // Bundle 161: linked groups + LocalLink hotspot (null = started, else a reason).
                 "joinLocalNet" -> result.success(localNet?.join(
                     call.argument<String>("kind").orEmpty(), call.argument<String>("ssid").orEmpty(),
