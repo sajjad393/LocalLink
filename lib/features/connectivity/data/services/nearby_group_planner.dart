@@ -24,6 +24,7 @@ enum NearbyGroupActionKind {
   leave,
 
   /// Older app on the other side (no group support): the 155 connect.
+  /// Bundle 177 (Q6): never planned any more (pop-up); kept for old logs.
   legacyConnect,
 }
 
@@ -209,13 +210,26 @@ abstract final class NearbySearchCadence {
   static const int backgroundWaitingMs = 60 * 1000;
   static const int backgroundIdleMs = 3 * 60 * 1000;
 
+  /// Bundle 177 (Q2): app closed and battery low.
+  static const int backgroundLowBatteryMs = 10 * 60 * 1000;
+  static const int lowBatteryLevel = 20;
+  static const int stopBatteryLevel = 10;
+
   static int everyMs({
     required bool urgent,
     required bool foreground,
     required bool inGroup,
     required bool onWifi,
     required bool waiting,
+    int batteryLevel = -1,
+    bool charging = false,
   }) {
+    // Bundle 177 (Q2): app closed, not charging: 10% or less = no search,
+    // under 20% = every 10 min. Charging or unknown level = normal rules.
+    if (!foreground && !charging && batteryLevel >= 0) {
+      if (batteryLevel <= stopBatteryLevel) return 0;
+      if (batteryLevel < lowBatteryLevel) return backgroundLowBatteryMs;
+    }
     if (urgent) return urgentMs;
     if (foreground) {
       return (waiting || (!inGroup && !onWifi))
@@ -369,10 +383,10 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
           input.pairInviteAllowed &&
           (!target.groupAware ||
               input.pairAgeMs >= NearbyGroupRules.pairInviteAfterMs)) {
-        // Older app (it can't see our "wanted" list), or it didn't come by
-        // itself: invite it once (155 connect, one pop-up there).
-        return NearbyGroupAction.legacyConnect(target.address, true,
-            target.groupAware ? 'pair_invite_fallback' : 'pair_invite_legacy');
+        // Bundle 177 (Q6): no pop-up invite any more. A new app joins by
+        // itself (our "wanted" list); an old app has to update.
+        return NearbyGroupAction.none(
+            target.groupAware ? 'pair_wait_silent' : 'old_app');
       }
       if (target != null &&
           input.myMembers == 0 &&
@@ -425,8 +439,8 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
         final go = towards(target, 'pair');
         if (go != null) return go;
         if (!target.groupAware) {
-          return NearbyGroupAction.legacyConnect(
-              target.address, true, 'pair_legacy');
+          // Bundle 177 (Q6): old app, no silent join possible.
+          return const NearbyGroupAction.none('old_app');
         }
         final best = bestGroup();
         if (best != null) {
@@ -456,8 +470,9 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
           continue;
         }
         if (!t.groupAware) {
-          return NearbyGroupAction.legacyConnect(
-              t.address, true, 'waiting_legacy');
+          // Bundle 177 (Q6): old app, no silent join possible.
+          lastReason = 'old_app';
+          continue;
         }
         final best = bestGroup();
         if (best != null) {

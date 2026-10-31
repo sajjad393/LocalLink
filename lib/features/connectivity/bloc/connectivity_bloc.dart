@@ -132,6 +132,15 @@ final class ConnectivityBloc extends Cubit<ConnectivityState> {
         wantHost: !(tag?.host ?? false), allowLeaveGroup: true));
   }
 
+  /// Bundle 177 (Q6): Add friend on a Nearby phone - silent group rules
+  /// only (no pop-up connect fallback).
+  Future<void> nearbyAddFriendTap(WifiDirectPeer peer) async {
+    if (_closed || peer.address.trim().isEmpty) return;
+    final handler = pairTapHandler;
+    if (handler == null) return;
+    await _runBusy(() => handler(peer));
+  }
+
   Future<void> disconnectWifiDirect() async {
     await _runBusy(() async {
       await repository.disconnectWifiDirect();

@@ -11,7 +11,12 @@ class BackgroundStatusCard extends StatelessWidget {
     required this.onStart,
     required this.onAllowNotifications,
     this.starting = false,
+    this.nearby,
   });
+
+  /// Bundle 177 (10.2): Nearby while closed - on / no_permission /
+  /// no_location / admin_off / battery_low / unsupported (null = no row).
+  final String? nearby;
 
   final bool running;
   final bool notifications;
@@ -21,6 +26,20 @@ class BackgroundStatusCard extends StatelessWidget {
 
   static const green = Color(0xFF1E9E4A);
   static const red = Color(0xFFD93025);
+  static const orange = Color(0xFFF29D0C);
+  static const grey = Color(0xFF9AA0A6);
+
+  /// Bundle 177 (10.2): (dot colour, title, subtitle) for the Nearby row.
+  static (Color, String, String?)? nearbyRow(String? state) => switch (state) {
+        'on' => (green, 'Nearby while closed: On',
+            'Friends without Wi-Fi can reach you'),
+        'no_permission' => (orange, 'Nearby while closed: Needs permission',
+            null),
+        'no_location' => (orange, 'Nearby while closed: Needs location', null),
+        'battery_low' => (orange, 'Nearby while closed: Battery low', null),
+        'admin_off' => (grey, 'Nearby while closed: Off by admin', null),
+        _ => null,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +104,30 @@ class BackgroundStatusCard extends StatelessWidget {
             ),
           ]),
         ),
+        if (nearbyRow(nearby) case (final color, final title, final sub)) ...[
+          const SizedBox(height: 12),
+          Row(
+            key: const ValueKey('background-status-nearby'),
+            children: [
+              _dot(color),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 15)),
+                    if (sub != null) ...[
+                      const SizedBox(height: 2),
+                      Text(sub, style: TextStyle(fontSize: 12, color: muted)),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ]),
     );
   }

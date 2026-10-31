@@ -36,6 +36,7 @@ class PairRequest {
   String get username => profile.username;
 }
 
+
 final class PairingService {
   PairingService({
     required LocalStore store,
@@ -60,6 +61,9 @@ final class PairingService {
   /// Fired with the peer's display name after a mutual pair completes.
   final _paired = StreamController<String>.broadcast();
 
+  /// Bundle 177 (7.4): someone else's Add friend saved them here.
+  final _addedBy = StreamController<FriendAdded>.broadcast();
+
   StreamSubscription<Map<String, dynamic>>? _events;
   final Map<String, DateTime> _mutedUntil = <String, DateTime>{};
   bool _started = false;
@@ -75,6 +79,9 @@ final class PairingService {
 
   Stream<PairRequest> get requests => _requests.stream;
   Stream<String> get paired => _paired.stream;
+
+  /// Bundle 177 (7.4): "X added you as a friend" (Remove / Block notice).
+  Stream<FriendAdded> get addedBy => _addedBy.stream;
 
   /// Bundle 112: human-readable diagnostics (toasts). Pairing used to fail
   /// completely silently, which made field debugging impossible.
@@ -125,6 +132,7 @@ final class PairingService {
     _events = null;
     await _requests.close();
     await _paired.close();
+    await _addedBy.close();
     await _diagnostics.close();
   }
 
@@ -249,7 +257,18 @@ final class PairingService {
       }
       final (raw, profile) = parsed;
 
-      if (await _isTrusted(profile.deviceId)) {
+      // Bundle 177 (Q10): blocked people are ignored silently - no answer,
+      // no contact, no notification.
+      if (await _isBlocked(profile, nodeId)) {
+        AppLogger.info('PAIR_BLOCKED_IGNORED', detail: 'kind=$kind');
+        return;
+      }
+
+      // Bundle 177: a trusted phone that was removed from the contacts
+      // (Remove on the notice) and adds again is a new add, not a silent
+      // answer - otherwise only one phone would list the other.
+      if (await _isTrusted(profile.deviceId) &&
+          (kind != 'request' || await _isContact(profile.userId))) {
         // Already friends: answers are free — no dialog, no toasts, keep the
         // request-idempotent so pairing survives app restarts on one side.
         if (kind == 'request' && !isMuted) {
@@ -274,9 +293,9 @@ final class PairingService {
 
       if (kind == 'request') {
         _mutedUntil[nodeId] = DateTime.now().add(_muteWindow);
-        if (!_requests.isClosed) {
-          _requests.add(PairRequest(profile: profile, raw: raw, nodeId: nodeId));
-        }
+        // Bundle 177 (7.4): no accept box - save them here and answer, so
+        // both phones have each other. A notice offers Remove / Block.
+        await _autoAccept(raw, profile, nodeId);
       } else {
         // Mutual accept for a request we sent: pair without another dialog.
         _mutedUntil[nodeId] = DateTime.now().add(_muteWindow);
@@ -288,6 +307,55 @@ final class PairingService {
           detail: 'node=$nodeId error=$error');
     } finally {
       _inflightPairs.remove(inflightKey);
+    }
+  }
+
+  /// Bundle 177 (7.4): answer first (the sender saves us), then save the
+  /// sender here and tell the app (notification with Remove / Block).
+  Future<void> _autoAccept(Map<String, dynamic> raw, DirectoryProfile profile,
+      String nodeId) async {
+    await _ensureTransportReady();
+    try {
+      final body = await _payload();
+      await _transport.sendPairPayload(
+          nodeId: nodeId, kind: 'accept', body: body);
+      AppLogger.warning('PAIR_ACCEPT', detail: 'stage=auto_accept_sent');
+    } catch (error) {
+      // The sender re-asks; we already trust them then (fast path answers).
+      AppLogger.warning('PAIR_ACCEPT_SEND_FAILED', detail: '$error');
+    }
+    await _adopt(raw, profile, nodeId, signalPaired: false);
+    if (!_addedBy.isClosed) {
+      _addedBy.add(FriendAdded(
+        userId: profile.userId,
+        deviceId: profile.deviceId,
+        displayName: profile.displayName.isNotEmpty
+            ? profile.displayName
+            : 'LocalLink user',
+      ));
+    }
+  }
+
+  Future<bool> _isContact(String userId) async {
+    try {
+      return userId.isNotEmpty && await _store.isContact(userId);
+    } catch (_) {
+      return true; // unknown: keep the old silent answer
+    }
+  }
+
+  Future<bool> _isBlocked(DirectoryProfile profile, String nodeId) async {
+    try {
+      if (profile.userId.isNotEmpty && await _store.isBlocked(profile.userId)) {
+        return true;
+      }
+      if (profile.deviceId.isNotEmpty &&
+          await _store.isBlockedPeer(profile.deviceId)) {
+        return true;
+      }
+      return await _store.isBlockedPeer(nodeId);
+    } catch (_) {
+      return false;
     }
   }
 

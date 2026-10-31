@@ -84,7 +84,7 @@ class _FakeConnectivityRepository implements ConnectivityRepositoryContract {
 }
 
 void main() {
-  test('connects the only available Wi-Fi Direct peer automatically', () async {
+  test('177: never the pop-up connect, even for the only peer', () async {
     final repository = _FakeConnectivityRepository(
       peers: const <WifiDirectPeer>[
         WifiDirectPeer(
@@ -99,7 +99,7 @@ void main() {
     await service.requestRoute('peer-b');
 
     expect(repository.discoveryStarted, isTrue);
-    expect(repository.connectedAddress, 'aa:bb:cc:dd:ee:ff');
+    expect(repository.connectedAddress, isNull);
     await service.dispose();
   });
 
@@ -136,7 +136,8 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 250));
     expect(repository.discoveryCount, greaterThanOrEqualTo(3));
 
-    // A late single-peer arrival is connected without any new request.
+    // Bundle 177 (Q6): a late arrival is NOT pop-up connected (silent
+    // group joins only).
     repository.peers = const <WifiDirectPeer>[
       WifiDirectPeer(
         name: 'Nearby phone',
@@ -145,7 +146,7 @@ void main() {
       ),
     ];
     await Future<void>.delayed(const Duration(milliseconds: 150));
-    expect(repository.connectedAddress, 'aa:bb:cc:dd:ee:ff');
+    expect(repository.connectedAddress, isNull);
 
     await service.dispose();
     final frozen = repository.discoveryCount;

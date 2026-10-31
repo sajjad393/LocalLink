@@ -4,6 +4,7 @@ import 'package:locallink/features/connectivity/data/services/nearby_admin_statu
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
 import 'package:locallink/core/services/session_key_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/core/config/app_config.dart';
 import 'package:locallink/core/network/api_http_client.dart';
 import 'package:locallink/core/security/secure_storage_service.dart';
@@ -31,6 +32,7 @@ import 'package:locallink/features/connectivity/domain/peer_transport_contract.d
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/connectivity/data/services/presence_service.dart';
+import 'package:locallink/features/calls/data/transport/network_policy.dart';
 import 'package:locallink/features/connectivity/data/services/network_policy_sync_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_radio_control_service.dart';
 import 'package:locallink/features/connectivity/data/repositories/mesh_repository.dart';
@@ -148,6 +150,10 @@ class AppDependencies {
         (peerId) => routePolicy.routes[peerId]?.isAvailable ?? false;
     // Bundle 158: phones on this Wi-Fi (a bridge is only for the others).
     wifiDirectFallback.lanPeerIds = () => routePolicy.lanPeerIds;
+    // Bundle 177 (4.4): admin "Wi-Fi off" = Nearby does nothing.
+    wifiDirectFallback.nearbyOff = () =>
+        store.effectiveNetworkPolicy.wifiRadioPolicy ==
+        AdminWifiRadioPolicy.forcedOff;
     // Bundle 157: Pair taps go through the one-shared-group rules.
     connectivity.pairTapHandler = wifiDirectFallback.pairTap;
     authentication = AuthenticationRepository(api: api, store: store, connectivity: connectivityRepository);
@@ -227,13 +233,33 @@ class AppDependencies {
     );
     presence = PresenceService(store, socket, wifiDirect, directTransport, httpClient: this.httpClient, crypto: crypto, wifiRadio: WifiRadioControlService());
     networkPolicySync = NetworkPolicySyncService(store, api, socket, httpClient: this.httpClient, wifiRadio: WifiRadioControlService());
-    directoryRepository = DirectoryRepository(store: store, api: api, transport: directTransport, crypto: crypto);
+    final directory = DirectoryRepository(store: store, api: api, transport: directTransport, crypto: crypto);
+    directoryRepository = directory;
     pairing = PairingService(
       store: store,
       crypto: crypto,
       directory: directoryRepository,
       transport: directTransport,
     );
+    // Bundle 177 (7.8, 8.1): "X added you as a friend" with Remove / Block,
+    // in the open app and the closed app alike.
+    notifications.onFriendRemove = directoryRepository.removeContact;
+    notifications.onFriendBlock = directoryRepository.blockUser;
+    _friendSubs.add(pairing.addedBy.listen(_friendAdded));
+    _friendSubs.add(directory.addedBy.listen(_friendAdded));
+  }
+
+  final List<StreamSubscription<FriendAdded>> _friendSubs =
+      <StreamSubscription<FriendAdded>>[];
+
+  void _friendAdded(FriendAdded f) {
+    AppLogger.info('FRIEND_ADDED_NOTICE', detail: 'source=add');
+    unawaited(notifications
+        .showFriendAdded(
+            userId: f.userId,
+            deviceId: f.deviceId,
+            displayName: f.displayName)
+        .catchError((Object _) {}));
   }
 
   final LocalStore store;
@@ -295,7 +321,7 @@ class AppDependencies {
     viewMode.setServerConnected(false);
     await mesh.start();
     await wifiDirectFallback.start();
-    _publishNearbyIdentity();
+    publishNearbyIdentity();
     pairing.start();
     // Bundle 109: prime Wi-Fi Direct probing for trusted devices right after
     // boot — friends nearby link up without anyone opening Nearby.
@@ -319,7 +345,7 @@ class AppDependencies {
     viewMode.setServerConnected(socket.isConnected);
     await mesh.start();
     await wifiDirectFallback.start();
-    _publishNearbyIdentity();
+    publishNearbyIdentity();
     pairing.start();
     // Bundle 109: prime Wi-Fi Direct probing for trusted devices right after
     // boot — friends nearby link up without anyone opening Nearby.
@@ -340,7 +366,7 @@ class AppDependencies {
   /// cooldown, single-peer connect rule, 10-minute waiter expiry), so this
   /// is a hint, not a hammer.
   /// Bundle 155: advertise this phone's "who is who" tag on Wi-Fi Direct.
-  void _publishNearbyIdentity() {
+  void publishNearbyIdentity() {
     final id = store.deviceId;
     if (id == null || id.isEmpty) return;
     wifiDirectFallback.selfIdHash = NearbyTag.idFor(id);
@@ -404,6 +430,10 @@ class AppDependencies {
   }
 
   Future<void> dispose() async {
+    for (final sub in _friendSubs) {
+      unawaited(sub.cancel());
+    }
+    _friendSubs.clear();
     await directoryRepository.dispose();
     await messaging.dispose();
     await groupMessagingService.dispose();

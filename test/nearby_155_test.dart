@@ -255,8 +255,10 @@ void main() {
       });
       await Future<void>.delayed(Duration.zero);
       await service.requestRoute('yasir');
-      expect(repo.connects, [(_b, false, false)],
-          reason: 'join Yasir\'s group, automatic = never leave a group');
+      // Bundle 177 (Q6): without the shared group rules nothing connects
+      // (the old connect showed an "Accept invitation?" pop-up).
+      expect(repo.connects, isEmpty,
+          reason: 'silent joins only (177)');
       expect(NearbyTagRegistry.instance.byAddress.length, 2);
       await service.dispose();
     });

@@ -13,8 +13,10 @@ import 'package:locallink/core/services/app_logger.dart';
 /// list, the outbox and message notifications.
 /// Bundle 176: incoming calls RING here (notification + ringtone, Reject
 /// works); Accept opens the app, which takes the ringing call over.
+/// Bundle 177: Nearby (Wi-Fi Direct groups: search, join, start) and Add
+/// friend run here too.
 /// Not here (they need the open app): talking on a call, outgoing calls,
-/// Wi-Fi Direct groups, pairing, presence, admin network rules.
+/// presence, admin network rules sync, permission questions.
 enum BackgroundStart { run, noAccount, signedOut }
 
 BackgroundStart decideBackgroundStart({
@@ -93,7 +95,23 @@ class BackgroundRunner {
         },
       ),
       (name: 'routes', run: deps.routePolicy.start),
+      // Bundle 177 (4.1): Nearby (Wi-Fi Direct, no router) while closed.
+      // Slow search (NearbySearchCadence background + battery rules).
+      (name: 'mesh', run: deps.mesh.start),
+      (
+        name: 'nearby',
+        run: () async {
+          deps.wifiDirectFallback.setForeground(false);
+          await deps.wifiDirectFallback.start();
+          deps.publishNearbyIdentity();
+          deps.primeTrustedRoutes();
+        },
+      ),
       (name: 'contacts', run: deps.directoryRepository.start),
+      // Bundle 177 (7.10): Add friend works while closed.
+      (name: 'pairing', run: () async {
+        deps.pairing.start();
+      }),
       (name: 'messages', run: () async {
         deps.messaging.start();
       }),

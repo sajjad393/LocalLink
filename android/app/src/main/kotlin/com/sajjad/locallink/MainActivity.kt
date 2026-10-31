@@ -56,6 +56,16 @@ class MainActivity : FlutterActivity() {
             return true
         }
 
+        /** Bundle 177 (7.8): friend Remove / Block for the open app (false = closed). */
+        fun dispatchFriendAction(event: Map<String, Any?>): Boolean {
+            val activity = activeInstance ?: return false
+            activity.runOnUiThread {
+                val sink = activity.notificationEventSink
+                if (sink != null) sink.success(event) else activity.pendingNotificationActions.add(event)
+            }
+            return true
+        }
+
         private const val EXTRA_MESSAGE_ACTION_CONSUMED = "message_notification_action_consumed"
     }
 
@@ -77,47 +87,20 @@ class MainActivity : FlutterActivity() {
     private var voiceRecorder: MediaRecorder? = null
     private var voiceRecordingPath: String? = null
     private var voicePlayer: MediaPlayer? = null
-    private lateinit var wifiManager: WifiP2pManager
-    private lateinit var wifiChannel: WifiP2pManager.Channel
-    private var wifiP2pEnabled = false
+    // Bundle 177: this screen's Nearby event sink (NearbyRadio owns Nearby).
     private var wifiEventSink: EventChannel.EventSink? = null
+    private val backgroundLocationRequestCode = 7815
     private var transportEventSink: EventChannel.EventSink? = null
     private var localVideoTextureEntry: io.flutter.view.TextureRegistry.SurfaceTextureEntry? = null
     private var remoteVideoTextureEntry: io.flutter.view.TextureRegistry.SurfaceTextureEntry? = null
     private var localVideoSurface: Surface? = null
     private var remoteVideoSurface: Surface? = null
-    private var peerDevices: List<WifiP2pDevice> = emptyList()
-    private var wifiReceiverRegistered = false
-    // Bundle 155: "who is who" tags over Wi-Fi Direct service discovery.
-    private var nearbyTags: NearbyTagManager? = null
-    private var localNet: LocalNetManager? = null // Bundle 161
     private var callNotificationEventSink: EventChannel.EventSink? = null
     private val pendingCallNotificationActions = mutableListOf<Map<String, Any>>()
     private var notificationEventSink: EventChannel.EventSink? = null
     private val pendingNotificationActions = mutableListOf<Map<String, Any?>>()
     // Bundle 147: chat video picture-in-picture (never during calls).
     private val chatVideoPip by lazy { ChatVideoPip(this) }
-
-    private val wifiReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {
-                    wifiP2pEnabled = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1) == WifiP2pManager.WIFI_P2P_STATE_ENABLED
-                    wifiEventSink?.success(mapOf("type" to "state", "enabled" to wifiP2pEnabled))
-                    if (!wifiP2pEnabled) {
-                        // Wi-Fi Direct is an optional transport. Disabling it must not
-                        // tear down the LAN mesh or the background transport service.
-                        LocalLinkTransportService.updateConnection(context, false, false, null)
-                    } else {
-                        requestConnectionInfo()
-                    }
-                }
-                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> { requestPeers(); nearbyTags?.onPeersChanged() }
-                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> requestConnectionInfo()
-                WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> wifiEventSink?.success(mapOf("type" to "device_changed"))
-            }
-        }
-    }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         // Bundle 169 (4.3): the app is opened - the after-reboot background
@@ -240,60 +223,19 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
-        wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
-        wifiChannel = wifiManager.initialize(this, mainLooper, null)
-        nearbyTags = NearbyTagManager(this, wifiManager, wifiChannel, { hasWifiPermission() }, onWifi = { onWifiNetwork() }) { event ->
-            wifiEventSink?.success(event)
-        }
-        // Bundle 161: linked groups + LocalLink hotspot (tests, off by default).
-        localNet = LocalNetManager.bind(this, { nearbyTags }) { event -> wifiEventSink?.success(event) }
-        registerWifiReceiver()
-
+        // Bundle 177 (2): Nearby lives in NearbyRadio (application context), so
+        // closing this screen no longer stops it. Same channel, same answers.
+        NearbyRadio.ensure(this)
+        NearbyRadio.logState(this, "open")
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, wifiChannelName).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "isSupported" -> result.success(packageManager.hasSystemFeature("android.hardware.wifi.direct"))
-                "hasPermission" -> result.success(hasWifiPermission())
-                "isEnabled" -> {
-                    if (!hasWifiPermission()) { result.error("PERMISSION", "Nearby Wi-Fi permission is required", null); return@setMethodCallHandler }
-                    result.success(wifiP2pEnabled)
-                }
-                "requestEnable" -> requestWifiPermission(result)
-                "discoverPeers" -> discoverPeers(result)
-                "getPeers" -> result.success(peerDevices.map { peerMap(it) })
-                "connect" -> connectPeer(call.argument<String>("address"), call.argument<Int>("intent"), call.argument<Boolean>("allowLeaveGroup"), result)
-                // Bundle 155: identity tag (short hash of the device id) + current tags.
-                "setNearbyIdentity" -> {
-                    if (nearbyTags?.setIdentity(call.argument<String>("id")) == true) result.success(null)
-                    else result.error("INVALID_TAG_ID", "A valid nearby tag id is required", null)
-                }
-                "getNearbyTags" -> result.success(nearbyTags?.snapshot() ?: emptyList<Map<String, Any>>())
-                // Bundle 157: one shared group (create / join without pop-ups).
-                "setNearbyWanted" -> { nearbyTags?.setWanted(call.argument<List<String>>("ids")); result.success(null) }
-                "setNearbyBridge" -> { nearbyTags?.setBridge(call.argument<Boolean>("on") ?: false); result.success(null) }
-                // Bundle 167 (5.5): a voice call goes on here.
-                "setNearbyInCall" -> { nearbyTags?.setInCall(call.argument<Boolean>("on") ?: false); result.success(null) }
-                // Bundle 161: linked groups + LocalLink hotspot (null = started, else a reason).
-                "joinLocalNet" -> result.success(localNet?.join(
-                    call.argument<String>("kind").orEmpty(), call.argument<String>("ssid").orEmpty(),
-                    call.argument<String>("key").orEmpty(), call.argument<String>("v6")) ?: null)
-                "leaveLocalNet" -> { localNet?.leave(call.argument<String>("reason") ?: "app"); result.success(null) }
-                "startLocalHotspot" -> result.success(if (hasWifiPermission()) localNet?.startHotspot() else "permission")
-                "stopLocalHotspot" -> { localNet?.stopHotspot(call.argument<String>("reason") ?: "app"); result.success(null) }
-                "setNearbyLinkTarget" -> { nearbyTags?.setLinkTarget(call.argument<String>("id")); result.success(null) }
-                "localNetStatus" -> result.success(localNet?.status() ?: emptyMap<String, Any?>())
-                "createNearbyGroup" -> createNearbyGroup(result)
-                "joinNearbyGroup" -> joinNearbyGroup(call.argument<String>("name"), call.argument<String>("key"), call.argument<String>("address"), call.argument<Boolean>("leave") ?: false, result)
-                "cancelConnect" -> wifiManager.cancelConnect(wifiChannel, actionResult(result))
-                "disconnect" -> wifiManager.removeGroup(wifiChannel, actionResult(result))
-                "connectionInfo" -> connectionInfo(result)
-                "dispose" -> { unregisterWifiReceiver(); result.success(null) }
-                else -> result.notImplemented()
-            }
+            // The permission dialog needs this screen; everything else is NearbyRadio.
+            if (call.method == "requestEnable") requestWifiPermission(result)
+            else NearbyRadio.handle(call, result, null)
         }
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, wifiEventsName).setStreamHandler(object : EventChannel.StreamHandler {
-            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { wifiEventSink = events; requestPeers(); requestConnectionInfo() }
-            override fun onCancel(arguments: Any?) { wifiEventSink = null }
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { wifiEventSink = events; NearbyRadio.attach(events) }
+            override fun onCancel(arguments: Any?) { NearbyRadio.detach(wifiEventSink); wifiEventSink = null }
         })
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, transportChannelName).setMethodCallHandler { call, result ->
@@ -396,9 +338,9 @@ class MainActivity : FlutterActivity() {
                         }
                     }, "locallink-topology").start()
                     "flushQueue" -> Thread({ LocalLinkTransportService.flushQueue(); runOnUiThread { result.success(null) } }, "locallink-flush").start() // Bundle 117: off UI thread
-                    "resume" -> { requestConnectionInfo(); result.success(null) }
+                    "resume" -> { NearbyRadio.requestConnectionInfo(); result.success(null) }
                     "clearStorage" -> { LocalLinkTransportService.clearStorage(); result.success(null) }
-                    "stop" -> { LocalLinkTransportService.stop(this); result.success(null) }
+                    "stop" -> { LocalLinkTransportService.stop(this); NearbyRadio.shutdown("logout"); result.success(null) } // Bundle 177 (2.8): only Log out stops Nearby
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) { result.error("TRANSPORT_ERROR", e.message, null) }
@@ -517,7 +459,22 @@ class MainActivity : FlutterActivity() {
                         "battery_exempt" to powerManager().isIgnoringBatteryOptimizations(packageName),
                         "last_denied" to (LocalLinkTransportService.lastForegroundDenied() ?: BackgroundHealth.lastDenied(this)),
                         "enabled" to BackgroundHealth.isEnabled(this),
+                        // Bundle 177 (10.1): Nearby while closed (admin_off is added by Dart).
+                        "nearby" to NearbyRadio.statusWord(this),
                     ))
+                    // Bundle 177 (9.2): Android 10-12 need "Location: All the time"
+                    // for Nearby with no screen. Asked once, by the user's tap only.
+                    "backgroundLocationNeeded" -> result.success(
+                        android.os.Build.VERSION.SDK_INT in 29..32 &&
+                            NearbyRadio.hasPermission(this) &&
+                            !NearbyRadio.hasBackgroundLocation(this)
+                    )
+                    "requestBackgroundLocation" -> {
+                        if (android.os.Build.VERSION.SDK_INT in 29..32 && NearbyRadio.hasPermission(this)) {
+                            requestPermissions(arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION), backgroundLocationRequestCode)
+                        }
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             } catch (error: Exception) {
@@ -646,6 +603,18 @@ class MainActivity : FlutterActivity() {
                             call.argument<String>("body")?.trim().orEmpty(),
                             call.argument<Boolean>("silent") == true,
                             call.argument<Int>("visibility") ?: 0,
+                        )
+                        result.success(null)
+                    }
+                    // Bundle 177 (7.8): "X added you as a friend".
+                    "showFriendAdded" -> {
+                        LocalLinkNotificationManager.showFriendAdded(
+                            this,
+                            call.argument<Int>("notification_id") ?: 0,
+                            call.argument<String>("user_id")?.trim().orEmpty(),
+                            call.argument<String>("device_id")?.trim().orEmpty(),
+                            call.argument<String>("recipient_id")?.trim().orEmpty(),
+                            call.argument<String>("name")?.trim().orEmpty(),
                         )
                         result.success(null)
                     }
@@ -975,6 +944,11 @@ class MainActivity : FlutterActivity() {
         // Bundle 101: mic (7812) / camera (7813) denials re-enter Dart's
         // 10-minute re-ask loop — no settings-recovery dialog here.
         if (requestCode == 7812 || requestCode == 7813) return
+        // Bundle 177 (9.5): the screen re-reads the state on resume.
+        if (requestCode == backgroundLocationRequestCode) {
+            NearbyRadio.logState(this, "bg_location_answer")
+            return
+        }
         if (requestCode != wifiPermissionRequestCode) return
 
         val result = pendingWifiPermissionResult
@@ -982,8 +956,8 @@ class MainActivity : FlutterActivity() {
 
         if (hasWifiPermission()) {
             result?.success(null)
-            requestPeers()
-            requestConnectionInfo()
+            NearbyRadio.requestPeers()
+            NearbyRadio.requestConnectionInfo()
         } else {
             result?.error(
                 "PERMISSION_DENIED",
@@ -1182,8 +1156,8 @@ class MainActivity : FlutterActivity() {
     private fun requestWifiPermission(result: MethodChannel.Result) {
         if (hasWifiPermission()) {
             result.success(null)
-            requestPeers()
-            requestConnectionInfo()
+            NearbyRadio.requestPeers()
+            NearbyRadio.requestConnectionInfo()
             return
         }
 
@@ -1247,128 +1221,8 @@ class MainActivity : FlutterActivity() {
         requestPermissions(permissions, requestCode)
     }
 
-    private fun hasWifiPermission():Boolean=if(android.os.Build.VERSION.SDK_INT>=33)checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)==PackageManager.PERMISSION_GRANTED else checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
-    private fun registerWifiReceiver(){if(wifiReceiverRegistered)return;val filter=IntentFilter().apply{addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)};if(Build.VERSION.SDK_INT>=33)registerReceiver(wifiReceiver,filter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(wifiReceiver,filter);wifiReceiverRegistered=true}
-    private fun unregisterWifiReceiver(){if(!wifiReceiverRegistered)return;try{unregisterReceiver(wifiReceiver)}catch(_:Exception){};wifiReceiverRegistered=false}
-    private fun actionResult(result: MethodChannel.Result)=object:WifiP2pManager.ActionListener{override fun onSuccess(){result.success(null)}override fun onFailure(reason:Int){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}}
-    private fun requestPeers(){if(!hasWifiPermission())return;wifiManager.requestPeers(wifiChannel){list:WifiP2pDeviceList->peerDevices=list.deviceList.toList();wifiEventSink?.success(mapOf("type" to "peers","peers" to peerDevices.map{peerMap(it)}))}}
-    private fun requestConnectionInfo(){if(!hasWifiPermission())return;wifiManager.requestConnectionInfo(wifiChannel){info:WifiP2pInfo->val connected=info.groupFormed;val address=if(connected)info.groupOwnerAddress?.hostAddress else null;wifiEventSink?.success(mapOf("type" to "connection","connection" to mapOf("connected" to connected,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to address,"wifiNetwork" to onWifiNetwork(),"sdk" to Build.VERSION.SDK_INT)));nearbyTags?.onConnection(connected,info.isGroupOwner);LocalLinkTransportService.resume(this,connected,info.isGroupOwner,address)}}
-    private fun peerMap(device:WifiP2pDevice)=mapOf("name" to device.deviceName,"address" to device.deviceAddress,"status" to device.status)
-    private fun discoverPeers(result:MethodChannel.Result){
-        if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
-        wifiManager.discoverPeers(wifiChannel,object:WifiP2pManager.ActionListener{
-            override fun onSuccess(){
-                result.success(null)
-                // Bundle 155: also look for LocalLink tags (who is who).
-                nearbyTags?.scheduleDiscovery()
-            }
-            override fun onFailure(reason:Int){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}
-        })
-    }
-    /** Bundle 155: `groupOwnerIntent` must be 0..15 (it was 50 = invalid, so
-     *  the host was random). 15 = this phone wants to host, 0 = wants to join.
-     *  A phone that is a MEMBER of a group never leaves it for an automatic
-     *  attempt (allowLeaveGroup=false) — that would break its routes. */
-    private fun connectPeer(address:String?,intent:Int?,allowLeaveGroup:Boolean?,result:MethodChannel.Result){
-        if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
-        val normalized=address?.trim().orEmpty()
-        if(!Regex("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$").matches(normalized)){result.error("INVALID_ADDRESS","A valid Wi-Fi Direct device address is required",null);return}
-        val ownerIntent=(intent?:7).coerceIn(0,15)
-        val mayLeave=allowLeaveGroup?:true
-        wifiManager.requestConnectionInfo(wifiChannel){info->
-            val role=if(!info.groupFormed)"none" else if(info.isGroupOwner)"host" else "member"
-            if(info.groupFormed&&!info.isGroupOwner&&!mayLeave){
-                android.util.Log.i("NEARBY","connect skipped target=$normalized reason=member_keeps_group")
-                result.error("IN_GROUP_AS_MEMBER","This phone stays in its current nearby group",null)
-                return@requestConnectionInfo
-            }
-            android.util.Log.i("NEARBY","connect target=$normalized intent=$ownerIntent role=$role leave=$mayLeave")
-            wifiManager.connect(wifiChannel,WifiP2pConfig().apply{deviceAddress=normalized;groupOwnerIntent=ownerIntent},actionResult(result))
-        }
-    }
-    private fun connectionInfo(result:MethodChannel.Result){if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return};wifiManager.requestConnectionInfo(wifiChannel){info->result.success(mapOf("connected" to info.groupFormed,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to if(info.groupFormed)info.groupOwnerAddress?.hostAddress else null,"wifiNetwork" to onWifiNetwork(),"sdk" to Build.VERSION.SDK_INT))}}
-
-    /** Bundle 157: is this phone on a normal Wi-Fi network (router or
-     *  hotspot)? Wi-Fi Direct groups are not counted. Local Wi-Fi first. */
-    private fun onWifiNetwork():Boolean{
-        return try{
-            val cm=getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-            @Suppress("DEPRECATION")
-            // Bundle 161: the linked group / LocalLink hotspot network is not "on Wi-Fi".
-            cm.allNetworks.any{n->localNet?.owns(n)!=true&&cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)==true}
-        }catch(_:Exception){false}
-    }
-
-    /** Bundle 157: start a new shared group and become its host. Android 10+
-     *  gets a fresh name + password (published in the tag, so others join
-     *  without a pop-up); older phones let Android pick them (read back from
-     *  the group info). Never while already in a group. */
-    private fun createNearbyGroup(result:MethodChannel.Result){
-        if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
-        wifiManager.requestConnectionInfo(wifiChannel){info->
-            if(info.groupFormed){
-                android.util.Log.i("NEARBY","group create skipped reason=already_in_group host=${info.isGroupOwner}")
-                result.error("IN_GROUP","This phone is already in a nearby group",null)
-                return@requestConnectionInfo
-            }
-            val listener=object:WifiP2pManager.ActionListener{
-                override fun onSuccess(){android.util.Log.i("NEARBY","group create ok");result.success(null)}
-                override fun onFailure(reason:Int){android.util.Log.w("NEARBY","group create failed reason=$reason");result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}
-            }
-            try{
-                if(Build.VERSION.SDK_INT>=29){
-                    val name=NearbyGroupPolicy.newNetworkName()
-                    val config=WifiP2pConfig.Builder().setNetworkName(name).setPassphrase(NearbyGroupPolicy.newPassphrase()).enablePersistentMode(false).build()
-                    android.util.Log.i("NEARBY","group create grp=$name")
-                    wifiManager.createGroup(wifiChannel,config,listener)
-                }else{
-                    android.util.Log.i("NEARBY","group create legacy")
-                    wifiManager.createGroup(wifiChannel,listener)
-                }
-            }catch(e:Exception){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: ${e.message}",null)}
-        }
-    }
-
-    /** Bundle 157: join a nearby shared group. Android 10+ with the group's
-     *  name + password joins like a normal Wi-Fi network (no pop-up). Older
-     *  phones (or no password) use the classic connect to the host (one
-     *  pop-up). A phone in a group never leaves it unless [leave] (merge into
-     *  a bigger group, or the user's own Pair tap). */
-    private fun joinNearbyGroup(name:String?,key:String?,address:String?,leave:Boolean,result:MethodChannel.Result){
-        if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
-        val target=address?.trim().orEmpty()
-        val credentials=Build.VERSION.SDK_INT>=29&&NearbyGroupPolicy.validNetworkName(name)&&NearbyGroupPolicy.validPassphrase(key)
-        if(!credentials&&!Regex("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$").matches(target)){result.error("INVALID_ADDRESS","A valid Wi-Fi Direct device address is required",null);return}
-        wifiManager.requestConnectionInfo(wifiChannel){info->
-            if(!NearbyGroupPolicy.mayChangeGroup(info.groupFormed,info.isGroupOwner,leave)){
-                android.util.Log.i("NEARBY","group join skipped reason=member_keeps_group host=${info.isGroupOwner}")
-                result.error("IN_GROUP_AS_MEMBER","This phone stays in its current nearby group",null)
-                return@requestConnectionInfo
-            }
-            val doJoin={
-                val listener=object:WifiP2pManager.ActionListener{
-                    override fun onSuccess(){android.util.Log.i("NEARBY","group join requested");result.success(null)}
-                    override fun onFailure(reason:Int){android.util.Log.w("NEARBY","group join failed reason=$reason");result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}
-                }
-                try{
-                    if(credentials){
-                        android.util.Log.i("NEARBY","group join grp=$name mode=password")
-                        wifiManager.connect(wifiChannel,WifiP2pConfig.Builder().setNetworkName(name!!).setPassphrase(key!!).enablePersistentMode(false).build(),listener)
-                    }else{
-                        android.util.Log.i("NEARBY","group join target=$target mode=classic intent=0")
-                        wifiManager.connect(wifiChannel,WifiP2pConfig().apply{deviceAddress=target;groupOwnerIntent=0},listener)
-                    }
-                }catch(e:Exception){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: ${e.message}",null)}
-            }
-            if(info.groupFormed){
-                android.util.Log.i("NEARBY","group leave before join host=${info.isGroupOwner}")
-                wifiManager.removeGroup(wifiChannel,object:WifiP2pManager.ActionListener{
-                    override fun onSuccess(){android.os.Handler(mainLooper).postDelayed({doJoin()},1500L)}
-                    override fun onFailure(reason:Int){android.os.Handler(mainLooper).postDelayed({doJoin()},1500L)}
-                })
-            }else doJoin()
-        }
-    }
+    // Bundle 177 (2): Nearby (Wi-Fi Direct) moved to NearbyRadio (one owner for the app).
+    private fun hasWifiPermission():Boolean=NearbyRadio.hasPermission(this)
 
     private fun copyToCache(uri: Uri): Map<String,Any>{
         val resolver=contentResolver; val name=queryName(uri)?:"attachment"; val mime=resolver.getType(uri)?:"application/octet-stream"; val safeName=name.replace(Regex("[^A-Za-z0-9._-]"),"_"); val pickDir=File(filesDir,"locallink_picks").apply{mkdirs()}; val outFile=File(pickDir,"locallink_${UUID.randomUUID()}_$safeName"); resolver.openInputStream(uri).use{input->requireNotNull(input){"Could not open selected file"};FileOutputStream(outFile).use{output->input.copyTo(output)}}; return mapOf("path" to outFile.absolutePath,"name" to name,"content_type" to mime,"size" to outFile.length())
@@ -1388,7 +1242,11 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy(){
         chatVideoPip.dispose() // Bundle 147
-        if (!isChangingConfigurations) { localNet?.dispose(); localNet = null } // Bundle 161
+        // Bundle 177 (1, 2.7): Nearby keeps running when the screen closes
+        // (only Log out stops it); log what survives.
+        NearbyRadio.logState(this, if (isChangingConfigurations) "rotate" else "close")
+        NearbyRadio.detach(wifiEventSink)
+        wifiEventSink = null
         setCallProximity(false) // Bundle 143
         if (activeInstance === this) activeInstance = null
         callNotificationEventSink = null
@@ -1407,7 +1265,6 @@ class MainActivity : FlutterActivity() {
         LocalLinkTransportService.setEventListener(null)
         transportEventSink=null
         pendingWifiPermissionResult = null
-        unregisterWifiReceiver()
         val keepsRunning = !isChangingConfigurations
         super.onDestroy()
         // Bundle 175 (3): the screen is gone (Back exit / swipe) and its

@@ -311,10 +311,10 @@ void main() {
       expect(p.kind, NearbyGroupActionKind.create);
     });
 
-    test('older app on the other side: the 155 connect', () {
+    test('older app on the other side: no pop-up connect (177)', () {
       final p = _plan(tags: [_t(_b, 'old', gv: false)], pair: 'old');
-      expect(p.kind, NearbyGroupActionKind.legacyConnect);
-      expect(p.wantHost, isTrue);
+      expect(p.kind, NearbyGroupActionKind.none);
+      expect(p.reason, 'old_app');
     });
 
     test('waiting messages: join their group, or create one', () {
@@ -427,7 +427,7 @@ void main() {
       expect(p.kind, NearbyGroupActionKind.leave);
     });
 
-    test('host: the Pair target did not come by itself, invite once', () {
+    test('host: the Pair target did not come by itself, no pop-up (177)', () {
       final free = _t(_b, 'bilal');
       final early = _plan(
           role: NearbyGroupRole.host,
@@ -447,7 +447,8 @@ void main() {
           pair: 'bilal',
           pairAgeMs: 30000,
           pairInviteAllowed: true);
-      expect(late.kind, NearbyGroupActionKind.legacyConnect);
+      expect(late.kind, NearbyGroupActionKind.none);
+      expect(late.reason, 'pair_wait_silent');
       final again = _plan(
           role: NearbyGroupRole.host,
           myGroup: mine,
@@ -583,10 +584,10 @@ void main() {
       expect(repo.connects, isEmpty, reason: 'no pop-up connect');
     });
 
-    test('Pair on an untagged phone keeps the 155 connect', () async {
+    test('Add friend on an untagged phone: no pop-up connect (177)', () async {
       await service
           .pairTap(const WifiDirectPeer(name: 'Old', address: _c, status: 3));
-      expect(repo.connects, [(_c, true, true)]);
+      expect(repo.connects, isEmpty);
     });
 
     test('host left: the smallest id becomes the new host', () async {
@@ -656,8 +657,8 @@ void main() {
       });
       await _settle();
       expect(repo.joins, hasLength(2));
-      expect(repo.joins.last['key'], isNull,
-          reason: 'after a failed password join: the classic connect');
+      expect(repo.joins.last['key'], isNotNull,
+          reason: '177: always the silent password join (no classic connect)');
     });
   });
 }

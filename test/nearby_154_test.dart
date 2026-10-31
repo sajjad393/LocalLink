@@ -268,7 +268,7 @@ void main() {
       ], blocked: {
         'blockedx-00000009'
       });
-      expect(find.text('Pair'), findsOneWidget);
+      expect(find.text('Add friend'), findsOneWidget);
       // Bundle 170: a name (or "Nearby LocalLink user"), never a short id,
       // and no transport words.
       expect(find.text('Nearby LocalLink user'), findsOneWidget);
@@ -289,7 +289,7 @@ void main() {
       expect(find.text('Everyone nearby is already in your contacts.'),
           findsOneWidget);
       expect(find.text('See contacts'), findsOneWidget);
-      expect(find.text('Pair'), findsNothing);
+      expect(find.text('Add friend'), findsNothing);
       await finish(tester, deps);
     });
 
@@ -319,7 +319,7 @@ void main() {
       final deps = await pump(tester, meshPeers: [
         {'node_id': 'myother-00000002', 'state': 'DISCOVERED', 'transport': 'lan'},
       ], paired: const [], selfUserId: 'me-user');
-      expect(find.text('Pair'), findsNothing);
+      expect(find.text('Add friend'), findsNothing);
       expect(find.text('Looking for LocalLink phones…'), findsOneWidget);
       await finish(tester, deps);
     });
@@ -336,7 +336,7 @@ void main() {
           () => Future<void>.delayed(const Duration(milliseconds: 50)));
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('Ali Raza'), findsOneWidget);
-      expect(find.text('Pair'), findsNWidgets(2));
+      expect(find.text('Add friend'), findsNWidgets(2));
       await finish(tester, deps);
 
       deps = await pump(tester, meshPeers: peers, paired: const [], filter: 'al');
@@ -344,11 +344,11 @@ void main() {
           () => Future<void>.delayed(const Duration(milliseconds: 50)));
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('Ali Raza'), findsOneWidget);
-      expect(find.text('Pair'), findsOneWidget);
+      expect(find.text('Add friend'), findsOneWidget);
       await finish(tester, deps);
 
       deps = await pump(tester, meshPeers: peers, paired: const [], filter: 'qq');
-      expect(find.text('Pair'), findsNothing);
+      expect(find.text('Add friend'), findsNothing);
       expect(find.text('Nearby'), findsNothing);
       await finish(tester, deps);
     });

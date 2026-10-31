@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:locallink/core/services/local_store.dart';
+import 'package:locallink/features/calls/data/transport/network_policy.dart';
 import 'package:locallink/features/home/domain/background_brand_guide.dart';
 import 'package:locallink/features/home/presentation/widgets/background_status_card.dart';
 
@@ -10,6 +11,9 @@ import 'package:locallink/features/home/presentation/widgets/background_status_c
 class BackgroundRunScreen extends StatefulWidget {
   final LocalStore store;
   const BackgroundRunScreen({super.key, required this.store});
+
+  /// Bundle 177 (9.4): the Location "All the time" card was answered once.
+  static const bgLocationAskedKey = 'bg_location_asked';
 
   @override
   State<BackgroundRunScreen> createState() => _BackgroundRunScreenState();
@@ -24,6 +28,10 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
   bool _notificationsOn = true;
   bool _starting = false;
   static const _keepAliveKey = 'keep_alive_enabled';
+  // Bundle 177 (10, 9): Nearby while closed + the one-time Location ask.
+  String? _nearby;
+  bool _bgLocationNeeded = false;
+  bool _bgLocationAsked = false;
 
   bool _keepAlive = true;
   bool _batteryExempt = false;
@@ -60,11 +68,99 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
     try {
       final raw = await _bg.invokeMethod<Map<Object?, Object?>>('backgroundStatus');
       if (!mounted || raw == null) return;
+      final adminOff = widget.store.effectiveNetworkPolicy.wifiRadioPolicy ==
+          AdminWifiRadioPolicy.forcedOff;
       setState(() {
         _running = raw['running'] == true;
         _notificationsOn = raw['notifications'] != false;
+        final nearby = raw['nearby']?.toString();
+        _nearby = nearby == null ? null : (adminOff ? 'admin_off' : nearby);
       });
     } catch (_) {/* older native side: no card */}
+    await _loadBackgroundLocation();
+  }
+
+  /// Bundle 177 (9.3-9.5): Android 10-12 only, asked once, never from the
+  /// closed app, not part of the 10-minute permission loop.
+  Future<void> _loadBackgroundLocation() async {
+    try {
+      final needed =
+          await _bg.invokeMethod<bool>('backgroundLocationNeeded') ?? false;
+      final asked =
+          (await widget.store.readSetting(BackgroundRunScreen.bgLocationAskedKey) ?? '') == '1';
+      if (!mounted) return;
+      setState(() {
+        _bgLocationNeeded = needed;
+        _bgLocationAsked = asked;
+      });
+    } catch (_) {/* older native side: no card */}
+  }
+
+  Future<void> _answerBackgroundLocation(bool allow) async {
+    await widget.store.writeSetting(BackgroundRunScreen.bgLocationAskedKey, '1');
+    if (mounted) setState(() => _bgLocationAsked = true);
+    if (allow) {
+      try {
+        await _bg.invokeMethod<void>('requestBackgroundLocation');
+      } catch (_) {}
+    }
+  }
+
+  Widget _backgroundLocationCard() {
+    const orange = BackgroundStatusCard.orange;
+    if (_bgLocationAsked) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: const ValueKey('bg-location-turn-on'),
+          onPressed: () => _answerBackgroundLocation(true),
+          icon: const Icon(Icons.location_on_outlined, size: 18),
+          label: const Text('Find nearby friends when closed - Turn on'),
+        ),
+      );
+    }
+    return Container(
+      key: const ValueKey('bg-location-card'),
+      decoration: BoxDecoration(
+        color: orange.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: orange, width: 1.5),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(children: [
+            Icon(Icons.location_on_rounded, color: orange, size: 20),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text('Find nearby friends when closed',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          const Text(
+              'Your Android needs Location "All the time" for this. '
+              'LocalLink never saves where you are.',
+              style: TextStyle(fontSize: 13)),
+          const SizedBox(height: 8),
+          Row(children: [
+            FilledButton(
+              key: const ValueKey('bg-location-allow'),
+              style: FilledButton.styleFrom(backgroundColor: orange),
+              onPressed: () => _answerBackgroundLocation(true),
+              child: const Text('Allow'),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              key: const ValueKey('bg-location-not-now'),
+              onPressed: () => _answerBackgroundLocation(false),
+              child: const Text('Not now'),
+            ),
+          ]),
+        ],
+      ),
+    );
   }
 
   Future<void> _startService() async {
@@ -279,7 +375,12 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
               starting: _starting,
               onStart: _startService,
               onAllowNotifications: _allowNotifications,
+              nearby: _nearby,
             ),
+            const SizedBox(height: 20),
+          ],
+          if (_bgLocationNeeded) ...[
+            _backgroundLocationCard(),
             const SizedBox(height: 20),
           ],
           Text('BACKGROUND',

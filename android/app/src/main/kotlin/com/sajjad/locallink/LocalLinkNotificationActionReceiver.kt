@@ -9,6 +9,12 @@ import android.os.Build
 /** Converts notification actions into validated Flutter-layer events. */
 class LocalLinkNotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == LocalLinkNotificationManager.ACTION_FRIEND_REMOVE ||
+            intent.action == LocalLinkNotificationManager.ACTION_FRIEND_BLOCK
+        ) {
+            onFriendAction(context, intent)
+            return
+        }
         val action = when (intent.action) {
             LocalLinkNotificationManager.ACTION_OPEN -> "open"
             LocalLinkNotificationManager.ACTION_REPLY -> "reply"
@@ -89,5 +95,43 @@ class LocalLinkNotificationActionReceiver : BroadcastReceiver() {
         }
         dispatchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         context.startActivity(dispatchIntent)
+    }
+
+    /**
+     * Bundle 177 (7.8): Remove / Block on "X added you as a friend". Goes to
+     * the open app, else the no-screen engine, else it waits in the outbox
+     * for the next app start. Never opens the app.
+     */
+    private fun onFriendAction(context: Context, intent: Intent) {
+        val action = LocalLinkNotificationManager.shortAction(intent.action ?: "")
+        val declared = intent.getStringExtra(LocalLinkNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
+        val type = intent.getStringExtra(LocalLinkNotificationManager.EXTRA_CONVERSATION_TYPE)?.trim().orEmpty()
+        val userId = intent.getStringExtra(LocalLinkNotificationManager.EXTRA_CONVERSATION_ID)?.trim().orEmpty()
+        val deviceId = intent.getStringExtra(LocalLinkNotificationManager.EXTRA_SENDER_ID)?.trim().orEmpty()
+        val recipientId = intent.getStringExtra(LocalLinkNotificationManager.EXTRA_RECIPIENT_ID)?.trim().orEmpty()
+        val notificationId = intent.getIntExtra(LocalLinkNotificationManager.EXTRA_NOTIFICATION_ID, 0)
+        if (action !in FRIEND_ACTIONS || declared != action || type != "friend" ||
+            userId.isEmpty() || userId.length > 128 || notificationId <= 0
+        ) return
+        val event = mapOf<String, Any?>(
+            "action" to action,
+            "notification_id" to notificationId,
+            "conversation_type" to "friend",
+            "conversation_id" to userId,
+            "message_id" to "friend",
+            "sender_id" to deviceId,
+            "recipient_id" to recipientId,
+        )
+        val where = when {
+            MainActivity.dispatchFriendAction(event) -> "app"
+            BackgroundEngine.dispatchNotificationAction(event) -> "bg_engine"
+            else -> { NotificationActionOutbox.add(context, event); "saved" }
+        }
+        android.util.Log.i("LocalLinkPair", "FRIEND_ACTION action=$action to=$where")
+        LocalLinkNotificationManager.cancel(context, notificationId)
+    }
+
+    companion object {
+        val FRIEND_ACTIONS = setOf("friend_remove", "friend_block")
     }
 }

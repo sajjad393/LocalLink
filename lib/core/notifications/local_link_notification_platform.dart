@@ -170,6 +170,26 @@ final class LocalLinkNotificationPlatform {
     } catch (_) {}
   }
 
+  /// Bundle 177 (7.8): "X added you as a friend" with Remove / Block.
+  Future<void> showFriendAdded({
+    required int notificationId,
+    required String userId,
+    required String deviceId,
+    required String recipientId,
+    required String name,
+  }) async {
+    if (_disposed) return;
+    try {
+      await _channel.invokeMethod<void>('showFriendAdded', {
+        'notification_id': notificationId,
+        'user_id': userId,
+        'device_id': deviceId,
+        'recipient_id': recipientId,
+        'name': name,
+      });
+    } catch (_) {}
+  }
+
   Future<void> cancelNotification(int notificationId) async {
     if (_disposed) return;
     if (notificationId <= 0) return;

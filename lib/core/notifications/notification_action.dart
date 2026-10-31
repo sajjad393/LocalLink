@@ -1,8 +1,9 @@
 import 'package:equatable/equatable.dart';
 
-enum NotificationActionType { open, reply, markRead }
+/// Bundle 177 (7.8): friendRemove / friendBlock = "X added you as a friend".
+enum NotificationActionType { open, reply, markRead, friendRemove, friendBlock }
 
-enum NotificationConversationType { direct, group, system }
+enum NotificationConversationType { direct, group, system, friend }
 
 final class LocalLinkNotificationAction extends Equatable {
   final NotificationActionType action;
@@ -36,6 +37,10 @@ final class LocalLinkNotificationAction extends Equatable {
           return NotificationActionType.reply;
         case 'mark_read':
           return NotificationActionType.markRead;
+        case 'friend_remove':
+          return NotificationActionType.friendRemove;
+        case 'friend_block':
+          return NotificationActionType.friendBlock;
         default:
           throw const FormatException('Unknown notification action');
       }
@@ -49,6 +54,8 @@ final class LocalLinkNotificationAction extends Equatable {
           return NotificationConversationType.group;
         case 'system':
           return NotificationConversationType.system;
+        case 'friend':
+          return NotificationConversationType.friend;
         default:
           throw const FormatException('Unknown notification conversation type');
       }

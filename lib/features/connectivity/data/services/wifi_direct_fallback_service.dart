@@ -179,6 +179,28 @@ final class WifiDirectFallbackService {
   /// or off when nobody waits and this phone is on Wi-Fi alone).
   bool _foreground = true;
 
+  /// Bundle 177 (4.3): battery for the closed-app search rules (Q2).
+  int _batteryLevel = -1;
+  bool _batteryCharging = false;
+  bool _batteryStopLogged = false;
+
+  /// Bundle 177 (4.4): true = the admin switched Wi-Fi off for this phone, so
+  /// Nearby does nothing (no search, no join, no new group).
+  bool Function()? nearbyOff;
+
+  bool _off() {
+    try {
+      return nearbyOff?.call() ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Bundle 177 (6.1): Add friend on a phone whose tag is not known yet -
+  /// wait for its tag (60 s) instead of the old pop-up connect.
+  String? _pairWaitAddress;
+  int _pairWaitUntil = 0;
+
   /// Bundle 159.3: read-only state for the admin view (no keys, no names).
   Map<String, Object?> nearbyStatus() => <String, Object?>{
         'role': _role.name,
@@ -187,6 +209,7 @@ final class WifiDirectFallbackService {
         'bridge': _bridging,
         'charging': _selfCharging,
         'foreground': _foreground,
+        'battery': _batteryLevel,
         'nearby_tags': _tags.length,
         'waiting': _waitingSince.length,
         'plan': _lastPlanReason,
@@ -208,6 +231,7 @@ final class WifiDirectFallbackService {
   final Map<String, int> _firstSeen = <String, int>{};
   final Map<String, String> _tagState = <String, String>{};
   String? _pairTarget;
+  String? _lastSilentSkip;
   int _pairUntil = 0;
   int _pairAt = 0;
   bool _pairInvited = false;
@@ -314,10 +338,28 @@ final class WifiDirectFallbackService {
     if (_started || _disposed) return;
     _started = true;
     _wifiSubscription = connectivity.wifiDirectEvents.listen(_handleWifiEvent);
+    // Bundle 177 (5.2): start from the real group state (the closed app may
+    // already be in a group), never "leave then join again".
+    unawaited(_readRealState());
     if (groupMode) _armGroupTimer();
     if (_localNet != null && !_listening) {
       _listening = true;
       experiments.addListener(_onExperimentsChanged);
+    }
+  }
+
+  Future<void> _readRealState() async {
+    try {
+      final c = await connectivity.wifiDirectConnectionInfo();
+      if (_disposed) return;
+      if (c.connected && _role == NearbyGroupRole.none) {
+        _applyConnection(c);
+      } else {
+        _batteryLevel = c.batteryLevel;
+        _batteryCharging = c.charging;
+      }
+    } catch (_) {
+      // No Nearby on this phone / tests: the events fill it in later.
     }
   }
 
@@ -339,10 +381,15 @@ final class WifiDirectFallbackService {
     final address = peer.address.trim().toLowerCase();
     final tag = _tags[address] ?? NearbyTagRegistry.instance.tagFor(address);
     if (!groupMode || tag == null) {
-      await connectivity.connectWifiDirect(peer.address,
-          wantHost: !(tag?.host ?? false), allowLeaveGroup: true);
+      // Bundle 177 (Q6): no pop-up connect. Look for the phone's tag and add
+      // it the silent way as soon as the tag shows up (60 s).
+      _pairWaitAddress = address;
+      _pairWaitUntil = _clock() + 60 * 1000;
+      AppLogger.info('NEARBY', detail: 'pair_wait_tag group_mode=$groupMode');
+      unawaited(_groupDiscovery());
       return;
     }
+    _pairWaitAddress = null;
     _pairTarget = tag.idHash;
     _pairAt = _clock();
     _pairUntil = _pairAt + 60 * 1000;
@@ -411,6 +458,19 @@ final class WifiDirectFallbackService {
         ..addAll({for (final t in tags) t.address: t});
       NearbyTagRegistry.instance.ingest(tags);
       _trackTags(tags);
+      // Bundle 177 (6.1): the phone we wait for now has a tag.
+      final waitFor = _pairWaitAddress;
+      if (waitFor != null) {
+        if (_clock() > _pairWaitUntil) {
+          _pairWaitAddress = null;
+        } else if (groupMode && _tags.containsKey(waitFor)) {
+          _pairWaitAddress = null;
+          final t = _tags[waitFor]!;
+          unawaited(pairTap(WifiDirectPeer(
+              name: t.idHash, address: waitFor, status: 3)));
+          return;
+        }
+      }
       if (groupMode) {
         unawaited(_evaluateGroup());
       } else {
@@ -476,6 +536,7 @@ final class WifiDirectFallbackService {
 
   Future<void> _discoverAndConnect() async {
     if (_disposed || _waitingSince.isEmpty || _discoveryInFlight) return;
+    if (_off()) return;
     _discoveryInFlight = true;
     try {
       if (!await connectivity.isWifiDirectSupported()) {
@@ -483,8 +544,13 @@ final class WifiDirectFallbackService {
         return;
       }
       if (!await connectivity.isWifiDirectPermissionGranted()) {
-        await connectivity.requestWifiDirectEnable();
-        _record('permission_requested');
+        // Bundle 177 (2.10): never ask from the closed app.
+        if (_foreground) {
+          await connectivity.requestWifiDirectEnable();
+          _record('permission_requested');
+        } else {
+          _record('no_permission_background');
+        }
         return;
       }
       // Bundle 155: no more early "already_connected" stop — a host can
@@ -547,15 +613,13 @@ final class WifiDirectFallbackService {
         }
         return;
       }
-      final address = plan.address!;
-      _attemptedAddresses[address.trim().toLowerCase()] = now;
+      // Bundle 177 (Q6): the old pop-up connect is gone. Without the shared
+      // group rules (no identity yet) nothing connects; the group rules take
+      // over once this phone's tag is published.
+      _attemptedAddresses[plan.address!.trim().toLowerCase()] = now;
       AppLogger.info('NEARBY',
-          detail: 'auto_connect reason=${plan.reason} '
-              'intent=${plan.wantHost ? 15 : 0} role='
-              '${!connection.connected ? 'none' : connection.groupOwner ? 'host' : 'member'}');
-      await connectivity.connectWifiDirect(address,
-          wantHost: plan.wantHost, allowLeaveGroup: false);
-      _record('connection_requested');
+          detail: 'silent_only_skip reason=${plan.reason}');
+      _record('silent_only_skip');
     } catch (error) {
       AppDiagnostics.instance.recordException(
         'wifi_direct_fallback',
@@ -619,6 +683,8 @@ final class WifiDirectFallbackService {
   }
 
   void _applyConnection(WifiDirectConnection c) {
+    _batteryLevel = c.batteryLevel;
+    _batteryCharging = c.charging;
     if (c.wifiNetwork && !_onWifiNetwork) _wifiSince = _clock();
     if (!c.wifiNetwork) _wifiSince = 0;
     _onWifiNetwork = c.wifiNetwork;
@@ -746,7 +812,21 @@ final class WifiDirectFallbackService {
       inGroup: _role != NearbyGroupRole.none,
       onWifi: _usableWifi,
       waiting: _waitingSince.isNotEmpty,
+      batteryLevel: _batteryLevel,
+      charging: _batteryCharging,
     );
+    // Bundle 177 (Q2): log the battery stop once per low-battery spell.
+    final batteryStop = !_foreground &&
+        !_batteryCharging &&
+        _batteryLevel >= 0 &&
+        _batteryLevel <= NearbySearchCadence.stopBatteryLevel;
+    if (batteryStop && !_batteryStopLogged) {
+      _batteryStopLogged = true;
+      AppLogger.info('NEARBY_BG_BATTERY_STOP', detail: 'level=$_batteryLevel');
+    } else if (!batteryStop) {
+      _batteryStopLogged = false;
+    }
+    if (_off()) return;
     if (everyMs > 0 &&
         !_discoveryInFlight &&
         now - _lastGroupDiscoveryAt >= everyMs) {
@@ -757,7 +837,7 @@ final class WifiDirectFallbackService {
   }
 
   Future<void> _groupDiscovery() async {
-    if (_discoveryInFlight) return;
+    if (_discoveryInFlight || _off()) return;
     _discoveryInFlight = true;
     try {
       if (!await connectivity.isWifiDirectSupported()) return;
@@ -797,6 +877,7 @@ final class WifiDirectFallbackService {
     final group = _group;
     final self = _selfHash;
     if (group == null || self == null || _disposed) return;
+    if (_off()) return;
     if (_groupBusy) {
       // Never drop a user's tap: run again right after this round.
       if (userTap) _pendingUserTap = true;
@@ -858,11 +939,16 @@ final class WifiDirectFallbackService {
                 'tags=${_tags.length}');
       }
       if (!plan.acts) return;
-      if (!_backoff.mayAct(now, userTap: userTap)) return;
-      if (plan.kind == NearbyGroupActionKind.legacyConnect &&
-          _pairTarget != null) {
-        _pairInvited = true;
+      // Bundle 177 (Q6): never the pop-up connect (older app on the other
+      // phone). It needs the new app.
+      if (plan.kind == NearbyGroupActionKind.legacyConnect) {
+        if (_lastSilentSkip != plan.address) {
+          _lastSilentSkip = plan.address;
+          AppLogger.info('NEARBY', detail: 'silent_only_skip reason=old_app');
+        }
+        return;
       }
+      if (!_backoff.mayAct(now, userTap: userTap)) return;
       await _runGroupAction(group, plan, now);
     } finally {
       _groupBusy = false;
@@ -900,11 +986,11 @@ final class WifiDirectFallbackService {
         case NearbyGroupActionKind.join:
         case NearbyGroupActionKind.leaveAndJoin:
           final host = plan.host!;
-          // After 1 failed password join, use the classic connect.
-          final useKey = (_joinFailures[host.address] ?? 0) == 0;
+          // Bundle 177 (Q6): always the silent password join (the classic
+          // connect fallback showed a pop-up). Failures use the backoff.
           await group.joinNearbyGroup(
-            name: useKey ? host.group : null,
-            key: useKey ? host.key : null,
+            name: host.group,
+            key: host.key,
             address: host.address,
             leave: plan.kind == NearbyGroupActionKind.leaveAndJoin,
           );
@@ -913,8 +999,8 @@ final class WifiDirectFallbackService {
         case NearbyGroupActionKind.leave:
           await connectivity.disconnectWifiDirect();
         case NearbyGroupActionKind.legacyConnect:
-          await connectivity.connectWifiDirect(plan.address!,
-              wantHost: plan.wantHost, allowLeaveGroup: false);
+          // Bundle 177 (Q6): never planned into an action (see above).
+          break;
         case NearbyGroupActionKind.none:
           break;
       }

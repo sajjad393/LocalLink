@@ -32,6 +32,12 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   final IdentityCryptoService crypto;
   final _updates = StreamController<DirectoryProfile>.broadcast();
 
+  /// Bundle 177 (8.1, 8.2): someone else added this account (Online Add or
+  /// a signed contact edge) - the app shows "X added you as a friend".
+  final _addedBy = StreamController<FriendAdded>.broadcast();
+  Stream<FriendAdded> get addedBy => _addedBy.stream;
+  static const firstContactsSyncKey = 'contacts_first_sync_done';
+
   StreamSubscription<Map<String, dynamic>>? _transportSub;
   Timer? _syncTimer;
   bool _started = false;
@@ -890,10 +896,22 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       // are protected by not being in `confirmed`.
       final remote = await api.listAccountContacts();
       final remoteIds = <String>{};
+      // Bundle 177 (8.2): no "added you" notices on the first sync after an
+      // install / restore (that would be one per old contact).
+      final announce =
+          (await store.readSetting(firstContactsSyncKey) ?? '') == '1';
       for (final contact in remote) {
         if (contact.userId.isEmpty || contact.userId == accountId) continue;
-        remoteIds.add(contact.userId);
         final hadLocal = await store.isContact(contact.userId);
+        // Bundle 177 (Q10): a blocked person's add is ignored silently.
+        if (!hadLocal && await store.isBlocked(contact.userId)) {
+          AppLogger.info('PAIR_BLOCKED_IGNORED', detail: 'source=server');
+          continue;
+        }
+        remoteIds.add(contact.userId);
+        if (!hadLocal && announce && contact.deviceId.isNotEmpty) {
+          unawaited(_announceAdded(contact.userId, contact.deviceId));
+        }
         if (contact.deviceId.isNotEmpty || !hadLocal) {
           await store.addContact(contact.userId, contact.deviceId);
         }
@@ -910,6 +928,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         await store.removeContact(id);
       }
       await store.saveServerConfirmedContactIds(remoteIds);
+      if (!announce) await store.writeSetting(firstContactsSyncKey, '1');
     } catch (e) {
       // Never silently discard sync failures: log and leave local state
       // untouched; the next cycle retries both directions.
@@ -1008,8 +1027,13 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     await store.saveContactEdgeState(edge.fromUserId, edge.op, edge.edgeTs);
     if (edge.op == ContactEdge.opAdd) {
       final fromDevice = edge.fromDeviceId;
+      // Bundle 177 (8.1): new here = "X added you as a friend".
+      final wasContact = await store.isContact(edge.fromUserId);
       if (fromDevice.isNotEmpty) {
         await store.addContact(edge.fromUserId, fromDevice);
+        if (!wasContact) {
+          unawaited(_announceAdded(edge.fromUserId, fromDevice));
+        }
       } else if (!await store.isContact(edge.fromUserId)) {
         return; // can't add without a usable device id
       }
@@ -1136,6 +1160,28 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   @override
   Future<bool> isBlocked(String userId) => store.isBlocked(userId);
 
+  /// Bundle 177 (8.1, 8.2): tell the app (name looked up first).
+  Future<void> _announceAdded(String userId, String deviceId) async {
+    var name = '';
+    try {
+      final profile = await getProfile(userId)
+          .timeout(const Duration(seconds: 5));
+      name = profile?.displayName ?? '';
+    } catch (_) {}
+    if (name.isEmpty) {
+      try {
+        name = (await store.directoryProfile(userId))?['display_name']
+                ?.toString() ??
+            '';
+      } catch (_) {}
+    }
+    if (_addedBy.isClosed) return;
+    _addedBy.add(FriendAdded(
+        userId: userId,
+        deviceId: deviceId,
+        displayName: name.isEmpty ? 'LocalLink user' : name));
+  }
+
   @override
   Future<void> dispose() async {
     _syncTimer?.cancel();
@@ -1143,6 +1189,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     await _transportSub?.cancel();
     _transportSub = null;
     await _updates.close();
+    await _addedBy.close();
     _started = false;
   }
 }

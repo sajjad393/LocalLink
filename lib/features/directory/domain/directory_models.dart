@@ -129,3 +129,16 @@ class DirectoryProfile {
         directorySyncEnabled: directorySyncEnabled ?? this.directorySyncEnabled,
       );
 }
+
+/// Bundle 177 (Q8): someone added this phone as a friend (no accept box).
+class FriendAdded {
+  final String userId;
+  final String deviceId;
+  final String displayName;
+
+  const FriendAdded({
+    required this.userId,
+    required this.deviceId,
+    required this.displayName,
+  });
+}

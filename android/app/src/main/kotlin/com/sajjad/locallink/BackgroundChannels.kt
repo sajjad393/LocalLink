@@ -15,8 +15,7 @@ import io.flutter.plugin.common.MethodChannel
  *
  * - transport (Local Wi-Fi + mesh), its events, the device id;
  * - message notifications;
- * - Wi-Fi Direct answers "not available" (groups without Wi-Fi need the open
- *   app), so the transport runs on Local Wi-Fi only until the app is opened;
+ * - Nearby (Wi-Fi Direct) through NearbyRadio with an allowed list (177);
  * - notification taps / Reply stay in the 162 outbox for the app.
  *
  * Same channel names and arguments as MainActivity, so the Dart code is the same.
@@ -29,7 +28,10 @@ class BackgroundChannels(
     private var transportSink: EventChannel.EventSink? = null
     // Bundle 176: Reject on the call notification while the app is closed.
     private var callActionSink: EventChannel.EventSink? = null
+    private var notificationSink: EventChannel.EventSink? = null
     @Volatile private var ringing = false
+    // Bundle 177: this engine's Nearby event sink.
+    private var nearbySink: EventChannel.EventSink? = null
     private val transportListener = object : LocalLinkTransportService.EventListener {
         override fun onTransportEvent(type: String, data: Map<String, Any?>) {
             main.post { transportSink?.success(data) }
@@ -46,23 +48,17 @@ class BackgroundChannels(
             } else result.notImplemented()
         }
 
+        // Bundle 177 (3): the real Nearby (one owner, NearbyRadio) with an
+        // allowed list only - no pop-ups, no hotspot / linked-group tests.
+        NearbyRadio.ensure(context)
+        NearbyRadio.logState(context, "bg_start")
         MethodChannel(messenger, WIFI_CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "isSupported" -> result.success(context.packageManager.hasSystemFeature("android.hardware.wifi.direct"))
-                // Wi-Fi Direct needs the open app: Local Wi-Fi only in the background.
-                "hasPermission", "isEnabled" -> result.success(false)
-                "getPeers", "getNearbyTags" -> result.success(emptyList<Map<String, Any?>>())
-                "localNetStatus" -> result.success(emptyMap<String, Any?>())
-                "connectionInfo" -> result.success(mapOf(
-                    "connected" to false, "groupOwner" to false, "groupOwnerAddress" to null,
-                    "wifiNetwork" to false, "sdk" to Build.VERSION.SDK_INT,
-                ))
-                "setNearbyIdentity", "setNearbyWanted", "setNearbyBridge", "setNearbyInCall",
-                "setNearbyLinkTarget", "leaveLocalNet", "dispose" -> result.success(null)
-                else -> result.notImplemented()
-            }
+            NearbyRadio.handle(call, result, NearbyBackgroundPolicy.BG_ALLOWED)
         }
-        EventChannel(messenger, WIFI_EVENTS).setStreamHandler(QuietStream)
+        EventChannel(messenger, WIFI_EVENTS).setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { nearbySink = events; NearbyRadio.attach(events) }
+            override fun onCancel(arguments: Any?) { NearbyRadio.detach(nearbySink); nearbySink = null }
+        })
 
         MethodChannel(messenger, TRANSPORT_CHANNEL).setMethodCallHandler { call, result ->
             try { handleTransport(call, result) } catch (e: Exception) {
@@ -85,7 +81,11 @@ class BackgroundChannels(
                 result.error("NOTIFICATION_ERROR", e.message, null)
             }
         }
-        EventChannel(messenger, "locallink/notification_actions").setStreamHandler(QuietStream)
+        // Bundle 177 (7.8): friend Remove / Block reach this engine too.
+        EventChannel(messenger, "locallink/notification_actions").setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { notificationSink = events }
+            override fun onCancel(arguments: Any?) { notificationSink = null }
+        })
 
         // Bundle 176 (1, 2): incoming calls ring with no screen. Same channel
         // names as MainActivity; the call itself is answered in the app
@@ -158,6 +158,11 @@ class BackgroundChannels(
     fun release() {
         transportSink = null
         callActionSink = null
+        notificationSink = null
+        // Bundle 177 (3.4): only stop listening - never leave the group,
+        // clear the tag or stop the search (the app engine takes over).
+        NearbyRadio.detach(nearbySink)
+        nearbySink = null
         LocalLinkTransportService.clearEventListenerIf(transportListener)
         // Bundle 176 (5): never leave the ringtone playing without an engine.
         // The app engine starts it again if the call still rings.
@@ -167,6 +172,13 @@ class BackgroundChannels(
     /** Bundle 176 (4): a call notification action for this engine. False = nobody listens. */
     fun dispatchCallAction(event: Map<String, Any?>): Boolean {
         val sink = callActionSink ?: return false
+        main.post { try { sink.success(event) } catch (_: Exception) {} }
+        return true
+    }
+
+    /** Bundle 177 (7.8): a friend notification action. False = nobody listens. */
+    fun dispatchNotificationAction(event: Map<String, Any?>): Boolean {
+        val sink = notificationSink ?: return false
         main.post { try { sink.success(event) } catch (_: Exception) {} }
         return true
     }
@@ -328,6 +340,7 @@ class BackgroundChannels(
                 result.success(null)
             }
             "cancelMessages" -> { LocalLinkNotificationManager.cancelMessages(context); result.success(null) }
+            "showFriendAdded" -> { showFriendAdded(call); result.success(null) }
             else -> result.notImplemented()
         }
     }
@@ -350,11 +363,14 @@ class BackgroundChannels(
     private fun mapToPayload(values: Map<*, *>?): Map<String, Any?> =
         buildMap { values?.forEach { (k, v) -> if (k != null && v != null) put(k.toString(), v) } }
 
-    /** A stream the Dart side may listen to; it just never sends anything. */
-    private object QuietStream : EventChannel.StreamHandler {
-        override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {}
-        override fun onCancel(arguments: Any?) {}
-    }
+    private fun showFriendAdded(call: MethodCall) = LocalLinkNotificationManager.showFriendAdded(
+        context,
+        call.argument<Int>("notification_id") ?: 0,
+        call.argument<String>("user_id")?.trim().orEmpty(),
+        call.argument<String>("device_id")?.trim().orEmpty(),
+        call.argument<String>("recipient_id")?.trim().orEmpty(),
+        call.argument<String>("name")?.trim().orEmpty(),
+    )
 
     companion object {
         private const val TAG = "LocalLinkBoot"

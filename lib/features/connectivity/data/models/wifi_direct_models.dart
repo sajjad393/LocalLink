@@ -33,6 +33,11 @@ class WifiDirectConnection {
   /// Bundle 157: Android SDK level (0 = unknown).
   final int sdk;
 
+  /// Bundle 177 (4.3): battery 0-100 (-1 = unknown) and charging, for the
+  /// closed-app search rules.
+  final int batteryLevel;
+  final bool charging;
+
   const WifiDirectConnection({
     required this.connected,
     required this.groupOwner,
@@ -40,6 +45,8 @@ class WifiDirectConnection {
     this.interfaceName,
     this.wifiNetwork = false,
     this.sdk = 0,
+    this.batteryLevel = -1,
+    this.charging = false,
   });
 
   factory WifiDirectConnection.fromMap(Map<dynamic, dynamic> map) =>
@@ -50,5 +57,7 @@ class WifiDirectConnection {
         interfaceName: map['interfaceName']?.toString(),
         wifiNetwork: map['wifiNetwork'] == true,
         sdk: (map['sdk'] as num?)?.toInt() ?? 0,
+        batteryLevel: (map['batteryLevel'] as num?)?.toInt() ?? -1,
+        charging: map['charging'] == true,
       );
 }

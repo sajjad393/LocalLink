@@ -219,17 +219,18 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     if (!await c.hasWifiDirectPermission()) {
       await c.requestWifiDirectEnable();
       _snack(
-          'Allow the "Nearby devices" permission, then tap Pair again.');
+          'Allow the "Nearby devices" permission, then tap Add friend again.');
       return;
     }
-    _snack('Asking the other phone to accept…');
+    _snack('Waiting for this phone…');
     // Bundle 154 (F6): remember which unpaired phones were already visible,
     // so the phone that appears right after this tap gets the request —
     // already-paired phones nearby no longer block pairing.
     final before = _unpairedDiscoveredIds().toSet();
     // Bundle 155: a tagged phone is matched exactly by its tag id.
     final wanted = NearbyTagRegistry.instance.tagFor(peer.address)?.idHash;
-    unawaited(c.connectWifiDirect(peer));
+    // Bundle 177 (Q6): silent join only (no "Accept invitation?" pop-up).
+    unawaited(c.nearbyAddFriendTap(peer));
     String? target = wanted == null
         ? pickPairTarget(
             unpairedBefore: before, unpairedNow: _unpairedDiscoveredIds())
@@ -274,7 +275,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
       AppLogger.warning('PAIR_UI',
           detail: 'PAIR_AMBIGUOUS count=${_unpairedDiscoveredIds().length}');
       if (_unpairedDiscoveredIds().isNotEmpty) {
-        _snack('Tap Pair next to the phone you want to add.');
+        _snack('Tap Add friend next to the phone you want to add.');
       }
       return;
     }
@@ -305,7 +306,8 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         AppLogger.warning('PAIR_TAP', detail: 'stage=calling_requestPair attempt=${attempt + 1}');
         await widget.pairing.requestPair(peer.nodeId);
         AppLogger.warning('PAIR_TAP', detail: 'stage=requestPair_returned_ok');
-        _snack('Pair request sent — the other phone will be asked to accept.');
+        // Bundle 177 (7.3): no accept box any more; "<name> added" follows.
+        _snack('Adding ${_personName(peer.nodeId) ?? 'this phone'}…');
         return;
       } catch (error) {
         AppLogger.warning('PAIR_TAP', detail: 'stage=caught error=$error');
@@ -367,7 +369,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
                           fontSize: 20, color: scheme.onPrimaryContainer)),
             ),
             const SizedBox(height: 12),
-            Text('Pair with $displayName?',
+            Text('Add $displayName as a friend?',
                 style: Theme.of(sheetContext).textTheme.titleMedium,
                 textAlign: TextAlign.center),
             const SizedBox(height: 4),
@@ -409,8 +411,8 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
               width: double.infinity,
               child: FilledButton.icon(
                 onPressed: () => Navigator.of(sheetContext).pop(true),
-                icon: const Icon(Icons.handshake_outlined, size: 18),
-                label: const Text('Send pair request'),
+                icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                label: const Text('Add friend'),
               ),
             ),
             TextButton(
@@ -623,7 +625,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     if (mesh != null) {
       action = FilledButton.tonal(
         onPressed: () => _pairSheet(mesh),
-        child: const Text('Pair'),
+        child: const Text('Add friend'),
       );
     } else {
       action = FilledButton.tonal(
@@ -635,7 +637,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2))
-            : const Text('Pair'),
+            : const Text('Add friend'),
       );
     }
     // Bundle 170: each new card slides up into the list.

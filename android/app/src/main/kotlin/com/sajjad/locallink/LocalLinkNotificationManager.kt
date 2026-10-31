@@ -26,6 +26,9 @@ object LocalLinkNotificationManager {
     const val ACTION_OPEN = "com.sajjad.locallink.ACTION_OPEN_MESSAGE_NOTIFICATION"
     const val ACTION_REPLY = "com.sajjad.locallink.ACTION_REPLY_MESSAGE_NOTIFICATION"
     const val ACTION_MARK_READ = "com.sajjad.locallink.ACTION_MARK_READ_MESSAGE_NOTIFICATION"
+    // Bundle 177 (7.8): "X added you as a friend" buttons.
+    const val ACTION_FRIEND_REMOVE = "com.sajjad.locallink.ACTION_FRIEND_REMOVE"
+    const val ACTION_FRIEND_BLOCK = "com.sajjad.locallink.ACTION_FRIEND_BLOCK"
 
     const val EXTRA_ACTION = "notification_action"
     const val EXTRA_NOTIFICATION_ID = "notification_id"
@@ -45,6 +48,7 @@ object LocalLinkNotificationManager {
     // reliable way to re-enable sound on upgrades.
     private const val MESSAGE_CHANNEL_ID = "locallink_messages_v4"
     private const val SYSTEM_CHANNEL_ID = "locallink_system_v4"
+    private const val FRIENDS_CHANNEL_ID = "locallink_friends_v1"
     private const val MESSAGE_TAG = "locallink_message"
     private const val REQUEST_PERMISSION = 7744
 
@@ -91,6 +95,17 @@ object LocalLinkNotificationManager {
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         manager.createNotificationChannel(systemChannel)
+
+        // Bundle 177 (7.8): "X added you as a friend".
+        val friendsChannel = NotificationChannel(
+            FRIENDS_CHANNEL_ID,
+            "Friends",
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = "Someone added you as a friend"
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        }
+        manager.createNotificationChannel(friendsChannel)
     }
 
     fun requestNotificationPermission(activity: MainActivity) {
@@ -409,6 +424,60 @@ object LocalLinkNotificationManager {
         if (tag != null) manager.notify(tag, notificationId, builder.build()) else manager.notify(notificationId, builder.build())
     }
 
+    /**
+     * Bundle 177 (7.8): "X added you as a friend" / "Saved in your contacts"
+     * with Remove and Block. App icon only (no photo). Tap opens their chat.
+     */
+    fun showFriendAdded(
+        context: Context,
+        notificationId: Int,
+        userId: String,
+        deviceId: String,
+        recipientId: String,
+        name: String,
+    ) {
+        if (notificationId <= 0 || userId.isBlank() || deviceId.isBlank()) return
+        initialize(context)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val who = name.ifBlank { "Someone" }.take(64)
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationCompat.Builder(context, FRIENDS_CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            NotificationCompat.Builder(context)
+        }
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF209DEB.toInt())
+            .setContentTitle("$who added you as a friend")
+            .setContentText("Saved in your contacts")
+            .setCategory(Notification.CATEGORY_SOCIAL)
+            .setAutoCancel(true)
+            .setPriority(Notification.PRIORITY_DEFAULT)
+        builder.setContentIntent(
+            PendingIntent.getActivity(
+                context,
+                requestCode(notificationId, 0),
+                openActivityIntent(context, notificationId, "direct", deviceId, "", deviceId, recipientId, null),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        )
+        fun button(action: String, code: Int, label: String) {
+            val pending = PendingIntent.getBroadcast(
+                context,
+                requestCode(notificationId, code),
+                actionIntent(context, action, notificationId, "friend", userId, "friend", deviceId, recipientId, null),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(0, label, pending)
+        }
+        button(ACTION_FRIEND_REMOVE, 1, "Remove")
+        button(ACTION_FRIEND_BLOCK, 2, "Block")
+        manager.notify(notificationId, builder.build())
+    }
+
     fun cancel(context: Context, notificationId: Int) {
         if (notificationId <= 0) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -466,6 +535,8 @@ object LocalLinkNotificationManager {
         ACTION_OPEN -> "open"
         ACTION_REPLY -> "reply"
         ACTION_MARK_READ -> "mark_read"
+        ACTION_FRIEND_REMOVE -> "friend_remove"
+        ACTION_FRIEND_BLOCK -> "friend_block"
         else -> ""
     }
 

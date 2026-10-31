@@ -19,6 +19,9 @@ final class LocalLinkNotificationId {
 
   static int system(String id) => _hash('system:$id');
 
+  /// Bundle 177 (7.8): "X added you as a friend" (one per person).
+  static int friend(String userId) => _hash('friend:$userId');
+
   static int _hash(String input) {
     var hash = 0x811c9dc5;
     for (final codeUnit in input.codeUnits) {

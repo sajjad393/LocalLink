@@ -56,6 +56,14 @@ final class LocalLinkNotificationService {
   bool _started = false;
   bool _disposed = false;
 
+  /// Bundle 177 (7.9): what Remove / Block on "X added you" do (set by
+  /// AppDependencies: remove the contact / block the person).
+  Future<void> Function(String userId)? onFriendRemove;
+  Future<void> Function(String userId)? onFriendBlock;
+
+  /// Bundle 177 (8.4): one "added you" notice per person per 24 h.
+  static const Duration friendNoticeWindow = Duration(hours: 24);
+
   LocalLinkNotificationService({
     required this.store,
     required this.messaging,
@@ -492,8 +500,65 @@ final class LocalLinkNotificationService {
     );
   }
 
+  /// Bundle 177 (7.8): "X added you as a friend" / "Saved in your contacts".
+  Future<void> showFriendAdded({
+    required String userId,
+    required String deviceId,
+    required String displayName,
+  }) async {
+    if (_disposed || userId.isEmpty || deviceId.isEmpty) return;
+    final localId = store.deviceId ?? '';
+    if (localId.isEmpty || deviceId == localId) return;
+    try {
+      if (await store.isBlocked(userId) || await store.isBlockedPeer(deviceId)) {
+        return;
+      }
+      final key = 'friend_notice_$userId';
+      final last = int.tryParse(await store.readSetting(key) ?? '') ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (last > 0 && now - last < friendNoticeWindow.inMilliseconds) return;
+      await store.writeSetting(key, '$now');
+    } catch (_) {
+      return;
+    }
+    await platform.showFriendAdded(
+      notificationId: LocalLinkNotificationId.friend(userId),
+      userId: userId,
+      deviceId: deviceId,
+      recipientId: localId,
+      name: displayName,
+    );
+  }
+
+  Future<void> _handleFriendAction(LocalLinkNotificationAction action) async {
+    final userId = action.conversationId;
+    final localId = store.deviceId ?? '';
+    if (userId.isEmpty ||
+        localId.isEmpty ||
+        action.recipientId != localId ||
+        int.tryParse(action.notificationId) !=
+            LocalLinkNotificationId.friend(userId)) {
+      return;
+    }
+    try {
+      if (action.action == NotificationActionType.friendRemove) {
+        await onFriendRemove?.call(userId);
+      } else if (action.action == NotificationActionType.friendBlock) {
+        await onFriendBlock?.call(userId);
+      }
+    } catch (_) {
+      // Best effort; the contact stays and can be removed by hand.
+    }
+    await platform
+        .cancelNotification(LocalLinkNotificationId.friend(userId));
+  }
+
   Future<void> _handleAction(LocalLinkNotificationAction action) async {
     if (_disposed) return;
+    if (action.conversationType == NotificationConversationType.friend) {
+      await _handleFriendAction(action);
+      return;
+    }
     // Bundle 151: a tap opens the chat even when the exact message is gone
     // or the tap was on the bundle ("3 new messages").
     if (action.action == NotificationActionType.open) {
@@ -506,6 +571,7 @@ final class LocalLinkNotificationService {
       case NotificationConversationType.group:
         await _handleGroupAction(action);
       case NotificationConversationType.system:
+      case NotificationConversationType.friend:
         // System notifications currently carry no actionable deep link.
         return;
     }
@@ -557,6 +623,10 @@ final class LocalLinkNotificationService {
       case NotificationActionType.open:
         await _markDirectMessageRead(message);
         if (!_openRequests.isClosed) _openRequests.add(action);
+      case NotificationActionType.friendRemove:
+      case NotificationActionType.friendBlock:
+        // Bundle 177: friend buttons never reach a message.
+        return;
     }
   }
 
@@ -612,6 +682,10 @@ final class LocalLinkNotificationService {
       case NotificationActionType.open:
         await _markGroupMessageRead(message);
         if (!_openRequests.isClosed) _openRequests.add(action);
+      case NotificationActionType.friendRemove:
+      case NotificationActionType.friendBlock:
+        // Bundle 177: friend buttons never reach a message.
+        return;
     }
   }
 

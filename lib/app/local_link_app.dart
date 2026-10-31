@@ -11,7 +11,6 @@ import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/core/notifications/notification_action.dart';
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
-import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
 import 'package:locallink/features/files/presentation/widgets/chat_video_hub.dart';
@@ -38,11 +37,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   StreamSubscription<String>? _callScreenRequestSub; // Bundle 146
   StreamSubscription<String>? _callUnavailableSub; // Bundle 146
   StreamSubscription<LocalLinkNotificationAction>? _notificationSub;
-  // Bundle 108: pair-request dialog host + pairing-complete toasts.
-  StreamSubscription<PairRequest>? _pairingRequestSub;
+  // Bundle 108: pairing-complete toasts. Bundle 177 (7.7): the "wants to
+  // connect" dialog is gone - Add friend saves both phones directly.
   StreamSubscription<String>? _pairingDoneSub;
-  final List<PairRequest> _pairQueue = <PairRequest>[];
-  bool _pairDialogOpen = false;
   String? _shownIncomingCallId;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
@@ -81,7 +78,6 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       getThemeMode: () => _themeMode,
       onThemeModeChanged: _setThemeMode,
     );
-    _pairingRequestSub = _deps.pairing.requests.listen(_enqueuePairRequest);
     _pairingDoneSub = _deps.pairing.paired.listen(_showPairComplete);
     // Bundle 126: pairing diagnostics are demoted to logcat-only (the
     // service still prints every PAIR_DIAG line). While bring-up was broken,
@@ -89,123 +85,6 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // identical snackbars on BOTH phones — the request/accept milestones are
     // already user-visible via the dialog and the "Connected with…" toast.
     _initialize();
-  }
-
-  /// One pair dialog at a time; the PairingService already rate-limits per
-  /// device, so the queue only guards simultaneous bursts.
-  void _enqueuePairRequest(PairRequest request) {
-    _pairQueue.add(request);
-    _pumpPairQueue();
-  }
-
-  void _pumpPairQueue() {
-    if (_pairDialogOpen || _pairQueue.isEmpty) return;
-    final navigator = _navigatorKey.currentState;
-    if (navigator == null || !mounted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _pumpPairQueue();
-      });
-      return;
-    }
-    final request = _pairQueue.removeAt(0);
-    _pairDialogOpen = true;
-    // Bundle 111: accepting a pair creates a contact — let the user decide
-    // the LOCAL display name right here (only their phone ever sees it).
-    final nameController = TextEditingController(text: request.displayName);
-    // Bundle 118: compact one-glance dialog — avatar initial, name, one id
-    // line, name field, two actions. The long explainer paragraph moved to
-    // onboarding; a modal is for a fast decision.
-    final scheme = Theme.of(context).colorScheme;
-    final initial = request.displayName.trim().isEmpty
-        ? '?'
-        : request.displayName.trim()[0].toUpperCase();
-    final tail = request.nodeId.length > 6
-        ? request.nodeId.substring(request.nodeId.length - 6)
-        : request.nodeId;
-    showDialog<bool>(
-      context: navigator.overlay?.context ?? context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: Column(
-          children: [
-            CircleAvatar(
-              radius: 26,
-              backgroundColor: scheme.primaryContainer,
-              child: Text(
-                initial,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onPrimaryContainer,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '${request.displayName} wants to connect',
-              textAlign: TextAlign.center,
-              style: Theme.of(dialogContext).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '@${request.username.isNotEmpty ? request.username : 'locallink'} · device …$tail',
-              textAlign: TextAlign.center,
-              style: Theme.of(dialogContext).textTheme.bodySmall,
-            ),
-          ],
-        ),
-        titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
-        content: TextField(
-          controller: nameController,
-          autocorrect: false,
-          maxLength: 40,
-          decoration: const InputDecoration(
-            labelText: 'Save contact as',
-            hintText: 'Name on this phone',
-            counterText: '',
-          ),
-        ),
-        contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _deps.pairing.decline(request);
-              Navigator.of(dialogContext).pop(false);
-            },
-            child: const Text('Not now'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.of(dialogContext).pop(true);
-              try {
-                await _deps.pairing.accept(request,
-                    customName: nameController.text.trim());
-              } catch (error) {
-                // Bundle 124: 'context' here belongs to LocalLinkApp itself —
-                // ABOVE MaterialApp — so ScaffoldMessenger.of(context) threw
-                // "No ScaffoldMessenger widget found" and the real pair error
-                // surfaced as a crash. Route through the navigator overlay
-                // via _showAppSnackBar.
-                _showAppSnackBar(_pairFailureMessage(error),
-                    duration: const Duration(seconds: 6));
-              }
-            },
-            child: const Text('Connect'),
-          ),
-        ],
-      ),
-    ).then((_) {
-      nameController.dispose();
-      _pairDialogOpen = false;
-      // Bundle 126: drop phantom duplicates of the request just answered.
-      // The transport burst-delivers each request several times; service-side
-      // dedupe is primary, this drain keeps the UI safe if one slips through
-      // (that was the "Connect won't dismiss — next dialog rises instantly"
-      // symptom).
-      _pairQueue.removeWhere((queued) => queued.nodeId == request.nodeId);
-      _pumpPairQueue();
-    });
   }
 
   /// Bundle 124: one safe snackbar entry point for dialogs/streams driven
@@ -225,23 +104,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   }
 
   void _showPairComplete(String displayName) {
-    _showAppSnackBar('Connected with $displayName — say hi!');
-  }
-
-  /// Bundle 122: map a pairing failure to one actionable sentence instead of
-  /// the generic "Could not finish pairing".
-  String _pairFailureMessage(Object error) {
-    final text = '$error';
-    if (text.contains('Finish setting up your profile')) {
-      return 'Set up your profile first (Profile — add your name), then ask them to pair again.';
-    }
-    if (text.contains('Invalid contact')) {
-      return 'That contact cannot be added — is the same account signed in on both phones?';
-    }
-    if (text.contains('blocked')) {
-      return 'This user is blocked on this phone.';
-    }
-    return 'Could not finish pairing: $text';
+    _showAppSnackBar('$displayName added');
   }
 
   Future<void> _setThemeMode(ThemeMode mode) async {
@@ -262,7 +125,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v3 · 3.0.7 · bundles 104-176 (2026-11-01)');
+        detail: 'v3 · 3.0.8 · bundles 104-177 (2026-11-01)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -588,7 +451,6 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
 
   @override
   void dispose() {
-    _pairingRequestSub?.cancel();
     _pairingDoneSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_callSub?.cancel());
