@@ -159,6 +159,33 @@ final class WifiDirectFallbackService {
   int _myMembers = 0;
   int _hostSince = 0;
   bool _onWifiNetwork = false;
+  bool _selfCharging = false;
+
+  /// Bundle 159 (battery): the app screen is open. Searching is faster then;
+  /// in the background it follows D7 (60 s while someone waits, else 3 min,
+  /// or off when nobody waits and this phone is on Wi-Fi alone).
+  bool _foreground = true;
+
+  /// Bundle 159.3: read-only state for the admin view (no keys, no names).
+  Map<String, Object?> nearbyStatus() => <String, Object?>{
+        'role': _role.name,
+        'group': _myGroup,
+        'members': _myMembers,
+        'bridge': _bridging,
+        'charging': _selfCharging,
+        'foreground': _foreground,
+        'nearby_tags': _tags.length,
+        'waiting': _waitingSince.length,
+        'plan': _lastPlanReason,
+      };
+
+  /// Called on every app lifecycle change.
+  void setForeground(bool foreground) {
+    if (foreground == _foreground) return;
+    _foreground = foreground;
+    AppLogger.info('NEARBY',
+        detail: 'search mode=${foreground ? 'foreground' : 'background'}');
+  }
   final Map<String, int> _firstSeen = <String, int>{};
   final Map<String, String> _tagState = <String, String>{};
   String? _pairTarget;
@@ -508,6 +535,8 @@ final class WifiDirectFallbackService {
     if (name != null && name.isNotEmpty && name != _myGroup) _mates.clear();
     _myGroup = (name == null || name.isEmpty) ? null : name;
     _myMembers = (event['members'] as num?)?.toInt() ?? 0;
+    // Bundle 159: on a charger = preferred host/bridge on a tie.
+    if (event.containsKey('charging')) _selfCharging = event['charging'] == true;
     _setRole(role);
     if (groupMode) unawaited(_evaluateGroup());
   }
@@ -627,18 +656,18 @@ final class WifiDirectFallbackService {
         }
       }
     }
-    // How often to look for nearby tags: fast while something is going on,
-    // every 20 s alone without Local Wi-Fi, every 60 s in a group.
+    // How often to look for nearby tags (Bundle 159 battery rules, see
+    // NearbySearchCadence).
     final urgent = _pairTarget != null ||
         _pendingKind != null ||
         (_lostAt > 0 && now - _lostAt <= NearbyGroupRules.lostWindowMs);
-    final everyMs = urgent
-        ? 8 * 1000
-        : _role != NearbyGroupRole.none
-            ? 60 * 1000
-            : (!_onWifiNetwork || _waitingSince.isNotEmpty)
-                ? 20 * 1000
-                : 60 * 1000;
+    final everyMs = NearbySearchCadence.everyMs(
+      urgent: urgent,
+      foreground: _foreground,
+      inGroup: _role != NearbyGroupRole.none,
+      onWifi: _onWifiNetwork,
+      waiting: _waitingSince.isNotEmpty,
+    );
     if (everyMs > 0 &&
         !_discoveryInFlight &&
         now - _lastGroupDiscoveryAt >= everyMs) {
@@ -732,6 +761,7 @@ final class WifiDirectFallbackService {
         lanPeers: _lanHashes(),
         bridgeAllowed: !_bridging && now >= _bridgeOffUntil,
         bridgeSeen: {..._bridgeSeen},
+        selfCharging: _selfCharging,
       ));
       if (plan.reason != _lastPlanReason) {
         _lastPlanReason = plan.reason;

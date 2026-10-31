@@ -1,6 +1,9 @@
 package com.sajjad.locallink
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceInfo
 import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest
@@ -43,6 +46,37 @@ class NearbyTagManager(
     private var lastPublished = ""
     private var listenersSet = false
     private var discoveryScheduled = false
+    // Bundle 159: battery care (`pwr=1` + a rough drain estimate in the log).
+    private var batteryMarkAt = 0L
+    private var batteryMarkLevel = -1
+    @Volatile private var charging = false
+
+    /** Bundle 159: (charging, level 0-100 or -1). Never throws. */
+    private fun batteryState(): Pair<Boolean, Int> = try {
+        val i: Intent? = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val status = i?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val plugged = i?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val level = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = i?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val charging = plugged != 0 || status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        charging to (if (level >= 0 && scale > 0) level * 100 / scale else -1)
+    } catch (_: Exception) {
+        false to -1
+    }
+
+    /** Bundle 159: logs the whole-phone battery drop per hour (an estimate)
+     *  every 30 min while not charging, so testers can check the 3%/hour aim. */
+    private fun noteBattery(charging: Boolean, level: Int, now: Long) {
+        if (charging || level < 0) { batteryMarkAt = 0L; batteryMarkLevel = -1; return }
+        if (batteryMarkAt == 0L || batteryMarkLevel < 0) { batteryMarkAt = now; batteryMarkLevel = level; return }
+        val ms = now - batteryMarkAt
+        if (ms < 30L * 60L * 1000L) return
+        val perHour = (batteryMarkLevel - level).coerceAtLeast(0) * 3_600_000.0 / ms
+        val role = if (host) "host" else if (member) "member" else "none"
+        Log.i(TAG, "battery estimate drop_per_hour=${"%.1f".format(perHour)} level=$level role=$role bridge=$bridge")
+        batteryMarkAt = now
+        batteryMarkLevel = level
+    }
 
     init {
         tagId = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -117,13 +151,22 @@ class NearbyTagManager(
             "name" to groupName,
             "members" to members,
             "owner_address" to ownerAddress,
+            // Bundle 159: on a charger (preferred as host/bridge on a tie).
+            "charging" to charging,
         ))
     }
 
     fun publish(force: Boolean = false) {
         val id = tagId ?: return
         if (!hasPermission()) return
-        val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge)
+        val (nowCharging, level) = batteryState()
+        noteBattery(nowCharging, level, System.currentTimeMillis())
+        if (nowCharging != charging) {
+            charging = nowCharging
+            Log.i(TAG, "charger ${if (nowCharging) "on" else "off"}")
+            emitGroup()
+        }
+        val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge, charging)
         val signature = txt.toString()
         if (!force && signature == lastPublished) return
         lastPublished = signature
@@ -143,7 +186,7 @@ class NearbyTagManager(
     private fun addService(info: WifiP2pDnsSdServiceInfo, txt: Map<String, String>) {
         try {
             manager.addLocalService(channel, info, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"}") }
+                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"}") }
                 override fun onFailure(reason: Int) {
                     lastPublished = ""
                     Log.w(TAG, "tag publish failed reason=$reason")

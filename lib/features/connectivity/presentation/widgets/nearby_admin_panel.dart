@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:locallink/features/admin/presentation/widgets/admin_list_page.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_admin_status.dart';
 
 /// Bundle 159.3: read-only "This phone — nearby network" section for the
@@ -18,9 +17,6 @@ class NearbyAdminPanel extends StatefulWidget {
 class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
   NearbyAdminSnapshot? _snapshot;
   bool _failed = false;
-  // Bundle 163 (4.9): route list search + paging.
-  String _routeQuery = '';
-  int _routeShown = kAdminListPage;
 
   @override
   void initState() {
@@ -89,36 +85,15 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
       ('Nearby phones seen', '${s.nearbyTags}'),
       ('Waiting for a route', '${s.waiting}'),
       ('Direct links', '${s.directLinks}'),
-      ('Links with checked id', '${s.verifiedLinks}'),
       ('Relay links (not contacts)', '${s.relayLinks}'),
       ('Calls passed on now', '${s.relayVoiceCalls}'),
       ('Packets passed on', '${s.forwardedPackets}'),
       ('Voice frames passed on', '${s.forwardedVoiceFrames}'),
-      ('File parts passed on', '${s.forwardedFileChunks}'),
-      // Bundle 161 (tests).
-      ('Linked group / hotspot (test)', switch (s.localNet) {
-        'linked' => s.localNetKind == 'hotspot' ? 'Hotspot' : 'Group',
-        'joining' => 'Joining…',
-        _ => 'No',
-      }),
-      ('Sharing a hotspot (test)', s.hotspot ? 'Yes' : 'No'),
-      ('Phones linked this way', '${s.localNetPeers}'),
-      ('Short route list', s.compactMap ? 'Yes' : 'No'),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         header,
-        if (s.wifiBlocked)
-          Card(
-            color: theme.colorScheme.secondaryContainer,
-            child: const ListTile(
-              dense: true,
-              leading: Icon(Icons.wifi_off),
-              title: Text('This Wi-Fi blocks phones from seeing each other'),
-              subtitle: Text('Using nearby groups instead.'),
-            ),
-          ),
         Card(
           child: Column(
             children: [
@@ -136,14 +111,6 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
         Text('Routes (${s.routes.length})',
             style: theme.textTheme.titleSmall
                 ?.copyWith(fontWeight: FontWeight.w700)),
-        if (s.routes.length > kAdminListSearchFrom)
-          AdminListSearch(
-            hint: 'Search phone or next hop',
-            onChanged: (q) => setState(() {
-              _routeQuery = q;
-              _routeShown = kAdminListPage;
-            }),
-          ),
         if (s.routes.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -153,11 +120,7 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
           Card(
             child: Column(
               children: [
-                for (final r in adminListPage(s.routes,
-                        query: _routeQuery,
-                        shown: _routeShown,
-                        keys: (r) => [r.destination, r.nextHop])
-                    .visible)
+                for (final r in s.routes.take(50))
                   ListTile(
                     dense: true,
                     title: Text(r.destination),
@@ -166,16 +129,6 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
                     trailing: Text('${r.hops} ${r.hops == 1 ? 'hop' : 'hops'}',
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                   ),
-                AdminListMoreButton(
-                  shown: _routeShown,
-                  matched: adminListPage(s.routes,
-                          query: _routeQuery,
-                          shown: 0,
-                          keys: (r) => [r.destination, r.nextHop])
-                      .matched,
-                  onPressed: () =>
-                      setState(() => _routeShown += kAdminListPage),
-                ),
               ],
             ),
           ),

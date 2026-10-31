@@ -361,13 +361,14 @@ void main() {
   });
 
   // ------------------------------------------------ 158.2 route choice
-  group('voice calls go at most 3 hops (158.2)', () {
+  group('voice calls hop limit (158.2, raised to 8 in 159)', () {
     LocalRouteResult r(LocalRouteKind kind, int? hops) =>
         LocalRouteResult(kind: kind, peerId: 'z', hopCount: hops);
 
-    test('relayed 4 hops is too far; 3 is fine', () {
-      expect(VoiceCallHopPolicy.tooFar(r(LocalRouteKind.mesh, 4)), isTrue);
-      expect(VoiceCallHopPolicy.tooFar(r(LocalRouteKind.mesh, 3)), isFalse);
+    test('relayed 9 hops is too far; 8 is fine (159)', () {
+      expect(VoiceCallHopPolicy.tooFar(r(LocalRouteKind.mesh, 9)), isTrue);
+      expect(VoiceCallHopPolicy.tooFar(r(LocalRouteKind.mesh, 8)), isFalse);
+      expect(VoiceCallHopPolicy.tooFar(r(LocalRouteKind.mesh, 4)), isFalse);
     });
 
     test('direct links and unknown hops never block a call', () {

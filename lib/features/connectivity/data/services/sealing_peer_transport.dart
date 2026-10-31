@@ -128,6 +128,9 @@ class SealingPeerTransport implements PeerTransportContract {
       : _sealer = sealer ?? MessageSealService();
 
   static const String probeType = 'seal_caps';
+
+  /// Bundle 159: the per-call voice key field inside a call invite.
+  static const String voiceKeyField = 'voice_key';
   static const String _capsSetting = 'seal_capable_peers_v1';
   static const Duration _probeEvery = Duration(minutes: 10);
 
@@ -362,6 +365,15 @@ class SealingPeerTransport implements PeerTransportContract {
       if (sealed != null) {
         return inner.send(recipientId: recipientId, payload: sealed);
       }
+    }
+    // Bundle 159: a call voice key only ever travels locked. If this
+    // message can't be sealed, the key is dropped (the call stays plain).
+    if (payload.containsKey(voiceKeyField)) {
+      AppLogger.info('CALL_VOICE_KEY_DROPPED', detail: 'reason=not_sealed');
+      return inner.send(
+        recipientId: recipientId,
+        payload: Map<String, dynamic>.from(payload)..remove(voiceKeyField),
+      );
     }
     return inner.send(recipientId: recipientId, payload: payload);
   }
