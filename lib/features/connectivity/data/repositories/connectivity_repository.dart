@@ -8,15 +8,8 @@ import 'package:locallink/features/connectivity/data/services/network_monitor_se
 import 'package:locallink/features/connectivity/data/services/wifi_direct_service.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
-import 'package:locallink/features/connectivity/domain/nearby_group_control.dart';
 
-class ConnectivityRepository
-    implements
-        ConnectivityRepositoryContract,
-        NearbyGroupControl,
-        NearbyBridgeControl,
-        NearbyCallFlagControl,
-        NearbyLocalNetControl {
+class ConnectivityRepository implements ConnectivityRepositoryContract {
   final WebSocketService socket;
   final WifiDirectService wifiDirect;
   final PeerTransportContract directTransport;
@@ -83,54 +76,6 @@ class ConnectivityRepository
   @override
   Future<void> setNearbyIdentity(String tagId) =>
       wifiDirect.setNearbyIdentity(tagId);
-
-  // Bundle 157: one shared group.
-  @override
-  Future<void> setNearbyWanted(List<String> ids) =>
-      wifiDirect.setNearbyWanted(ids);
-
-  @override
-  Future<void> setNearbyBridge(bool on) => wifiDirect.setNearbyBridge(on);
-
-  @override
-  Future<void> setNearbyInCall(bool on) => wifiDirect.setNearbyInCall(on);
-
-  @override
-  Future<void> createNearbyGroup() => wifiDirect.createNearbyGroup();
-
-  @override
-  Future<void> joinNearbyGroup({
-    String? name,
-    String? key,
-    required String address,
-    bool leave = false,
-  }) =>
-      wifiDirect.joinNearbyGroup(
-          name: name, key: key, address: address, leave: leave);
-
-  // Bundle 161: linked groups + LocalLink hotspot (tests).
-  @override
-  Future<String?> joinLocalNet({
-    required String kind,
-    required String ssid,
-    required String key,
-    String? v6,
-  }) =>
-      wifiDirect.joinLocalNet(kind: kind, ssid: ssid, key: key, v6: v6);
-
-  @override
-  Future<void> leaveLocalNet(String reason) => wifiDirect.leaveLocalNet(reason);
-
-  @override
-  Future<String?> startLocalHotspot() => wifiDirect.startLocalHotspot();
-
-  @override
-  Future<void> stopLocalHotspot(String reason) =>
-      wifiDirect.stopLocalHotspot(reason);
-
-  @override
-  Future<void> setNearbyLinkTarget(String? id) =>
-      wifiDirect.setNearbyLinkTarget(id);
 
   @override
   Future<void> cancelWifiDirectConnect() => wifiDirect.cancelConnect();

@@ -47,50 +47,6 @@ class WifiDirectService {
   /// Bundle 155: publish this phone's "who is who" tag id.
   Future<void> setNearbyIdentity(String tagId) =>
       _channel.invokeMethod('setNearbyIdentity', {'id': tagId});
-  /// Bundle 157: one shared group.
-  Future<void> setNearbyWanted(List<String> ids) =>
-      _channel.invokeMethod('setNearbyWanted', {'ids': ids});
-  Future<void> createNearbyGroup() =>
-      _channel.invokeMethod('createNearbyGroup');
-  /// Bundle 158: advertise `br=1` (this phone bridges its group and Wi-Fi).
-  Future<void> setNearbyBridge(bool on) =>
-      _channel.invokeMethod('setNearbyBridge', {'on': on});
-  /// Bundle 167 (5.5): advertise `call=1` (a voice call goes on here).
-  Future<void> setNearbyInCall(bool on) =>
-      _channel.invokeMethod('setNearbyInCall', {'on': on});
-  Future<void> joinNearbyGroup({
-    String? name,
-    String? key,
-    required String address,
-    bool leave = false,
-  }) =>
-      _channel.invokeMethod('joinNearbyGroup', {
-        'name': name,
-        'key': key,
-        'address': address,
-        'leave': leave,
-      });
-  /// Bundle 161: linked groups + LocalLink hotspot (tests).
-  Future<String?> joinLocalNet({
-    required String kind,
-    required String ssid,
-    required String key,
-    String? v6,
-  }) =>
-      _channel.invokeMethod<String>('joinLocalNet', {
-        'kind': kind,
-        'ssid': ssid,
-        'key': key,
-        'v6': v6,
-      });
-  Future<void> leaveLocalNet(String reason) =>
-      _channel.invokeMethod('leaveLocalNet', {'reason': reason});
-  Future<String?> startLocalHotspot() =>
-      _channel.invokeMethod<String>('startLocalHotspot');
-  Future<void> stopLocalHotspot(String reason) =>
-      _channel.invokeMethod('stopLocalHotspot', {'reason': reason});
-  Future<void> setNearbyLinkTarget(String? id) =>
-      _channel.invokeMethod('setNearbyLinkTarget', {'id': id});
   Future<void> cancelConnect() => _channel.invokeMethod('cancelConnect');
   Future<void> disconnect() => _channel.invokeMethod('disconnect');
 

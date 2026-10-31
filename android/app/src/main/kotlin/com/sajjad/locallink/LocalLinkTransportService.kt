@@ -38,13 +38,10 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.security.KeyStore
 import java.security.MessageDigest
-import com.sajjad.locallink.mesh.LocalNetPolicy
-import com.sajjad.locallink.mesh.MeshTwoLevelMap
 import java.security.SecureRandom
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -98,8 +95,6 @@ class LocalLinkTransportService : Service() {
         @Volatile private var running = false
         fun isRunning() = running
         fun setEventListener(value: EventListener?) { listener=value }
-        /** Bundle 169 (4.3): the background engine lets go only of its own listener. */
-        fun clearEventListenerIf(value: EventListener) { if (listener === value) listener = null }
         fun start(context: Context) { startCommand(context,null) }
         fun stop(context: Context) { instance?.stopTransportExplicit(); context.stopService(Intent(context,LocalLinkTransportService::class.java)) }
         fun ensureReady(context:Context,deviceId:String,peerIds:List<String>){
@@ -113,36 +108,11 @@ class LocalLinkTransportService : Service() {
             val ids=JSONArray();knownPeers.forEach{ids.put(it)}
             startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_CONFIGURE;putExtra("device_id",deviceId);putExtra("connected",connected);putExtra("group_owner",groupOwner);putExtra("group_owner_address",address);putExtra("known_peers",ids.toString())})
         }
-        /** Bundle 156: blocked people are never accepted as relays. */
-        fun updateBlockedPeers(peerIds:List<String>){instance?.updateBlockedInternal(peerIds)}
-        /** Bundle 164 (5.8): strict mode - refuse contact links without the id check. */
-        const val LINK_AUTH_PREFS = "locallink_link_auth"
-        const val STRICT_KEY = "strict"
-        // Bundle 165: phones known to open locked file packets.
-        const val FILE_SEAL_PREFS = "locallink_file_seal"
-        const val FILE_SEAL_KEY = "peers"
-        fun setStrictLinkCheck(context: Context, on: Boolean) {
-            context.getSharedPreferences(LINK_AUTH_PREFS, Context.MODE_PRIVATE).edit().putBoolean(STRICT_KEY, on).apply()
-            instance?.applyStrictInternal(on)
-            Log.i("LINK_AUTH", "strict mode=${if (on) "on" else "off"}")
-        }
-        /** Bundle 160: per-contact link keys (signed device id on the link hello). */
-        fun updateLinkKeys(json:String):Boolean{val svc=instance?:return false;svc.updateLinkKeysInternal(json);return true}
-        /** Bundle 161: state changes of the linked group / hotspot link. */
-        @Volatile var localNetListener: ((Map<String, Any?>) -> Unit)? = null
-        /** Bundle 161: Android joined the other Wi-Fi network; dial the link. */
-        fun connectLocalNet(network: android.net.Network, kind: String, targets: List<String>, iface: String?): Boolean {
-            val svc = instance ?: return false
-            svc.connectLocalNetInternal(network, kind, targets, iface)
-            return true
-        }
-        fun closeLocalNet(reason: String) { instance?.closeLocalNetInternal(reason) }
-        fun localNetStatus(): Map<String, Any?> = instance?.localNetStatusInternal() ?: emptyMap()
         fun updateKnownPeers(context:Context,peerIds:List<String>){instance?.updateRosterInternal(peerIds)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_UPDATE_ROSTER;val ids=JSONArray();peerIds.forEach{ids.put(it)};putExtra("known_peers",ids.toString())})}
         fun updateConnection(context:Context,connected:Boolean,owner:Boolean,address:String?){instance?.startOrStopTransportForConnection(connected,owner,address)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_CONNECTION;putExtra("connected",connected);putExtra("group_owner",owner);putExtra("group_owner_address",address)})}
         fun resume(context:Context,connected:Boolean,owner:Boolean,address:String?){instance?.resumeTransport(connected,owner,address)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_RESUME;putExtra("connected",connected);putExtra("group_owner",owner);putExtra("group_owner_address",address)})}
         fun send(recipientId:String,payload:Map<String,Any?>)=instance?.sendTransportInternal(recipientId,payload)?:false
-        fun startCallMedia(callId:String, peerId:String, codec:String?, voiceKey:String? = null) = instance?.startCallMediaInternal(callId, peerId, codec, voiceKey)
+        fun startCallMedia(callId:String, peerId:String, codec:String?) = instance?.startCallMediaInternal(callId, peerId, codec)
             ?: throw IllegalStateException("transport service is not running")
         fun stopCallMedia(callId:String) { instance?.stopCallMediaInternal(callId) }
         fun setCallMediaMuted(callId:String, muted:Boolean) { instance?.setCallMediaMutedInternal(callId, muted) }
@@ -162,23 +132,14 @@ class LocalLinkTransportService : Service() {
         fun topology(): Map<String, Any?> = instance?.meshTopologySnapshot() ?: emptyMap()
         fun flushQueue(){instance?.flushMeshQueue()}
         fun clearStorage(){instance?.clearTransportStorage()}
-        /** Bundle 164 (4.3): after a reboot. Returns the reason when Android said no (null = started). */
-        fun startFromBoot(context: Context): String? = startCommand(context, null)
-
-        private fun startCommand(context:Context,intent:Intent?):String?{
+        private fun startCommand(context:Context,intent:Intent?){
             val i=intent?:Intent(context,LocalLinkTransportService::class.java)
-            return try {
+            try {
                 if(android.os.Build.VERSION.SDK_INT>=26) context.startForegroundService(i) else context.startService(i)
-                null
             } catch (_: android.app.ForegroundServiceStartNotAllowedException) {
                 listener?.onTransportEvent("state", mapOf("connected" to false, "transport_active" to false, "reason" to "foreground_service_not_allowed"))
-                "foreground_service_not_allowed"
             } catch (_: SecurityException) {
                 listener?.onTransportEvent("state", mapOf("connected" to false, "transport_active" to false, "reason" to "foreground_service_denied"))
-                "foreground_service_denied"
-            } catch (e: IllegalStateException) {
-                // Older Androids: background start not allowed.
-                "start_not_allowed"
             }
         }
     }
@@ -216,164 +177,11 @@ class LocalLinkTransportService : Service() {
     private val routeAdvertisementSequence = AtomicLong(0L)
     private val routeAdvertisementSessionId = UUID.randomUUID().toString()
     private val routeAdvertisementPolicy = com.sajjad.locallink.mesh.MeshRouteAdvertisementPolicy()
-    // Bundle 160: smaller route updates (changes only + full map every 60 s).
-    private val routeDeltaSender = MeshRouteDeltaSender()
-    private val routeDeltaReceiver = MeshRouteDeltaReceiver()
-    private val routeDeltaLastSentAt = AtomicLong(0L)
-    @Volatile private var routeDeltaDirty = false
-    private val routeDeltaLock = Any()
-    // Bundle 160: "who can reach X?" (2 hops, answers kept 5 min).
-    private val routeLookup = MeshRouteLookup()
-    // Bundle 160: D12 - contacts a message needs a direct LAN link to.
-    private val lanNeededAt = ConcurrentHashMap<String, Long>()
-    @Volatile private var lanBeaconTier = 0L
-    // Bundle 160: signed device id. Keys come from Dart (per contact); the
-    // ids that passed once must always pass (kept in the encrypted state).
-    private val linkKeys = ConcurrentHashMap<String, List<MeshLinkAuth.LinkKey>>()
-    private val linkVerified = ConcurrentHashMap.newKeySet<String>()
     private val routeStabilityPolicy = com.sajjad.locallink.mesh.MeshRouteStabilityPolicy()
     private val transportSendFailures = AtomicLong(0)
     /** Peer roster used for routing/admission decisions. Message content is not
      * encrypted between devices; packets carry the canonical plaintext envelope. */
     private val knownPeers = ConcurrentHashMap.newKeySet<String>()
-    // Bundle 156: blocked people never become relays; relay flood limits.
-    private val blockedPeers = ConcurrentHashMap.newKeySet<String>()
-    private val relayLimiter = MeshRelayRateLimiter()
-    // Bundle 159: locked call voice passed on for others (max 2 calls).
-    private val relayVoiceBudget = MeshRelayVoiceBudget()
-    // Bundle 159.3: counts for the read-only admin view (no content).
-    private val forwardedPackets = AtomicLong(0)
-    private val forwardedVoiceFrames = AtomicLong(0)
-    // Bundle 165 (5.1): locked file packets through non-contact phones.
-    private val forwardedFileChunks = AtomicLong(0)
-    // Bundle 167 (5.5): voice of someone else's call passes through here.
-    private val voiceRelay = VoiceRelayTracker()
-    private val relayFileBudget = MeshRelayFileBudget()
-    private val fileSealPeers: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    private val fileSealTrial: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    private val fileStalls = ConcurrentHashMap<String, Int>()
-    private val fileStallAt = ConcurrentHashMap<String, Long>()
-    private val fileRelayLogAt = ConcurrentHashMap<String, Long>()
-    // How the last file packet from each phone came (true = locked).
-    private val fileLastLocked = ConcurrentHashMap<String, Boolean>()
-    private val relayDialAt = ConcurrentHashMap<String, Long>()
-    private fun relayLinkCount(exceptPeerId: String? = null, transportName: String? = null): Int =
-        allPhysicalPeerLinks().count { it.peerId != exceptPeerId && it.trust == MeshRelayPolicy.TRUST_RELAY && !it.socket.isClosed &&
-            (transportName == null || it.transportName == transportName) }
-    // Bundle 157: a group host must take every member of its shared group
-    // (up to the soft limit), so Wi-Fi Direct has its own relay budget; LAN
-    // relay neighbours stay at 3.
-    private fun trustForPeer(peerId: String, offersRelay: Boolean, transportName: String): String? {
-        val trust = MeshRelayPolicy.trustFor(
-            peerId = peerId,
-            isContact = knownPeers.contains(peerId),
-            isBlocked = blockedPeers.contains(peerId),
-            peerOffersRelay = offersRelay,
-            relayLinks = 0,
-            isPaused = relayLimiter.isPaused(peerId),
-        )
-        if (trust != MeshRelayPolicy.TRUST_RELAY) return trust
-        val used = relayLinkCount(exceptPeerId = peerId, transportName = transportName)
-        if (used >= NearbyGroupPolicy.maxRelayLinks(transportName)) {
-            Log.i("RELAY", "relay refused peer=$peerId reason=full transport=$transportName links=$used")
-            return null
-        }
-        return trust
-    }
-    private fun routerCanCarry(peerId: String, packet: MeshPacket): Boolean {
-        val link = activePeerConnection(peerId) ?: return true
-        // Bundle 159: locked voice only to phones that understand it (an
-        // older phone would refuse it, or pause the link as a flood).
-        if (MeshRelayPolicy.isSealedVoice(packet.type) && !link.voiceCapable) return false
-        // Bundle 165: a locked file packet only to a non-contact phone that
-        // understands it (an older one would refuse it).
-        if (!FileSealPolicy.canSendOnward(packet.type, link.trust, link.fileSealCapable)) return false
-        return MeshRelayPolicy.canCarry(link.trust, packet.type)
-    }
-    /** Bundle 158: LAN next hop before Wi-Fi Direct (same hop count). */
-    private fun routerLinkRank(peerId: String): Int =
-        MeshRouteChoicePolicy.linkRank(activePeerConnection(peerId)?.transportName)
-    /** Bundle 158: make-before-break — a route is proven once its next hop
-     *  answered a ping on one of its current links. */
-    private fun routerRouteProven(route: MeshRoute): Boolean =
-        peerLinks[route.nextHopNodeId]?.values?.any {
-            !it.socket.isClosed && MeshRouteChoicePolicy.linkProven(it.connectedAt, it.lastPongAt)
-        } ?: false
-    /** Bundle 160 (two-level map): a group member with no route at all hands
-     *  messages to its group host, which knows the bigger map. Only for
-     *  packets that may wait (never call sound or file chunks). */
-    private fun routerDefaultNextHop(packet: MeshPacket): String? {
-        if (transportGroupOwner) return null
-        // Bundle 161: a compact member hands EVERYTHING to its host (it
-        // dropped far routes on purpose); otherwise only packets that may wait.
-        val compact = compactMember()
-        if (!MeshTwoLevelMap.defaultForAll(compact) &&
-            (!isStoreForwardable(packet.type) || packet.type == "direct_file_chunk")) return null
-        allPhysicalPeerLinks().firstOrNull {
-            it.transportName == MeshTransportPolicy.WIFI_DIRECT && !it.socket.isClosed
-        }?.let { return it.peerId }
-        // Bundle 161: a phone on a LocalLink hotspot uses the hotspot phone.
-        if (localNetKind == LocalNetPolicy.KIND_HOTSPOT && isStoreForwardable(packet.type) && packet.type != "direct_file_chunk") {
-            val hub = localNetPeerId ?: return null
-            if (peerLinks[hub]?.get(MeshTransportPolicy.LOCAL_NET)?.socket?.isClosed == false) return hub
-        }
-        return null
-    }
-
-    /** Bundle 161 (two-level map): only a member of a nearby group whose one
-     *  link is to the host (no Local Wi-Fi, no linked network). */
-    private fun compactMember(): Boolean {
-        val links = allPhysicalPeerLinks().filter { !it.socket.isClosed }
-        val host = links.firstOrNull { it.transportName == MeshTransportPolicy.WIFI_DIRECT }
-        return MeshTwoLevelMap.isCompactMember(transportGroupOwner, host != null, links.count { it !== host })
-    }
-    @Volatile private var lastCompactMap = false
-
-    /** Bundle 161: log map changes; full list again when no longer compact. */
-    private fun checkCompactMap() {
-        val compact = compactMember()
-        if (compact == lastCompactMap) return
-        val wasCompact = lastCompactMap
-        lastCompactMap = compact
-        Log.i("ROUTES", "map ${if (compact) "compact (group + contacts, rest via host)" else "full"}")
-        if (MeshTwoLevelMap.needsFullAgain(wasCompact, compact)) {
-            allPhysicalPeerLinks().filter { !it.socket.isClosed && it.routeDelta }
-                .forEach { requestFullRoutes(it.peerId, "full_map_again") }
-        }
-    }
-
-    /** Bundle 160: no route at all to [destination]. Ask the neighbours who
-     *  can reach it, and open a direct LAN link if it is a contact on this
-     *  Wi-Fi (D12: links beyond the first 30 only when needed). */
-    private fun routerNoRoute(destination: String) {
-        val self = transportDeviceId ?: return
-        if (!validTransportId(destination) || destination == self) return
-        val now = System.currentTimeMillis()
-        if (knownPeers.contains(destination) && activePeerConnection(destination) == null) {
-            lanEndpoints[destination]?.let { endpoint ->
-                lanNeededAt[destination] = now
-                connectLanPeer(destination, endpoint.host, endpoint.port)
-            }
-        }
-        // Bundle 161: a compact member's host already gets the packet.
-        if (MeshTwoLevelMap.skipLookup(compactMember())) return
-        val askable = transportPeers.values.filter { it.routeDelta && !it.socket.isClosed }
-        if (askable.isEmpty()) return
-        val queryId = routeLookup.ask(destination, now) ?: return
-        val query = JSONObject()
-            .put("type", "route_query")
-            .put("sender_id", self)
-            .put("query_id", queryId)
-            .put("target", destination)
-            .put("ttl", MeshRouteLookupRules.MAX_TTL)
-            .put("sent_at", now)
-        var asked = 0
-        for (peer in askable) {
-            try { peer.send(query); asked++ } catch (_: Exception) { transportSendFailures.incrementAndGet() }
-        }
-        Log.i("ROUTES", "who can reach dest=${destination.take(8)} asked=$asked")
-    }
-
     private val callMediaLock = Any()
     @Volatile private var callMedia: CallMediaSession? = null
 
@@ -451,8 +259,6 @@ class LocalLinkTransportService : Service() {
     private val cancelledIncomingTransfers = ConcurrentHashMap<String, Long>()
     private val outgoingSendInFlight = ConcurrentHashMap.newKeySet<String>()
     private val outgoingRetryCounts = ConcurrentHashMap<String, Int>()
-    /** Bundle 162 (4.5): restarts after a failed file check, per transfer. */
-    private val hashMismatchRestarts = ConcurrentHashMap<String, Int>()
     private val random = SecureRandom()
     private val meshQueueDir by lazy { File(filesDir,"locallink_mesh_queue").apply{mkdirs()} }
     private val seenMeshDir by lazy { File(filesDir,"locallink_seen_mesh").apply{mkdirs()} }
@@ -492,7 +298,7 @@ class LocalLinkTransportService : Service() {
         }
     }
     private val meshRouter by lazy {
-        MeshRouter({ transportDeviceId }, routeTable, meshPeers, meshTransport, ::enqueueMeshPacket, meshPacketTtl, linkRank = ::routerLinkRank, routeProven = ::routerRouteProven, defaultNextHop = ::routerDefaultNextHop, onNoRoute = ::routerNoRoute, canCarry = ::routerCanCarry)
+        MeshRouter({ transportDeviceId }, routeTable, meshPeers, meshTransport, ::enqueueMeshPacket, meshPacketTtl)
     }
     private val startedAt=System.currentTimeMillis()
 
@@ -500,8 +306,6 @@ class LocalLinkTransportService : Service() {
         super.onCreate();instance=this;createNotificationChannel()
         if(android.os.Build.VERSION.SDK_INT>=29)startForeground(NOTIFICATION_ID,buildNotification(),ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)else startForeground(NOTIFICATION_ID,buildNotification())
         running=true;loadPersistedState();restoreDurableState()
-        strictLinkCheck=getSharedPreferences(LINK_AUTH_PREFS,MODE_PRIVATE).getBoolean(STRICT_KEY,false)
-        loadFileSealPeers()
         if(transportRunning){startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to transportPeers.isNotEmpty(),"transport_active" to true,"group_owner" to transportGroupOwner));if(transportGroupOwner)ensureTransportServer()}
     }
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
@@ -519,102 +323,13 @@ class LocalLinkTransportService : Service() {
     private fun buildNotification():Notification{val li=packageManager.getLaunchIntentForPackage(packageName);val pi=li?.let{PendingIntent.getActivity(this,2202,it,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)};val b=if(android.os.Build.VERSION.SDK_INT>=26)Notification.Builder(this,CHANNEL_ID)else Notification.Builder(this);return b.setSmallIcon(R.drawable.ic_notification).setColor(0xFF209DEB.toInt()).setContentTitle("LocalLink peer network active").setContentText("Offline peer communication is available").setOngoing(true).setCategory(Notification.CATEGORY_SERVICE).setContentIntent(pi).setPriority(Notification.PRIORITY_LOW).build()}
 
     private fun configureTransport(deviceId:String,connected:Boolean,owner:Boolean,address:String?,peers:List<String>){if(deviceId.isBlank())return;transportDeviceId=deviceId.trim();knownPeers.clear();knownPeers.addAll(peers.filter{validTransportId(it)});transportRunning=true;persistState();startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to connected,"transport_active" to true,"group_owner" to owner));startOrStopTransportForConnection(connected,owner,address)}
-    private fun updateRosterInternal(peerIds:List<String>){knownPeers.clear();peerIds.forEach{if(validTransportId(it))knownPeers.add(it.trim())};persistState();upgradeRelayLinksToContacts()}
-    /** Bundle 156: a relay that was just added as a contact becomes a normal link. */
-    private fun upgradeRelayLinksToContacts(){
-        for(link in allPhysicalPeerLinks()){
-            if(link.trust!=MeshRelayPolicy.TRUST_RELAY||!knownPeers.contains(link.peerId))continue
-            link.trust=MeshRelayPolicy.TRUST_CONTACT
-            Log.i("RELAY","relay link upgraded to contact peer=${link.peerId}")
-            transportEvent("peer_connected",mapOf("peer_id" to link.peerId,"transport" to link.transportName,"active_transport" to link.transportName,"address" to link.remoteAddress,"seal" to link.sealCapable,"reason" to "relay_became_contact"))
-        }
-    }
-    /** Bundle 160: {peerId: [{o: myKeyId, p: theirKeyId, k: 64 hex}]} from Dart. */
-    private fun updateLinkKeysInternal(json:String){
-        val parsed = parseLinkKeys(json) ?: return
-        linkKeys.clear(); linkKeys.putAll(parsed)
-        persistState()
-        Log.i("LINK_AUTH", "keys peers=${parsed.size} verified=${linkVerified.size}")
-    }
-
-    private fun parseLinkKeys(json:String?): Map<String, List<MeshLinkAuth.LinkKey>>? {
-        if (json.isNullOrBlank()) return null
-        return try {
-            val root = JSONObject(json)
-            val out = HashMap<String, List<MeshLinkAuth.LinkKey>>()
-            val names = root.keys()
-            while (names.hasNext() && out.size < MeshLinkAuth.MAX_PEERS) {
-                val peer = names.next().trim()
-                if (!validTransportId(peer)) continue
-                val arr = root.optJSONArray(peer) ?: continue
-                val keys = ArrayList<MeshLinkAuth.LinkKey>()
-                for (i in 0 until minOf(arr.length(), MeshLinkAuth.MAX_KEYS_PER_PEER)) {
-                    val o = arr.optJSONObject(i) ?: continue
-                    MeshLinkAuth.parse(o.optString("o"), o.optString("p"), o.optString("k"))?.let(keys::add)
-                }
-                if (keys.isNotEmpty()) out[peer] = keys
-            }
-            out
-        } catch (_: Exception) { null }
-    }
-
-    private fun linkKeysJson(): JSONObject {
-        val root = JSONObject()
-        for ((peer, keys) in linkKeys) {
-            val arr = JSONArray()
-            keys.forEach { k -> arr.put(JSONObject().put("o", k.ownKid).put("p", k.peerKid).put("k", k.key.joinToString("") { "%02x".format(it) })) }
-            root.put(peer, arr)
-        }
-        return root
-    }
-
-    private fun noteLinkAuth(peer: String, side: String, decision: MeshLinkAuth.Decision) {
-        when (decision.verdict) {
-            MeshLinkAuth.Verdict.VERIFIED -> {
-                if (linkVerified.add(peer)) persistState()
-                Log.i("LINK_AUTH", "verified peer=${peer.take(8)} side=$side")
-            }
-            MeshLinkAuth.Verdict.LEGACY -> if (decision.reason == "no_local_key") {
-                Log.d("LINK_AUTH", "legacy peer=${peer.take(8)} side=$side reason=${decision.reason}")
-            } else Log.i("LINK_AUTH", "legacy peer=${peer.take(8)} side=$side reason=${decision.reason}")
-            MeshLinkAuth.Verdict.REJECT -> {
-                Log.w("LINK_AUTH", "reject peer=${peer.take(8)} side=$side reason=${decision.reason}")
-                transportEvent("peer_link_rejected", mapOf("peer_id" to peer, "reason" to "link_auth_${decision.reason}"))
-            }
-        }
-    }
-
-    private fun updateBlockedInternal(peerIds:List<String>){
-        blockedPeers.clear();peerIds.forEach{if(validTransportId(it))blockedPeers.add(it.trim())};persistState()
-        for(link in allPhysicalPeerLinks()){
-            // Bundle 164 (5.7): a blocked contact is cut too, not only relays.
-            if(blockedPeers.contains(link.peerId)){
-                if(link.trust==MeshRelayPolicy.TRUST_RELAY)Log.i("RELAY","relay link closed peer=${link.peerId} reason=blocked")
-                else Log.i("LINK_AUTH","contact link closed peer=${link.peerId.take(8)} reason=blocked")
-                try{link.socket.close()}catch(_:Exception){}
-            }
-        }
-    }
-
-    /** Bundle 164 (5.8): strict mode. Turning it on cuts unchecked contact links. */
-    @Volatile private var strictLinkCheck = false
-    private fun applyStrictInternal(on:Boolean){
-        strictLinkCheck=on
-        if(!on)return
-        for(link in allPhysicalPeerLinks()){
-            if(link.trust==MeshRelayPolicy.TRUST_CONTACT&&!link.verified){
-                Log.w("LINK_AUTH","reject peer=${link.peerId.take(8)} side=live reason=strict_unchecked")
-                transportEvent("peer_link_rejected",mapOf("peer_id" to link.peerId,"reason" to "link_auth_strict_unchecked"))
-                try{link.socket.close()}catch(_:Exception){}
-            }
-        }
-    }
+    private fun updateRosterInternal(peerIds:List<String>){knownPeers.clear();peerIds.forEach{if(validTransportId(it))knownPeers.add(it.trim())};persistState()}
     private fun resumeTransport(connected:Boolean,owner:Boolean,address:String?){if(transportDeviceId.isNullOrBlank())return;transportRunning=true;persistState();startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to connected,"transport_active" to true,"group_owner" to owner));startOrStopTransportForConnection(connected,owner,address)}
     // Bundle 142: JSONObject.wrap — Android's org.json writes raw Kotlin List/Map
     // values as their toString() text, so attachments arrived as a String and
     // every media direct_message crashed the receiver's Message.fromJson.
     private fun sendTransportInternal(target:String,map:Map<String,Any?>):Boolean{if(!transportRunning||!validTransportId(target))return false;val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,JSONObject.wrap(v))};return sendRoutedPayload(target,p)}
-    private fun broadcastTransportInternal(map:Map<String,Any?>):Boolean{val self=transportDeviceId?:return false;var ok=false;for((id,peer) in transportPeers){if(peer.trust!=MeshRelayPolicy.TRUST_CONTACT)continue;val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,JSONObject.wrap(v))};p.put("sender_id",self).put("recipient_id",id);if(sendToPeer(peer,p))ok=true};return ok||transportPeers.isEmpty()}
+    private fun broadcastTransportInternal(map:Map<String,Any?>):Boolean{val self=transportDeviceId?:return false;var ok=false;for((id,peer) in transportPeers){val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,JSONObject.wrap(v))};p.put("sender_id",self).put("recipient_id",id);if(sendToPeer(peer,p))ok=true};return ok||transportPeers.isEmpty()}
     private fun sendFileTransportInternal(target:String,path:String,fileId:String,messageId:String,fileName:String,contentType:String,cb:(Boolean,String?)->Unit){
         if(!transportRunning){cb(false,"transport is not configured");return}
         if(!validTransportId(target)||!validFileTransferId(fileId)||!validFileTransferId(messageId)){cb(false,"invalid file transfer identifier");return}
@@ -681,8 +396,6 @@ class LocalLinkTransportService : Service() {
 
     private fun startLanTransport() {
         if (!transportRunning) return
-        // Bundle 161: a linked group or a hotspot phone dials us on 8991.
-        ensureLocalNetServer()
         if (!acquireLanMulticastLock()) return
         ensureLanServer()
         if (lanDiscoveryThread?.isAlive != true) {
@@ -718,157 +431,6 @@ class LocalLinkTransportService : Service() {
         lanMulticastLock = null
     }
 
-    // ---------------------------------------------------------------
-    // Bundle 161: links over a second Wi-Fi network (linked group, hotspot)
-    // ---------------------------------------------------------------
-    @Volatile private var localNetServer: ServerSocket? = null
-    @Volatile private var localNetNetwork: android.net.Network? = null
-    @Volatile private var localNetKind: String? = null
-    @Volatile private var localNetTargets: List<String> = emptyList()
-    @Volatile private var localNetIface: String? = null
-    @Volatile private var localNetLeft = true
-    @Volatile private var localNetPeerId: String? = null
-    private val localNetRetries = AtomicInteger(0)
-    private val localNetInFlight = AtomicBoolean(false)
-
-    private fun ensureLocalNetServer() {
-        if (localNetServer != null) return
-        try {
-            val server = ServerSocket(MeshTransportPolicy.LOCAL_NET_PORT)
-            server.reuseAddress = true
-            localNetServer = server
-            Thread {
-                while (transportRunning && localNetServer == server) {
-                    try {
-                        val socket = server.accept()
-                        configureSocket(socket)
-                        Thread { handleIncomingTransportSafe(socket, MeshTransportPolicy.LOCAL_NET) }.start()
-                    } catch (_: Exception) {
-                        if (!transportRunning) break
-                    }
-                }
-            }.start()
-        } catch (e: Exception) {
-            Log.w("LOCAL_NET", "server failed port=${MeshTransportPolicy.LOCAL_NET_PORT} error=${e.message}")
-        }
-    }
-
-    /** Phones linked TO this phone (hotspot members, the other group's link). */
-    private fun localNetServerPeerCount(): Int = peerLinks.entries.count { (peerId, links) ->
-        val link = links[MeshTransportPolicy.LOCAL_NET]
-        link != null && !link.socket.isClosed && peerId != localNetPeerId
-    }
-
-    private fun emitLocalNet(state: String, extra: Map<String, Any?> = emptyMap()) {
-        val event = mapOf("type" to "local_net", "state" to state, "kind" to localNetKind) + extra
-        try { localNetListener?.invoke(event) } catch (_: Exception) {}
-    }
-
-    private fun connectLocalNetInternal(network: android.net.Network, kind: String, targets: List<String>, iface: String?) {
-        if (!LocalNetPolicy.validKind(kind)) return
-        closeLocalNetClientLink()
-        localNetNetwork = network
-        localNetKind = kind
-        localNetTargets = targets.take(4)
-        localNetIface = iface
-        localNetLeft = false
-        localNetRetries.set(0)
-        ensureLocalNetServer()
-        Log.i("LOCAL_NET", "network up kind=$kind targets=${targets.size} iface=${iface ?: "-"}")
-        dialLocalNet("joined")
-    }
-
-    private fun localNetAddress(target: String): java.net.InetAddress {
-        val plain = java.net.InetAddress.getByName(target)
-        if (plain is java.net.Inet6Address && plain.isLinkLocalAddress) {
-            val nif = localNetIface?.let { try { java.net.NetworkInterface.getByName(it) } catch (_: Exception) { null } }
-            if (nif != null) return java.net.Inet6Address.getByAddress(null, plain.address, nif)
-        }
-        return plain
-    }
-
-    private fun dialLocalNet(reason: String) {
-        val network = localNetNetwork ?: return
-        if (localNetLeft || !transportRunning) return
-        if (!localNetInFlight.compareAndSet(false, true)) return
-        val kind = localNetKind ?: LocalNetPolicy.KIND_GROUP
-        Thread {
-            try {
-                for (target in localNetTargets) {
-                    if (localNetLeft) return@Thread
-                    var socket: Socket? = null
-                    try {
-                        socket = network.socketFactory.createSocket()
-                        socket.connect(InetSocketAddress(localNetAddress(target), MeshTransportPolicy.LOCAL_NET_PORT), MeshTransportPolicy.SOCKET_CONNECT_TIMEOUT_MS)
-                        configureSocket(socket)
-                        val connection = authenticateClient(socket, target, MeshTransportPolicy.LOCAL_NET)
-                        if (connection == null) { try { socket.close() } catch (_: Exception) {}; continue }
-                        if (!registerPeer(connection)) { try { socket.close() } catch (_: Exception) {}; continue }
-                        localNetPeerId = connection.peerId
-                        localNetRetries.set(0)
-                        val via = if (target.contains(':')) "v6" else "v4"
-                        Log.i("LOCAL_NET", "linked kind=$kind peer=${connection.peerId.take(8)} via=$via reason=$reason")
-                        emitLocalNet("linked", mapOf("peer_id" to connection.peerId, "via" to via))
-                        Thread {
-                            try { readTransportLoop(connection) } finally { onLocalNetLinkClosed(connection.peerId) }
-                        }.start()
-                        return@Thread
-                    } catch (e: Exception) {
-                        try { socket?.close() } catch (_: Exception) {}
-                        Log.w("LOCAL_NET", "dial failed kind=$kind via=${if (target.contains(':')) "v6" else "v4"} error=${e.message}")
-                    }
-                }
-                onLocalNetDialFailed()
-            } finally {
-                localNetInFlight.set(false)
-            }
-        }.start()
-    }
-
-    private fun onLocalNetDialFailed() {
-        if (localNetLeft) return
-        val n = localNetRetries.incrementAndGet()
-        if (LocalNetPolicy.shouldRetry(localNetNetwork != null, n, localNetLeft)) {
-            Thread { Thread.sleep(LocalNetPolicy.RETRY_MS); dialLocalNet("retry_$n") }.start()
-        } else {
-            Log.i("LOCAL_NET", "gave up kind=$localNetKind tries=$n")
-            emitLocalNet("failed", mapOf("reason" to "connect_failed"))
-        }
-    }
-
-    private fun onLocalNetLinkClosed(peerId: String) {
-        if (localNetPeerId == peerId) localNetPeerId = null
-        if (localNetLeft) return
-        Log.i("LOCAL_NET", "link closed kind=$localNetKind peer=${peerId.take(8)}")
-        emitLocalNet("link_lost", mapOf("peer_id" to peerId))
-        onLocalNetDialFailed()
-    }
-
-    private fun closeLocalNetClientLink() {
-        val peer = localNetPeerId ?: return
-        localNetPeerId = null
-        val link = peerLinks[peer]?.get(MeshTransportPolicy.LOCAL_NET) ?: return
-        try { link.socket.close() } catch (_: Exception) {}
-    }
-
-    private fun closeLocalNetInternal(reason: String) {
-        if (localNetLeft && localNetNetwork == null) return
-        localNetLeft = true
-        localNetNetwork = null
-        closeLocalNetClientLink()
-        Log.i("LOCAL_NET", "left kind=$localNetKind reason=$reason")
-        emitLocalNet("left", mapOf("reason" to reason))
-        localNetKind = null
-        localNetTargets = emptyList()
-    }
-
-    private fun localNetStatusInternal(): Map<String, Any?> = mapOf(
-        "kind" to localNetKind,
-        "linked" to (localNetPeerId != null),
-        "peers" to localNetServerPeerCount(),
-        "server" to (localNetServer != null),
-    )
-
     private fun ensureLanServer() {
         if (lanServer != null) return
         try {
@@ -901,19 +463,12 @@ class LocalLinkTransportService : Service() {
             }
             lanDiscoverySocket = socket
             val receiveBuffer = ByteArray(4096)
-            var nextBeaconAt = 0L
+            var lastBroadcast = 0L
             while (transportRunning && lanDiscoverySocket == socket) {
                 val now = System.currentTimeMillis()
-                if (now >= nextBeaconAt) {
+                if (now - lastBroadcast >= MeshTransportPolicy.LAN_BEACON_INTERVAL_MS) {
                     broadcastLanBeacon(socket)
-                    // Bundle 160: 3 s / 10 s / 15 s by phones seen, ±20%.
-                    val phones = lanEndpoints.size
-                    val tier = MeshTransportPolicy.lanBeaconIntervalMs(phones)
-                    if (tier != lanBeaconTier) {
-                        lanBeaconTier = tier
-                        Log.i("NEARBY", "lan beacon every=${tier / 1000}s phones=$phones")
-                    }
-                    nextBeaconAt = now + MeshTransportPolicy.jitteredBeaconMs(phones, Math.random())
+                    lastBroadcast = now
                 }
                 try {
                     val datagram = DatagramPacket(receiveBuffer, receiveBuffer.size)
@@ -942,8 +497,6 @@ class LocalLinkTransportService : Service() {
             .put("node_id", self)
             .put("port", lanTransportPort)
             .put("sent_at", System.currentTimeMillis())
-            // Bundle 156: this phone can pass on sealed packets for others.
-            .put("relay", if (MeshRelayPolicy.RELAY_ENABLED) 1 else 0)
         val bytes = packet.toString().toByteArray(Charsets.UTF_8)
         val addresses = lanBroadcastAddresses()
         try {
@@ -1028,35 +581,9 @@ class LocalLinkTransportService : Service() {
             // harmless because registerPeer replaces the older same-transport
             // link and the seen-packet tracker dedupes any duplicate frames.
             if (knownPeers.contains(nodeId)) {
-                if (mayDialLanContact(nodeId, now)) connectLanPeer(nodeId, host, port)
-            } else if (beacon.optInt("relay", 0) == 1 && shouldDialRelay(self, nodeId, now)) {
-                // Bundle 156 (D12): a few strangers' phones as relay
-                // neighbours. They can only pass on sealed packets.
-                Log.i("RELAY", "dial relay peer=$nodeId relays=${relayLinkCount()}")
                 connectLanPeer(nodeId, host, port)
             }
         } catch (_: Exception) {}
-    }
-
-    /** Bundle 160 (D12): about 30 direct LAN links to contacts; more only
-     *  when a message needs one (see routerNoRoute). */
-    private fun directLanContactLinks(): Int = allPhysicalPeerLinks().count {
-        it.transportName == MeshTransportPolicy.LAN && it.trust == MeshRelayPolicy.TRUST_CONTACT && !it.socket.isClosed
-    }
-
-    private fun mayDialLanContact(nodeId: String, now: Long): Boolean {
-        val needed = lanNeededAt[nodeId]?.let { now - it < 120_000L } ?: false
-        return MeshTransportPolicy.mayDialContact(directLanContactLinks(), needed)
-    }
-
-    private fun shouldDialRelay(self: String, nodeId: String, now: Long): Boolean {
-        if (!MeshRelayPolicy.RELAY_ENABLED || blockedPeers.contains(nodeId) || relayLimiter.isPaused(nodeId, now)) return false
-        if (!MeshRelayPolicy.shouldDialRelay(self, nodeId)) return false
-        if (relayLinkCount(transportName = MeshTransportPolicy.LAN) >= MeshRelayPolicy.MAX_RELAY_LINKS) return false
-        val last = relayDialAt[nodeId] ?: 0L
-        if (now - last < MeshRelayPolicy.RELAY_DIAL_COOLDOWN_MS) return false
-        relayDialAt[nodeId] = now
-        return true
     }
 
     // ------------------------------------------------------------------------
@@ -1232,23 +759,10 @@ class LocalLinkTransportService : Service() {
         val id = transportDeviceId ?: return null
         val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
         val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
-        // Bundle 160: my fresh random number for the signed device id.
-        val clientNonce = MeshLinkAuth.newNonce()
         writer.write(JSONObject().put("type", "hello")
             .put("device_id", id)
             .put("node_id", id)
             .put("transport_auth_version", TRANSPORT_AUTH_VERSION)
-            // Bundle 156: capabilities (older phones ignore them).
-            .put("seal", 1)
-            .put("relay", if (MeshRelayPolicy.RELAY_ENABLED) 1 else 0)
-            // Bundle 159: this phone can pass on and play locked call voice.
-            .put("voice", 1)
-            // Bundle 165: this phone can pass on and open locked file packets.
-            .put("sf", 1)
-            // Bundle 160: changes-only route updates + signed device id.
-            .put("rd", 1)
-            .put("lk", MeshLinkAuth.VERSION)
-            .put("cn", clientNonce)
             .toString())
         writer.newLine()
         writer.flush()
@@ -1257,38 +771,18 @@ class LocalLinkTransportService : Service() {
         if (challenge.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
         val peerId = challenge.optString("peer_id").ifBlank { challenge.optString("node_id") }
         if (expectedPeerId != null && peerId != expectedPeerId) return null
-        if (!validTransportId(peerId) || peerId == id) return null
-        // Bundle 156: contacts as before; a stranger only as a relay link.
-        val trust = trustForPeer(peerId, challenge.optInt("relay", 0) == 1, transportName) ?: return null
-        // Bundle 160: signed device id. Pick the link key we share and prove it.
-        val serverNonce = challenge.optString("sn")
-        val serverAuth = challenge.optInt("lk", 0) == MeshLinkAuth.VERSION && MeshLinkAuth.validNonce(serverNonce)
-        val myKeys = linkKeys[peerId].orEmpty()
-        val shared = if (serverAuth) MeshLinkAuth.match(myKeys, jsonStringList(challenge.optJSONArray("lks"))) else null
-        val authJson = JSONObject().put("type", "auth")
+        if (!knownPeers.contains(peerId)) return null
+        writer.write(JSONObject().put("type", "auth")
             .put("device_id", id)
             .put("node_id", id)
             .put("transport_auth_version", TRANSPORT_AUTH_VERSION)
-        if (shared != null) {
-            authJson.put("lkp", JSONArray().put(shared.offer))
-                .put("mac", MeshLinkAuth.mac(shared.key, "c", id, peerId, clientNonce, serverNonce))
-        }
-        writer.write(authJson.toString())
+            .toString())
         writer.newLine()
         writer.flush()
         val auth = reader.readLine()?.let { JSONObject(it) } ?: return null
         if (auth.optString("type") != "auth_ok" || auth.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
-        val serverMacOk = shared != null && MeshLinkAuth.verify(shared.key, "s", id, peerId, clientNonce, serverNonce, auth.optString("mac"))
-        val linkAuth = MeshLinkAuth.applyStrict(
-            MeshLinkAuth.decide(myKeys.isNotEmpty(), serverAuth, shared != null, serverMacOk, linkVerified.contains(peerId)),
-            strictLinkCheck, trust == MeshRelayPolicy.TRUST_CONTACT)
-        noteLinkAuth(peerId, "dial", linkAuth)
-        if (linkAuth.verdict == MeshLinkAuth.Verdict.REJECT) return null
         socket.soTimeout = 0
-        return PeerConnection(peerId, socket, if (transportName == MeshTransportPolicy.WIFI_DIRECT) null else ownerAddress, reader, writer, transportName, socket.inetAddress?.hostAddress,
-            trust = trust, sealCapable = challenge.optInt("seal", 0) == 1, voiceCapable = challenge.optInt("voice", 0) == 1,
-            fileSealCapable = challenge.optInt("sf", 0) == 1,
-            routeDelta = challenge.optInt("rd", 0) == 1, verified = linkAuth.verdict == MeshLinkAuth.Verdict.VERIFIED)
+        return PeerConnection(peerId, socket, if (transportName == MeshTransportPolicy.WIFI_DIRECT) null else ownerAddress, reader, writer, transportName, socket.inetAddress?.hostAddress)
     }
 
     private fun acceptHandshake(socket: Socket, transportName: String = MeshTransportPolicy.WIFI_DIRECT): PeerConnection? {
@@ -1301,54 +795,22 @@ class LocalLinkTransportService : Service() {
         val peer = hello.optString("node_id").ifBlank { hello.optString("device_id") }
         val self = transportDeviceId ?: return null
         if (peer.isBlank() || peer == self) return null
-        if (!validTransportId(peer)) return null
-        // Bundle 156: contacts as before; a stranger only as a relay link.
-        val trust = trustForPeer(peer, hello.optInt("relay", 0) == 1, transportName) ?: return null
-        // Bundle 160: signed device id — my random number + my key offers.
-        val clientNonce = hello.optString("cn")
-        val clientAuth = hello.optInt("lk", 0) == MeshLinkAuth.VERSION && MeshLinkAuth.validNonce(clientNonce)
-        val myKeys = linkKeys[peer].orEmpty()
-        val serverNonce = MeshLinkAuth.newNonce()
-        val challengeJson = JSONObject().put("type", "challenge")
+        if (!knownPeers.contains(peer)) return null
+        writer.write(JSONObject().put("type", "challenge")
             .put("peer_id", self)
             .put("node_id", self)
             .put("transport_auth_version", TRANSPORT_AUTH_VERSION)
-            .put("seal", 1)
-            .put("relay", if (MeshRelayPolicy.RELAY_ENABLED) 1 else 0)
-            // Bundle 159: this phone can pass on and play locked call voice.
-            .put("voice", 1)
-            // Bundle 165: this phone can pass on and open locked file packets.
-            .put("sf", 1)
-            // Bundle 160.
-            .put("rd", 1)
-            .put("lk", MeshLinkAuth.VERSION)
-            .put("sn", serverNonce)
-        if (myKeys.isNotEmpty()) challengeJson.put("lks", JSONArray(MeshLinkAuth.offers(myKeys)))
-        writer.write(challengeJson.toString())
+            .toString())
         writer.newLine()
         writer.flush()
         val auth = reader.readLine()?.let { JSONObject(it) } ?: return null
         if (auth.optString("node_id").ifBlank { auth.optString("device_id") } != peer ||
             auth.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
-        val shared = if (clientAuth) MeshLinkAuth.match(myKeys, jsonStringList(auth.optJSONArray("lkp"))) else null
-        val clientMacOk = shared != null && MeshLinkAuth.verify(shared.key, "c", peer, self, clientNonce, serverNonce, auth.optString("mac"))
-        val linkAuth = MeshLinkAuth.applyStrict(
-            MeshLinkAuth.decide(myKeys.isNotEmpty(), clientAuth, shared != null, clientMacOk, linkVerified.contains(peer)),
-            strictLinkCheck, trust == MeshRelayPolicy.TRUST_CONTACT)
-        noteLinkAuth(peer, "answer", linkAuth)
-        if (linkAuth.verdict == MeshLinkAuth.Verdict.REJECT) return null
-        val ok = JSONObject().put("type", "auth_ok").put("transport_auth_version", TRANSPORT_AUTH_VERSION)
-        if (linkAuth.verdict == MeshLinkAuth.Verdict.VERIFIED && shared != null) {
-            ok.put("mac", MeshLinkAuth.mac(shared.key, "s", peer, self, clientNonce, serverNonce))
-        }
-        writer.write(ok.toString())
+        writer.write(JSONObject().put("type", "auth_ok").put("transport_auth_version", TRANSPORT_AUTH_VERSION).toString())
         writer.newLine()
         writer.flush()
         socket.soTimeout = 0
-        return PeerConnection(peer, socket, if (transportName == MeshTransportPolicy.WIFI_DIRECT) null else socket.inetAddress?.hostAddress, reader, writer, transportName, socket.inetAddress?.hostAddress,
-            trust = trust, sealCapable = hello.optInt("seal", 0) == 1, voiceCapable = hello.optInt("voice", 0) == 1,
-            fileSealCapable = hello.optInt("sf", 0) == 1,
-            routeDelta = hello.optInt("rd", 0) == 1, verified = linkAuth.verdict == MeshLinkAuth.Verdict.VERIFIED)
+        return PeerConnection(peer, socket, if (transportName == MeshTransportPolicy.WIFI_DIRECT) null else socket.inetAddress?.hostAddress, reader, writer, transportName, socket.inetAddress?.hostAddress)
     }
 
     private fun handleIncomingTransportSafe(socket: Socket, transportName: String = MeshTransportPolicy.WIFI_DIRECT) {
@@ -1363,7 +825,6 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun registerPeer(connection:PeerConnection): Boolean {
-        if (connection.fileSealCapable && knownPeers.contains(connection.peerId)) noteFileSealCapable(connection.peerId)
         if (!MeshTransportPolicy.isSupportedTransport(connection.transportName)) {
             try { connection.socket.close() } catch (_: Exception) {}
             transportEvent("peer_link_rejected", mapOf(
@@ -1394,32 +855,14 @@ class LocalLinkTransportService : Service() {
         val previousDirect = routeTable[connection.peerId]
         routeTable.upsert(connection.peerId, MeshRoute(destinationNodeId = connection.peerId, nextHopNodeId = connection.peerId, hopCount = 1, expiresAt = now + DIRECT_ROUTE_TTL_MS, lastSeenAt = now, routeVersion = directVersion, path = listOf(self, connection.peerId)))
         val directRecovery = routeRecovery.markRecovered(connection.peerId)
-        // Bundle 160: a new neighbour starts from a full map (pages of 128).
-        if (activeBefore == null) {
-            routeDeltaSender.forget(connection.peerId)
-            routeDeltaReceiver.forget(connection.peerId)
-        }
-        if (active.routeDelta) Thread { sendRouteDeltas(triggered = true) }.start()
-        val isRelay = connection.trust == MeshRelayPolicy.TRUST_RELAY
-        if (isRelay) {
-            // Bundle 156: a stranger's phone that only passes on sealed
-            // packets. Not a contact — never shown as one.
-            Log.i("RELAY", "relay link up peer=${connection.peerId} transport=${connection.transportName} relays=${relayLinkCount()}")
-            transportEvent("relay_connected", mapOf(
-                "peer_id" to connection.peerId,
-                "transport" to connection.transportName,
-                "seal" to connection.sealCapable,
-            ))
-        } else transportEvent("peer_connected",mapOf(
+        transportEvent("peer_connected",mapOf(
             "peer_id" to connection.peerId,
             "transport" to connection.transportName,
             "active_transport" to active.transportName,
             "address" to connection.remoteAddress,
             "physical_links" to links.keys.toList().sorted(),
-            // Bundle 156: the peer's app can open sealed messages.
-            "seal" to connection.sealCapable,
         ))
-        if (!isRelay && activeBefore?.transportName != active.transportName && activeBefore != null) {
+        if (activeBefore?.transportName != active.transportName && activeBefore != null) {
             transportEvent("peer_transport_selected", mapOf(
                 "peer_id" to connection.peerId,
                 "previous_transport" to activeBefore.transportName,
@@ -1427,7 +870,7 @@ class LocalLinkTransportService : Service() {
                 "reason" to "transport_preference",
             ))
         }
-        if (!isRelay && (directRecovery != null || previousDirect == null)) {
+        if (directRecovery != null || previousDirect == null) {
             transportEvent("route_recovered", mapOf(
                 "destination_id" to connection.peerId,
                 "previous_next_hop" to directRecovery?.failedNextHopNodeId,
@@ -1437,14 +880,6 @@ class LocalLinkTransportService : Service() {
             ))
         }
         transportEvent("topology",meshTopologySnapshot())
-        // Bundle 158: ping the new link at once, so it is proven (pong) in
-        // one round trip and make-before-break can switch to it quickly.
-        Thread {
-            try {
-                connection.lastPingAt = System.currentTimeMillis()
-                connection.send(JSONObject().put("type", "ping").put("sent_at", connection.lastPingAt))
-            } catch (_: Exception) {}
-        }.start()
         Thread{flushMeshQueue()}.start()
         return true
     }
@@ -1566,59 +1001,15 @@ class LocalLinkTransportService : Service() {
                         val receiver = packet.optString("receiver_id")
                         if (from != connection.peerId) break
                         if (receiver != transportDeviceId) break
-                        val isRelayLink = connection.trust == MeshRelayPolicy.TRUST_RELAY
-                        if (isRelayLink) {
-                            // Bundle 156: relay link — never a blocked user.
-                            if (blockedPeers.contains(from)) { exitCause = "relay_blocked"; break }
-                        } else if (!knownPeers.contains(from)) break
-                        // Bundle 164 (5.7): a contact blocked while linked.
-                        else if (blockedPeers.contains(from)) { exitCause = "contact_blocked"; break }
+                        if (!knownPeers.contains(from)) break
+                        activePeerConnection(from)?.let { meshPeers.available(from, it.transportName) }
                         val payloadText = packet.optString("payload")
                         val inbound = try { JSONObject(payloadText) } catch (_: Exception) { null }
-                        val parsed = inbound?.let { MeshPacket.fromJson(it) }
-                        if (isRelayLink) {
-                            if (parsed != null && MeshRelayPolicy.isSealedVoice(parsed.type)) {
-                                // Bundle 159: locked voice has its own budget
-                                // (max 2 calls); over it the frame is dropped,
-                                // the link is never paused for voice.
-                                val vs = parsed.payload.optString("vs")
-                                val fresh = !relayVoiceBudget.knows(vs)
-                                if (!relayVoiceBudget.allow(vs)) {
-                                    if (fresh) Log.w("RELAY", "RELAY call refused stream=${vs.take(6)} reason=budget")
-                                    transportEvent("mesh_dropped", mapOf("packet_id" to parsed.packetId, "peer_id" to from, "reason" to "relay_voice_budget"))
-                                    continue
-                                }
-                                // One line per call, never the sound itself.
-                                if (fresh && parsed.destinationNodeId != transportDeviceId) {
-                                    Log.i("RELAY", "RELAY call stream=${vs.take(6)} from=$from to=${parsed.destinationNodeId} calls=${relayVoiceBudget.activeStreams()}")
-                                }
-                            } else if (parsed != null && MeshRelayPolicy.isSealedFile(parsed.type)) {
-                                // Bundle 165: locked file packets have their own
-                                // budget; over it the packet is dropped (the
-                                // sender resends), the link is never paused.
-                                if (!relayFileBudget.allow(from, line.length)) {
-                                    if (relayFileBudget.shouldNoteFull(from)) Log.w("RELAY", "RELAY file budget full peer=$from (dropped, sender resends)")
-                                    continue
-                                }
-                            } else if (!relayLimiter.allow(from, line.length)) {
-                                // Bundle 156: a flood pauses the relay for 10 minutes.
-                                Log.w("RELAY", "relay paused peer=$from reason=rate_limit")
-                                transportEvent("relay_paused", mapOf("peer_id" to from, "reason" to "rate_limit"))
-                                exitCause = "relay_rate_limit"
-                                break
-                            }
-                        }
-                        activePeerConnection(from)?.let { meshPeers.available(from, it.transportName) }
-                        val packet = parsed ?: run {
+                        val packet = (inbound?.let { MeshPacket.fromJson(it) }) ?: run {
                             transportEvent("mesh_dropped", mapOf(
                                 "reason" to "unsupported_mesh_protocol",
                                 "peer_id" to from,
                             ))
-                            continue
-                        }
-                        // Bundle 156: a relay link carries sealed packets only.
-                        if (!MeshRelayPolicy.canCarry(connection.trust, packet.type)) {
-                            transportEvent("mesh_dropped", mapOf("packet_id" to packet.packetId, "peer_id" to from, "reason" to "relay_plain_refused"))
                             continue
                         }
                         if (packet.nextHopNodeId != null && packet.nextHopNodeId != transportDeviceId) continue
@@ -1640,10 +1031,6 @@ class LocalLinkTransportService : Service() {
                     }
                     "route_advertisement" -> updateRoutesFromAdvertisement(connection.peerId, packet)
                     "route_withdrawal" -> handleRouteWithdrawal(connection.peerId, packet)
-                    // Bundle 160: missed update -> full map; who can reach X?
-                    "route_full_request" -> handleRouteFullRequest(connection.peerId, packet)
-                    "route_query" -> handleRouteQuery(connection.peerId, packet)
-                    "route_answer" -> handleRouteAnswer(connection.peerId, packet)
                 }
             }
         } catch (error: Exception) {
@@ -1662,10 +1049,7 @@ class LocalLinkTransportService : Service() {
             // link still serves this peer. Reporting it anyway made the UI and
             // mesh state flap DISCONNECTED ~every few seconds.
             if (transportPeers[connection.peerId] == null) {
-                if (connection.trust == MeshRelayPolicy.TRUST_RELAY) {
-                    Log.i("RELAY", "relay link down peer=${connection.peerId} cause=$exitCause")
-                    transportEvent("relay_disconnected", mapOf("peer_id" to connection.peerId, "cause" to exitCause))
-                } else transportEvent("peer_disconnected", mapOf("peer_id" to connection.peerId))
+                transportEvent("peer_disconnected", mapOf("peer_id" to connection.peerId))
             }
             transportEvent("topology", meshTopologySnapshot())
         }
@@ -1756,37 +1140,7 @@ class LocalLinkTransportService : Service() {
         val result = meshRouter.route(packet, from)
         when (result) {
             MeshRouteResult.LOCAL_DELIVERY -> deliverLocalPacket(packet)
-            MeshRouteResult.FORWARDED -> {
-                // Bundle 165: locked file packets are counted only, with one
-                // log line per sender/receiver pair every 10 s.
-                if (MeshRelayPolicy.isSealedFile(packet.type)) {
-                    val total = forwardedFileChunks.incrementAndGet()
-                    val pair = "${packet.sourceNodeId}>${packet.destinationNodeId}"
-                    if (now - (fileRelayLogAt[pair] ?: 0L) >= 10_000L) {
-                        if (fileRelayLogAt.size > 64) fileRelayLogAt.clear()
-                        fileRelayLogAt[pair] = now
-                        Log.i("RELAY", "RELAY file passed on from=${packet.sourceNodeId} to=${packet.destinationNodeId} via=$from total=$total")
-                    }
-                    return
-                }
-                // Bundle 156: what passed through this phone for others
-                // (type and size only, never the content).
-                if (!isEphemeralCallMediaType(packet.type)) Log.i("RELAY", "passed on type=${packet.type} bytes=${packet.payload.toString().length} from=$from")
-                // Bundle 159: a locked voice frame is counted only (50 a
-                // second would flood the app with events).
-                // Bundle 167: plain call voice too (it used to send one app
-                // event per frame); both mark "a call passes through here".
-                if (MeshRelayPolicy.isSealedVoice(packet.type) || packet.type == "call_media") {
-                    forwardedVoiceFrames.incrementAndGet()
-                    if (voiceRelay.onForward(now)) {
-                        Log.i("RELAY", "RELAY voice passing through on")
-                        transportEvent("voice_relay", mapOf("active" to true))
-                    }
-                    return
-                }
-                forwardedPackets.incrementAndGet()
-                transportEvent("mesh_forwarded", mapOf("packet_id" to packet.packetId, "source_id" to packet.sourceNodeId, "destination_id" to packet.destinationNodeId, "hop_count" to packet.hopCount))
-            }
+            MeshRouteResult.FORWARDED -> transportEvent("mesh_forwarded", mapOf("packet_id" to packet.packetId, "source_id" to packet.sourceNodeId, "destination_id" to packet.destinationNodeId, "hop_count" to packet.hopCount))
             MeshRouteResult.QUEUED -> transportEvent("mesh_queued", mapOf("packet_id" to packet.packetId, "target_id" to packet.destinationNodeId, "reason" to "no_route"))
             MeshRouteResult.NO_ROUTE -> transportEvent("mesh_unroutable", mapOf("packet_id" to packet.packetId, "target_id" to packet.destinationNodeId))
             MeshRouteResult.DROPPED -> transportEvent("mesh_dropped", mapOf("packet_id" to packet.packetId, "reason" to "router_validation"))
@@ -1816,16 +1170,8 @@ class LocalLinkTransportService : Service() {
             return
         }
         val payload = packet.toApplicationPayload()
-        // Bundle 165: a plain file packet from a newer phone says it can
-        // take locked ones too.
-        if (FileSeal.isFileType(packet.type)) {
-            fileLastLocked[packet.sourceNodeId] = false
-            if (packet.payload.optInt("sf", 0) == 1) noteFileSealCapable(packet.sourceNodeId)
-        }
         when (packet.type) {
             "call_media" -> handleIncomingCallMedia(packet)
-            MeshRelayPolicy.SEALED_VOICE -> handleIncomingSealedVoice(packet)
-            MeshRelayPolicy.SEALED_FILE -> handleIncomingSealedFile(packet)
             "call_video_config" -> handleIncomingCallVideoConfig(packet)
             "call_video_frame" -> handleIncomingCallVideoFrame(packet)
             "call_video_quality" -> handleIncomingCallVideoControl(packet)
@@ -1835,7 +1181,6 @@ class LocalLinkTransportService : Service() {
             "direct_file_progress" -> handleFileProgress(payload)
             "direct_file_resume_request" -> handleFileResumeRequest(payload)
             "direct_file_cancel" -> handleFileCancel(payload)
-            "direct_file_restart" -> handleFileRestart(payload)
             else -> transportEvent("message", mapOf(
                 "payload" to payload.toString(),
                 "sender_id" to packet.sourceNodeId,
@@ -1859,7 +1204,7 @@ class LocalLinkTransportService : Service() {
      * only the call endpoints hold the media key. Relays therefore see routing
      * metadata but never plaintext audio.
      */
-    private fun startCallMediaInternal(callId:String, peerId:String, codec:String?, voiceKeyB64:String? = null) {
+    private fun startCallMediaInternal(callId:String, peerId:String, codec:String?) {
         require(callId.length in 1..128) { "invalid call id" }
         require(peerId.length in 1..128) { "invalid peer id" }
         val requested = codec?.trim()?.lowercase().orEmpty()
@@ -1872,13 +1217,8 @@ class LocalLinkTransportService : Service() {
             return
         }
         stopCallMediaInternal("")
-        // Bundle 159: per-call voice key (from the locked invite). Bad or
-        // missing key = plain voice, exactly as before.
-        val voiceKey = voiceKeyB64?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            try { Base64.decode(it, Base64.NO_WRAP) } catch (_:Exception) { null }
-        }?.takeIf { CallVoiceSeal.validKey(it) }
-        val session = CallMediaSession(callId, peerId, requested, voiceKey)
-        Log.i("LocalLinkCall", "CALL_MEDIA_CODEC call=$callId requested=${requested.ifBlank { "-" }} used=${session.codec} voice_lock=${voiceKey != null}")
+        val session = CallMediaSession(callId, peerId, requested)
+        Log.i("LocalLinkCall", "CALL_MEDIA_CODEC call=$callId requested=${requested.ifBlank { "-" }} used=${session.codec}")
         synchronized(callMediaLock) { callMedia = session }
         acquireCallLocks()
         session.start()
@@ -2039,7 +1379,7 @@ class LocalLinkTransportService : Service() {
         ))
     }
 
-    private fun isEphemeralCallMediaType(type:String): Boolean = type == "call_media" || type == MeshRelayPolicy.SEALED_VOICE || type == "call_video_config" || type == "call_video_frame" || type == "call_video_state" || type == "call_video_quality" || type == "call_video_keyframe_request"
+    private fun isEphemeralCallMediaType(type:String): Boolean = type == "call_media" || type == "call_video_config" || type == "call_video_frame" || type == "call_video_state" || type == "call_video_quality" || type == "call_video_keyframe_request"
 
     private fun callMediaStatsInternal(callId:String): Map<String,Any?> {
         val audio = callMedia?.takeIf { it.callId == callId }?.stats() ?: emptyMap()
@@ -2048,130 +1388,13 @@ class LocalLinkTransportService : Service() {
         return audio + video.mapKeys { (k, _) -> if (k == "sent_frames" || k == "received_frames" || k == "dropped_frames") "video_$k" else k }
     }
 
-    /** Bundle 159: a locked voice frame — opens only with this call's key. */
-    private fun handleIncomingSealedVoice(packet:MeshPacket) {
-        val current = callMedia ?: return
-        val selfId = transportDeviceId ?: return
-        val key = current.voiceKey ?: return
-        if (packet.sourceNodeId != current.peerId) return
+    private fun handleIncomingCallMedia(packet:MeshPacket) {
         val payload = packet.payload
-        val stream = payload.optString("vs").trim()
-        if (stream != current.voiceStream) return
-        val nonce = try { Base64.decode(payload.optString("n"), Base64.NO_WRAP) } catch (_:Exception) { return }
-        val cipherText = try { Base64.decode(payload.optString("c"), Base64.NO_WRAP) } catch (_:Exception) { return }
-        val plain = CallVoiceSeal.open(key, packet.sourceNodeId, selfId, stream, nonce, cipherText)
-        if (plain == null) {
-            current.noteVoiceOpenFailed()
-            return
-        }
-        val inner = try { JSONObject(String(plain, Charsets.UTF_8)) } catch (_:Exception) { return }
-        if (inner.optString("type") != "call_media") return
-        handleIncomingCallMediaPayload(inner, packet.sourceNodeId, packet.hopCount, locked = true)
-    }
-
-    /**
-     * Bundle 165 (5.1): a locked file packet for this phone. It opens only
-     * with the link key shared with that contact; then it is handled exactly
-     * like the plain packet it carries.
-     */
-    private fun handleIncomingSealedFile(packet: MeshPacket) {
-        val self = transportDeviceId ?: return
-        val from = packet.sourceNodeId
-        if (blockedPeers.contains(from)) return
-        val p = packet.payload
-        val shared = MeshLinkAuth.match(linkKeys[from].orEmpty(), listOf(p.optString("k"))) ?: run {
-            if (fileLogDue("open>$from")) Log.w("RELAY", "RELAY file open failed from=$from reason=no_key")
-            return
-        }
-        val nonce = try { Base64.decode(p.optString("n"), Base64.NO_WRAP) } catch (_: Exception) { return }
-        val cipherText = try { Base64.decode(p.optString("c"), Base64.NO_WRAP) } catch (_: Exception) { return }
-        val plain = FileSeal.open(FileSeal.key(shared.key, from, self), from, self, nonce, cipherText) ?: run {
-            if (fileLogDue("open>$from")) Log.w("RELAY", "RELAY file open failed from=$from reason=bad_seal")
-            return
-        }
-        val inner = try { JSONObject(String(plain, Charsets.UTF_8)) } catch (_: Exception) { return }
-        val type = inner.optString("type")
-        if (!FileSeal.isFileType(type)) return
-        // The locked packet must be what that contact sent to me.
-        if (inner.optString("sender_id") != from || inner.optString("recipient_id") != self) return
-        noteFileSealCapable(from)
-        fileLastLocked[from] = true
-        inner.put("mesh_packet_id", packet.packetId)
-        when (type) {
-            "direct_file_chunk" -> handleIncomingFileChunk(from, inner)
-            "direct_file_progress" -> handleFileProgress(inner)
-            "direct_file_resume_request" -> handleFileResumeRequest(inner)
-            "direct_file_cancel" -> handleFileCancel(inner)
-            "direct_file_restart" -> handleFileRestart(inner)
-            else -> transportEvent("message", mapOf(
-                "payload" to inner.toString(),
-                "sender_id" to from,
-                "mesh_final_recipient" to true,
-                "mesh_packet_id" to packet.packetId,
-                "mesh_destination_id" to self,
-                "mesh_hop_count" to packet.hopCount,
-                "peer_clock_offset_ms" to (if (packet.hopCount <= 1) peerClockOffsetMs[from] else null),
-                "mesh_link_kind" to (transportPeers[from]?.transportName ?: "unknown"),
-            ))
-        }
-    }
-
-    /** Bundle 165: the locked form of a file packet, or null = send it plain. */
-    private fun sealFilePayload(target: String, payload: JSONObject): JSONObject? {
-        val self = transportDeviceId ?: return null
-        val shared = linkKeys[target].orEmpty().firstOrNull()
-        val nextHop = if (activePeerConnection(target) != null) target else routeTable[target]?.nextHopNodeId
-        val nextHopIsRelay = nextHop != null && activePeerConnection(nextHop)?.trust == MeshRelayPolicy.TRUST_RELAY
-        val replyLikeLast = if (payload.optString("type") in FileSealPolicy.REPLY_TYPES) fileLastLocked[target] else null
-        if (!FileSealPolicy.useSeal(shared != null, fileSealPeers.contains(target), nextHopIsRelay, fileSealTrial.contains(target), replyLikeLast)) return null
-        shared ?: return null
-        val inner = JSONObject(payload.toString()).put("recipient_id", target).put("sender_id", self)
-        val (nonce, cipherText) = try {
-            FileSeal.seal(FileSeal.key(shared.key, self, target), self, target, inner.toString().toByteArray(Charsets.UTF_8))
-        } catch (_: Exception) { return null }
-        return JSONObject()
-            .put("type", MeshRelayPolicy.SEALED_FILE)
-            .put("sender_id", self)
-            .put("recipient_id", target)
-            .put("k", shared.offer)
-            .put("n", Base64.encodeToString(nonce, Base64.NO_WRAP))
-            .put("c", Base64.encodeToString(cipherText, Base64.NO_WRAP))
-    }
-
-    /** Bundle 165: one log line per key every 10 s (never per chunk). */
-    private fun fileLogDue(key: String, now: Long = System.currentTimeMillis()): Boolean {
-        if (now - (fileRelayLogAt[key] ?: 0L) < 10_000L) return false
-        if (fileRelayLogAt.size > 64) fileRelayLogAt.clear()
-        fileRelayLogAt[key] = now
-        return true
-    }
-
-    private fun noteFileSealCapable(peerId: String) {
-        if (!validTransportId(peerId) || !fileSealPeers.add(peerId)) return
-        Log.i("RELAY", "RELAY file lock ready peer=$peerId")
-        try {
-            while (fileSealPeers.size > FileSealPolicy.MAX_KNOWN) fileSealPeers.remove(fileSealPeers.first())
-            getSharedPreferences(FILE_SEAL_PREFS, MODE_PRIVATE).edit().putStringSet(FILE_SEAL_KEY, HashSet(fileSealPeers)).apply()
-        } catch (_: Exception) {}
-    }
-
-    private fun loadFileSealPeers() {
-        try {
-            getSharedPreferences(FILE_SEAL_PREFS, MODE_PRIVATE).getStringSet(FILE_SEAL_KEY, null)?.forEach {
-                if (validTransportId(it) && fileSealPeers.size < FileSealPolicy.MAX_KNOWN) fileSealPeers.add(it)
-            }
-        } catch (_: Exception) {}
-    }
-
-    private fun handleIncomingCallMedia(packet:MeshPacket) =
-        handleIncomingCallMediaPayload(packet.payload, packet.sourceNodeId, packet.hopCount, locked = false)
-
-    private fun handleIncomingCallMediaPayload(payload:JSONObject, sourceNodeId:String, hopCount:Int, locked:Boolean) {
         val current = callMedia ?: return
         val selfId = transportDeviceId ?: return
         if (payload.optString("call_id") != current.callId) return
-        if (sourceNodeId != current.peerId) return
-        if (payload.optString("sender_id").trim() != sourceNodeId) return
+        if (packet.sourceNodeId != current.peerId) return
+        if (payload.optString("sender_id").trim() != packet.sourceNodeId) return
         if (payload.optString("recipient_id").trim() != selfId) return
         val sequence = payload.optLong("sequence", -1L)
         if (sequence < 0L || sequence > Long.MAX_VALUE - 1L) return
@@ -2189,7 +1412,7 @@ class LocalLinkTransportService : Service() {
         if (payload.has("opus2_rx") && !payload.optBoolean("opus2_rx", true)) current.peerCannotDecodeOpus()
         val encoded = payload.optString("audio_payload").trim()
         if (encoded.isBlank()) return
-        val replayKey = "${current.callId}\u0000${sourceNodeId}\u0000$sequence"
+        val replayKey = "${current.callId}\u0000${packet.sourceNodeId}\u0000$sequence"
         if (callMediaRecent.putIfAbsent(replayKey, now) != null) return
         val audio = try { Base64.decode(encoded, Base64.DEFAULT) } catch (_:Exception) {
             callMediaRecent.remove(replayKey, now)
@@ -2204,28 +1427,14 @@ class LocalLinkTransportService : Service() {
             if (oldest != null) callMediaRecent.remove(oldest.key, oldest.value)
         }
         current.enqueue(sequence, timestamp, audio, codec)
-        if (locked) current.noteLockedReceived()
-        transportEvent("call_media_received", mapOf("call_id" to current.callId, "sequence" to sequence, "bytes" to audio.size, "hop_count" to hopCount, "codec" to codec, "locked" to locked))
+        transportEvent("call_media_received", mapOf("call_id" to current.callId, "sequence" to sequence, "bytes" to audio.size, "hop_count" to packet.hopCount, "codec" to codec))
     }
 
     private inner class CallMediaSession(
         val callId:String,
         val peerId:String,
         val requestedCodec:String,
-        // Bundle 159: null = plain voice (older phone or a contact-only call).
-        val voiceKey:ByteArray? = null,
     ) {
-        val voiceStream:String = voiceKey?.let { CallVoiceSeal.streamId(it) }.orEmpty()
-        private val lockedSent = AtomicLong(0)
-        private val lockedReceived = AtomicLong(0)
-        private val plainFallbacks = AtomicLong(0)
-        private val voiceOpenFailed = AtomicLong(0)
-        fun noteLockedReceived() {
-            if (lockedReceived.incrementAndGet() == 1L) Log.i("LocalLinkCall", "CALL_VOICE_LOCKED call=$callId dir=rx")
-        }
-        fun noteVoiceOpenFailed() {
-            if (voiceOpenFailed.incrementAndGet() == 1L) Log.w("LocalLinkCall", "CALL_VOICE_OPEN_FAILED call=$callId")
-        }
         // Bundle 149: `opus2` only when both phones negotiated it AND this
         // phone passed the Opus self-test (CallOpusCodec.usable). The legacy
         // 142-145 "opus" name always means PCM. The codec actually SENT can
@@ -2303,7 +1512,6 @@ class LocalLinkTransportService : Service() {
 
         fun stop() {
             if (!running.compareAndSet(true,false)) return
-            if (voiceKey != null) Log.i("LocalLinkCall", "CALL_VOICE_LOCK call=$callId locked_sent=${lockedSent.get()} locked_rx=${lockedReceived.get()} plain_fallback=${plainFallbacks.get()} open_failed=${voiceOpenFailed.get()}")
             try { recorder?.stop() } catch (_:Exception) {}
             try { track?.stop() } catch (_:Exception) {}
             synchronized(playbackLock) { playbackQueue.clear(); playbackLock.notifyAll() }
@@ -2394,27 +1602,6 @@ class LocalLinkTransportService : Service() {
             val encoded=Base64.encodeToString(audio, Base64.NO_WRAP)
             val payload=JSONObject().put("type","call_media").put("sender_id",transportDeviceId).put("recipient_id",peerId).put("call_id",callId).put("sequence",seq).put("timestamp_ms",ts).put("sample_rate",CALL_SAMPLE_RATE).put("frame_ms",CALL_FRAME_MS).put("codec",packetCodec).put("ttl",8).put("audio_payload",encoded)
             if (codec == CallOpus2Format.CODEC) payload.put("opus2_rx", opusRxOk)
-            // Bundle 159: lock the frame so phones in the middle can't hear
-            // it. If no voice-capable route exists right now, fall back to
-            // plain voice, which still only crosses contacts (156 rule).
-            val key = voiceKey
-            val self = transportDeviceId
-            if (key != null && self != null) {
-                val sealedOk = try {
-                    val (nonce, cipherText) = CallVoiceSeal.seal(key, self, peerId, voiceStream, payload.toString().toByteArray(Charsets.UTF_8))
-                    val outer = JSONObject().put("type", MeshRelayPolicy.SEALED_VOICE).put("recipient_id", peerId)
-                        .put("vs", voiceStream)
-                        .put("n", Base64.encodeToString(nonce, Base64.NO_WRAP))
-                        .put("c", Base64.encodeToString(cipherText, Base64.NO_WRAP))
-                    validTransportId(peerId) && sendRoutedPayload(peerId, outer, reportDegraded = false, liveCallId = callId)
-                } catch (_:Exception) { false }
-                if (sealedOk) {
-                    sent.incrementAndGet()
-                    if (lockedSent.incrementAndGet() == 1L) Log.i("LocalLinkCall", "CALL_VOICE_LOCKED call=$callId dir=tx stream=${voiceStream.take(6)}")
-                    return
-                }
-                plainFallbacks.incrementAndGet()
-            }
             if(sendCallMediaPacket(peerId,callId,payload)) sent.incrementAndGet() else dropped.incrementAndGet()
         }
 
@@ -2561,220 +1748,7 @@ class LocalLinkTransportService : Service() {
         return unsigned
     }
 
-    /** Bundle 160: best route per destination, cheapest first. */
-    private fun advertisableRoutes(): List<MeshAdvertisedRoute> {
-        val self = transportDeviceId ?: return emptyList()
-        val now = System.currentTimeMillis()
-        val seen = HashSet<String>()
-        val out = ArrayList<MeshAdvertisedRoute>()
-        routeTable.snapshot(now)
-            .asSequence()
-            .filter { it["destination"].toString() != self && it["state"] == com.sajjad.locallink.mesh.MeshRouteState.ACTIVE.name }
-            .sortedWith(compareBy<Map<String, Any?>> { it["cost"] as Int }.thenByDescending { it["route_version"] as Long }.thenBy { it["next_hop"].toString() }.thenBy { it["destination"].toString() })
-            .forEach { snapshot ->
-                val path = (snapshot["path"] as? List<*>)?.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) } ?: return@forEach
-                val destination = snapshot["destination"].toString()
-                val hopCount = snapshot["hop_count"] as Int
-                if (!validTransportId(destination) || destination == self || path.firstOrNull() != self ||
-                    path.distinct().size != path.size || hopCount !in 1..MeshLimits.MAX_HOPS ||
-                    path.size != hopCount + 1 || path.size > MeshLimits.MAX_HOPS + 1) return@forEach
-                if (!seen.add(destination)) return@forEach
-                out += MeshAdvertisedRoute(destination, hopCount, snapshot["route_version"] as Long, path)
-            }
-        return out
-    }
-
-    private fun advertisedRoutesJson(routes: List<MeshAdvertisedRoute>): JSONArray {
-        val arr = JSONArray()
-        routes.forEach { r ->
-            arr.put(JSONObject()
-                .put("destination_node_id", r.destination)
-                .put("hop_count", r.hopCount)
-                .put("route_version", r.routeVersion)
-                .put("path", JSONArray(r.path)))
-        }
-        return arr
-    }
-
-    private fun routeAdvertisementHeader(mode: String, dseq: Long): JSONObject = JSONObject()
-        .put("type", "route_advertisement")
-        .put("route_protocol_version", ROUTE_ADVERTISEMENT_PROTOCOL_VERSION)
-        .put("sender_id", transportDeviceId ?: "")
-        .put("session_id", routeAdvertisementSessionId)
-        .put("advertisement_sequence", routeAdvertisementSequence.incrementAndGet())
-        .put("sent_at", System.currentTimeMillis())
-        .put("mode", mode)
-        .put("dseq", dseq)
-
-    /**
-     * Bundle 160 (plan 160.1): to phones that understand it, only changes
-     * (at most every 5 s after a change, at least every 10 s), and the full
-     * map in pages of 128 every 60 s or when they ask.
-     */
-    private fun sendRouteDeltas(triggered: Boolean, force: Boolean = false) {
-        if (triggered) routeDeltaDirty = true
-        val peers = transportPeers.values.filter { it.routeDelta && !it.socket.isClosed }
-        if (peers.isEmpty()) return
-        val now = System.currentTimeMillis()
-        val outbox = ArrayList<Pair<PeerConnection, List<JSONObject>>>()
-        synchronized(routeDeltaLock) {
-            val last = routeDeltaLastSentAt.get()
-            val due = force || now - last >= MeshRouteDeltaRules.DELTA_INTERVAL_MS ||
-                (routeDeltaDirty && now - last >= MeshRouteDeltaRules.DELTA_MIN_GAP_MS)
-            val fullFor = peers.filter { routeDeltaSender.needsFull(it.peerId, now) }.map { it.peerId }.toSet()
-            if (!due && fullFor.isEmpty()) return
-            val current = advertisableRoutes()
-            var chunks: List<MeshRouteDeltaSender.Delta> = emptyList()
-            if (due) {
-                routeDeltaLastSentAt.set(now)
-                routeDeltaDirty = false
-                val delta = routeDeltaSender.diff(current)
-                chunks = routeDeltaSender.chunks(delta)
-                if (!delta.isEmpty) Log.i("ROUTES", "changes sent changed=${delta.changed.size} withdrawn=${delta.withdrawn.size} peers=${peers.size - fullFor.size} map=${current.size}")
-            }
-            val pages = if (fullFor.isNotEmpty()) MeshRouteDeltaRules.pages(current) else emptyList()
-            for (peer in peers) {
-                val messages = ArrayList<JSONObject>()
-                if (peer.peerId in fullFor) {
-                    val dseq = routeDeltaSender.currentSeq(peer.peerId)
-                    pages.forEachIndexed { i, page ->
-                        messages += routeAdvertisementHeader(MeshRouteDeltaRules.MODE_FULL, dseq)
-                            .put("page", i + 1).put("pages", pages.size)
-                            .put("routes", advertisedRoutesJson(page))
-                    }
-                    routeDeltaSender.markFull(peer.peerId, now)
-                    Log.d("ROUTES", "full map sent peer=${peer.peerId.take(8)} routes=${current.size} pages=${pages.size}")
-                } else if (due) {
-                    for (chunk in chunks) {
-                        messages += routeAdvertisementHeader(MeshRouteDeltaRules.MODE_DELTA, routeDeltaSender.nextSeq(peer.peerId))
-                            .put("routes", advertisedRoutesJson(chunk.changed))
-                            .put("withdrawn", JSONArray(chunk.withdrawn))
-                    }
-                }
-                if (messages.isNotEmpty()) outbox += peer to messages
-            }
-        }
-        for ((peer, messages) in outbox) {
-            try { messages.forEach(peer::send) } catch (_: Exception) { transportSendFailures.incrementAndGet() }
-        }
-    }
-
-    private fun handleRouteFullRequest(peerId: String, message: JSONObject) {
-        if (message.optString("sender_id").trim() != peerId) return
-        val now = System.currentTimeMillis()
-        if (routeDeltaSender.requestFull(peerId, now)) {
-            Log.i("ROUTES", "full map asked by peer=${peerId.take(8)}")
-            sendRouteDeltas(triggered = false)
-        }
-    }
-
-    private fun requestFullRoutes(peerId: String, reason: String) {
-        val self = transportDeviceId ?: return
-        val now = System.currentTimeMillis()
-        if (!routeDeltaReceiver.mayRequestFull(peerId, now)) return
-        val link = activePeerConnection(peerId) ?: return
-        try {
-            link.send(JSONObject().put("type", "route_full_request").put("sender_id", self).put("sent_at", now))
-            Log.i("ROUTES", "full map asked peer=${peerId.take(8)} reason=$reason")
-        } catch (_: Exception) { transportSendFailures.incrementAndGet() }
-    }
-
-    /** A usable route for answering "who can reach X?" (not back through [asker]). */
-    private fun lookupRouteFor(target: String, asker: String): MeshRoute? {
-        val now = System.currentTimeMillis()
-        return routeTable.allFor(target, now)
-            .filter { it.state == com.sajjad.locallink.mesh.MeshRouteState.ACTIVE && it.nextHopNodeId != asker && !it.path.contains(asker) && it.hopCount <= MeshLimits.MAX_HOPS - 1 }
-            .minByOrNull { it.hopCount }
-    }
-
-    private fun handleRouteQuery(peerId: String, message: JSONObject) {
-        val self = transportDeviceId ?: return
-        if (message.optString("sender_id").trim() != peerId || peerId == self) return
-        val queryId = message.optString("query_id").trim()
-        val target = message.optString("target").trim()
-        val ttl = message.optInt("ttl", 0)
-        if (!validTransportId(target) || target == self || target == peerId) return
-        val now = System.currentTimeMillis()
-        val route = lookupRouteFor(target, peerId)
-        when (routeLookup.onQuery(peerId, queryId, target, ttl, route != null, now)) {
-            MeshRouteLookup.QueryAction.ANSWER -> {
-                val r = route ?: return
-                sendRouteAnswer(peerId, queryId, target, r.hopCount, r.routeVersion, r.path)
-            }
-            MeshRouteLookup.QueryAction.PASS_ON -> {
-                val passOn = JSONObject()
-                    .put("type", "route_query")
-                    .put("sender_id", self)
-                    .put("query_id", queryId)
-                    .put("target", target)
-                    .put("ttl", ttl - 1)
-                    .put("sent_at", now)
-                for (peer in transportPeers.values) {
-                    if (peer.peerId == peerId || !peer.routeDelta || peer.socket.isClosed) continue
-                    try { peer.send(passOn) } catch (_: Exception) { transportSendFailures.incrementAndGet() }
-                }
-            }
-            else -> {}
-        }
-    }
-
-    private fun sendRouteAnswer(peerId: String, queryId: String, target: String, hops: Int, version: Long, path: List<String>) {
-        val self = transportDeviceId ?: return
-        val link = activePeerConnection(peerId) ?: return
-        try {
-            link.send(JSONObject()
-                .put("type", "route_answer")
-                .put("sender_id", self)
-                .put("query_id", queryId)
-                .put("target", target)
-                .put("hop_count", hops)
-                .put("route_version", version)
-                .put("path", JSONArray(path))
-                .put("sent_at", System.currentTimeMillis()))
-        } catch (_: Exception) { transportSendFailures.incrementAndGet() }
-    }
-
-    private fun handleRouteAnswer(peerId: String, message: JSONObject) {
-        val self = transportDeviceId ?: return
-        if (message.optString("sender_id").trim() != peerId || peerId == self) return
-        val queryId = message.optString("query_id").trim()
-        val target = message.optString("target").trim()
-        val hops = message.optInt("hop_count", -1)
-        val version = message.optLong("route_version", -1L)
-        val path = jsonStringList(message.optJSONArray("path"))
-        val now = System.currentTimeMillis()
-        if (!validTransportId(target) || target == self) return
-        if (hops !in 1..(MeshLimits.MAX_HOPS - 1) || path.size != hops + 1) return
-        if (path.firstOrNull() != peerId || path.lastOrNull() != target || path.contains(self) || path.distinct().size != path.size) return
-        if (version <= 0L || version > now + MeshLimits.MAX_ROUTE_VERSION_FUTURE_SKEW_MS) return
-        val pending = routeLookup.onAnswer(queryId, target, now) ?: return
-        val fullPath = buildList { add(self); addAll(path) }
-        val before = routeTable[target]
-        val added = routeTable.upsert(target, MeshRoute(
-            destinationNodeId = target,
-            nextHopNodeId = peerId,
-            hopCount = hops + 1,
-            expiresAt = now + MeshRouteLookupRules.ANSWER_TTL_MS,
-            lastSeenAt = now,
-            routeVersion = version,
-            path = fullPath,
-        ))
-        Log.i("ROUTES", "route found dest=${target.take(8)} via=${peerId.take(8)} hops=${hops + 1} added=$added")
-        if (added && before == null) {
-            routeRecovery.markRecovered(target)
-            transportEvent("route_recovered", mapOf("destination_id" to target, "next_hop_id" to peerId, "hop_count" to hops + 1, "reason" to "lookup_answer"))
-            transportEvent("topology", meshTopologySnapshot())
-            Thread { flushMeshQueue() }.start()
-        }
-        val asker = pending.askedBy
-        if (asker != null && asker != peerId && !fullPath.contains(asker) && hops + 1 <= MeshLimits.MAX_HOPS - 1) {
-            sendRouteAnswer(asker, queryId, target, hops + 1, version, fullPath)
-        }
-    }
-
     private fun broadcastRouteAdvertisement(excludePeerId: String? = null, force: Boolean = false) {
-        // Bundle 160: new phones get changes-only updates (own timing).
-        sendRouteDeltas(triggered = true, force = force)
         val now = System.currentTimeMillis()
         if (!force) {
             val previous = routeAdvertisementLastSentAt.get()
@@ -2785,7 +1759,7 @@ class LocalLinkTransportService : Service() {
         }
         var sent = false
         for ((peerId, peer) in transportPeers) {
-            if (peerId == excludePeerId || peer.socket.isClosed || peer.routeDelta) continue
+            if (peerId == excludePeerId || peer.socket.isClosed) continue
             try {
                 peer.send(buildRouteAdvertisement(peerId))
                 sent = true
@@ -2816,23 +1790,8 @@ class LocalLinkTransportService : Service() {
             transportEvent("route_advertisement_rejected", mapOf("peer_id" to peerId, "reason" to decision.reason))
             return
         }
-        // Bundle 160: "full" pages / "delta" changes from a new phone; no mode
-        // = an older phone's full advertisement (as before).
-        val mode = advertisement.optString("mode")
-        val isFull = mode == MeshRouteDeltaRules.MODE_FULL
-        val isDelta = mode == MeshRouteDeltaRules.MODE_DELTA
-        val learnedTtl = if (isFull || isDelta) MeshRouteDeltaRules.ROUTE_TTL_MS else MeshRouteDeltaRules.LEGACY_ROUTE_TTL_MS
-        val sessionId = advertisement.optString("session_id")
-        val dseq = advertisement.optLong("dseq", 0L)
-        if (isFull) routeDeltaReceiver.onFull(peerId, sessionId, dseq)
-        if (isDelta && !routeDeltaReceiver.onDelta(peerId, sessionId, dseq)) requestFullRoutes(peerId, "missed_update")
         val directVersion = directRouteVersions.computeIfAbsent(peerId) { AtomicLong(now) }.get()
         routeTable.upsert(peerId, MeshRoute(destinationNodeId = peerId, nextHopNodeId = peerId, hopCount = 1, expiresAt = now + DIRECT_ROUTE_TTL_MS, lastSeenAt = now, routeVersion = directVersion, path = listOf(self, peerId)))
-        // Bundle 161 (two-level map): a compact member keeps only its group,
-        // its contacts and routes from other neighbours.
-        val compactMap = compactMember()
-        val fromHost = compactMap && activePeerConnection(peerId)?.transportName == MeshTransportPolicy.WIFI_DIRECT
-        var trimmed = 0
         var accepted = 0
         val count = routes.length()
         for (i in 0 until count) {
@@ -2852,12 +1811,11 @@ class LocalLinkTransportService : Service() {
             val currentRoutes = routeTable.allFor(destination, now)
             val currentMaxVersion = currentRoutes.maxOfOrNull { it.routeVersion }
             if (currentMaxVersion != null && version > currentMaxVersion + MeshLimits.MAX_ROUTE_VERSION_ADVANCE_MS) continue
-            if (!MeshTwoLevelMap.keep(compactMap, fromHost, advertisedHops + 1, knownPeers.contains(destination))) { trimmed++; continue }
             val candidate = MeshRoute(
                 destinationNodeId = destination,
                 nextHopNodeId = peerId,
                 hopCount = advertisedHops + 1,
-                expiresAt = now + learnedTtl,
+                expiresAt = now + 30_000L,
                 lastSeenAt = now,
                 routeVersion = version,
                 path = fullPath,
@@ -2886,24 +1844,8 @@ class LocalLinkTransportService : Service() {
                 }
             }
         }
-        // Bundle 160: routes the neighbour no longer has.
-        val withdrawn = mutableListOf<String>()
-        if (isDelta) {
-            val gone = advertisement.optJSONArray("withdrawn") ?: JSONArray()
-            for (i in 0 until minOf(gone.length(), MeshRouteDeltaRules.PAGE_SIZE)) {
-                val destination = gone.optString(i)?.trim().orEmpty()
-                if (!validTransportId(destination) || destination == self || destination == peerId) continue
-                if (routeTable.remove(destination, peerId).isNotEmpty()) withdrawn += destination
-            }
-            if (withdrawn.isNotEmpty()) {
-                routeRecovery.markPeerLost(peerId, withdrawn, now)
-                withdrawn.forEach(routeStabilityPolicy::reset)
-                transportEvent("route_withdrawn", mapOf("sender_id" to peerId, "destinations" to withdrawn))
-                Thread { flushMeshQueue() }.start()
-            }
-        }
-        transportEvent("route_update", mapOf("peer_id" to peerId, "advertised_routes" to count, "accepted_routes" to accepted, "withdrawn_routes" to withdrawn.size, "trimmed_routes" to trimmed, "mode" to mode.ifBlank { "legacy" }))
-        if (accepted > 0 || withdrawn.isNotEmpty()) broadcastRouteAdvertisement(excludePeerId = peerId)
+        transportEvent("route_update", mapOf("peer_id" to peerId, "advertised_routes" to count, "accepted_routes" to accepted))
+        if (accepted > 0) broadcastRouteAdvertisement(excludePeerId = peerId)
         transportEvent("topology", meshTopologySnapshot())
     }
 
@@ -2947,7 +1889,7 @@ class LocalLinkTransportService : Service() {
         }
     }
 
-    private fun sendRoutedPayload(target: String, payload: JSONObject, reportDegraded: Boolean = true, liveCallId: String? = null): Boolean {
+    private fun sendRoutedPayload(target: String, payload: JSONObject): Boolean {
         val self = transportDeviceId ?: return false
         if (!validTransportId(target) || target == self) return false
         val normalized = JSONObject(payload.toString()).apply {
@@ -2965,13 +1907,6 @@ class LocalLinkTransportService : Service() {
         }
         val mediaType = normalized.optString("type").trim()
         if (!MeshIdPolicy.isValidType(mediaType)) return false
-        // Bundle 165 (5.1): a file packet travels locked when the other phone
-        // can open it, so any LocalLink phone can pass it on.
-        if (FileSeal.isFileType(mediaType)) {
-            val sealed = sealFilePayload(target, payload)
-            if (sealed != null) return sendRoutedPayload(target, sealed, reportDegraded, liveCallId)
-            normalized.put("sf", 1)
-        }
         val unsigned = try {
             MeshPacket.new(
                 sourceNodeId = self,
@@ -2984,13 +1919,13 @@ class LocalLinkTransportService : Service() {
             return false
         }
         val packet = unsigned
-        val isLiveMedia = mediaType == "call_media" || mediaType == MeshRelayPolicy.SEALED_VOICE || mediaType == "call_video_config" || mediaType == "call_video_frame" || mediaType == "call_video_quality" || mediaType == "call_video_keyframe_request"
+        val isLiveMedia = mediaType == "call_media" || mediaType == "call_video_config" || mediaType == "call_video_frame" || mediaType == "call_video_quality" || mediaType == "call_video_keyframe_request"
         val before = if (isLiveMedia) routeTable[target] else null
         val result = meshRouter.route(packet)
         val after = if (isLiveMedia) routeTable[target] else null
         if (isLiveMedia) {
             val base = mapOf(
-                "call_id" to (liveCallId ?: normalized.optString("call_id")),
+                "call_id" to normalized.optString("call_id"),
                 "destination_id" to target,
                 "media_type" to mediaType,
             )
@@ -3005,9 +1940,7 @@ class LocalLinkTransportService : Service() {
                     }
                 }
                 MeshRouteResult.NO_ROUTE, MeshRouteResult.DROPPED -> {
-                    // Bundle 159: a locked frame that finds no route falls
-                    // back to plain voice; only that attempt reports trouble.
-                    if (reportDegraded) transportEvent("call_media_route_degraded", base + mapOf(
+                    transportEvent("call_media_route_degraded", base + mapOf(
                         "previous_next_hop" to before?.nextHopNodeId,
                         "reason" to if (result == MeshRouteResult.NO_ROUTE) "no_route" else "router_drop",
                     ))
@@ -3038,10 +1971,7 @@ class LocalLinkTransportService : Service() {
 
     private fun sendToPeer(peer: PeerConnection, packet: MeshPacket): Boolean {
         val self = transportDeviceId ?: return false
-        if (peer.trust == MeshRelayPolicy.TRUST_RELAY) {
-            // Bundle 156: only sealed packets may use a relay as next hop.
-            if (!MeshRelayPolicy.canCarry(peer.trust, packet.type) || blockedPeers.contains(peer.peerId)) return false
-        } else if (!knownPeers.contains(peer.peerId)) return false
+        if (!knownPeers.contains(peer.peerId)) return false
         return try {
             if (packet.nextHopNodeId != peer.peerId) return false
             val payloadText = packet.toJson().toString()
@@ -3118,7 +2048,7 @@ class LocalLinkTransportService : Service() {
     // call signal. Live media (call_media, call_video_*) and call heartbeats
     // deliberately stay best-effort — stale replayed copies of those are worse
     // than missing ones.
-    private fun isStoreForwardable(type: String): Boolean = type == MeshRelayPolicy.SEALED || type == "direct_message" || type == "direct_file_chunk" ||
+    private fun isStoreForwardable(type: String): Boolean = type == "direct_message" || type == "direct_file_chunk" ||
         type == "direct_delivery_ack" ||
         type == "call_invite" || type == "call_invite_ack" || type == "call_accept" ||
         type == "call_reject" || type == "call_busy" || type == "call_end"
@@ -3182,8 +2112,7 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun enqueueMeshPacket(packet: MeshPacket): Boolean {
-        // Bundle 165: my own locked file packets wait like plain chunks.
-        if (!isStoreForwardable(packet.type) && !FileSealPolicy.storeForwardable(packet.type, packet.sourceNodeId, transportDeviceId)) return false
+        if (!isStoreForwardable(packet.type)) return false
         if (!MeshLimits.hasValidHopBudget(packet.ttl, packet.hopCount, meshPacketTtl)) return false
         if (!MeshLimits.isWithinPacketLifetime(packet.createdAt)) return false
         val target = packet.destinationNodeId
@@ -3200,22 +2129,8 @@ class LocalLinkTransportService : Service() {
                 transportEvent("mesh_queue_full", mapOf("target_id" to target, "queued_packets" to files.size, "queued_bytes" to bytes))
                 return false
             }
-            // Bundle 158: someone else's sealed packet is held only briefly
-            // (2 min, small cap). The sender's outbox keeps the message until
-            // the delivery ack, so it is sent again on a new route.
-            val relayHold = MeshRelayHoldPolicy.isRelayHold(packet.sourceNodeId, transportDeviceId, packet.type)
-            if (relayHold) {
-                val held = files.filter { f -> f.name.contains("_rh_") }
-                val size = serialized.toByteArray(Charsets.UTF_8).size.toLong()
-                if (!MeshRelayHoldPolicy.admits(held.size, held.sumOf { it.length() }, size)) {
-                    Log.i("RELAY", "relay hold full packets=${held.size} target=$target")
-                    transportEvent("mesh_relay_hold_full", mapOf("target_id" to target, "held_packets" to held.size))
-                    return false
-                }
-            }
-            val id=meshQueueSequence.incrementAndGet();val now=System.currentTimeMillis();val packetExpiry=MeshLimits.packetExpiryAt(packet.createdAt);val expiresAt=if(relayHold)MeshRelayHoldPolicy.expiresAt(now,packetExpiry) else minOf(packetExpiry, now + MeshLimits.MAX_PACKET_AGE_MS);val record=JSONObject().put("target_id",target).put("packet_id",packet.packetId).put("queued_at",now).put("expires_at",expiresAt).put("attempts",0).put("retry_after",now).put("payload_enc",encryptMeshAtRest(serialized))
-            if (relayHold) Log.i("RELAY", "relay hold packet=${packet.packetId.takeLast(8)} target=$target hold_ms=${expiresAt - now}")
-            val file = File(meshQueueDir, "${System.currentTimeMillis()}_${id.toString().padStart(8, '0')}_${if (relayHold) "rh_" else ""}${UUID.randomUUID()}.json")
+            val id=meshQueueSequence.incrementAndGet();val now=System.currentTimeMillis();val packetExpiry=MeshLimits.packetExpiryAt(packet.createdAt);val record=JSONObject().put("target_id",target).put("packet_id",packet.packetId).put("queued_at",now).put("expires_at",minOf(packetExpiry, now + MeshLimits.MAX_PACKET_AGE_MS)).put("attempts",0).put("retry_after",now).put("payload_enc",encryptMeshAtRest(serialized))
+            val file = File(meshQueueDir, "${System.currentTimeMillis()}_${id.toString().padStart(8, '0')}_${UUID.randomUUID()}.json")
             file.writeText(record.toString(), Charsets.UTF_8)
             transportEvent("mesh_queued", mapOf("target_id" to target, "packet_id" to packet.packetId, "queued_packets" to files.size + 1))
             transportEvent("topology", meshTopologySnapshot())
@@ -3319,13 +2234,8 @@ class LocalLinkTransportService : Service() {
                     if (now - routeAdvertisementLastSentAt.get() >= ROUTE_ADVERTISEMENT_INTERVAL_MS) {
                         broadcastRouteAdvertisement()
                     }
-                    // Bundle 160: changes every 5-10 s, full map every 60 s.
-                    sendRouteDeltas(triggered = false)
-                    // Bundle 161: compact map on/off.
-                    checkCompactMap()
-                    lanNeededAt.entries.removeIf { now - it.value > 120_000L }
                     for ((nodeId, endpoint) in lanEndpoints) {
-                        if (now - endpoint.lastSeenAt > MeshTransportPolicy.lanEndpointRetentionMs(lanEndpoints.size) && activePeerConnection(nodeId) == null) {
+                        if (now - endpoint.lastSeenAt > MeshTransportPolicy.LAN_ENDPOINT_RETENTION_MS && activePeerConnection(nodeId) == null) {
                             lanEndpoints.remove(nodeId, endpoint)
                             lastLanBeaconAt.remove(nodeId)
                             transportEvent("peer_expired", mapOf(
@@ -3339,16 +2249,11 @@ class LocalLinkTransportService : Service() {
                         }
                         // Bundle 128: same one-way-dial flaw in the sweeper —
                         // redial known LAN peers regardless of node-id order.
-                        if (!transportPeers.containsKey(nodeId) && knownPeers.contains(nodeId) && mayDialLanContact(nodeId, now)) {
+                        if (!transportPeers.containsKey(nodeId) && knownPeers.contains(nodeId)) {
                             connectLanPeer(nodeId, endpoint.host, endpoint.port)
                         }
                     }
                     sendResumeRequests()
-                    // Bundle 167: no call voice passed through for a while.
-                    if (voiceRelay.onTick(now)) {
-                        Log.i("RELAY", "RELAY voice passing through off")
-                        transportEvent("voice_relay", mapOf("active" to false))
-                    }
                     for (peer in allPhysicalPeerLinks()) {
                         try {
                             peer.lastPingAt = now
@@ -3475,10 +2380,6 @@ class LocalLinkTransportService : Service() {
                 "address" to peer.remoteAddress,
                 "group_owner" to (peer.transportName == MeshTransportPolicy.WIFI_DIRECT && peer.ownerAddress == null),
                 "connected_at" to peer.connectedAt,
-                "trust" to peer.trust,
-                // Bundle 160.
-                "verified" to peer.verified,
-                "route_delta" to peer.routeDelta,
             )
         }.sortedBy { it["peer_id"].toString() }
         return mapOf(
@@ -3500,25 +2401,6 @@ class LocalLinkTransportService : Service() {
             "send_failures" to transportSendFailures.get(),
             "heartbeat_timeouts" to transportHeartbeatTimeouts.get(),
             "lan_discovery_endpoint_count" to lanEndpoints.size,
-            // Bundle 161: two-level map + linked group / hotspot.
-            "compact_map" to lastCompactMap,
-            "local_net_kind" to localNetKind,
-            "local_net_linked" to (localNetPeerId != null && peerLinks[localNetPeerId!!]?.get(MeshTransportPolicy.LOCAL_NET)?.socket?.isClosed == false),
-            "local_net_peers" to localNetServerPeerCount(),
-            // Bundle 158: phones seen on this Wi-Fi (bridge choice in Dart).
-            "lan_ids" to lanEndpoints.keys.toList().sorted().take(64),
-            // Bundle 159.3: relay counts for the admin view (no content).
-            "relay_links" to peers.count { it["trust"] == MeshRelayPolicy.TRUST_RELAY },
-            "relay_voice_calls" to relayVoiceBudget.activeStreams(),
-            // Bundle 160: admin view (counts only).
-            "verified_links" to peers.count { it["verified"] == true },
-            "route_count" to routeTable.all().size,
-            "route_lookups_open" to routeLookup.pendingCount(),
-            "lan_beacon_ms" to MeshTransportPolicy.lanBeaconIntervalMs(lanEndpoints.size),
-            "forwarded_packets" to forwardedPackets.get(),
-            "forwarded_voice_frames" to forwardedVoiceFrames.get(),
-            // Bundle 165: locked file packets passed on for others (count only).
-            "forwarded_file_chunks" to forwardedFileChunks.get(),
             "background_service" to LocalLinkTransportService.isRunning(),
             "service_uptime_ms" to (System.currentTimeMillis()-startedAt),
             "routes" to routeTable.snapshot(),
@@ -3636,10 +2518,6 @@ class LocalLinkTransportService : Service() {
                 if (actual.length() != size || sha256File(actual) != sha) {
                     actual.delete()
                     incomingFiles.remove(transferId)
-                    // Bundle 162 (4.5): no more silent delete. Ask the sender to
-                    // send it again from zero once; then fail for real.
-                    deleteIncomingMeta(transfer)
-                    onIncomingHashMismatch(transfer, self)
                     return
                 }
                 val finalDir = File(filesDir, "locallink_direct_files").apply { mkdirs() }
@@ -3803,8 +2681,6 @@ class LocalLinkTransportService : Service() {
             return
         }
         transportPeers.remove(peerId)
-        routeDeltaSender.forget(peerId)
-        routeDeltaReceiver.forget(peerId)
         meshPeers.disconnected(peerId, currentLink.transportName)
         handleRoutesAfterPeerDisconnect(peerId, "peer_disconnected")
         transportEvent("topology", meshTopologySnapshot())
@@ -3867,7 +2743,7 @@ class LocalLinkTransportService : Service() {
             .put("destinations", list)
         for ((peerId, peer) in transportPeers) {
             if (peer.socket.isClosed) continue
-            if (!knownPeers.contains(peerId) && peer.trust != MeshRelayPolicy.TRUST_RELAY) continue
+            if (!knownPeers.contains(peerId)) continue
             try { peer.send(base) } catch (_: Exception) {
                 transportSendFailures.incrementAndGet()
             }
@@ -3885,8 +2761,6 @@ class LocalLinkTransportService : Service() {
         peerLinks.clear()
         try { lanServer?.close() } catch (_: Exception) {}
         lanServer = null
-        try { localNetServer?.close() } catch (_: Exception) {}
-        localNetServer = null
         try { lanDiscoverySocket?.close() } catch (_: Exception) {}
         lanDiscoverySocket = null
         releaseLanMulticastLock()
@@ -3896,11 +2770,6 @@ class LocalLinkTransportService : Service() {
         lastLanBeaconAt.clear()
         routeAdvertisementLastSentAt.set(0L)
         routeAdvertisementPolicy.clear()
-        routeDeltaSender.reset()
-        routeDeltaReceiver.clear()
-        routeDeltaLastSentAt.set(0L)
-        routeLookup.clear()
-        lanNeededAt.clear()
         routeStabilityPolicy.clear()
         lanConnectInFlight.clear()
         meshPeers.clear()
@@ -3952,17 +2821,6 @@ class LocalLinkTransportService : Service() {
         @Volatile var lastPongAt: Long = connectedAt,
         @Volatile var lastPingAt: Long = 0L,
         @Volatile var writeStrikes: Int = 0,
-        // Bundle 156: CONTACT (as before) or RELAY (stranger, sealed only).
-        @Volatile var trust: String = MeshRelayPolicy.TRUST_CONTACT,
-        val sealCapable: Boolean = false,
-        // Bundle 159: the peer's app understands locked call voice.
-        val voiceCapable: Boolean = false,
-        // Bundle 160: the peer takes changes-only route updates.
-        val routeDelta: Boolean = false,
-        // Bundle 160: the peer proved its device id (link key HMAC).
-        val verified: Boolean = false,
-        // Bundle 165: the peer understands locked file packets.
-        val fileSealCapable: Boolean = false,
     ) {
         @Synchronized fun send(json: JSONObject) {
             writer.write(json.toString())
@@ -3976,8 +2834,8 @@ class LocalLinkTransportService : Service() {
     private fun stopTransportExplicit(){stopCallMediaInternal("");transportRunning=false;meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();transportGroupOwner=false;transportGroupOwnerAddress=null;ownerConnectInFlight.set(false);routeTable.clear();routeRecovery.clear();persistState();transportEvent("state",mapOf("connected" to false,"transport_active" to false,"service" to "stopped"))}
 
     private fun createStateKey():javax.crypto.SecretKey{val ks=KeyStore.getInstance("AndroidKeyStore").apply{load(null)};if(!ks.containsAlias(STATE_KEY_ALIAS)){val g=javax.crypto.KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");g.init(KeyGenParameterSpec.Builder(STATE_KEY_ALIAS,KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).setUserAuthenticationRequired(false).build());g.generateKey()};return ks.getKey(STATE_KEY_ALIAS,null) as javax.crypto.SecretKey}
-    private fun persistState(){try{val j=JSONObject().put("active",transportRunning).put("device_id",transportDeviceId).put("group_owner",transportGroupOwner).put("group_owner_address",transportGroupOwnerAddress);val ids=JSONArray();knownPeers.forEach{ids.put(it)};j.put("known_peers",ids);val blocked=JSONArray();blockedPeers.forEach{blocked.put(it)};j.put("blocked_peers",blocked);val verified=JSONArray();linkVerified.forEach{verified.put(it)};j.put("link_verified",verified);j.put("link_keys",linkKeysJson());val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,createStateKey());val iv=c.iv;getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(STATE_BLOB,Base64.encodeToString(iv+c.doFinal(j.toString().toByteArray(Charsets.UTF_8)),Base64.NO_WRAP)).apply()}catch(_:Exception){}}
-    private fun loadPersistedState(){try{val b=getSharedPreferences(PREFS,MODE_PRIVATE).getString(STATE_BLOB,null)?:return;val a=Base64.decode(b,Base64.DEFAULT);if(a.size<28)return;val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,createStateKey(),GCMParameterSpec(128,a.copyOfRange(0,12)));val j=JSONObject(String(c.doFinal(a.copyOfRange(12,a.size)),Charsets.UTF_8));transportRunning=j.optBoolean("active",false);transportDeviceId=j.optString("device_id").takeIf{it.isNotBlank()};transportGroupOwner=j.optBoolean("group_owner",false);transportGroupOwnerAddress=j.optString("group_owner_address").takeIf{it.isNotBlank()};knownPeers.clear();j.optJSONArray("known_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))knownPeers.add(id)}};blockedPeers.clear();j.optJSONArray("blocked_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))blockedPeers.add(id)}};linkVerified.clear();j.optJSONArray("link_verified")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))linkVerified.add(id)}};parseLinkKeys(j.optJSONObject("link_keys")?.toString())?.let{linkKeys.clear();linkKeys.putAll(it)}}catch(_:Exception){}}
+    private fun persistState(){try{val j=JSONObject().put("active",transportRunning).put("device_id",transportDeviceId).put("group_owner",transportGroupOwner).put("group_owner_address",transportGroupOwnerAddress);val ids=JSONArray();knownPeers.forEach{ids.put(it)};j.put("known_peers",ids);val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,createStateKey());val iv=c.iv;getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(STATE_BLOB,Base64.encodeToString(iv+c.doFinal(j.toString().toByteArray(Charsets.UTF_8)),Base64.NO_WRAP)).apply()}catch(_:Exception){}}
+    private fun loadPersistedState(){try{val b=getSharedPreferences(PREFS,MODE_PRIVATE).getString(STATE_BLOB,null)?:return;val a=Base64.decode(b,Base64.DEFAULT);if(a.size<28)return;val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,createStateKey(),GCMParameterSpec(128,a.copyOfRange(0,12)));val j=JSONObject(String(c.doFinal(a.copyOfRange(12,a.size)),Charsets.UTF_8));transportRunning=j.optBoolean("active",false);transportDeviceId=j.optString("device_id").takeIf{it.isNotBlank()};transportGroupOwner=j.optBoolean("group_owner",false);transportGroupOwnerAddress=j.optString("group_owner_address").takeIf{it.isNotBlank()};knownPeers.clear();j.optJSONArray("known_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))knownPeers.add(id)}}}catch(_:Exception){}}
     private fun restoreDurableState(){loadSeenMeshPackets();restoreIncomingTransfers();restoreOutgoingTransfers()}
     private fun seenFileFor(key:String)=File(seenMeshDir,Base64.encodeToString(key.toByteArray(),Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)+".seen")
     private fun loadSeenMeshPackets(){
@@ -4185,51 +3043,6 @@ class LocalLinkTransportService : Service() {
         transportEvent("file_cancelled", mapOf("transfer_id" to id))
     }
 
-    // Bundle 162 (4.5): a received file failed its check.
-    private fun onIncomingHashMismatch(t: IncomingFileTransfer, self: String) {
-        val restarts = hashMismatchRestarts[t.transferId] ?: 0
-        val decision = DirectFileTransferPolicy.onHashMismatch(restarts)
-        Log.w("LOCAL_LINK_TRANSPORT", "FILE_HASH_MISMATCH transfer=${t.transferId.take(12)} restarts=$restarts action=$decision")
-        val giveUp = decision == "give_up"
-        if (giveUp) {
-            hashMismatchRestarts.remove(t.transferId)
-            cancelledIncomingTransfers[t.transferId] = System.currentTimeMillis() + DirectFileTransferPolicy.IDLE_TIMEOUT_MS
-            transportEvent("file_failed", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId, "file_id" to t.fileId,
-                "sender_id" to t.senderId, "recipient_id" to self, "reason" to "hash_mismatch"))
-        } else {
-            hashMismatchRestarts[t.transferId] = restarts + 1
-            transportEvent("file_progress", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId,
-                "received" to 0, "total_chunks" to t.totalChunks, "bytes" to 0L, "total" to t.size, "restarted" to true))
-        }
-        sendRoutedPayload(t.senderId, JSONObject().put("type", "direct_file_restart")
-            .put("sender_id", self).put("recipient_id", t.senderId)
-            .put("transfer_id", t.transferId).put("file_id", t.fileId).put("message_id", t.messageId)
-            .put("sha256", t.sha256).put("total_chunks", t.totalChunks).put("give_up", giveUp))
-    }
-
-    // Bundle 162 (4.5): the receiver's copy failed its check — send every chunk
-    // again (once), or stop and report the failure.
-    private fun handleFileRestart(p: JSONObject) {
-        val id = p.optString("transfer_id")
-        val t = outgoingTransfers[id] ?: return
-        if (p.optString("sender_id") != t.recipientId || p.optString("sha256") != t.sha256 ||
-            p.optInt("total_chunks", -1) != t.totalChunks) return
-        if (p.optBoolean("give_up", false)) {
-            Log.w("LOCAL_LINK_TRANSPORT", "FILE_HASH_MISMATCH sender give_up transfer=${id.take(12)}")
-            deleteOutgoingMeta(t); outgoingTransfers.remove(id); outgoingRetryCounts.remove(id); outgoingSendInFlight.remove(id)
-            transportEvent("file_failed", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId, "reason" to "hash_mismatch"))
-            return
-        }
-        Log.w("LOCAL_LINK_TRANSPORT", "FILE_HASH_MISMATCH sender restart transfer=${id.take(12)}")
-        synchronized(t) { DirectFileTransferPolicy.resetForRestart(t.acknowledged, t.lastSentAt) }
-        outgoingRetryCounts[id] = 0
-        t.updatedAt = System.currentTimeMillis()
-        persistOutgoingTransfer(t)
-        transportEvent("file_progress", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId,
-            "acked_chunks" to 0, "total_chunks" to t.totalChunks))
-        Thread { sendMissingChunks(t, true) }.start()
-    }
-
     private fun handleFileCancel(p:JSONObject){
         val id=p.optString("transfer_id").trim()
         val self=transportDeviceId?:return
@@ -4251,8 +3064,6 @@ class LocalLinkTransportService : Service() {
         val bits=bitsetDecode(p.optString("received_chunks"),t.totalChunks)
         for(i in bits.indices)if(bits[i])t.acknowledged[i]=true
         if(bits.any{it}) outgoingRetryCounts[t.transferId]=0
-        fileStalls.remove(t.transferId);fileStallAt.remove(t.transferId)
-        if(fileSealTrial.contains(t.recipientId)&&fileStalls.keys.none{k->outgoingTransfers[k]?.recipientId==t.recipientId})fileSealTrial.remove(t.recipientId)
         t.updatedAt=System.currentTimeMillis()
         if(missingChunkCount(t)==0){deleteOutgoingMeta(t);outgoingTransfers.remove(id);outgoingRetryCounts.remove(id);outgoingSendInFlight.remove(id);transportEvent("file_sent",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"file_id" to t.fileId,"size" to t.size,"sha256" to t.sha256))}
         else{persistOutgoingTransfer(t);transportEvent("file_progress",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"acked_chunks" to t.totalChunks-missingChunkCount(t),"total_chunks" to t.totalChunks));if(hasStaleMissingChunk(t))Thread{sendMissingChunks(t,true)}.start()}
@@ -4269,17 +3080,7 @@ class LocalLinkTransportService : Service() {
         // Bundle 144: same durable path as every other confirmation.
         synchronized(incomingFiles){sendFileAckNow(t)}
     }
-    private fun sendResumeRequests(){val now=System.currentTimeMillis();for(t in outgoingTransfers.values.toList())if(now-t.updatedAt>=DirectFileTransferPolicy.RESEND_AFTER_MS){noteFileStall(t,now);try{sendRoutedPayload(t.recipientId,JSONObject().put("type","direct_file_resume_request").put("sender_id",transportDeviceId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("total_chunks",t.totalChunks))}catch(_:Exception){}}}
-    /** Bundle 165: a stuck transfer counts one stall per resend period and
-     *  switches between plain and locked every few stalls. */
-    private fun noteFileStall(t:OutgoingFileTransfer,now:Long){
-        if(now-(fileStallAt[t.transferId]?:0L)<DirectFileTransferPolicy.RESEND_AFTER_MS)return
-        fileStallAt[t.transferId]=now
-        val stalls=fileStalls.merge(t.transferId,1,Int::plus)?:1
-        val flip=FileSealPolicy.flipFor(stalls)
-        val changed=if(flip)fileSealTrial.add(t.recipientId) else fileSealTrial.remove(t.recipientId)
-        if(changed)Log.i("RELAY","RELAY file stalled to=${t.recipientId} stalls=$stalls try=${if(fileSealPeers.contains(t.recipientId)!=flip)"locked" else "plain"}")
-    }
+    private fun sendResumeRequests(){val now=System.currentTimeMillis();for(t in outgoingTransfers.values.toList())if(now-t.updatedAt>=DirectFileTransferPolicy.RESEND_AFTER_MS)try{sendRoutedPayload(t.recipientId,JSONObject().put("type","direct_file_resume_request").put("sender_id",transportDeviceId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("total_chunks",t.totalChunks))}catch(_:Exception){}}
 
     override fun onDestroy(){stopCallVideoInternal("");stopCallMediaInternal("");meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();running=false;if(instance===this)instance=null;super.onDestroy()}
 }

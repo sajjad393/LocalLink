@@ -14,6 +14,7 @@ import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/messenger_section_header.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
+import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/add_contact_screen.dart';
@@ -95,7 +96,11 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
   }
 
   /// Bundle 154: one place that decides which cards Nearby shows.
-  NearbyListPlan _plan(MeshState meshState, int wifiPeerCount) {
+  // Bundle 155: who-is-who tag id per node id (cached SHA-256 prefix).
+  final Map<String, String> _tagIds = <String, String>{};
+  String _tagIdOf(String nodeId) => _tagIds[nodeId] ??= NearbyTag.idFor(nodeId);
+
+  NearbyListPlan _plan(MeshState meshState, List<WifiDirectPeer> wifiPeers) {
     final meshPeers = meshState.peers.values.toList();
     final discovered = meshPeers
         .where((p) => p.state == 'DISCOVERED')
@@ -110,12 +115,17 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
       liveNodeIds: [for (final p in live) p.nodeId],
       trustedIds: _trustedIds,
       blockedIds: _blockedIds,
-      wifiPeerCount: wifiPeerCount,
+      wifiAddresses: [for (final p in wifiPeers) p.address.trim().toLowerCase()],
+      tagIdByAddress: {
+        for (final e in NearbyTagRegistry.instance.byAddress.entries)
+          e.key: e.value.idHash,
+      },
+      hashOf: _tagIdOf,
     );
   }
 
   List<String> _unpairedDiscoveredIds() =>
-      _plan(widget.mesh.state, 0).addableNodeIds;
+      _plan(widget.mesh.state, const <WifiDirectPeer>[]).addableNodeIds;
 
   /// Bundle 125: pairing succeeded (this phone's "_paired" event fired just
   /// as the global toast shows "Connected with …").
@@ -167,10 +177,29 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
     // so the phone that appears right after this tap gets the request —
     // already-paired phones nearby no longer block pairing.
     final before = _unpairedDiscoveredIds().toSet();
+    // Bundle 155: a tagged phone is matched exactly by its tag id.
+    final wanted = NearbyTagRegistry.instance.tagFor(peer.address)?.idHash;
     unawaited(c.connectWifiDirect(peer));
-    String? target = pickPairTarget(
-        unpairedBefore: before, unpairedNow: _unpairedDiscoveredIds());
-    if (target == null || before.contains(target)) {
+    String? target = wanted == null
+        ? pickPairTarget(
+            unpairedBefore: before, unpairedNow: _unpairedDiscoveredIds())
+        : pickPairTarget(
+            unpairedBefore: before,
+            unpairedNow: _unpairedDiscoveredIds(),
+            wantedTagId: wanted,
+            hashOf: _tagIdOf);
+    if (wanted != null && target == null) {
+      for (var i = 0; i < 6 && mounted; i++) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (!mounted) return;
+        target = pickPairTarget(
+            unpairedBefore: before,
+            unpairedNow: _unpairedDiscoveredIds(),
+            wantedTagId: wanted,
+            hashOf: _tagIdOf);
+        if (target != null) break;
+      }
+    } else if (wanted == null && (target == null || before.contains(target))) {
       // Give the tapped phone up to ~12 s to show up on the local network.
       for (var i = 0; i < 6 && mounted; i++) {
         await Future<void>.delayed(const Duration(seconds: 2));
@@ -256,7 +285,7 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
     final wifiPeers = widget.connectivity.state.snapshot.wifiPeers;
     // Bundle 154: only when no paired contact is nearby either — otherwise
     // the single Wi-Fi Direct name may belong to that contact.
-    final soloPlan = _plan(widget.mesh.state, wifiPeers.length);
+    final soloPlan = _plan(widget.mesh.state, wifiPeers);
     final displayName = wifiPeers.length == 1 &&
             soloPlan.pairedNearbyCount == 0 &&
             soloPlan.addableNodeIds.length == 1 &&
@@ -403,12 +432,12 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
               ),
               // Bundle 154: the title counts only phones you can still add.
               ListenableBuilder(
-                listenable: PresenceHub.instance,
+                listenable: Listenable.merge(
+                    [PresenceHub.instance, NearbyTagRegistry.instance]),
                 builder: (context, _) => BlocBuilder<MeshBloc, MeshState>(
                   bloc: widget.mesh,
                   builder: (context, meshState) {
-                    final n = _plan(meshState, peers.length)
-                        .addableCount(peers.length);
+                    final n = _plan(meshState, peers).addableCount();
                     return Text(
                       n == 0
                           ? 'Looking for nearby phones…'
@@ -428,14 +457,15 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
               const SizedBox(height: LocalLinkSpacing.lg),
               // Bundle 148: names + live status come from PresenceHub.
               ListenableBuilder(
-                listenable: PresenceHub.instance,
+                listenable: Listenable.merge(
+                    [PresenceHub.instance, NearbyTagRegistry.instance]),
                 builder: (context, _) => BlocBuilder<MeshBloc, MeshState>(
                 bloc: widget.mesh,
                 builder: (context, meshState) {
                   // Bundle 154: Nearby shows ONLY phones you can still add.
                   // Paired contacts (and blocked people) are hidden — their
                   // live status already shows in People and Chats.
-                  final plan = _plan(meshState, peers.length);
+                  final plan = _plan(meshState, peers);
                   final byId = <String, MeshPeer>{
                     for (final p in meshState.peers.values) p.nodeId: p,
                   };
@@ -443,7 +473,12 @@ class _NearbyDevicesScreenState extends State<NearbyDevicesScreen> with SingleTi
                     for (final id in plan.addableNodeIds)
                       if (byId[id] != null) byId[id]!,
                   ];
-                  final wifiOnly = plan.showWifiOnly ? peers : const [];
+                  final wifiOnly = [
+                    for (final p in peers)
+                      if (plan.wifiAddresses
+                          .contains(p.address.trim().toLowerCase()))
+                        p,
+                  ];
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [

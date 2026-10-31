@@ -9,7 +9,6 @@ import android.content.pm.PackageManager
 import android.Manifest
 import android.os.Build
 import android.net.wifi.p2p.WifiP2pConfig
-import com.sajjad.locallink.mesh.NearbyGroupPolicy
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pDeviceList
 import android.net.wifi.p2p.WifiP2pInfo
@@ -36,8 +35,6 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val EXTRA_CALL_ACTION_CONSUMED = "call_action_consumed"
         @Volatile private var activeInstance: MainActivity? = null
-        /** Bundle 169 (4.3): the app screen exists. */
-        fun isOpen(): Boolean = activeInstance != null
 
         fun dispatchNotificationAction(intent: Intent): Boolean {
             val activity = activeInstance ?: return false
@@ -90,7 +87,6 @@ class MainActivity : FlutterActivity() {
     private var wifiReceiverRegistered = false
     // Bundle 155: "who is who" tags over Wi-Fi Direct service discovery.
     private var nearbyTags: NearbyTagManager? = null
-    private var localNet: LocalNetManager? = null // Bundle 161
     private var callNotificationEventSink: EventChannel.EventSink? = null
     private val pendingCallNotificationActions = mutableListOf<Map<String, Any>>()
     private var notificationEventSink: EventChannel.EventSink? = null
@@ -112,7 +108,7 @@ class MainActivity : FlutterActivity() {
                         requestConnectionInfo()
                     }
                 }
-                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> { requestPeers(); nearbyTags?.onPeersChanged() }
+                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> requestPeers()
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> requestConnectionInfo()
                 WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> wifiEventSink?.success(mapOf("type" to "device_changed"))
             }
@@ -120,14 +116,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
-        // Bundle 169 (4.3): the app is opened - the after-reboot background
-        // engine stops first, so only one engine runs the app at a time.
-        BackgroundEngine.stop("app_opened")
         super.onCreate(savedInstanceState)
         activeInstance = this
-        BackgroundEngine.markAppOpened(this)
-        // Bundle 164 (4.3): the app is open - the reboot notice is not needed.
-        LocalLinkNotificationManager.cancelBootReconnect(this)
         // Bundle 124: the once-per-install battery-exemption dialog that used
         // to fire here slapped first-time users on TOP of the register/login
         // screen with zero context. The dashboard permission sequencer
@@ -138,18 +128,6 @@ class MainActivity : FlutterActivity() {
 
     // Bundle 145: first frame (JPEG, <= maxPx), length and display size of a chat
     // video, read from the app's own temporary decrypted view copy. Off the UI thread.
-    /** Bundle 164 (4.4): 9x9 brightness samples of a frame. */
-    private fun isDarkFrame(b: android.graphics.Bitmap): Boolean {
-        if (b.width <= 0 || b.height <= 0) return true
-        val lumas = IntArray(81)
-        var i = 0
-        for (y in 0 until 9) for (x in 0 until 9) {
-            val px = b.getPixel(((x * 2 + 1) * b.width / 18).coerceIn(0, b.width - 1), ((y * 2 + 1) * b.height / 18).coerceIn(0, b.height - 1))
-            lumas[i++] = VideoFramePolicy.luma(px)
-        }
-        return VideoFramePolicy.isMostlyDark(lumas)
-    }
-
     private fun readVideoInfo(path: String?, maxPx: Int, result: MethodChannel.Result) {
         val file = path?.let { File(it) }
         val dataDir = try { File(applicationInfo.dataDir).canonicalPath } catch (_: Exception) { "" }
@@ -167,25 +145,9 @@ class MainActivity : FlutterActivity() {
                 val rawW = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
                 val rawH = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
                 val rotation = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-                fun frameAt(us: Long): android.graphics.Bitmap? = try {
-                    if (Build.VERSION.SDK_INT >= 27)
-                        retriever.getScaledFrameAtTime(us, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, bound, bound)
-                    else retriever.getFrameAtTime(us, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                } catch (_: Exception) { null }
-                var frame: android.graphics.Bitmap? = frameAt(0L)
-                // Bundle 164 (4.4): no first frame, or a black one - try 1 s
-                // and a quarter in. Keep the first frame if nothing is better.
-                if (frame == null || isDarkFrame(frame)) {
-                    for (us in VideoFramePolicy.retryTimesUs(duration)) {
-                        val next = frameAt(us) ?: continue
-                        if (!isDarkFrame(next)) {
-                            frame?.recycle()
-                            frame = next
-                            break
-                        }
-                        if (frame == null) frame = next else next.recycle()
-                    }
-                }
+                var frame: android.graphics.Bitmap? = if (Build.VERSION.SDK_INT >= 27)
+                    retriever.getScaledFrameAtTime(0L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, bound, bound)
+                else retriever.getFrameAtTime(0L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                 val f0 = frame
                 if (f0 != null && (f0.width > bound || f0.height > bound)) {
                     val scale = bound.toFloat() / maxOf(f0.width, f0.height)
@@ -240,11 +202,9 @@ class MainActivity : FlutterActivity() {
         }
         wifiManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
         wifiChannel = wifiManager.initialize(this, mainLooper, null)
-        nearbyTags = NearbyTagManager(this, wifiManager, wifiChannel, { hasWifiPermission() }, onWifi = { onWifiNetwork() }) { event ->
+        nearbyTags = NearbyTagManager(this, wifiManager, wifiChannel, { hasWifiPermission() }) { event ->
             wifiEventSink?.success(event)
         }
-        // Bundle 161: linked groups + LocalLink hotspot (tests, off by default).
-        localNet = LocalNetManager.bind(this, { nearbyTags }) { event -> wifiEventSink?.success(event) }
         registerWifiReceiver()
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, wifiChannelName).setMethodCallHandler { call, result ->
@@ -265,22 +225,6 @@ class MainActivity : FlutterActivity() {
                     else result.error("INVALID_TAG_ID", "A valid nearby tag id is required", null)
                 }
                 "getNearbyTags" -> result.success(nearbyTags?.snapshot() ?: emptyList<Map<String, Any>>())
-                // Bundle 157: one shared group (create / join without pop-ups).
-                "setNearbyWanted" -> { nearbyTags?.setWanted(call.argument<List<String>>("ids")); result.success(null) }
-                "setNearbyBridge" -> { nearbyTags?.setBridge(call.argument<Boolean>("on") ?: false); result.success(null) }
-                // Bundle 167 (5.5): a voice call goes on here.
-                "setNearbyInCall" -> { nearbyTags?.setInCall(call.argument<Boolean>("on") ?: false); result.success(null) }
-                // Bundle 161: linked groups + LocalLink hotspot (null = started, else a reason).
-                "joinLocalNet" -> result.success(localNet?.join(
-                    call.argument<String>("kind").orEmpty(), call.argument<String>("ssid").orEmpty(),
-                    call.argument<String>("key").orEmpty(), call.argument<String>("v6")) ?: null)
-                "leaveLocalNet" -> { localNet?.leave(call.argument<String>("reason") ?: "app"); result.success(null) }
-                "startLocalHotspot" -> result.success(if (hasWifiPermission()) localNet?.startHotspot() else "permission")
-                "stopLocalHotspot" -> { localNet?.stopHotspot(call.argument<String>("reason") ?: "app"); result.success(null) }
-                "setNearbyLinkTarget" -> { nearbyTags?.setLinkTarget(call.argument<String>("id")); result.success(null) }
-                "localNetStatus" -> result.success(localNet?.status() ?: emptyMap<String, Any?>())
-                "createNearbyGroup" -> createNearbyGroup(result)
-                "joinNearbyGroup" -> joinNearbyGroup(call.argument<String>("name"), call.argument<String>("key"), call.argument<String>("address"), call.argument<Boolean>("leave") ?: false, result)
                 "cancelConnect" -> wifiManager.cancelConnect(wifiChannel, actionResult(result))
                 "disconnect" -> wifiManager.removeGroup(wifiChannel, actionResult(result))
                 "connectionInfo" -> connectionInfo(result)
@@ -323,31 +267,6 @@ class MainActivity : FlutterActivity() {
                             LocalLinkTransportService.updateKnownPeers(this@MainActivity, peers)
                             runOnUiThread { result.success(null) }
                         }, "locallink-known-peers").start()
-                    }
-                    // Bundle 164 (5.8): strict mode switch (saved natively too,
-                    // so the service uses it after a reboot).
-                    "setStrictLinkCheck" -> {
-                        val on = call.argument<Boolean>("on") == true
-                        Thread({
-                            LocalLinkTransportService.setStrictLinkCheck(this@MainActivity, on)
-                            runOnUiThread { result.success(null) }
-                        }, "locallink-strict").start()
-                    }
-                    // Bundle 156: blocked people are never used as relays.
-                    "updateBlockedPeers" -> {
-                        val blocked = stringList(call.argument<List<*>>("blocked_peers"))
-                        Thread({
-                            LocalLinkTransportService.updateBlockedPeers(blocked)
-                            runOnUiThread { result.success(null) }
-                        }, "locallink-blocked-peers").start()
-                    }
-                    // Bundle 160: per-contact link keys (signed device id).
-                    "updateLinkKeys" -> {
-                        val json = call.argument<String>("link_keys").orEmpty()
-                        Thread({
-                            val stored = LocalLinkTransportService.updateLinkKeys(json)
-                            runOnUiThread { result.success(stored) }
-                        }, "locallink-link-keys").start()
                     }
                     "sendPairPayload" -> {
                         val target = call.argument<String>("target").orEmpty()
@@ -426,20 +345,6 @@ class MainActivity : FlutterActivity() {
                         "managed_device" to managed,
                         "can_control" to managed
                     ))
-                    // Bundle 159: the Wi-Fi off card opens the Wi-Fi panel
-                    // (Android 10+) or the Wi-Fi settings screen.
-                    "open_settings" -> {
-                        val action = if (Build.VERSION.SDK_INT >= 29) android.provider.Settings.Panel.ACTION_WIFI else android.provider.Settings.ACTION_WIFI_SETTINGS
-                        try {
-                            startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                            result.success(true)
-                        } catch (_: Exception) {
-                            try {
-                                startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                                result.success(true)
-                            } catch (_: Exception) { result.success(false) }
-                        }
-                    }
                     "enforce" -> {
                         if (!managed) {
                             result.success(mapOf("supported" to true, "enabled" to wifi.isWifiEnabled, "managed_device" to false, "can_control" to false))
@@ -501,9 +406,6 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "openVendorSettings" -> result.success(openVendorBackgroundSettings())
-                    // Bundle 163 (5.6): brand help screen.
-                    "deviceBrand" -> result.success("${android.os.Build.MANUFACTURER} ${android.os.Build.BRAND}")
-                    "openBrandSettings" -> result.success(openBrandBackgroundSettings(call.argument<String>("brand").orEmpty()))
                     "keepAliveStart" -> { LocalLinkTransportService.start(this); result.success(null) }
                     else -> result.notImplemented()
                 }
@@ -665,13 +567,6 @@ class MainActivity : FlutterActivity() {
                 val queued = pendingNotificationActions.toList()
                 pendingNotificationActions.clear()
                 queued.forEach { events?.success(it) }
-                // Bundle 162 (4.1): Reply / Mark read saved while the app was closed.
-                val saved = NotificationActionOutbox.takeAll(this@MainActivity)
-                if (saved.isNotEmpty()) {
-                    android.util.Log.i("LocalLinkNotify", "NOTIFICATION_ACTIONS_RESTORED count=${saved.size}")
-                    LocalLinkNotificationManager.cancelReplySaved(this@MainActivity)
-                }
-                saved.forEach { events?.success(it) }
             }
             override fun onCancel(arguments: Any?) { notificationEventSink = null }
         })
@@ -746,8 +641,7 @@ class MainActivity : FlutterActivity() {
                             result.error("PERMISSION", "Call audio: microphone permission needed. Allow it on the prompt, then answer the call again.", null)
                             return@setMethodCallHandler
                         }
-                        // Bundle 159: per-call voice key (memory only, never logged).
-                        LocalLinkTransportService.startCallMedia(callId, peerId, codec, call.argument<String>("voice_key"))
+                        LocalLinkTransportService.startCallMedia(callId, peerId, codec)
                         result.success(null)
                     }
                     "stop" -> {
@@ -1075,25 +969,6 @@ class MainActivity : FlutterActivity() {
     private fun powerManager(): android.os.PowerManager =
         getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
 
-    /** Bundle 163 (5.6): the brand's own page, else the app's info page. */
-    private fun openBrandBackgroundSettings(brand: String): String {
-        for ((pkg, cls) in VendorBackgroundIntents.candidates(brand)) {
-            try {
-                startActivity(Intent().setComponent(ComponentName(pkg, cls)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                android.util.Log.i("LocalLinkBackground", "BRAND_SETTINGS_OPENED brand=$brand page=$cls")
-                return "vendor"
-            } catch (_: Exception) {}
-        }
-        return try {
-            startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            android.util.Log.i("LocalLinkBackground", "BRAND_SETTINGS_OPENED brand=$brand page=app_info")
-            "app_settings"
-        } catch (_: Exception) {
-            "none"
-        }
-    }
-
     private fun openVendorBackgroundSettings(): String {
         val candidates = listOf(
             ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
@@ -1239,7 +1114,7 @@ class MainActivity : FlutterActivity() {
     private fun unregisterWifiReceiver(){if(!wifiReceiverRegistered)return;try{unregisterReceiver(wifiReceiver)}catch(_:Exception){};wifiReceiverRegistered=false}
     private fun actionResult(result: MethodChannel.Result)=object:WifiP2pManager.ActionListener{override fun onSuccess(){result.success(null)}override fun onFailure(reason:Int){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}}
     private fun requestPeers(){if(!hasWifiPermission())return;wifiManager.requestPeers(wifiChannel){list:WifiP2pDeviceList->peerDevices=list.deviceList.toList();wifiEventSink?.success(mapOf("type" to "peers","peers" to peerDevices.map{peerMap(it)}))}}
-    private fun requestConnectionInfo(){if(!hasWifiPermission())return;wifiManager.requestConnectionInfo(wifiChannel){info:WifiP2pInfo->val connected=info.groupFormed;val address=if(connected)info.groupOwnerAddress?.hostAddress else null;wifiEventSink?.success(mapOf("type" to "connection","connection" to mapOf("connected" to connected,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to address,"wifiNetwork" to onWifiNetwork(),"sdk" to Build.VERSION.SDK_INT)));nearbyTags?.onConnection(connected,info.isGroupOwner);LocalLinkTransportService.resume(this,connected,info.isGroupOwner,address)}}
+    private fun requestConnectionInfo(){if(!hasWifiPermission())return;wifiManager.requestConnectionInfo(wifiChannel){info:WifiP2pInfo->val connected=info.groupFormed;val address=if(connected)info.groupOwnerAddress?.hostAddress else null;wifiEventSink?.success(mapOf("type" to "connection","connection" to mapOf("connected" to connected,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to address)));nearbyTags?.onConnection(connected,info.isGroupOwner);LocalLinkTransportService.resume(this,connected,info.isGroupOwner,address)}}
     private fun peerMap(device:WifiP2pDevice)=mapOf("name" to device.deviceName,"address" to device.deviceAddress,"status" to device.status)
     private fun discoverPeers(result:MethodChannel.Result){
         if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
@@ -1273,89 +1148,7 @@ class MainActivity : FlutterActivity() {
             wifiManager.connect(wifiChannel,WifiP2pConfig().apply{deviceAddress=normalized;groupOwnerIntent=ownerIntent},actionResult(result))
         }
     }
-    private fun connectionInfo(result:MethodChannel.Result){if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return};wifiManager.requestConnectionInfo(wifiChannel){info->result.success(mapOf("connected" to info.groupFormed,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to if(info.groupFormed)info.groupOwnerAddress?.hostAddress else null,"wifiNetwork" to onWifiNetwork(),"sdk" to Build.VERSION.SDK_INT))}}
-
-    /** Bundle 157: is this phone on a normal Wi-Fi network (router or
-     *  hotspot)? Wi-Fi Direct groups are not counted. Local Wi-Fi first. */
-    private fun onWifiNetwork():Boolean{
-        return try{
-            val cm=getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-            @Suppress("DEPRECATION")
-            // Bundle 161: the linked group / LocalLink hotspot network is not "on Wi-Fi".
-            cm.allNetworks.any{n->localNet?.owns(n)!=true&&cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)==true}
-        }catch(_:Exception){false}
-    }
-
-    /** Bundle 157: start a new shared group and become its host. Android 10+
-     *  gets a fresh name + password (published in the tag, so others join
-     *  without a pop-up); older phones let Android pick them (read back from
-     *  the group info). Never while already in a group. */
-    private fun createNearbyGroup(result:MethodChannel.Result){
-        if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
-        wifiManager.requestConnectionInfo(wifiChannel){info->
-            if(info.groupFormed){
-                android.util.Log.i("NEARBY","group create skipped reason=already_in_group host=${info.isGroupOwner}")
-                result.error("IN_GROUP","This phone is already in a nearby group",null)
-                return@requestConnectionInfo
-            }
-            val listener=object:WifiP2pManager.ActionListener{
-                override fun onSuccess(){android.util.Log.i("NEARBY","group create ok");result.success(null)}
-                override fun onFailure(reason:Int){android.util.Log.w("NEARBY","group create failed reason=$reason");result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}
-            }
-            try{
-                if(Build.VERSION.SDK_INT>=29){
-                    val name=NearbyGroupPolicy.newNetworkName()
-                    val config=WifiP2pConfig.Builder().setNetworkName(name).setPassphrase(NearbyGroupPolicy.newPassphrase()).enablePersistentMode(false).build()
-                    android.util.Log.i("NEARBY","group create grp=$name")
-                    wifiManager.createGroup(wifiChannel,config,listener)
-                }else{
-                    android.util.Log.i("NEARBY","group create legacy")
-                    wifiManager.createGroup(wifiChannel,listener)
-                }
-            }catch(e:Exception){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: ${e.message}",null)}
-        }
-    }
-
-    /** Bundle 157: join a nearby shared group. Android 10+ with the group's
-     *  name + password joins like a normal Wi-Fi network (no pop-up). Older
-     *  phones (or no password) use the classic connect to the host (one
-     *  pop-up). A phone in a group never leaves it unless [leave] (merge into
-     *  a bigger group, or the user's own Pair tap). */
-    private fun joinNearbyGroup(name:String?,key:String?,address:String?,leave:Boolean,result:MethodChannel.Result){
-        if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return}
-        val target=address?.trim().orEmpty()
-        val credentials=Build.VERSION.SDK_INT>=29&&NearbyGroupPolicy.validNetworkName(name)&&NearbyGroupPolicy.validPassphrase(key)
-        if(!credentials&&!Regex("(?i)^[0-9a-f]{2}(:[0-9a-f]{2}){5}$").matches(target)){result.error("INVALID_ADDRESS","A valid Wi-Fi Direct device address is required",null);return}
-        wifiManager.requestConnectionInfo(wifiChannel){info->
-            if(!NearbyGroupPolicy.mayChangeGroup(info.groupFormed,info.isGroupOwner,leave)){
-                android.util.Log.i("NEARBY","group join skipped reason=member_keeps_group host=${info.isGroupOwner}")
-                result.error("IN_GROUP_AS_MEMBER","This phone stays in its current nearby group",null)
-                return@requestConnectionInfo
-            }
-            val doJoin={
-                val listener=object:WifiP2pManager.ActionListener{
-                    override fun onSuccess(){android.util.Log.i("NEARBY","group join requested");result.success(null)}
-                    override fun onFailure(reason:Int){android.util.Log.w("NEARBY","group join failed reason=$reason");result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: $reason",null)}
-                }
-                try{
-                    if(credentials){
-                        android.util.Log.i("NEARBY","group join grp=$name mode=password")
-                        wifiManager.connect(wifiChannel,WifiP2pConfig.Builder().setNetworkName(name!!).setPassphrase(key!!).enablePersistentMode(false).build(),listener)
-                    }else{
-                        android.util.Log.i("NEARBY","group join target=$target mode=classic intent=0")
-                        wifiManager.connect(wifiChannel,WifiP2pConfig().apply{deviceAddress=target;groupOwnerIntent=0},listener)
-                    }
-                }catch(e:Exception){result.error("WIFI_DIRECT","Wi-Fi Direct operation failed: ${e.message}",null)}
-            }
-            if(info.groupFormed){
-                android.util.Log.i("NEARBY","group leave before join host=${info.isGroupOwner}")
-                wifiManager.removeGroup(wifiChannel,object:WifiP2pManager.ActionListener{
-                    override fun onSuccess(){android.os.Handler(mainLooper).postDelayed({doJoin()},1500L)}
-                    override fun onFailure(reason:Int){android.os.Handler(mainLooper).postDelayed({doJoin()},1500L)}
-                })
-            }else doJoin()
-        }
-    }
+    private fun connectionInfo(result:MethodChannel.Result){if(!hasWifiPermission()){result.error("PERMISSION","Nearby Wi-Fi permission is required",null);return};wifiManager.requestConnectionInfo(wifiChannel){info->result.success(mapOf("connected" to info.groupFormed,"groupOwner" to info.isGroupOwner,"groupOwnerAddress" to if(info.groupFormed)info.groupOwnerAddress?.hostAddress else null))}}
 
     private fun copyToCache(uri: Uri): Map<String,Any>{
         val resolver=contentResolver; val name=queryName(uri)?:"attachment"; val mime=resolver.getType(uri)?:"application/octet-stream"; val safeName=name.replace(Regex("[^A-Za-z0-9._-]"),"_"); val pickDir=File(filesDir,"locallink_picks").apply{mkdirs()}; val outFile=File(pickDir,"locallink_${UUID.randomUUID()}_$safeName"); resolver.openInputStream(uri).use{input->requireNotNull(input){"Could not open selected file"};FileOutputStream(outFile).use{output->input.copyTo(output)}}; return mapOf("path" to outFile.absolutePath,"name" to name,"content_type" to mime,"size" to outFile.length())
@@ -1375,7 +1168,6 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy(){
         chatVideoPip.dispose() // Bundle 147
-        if (!isChangingConfigurations) { localNet?.dispose(); localNet = null } // Bundle 161
         setCallProximity(false) // Bundle 143
         if (activeInstance === this) activeInstance = null
         callNotificationEventSink = null
