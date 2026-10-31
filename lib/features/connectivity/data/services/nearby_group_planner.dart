@@ -169,6 +169,32 @@ bool nearbyGoesFirst(
 /// * app in the background: 60 s while someone waits, 3 min in a group or
 ///   alone without Wi-Fi, and OFF when nobody waits and this phone is on
 ///   Wi-Fi alone (everyone it needs is already reachable).
+/// Bundle 160 (plan 160.4): Wi-Fi that blocks phones from seeing each other
+/// (guest Wi-Fi, "client isolation").
+///
+/// On Wi-Fi for 60 s, no LocalLink phone heard on it for 60 s, while nearby
+/// tags show LocalLink phones that are on Wi-Fi too (`wf=1`): this Wi-Fi
+/// can't connect phones, so act as if not on Wi-Fi (join the nearby group).
+/// Ends at once when a phone is heard on the Wi-Fi again.
+abstract final class NearbyWifiCheck {
+  static const int blockedAfterMs = 60 * 1000;
+
+  /// [wifiSince] when this phone joined its Wi-Fi (0 = not on Wi-Fi);
+  /// [lastLanAt] last time a LocalLink phone was heard on it (0 = never).
+  static bool looksBlocked({
+    required bool onWifi,
+    required int wifiSince,
+    required int lastLanAt,
+    required int now,
+    required Iterable<NearbyTag> tags,
+  }) {
+    if (!onWifi || wifiSince <= 0) return false;
+    final quietSince = lastLanAt > wifiSince ? lastLanAt : wifiSince;
+    if (now - quietSince < blockedAfterMs) return false;
+    return tags.any((t) => t.groupAware && t.wifi);
+  }
+}
+
 abstract final class NearbySearchCadence {
   static const int urgentMs = 8 * 1000;
   static const int foregroundMs = 15 * 1000;

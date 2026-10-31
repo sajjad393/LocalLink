@@ -100,16 +100,5 @@ object MeshLinkAuth {
         return Decision(Verdict.LEGACY, if (peerOffers) "no_shared_key" else "old_phone")
     }
 
-    /**
-     * Bundle 164 (5.8): strict mode (a setting, off by default). A contact
-     * link that is not id-checked (older app, or no shared key yet) is
-     * refused. Relay links (strangers) are never id-checked and stay as they
-     * are: they only carry sealed packets.
-     */
-    fun applyStrict(decision: Decision, strict: Boolean, isContact: Boolean): Decision {
-        if (!strict || !isContact || decision.verdict != Verdict.LEGACY) return decision
-        return Decision(Verdict.REJECT, "strict_unchecked")
-    }
-
     private fun hex(b: ByteArray): String = b.joinToString("") { "%02x".format(it) }
 }

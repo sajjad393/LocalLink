@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
@@ -48,6 +49,19 @@ class WifiDirectTransportService implements PeerTransportContract {
   /// Bundle 156: blocked people are never accepted as relay links.
   Future<void> updateBlockedPeers(List<String> peerIds) =>
       _channel.invokeMethod('updateBlockedPeers', {'blocked_peers': peerIds});
+
+  /// Bundle 160: per-contact link keys for the signed device id
+  /// ({peerId: [{o, p, k}]}). Kept by the native side for the link hello.
+  /// False when the native service was not running yet (try again later).
+  Future<bool> updateLinkKeys(
+    Map<String, List<Map<String, String>>> keys,
+  ) async {
+    final stored = await _channel.invokeMethod<Object?>(
+      'updateLinkKeys',
+      {'link_keys': jsonEncode(keys)},
+    );
+    return stored != false;
+  }
 
   @override
   Future<void> ensureTransportReady({

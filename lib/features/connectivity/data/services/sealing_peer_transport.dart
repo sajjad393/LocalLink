@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
+import 'package:locallink/core/services/link_key_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/message_seal_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_transport_service.dart';
@@ -137,6 +138,10 @@ class SealingPeerTransport implements PeerTransportContract {
   final PeerTransportContract inner;
   final MessageSealService _sealer;
   SealKeySource? _keys;
+
+  /// Bundle 160: link keys for the signed device id (last pushed set).
+  final LinkKeyService _linkKeys = LinkKeyService();
+  String _linkKeysPushed = '';
 
   final Set<String> _capable = <String>{};
   final Map<String, DateTime> _probedAt = <String, DateTime>{};
@@ -398,6 +403,7 @@ class SealingPeerTransport implements PeerTransportContract {
       knownPeers: knownPeers,
     );
     unawaited(_pushBlocked());
+    unawaited(pushLinkKeys(knownPeers));
   }
 
   @override
@@ -411,6 +417,32 @@ class SealingPeerTransport implements PeerTransportContract {
   Future<void> updateKnownPeers(List<String> peerIds) async {
     await inner.updateKnownPeers(peerIds);
     unawaited(_pushBlocked());
+    unawaited(pushLinkKeys(peerIds));
+  }
+
+  /// Bundle 160: signed device id — hands the native side one link key per
+  /// contact (and per own key, up to 3). Only when something changed.
+  Future<void> pushLinkKeys(List<String> peerIds) async {
+    final base = inner;
+    final keys = _keys;
+    if (base is! WifiDirectTransportService || keys == null) return;
+    try {
+      final self = keys.selfId;
+      if (self == null || self.isEmpty) return;
+      final map = await _linkKeys.buildAll(
+        selfId: self,
+        peerIds: peerIds,
+        mine: await keys.ownKeys(),
+        publicKeyOf: keys.contactPublicKey,
+      );
+      final signature = jsonEncode(map);
+      if (signature == _linkKeysPushed) return;
+      if (!await base.updateLinkKeys(map)) return; // service not up yet
+      _linkKeysPushed = signature;
+      AppLogger.info('LINK_AUTH', detail: 'keys pushed contacts=${map.length}');
+    } catch (error) {
+      AppLogger.warning('LINK_AUTH', detail: 'keys push failed error=$error');
+    }
   }
 
   /// Blocked people are never used as relays (native side).

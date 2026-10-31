@@ -161,6 +161,17 @@ final class WifiDirectFallbackService {
   bool _onWifiNetwork = false;
   bool _selfCharging = false;
 
+  /// Bundle 160 (plan 160.4): blocked Wi-Fi check.
+  int _wifiSince = 0;
+  int _lastLanAt = 0;
+  bool _wifiBlocked = false;
+
+  @visibleForTesting
+  bool get wifiBlocked => _wifiBlocked;
+
+  /// On Wi-Fi and the Wi-Fi really connects phones (not blocked).
+  bool get _usableWifi => _onWifiNetwork && !_wifiBlocked;
+
   /// Bundle 159 (battery): the app screen is open. Searching is faster then;
   /// in the background it follows D7 (60 s while someone waits, else 3 min,
   /// or off when nobody waits and this phone is on Wi-Fi alone).
@@ -177,6 +188,8 @@ final class WifiDirectFallbackService {
         'nearby_tags': _tags.length,
         'waiting': _waitingSince.length,
         'plan': _lastPlanReason,
+        // Bundle 160: this Wi-Fi blocks phones from seeing each other.
+        'wifi_blocked': _wifiBlocked,
       };
 
   /// Called on every app lifecycle change.
@@ -542,6 +555,8 @@ final class WifiDirectFallbackService {
   }
 
   void _applyConnection(WifiDirectConnection c) {
+    if (c.wifiNetwork && !_onWifiNetwork) _wifiSince = _clock();
+    if (!c.wifiNetwork) _wifiSince = 0;
     _onWifiNetwork = c.wifiNetwork;
     _setRole(!c.connected
         ? NearbyGroupRole.none
@@ -665,7 +680,7 @@ final class WifiDirectFallbackService {
       urgent: urgent,
       foreground: _foreground,
       inGroup: _role != NearbyGroupRole.none,
-      onWifi: _onWifiNetwork,
+      onWifi: _usableWifi,
       waiting: _waitingSince.isNotEmpty,
     );
     if (everyMs > 0 &&
@@ -734,6 +749,7 @@ final class WifiDirectFallbackService {
         _applyConnection(await connectivity.wifiDirectConnectionInfo());
       } catch (_) {}
       _checkPending(now);
+      _checkWifiBlocked(now);
       await _checkBridge(now);
       final waiting = _waitingHashes();
       await _publishWanted(waiting);
@@ -746,7 +762,7 @@ final class WifiDirectFallbackService {
         myGroup: _myGroup,
         myMembers: _myMembers,
         hostSince: _hostSince,
-        onWifiNetwork: _onWifiNetwork,
+        onWifiNetwork: _usableWifi,
         tags: _tags.values.toList(growable: false),
         firstSeen: {..._firstSeen},
         waiting: waiting,
@@ -836,6 +852,27 @@ final class WifiDirectFallbackService {
           detail: 'group ${plan.kind.name} failed error=$error');
       _failPending(now);
     }
+  }
+
+  // ------------------------------------------- Bundle 160: blocked Wi-Fi
+
+  /// Wi-Fi that never lets us hear the LocalLink phones we see nearby:
+  /// act as if not on Wi-Fi (join the nearby group). Logged once each way.
+  void _checkWifiBlocked(int now) {
+    if (_lanHashes().isNotEmpty) _lastLanAt = now;
+    final blocked = NearbyWifiCheck.looksBlocked(
+      onWifi: _onWifiNetwork,
+      wifiSince: _wifiSince,
+      lastLanAt: _lastLanAt,
+      now: now,
+      tags: _tags.values,
+    );
+    if (blocked == _wifiBlocked) return;
+    _wifiBlocked = blocked;
+    AppLogger.info('NEARBY',
+        detail: blocked
+            ? 'wifi_blocked on - no phones heard on this Wi-Fi for 60 s, using nearby groups'
+            : 'wifi_blocked off');
   }
 
   // ------------------------------------------------ Bundle 158: the bridge

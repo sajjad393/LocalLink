@@ -34,6 +34,12 @@ class NearbyAdminSnapshot {
   final int forwardedVoiceFrames;
   final List<NearbyAdminRoute> routes;
 
+  /// Bundle 160: this Wi-Fi blocks phones from seeing each other.
+  final bool wifiBlocked;
+
+  /// Bundle 160: links whose device id was proven (signed id).
+  final int verifiedLinks;
+
   const NearbyAdminSnapshot({
     this.role = 'none',
     this.group,
@@ -48,6 +54,8 @@ class NearbyAdminSnapshot {
     this.forwardedPackets = 0,
     this.forwardedVoiceFrames = 0,
     this.routes = const <NearbyAdminRoute>[],
+    this.wifiBlocked = false,
+    this.verifiedLinks = 0,
   });
 
   /// Short id for display (first 8 characters).
@@ -96,6 +104,8 @@ class NearbyAdminSnapshot {
       forwardedPackets: _int(t['forwarded_packets']),
       forwardedVoiceFrames: _int(t['forwarded_voice_frames']),
       routes: List.unmodifiable(routes),
+      wifiBlocked: g['wifi_blocked'] == true,
+      verifiedLinks: _int(t['verified_links']),
     );
   }
 }
