@@ -32,6 +32,7 @@ import 'package:locallink/features/connectivity/data/services/wifi_radio_control
 import 'package:locallink/features/connectivity/data/repositories/mesh_repository.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_transport_service.dart';
+import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_fallback_service.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
@@ -87,9 +88,15 @@ class AppDependencies {
         httpClient = httpClient ?? ApiHttpClient(),
         store = LocalStore(secureStorage: secureStorage ?? const SecureStorageService()),
         socket = WebSocketService(),
-        directTransport = WifiDirectTransportService(),
+        // Bundle 156: messages are sealed end to end on the way out and
+        // opened on the way in; the rest of the app sees plain payloads.
+        directTransport = SealingPeerTransport(WifiDirectTransportService()),
         wifiDirect = WifiDirectService(),
         crypto = IdentityCryptoService(secureStorage: secureStorage ?? const SecureStorageService()) {
+    final sealing = directTransport;
+    if (sealing is SealingPeerTransport) {
+      sealing.bind(StoreSealKeySource(store: store, crypto: crypto));
+    }
     api = LocalLinkApi(store, socket, httpClient: this.httpClient);
     connectivityRepository = ConnectivityRepository(
       socket: socket,
