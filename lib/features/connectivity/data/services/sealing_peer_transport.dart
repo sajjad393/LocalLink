@@ -153,7 +153,13 @@ class SealingPeerTransport implements PeerTransportContract {
   void bind(SealKeySource keys) {
     _keys = keys;
     unawaited(_loadCapabilities());
+    // Bundle 164 (5.7): a block / unblock reaches the link layer at once.
+    _blockedSub ??= LocalStore.blockedChanges.listen((_) {
+      unawaited(_pushBlocked());
+    });
   }
+
+  StreamSubscription<void>? _blockedSub;
 
   @visibleForTesting
   Set<String> get capablePeers => Set.unmodifiable(_capable);
@@ -507,6 +513,8 @@ class SealingPeerTransport implements PeerTransportContract {
   Future<void> dispose() async {
     await _subscription?.cancel();
     _subscription = null;
+    await _blockedSub?.cancel();
+    _blockedSub = null;
     await inner.dispose();
   }
 }

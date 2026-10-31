@@ -120,6 +120,8 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         activeInstance = this
+        // Bundle 164 (4.3): the app is open - the reboot notice is not needed.
+        LocalLinkNotificationManager.cancelBootReconnect(this)
         // Bundle 124: the once-per-install battery-exemption dialog that used
         // to fire here slapped first-time users on TOP of the register/login
         // screen with zero context. The dashboard permission sequencer
@@ -130,6 +132,18 @@ class MainActivity : FlutterActivity() {
 
     // Bundle 145: first frame (JPEG, <= maxPx), length and display size of a chat
     // video, read from the app's own temporary decrypted view copy. Off the UI thread.
+    /** Bundle 164 (4.4): 9x9 brightness samples of a frame. */
+    private fun isDarkFrame(b: android.graphics.Bitmap): Boolean {
+        if (b.width <= 0 || b.height <= 0) return true
+        val lumas = IntArray(81)
+        var i = 0
+        for (y in 0 until 9) for (x in 0 until 9) {
+            val px = b.getPixel(((x * 2 + 1) * b.width / 18).coerceIn(0, b.width - 1), ((y * 2 + 1) * b.height / 18).coerceIn(0, b.height - 1))
+            lumas[i++] = VideoFramePolicy.luma(px)
+        }
+        return VideoFramePolicy.isMostlyDark(lumas)
+    }
+
     private fun readVideoInfo(path: String?, maxPx: Int, result: MethodChannel.Result) {
         val file = path?.let { File(it) }
         val dataDir = try { File(applicationInfo.dataDir).canonicalPath } catch (_: Exception) { "" }
@@ -147,9 +161,25 @@ class MainActivity : FlutterActivity() {
                 val rawW = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
                 val rawH = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
                 val rotation = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-                var frame: android.graphics.Bitmap? = if (Build.VERSION.SDK_INT >= 27)
-                    retriever.getScaledFrameAtTime(0L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, bound, bound)
-                else retriever.getFrameAtTime(0L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                fun frameAt(us: Long): android.graphics.Bitmap? = try {
+                    if (Build.VERSION.SDK_INT >= 27)
+                        retriever.getScaledFrameAtTime(us, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, bound, bound)
+                    else retriever.getFrameAtTime(us, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                } catch (_: Exception) { null }
+                var frame: android.graphics.Bitmap? = frameAt(0L)
+                // Bundle 164 (4.4): no first frame, or a black one - try 1 s
+                // and a quarter in. Keep the first frame if nothing is better.
+                if (frame == null || isDarkFrame(frame)) {
+                    for (us in VideoFramePolicy.retryTimesUs(duration)) {
+                        val next = frameAt(us) ?: continue
+                        if (!isDarkFrame(next)) {
+                            frame?.recycle()
+                            frame = next
+                            break
+                        }
+                        if (frame == null) frame = next else next.recycle()
+                    }
+                }
                 val f0 = frame
                 if (f0 != null && (f0.width > bound || f0.height > bound)) {
                     val scale = bound.toFloat() / maxOf(f0.width, f0.height)
@@ -285,6 +315,15 @@ class MainActivity : FlutterActivity() {
                             LocalLinkTransportService.updateKnownPeers(this@MainActivity, peers)
                             runOnUiThread { result.success(null) }
                         }, "locallink-known-peers").start()
+                    }
+                    // Bundle 164 (5.8): strict mode switch (saved natively too,
+                    // so the service uses it after a reboot).
+                    "setStrictLinkCheck" -> {
+                        val on = call.argument<Boolean>("on") == true
+                        Thread({
+                            LocalLinkTransportService.setStrictLinkCheck(this@MainActivity, on)
+                            runOnUiThread { result.success(null) }
+                        }, "locallink-strict").start()
                     }
                     // Bundle 156: blocked people are never used as relays.
                     "updateBlockedPeers" -> {

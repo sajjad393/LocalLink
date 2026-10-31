@@ -1395,7 +1395,18 @@ class LocalStore {
     if (userId.isEmpty) return;
     await _putSetting('contact_edge_$userId', op + '|' + ts.toString());
   }
+  /// Bundle 164 (5.7): fires after a block / unblock so the nearby link
+  /// layer cuts (or allows) that person right away.
+  static final StreamController<void> _blockedChanges =
+      StreamController<void>.broadcast();
+  static Stream<void> get blockedChanges => _blockedChanges.stream;
+
   Future<void> blockUser(String userId) async {
+    await _blockUserRow(userId);
+    _blockedChanges.add(null);
+  }
+
+  Future<void> _blockUserRow(String userId) async {
     await _db.insert(
         'blocked_users',
         {
@@ -1406,8 +1417,10 @@ class LocalStore {
     await removeContact(userId);
   }
 
-  Future<void> unblockUser(String userId) =>
-      _db.delete('blocked_users', where: 'user_id=?', whereArgs: [userId]);
+  Future<void> unblockUser(String userId) async {
+    await _db.delete('blocked_users', where: 'user_id=?', whereArgs: [userId]);
+    _blockedChanges.add(null);
+  }
 
   /// Bundle 135 (offline admin moderation): ban by DEVICE and by USER — the
   /// device row is needed for peer-level checks (blocking by device id works

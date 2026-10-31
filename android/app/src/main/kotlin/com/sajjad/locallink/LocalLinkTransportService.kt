@@ -113,6 +113,14 @@ class LocalLinkTransportService : Service() {
         }
         /** Bundle 156: blocked people are never accepted as relays. */
         fun updateBlockedPeers(peerIds:List<String>){instance?.updateBlockedInternal(peerIds)}
+        /** Bundle 164 (5.8): strict mode - refuse contact links without the id check. */
+        const val LINK_AUTH_PREFS = "locallink_link_auth"
+        const val STRICT_KEY = "strict"
+        fun setStrictLinkCheck(context: Context, on: Boolean) {
+            context.getSharedPreferences(LINK_AUTH_PREFS, Context.MODE_PRIVATE).edit().putBoolean(STRICT_KEY, on).apply()
+            instance?.applyStrictInternal(on)
+            Log.i("LINK_AUTH", "strict mode=${if (on) "on" else "off"}")
+        }
         /** Bundle 160: per-contact link keys (signed device id on the link hello). */
         fun updateLinkKeys(json:String):Boolean{val svc=instance?:return false;svc.updateLinkKeysInternal(json);return true}
         /** Bundle 161: state changes of the linked group / hotspot link. */
@@ -149,14 +157,23 @@ class LocalLinkTransportService : Service() {
         fun topology(): Map<String, Any?> = instance?.meshTopologySnapshot() ?: emptyMap()
         fun flushQueue(){instance?.flushMeshQueue()}
         fun clearStorage(){instance?.clearTransportStorage()}
-        private fun startCommand(context:Context,intent:Intent?){
+        /** Bundle 164 (4.3): after a reboot. Returns the reason when Android said no (null = started). */
+        fun startFromBoot(context: Context): String? = startCommand(context, null)
+
+        private fun startCommand(context:Context,intent:Intent?):String?{
             val i=intent?:Intent(context,LocalLinkTransportService::class.java)
-            try {
+            return try {
                 if(android.os.Build.VERSION.SDK_INT>=26) context.startForegroundService(i) else context.startService(i)
+                null
             } catch (_: android.app.ForegroundServiceStartNotAllowedException) {
                 listener?.onTransportEvent("state", mapOf("connected" to false, "transport_active" to false, "reason" to "foreground_service_not_allowed"))
+                "foreground_service_not_allowed"
             } catch (_: SecurityException) {
                 listener?.onTransportEvent("state", mapOf("connected" to false, "transport_active" to false, "reason" to "foreground_service_denied"))
+                "foreground_service_denied"
+            } catch (e: IllegalStateException) {
+                // Older Androids: background start not allowed.
+                "start_not_allowed"
             }
         }
     }
@@ -463,6 +480,7 @@ class LocalLinkTransportService : Service() {
         super.onCreate();instance=this;createNotificationChannel()
         if(android.os.Build.VERSION.SDK_INT>=29)startForeground(NOTIFICATION_ID,buildNotification(),ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)else startForeground(NOTIFICATION_ID,buildNotification())
         running=true;loadPersistedState();restoreDurableState()
+        strictLinkCheck=getSharedPreferences(LINK_AUTH_PREFS,MODE_PRIVATE).getBoolean(STRICT_KEY,false)
         if(transportRunning){startMeshMaintenance();startLanTransport();transportEvent("state",mapOf("connected" to transportPeers.isNotEmpty(),"transport_active" to true,"group_owner" to transportGroupOwner));if(transportGroupOwner)ensureTransportServer()}
     }
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
@@ -548,8 +566,24 @@ class LocalLinkTransportService : Service() {
     private fun updateBlockedInternal(peerIds:List<String>){
         blockedPeers.clear();peerIds.forEach{if(validTransportId(it))blockedPeers.add(it.trim())};persistState()
         for(link in allPhysicalPeerLinks()){
-            if(link.trust==MeshRelayPolicy.TRUST_RELAY&&blockedPeers.contains(link.peerId)){
-                Log.i("RELAY","relay link closed peer=${link.peerId} reason=blocked")
+            // Bundle 164 (5.7): a blocked contact is cut too, not only relays.
+            if(blockedPeers.contains(link.peerId)){
+                if(link.trust==MeshRelayPolicy.TRUST_RELAY)Log.i("RELAY","relay link closed peer=${link.peerId} reason=blocked")
+                else Log.i("LINK_AUTH","contact link closed peer=${link.peerId.take(8)} reason=blocked")
+                try{link.socket.close()}catch(_:Exception){}
+            }
+        }
+    }
+
+    /** Bundle 164 (5.8): strict mode. Turning it on cuts unchecked contact links. */
+    @Volatile private var strictLinkCheck = false
+    private fun applyStrictInternal(on:Boolean){
+        strictLinkCheck=on
+        if(!on)return
+        for(link in allPhysicalPeerLinks()){
+            if(link.trust==MeshRelayPolicy.TRUST_CONTACT&&!link.verified){
+                Log.w("LINK_AUTH","reject peer=${link.peerId.take(8)} side=live reason=strict_unchecked")
+                transportEvent("peer_link_rejected",mapOf("peer_id" to link.peerId,"reason" to "link_auth_strict_unchecked"))
                 try{link.socket.close()}catch(_:Exception){}
             }
         }
@@ -1222,7 +1256,9 @@ class LocalLinkTransportService : Service() {
         val auth = reader.readLine()?.let { JSONObject(it) } ?: return null
         if (auth.optString("type") != "auth_ok" || auth.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
         val serverMacOk = shared != null && MeshLinkAuth.verify(shared.key, "s", id, peerId, clientNonce, serverNonce, auth.optString("mac"))
-        val linkAuth = MeshLinkAuth.decide(myKeys.isNotEmpty(), serverAuth, shared != null, serverMacOk, linkVerified.contains(peerId))
+        val linkAuth = MeshLinkAuth.applyStrict(
+            MeshLinkAuth.decide(myKeys.isNotEmpty(), serverAuth, shared != null, serverMacOk, linkVerified.contains(peerId)),
+            strictLinkCheck, trust == MeshRelayPolicy.TRUST_CONTACT)
         noteLinkAuth(peerId, "dial", linkAuth)
         if (linkAuth.verdict == MeshLinkAuth.Verdict.REJECT) return null
         socket.soTimeout = 0
@@ -1270,7 +1306,9 @@ class LocalLinkTransportService : Service() {
             auth.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
         val shared = if (clientAuth) MeshLinkAuth.match(myKeys, jsonStringList(auth.optJSONArray("lkp"))) else null
         val clientMacOk = shared != null && MeshLinkAuth.verify(shared.key, "c", peer, self, clientNonce, serverNonce, auth.optString("mac"))
-        val linkAuth = MeshLinkAuth.decide(myKeys.isNotEmpty(), clientAuth, shared != null, clientMacOk, linkVerified.contains(peer))
+        val linkAuth = MeshLinkAuth.applyStrict(
+            MeshLinkAuth.decide(myKeys.isNotEmpty(), clientAuth, shared != null, clientMacOk, linkVerified.contains(peer)),
+            strictLinkCheck, trust == MeshRelayPolicy.TRUST_CONTACT)
         noteLinkAuth(peer, "answer", linkAuth)
         if (linkAuth.verdict == MeshLinkAuth.Verdict.REJECT) return null
         val ok = JSONObject().put("type", "auth_ok").put("transport_auth_version", TRANSPORT_AUTH_VERSION)
@@ -1505,6 +1543,8 @@ class LocalLinkTransportService : Service() {
                             // Bundle 156: relay link — never a blocked user.
                             if (blockedPeers.contains(from)) { exitCause = "relay_blocked"; break }
                         } else if (!knownPeers.contains(from)) break
+                        // Bundle 164 (5.7): a contact blocked while linked.
+                        else if (blockedPeers.contains(from)) { exitCause = "contact_blocked"; break }
                         val payloadText = packet.optString("payload")
                         val inbound = try { JSONObject(payloadText) } catch (_: Exception) { null }
                         val parsed = inbound?.let { MeshPacket.fromJson(it) }

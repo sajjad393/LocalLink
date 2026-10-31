@@ -245,7 +245,7 @@ class MessengerSettingsScreen extends StatelessWidget {
               context,
               icon: Icons.science_outlined,
               title: 'Nearby tests',
-              subtitle: 'Link full groups, share a hotspot',
+              subtitle: 'Link full groups, share a hotspot, strict mode',
               onTap: () => Navigator.push<void>(
                 context,
                 MaterialPageRoute(

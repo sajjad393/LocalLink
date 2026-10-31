@@ -65,9 +65,10 @@ object MeshRelayPolicy {
         isPaused: Boolean = false,
     ): String? {
         if (peerId.isBlank()) return null
-        // Contacts: unchanged behaviour (blocking is handled by the app).
-        if (isContact) return TRUST_CONTACT
+        // Bundle 164 (5.7): a blocked person never connects - not as a
+        // contact and not as a relay.
         if (isBlocked) return null
+        if (isContact) return TRUST_CONTACT
         if (!RELAY_ENABLED || !peerOffersRelay || isPaused) return null
         if (relayLinks >= MAX_RELAY_LINKS) return null
         return TRUST_RELAY
