@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'chat_video_controller.dart';
 import 'chat_video_player.dart';
@@ -24,6 +25,7 @@ class ChatVideoSession extends ChangeNotifier {
     required this.coordinator,
     this.onRelease,
     this.aspectHint,
+    this.durationHintMs = 0,
   });
 
   final ChatVideoController controller;
@@ -31,6 +33,9 @@ class ChatVideoSession extends ChangeNotifier {
   final MediaPlaybackCoordinator coordinator;
   final void Function(String path)? onRelease;
   final double? aspectHint;
+
+  /// Bundle 174: length read from the file (used when the player reports 0).
+  final int durationHintMs;
   ChatVideoHub? hub;
 
   bool inlineAlive = true;
@@ -175,7 +180,37 @@ class ChatVideoHub extends ChangeNotifier with WidgetsBindingObserver {
   AppLifecycleState _life = AppLifecycleState.resumed;
 
   /// Corner the mini player sits in (kept while the app runs).
-  Alignment miniCorner = Alignment.bottomRight;
+  /// Bundle 174: starts top-right, under the name bar.
+  Alignment miniCorner = Alignment.topRight;
+
+  /// Bundle 174: the size the user pinched the mini player to (1 = 240x135).
+  /// Remembered for the next video (and saved on the phone).
+  double miniScale = 1.0;
+  static const String miniScaleKey = 'chat_video_mini_scale_v1';
+
+  void setMiniScale(double value, {bool save = true}) {
+    if (!value.isFinite || value <= 0) return;
+    miniScale = value;
+    if (save) unawaited(_saveMiniScale(value));
+  }
+
+  static Future<void> _saveMiniScale(double value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(miniScaleKey, value);
+    } catch (_) {}
+  }
+
+  Future<void> _loadMiniScale() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getDouble(miniScaleKey);
+      if (v != null && v.isFinite && v > 0) {
+        miniScale = v;
+        _notify();
+      }
+    } catch (_) {}
+  }
 
   ChatVideoSession? get mini => (_mini?.closed ?? true) ? null : _mini;
   ChatVideoSession? get current => (_current?.closed ?? true) ? null : _current;
@@ -190,6 +225,7 @@ class ChatVideoHub extends ChangeNotifier with WidgetsBindingObserver {
     _attached = true;
     WidgetsBinding.instance.addObserver(this);
     _events = pip.events().listen(_onPipEvent, onError: (Object _) {});
+    unawaited(_loadMiniScale());
   }
 
   @visibleForTesting
@@ -211,7 +247,8 @@ class ChatVideoHub extends ChangeNotifier with WidgetsBindingObserver {
     _pipActive = false;
     _lastPipArgs = null;
     _lastPlaying = false;
-    miniCorner = Alignment.bottomRight;
+    miniCorner = Alignment.topRight;
+    miniScale = 1.0;
   }
 
   void register(ChatVideoSession s) => s.hub = this;
@@ -273,6 +310,7 @@ class ChatVideoHub extends ChangeNotifier with WidgetsBindingObserver {
         controller: s.controller,
         onPlay: s.play,
         onPause: s.pause,
+        durationHintMs: s.durationHintMs,
       ),
       transitionsBuilder: (_, a, __, child) =>
           FadeTransition(opacity: a, child: child),
@@ -287,6 +325,8 @@ class ChatVideoHub extends ChangeNotifier with WidgetsBindingObserver {
       case FullscreenExit.back:
         if (s.playing || wasMini) {
           showMini(s);
+        } else if (s.inlineAlive && videoEnded(s.controller.state)) {
+          s.close(); // Bundle 174 (3b): finished -> bubble shows its preview
         } else if (s.inlineAlive) {
           s.refresh(); // bubble shows it again, same spot
         } else {
@@ -461,6 +501,12 @@ class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
   Offset? _drag; // top-left while dragging
   ChatVideoSession? _session;
   Timer? _endTimer;
+  // Bundle 174: pinch to resize + buttons hide after 3 s while playing.
+  bool _pinching = false;
+  double _pinchStart = 1;
+  bool _controls = true;
+  bool _wasPlaying = false;
+  Timer? _hideTimer;
 
   @override
   void initState() {
@@ -474,7 +520,35 @@ class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
     widget.hub.removeListener(_onHub);
     _session?.controller.removeListener(_onController);
     _endTimer?.cancel();
+    _hideTimer?.cancel();
     super.dispose();
+  }
+
+  /// Show the buttons; while playing they hide again after 3 s.
+  void _touch() {
+    _hideTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _controls = true);
+    final s = _session;
+    if (s != null && s.controller.state.playing) {
+      _hideTimer = Timer(const Duration(seconds: 3), () {
+        final now = _session;
+        if (mounted && now != null && now.controller.state.playing) {
+          setState(() => _controls = false);
+        }
+      });
+    }
+  }
+
+  void _onTap() {
+    final s = _session;
+    if (s == null) return;
+    if (_controls && s.controller.state.playing) {
+      _hideTimer?.cancel();
+      setState(() => _controls = false);
+    } else {
+      _touch();
+    }
   }
 
   void _onHub() {
@@ -489,7 +563,14 @@ class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
     _endTimer?.cancel();
     _session = s;
     _drag = null;
+    _hideTimer?.cancel();
+    _controls = true;
+    _wasPlaying = false;
     s?.controller.addListener(_onController);
+    if (s != null && s.controller.state.playing) {
+      _wasPlaying = true;
+      _touch();
+    }
   }
 
   bool _ended(ChatVideoState st) =>
@@ -514,6 +595,16 @@ class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
       _endTimer?.cancel();
       _endTimer = null;
     }
+    final playing = s.controller.state.playing;
+    if (playing != _wasPlaying) {
+      _wasPlaying = playing;
+      if (playing) {
+        _touch(); // started: show, then hide after 3 s
+      } else {
+        _hideTimer?.cancel();
+        _controls = true; // paused / finished: buttons stay
+      }
+    }
     if (mounted) setState(() {});
   }
 
@@ -522,7 +613,8 @@ class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
     final s = _session;
     if (s == null || !widget.hub.miniVisible) return const SizedBox.shrink();
     final mq = MediaQuery.of(context);
-    final size = MediaFrame.mini(s.aspect);
+    final size =
+        MediaFrame.miniScaled(s.aspect, widget.hub.miniScale, mq.size.width);
     const side = 12.0;
     final top = mq.padding.top + 56 + 8;
     final bottom = math.max(mq.padding.bottom, mq.viewInsets.bottom) + 76;
@@ -548,15 +640,52 @@ class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
           child: GestureDetector(
             key: const Key('mini_video'),
             behavior: HitTestBehavior.opaque,
-            onTap: () => unawaited(widget.hub.openFullscreen(s)),
-            onPanStart: (_) => setState(() => _drag = pos),
-            onPanUpdate: (d) => setState(() {
-              final p = (_drag ?? pos) + d.delta;
+            onTap: _onTap,
+            onScaleStart: (d) => setState(() {
+              _drag = pos;
+              _pinching = d.pointerCount >= 2;
+              _pinchStart = widget.hub.miniScale;
+              if (_pinching) _touch();
+            }),
+            onScaleUpdate: (d) => setState(() {
+              if (d.pointerCount >= 2) {
+                // Bundle 174: two fingers = bigger / smaller.
+                if (!_pinching) {
+                  _pinching = true;
+                  _pinchStart = widget.hub.miniScale / d.scale;
+                }
+                final next = (_pinchStart * d.scale).clamp(
+                    MediaFrame.miniMinScale,
+                    MediaFrame.miniMaxScale(area.width, s.aspect));
+                widget.hub.setMiniScale(next.toDouble(), save: false);
+                final grown = MediaFrame.miniScaled(
+                    s.aspect, widget.hub.miniScale, area.width);
+                final p = _drag ?? pos;
+                _drag = Offset(
+                  p.dx.clamp(side, math.max(side, area.width - grown.width - side)),
+                  p.dy.clamp(top, math.max(top, area.height - grown.height - bottom)),
+                );
+                return;
+              }
+              if (_pinching) return; // one finger left after a pinch
+              final p = (_drag ?? pos) + d.focalPointDelta;
               _drag = Offset(p.dx.clamp(-size.width * .6, area.width - size.width * .4),
                   p.dy.clamp(top, maxTop));
             }),
-            onPanEnd: (d) {
+            onScaleEnd: (d) {
               final p = _drag ?? pos;
+              if (_pinching) {
+                _pinching = false;
+                widget.hub.setMiniScale(widget.hub.miniScale); // remember it
+                final cx = p.dx + size.width / 2;
+                final cy = p.dy + size.height / 2;
+                widget.hub.miniCorner = Alignment(
+                  cx < area.width / 2 ? -1 : 1,
+                  cy < (top + maxTop + size.height) / 2 ? -1 : 1,
+                );
+                setState(() => _drag = null);
+                return;
+              }
               final vx = d.velocity.pixelsPerSecond.dx;
               final offLeft = p.dx < -size.width * .35;
               final offRight = p.dx > area.width - size.width * .65;
@@ -577,6 +706,9 @@ class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
               session: s,
               ended: _ended(s.controller.state),
               onClose: widget.hub.closeMini,
+              controlsVisible: _controls,
+              onInteract: _touch,
+              onFullscreen: () => unawaited(widget.hub.openFullscreen(s)),
             ),
           ),
         ),
@@ -590,19 +722,24 @@ class _MiniPlayerCard extends StatelessWidget {
     required this.session,
     required this.ended,
     required this.onClose,
+    required this.controlsVisible,
+    required this.onInteract,
+    required this.onFullscreen,
   });
 
   final ChatVideoSession session;
   final bool ended;
   final VoidCallback onClose;
+  final bool controlsVisible;
+  final VoidCallback onInteract;
+  final VoidCallback onFullscreen;
 
   @override
   Widget build(BuildContext context) {
     final c = session.controller;
     final st = c.state;
-    final total = st.duration.inMilliseconds;
-    final progress =
-        total > 0 ? (st.position.inMilliseconds / total).clamp(0.0, 1.0) : 0.0;
+    final clock = VideoClock.of(st, session.durationHintMs);
+    final progress = clock.progress;
     return Material(
       type: MaterialType.transparency,
       child: DecoratedBox(
@@ -625,6 +762,16 @@ class _MiniPlayerCard extends StatelessWidget {
                     child: c.buildView(),
                   ),
                 ),
+              // Bundle 174: every button fades out 3 s after it starts
+              // playing; tap the video to bring them back.
+              AnimatedOpacity(
+                opacity: controlsVisible ? 1 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: IgnorePointer(
+                  ignoring: !controlsVisible,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
               const DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -650,7 +797,19 @@ class _MiniPlayerCard extends StatelessWidget {
                     } else {
                       unawaited(session.play());
                     }
+                    onInteract();
                   },
+                ),
+              ),
+              Positioned(
+                top: 2,
+                left: 2,
+                child: _RoundBtn(
+                  key: const Key('mini_video_full'),
+                  icon: Icons.open_in_full_rounded,
+                  size: 24,
+                  filled: false,
+                  onTap: onFullscreen,
                 ),
               ),
               Positioned(
@@ -668,7 +827,7 @@ class _MiniPlayerCard extends StatelessWidget {
                 left: 6,
                 bottom: 5,
                 child: Text(
-                  formatVideoClock(st.position),
+                  formatVideoClock(clock.position),
                   key: const Key('mini_video_time'),
                   style: const TextStyle(
                       color: Colors.white,
@@ -685,6 +844,10 @@ class _MiniPlayerCard extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   widthFactor: progress.toDouble(),
                   child: const ColoredBox(color: Colors.white),
+                ),
+              ),
+                    ],
+                  ),
                 ),
               ),
             ],

@@ -73,7 +73,8 @@ void main() {
               out: false, status: 'missed'),
           _call('sajjad', t.subtract(const Duration(minutes: 3))),
         ]),
-        [1, 2, 1]);
+        // Bundle 174 (1): every missed call is its own row.
+        [1, 1, 1, 1]);
   });
 
   test('incoming and outgoing (not missed) share a row; order kept', () {

@@ -1176,8 +1176,13 @@ final class CallSessionManager implements CallGateway {
       'call_id': session.id,
       'recipient_id': session.peerId,
     }));
+    // Bundle 174: an incoming call that stopped ringing before I answered
+    // is a MISSED call (red in the Calls list), not a normal ended call.
+    final missed = session.direction == CallDirection.incoming &&
+        session.answeredAt == null;
     await _finishLocal(
-        CallState.ended, reason?.isNotEmpty == true ? reason! : 'ended',
+        missed ? CallState.missed : CallState.ended,
+        reason?.isNotEmpty == true ? reason! : (missed ? 'missed' : 'ended'),
         notifyServer: false);
   }
 

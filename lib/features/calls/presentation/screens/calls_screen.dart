@@ -61,11 +61,12 @@ class _CallsScreenState extends State<CallsScreen> {
     return 'Unknown user';
   }
 
-  bool _isMissed(CallRecord call) =>
-      (call.status == 'missed' || call.status == 'ringing') &&
-      !call.isOutgoing(widget.selfId);
+  // Bundle 174: incoming + never answered = Missed (red, own row).
+  bool _isMissed(CallRecord call) => isMissedIncoming(call, widget.selfId);
 
-  String _status(CallRecord call) => switch (call.status) {
+  String _status(CallRecord call) => _isMissed(call)
+      ? 'Missed'
+      : switch (call.status) {
         'connected' => 'Completed',
         'rejected' => call.endReason == 'busy' ? 'Busy' : 'Declined',
         'missed' => 'Missed',
@@ -89,7 +90,8 @@ class _CallsScreenState extends State<CallsScreen> {
     return '${value.day}/${value.month}/${value.year}';
   }
 
-  String _timeLabel(DateTime v) {
+  String _timeLabel(DateTime raw) {
+    final v = raw.toLocal(); // Bundle 174 (7)
     final h = v.hour % 12 == 0 ? 12 : v.hour % 12;
     final m = v.minute.toString().padLeft(2, '0');
     return '$h:$m ${v.hour >= 12 ? 'PM' : 'AM'}';

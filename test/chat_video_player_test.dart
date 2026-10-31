@@ -217,10 +217,16 @@ void main() {
     expect(files2.downloads, ['f-6920601'], reason: 'auto-download <= 10 MB');
     await t.pump(const Duration(milliseconds: 1)); // tile binds the operation
     await t.pump();
-    // Bundle 150: blue ring with % and MB, X cancels.
+    // Bundle 174 (6): blue ring with only the percent; tap shows the X.
     expect(find.byKey(const Key('chat_media_download_ring')), findsOneWidget);
-    expect(find.byKey(const Key('blue_progress_cancel')), findsOneWidget);
-    expect(find.text('62% · 4.1 / 6.6 MB'), findsOneWidget);
+    expect(find.text('62%'), findsOneWidget);
+    expect(find.byKey(const Key('transfer_cancel_x')), findsNothing);
+    await t.tap(find.byKey(const Key('transfer_percent_ring')));
+    await t.pump();
+    expect(find.byKey(const Key('transfer_cancel_x')), findsOneWidget);
+    await t.pump(const Duration(seconds: 4));
+    expect(find.byKey(const Key('transfer_cancel_x')), findsNothing,
+        reason: 'back to the percent after 3 s');
     await t.pumpWidget(const SizedBox());
   });
 

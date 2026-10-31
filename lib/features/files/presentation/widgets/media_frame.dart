@@ -37,11 +37,29 @@ class MediaFrame {
   }
 
   /// Floating mini player: same shape as the video at about the same area
-  /// for every video (wide 192x108, tall 108x192, square 144x144). Extreme
-  /// shapes are limited to 2.39:1 / 1:2.39 (the video is letterboxed inside).
-  static Size mini(double? aspect, {double area = 192 * 108}) {
+  /// for every video. Bundle 174: 25% bigger (wide 240x135, tall 135x240,
+  /// square 180x180). Extreme shapes are limited to 2.39:1 / 1:2.39 (the
+  /// video is letterboxed inside).
+  static Size mini(double? aspect, {double area = 240 * 135}) {
     final a = clampPip(aspect ?? 16 / 9);
     return Size(math.sqrt(area * a), math.sqrt(area / a));
+  }
+
+  /// Bundle 174: pinch limits for the mini player. Smallest = the old size
+  /// (192x108 = 0.8 of the new one); biggest = about 70% of the screen width.
+  static const double miniMinScale = 0.8;
+
+  static double miniMaxScale(double screenWidth, double? aspect) {
+    final w = mini(aspect).width;
+    if (w <= 0 || !screenWidth.isFinite || screenWidth <= 0) return 1;
+    return math.max(1, screenWidth * 0.7 / w);
+  }
+
+  /// [mini] times the user's pinch [scale], kept inside the limits.
+  static Size miniScaled(double? aspect, double scale, double screenWidth) {
+    final s = scale.clamp(miniMinScale, miniMaxScale(screenWidth, aspect));
+    final base = mini(aspect);
+    return Size(base.width * s, base.height * s);
   }
 
   /// Android picture-in-picture accepts ratios between 1:2.39 and 2.39:1.

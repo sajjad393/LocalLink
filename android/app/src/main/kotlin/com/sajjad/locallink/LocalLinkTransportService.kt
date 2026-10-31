@@ -159,6 +159,8 @@ class LocalLinkTransportService : Service() {
         fun sendFile(recipientId:String,path:String,fileId:String,messageId:String,fileName:String,contentType:String,cb:(Boolean,String?)->Unit){instance?.sendFileTransportInternal(recipientId,path,fileId,messageId,fileName,contentType,cb)?:cb(false,"transport service is not running")}
         fun sendPairPayload(target:String,pair:String,body:String,cb:(Boolean,String?)->Unit){val svc=instance;if(svc==null){Log.w("LocalLinkTransportService","pair-packet tx failed: service instance is null (not running)");cb(false,"transport service is not running")}else svc.sendPairPayloadInternal(target,pair,body,cb)}
         fun cancelFile(fileId:String){instance?.cancelFileTransportInternal(fileId)}
+        /** Bundle 174 (6): a cancelled file may come in again (Tap to download / retry). */
+        fun allowFile(fileId:String){instance?.allowFileTransportInternal(fileId)}
         fun topology(): Map<String, Any?> = instance?.meshTopologySnapshot() ?: emptyMap()
         fun flushQueue(){instance?.flushMeshQueue()}
         fun clearStorage(){instance?.clearTransportStorage()}
@@ -4166,6 +4168,14 @@ class LocalLinkTransportService : Service() {
         } finally {
             outgoingSendInFlight.remove(t.transferId)
         }
+    }
+
+    private fun allowFileTransportInternal(fileId:String){
+        val id=fileId.trim()
+        if(!validFileTransferId(id)) return
+        cancelledIncomingTransfers.remove(id)
+        if(!outgoingTransfers.containsKey(id)) cancelledDirectTransfers.remove(id)
+        Log.i("LOCAL_LINK_TRANSPORT","FILE_ALLOWED transfer=${id.take(12)}")
     }
 
     private fun cancelFileTransportInternal(fileId:String){

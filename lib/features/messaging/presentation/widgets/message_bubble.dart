@@ -90,6 +90,9 @@ class MessageBubble extends StatelessWidget {
                         (message.status == 'queued' ||
                             message.status == 'sending' ||
                             message.status == 'pending'),
+                    // Bundle 174 (6): cancelled / failed own media.
+                    failed: isMine && message.status.toLowerCase() == 'failed',
+                    onRetry: _canResend ? onFailedTap : null,
                   ),
                 ),
                 if (reactions.isNotEmpty)
@@ -142,7 +145,10 @@ class MessageBubble extends StatelessWidget {
     )).toList(growable: false);
   }
 
-  String _time(DateTime value) {
+  String _time(DateTime raw) {
+    // Bundle 174 (7): always the phone's own time. A message still being
+    // sent / just received carried a UTC time (7:01 PM instead of 12:01 AM).
+    final value = raw.toLocal();
     final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
     final minute = value.minute.toString().padLeft(2, '0');
     return '$hour:$minute ${value.hour >= 12 ? 'PM' : 'AM'}';

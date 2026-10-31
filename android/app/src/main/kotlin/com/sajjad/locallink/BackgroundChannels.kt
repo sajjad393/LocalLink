@@ -178,6 +178,10 @@ class BackgroundChannels(
                 LocalLinkTransportService.cancelFile(call.argument<String>("file_id")?.trim().orEmpty())
                 result.success(null)
             }
+            "allowFile" -> {
+                LocalLinkTransportService.allowFile(call.argument<String>("file_id")?.trim().orEmpty())
+                result.success(null)
+            }
             "topology" -> background("topology", result) { LocalLinkTransportService.topology() }
             "flushQueue" -> background("flush", result) { LocalLinkTransportService.flushQueue(); null }
             // No Wi-Fi Direct in the background: nothing to re-read.

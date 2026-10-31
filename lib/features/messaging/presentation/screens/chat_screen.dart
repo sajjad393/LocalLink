@@ -605,7 +605,12 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+  bool _sameDay(DateTime x, DateTime y) {
+    // Bundle 174 (7): compare in the phone's own time.
+    final a = x.toLocal();
+    final b = y.toLocal();
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
 
   /// Bundle 132 (G): transport label for ONE message — null when the row is
   /// untagged (pre-132 history) or outgoing (own rows never wear a label).
@@ -647,6 +652,7 @@ class _DateDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    final date = this.date.toLocal(); // Bundle 174 (7)
     final label = now.year == date.year && now.month == date.month && now.day == date.day
         ? 'Today'
         : '${date.day}/${date.month}/${date.year}';

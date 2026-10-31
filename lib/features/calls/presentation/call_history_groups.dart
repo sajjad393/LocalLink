@@ -11,6 +11,24 @@ class CallGroup {
   int get count => calls.length;
 }
 
+/// Bundle 174: an incoming call I never answered is MISSED - also old
+/// history saved as a normal ended / cancelled call with 0 seconds.
+/// Calls I declined, failed calls and outgoing calls are never missed.
+bool isMissedIncoming(CallRecord call, String selfId) {
+  if (call.isOutgoing(selfId)) return false;
+  switch (call.status) {
+    case 'missed':
+    case 'ringing':
+      return true;
+    case 'rejected':
+    case 'failed':
+    case 'connected':
+    case 'busy':
+      return false;
+  }
+  return call.answeredAt == null && call.durationSeconds <= 0;
+}
+
 bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
@@ -19,8 +37,8 @@ bool _sameDay(DateTime a, DateTime b) =>
 ///
 /// * A call with someone else in between starts a new row.
 /// * A new day starts a new row.
-/// * Missed calls never hide inside other calls (and the other way round):
-///   a change between missed / not missed starts a new row.
+/// * Bundle 174: a missed call is ALWAYS its own row (red), it never
+///   groups - not even with another missed call.
 ///
 /// [history] must be newest first (as stored). The order is kept.
 List<CallGroup> groupCallHistory(
@@ -36,7 +54,8 @@ List<CallGroup> groupCallHistory(
         last.peerId(selfId) == call.peerId(selfId) &&
         call.peerId(selfId).isNotEmpty &&
         _sameDay(last.startedAt, call.startedAt) &&
-        isMissed(last) == isMissed(call);
+        !isMissed(last) &&
+        !isMissed(call);
     if (joins) {
       current!.add(call);
     } else {

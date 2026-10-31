@@ -89,14 +89,15 @@ void main() {
     });
 
     test('mini player: same shape, about the same area', () {
+      // Bundle 174: 25% bigger.
       final wide = MediaFrame.mini(16 / 9);
-      expect(wide.width, closeTo(192, .5));
-      expect(wide.height, closeTo(108, .5));
+      expect(wide.width, closeTo(240, .5));
+      expect(wide.height, closeTo(135, .5));
       final tall = MediaFrame.mini(9 / 16);
-      expect(tall.width, closeTo(108, .5));
-      expect(tall.height, closeTo(192, .5));
+      expect(tall.width, closeTo(135, .5));
+      expect(tall.height, closeTo(240, .5));
       final square = MediaFrame.mini(1);
-      expect(square.width, closeTo(144, .5));
+      expect(square.width, closeTo(180, .5));
       final pano = MediaFrame.mini(5);
       expect(pano.width / pano.height, closeTo(2.39, .001), reason: 'PiP limit');
       expect(MediaFrame.clampPip(0.1), closeTo(1 / 2.39, 1e-9));
@@ -384,7 +385,9 @@ void main() {
       expect(find.byKey(const Key('chat_video_in_mini')), findsOneWidget);
 
       r.hub.navigatorKey = GlobalKey<NavigatorState>(); // no app navigator here
-      await t.tap(find.byKey(const Key('mini_video')));
+      // Bundle 174: tap shows/hides the buttons; the corner button opens
+      // full screen.
+      await t.tap(find.byKey(const Key('mini_video_full')));
       await t.pumpAndSettle();
       expect(find.byType(ChatVideoFullscreen), findsNothing,
           reason: 'no navigator → nothing (no crash)');
@@ -449,14 +452,15 @@ void main() {
       await t.pump();
       await t.pumpAndSettle();
       final start = t.getCenter(find.byKey(const Key('mini_video')));
-      expect(r.hub.miniCorner, Alignment.bottomRight);
+      // Bundle 174: starts top-right, under the name bar.
+      expect(r.hub.miniCorner, Alignment.topRight);
       await t.timedDrag(find.byKey(const Key('mini_video')),
-          const Offset(-500, -400), const Duration(seconds: 1));
+          const Offset(-500, 400), const Duration(seconds: 1));
       await t.pumpAndSettle();
-      expect(r.hub.miniCorner, Alignment.topLeft);
+      expect(r.hub.miniCorner, Alignment.bottomLeft);
       final moved = t.getCenter(find.byKey(const Key('mini_video')));
       expect(moved.dx, lessThan(start.dx));
-      expect(moved.dy, lessThan(start.dy));
+      expect(moved.dy, greaterThan(start.dy));
 
       await t.fling(find.byKey(const Key('mini_video')), const Offset(-300, 0), 3000);
       await t.pumpAndSettle();

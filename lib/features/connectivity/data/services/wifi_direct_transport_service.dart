@@ -122,6 +122,15 @@ class WifiDirectTransportService implements PeerTransportContract {
   @override
   Future<void> cancelFile(String fileId) => _channel.invokeMethod('cancelFile', {'file_id': fileId});
 
+  /// Bundle 174 (6): let a cancelled nearby file in again ("Tap to download").
+  static Future<void> allowFile(String fileId) async {
+    try {
+      await _channel.invokeMethod('allowFile', {'file_id': fileId});
+    } catch (_) {
+      // Older native side / tests: nothing to clear.
+    }
+  }
+
   Future<void> stop() async {
     _started = false;
     await _channel.invokeMethod('stop');

@@ -11,6 +11,7 @@ import 'package:locallink/features/files/bloc/file_transfer_bloc.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/features/files/data/services/media_progress_hub.dart';
+import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
 import 'blue_progress_ring.dart';
 import 'chat_photo.dart';
 import 'chat_video_controller.dart';
@@ -29,6 +30,11 @@ class AttachmentTile extends StatefulWidget {
   /// outbox is still flushing this message (WhatsApp-style affordance).
   final bool uploading;
 
+  /// Bundle 174 (6): my own photo/video was cancelled (or failed): show
+  /// "Not sent - tap to retry"; [onRetry] runs on tap.
+  final bool failed;
+  final VoidCallback? onRetry;
+
   const AttachmentTile({
     super.key,
     required this.attachment,
@@ -36,6 +42,8 @@ class AttachmentTile extends StatefulWidget {
     required this.messageId,
     this.groupMessageId,
     this.uploading = false,
+    this.failed = false,
+    this.onRetry,
   });
 
   @override
@@ -62,8 +70,135 @@ class _AttachmentTileState extends State<AttachmentTile> {
     super.initState();
     _localPath = widget.attachment.localPath;
     _controller = FileTransferBloc(repository: widget.transfer);
+    MediaTransferActions.instance.cancelled.addListener(_onCancelledChanged);
     _prepareExistingPath();
     _maybeAutoDownload();
+  }
+
+  void _onCancelledChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Bundle 174 (6): a nearby photo/video I was receiving got cancelled.
+  bool get _receiveCancelled =>
+      _arrivingDirect &&
+      MediaTransferActions.instance.isCancelled(widget.messageId);
+
+  /// Bundle 174 (6): sender pressed X and said Yes.
+  Future<void> _cancelSend() async {
+    final id = widget.attachment.id;
+    AppLogger.info('MEDIA_CANCEL_SEND', detail: 'file=$id');
+    final action = MediaTransferActions.instance.cancelSend;
+    try {
+      if (action != null) {
+        await action(widget.messageId, id);
+      } else {
+        await widget.transfer.cancelDirectFile(id);
+      }
+    } catch (_) {}
+    MediaProgressHub.instance.clear(widget.messageId);
+    if (mounted) setState(() {});
+  }
+
+  /// Bundle 174 (6): receiver pressed X and said Yes.
+  Future<void> _cancelReceive() async {
+    final id = widget.attachment.id;
+    AppLogger.info('MEDIA_CANCEL_RECEIVE', detail: 'file=$id');
+    MediaTransferActions.instance.markCancelled(widget.messageId);
+    final action = MediaTransferActions.instance.cancelReceive;
+    try {
+      if (action != null) {
+        await action(widget.messageId, id);
+      } else {
+        await widget.transfer.cancelDirectFile(id);
+      }
+    } catch (_) {}
+    MediaProgressHub.instance.clear(widget.messageId);
+  }
+
+  /// Bundle 174 (6): "Tap to download" after a cancel - ask the sender's
+  /// phone to send it again.
+  Future<void> _requestResend() async {
+    final id = widget.attachment.id;
+    AppLogger.info('MEDIA_RESEND_ASK', detail: 'file=$id');
+    MediaTransferActions.instance.clearCancelled(widget.messageId);
+    final action = MediaTransferActions.instance.requestResend;
+    var ok = false;
+    try {
+      ok = action != null && await action(widget.messageId, id);
+    } catch (_) {}
+    if (!ok && mounted) {
+      MediaTransferActions.instance.markCancelled(widget.messageId);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+          content: Text('Could not reach the sender. Try again when nearby.')));
+    }
+  }
+
+  Widget _tapToDownload() => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Material(
+            color: Colors.black54,
+            shape: const CircleBorder(),
+            child: InkWell(
+              key: const Key('chat_media_tap_to_download'),
+              customBorder: const CircleBorder(),
+              onTap: () => unawaited(_requestResend()),
+              child: const SizedBox(
+                width: 56,
+                height: 56,
+                child: Icon(Icons.download_rounded,
+                    color: Colors.white, size: 30),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const VideoChip(label: 'Tap to download'),
+        ],
+      );
+
+  /// Bundle 174 (6): "Not sent - tap to retry" over my own cancelled media.
+  Widget _withFailed(Widget child) {
+    if (!widget.failed) return child;
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 18,
+          child: Center(
+            child: GestureDetector(
+              key: const Key('chat_media_not_sent'),
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onRetry,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xDDB3261E),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh_rounded, color: Colors.white, size: 16),
+                    SizedBox(width: 4),
+                    Text(
+                      'Not sent - tap to retry',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   /// Bundle 150: the message usually arrives BEFORE its file (Wi-Fi). When
@@ -350,6 +485,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
     // Bundle 147: give the view back to the cache instead of deleting it,
     // so scrolling back shows it at once (no second decrypt).
     _releaseView();
+    MediaTransferActions.instance.cancelled.removeListener(_onCancelledChanged);
     MediaPlaybackCoordinator.instance.release(this);
     _audioTimer?.cancel();
     if (_playing) { const MethodChannel('locallink/voice_notes').invokeMethod('stop'); }
@@ -367,7 +503,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
           final displayPath = _displayPath;
           if (displayPath != null) {
             if (widget.attachment.isImage) {
-              return ChatPhoto(
+              return _withFailed(ChatPhoto(
                 key: ValueKey<String>(displayPath),
                 path: displayPath,
                 sizeKey: _videoCacheKey,
@@ -376,12 +512,12 @@ class _AttachmentTileState extends State<AttachmentTile> {
                 uploading: widget.uploading,
                 uploadOverlay: _sendOverlay(),
                 title: widget.attachment.originalName,
-              );
+              ));
             }
             if (_isVideo) {
               // Bundle 145: inline player (same for sender and receiver).
               final viewKey = _viewKey;
-              return ChatVideoPlayer(
+              return _withFailed(ChatVideoPlayer(
                 key: ValueKey<String>(displayPath),
                 path: displayPath,
                 cacheKey: _videoCacheKey,
@@ -398,16 +534,18 @@ class _AttachmentTileState extends State<AttachmentTile> {
                 onReleaseFile: viewKey == null
                     ? null
                     : (_) => MediaViewCache.instance.release(viewKey),
-              );
+              ));
             }
           }
 
           final progress = _progress;
           final running = progress?.status == FileTransferStatus.running;
-          if (_isVideo) return _videoPlaceholder(progress, running);
+          if (_isVideo) {
+            return _withFailed(_videoPlaceholder(progress, running));
+          }
           // Bundle 150: photos never fall back to the grey file row.
           if (widget.attachment.isImage) {
-            return _photoPlaceholder(progress, running);
+            return _withFailed(_photoPlaceholder(progress, running));
           }
           if (_isAudio) {
             final colors = Theme.of(context).colorScheme;
@@ -620,6 +758,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
     final ring = _ringCenter(progress, running);
     if (ring != null) {
       center = FittedBox(fit: BoxFit.scaleDown, child: ring);
+    } else if (_receiveCancelled) {
+      center = FittedBox(fit: BoxFit.scaleDown, child: _tapToDownload());
     } else if (hasLocal || widget.uploading) {
       center = circle(Icons.play_arrow_rounded, 'Play', _openOrRetryLocal,
           const Key('chat_video_prepare'));
@@ -698,23 +838,24 @@ class _AttachmentTileState extends State<AttachmentTile> {
   /// when nothing is moving (then the bubble shows play / download).
   Widget? _ringCenter(TransferProgress? progress, bool running) {
     final size = widget.attachment.size;
+    // Bundle 174 (6): one circle with only the percent, for sending and
+    // receiving; tap -> X -> "Cancel this video?".
     if (running) {
       final known = progress != null && progress.total > 0;
-      final total = known ? progress.total : size;
-      return BlueProgressRing(
+      return TransferPercentRing(
         key: const Key('chat_media_download_ring'),
         fraction: known ? progress.fraction : null,
-        label: mediaProgressLabel(progress?.completed ?? 0, total),
+        isVideo: _isVideo,
         onCancel: _cancel,
       );
     }
-    if (_arrivingDirect) {
+    if (_arrivingDirect && !_receiveCancelled) {
       return _LiveRing(
         key: const Key('chat_media_receiving'),
         messageId: widget.messageId,
         sizeBytes: size,
-        icon: Icons.arrow_downward_rounded,
-        idleLabel: _idle('Receiving…', size),
+        isVideo: _isVideo,
+        onCancel: _cancelReceive,
       );
     }
     if (widget.uploading) {
@@ -722,15 +863,12 @@ class _AttachmentTileState extends State<AttachmentTile> {
         key: const Key('chat_media_sending'),
         messageId: widget.messageId,
         sizeBytes: size,
-        icon: Icons.arrow_upward_rounded,
-        idleLabel: _idle('Sending…', size),
+        isVideo: _isVideo,
+        onCancel: _cancelSend,
       );
     }
     return null;
   }
-
-  String _idle(String text, int size) =>
-      size > 0 ? '$text · ${_sizeLabel(size)}' : text;
 
   /// Bundle 150: drawn over the sender's own photo/video while it is sent.
   Widget _sendOverlay() => ColoredBox(
@@ -742,8 +880,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
               key: const Key('chat_media_sending'),
               messageId: widget.messageId,
               sizeBytes: widget.attachment.size,
-              icon: Icons.arrow_upward_rounded,
-              idleLabel: _idle('Sending…', widget.attachment.size),
+              isVideo: _isVideo,
+              onCancel: _cancelSend,
             ),
           ),
         ),
@@ -780,6 +918,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
     final Widget? center;
     if (ring != null) {
       center = ring;
+    } else if (_receiveCancelled) {
+      center = _tapToDownload();
     } else if (hasLocal) {
       // Own / saved photo being opened: normally a blink. Offer a retry
       // only if opening failed twice.
@@ -846,35 +986,30 @@ class _AttachmentTileState extends State<AttachmentTile> {
 
 /// Bundle 150: blue ring fed by live Wi-Fi progress for [messageId]. Turns
 /// (no %) until the first number arrives, then fills to 100%.
+/// Bundle 174 (6): only the percent; tap -> X -> confirm -> [onCancel].
 class _LiveRing extends StatelessWidget {
   const _LiveRing({
     super.key,
     required this.messageId,
     required this.sizeBytes,
-    required this.icon,
-    required this.idleLabel,
+    required this.isVideo,
+    this.onCancel,
   });
 
   final String messageId;
   final int sizeBytes;
-  final IconData icon;
-  final String idleLabel;
+  final bool isVideo;
+  final Future<void> Function()? onCancel;
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<MediaProgress?>(
       valueListenable: MediaProgressHub.instance.watch(messageId),
-      builder: (context, p, _) {
-        if (p == null) return BlueProgressRing(icon: icon, label: idleLabel);
-        // Sender reports chunks, receiver bytes: show MB from the real size.
-        final total = sizeBytes > 0 ? sizeBytes : p.total;
-        final done = sizeBytes > 0 ? (p.fraction * sizeBytes).round() : p.done;
-        return BlueProgressRing(
-          fraction: p.fraction,
-          icon: icon,
-          label: mediaProgressLabel(done, total),
-        );
-      },
+      builder: (context, p, _) => TransferPercentRing(
+        fraction: p?.fraction,
+        isVideo: isVideo,
+        onCancel: onCancel,
+      ),
     );
   }
 }

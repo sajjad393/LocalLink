@@ -203,6 +203,17 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
       _coordinator.release(s);
       _hideTimer?.cancel();
       _controlsVisible = true;
+      if (!s.inMini && !s.fullscreenOpen) {
+        // Bundle 174 (3b): finished in the bubble -> back to the preview
+        // picture + play button + length (not stuck on the last frame).
+        // After this listener returns (the controller is still notifying).
+        scheduleMicrotask(() {
+          if (!s.closed && !s.inMini && !s.fullscreenOpen &&
+              videoEnded(s.controller.state)) {
+            s.close();
+          }
+        });
+      }
     } else if (!st.playing && !_controlsVisible) {
       // Paused from elsewhere (another video / a voice note): show controls.
       _hideTimer?.cancel();
@@ -240,6 +251,7 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
       coordinator: _coordinator,
       onRelease: widget.onReleaseFile,
       aspectHint: _info?.aspectRatio ?? hint,
+      durationHintMs: _info?.durationMs ?? 0,
     );
     _hub.register(session);
     _bind(session);
@@ -381,6 +393,8 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
                     ignoring: !_controlsVisible,
                     child: _InlineControls(
                       controller: s.controller,
+                      durationHintMs:
+                          s.durationHintMs > 0 ? s.durationHintMs : (info?.durationMs ?? 0),
                       onTogglePlay: _togglePlay,
                       onFullscreen: _openFullscreen,
                       onInteract: () => _showControls(
@@ -551,9 +565,11 @@ class _InlineControls extends StatelessWidget {
     required this.onTogglePlay,
     required this.onFullscreen,
     required this.onInteract,
+    this.durationHintMs = 0,
   });
 
   final ChatVideoController controller;
+  final int durationHintMs;
   final VoidCallback onTogglePlay;
   final VoidCallback onFullscreen;
   final VoidCallback onInteract;
@@ -565,6 +581,7 @@ class _InlineControls extends StatelessWidget {
       builder: (context, _) {
         final st = controller.state;
         final playing = st.playing;
+        final clock = VideoClock.of(st, durationHintMs);
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -611,18 +628,16 @@ class _InlineControls extends StatelessWidget {
                           controller: controller,
                           thumbRadius: 6,
                           onInteract: onInteract,
+                          durationHintMs: durationHintMs,
                         ),
                       ),
                       Row(
                         children: [
-                          _IconBtn(
-                            icon: playing
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            onTap: onTogglePlay,
-                          ),
+                          // Bundle 174 (4.3): only the middle pause/play
+                          // button; the small one here is gone.
+                          const SizedBox(width: 8),
                           Text(
-                            '${formatVideoClock(st.position)} / ${formatVideoClock(st.duration)}',
+                            '${formatVideoClock(clock.position)} / ${formatVideoClock(clock.duration)}',
                             key: const Key('chat_video_time'),
                             style: const TextStyle(
                                 color: Colors.white,
@@ -685,11 +700,13 @@ class ChatVideoSeekBar extends StatefulWidget {
     required this.controller,
     this.thumbRadius = 7,
     this.onInteract,
+    this.durationHintMs = 0,
   });
 
   final ChatVideoController controller;
   final double thumbRadius;
   final VoidCallback? onInteract;
+  final int durationHintMs;
 
   @override
   State<ChatVideoSeekBar> createState() => _ChatVideoSeekBarState();
@@ -701,10 +718,9 @@ class _ChatVideoSeekBarState extends State<ChatVideoSeekBar> {
   @override
   Widget build(BuildContext context) {
     final st = widget.controller.state;
-    final total = st.duration.inMilliseconds;
-    final live = total > 0
-        ? (st.position.inMilliseconds / total).clamp(0.0, 1.0).toDouble()
-        : 0.0;
+    final clock = VideoClock.of(st, widget.durationHintMs);
+    final total = clock.duration.inMilliseconds;
+    final live = clock.progress;
     final r = widget.thumbRadius;
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(
@@ -778,11 +794,13 @@ class ChatVideoFullscreen extends StatefulWidget {
     required this.controller,
     required this.onPlay,
     required this.onPause,
+    this.durationHintMs = 0,
   });
 
   final ChatVideoController controller;
   final Future<void> Function() onPlay;
   final Future<void> Function() onPause;
+  final int durationHintMs;
 
   @override
   State<ChatVideoFullscreen> createState() => _ChatVideoFullscreenState();
@@ -856,6 +874,7 @@ class _ChatVideoFullscreenState extends State<ChatVideoFullscreen> {
         listenable: c,
         builder: (context, _) {
           final st = c.state;
+          final clock = VideoClock.of(st, widget.durationHintMs);
           return Stack(
             fit: StackFit.expand,
             children: [
@@ -925,7 +944,9 @@ class _ChatVideoFullscreenState extends State<ChatVideoFullscreen> {
                               SizedBox(
                                 height: 28,
                                 child: ChatVideoSeekBar(
-                                    controller: c, onInteract: _interact),
+                                    controller: c,
+                                    onInteract: _interact,
+                                    durationHintMs: widget.durationHintMs),
                               ),
                               Padding(
                                 padding:
@@ -934,12 +955,12 @@ class _ChatVideoFullscreenState extends State<ChatVideoFullscreen> {
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(formatVideoClock(st.position),
+                                    Text(formatVideoClock(clock.position),
                                         key: const Key('chat_video_fs_pos'),
                                         style: const TextStyle(
                                             color: Color(0xFFDDDDDD),
                                             fontSize: 12)),
-                                    Text(formatVideoClock(st.duration),
+                                    Text(formatVideoClock(clock.duration),
                                         style: const TextStyle(
                                             color: Color(0xFFDDDDDD),
                                             fontSize: 12)),

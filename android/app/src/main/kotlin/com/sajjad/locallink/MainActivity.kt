@@ -378,6 +378,7 @@ class MainActivity : FlutterActivity() {
                     }
                     "sendFile" -> sendFileTransport(call, result)
                     "cancelFile" -> { LocalLinkTransportService.cancelFile(call.argument<String>("file_id")?.trim().orEmpty()); result.success(null) }
+                    "allowFile" -> { LocalLinkTransportService.allowFile(call.argument<String>("file_id")?.trim().orEmpty()); result.success(null) }
                     "topology" -> Thread({
                         try {
                             val topology = LocalLinkTransportService.topology()

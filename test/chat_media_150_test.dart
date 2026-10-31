@@ -152,14 +152,15 @@ void main() {
       expect(find.byType(SnackBar), findsNothing);
       expect(find.byKey(const Key('chat_photo_placeholder')), findsOneWidget);
       expect(find.byKey(const Key('chat_media_receiving')), findsOneWidget);
-      expect(find.text('Receiving… · 2.0 MB'), findsOneWidget);
+      // Bundle 174 (6): only the percent (none yet), no MB text.
+      expect(find.text('Receiving… · 2.0 MB'), findsNothing);
       expect(find.byIcon(Icons.insert_drive_file), findsNothing,
           reason: 'never the old grey file row');
 
       // Wi-Fi progress arrives.
       MediaProgressHub.instance.update('m1', done: 1024 * 1024, total: 2 * 1024 * 1024);
       await t.pump();
-      expect(find.text('50% · 1.0 / 2.0 MB'), findsOneWidget);
+      expect(find.text('50%'), findsOneWidget);
       final ring = t.widget<CircularProgressIndicator>(
           find.byKey(const Key('blue_progress_indicator')));
       expect(ring.value, .5);
@@ -224,12 +225,12 @@ void main() {
       await t.pump();
       expect(find.byType(ChatPhoto), findsOneWidget);
       expect(find.byKey(const Key('chat_media_sending')), findsOneWidget);
-      expect(find.text('Sending… · 4.0 MB'), findsOneWidget);
+      expect(find.text('Sending… · 4.0 MB'), findsNothing);
 
       // Sender progress comes as chunks; MB comes from the real size.
       MediaProgressHub.instance.update('m2', done: 3, total: 4);
       await t.pump();
-      expect(find.text('75% · 3.0 / 4.0 MB'), findsOneWidget);
+      expect(find.text('75%'), findsOneWidget);
 
       await t.pumpWidget(const SizedBox());
       MediaViewCache.instance.resetForTest();

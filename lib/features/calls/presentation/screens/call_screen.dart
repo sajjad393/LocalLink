@@ -10,6 +10,7 @@ import 'package:locallink/features/calls/presentation/widgets/call_action_bar.da
 import 'package:locallink/features/calls/presentation/widgets/call_header.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_video_view.dart';
+import 'package:locallink/features/calls/presentation/widgets/incoming_voice_call_body.dart';
 
 /// WhatsApp-style call screen, identical layout on both the caller and the
 /// receiver side once the call is answered.
@@ -188,15 +189,44 @@ class _CallScreenState extends State<CallScreen> {
                 letterSpacing: 0.4,
               ),
             ),
-            const Spacer(),
-            CallHeader(session: session, statusText: statusText),
-            const Spacer(flex: 2),
-            CallActionBar(controller: widget.controller, session: session),
+            if (_isIncomingVoiceRinging(session))
+              ..._incomingVoice(session, statusText)
+            else ...[
+              const Spacer(),
+              CallHeader(session: session, statusText: statusText),
+              const Spacer(flex: 2),
+              CallActionBar(controller: widget.controller, session: session),
+            ],
           ],
         ),
       ),
     );
   }
+
+  /// Bundle 174: incoming VOICE call that is still ringing -> new screen.
+  bool _isIncomingVoiceRinging(CallSession session) =>
+      session.direction == CallDirection.incoming &&
+      session.state == CallState.ringing &&
+      !session.videoEnabled &&
+      !session.peerVideoActive;
+
+  Future<void> _runCall(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (_) {}
+  }
+
+  /// Bundle 174 (call mock): see [IncomingVoiceCallBody].
+  List<Widget> _incomingVoice(CallSession session, String statusText) => [
+        Expanded(
+          child: IncomingVoiceCallBody(
+            peerName: session.peerName,
+            statusText: statusText,
+            onAnswer: () => _runCall(widget.controller.acceptIncoming),
+            onDecline: () => _runCall(widget.controller.rejectIncoming),
+          ),
+        ),
+      ];
 
   // --- WhatsApp-style tap-to-toggle chrome for VIDEO calls only (the voice
   // UI is untouched): taps fade the top/bottom chrome, and any activity

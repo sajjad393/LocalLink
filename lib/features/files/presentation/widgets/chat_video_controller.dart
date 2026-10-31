@@ -28,6 +28,46 @@ class ChatVideoState {
   });
 }
 
+/// Bundle 174 (3b): the video reached its end (finished, not just paused).
+bool videoEnded(ChatVideoState st) =>
+    st.completed ||
+    (!st.playing &&
+        st.duration > Duration.zero &&
+        st.position >= st.duration);
+
+/// Bundle 174 (4): the time and length to SHOW. Some phones report a length
+/// of 0 (or a tiny one) for a playing file, which showed "0:00 / 0:00" with a
+/// full bar. Then the length read from the file itself is used, and the time
+/// never goes past the length.
+@immutable
+class VideoClock {
+  final Duration position;
+  final Duration duration;
+
+  const VideoClock(this.position, this.duration);
+
+  factory VideoClock.of(ChatVideoState st, int durationHintMs) {
+    var d = st.duration;
+    final hint = durationHintMs;
+    if (hint > 0 &&
+        (d.inMilliseconds <= 0 || d.inMilliseconds < hint ~/ 2)) {
+      d = Duration(milliseconds: hint);
+    }
+    if (d < Duration.zero) d = Duration.zero;
+    var p = st.position;
+    if (p < Duration.zero) p = Duration.zero;
+    if (d > Duration.zero && p > d) p = d;
+    return VideoClock(p, d);
+  }
+
+  /// 0..1 for the bar (0 while the length is unknown).
+  double get progress {
+    final total = duration.inMilliseconds;
+    if (total <= 0) return 0;
+    return (position.inMilliseconds / total).clamp(0.0, 1.0).toDouble();
+  }
+}
+
 /// The small surface the chat player needs. The real one wraps
 /// `video_player` (ExoPlayer on Android); tests use a fake.
 abstract class ChatVideoController implements Listenable {
@@ -57,17 +97,46 @@ class VideoPlayerChatController extends ChangeNotifier
   final VideoPlayerController _c;
   bool _muted = false;
   bool _closed = false;
+  // Bundle 174: the real time, asked 4x a second while playing (some phones
+  // never moved the time / bar in the bubble).
+  Timer? _poll;
+  Duration? _livePos;
+
+  void _startPoll() {
+    _poll?.cancel();
+    _poll = Timer.periodic(const Duration(milliseconds: 250), (_) async {
+      if (_closed || !_c.value.isPlaying) {
+        _stopPoll();
+        return;
+      }
+      try {
+        final p = await _c.position;
+        if (_closed || p == null || !_c.value.isPlaying) return;
+        _livePos = p;
+        notifyListeners();
+      } catch (_) {}
+    });
+  }
+
+  void _stopPoll() {
+    _poll?.cancel();
+    _poll = null;
+    _livePos = null;
+  }
 
   @override
   ChatVideoState get state {
     final v = _c.value;
     final ratio = v.aspectRatio;
+    final live = _livePos;
     return ChatVideoState(
       initialized: v.isInitialized,
       playing: v.isPlaying,
       completed: v.isCompleted,
       hasError: v.hasError,
-      position: v.position,
+      position: v.isPlaying && live != null && live > v.position
+          ? live
+          : v.position,
       duration: v.duration,
       aspectRatio: ratio.isFinite && ratio > 0 ? ratio : 16 / 9,
     );
@@ -86,14 +155,22 @@ class VideoPlayerChatController extends ChangeNotifier
     if (v.isCompleted || (v.duration > Duration.zero && v.position >= v.duration)) {
       await _c.seekTo(Duration.zero);
     }
+    _livePos = null;
     await _c.play();
+    _startPoll();
   }
 
   @override
-  Future<void> pause() => _c.pause();
+  Future<void> pause() {
+    _stopPoll();
+    return _c.pause();
+  }
 
   @override
-  Future<void> seekTo(Duration position) => _c.seekTo(position);
+  Future<void> seekTo(Duration position) {
+    _livePos = null;
+    return _c.seekTo(position);
+  }
 
   @override
   Future<void> setMuted(bool muted) async {
@@ -109,6 +186,7 @@ class VideoPlayerChatController extends ChangeNotifier
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _stopPoll();
     _c.removeListener(notifyListeners);
     await _c.dispose();
     super.dispose();

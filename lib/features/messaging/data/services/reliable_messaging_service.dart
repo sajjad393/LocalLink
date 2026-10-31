@@ -17,6 +17,8 @@ import 'package:locallink/features/connectivity/domain/peer_transport_contract.d
 import 'package:locallink/features/connectivity/domain/local_route.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/features/files/data/services/media_progress_hub.dart';
+import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
+import 'package:locallink/features/connectivity/data/services/wifi_direct_transport_service.dart';
 
 class ReliableMessagingService {
   final LocalStore store;
@@ -70,6 +72,186 @@ class ReliableMessagingService {
       {this.routePolicy, Duration startupSettle = Duration.zero})
       : _startupSettle = startupSettle;
 
+  // --------------------------------------------------------------------------
+  // Bundle 174 (6): cancel / resend a photo or video
+  // --------------------------------------------------------------------------
+
+  /// Lets a nearby file with this id in again after a cancel (native keeps
+  /// cancelled ids out for 10 minutes). Replaceable in tests.
+  Future<void> Function(String fileId) allowIncomingFile =
+      WifiDirectTransportService.allowFile;
+
+  /// Messages whose sending the user cancelled (until Resend).
+  final Set<String> _cancelledSends = <String>{};
+  final Map<String, List<DateTime>> _resendAsks = <String, List<DateTime>>{};
+
+  void _registerMediaActions() {
+    final actions = MediaTransferActions.instance;
+    actions.cancelSend = cancelOutgoingMedia;
+    actions.cancelReceive = cancelIncomingMedia;
+    actions.requestResend = requestMediaResend;
+  }
+
+  Future<bool> _sendMediaControl(
+      String peer, String type, String messageId, String fileId) async {
+    if (peer.isEmpty || peer == store.deviceId) return false;
+    try {
+      await directTransport.send(
+        recipientId: peer,
+        payload: {
+          'type': type,
+          'id': messageId,
+          'file_id': fileId,
+          'sender_id': store.deviceId,
+          'recipient_id': peer,
+        },
+      );
+      AppLogger.info('MEDIA_CONTROL_SENT',
+          detail: 'type=$type id=$messageId');
+      return true;
+    } catch (error) {
+      AppLogger.warning('MEDIA_CONTROL_SEND_FAILED',
+          detail: 'type=$type id=$messageId error=$error');
+      return false;
+    }
+  }
+
+  /// Sender pressed X on its own photo/video: stop it and show
+  /// "Not sent - tap to retry".
+  Future<bool> cancelOutgoingMedia(String messageId, String attachmentId) async {
+    _cancelledSends.add(messageId);
+    final message = await store.messageById(messageId);
+    final ids = <String>{
+      attachmentId,
+      ...?message?.attachments.map((a) => a.id),
+    };
+    for (final id in ids) {
+      try {
+        await files.cancelDirectFile(id);
+      } catch (_) {}
+    }
+    try {
+      await files.cancel(messageId);
+    } catch (_) {}
+    MediaProgressHub.instance.clear(messageId);
+    try {
+      await store.updateOutboxStatus(messageId, 'failed');
+    } catch (_) {}
+    await store.updateMessageStatus(messageId, status: 'failed');
+    final failed = await store.messageById(messageId);
+    if (failed != null) _incoming.add(failed);
+    AppLogger.info('MEDIA_SEND_CANCELLED', detail: 'id=$messageId');
+    return true;
+  }
+
+  /// Receiver pressed X: stop receiving and tell the sender to stop.
+  Future<bool> cancelIncomingMedia(String messageId, String attachmentId) async {
+    MediaTransferActions.instance.markCancelled(messageId);
+    try {
+      await files.cancelDirectFile(attachmentId);
+    } catch (_) {}
+    MediaProgressHub.instance.clear(messageId);
+    final message = await store.messageById(messageId);
+    final peer = message?.senderId ?? '';
+    AppLogger.info('MEDIA_RECEIVE_CANCELLED', detail: 'id=$messageId');
+    await _sendMediaControl(peer, 'media_transfer_cancel', messageId, attachmentId);
+    return true;
+  }
+
+  /// Receiver tapped "Tap to download" on a cancelled nearby file.
+  Future<bool> requestMediaResend(String messageId, String attachmentId) async {
+    final message = await store.messageById(messageId);
+    final peer = message?.senderId ?? '';
+    if (peer.isEmpty || peer == store.deviceId) return false;
+    try {
+      await allowIncomingFile(attachmentId);
+    } catch (_) {}
+    MediaTransferActions.instance.clearCancelled(messageId);
+    return _sendMediaControl(peer, 'media_resend_request', messageId, attachmentId);
+  }
+
+  /// Sends my own media of [message] again over the nearby link.
+  Future<bool> _repushMedia(Message message, {String? onlyFileId}) async {
+    if (message.senderId != store.deviceId) return false;
+    var pushed = false;
+    for (final a in message.attachments) {
+      if (onlyFileId != null && a.id != onlyFileId) continue;
+      final local = a.localPath ?? '';
+      if (local.isEmpty) continue;
+      try {
+        // Tell the receiver first so its phone lets this file in again.
+        await _sendMediaControl(
+            message.recipientId, 'media_resend_start', message.id, a.id);
+        final path = await _sendablePath(local, a.originalName);
+        await files.sendDirectFile(
+          recipientId: message.recipientId,
+          messageId: message.id,
+          fileId: a.id,
+          file: PickedFile(
+            path: path,
+            name: a.originalName,
+            contentType: a.contentType,
+            size: a.size,
+          ),
+        );
+        pushed = true;
+      } catch (error, stackTrace) {
+        AppLogger.error('MEDIA_REPUSH_FAILED',
+            error: error, stackTrace: stackTrace, detail: 'id=${message.id}');
+      }
+    }
+    AppLogger.info('MEDIA_REPUSH', detail: 'id=${message.id} ok=$pushed');
+    return pushed;
+  }
+
+  /// A media control message from the other phone.
+  Future<void> _handleMediaControl(String type, Map<String, dynamic> data) async {
+    final id = data['id']?.toString() ?? '';
+    final fileId = data['file_id']?.toString() ?? '';
+    final from = data['sender_id']?.toString() ?? '';
+    if (id.isEmpty || fileId.isEmpty || from.isEmpty ||
+        data['recipient_id']?.toString() != store.deviceId) {
+      AppLogger.warning('MEDIA_CONTROL_INVALID', detail: 'type=$type');
+      return;
+    }
+    final message = await store.messageById(id);
+    if (message == null ||
+        !message.attachments.any((a) => a.id == fileId)) {
+      return;
+    }
+    final iSent =
+        message.senderId == store.deviceId && message.recipientId == from;
+    final theySent =
+        message.senderId == from && message.recipientId == store.deviceId;
+    AppLogger.info('MEDIA_CONTROL_RECEIVED', detail: 'type=$type id=$id');
+    switch (type) {
+      case 'media_transfer_cancel':
+        if (!iSent) return;
+        try {
+          await files.cancelDirectFile(fileId);
+        } catch (_) {}
+        MediaProgressHub.instance.clear(id);
+      case 'media_resend_request':
+        if (!iSent) return;
+        final now = DateTime.now();
+        final asks = (_resendAsks[id] ?? <DateTime>[])
+          ..removeWhere((t) => now.difference(t) > const Duration(minutes: 10));
+        if (asks.length >= 5) {
+          AppLogger.warning('MEDIA_RESEND_RATE_LIMITED', detail: 'id=$id');
+          return;
+        }
+        asks.add(now);
+        _resendAsks[id] = asks;
+        await _repushMedia(message, onlyFileId: fileId);
+      case 'media_resend_start':
+        if (!theySent) return;
+        try {
+          await allowIncomingFile(fileId);
+        } catch (_) {}
+        MediaTransferActions.instance.clearCancelled(id);
+    }
+  }
+
   Stream<Message> get incoming => _incoming.stream;
   Stream<MessageReaction> get reactionIncoming => _reactionIncoming.stream;
 
@@ -78,6 +260,7 @@ class ReliableMessagingService {
   bool get isServerConnected => socket.isConnected;
 
   void start() {
+    _registerMediaActions(); // Bundle 174 (6)
     AppLogger.info(
       'MESSAGE_SERVICE_START',
       detail: 'device=${_shortId(store.deviceId)} '
@@ -702,9 +885,22 @@ class ReliableMessagingService {
 
   /// Bundle 162 (4.6): user tapped Resend on a failed message.
   Future<bool> resendFailed(String id) async {
+    final wasCancelled = _cancelledSends.remove(id); // Bundle 174 (6)
     final ok = await store.requeueFailedOutbox(id);
     AppLogger.info('MESSAGE_RESEND', detail: 'id=$id ok=$ok');
-    if (!ok) return false;
+    if (!ok) {
+      // Bundle 174 (6): the text already arrived (no queue row left) but the
+      // user cancelled its photo/video - send only the file again.
+      final message = wasCancelled ? await store.messageById(id) : null;
+      if (message == null) return false;
+      final pushed = await _repushMedia(message);
+      if (pushed) {
+        await store.updateMessageStatus(id, status: 'delivered');
+        final again = await store.messageById(id);
+        if (again != null) _incoming.add(again);
+      }
+      return pushed;
+    }
     final queued = await store.messageById(id);
     if (queued != null) _incoming.add(queued);
     unawaited(flush());
@@ -903,6 +1099,10 @@ class ReliableMessagingService {
             );
 
             await store.markOutboxAttempt(id);
+            if (_cancelledSends.contains(id)) {
+              // Bundle 174 (6): cancelled while this send was running.
+              await store.updateOutboxStatus(id, 'failed');
+            }
           } catch (error, stackTrace) {
             AppLogger.error(
               'MESSAGE_DIRECT_SEND_FAILED',
@@ -1670,6 +1870,13 @@ class ReliableMessagingService {
         eventType == 'file_expired') {
       final messageId = event['message_id']?.toString() ?? '';
       if (messageId.isNotEmpty) MediaProgressHub.instance.clear(messageId);
+      // Bundle 174 (6): the sender stopped a file coming to me -> the bubble
+      // shows "Tap to download".
+      if (eventType == 'file_cancelled' &&
+          messageId.isNotEmpty &&
+          event['recipient_id']?.toString() == store.deviceId) {
+        MediaTransferActions.instance.markCancelled(messageId);
+      }
       // fall through: other handlers below may still use these events.
     }
 
@@ -2079,6 +2286,13 @@ class ReliableMessagingService {
       // ----------------------------------------------------------------------
       // DIRECT DELIVERY ACK
       // ----------------------------------------------------------------------
+      if (type == 'media_transfer_cancel' ||
+          type == 'media_resend_request' ||
+          type == 'media_resend_start') {
+        await _handleMediaControl(type!, data);
+        return;
+      }
+
       if (type == 'direct_delivery_ack') {
         final id = data['id']?.toString();
 
@@ -2108,10 +2322,11 @@ class ReliableMessagingService {
         // because outbox(pendingOnly: true) already excludes them.)
         await store.removeOutbox(id);
 
-        // Update local message status.
+        // Update local message status. Bundle 174 (6): a message whose
+        // photo/video I cancelled keeps "Not sent - tap to retry".
         await store.updateMessageStatus(
           id,
-          status: 'delivered',
+          status: _cancelledSends.contains(id) ? 'failed' : 'delivered',
           deliveredAt: now.toIso8601String(),
         );
 
