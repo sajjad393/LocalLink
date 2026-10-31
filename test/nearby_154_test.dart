@@ -59,7 +59,8 @@ void main() {
         liveNodeIds: const [],
         trustedIds: {'bilal'},
         blockedIds: const {},
-              );
+        wifiPeerCount: 0,
+      );
       expect(plan.addableNodeIds, ['ali', 'yasir']);
       expect(plan.pairedNearbyCount, 1);
       expect(plan.emptyState, NearbyEmptyState.none);
@@ -71,7 +72,8 @@ void main() {
         liveNodeIds: const [],
         trustedIds: const {},
         blockedIds: {'spam'},
-              );
+        wifiPeerCount: 0,
+      );
       expect(plan.addableNodeIds, ['ali']);
     });
 
@@ -81,7 +83,8 @@ void main() {
         liveNodeIds: ['bilal', 'yasir'],
         trustedIds: {'bilal', 'yasir'},
         blockedIds: const {},
-              );
+        wifiPeerCount: 0,
+      );
       expect(plan.addableNodeIds, isEmpty);
       expect(plan.emptyState, NearbyEmptyState.everyoneAdded);
     });
@@ -92,7 +95,8 @@ void main() {
         liveNodeIds: const [],
         trustedIds: const {},
         blockedIds: const {},
-              );
+        wifiPeerCount: 0,
+      );
       expect(plan.emptyState, NearbyEmptyState.nothingFound);
     });
 
@@ -102,7 +106,8 @@ void main() {
         liveNodeIds: const [],
         trustedIds: const {},
         blockedIds: const {},
-              );
+        wifiPeerCount: 0,
+      );
       expect(plan.addableNodeIds, ['old-friend']);
     });
 
@@ -112,10 +117,10 @@ void main() {
         liveNodeIds: const [],
         trustedIds: const {},
         blockedIds: const {},
-        wifiAddresses: const ['aa:aa:aa:aa:aa:01'],
+        wifiPeerCount: 1,
       );
       expect(plan.showWifiOnly, isFalse);
-      expect(plan.addableCount(), 1);
+      expect(plan.addableCount(1), 1);
     });
 
     test('Wi-Fi Direct cards: hidden when contacts nearby explain them', () {
@@ -124,7 +129,7 @@ void main() {
         liveNodeIds: ['bilal'],
         trustedIds: {'bilal'},
         blockedIds: const {},
-        wifiAddresses: const ['aa:aa:aa:aa:aa:01'],
+        wifiPeerCount: 1,
       );
       expect(plan.showWifiOnly, isFalse);
       expect(plan.emptyState, NearbyEmptyState.everyoneAdded);
@@ -136,7 +141,7 @@ void main() {
         liveNodeIds: ['bilal'],
         trustedIds: {'bilal'},
         blockedIds: const {},
-        wifiAddresses: const ['aa:aa:aa:aa:aa:01', 'aa:aa:aa:aa:aa:02'],
+        wifiPeerCount: 2,
       );
       expect(plan.showWifiOnly, isTrue);
       expect(plan.emptyState, NearbyEmptyState.none);

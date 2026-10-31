@@ -21,7 +21,6 @@ import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/identity/display_label.dart';
 import 'package:locallink/core/models/call_quality.dart';
-import 'package:locallink/core/models/chat_preview.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/message.dart';
@@ -1395,18 +1394,7 @@ class LocalStore {
     if (userId.isEmpty) return;
     await _putSetting('contact_edge_$userId', op + '|' + ts.toString());
   }
-  /// Bundle 164 (5.7): fires after a block / unblock so the nearby link
-  /// layer cuts (or allows) that person right away.
-  static final StreamController<void> _blockedChanges =
-      StreamController<void>.broadcast();
-  static Stream<void> get blockedChanges => _blockedChanges.stream;
-
   Future<void> blockUser(String userId) async {
-    await _blockUserRow(userId);
-    _blockedChanges.add(null);
-  }
-
-  Future<void> _blockUserRow(String userId) async {
     await _db.insert(
         'blocked_users',
         {
@@ -1417,10 +1405,8 @@ class LocalStore {
     await removeContact(userId);
   }
 
-  Future<void> unblockUser(String userId) async {
-    await _db.delete('blocked_users', where: 'user_id=?', whereArgs: [userId]);
-    _blockedChanges.add(null);
-  }
+  Future<void> unblockUser(String userId) =>
+      _db.delete('blocked_users', where: 'user_id=?', whereArgs: [userId]);
 
   /// Bundle 135 (offline admin moderation): ban by DEVICE and by USER — the
   /// device row is needed for peer-level checks (blocking by device id works
@@ -1601,30 +1587,6 @@ class LocalStore {
       where: 'id=?',
       whereArgs: [id],
     );
-  }
-
-  /// Bundle 162 (4.6): Resend on a failed message. Status merge never moves
-  /// down from 'failed', so this resets the outbox row and the message row
-  /// directly. Returns false when there is no failed outbox row to resend.
-  Future<bool> requeueFailedOutbox(String id) async {
-    if (id.isEmpty) return false;
-    final n = await _db.rawUpdate(
-      "UPDATE outbox SET status='queued',attempt_count=0,last_attempt_at=NULL "
-      "WHERE id=? AND status='failed'",
-      [id],
-    );
-    if (n == 0) return false;
-    await _db.update('messages', {'status': 'queued'},
-        where: 'id=?', whereArgs: [id]);
-    return true;
-  }
-
-  /// Bundle 162 (4.6): Delete on a failed message - drop it from the queue
-  /// and from the chat.
-  Future<void> deleteFailedOutbox(String id) async {
-    if (id.isEmpty) return;
-    await removeOutbox(id);
-    await deleteMessage(id);
   }
 
   Future<void> markOutboxAttempt(String id) async => _db.rawUpdate(
@@ -1938,83 +1900,6 @@ class LocalStore {
               'thumbnail_url': r['thumbnail_url'],
             }, localPath: r['local_path']?.toString()))
         .toList();
-  }
-
-  /// Bundle 163 (4.7): last message per direct chat (peer id -> preview).
-  /// One query: SQLite returns the row of the MAX(created_at) for bare
-  /// columns, so each peer gets its newest message.
-  Future<Map<String, ChatPreview>> directChatPreviews() async {
-    final self = _deviceId;
-    if (self == null) return const {};
-    final rows = await _db.rawQuery('''
-      SELECT CASE WHEN m.sender_id=? THEN m.recipient_id ELSE m.sender_id END AS peer,
-             MAX(m.created_at) AS created_at, m.id AS id, m.sender_id AS sender_id,
-             m.body AS body
-      FROM messages m
-      WHERE m.sender_id=? OR m.recipient_id=?
-      GROUP BY peer''', [self, self, self]);
-    return _withAttachmentTypes(rows, 'peer', 'message_attachments', 'message_id');
-  }
-
-  /// Bundle 163 (4.7): last message per group (group id -> preview).
-  Future<Map<String, ChatPreview>> groupChatPreviews() async {
-    final rows = await _db.rawQuery('''
-      SELECT g.group_id AS group_id, MAX(g.created_at) AS created_at,
-             g.id AS id, g.sender_id AS sender_id, g.body AS body
-      FROM group_messages g
-      GROUP BY g.group_id''');
-    return _withAttachmentTypes(
-        rows, 'group_id', 'group_message_attachments', 'group_message_id');
-  }
-
-  Future<Map<String, ChatPreview>> _withAttachmentTypes(
-    List<Map<String, Object?>> rows,
-    String keyColumn,
-    String attachmentTable,
-    String messageColumn,
-  ) async {
-    final ids = rows
-        .map((r) => r['id']?.toString() ?? '')
-        .where((id) => id.isNotEmpty)
-        .toList(growable: false);
-    final types = <String, Map<String, Object?>>{};
-    for (var i = 0; i < ids.length; i += 400) {
-      final chunk = ids.sublist(i, min(i + 400, ids.length));
-      final marks = List.filled(chunk.length, '?').join(',');
-      final atts = await _db.rawQuery(
-        'SELECT $messageColumn AS mid, content_type, is_image FROM $attachmentTable '
-        'WHERE $messageColumn IN ($marks) ORDER BY position ASC',
-        chunk,
-      );
-      for (final a in atts) {
-        types.putIfAbsent(a['mid']?.toString() ?? '', () => a);
-      }
-      if (attachmentTable == 'message_attachments') {
-        // A photo I just sent may still be waiting to upload.
-        final pending = await _db.rawQuery(
-          'SELECT message_id AS mid, content_type, 0 AS is_image '
-          'FROM pending_attachments WHERE message_id IN ($marks) '
-          'ORDER BY created_at ASC',
-          chunk,
-        );
-        for (final a in pending) {
-          types.putIfAbsent(a['mid']?.toString() ?? '', () => a);
-        }
-      }
-    }
-    final out = <String, ChatPreview>{};
-    for (final r in rows) {
-      final key = r[keyColumn]?.toString() ?? '';
-      if (key.isEmpty) continue;
-      final att = types[r['id']?.toString() ?? ''];
-      final preview = ChatPreview.fromRow({
-        ...r,
-        'att_type': att?['content_type'],
-        'att_image': att?['is_image'],
-      });
-      if (preview != null) out[key] = preview;
-    }
-    return out;
   }
 
   /// Ids of devices this phone has exchanged at least one locally stored
