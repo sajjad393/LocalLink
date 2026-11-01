@@ -22,6 +22,9 @@ import 'package:locallink/features/messaging/presentation/widgets/chat_composer.
 import 'package:locallink/features/messaging/presentation/widgets/message_bubble.dart';
 import 'package:locallink/features/messaging/presentation/widgets/pending_attachment_strip.dart';
 import 'package:locallink/features/messaging/data/services/voice_note_service.dart';
+import 'package:locallink/features/messaging/presentation/voice/voice_recorder_controller.dart';
+import 'package:locallink/features/files/presentation/widgets/media_playback_coordinator.dart';
+import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -52,31 +55,34 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
   bool _searching = false;
   late final FileTransferBloc _transferController;
   final _voiceNotes = VoiceNoteService();
-  bool _recording = false;
-  int _recAmplitude = 0;
-  Timer? _recAmplitudeTimer;
-  /// Bundle 130: start stamp drives the composer "0:05" elapsed counter —
-  /// refreshed by the same 8x/s amplitude poll, so no extra ticker exists.
-  DateTime? _recStartedAt;
 
-  int get _recElapsedSeconds {
-    if (_recStartedAt == null) return 0;
-    final s = DateTime.now().difference(_recStartedAt!).inSeconds;
-    return s < 0 ? 0 : (s > 35999 ? 35999 : s);
-  }
+  /// Bundle 181 (approved mock): WhatsApp-style voice recorder.
+  late final VoiceRecorderController _voice;
 
   @override
   void initState() {
     super.initState();
     _transferController = FileTransferBloc(repository: widget.files);
     widget.notifications?.setActiveDirectConversation(widget.controller.device.id);
+    _voice = VoiceRecorderController(
+      backend: _voiceNotes,
+      onSend: _sendVoiceNote,
+      onError: _voiceError,
+      haptic: (strong) => strong ? HapticFeedback.mediumImpact() : HapticFeedback.lightImpact(),
+      onRecordStart: () => MediaPlaybackCoordinator.instance.claim(_voice, _voice.interrupt),
+      // Something opened over the chat (a call screen...): pause.
+      shouldPause: () => mounted && !(ModalRoute.of(context)?.isCurrent ?? true),
+    );
+    final draft = VoiceDraftStore.take(widget.controller.device.id);
+    if (draft != null) _voice.restore(draft);
+    WidgetsBinding.instance.addObserver(this);
     // Show the jump-to-latest arrow whenever the reader drifts off the tail.
     _scrollController.addListener(_syncJumpArrow);
     unawaited(_load());
@@ -159,89 +165,25 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Bundle 133+ (approved mock): WhatsApp-minimal recording bar — trash
-  /// discards the in-progress note, the gradient orb sends it immediately.
-  Future<void> _cancelVoiceNote() async {
-    try {
-      await _voiceNotes.cancel();
-    } catch (_) {}
-    _recAmplitudeTimer?.cancel();
-    _recAmplitudeTimer = null;
-    if (mounted) {
-      setState(() {
-        _recording = false;
-        _recAmplitude = 0;
-        _recStartedAt = null;
-      });
-    }
+  /// Bundle 181: one voice note is ready (one file, parts already joined).
+  Future<void> _sendVoiceNote(PickedFile file) async {
+    widget.controller.addPendingAttachments([file]);
+    await widget.controller.send('');
+    if (mounted) _scrollToBottom(animated: true);
   }
 
-  Future<void> _finishVoiceNoteSend() async {
-    if (!_recording) return;
-    _recAmplitudeTimer?.cancel();
-    _recAmplitudeTimer = null;
-    try {
-      final file = await _voiceNotes.stop();
-      if (!mounted) return;
-      setState(() {
-        _recording = false;
-        _recAmplitude = 0;
-        _recStartedAt = null;
-      });
-      widget.controller.addPendingAttachments([file]);
-      // Stop+send in one gesture, like WhatsApp — no detached strip step.
-      await widget.controller.send('');
-      if (mounted) _scrollToBottom(animated: true);
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _recording = false;
-          _recAmplitude = 0;
-          _recStartedAt = null;
-        });
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_cleanError(error))));
-      }
-    }
+  void _voiceError(Object error) {
+    if (!mounted) return;
+    // No microphone permission: Android asks by itself, no extra message.
+    if (error is PlatformException && error.code == 'PERMISSION') return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
   }
 
-  Future<void> _toggleVoiceNote() async {
-    if (_recording) {
-      _recAmplitudeTimer?.cancel();
-      _recAmplitudeTimer = null;
-      try {
-        final file = await _voiceNotes.stop();
-        if (!mounted) return;
-        setState(() {
-          _recording = false;
-          _recAmplitude = 0;
-          _recStartedAt = null;
-        });
-        widget.controller.addPendingAttachments([file]);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voice note ready to send')));
-      } catch (error) {
-        if (mounted) { setState(() { _recording = false; _recAmplitude = 0; _recStartedAt = null; }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error)))); }
-      }
-      return;
-    }
-    try {
-      await _voiceNotes.record();
-      if (!mounted) return;
-      setState(() {
-        _recording = true;
-        _recAmplitude = 0;
-        _recStartedAt = DateTime.now();
-      });
-      // Mirrors WhatsApp's mic-meter poll cadence; native amplitude is
-      // reset 8x/s into the composer's live bars.
-      _recAmplitudeTimer?.cancel();
-      _recAmplitudeTimer =
-          Timer.periodic(const Duration(milliseconds: 120), (_) async {
-        final amp = await _voiceNotes.amplitude();
-        if (mounted && _recording) setState(() => _recAmplitude = amp);
-      });
-    } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Bundle 181: Home key / screen off while recording = pause, keep it.
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _voice.interrupt();
     }
   }
 
@@ -395,8 +337,15 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.dispose();
     widget.notifications?.setActiveDirectConversation(null);
     widget.controller.close();
-    _recAmplitudeTimer?.cancel();
-    if (_recording) { unawaited(_voiceNotes.cancel()); }
+    WidgetsBinding.instance.removeObserver(this);
+    MediaPlaybackCoordinator.instance.release(_voice);
+    // Bundle 181: leaving the chat keeps a paused voice note as a draft.
+    final voice = _voice;
+    final chatId = widget.controller.device.id;
+    unawaited(voice.suspend().then((draft) {
+      if (draft != null) VoiceDraftStore.put(chatId, draft);
+      voice.dispose();
+    }));
     _transferController.close();
     super.dispose();
   }
@@ -590,13 +539,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 isSending: state.isSending,
                 onPickAttachments: _pickFiles,
                 onSend: _send,
-                onVoiceNote: _toggleVoiceNote,
-                onVoiceCancel: _cancelVoiceNote,
-                onVoiceSend: _finishVoiceNoteSend,
+                voice: _voice,
                 hasAttachments: state.pendingAttachments.isNotEmpty,
-                isRecording: _recording,
-                recordingAmplitude: _recAmplitude,
-                recordingElapsedSeconds: _recElapsedSeconds,
               ),
             ],
           ),

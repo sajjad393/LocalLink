@@ -820,6 +820,8 @@ class MainActivity : FlutterActivity() {
                     "amplitude" -> result.success(voiceRecorder?.let { r -> try { r.maxAmplitude } catch (_: Exception) { 0 } } ?: 0)
                     "record_stop" -> stopVoiceRecording(result)
                     "record_cancel" -> { cancelVoiceRecording(); result.success(null) }
+                    // Bundle 181: pause / continue = parts, joined into one file.
+                    "join" -> joinVoiceParts(call.argument<List<*>>("paths"), call.argument<Boolean>("delete_parts") != false, result)
                     "play" -> playVoiceNote(call.argument<String>("path"), result)
                     "pause" -> { voicePlayer?.pause(); result.success(null) }
                     "stop" -> { voicePlayer?.stop(); voicePlayer?.release(); voicePlayer = null; result.success(null) }
@@ -878,13 +880,16 @@ class MainActivity : FlutterActivity() {
 
     private fun startVoiceRecording(result: MethodChannel.Result) {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "Microphone access", "LinkUp needs the microphone so the other person can hear you on calls. Allow it, then start the call again.")
+            // Bundle 181: voice-note wording (it talked about calls before).
+            requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "Microphone access", "LinkUp needs the microphone to record voice notes. Allow it, then hold the mic again.")
             result.error("PERMISSION", "Microphone permission is required", null)
             return
         }
         if (voiceRecorder != null) { result.error("RECORDING_ACTIVE", "A voice note is already recording", null); return }
         val file = File(cacheDir, "voice_${UUID.randomUUID()}.m4a")
-        val recorder = MediaRecorder(this)
+        // Bundle 181: MediaRecorder(Context) exists only on Android 12+; the
+        // old constructor keeps voice notes working on Android 7-11.
+        val recorder = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else @Suppress("DEPRECATION") MediaRecorder()
         recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
         recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
         recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -901,10 +906,23 @@ class MainActivity : FlutterActivity() {
     private fun stopVoiceRecording(result: MethodChannel.Result) {
         val recorder = voiceRecorder ?: run { result.error("NO_RECORDING", "No voice note is recording", null); return }
         val path = voiceRecordingPath
-        try { recorder.stop() } finally { recorder.release(); voiceRecorder = null; voiceRecordingPath = null }
+        // Bundle 181: a very short part makes stop() throw - report TOO_SHORT.
+        val ok = try { recorder.stop(); true } catch (_: RuntimeException) { false } finally { try { recorder.release() } catch (_: Exception) {}; voiceRecorder = null; voiceRecordingPath = null }
         val file = path?.let { File(it) } ?: throw IllegalStateException("Voice recording path is unavailable")
-        if (!file.exists() || file.length() <= 0L) { file.delete(); throw IllegalStateException("Voice recording is empty") }
+        if (!ok || !file.exists() || file.length() <= 0L) { file.delete(); result.error("TOO_SHORT", "Voice recording is too short", null); return }
         result.success(mapOf("path" to file.absolutePath, "name" to file.name, "size" to file.length().toInt()))
+    }
+
+    private fun joinVoiceParts(paths: List<*>?, deleteParts: Boolean, result: MethodChannel.Result) {
+        val list = paths?.mapNotNull { it?.toString()?.trim()?.ifEmpty { null } } ?: emptyList()
+        if (list.isEmpty()) { result.error("NO_PARTS", "No voice note parts", null); return }
+        Thread {
+            val out = try { VoiceNoteJoiner.join(list, cacheDir, deleteParts) } catch (_: Exception) { null }
+            runOnUiThread {
+                if (out == null || !out.exists()) result.error("JOIN_FAILED", "Voice note parts could not be joined", null)
+                else result.success(mapOf("path" to out.absolutePath, "name" to out.name, "size" to out.length().toInt()))
+            }
+        }.apply { name = "linkup-voice-join"; isDaemon = true }.start()
     }
 
     private fun cancelVoiceRecording() {
