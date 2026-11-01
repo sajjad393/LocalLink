@@ -1,6 +1,6 @@
-# Bundle 198 - Read receipts (blue ticks), voice "played", mic slide-up, sounds (3.0.32+103)
+# Bundle 198 + X1 - Read receipts (blue ticks), voice "played", mic slide-up, sounds, hidden-note acks (3.0.32+103)
 
-Scope: TODO_198 + mock v5 + your answers Q1-Q11. X1 is NOT in this bundle (see below).
+Scope: TODO_198 + mock v5 + your answers Q1-Q11 + X1 (your "Yes X1").
 
 **Both phones need 3.0.32.** An older phone ignores read notes, so your ticks stay grey for that friend.
 
@@ -44,8 +44,15 @@ Scope: TODO_198 + mock v5 + your answers Q1-Q11. X1 is NOT in this bundle (see b
 - A message whose photo you cancelled keeps "Not sent - tap to retry" even if Ali read the text part.
 - Coming back to an open chat (Home → LinkUp again) now marks what arrived meanwhile as read (blue for the friend, and the chat's notification is cleared) - same as opening the chat.
 
-## Not in this bundle: X1
-`llrx` (reaction) and `lldel` (delete) notes are still never confirmed over Nearby, so the outbox resends them about every 64 s. Only the new read note is confirmed. Say "yes X1" if you want that fixed too.
+## X1 - hidden notes are now confirmed
+Before: reaction (`llrx`) and Delete-for-everyone (`lldel`) notes were never confirmed, so over **Nearby** the sender's outbox resent them about every 64 s (no end) while the phones were near. The other phone ignored the copies, so you saw nothing, but it was extra traffic and repeating `MESSAGE_FLUSH_ITEM` log lines.
+
+Now every hidden note sent **to me** (read, reaction, delete) is confirmed the same way as a normal message:
+- Nearby: `direct_delivery_ack` -> the friend's outbox drops it.
+- Online (live): `ack_delivery`.
+- Online (sync after being away): the same server confirm a normal message gets.
+
+Nothing changes on screen. Old notes already waiting in an outbox stop after the other phone gets 3.0.32 and confirms them once.
 
 ## How it works
 - Hidden note `llread:v1:{"r":[ids],"p":[played ids],"at":"..."}`. Only your own messages sent to that friend can change.
@@ -55,11 +62,11 @@ Scope: TODO_198 + mock v5 + your answers Q1-Q11. X1 is NOT in this bundle (see b
 - No server change.
 
 ## Logs
-`READ_RECEIPT_SENT chat= read= played=`, `READ_RECEIPT_GOT chat= read= played= applied= ignored=` (or `blocked=y`), `READ_RECEIPT_ACK path=online|nearby`, `READ_RECEIPTS on|off`, `VOICE_PLAYED_NOTED id=`, `VOICE_TONE_FAIL name=` (errors only), `READ_RECEIPT_SEND_FAILED`, `READ_RECEIPT_APPLY_FAILED`, `MESSAGE_ENVELOPE_BAD kind=read`. No log for each sound or finger move.
+`READ_RECEIPT_SENT chat= read= played=`, `READ_RECEIPT_GOT chat= read= played= applied= ignored=` (or `blocked=y`), `CONTROL_ACK kind=read|reaction|delete path=online|nearby|sync`, `READ_RECEIPTS on|off`, `VOICE_PLAYED_NOTED id=`, `VOICE_TONE_FAIL name=` (errors only), `READ_RECEIPT_SEND_FAILED`, `READ_RECEIPT_APPLY_FAILED`, `MESSAGE_ENVELOPE_BAD kind=read`. No log for each sound or finger move.
 
 ## Checks done here
 - `flutter analyze`: 0 errors (same 156 old infos/warnings as 197b).
-- Full test suite `-j 1`: **1122 passed** (47 new). `bundle183_test`: 2 Settings tests use a taller test screen, because the new Read receipts row pushes ADMIN lower.
+- Full test suite `-j 1`: **1123 passed** (48 new). `bundle183_test`: 2 Settings tests use a taller test screen, because the new Read receipts row pushes ADMIN lower.
 - 9 new test files: `read_receipt_envelope_198`, `read_receipt_service_198`, `read_receipt_store_198`, `read_receipt_apply_198`, `message_info_198`, `settings_read_receipts_198`, `bubble_ticks_198`, `voice_slide_198`, `ui_sounds_198`.
 - Old tests updated: `message_delete_197_test` (v28 may only add `played_at`), `db_v27_197b_test` (version 28), `nearby_190_test` (version strings).
 - Kotlin compile check (kcheck): clean (171 classes).
@@ -91,3 +98,6 @@ Scope: TODO_198 + mock v5 + your answers Q1-Q11. X1 is NOT in this bundle (see b
 | RR20 | Phone on Silent or Vibrate, repeat RR15-RR18 | no sounds, vibration only |
 | RR21 | Logs | `READ_RECEIPT_SENT` / `READ_RECEIPT_GOT` lines; no "llread..." bubble anywhere; no repeating flush lines |
 | RR22 | Ali's chat open on his phone, he presses Home, you send 2, he opens LinkUp again | blue in ~2 s |
+| X1a | Phones Nearby (no internet): react 👍 to a message, wait 3 min | Ali sees 👍 once; your log: one `MESSAGE_FLUSH_ITEM` for it, then no repeats; Ali's log: `CONTROL_ACK kind=reaction path=nearby` |
+| X1b | Same, Delete for everyone | message gone on Ali's phone; Ali's log `CONTROL_ACK kind=delete path=nearby`; no repeats |
+| X1c | Ali offline, you react, Ali comes back Online | 👍 shows; Ali's log `CONTROL_ACK kind=reaction path=sync` (or `online`) |

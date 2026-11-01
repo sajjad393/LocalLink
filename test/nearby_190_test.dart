@@ -290,7 +290,7 @@ void main() {
       expect(File('pubspec.yaml').readAsStringSync(),
           contains('version: 3.0.32+103'));
       expect(File('lib/app/local_link_app.dart').readAsStringSync(),
-          contains("'v3 · 3.0.32 · bundles 104-198 (2026-11-03)'"));
+          contains("'v3 · 3.0.32 · bundles 104-198 + X1 (2026-11-03)'"));
     });
   });
 }

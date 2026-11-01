@@ -770,6 +770,7 @@ class ReliableMessagingService {
             continue;
           }
           if (await _consumeReaction(message)) {
+            await _ackControlSync(message); // X1
             continue;
           }
 
@@ -1465,17 +1466,32 @@ class ReliableMessagingService {
     }
   }
 
-  /// Bundle 198: ack a read note so the friend's outbox stops resending it.
-  void _ackReadNoteOnline(Message message) {
-    if (!ReadCommand.isRead(message.body)) return;
+  /// Bundle 198 + X1: ack a hidden note (read / reaction / delete) sent to
+  /// me, so the friend's outbox stops resending it (Nearby resent reaction
+  /// and delete notes about every 64 s before X1).
+  static String _controlKind(String body) {
+    if (body.startsWith(kReadEnvelopePrefix)) return 'read';
+    if (body.startsWith(kReactionEnvelopePrefix)) return 'reaction';
+    if (body.startsWith(kDeleteEnvelopePrefix)) return 'delete';
+    return '';
+  }
+
+  bool _isControlForMe(Message message) =>
+      MessageEnvelope.isControl(message.body) &&
+      message.recipientId == store.deviceId &&
+      message.senderId != store.deviceId;
+
+  void _ackControlOnline(Message message) {
+    if (!_isControlForMe(message)) return;
     try {
       final sent = socket.send({'type': 'ack_delivery', 'id': message.id});
-      AppLogger.info('READ_RECEIPT_ACK', detail: 'path=online sent=$sent');
+      AppLogger.info('CONTROL_ACK',
+          detail: 'kind=${_controlKind(message.body)} path=online sent=$sent');
     } catch (_) {}
   }
 
-  Future<void> _ackReadNoteNearby(Message message) async {
-    if (!ReadCommand.isRead(message.body)) return;
+  Future<void> _ackControlNearby(Message message) async {
+    if (!_isControlForMe(message)) return;
     try {
       await directTransport.send(
         recipientId: message.senderId,
@@ -1486,9 +1502,23 @@ class ReliableMessagingService {
           'recipient_id': message.senderId,
         },
       );
-      AppLogger.info('READ_RECEIPT_ACK', detail: 'path=nearby');
+      AppLogger.info('CONTROL_ACK',
+          detail: 'kind=${_controlKind(message.body)} path=nearby');
     } catch (_) {
       // Link down: the friend resends later and we ack that copy.
+    }
+  }
+
+  /// X1: a hidden note fetched by sync is acked like a normal message, so
+  /// the server stops holding it for me.
+  Future<void> _ackControlSync(Message message) async {
+    if (!_isControlForMe(message) || message.status == 'delivered') return;
+    try {
+      await api.acknowledgeMessage(message.id);
+      AppLogger.info('CONTROL_ACK',
+          detail: 'kind=${_controlKind(message.body)} path=sync');
+    } catch (_) {
+      // The next sync tries again.
     }
   }
 
@@ -1789,7 +1819,7 @@ class ReliableMessagingService {
         return;
       }
       if (await _consumeReaction(message)) {
-        _ackReadNoteOnline(message); // Bundle 198
+        _ackControlOnline(message); // Bundle 198 + X1
         return;
       }
 
@@ -2248,7 +2278,7 @@ class ReliableMessagingService {
           return;
         }
         if (await _consumeReaction(decrypted)) {
-          await _ackReadNoteNearby(decrypted); // Bundle 198
+          await _ackControlNearby(decrypted); // Bundle 198 + X1
           return;
         }
 

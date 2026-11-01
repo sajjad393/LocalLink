@@ -22,15 +22,30 @@ void main() {
     expect(RegExp(r'_consumeReaction\(').allMatches(src).length, 5); // 4 + def
   });
 
-  test('ack on the Online path and the Nearby path', () {
-    expect(src, contains('_ackReadNoteOnline(message); // Bundle 198'));
-    expect(src, contains('await _ackReadNoteNearby(decrypted); // Bundle 198'));
+  test('ack on the Online, Nearby and sync paths (198 + X1)', () {
+    expect(src, contains('_ackControlOnline(message); // Bundle 198 + X1'));
+    expect(src, contains('await _ackControlNearby(decrypted); // Bundle 198 + X1'));
+    expect(src, contains('await _ackControlSync(message); // X1'));
     expect(src, contains("'type': 'ack_delivery', 'id': message.id"));
+  });
+
+  test('X1: read, reaction and delete notes are all acked, only when sent to me', () {
+    final i = src.indexOf('bool _isControlForMe(Message message)');
+    final b = src.substring(i, src.indexOf('Future<Message?> _resolveNetworkPayload', i));
+    expect(b, contains('MessageEnvelope.isControl(message.body)'));
+    expect(b, contains('message.recipientId == store.deviceId'));
+    expect(b, contains('message.senderId != store.deviceId'));
+    expect(RegExp('_isControlForMe\\(message\\)').allMatches(b).length, 3);
+    final kinds = src.substring(src.indexOf('static String _controlKind('));
+    for (final k in ["'read'", "'reaction'", "'delete'"]) {
+      expect(kinds.substring(0, 400), contains(k));
+    }
+    expect(src, isNot(contains('_ackReadNote')));
   });
 
   test('future time capped, blocked ignored, own note ignored', () {
     final i = src.indexOf('Future<void> _applyReadNote(Message message)');
-    final b = src.substring(i, src.indexOf('void _ackReadNoteOnline', i));
+    final b = src.substring(i, src.indexOf('static String _controlKind(', i));
     expect(b, contains('now.add(const Duration(minutes: 2))'));
     expect(b, contains('store.isBlockedPeer(from)'));
     expect(b, contains('from == store.deviceId'));
