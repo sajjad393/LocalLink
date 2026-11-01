@@ -6,6 +6,7 @@ import 'package:locallink/core/models/message_reaction.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/files/presentation/widgets/attachment_tile.dart';
+import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
 
 import 'bubble_layout.dart';
 import 'message_options.dart';
@@ -137,6 +138,8 @@ class MessageBubble extends StatelessWidget {
                         onRetry: _canResend ? onFailedTap : null,
                         mine: isMine,
                         senderName: senderName,
+                        // Bundle 198: small mic on my own voice notes.
+                        playedMark: _playedMark,
                       ),
                   ],
                   footer: Row(
@@ -161,6 +164,17 @@ class MessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Bundle 198: my own voice note - grey mic once delivered, blue once
+  /// the friend played it (also when Read receipts is OFF). Null = no mic.
+  bool? get _playedMark {
+    if (!isMine) return null;
+    return switch (message.status.toLowerCase()) {
+      'played' => true,
+      'delivered' || 'direct_delivered' || 'read' => false,
+      _ => null,
+    };
   }
 
   /// Bundle 197a: "Forwarded" label and / or the quote box.
@@ -227,8 +241,21 @@ class _StatusIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = status.toLowerCase();
+    // Bundle 198: blue ticks follow the Read receipts switch.
+    if (s == 'read' || s == 'played') {
+      return ListenableBuilder(
+        listenable: ReadReceiptsSetting.instance,
+        builder: (context, _) => _build(context, s),
+      );
+    }
+    return _build(context, s);
+  }
+
+  Widget _build(BuildContext context, String s) {
     final colors = Theme.of(context).colorScheme;
-    final glyph = switch (status.toLowerCase()) {
+    final receiptsOn = ReadReceiptsSetting.instance.on;
+    final glyph = switch (s) {
       'queued' || 'pending' || 'sending' => Icon(
           Icons.schedule_rounded,
           size: 14,
@@ -239,11 +266,12 @@ class _StatusIcon extends StatelessWidget {
           size: 14,
           color: colors.error,
         ),
-      'read' => Icon(
-          // double check, blue = read
+      'read' || 'played' => Icon(
+          // double check, blue = read (Bundle 198: grey when receipts OFF)
           Icons.done_all_rounded,
+          key: ValueKey(receiptsOn ? 'tick_read' : 'tick_read_off'),
           size: 15,
-          color: colors.primary,
+          color: receiptsOn ? colors.primary : colors.onSurfaceVariant,
         ),
       'delivered' || 'direct_delivered' => Icon(
           // double check, grey = delivered

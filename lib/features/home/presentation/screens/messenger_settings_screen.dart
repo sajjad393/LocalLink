@@ -23,6 +23,7 @@ import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_login_screen.dart';
 import 'package:locallink/features/home/presentation/screens/background_run_screen.dart';
 import 'package:locallink/features/storage/presentation/storage_screen.dart';
+import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/notifications/presentation/screens/notification_settings_screen.dart';
@@ -249,6 +250,7 @@ class MessengerSettingsScreen extends StatelessWidget {
               accountRepository: accountRepository,
               directoryRepository: directoryRepository,
             ),
+            const ReadReceiptsRow(), // Bundle 198
             ListenableBuilder(
               listenable: BlockHub.instance,
               builder: (context, _) => MessengerSettingsRow(
@@ -407,6 +409,32 @@ class _PrivateProfileRowState extends State<PrivateProfileRow> {
         key: const ValueKey('settings_private_switch'),
         value: _private,
         onChanged: (!_loaded || _saving) ? null : _change,
+      ),
+    );
+  }
+}
+
+/// Bundle 198 (mock v5 C1/C2): Settings › Privacy › Read receipts.
+class ReadReceiptsRow extends StatelessWidget {
+  const ReadReceiptsRow({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final setting = ReadReceiptsSetting.instance;
+    return ListenableBuilder(
+      listenable: setting,
+      builder: (context, _) => MessengerSettingsRow(
+        key: const ValueKey('settings_read_receipts'),
+        icon: Icons.done_all_rounded,
+        title: 'Read receipts',
+        subtitle: "If off, you can't see when others read your messages, "
+            "and they can't see when you read theirs.",
+        onTap: () => setting.set(!setting.on),
+        trailing: Switch(
+          key: const ValueKey('settings_read_receipts_switch'),
+          value: setting.on,
+          onChanged: setting.set,
+        ),
       ),
     );
   }

@@ -22,6 +22,7 @@ import 'media_view_cache.dart';
 import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/features/storage/presentation/removed_media_view.dart';
+import 'package:locallink/features/messaging/data/read_receipts/voice_played_hub.dart';
 
 class AttachmentTile extends StatefulWidget {
   final Attachment attachment;
@@ -48,6 +49,10 @@ class AttachmentTile extends StatefulWidget {
   final bool mine;
   final String? senderName;
 
+  /// Bundle 198: my own 1-to-1 voice note - false = grey mic (not played
+  /// yet), true = blue mic (played). Null = no mic (default).
+  final bool? playedMark;
+
   const AttachmentTile({
     super.key,
     required this.attachment,
@@ -60,6 +65,7 @@ class AttachmentTile extends StatefulWidget {
     this.waiting = false,
     this.mine = false,
     this.senderName,
+    this.playedMark,
   });
 
   @override
@@ -495,6 +501,11 @@ class _AttachmentTileState extends State<AttachmentTile> {
         MediaPlaybackCoordinator.instance.claim(this, _pauseAudioForOther);
         final duration = await channel.invokeMethod<int>('play', {'path': _displayPath});
         final durationMs = duration ?? 0;
+        // Bundle 198: a friend's 1-to-1 voice note played -> "played" note
+        // (sent once; the service checks the first play).
+        if (!widget.mine && widget.groupMessageId == null) {
+          VoicePlayedHub.instance.played(widget.messageId);
+        }
         _audioTimer?.cancel();
         if (mounted) {
           setState(() {
@@ -707,12 +718,31 @@ class _AttachmentTileState extends State<AttachmentTile> {
                           ],
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          label,
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelSmall
-                              ?.copyWith(color: colors.onSurfaceVariant),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              label,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(color: colors.onSurfaceVariant),
+                            ),
+                            // Bundle 198: grey / blue mic (played).
+                            if (widget.playedMark != null) ...[
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.mic_rounded,
+                                key: ValueKey(widget.playedMark!
+                                    ? 'voice_played_mark'
+                                    : 'voice_unplayed_mark'),
+                                size: 13,
+                                color: widget.playedMark!
+                                    ? colors.primary
+                                    : colors.onSurfaceVariant,
+                              ),
+                            ],
+                          ],
                         ),
                       ],
                     ),

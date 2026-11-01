@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
@@ -11,6 +12,9 @@ import 'package:locallink/features/messaging/presentation/voice/voice_levels.dar
 ///   idle -> (hold the mic) holding -> let go = send / slide left = cancel /
 ///   slide up = locked -> Pause = paused (listen, continue, send, delete).
 enum VoiceRecState { idle, holding, locked, paused }
+
+/// Bundle 198: the three recorder sounds.
+enum VoiceTone { start, send, cancel }
 
 /// A paused voice note kept while you are away from the chat.
 class VoiceDraft {
@@ -49,7 +53,15 @@ class VoiceRecorderController extends ChangeNotifier {
     this.maxLength = const Duration(minutes: 15),
     this.tick = const Duration(milliseconds: 100),
     this.hintTime = const Duration(seconds: 2),
+    this.tone,
+    this.toneLead = const Duration(milliseconds: 90),
   }) : _clock = clock ?? DateTime.now;
+
+  /// Bundle 198: start "tik" / send "swoosh" / cancel "tok". The mic opens
+  /// [toneLead] after the start tik so the tik is not recorded (only when
+  /// [tone] is set).
+  final void Function(VoiceTone tone)? tone;
+  final Duration toneLead;
 
   final VoiceRecorderBackend backend;
   final Future<void> Function(PickedFile file) onSend;
@@ -79,6 +91,7 @@ class VoiceRecorderController extends ChangeNotifier {
   int _doneMs = 0;
   DateTime? _runStart;
   double _slideDx = 0;
+  double _slideDy = 0; // Bundle 198: 0 .. -lockDistance (finger up)
   bool _hint = false;
   bool _previewPlaying = false;
   double _previewProgress = 0;
@@ -98,6 +111,11 @@ class VoiceRecorderController extends ChangeNotifier {
   bool get active => _state != VoiceRecState.idle;
   List<double> get levels => List<double>.unmodifiable(_levels);
   double get slideDx => _slideDx;
+  double get slideDy => _slideDy;
+
+  /// Bundle 198: 0 (finger at the mic) .. 1 (at the lock).
+  double get lockProgress =>
+      (-_slideDy / VoiceHoldGesture.lockDistance).clamp(0.0, 1.0);
   bool get hintVisible => _hint;
   bool get previewPlaying => _previewPlaying;
   double get previewProgress => _previewProgress;
@@ -153,10 +171,20 @@ class VoiceRecorderController extends ChangeNotifier {
         lock();
       case VoiceHoldDecision.none:
         final dx = moved.dx < 0 ? moved.dx : 0.0;
+        // Bundle 198: the big mic follows the finger up (to the lock).
+        final dy = moved.dy < 0
+            ? math.max(moved.dy, -VoiceHoldGesture.lockDistance)
+            : 0.0;
+        var changed = false;
         if (dx != _slideDx) {
           _slideDx = dx;
-          notifyListeners();
+          changed = true;
         }
+        if ((dy - _slideDy).abs() >= 1 || (dy == 0 && _slideDy != 0)) {
+          _slideDy = dy;
+          changed = true;
+        }
+        if (changed) notifyListeners();
     }
   }
 
@@ -193,6 +221,7 @@ class VoiceRecorderController extends ChangeNotifier {
     if (_disposed) return;
     _state = VoiceRecState.holding;
     _slideDx = 0;
+    _slideDy = 0;
     _levels.clear();
     _parts.clear();
     _doneMs = 0;
@@ -200,7 +229,14 @@ class VoiceRecorderController extends ChangeNotifier {
     haptic?.call(true);
     onRecordStart?.call();
     notifyListeners();
+    final playTone = tone;
+    if (playTone != null) playTone(VoiceTone.start); // Bundle 198
     _queue(() async {
+      if (playTone != null && toneLead > Duration.zero) {
+        // Bundle 198: let the "tik" finish before the mic opens.
+        await Future<void>.delayed(toneLead);
+        if (_disposed || !isRecordingNow) return;
+      }
       try {
         final path = await backend.startPart();
         _parts.add(path);
@@ -220,6 +256,7 @@ class VoiceRecorderController extends ChangeNotifier {
     if (_state != VoiceRecState.holding) return;
     _state = VoiceRecState.locked;
     _slideDx = 0;
+    _slideDy = 0;
     haptic?.call(false);
     notifyListeners();
   }
@@ -406,19 +443,25 @@ class VoiceRecorderController extends ChangeNotifier {
     _parts.clear();
     _reset();
     notifyListeners();
-    if (parts.isEmpty) return;
+    if (parts.isEmpty) {
+      tone?.call(VoiceTone.cancel); // Bundle 198
+      return;
+    }
     if (total < minLength.inMilliseconds) {
+      tone?.call(VoiceTone.cancel); // Bundle 198: too short
       for (final p in parts) {
         backend.deleteFile(p);
       }
       return;
     }
+    tone?.call(VoiceTone.send); // Bundle 198
     final file = await backend.join(parts);
     await onSend(file);
   }
 
   Future<void> _discardNow() async {
     if (_state == VoiceRecState.idle) return;
+    tone?.call(VoiceTone.cancel); // Bundle 198
     _stopTick();
     await _stopPreviewNow();
     if (isRecordingNow && _runStart != null) {
@@ -450,6 +493,7 @@ class VoiceRecorderController extends ChangeNotifier {
     _runStart = null;
     _doneMs = 0;
     _slideDx = 0;
+    _slideDy = 0;
     _levels.clear();
   }
 

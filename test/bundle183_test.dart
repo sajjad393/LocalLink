@@ -548,6 +548,13 @@ void main() {
       final count = tester.widget<Text>(
           find.byKey(const ValueKey('settings_blocked_count')));
       expect(count.data, '1');
+      // Bundle 198: the Read receipts row makes the list longer; a taller
+      // screen keeps ADMIN built for the measuring below.
+      tester.view.physicalSize = const Size(1080, 3000);
+      await tester.pump();
+      expect(find.text('Read receipts'), findsOneWidget);
+      await tester.drag(find.byType(ListView), const Offset(0, 2000));
+      await tester.pump();
       final y = (String t) =>
           tester.getTopLeft(find.text(t, skipOffstage: false)).dy;
       expect(y('THIS PHONE'), lessThan(y('PRIVACY')));
@@ -689,6 +696,10 @@ void main() {
         await tester.scrollUntilVisible(find.text(t), 100,
             scrollable: find.byType(Scrollable).first);
       }
+      // Bundle 198: the Read receipts row makes the list longer; a taller
+      // screen keeps the whole list built for the measuring below.
+      tester.view.physicalSize = const Size(1080, 3000);
+      await tester.pump();
       await tester.drag(find.byType(ListView), const Offset(0, 2000));
       await tester.pump();
       double? last;

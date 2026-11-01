@@ -480,6 +480,21 @@ class ReliableMessagingService {
     await _safeFlush('reaction');
   }
 
+  /// Bundle 198: send a hidden read / played note to [recipientId]. Goes
+  /// through the outbox like a reaction: never a bubble, tick or notice.
+  Future<void> sendReadReceipt(String recipientId, ReadCommand command) async {
+    if (recipientId.trim().isEmpty || command.isEmpty) return;
+    final createdAt = DateTime.now().toUtc().toIso8601String();
+    await store.addOutbox({
+      'id': _newId(),
+      'recipient_id': recipientId,
+      'body': command.encode(),
+      'created_at': createdAt,
+      'status': 'queued'
+    });
+    await _safeFlush('read');
+  }
+
   Future<List<MessageReaction>> reactions(String messageId) async {
     final rows = await store.messageReactions(messageId);
     return rows
@@ -1414,6 +1429,69 @@ class ReliableMessagingService {
     }
   }
 
+  /// Bundle 198: the friend read / played my messages. Only my own rows
+  /// sent to that friend change; ticks repaint at once.
+  Future<void> _applyReadNote(Message message) async {
+    final from = message.senderId;
+    final command = ReadCommand.parse(message.body);
+    if (command == null) {
+      AppLogger.warning('MESSAGE_ENVELOPE_BAD', detail: 'kind=read');
+      return;
+    }
+    if (from.isEmpty || from == store.deviceId) return;
+    if (await store.isBlockedPeer(from)) {
+      AppLogger.info('READ_RECEIPT_GOT',
+          detail: 'chat=${_shortId(from)} blocked=y');
+      return;
+    }
+    final now = DateTime.now().toUtc();
+    // Phone clocks differ: never a time in the future.
+    final at = command.at.isAfter(now.add(const Duration(minutes: 2)))
+        ? now
+        : command.at;
+    final changed = await store.applyReadReceipt(
+      fromPeer: from,
+      readIds: command.read,
+      playedIds: command.played,
+      at: at.toIso8601String(),
+    );
+    AppLogger.info('READ_RECEIPT_GOT',
+        detail: 'chat=${_shortId(from)} read=${command.read.length} '
+            'played=${command.played.length} applied=${changed.length} '
+            'ignored=${command.count - changed.length}');
+    for (final id in changed) {
+      final refreshed = await store.messageById(id);
+      if (refreshed != null) _incoming.add(refreshed);
+    }
+  }
+
+  /// Bundle 198: ack a read note so the friend's outbox stops resending it.
+  void _ackReadNoteOnline(Message message) {
+    if (!ReadCommand.isRead(message.body)) return;
+    try {
+      final sent = socket.send({'type': 'ack_delivery', 'id': message.id});
+      AppLogger.info('READ_RECEIPT_ACK', detail: 'path=online sent=$sent');
+    } catch (_) {}
+  }
+
+  Future<void> _ackReadNoteNearby(Message message) async {
+    if (!ReadCommand.isRead(message.body)) return;
+    try {
+      await directTransport.send(
+        recipientId: message.senderId,
+        payload: {
+          'type': 'direct_delivery_ack',
+          'id': message.id,
+          'sender_id': store.deviceId,
+          'recipient_id': message.senderId,
+        },
+      );
+      AppLogger.info('READ_RECEIPT_ACK', detail: 'path=nearby');
+    } catch (_) {
+      // Link down: the friend resends later and we ack that copy.
+    }
+  }
+
   Future<Message?> _resolveNetworkPayload(Map<String, dynamic> data) async {
     try {
       return await _resolveMessage(Message.fromJson(data));
@@ -1425,6 +1503,16 @@ class ReliableMessagingService {
   }
 
   Future<bool> _consumeReaction(Message message) async {
+    // Bundle 198: a read / played note. Never a bubble.
+    if (ReadCommand.isRead(message.body)) {
+      try {
+        await _applyReadNote(message);
+      } catch (error, stackTrace) {
+        AppLogger.error('READ_RECEIPT_APPLY_FAILED',
+            error: error, stackTrace: stackTrace);
+      }
+      return true;
+    }
     // Bundle 197a: Delete for everyone rides every receive path that
     // already consumes reactions (sync, socket, direct, history).
     if (DeleteCommand.isDelete(message.body)) {
@@ -1596,7 +1684,9 @@ class ReliableMessagingService {
       // WhatsApp-style UX shows. Storage cleanup is handled by the cache
       // sweep, not by the ack path.
 
-      if (!existed) {
+      // Bundle 198: a hidden note (read / reaction / delete) is never a
+      // bubble on my side either.
+      if (!existed && !MessageEnvelope.isControl(message.body)) {
         _incoming.add(message);
 
         AppLogger.info(
@@ -1699,6 +1789,7 @@ class ReliableMessagingService {
         return;
       }
       if (await _consumeReaction(message)) {
+        _ackReadNoteOnline(message); // Bundle 198
         return;
       }
 
@@ -2157,6 +2248,7 @@ class ReliableMessagingService {
           return;
         }
         if (await _consumeReaction(decrypted)) {
+          await _ackReadNoteNearby(decrypted); // Bundle 198
           return;
         }
 

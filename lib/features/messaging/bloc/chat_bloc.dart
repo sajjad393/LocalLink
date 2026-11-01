@@ -310,6 +310,7 @@ final class ChatBloc extends Cubit<ChatState> {
         (m.senderId == state.device.id && m.recipientId == localDeviceId) ||
             (m.recipientId == state.device.id && m.senderId == localDeviceId);
     if (!matches) return;
+    if (MessageEnvelope.isControl(m.body)) return; // Bundle 198: never a bubble
     if (MessageDeleteBook.instance.isDeleted(m.id)) return; // Bundle 197a
     final next = [...state.messages];
     final i = next.indexWhere((x) => x.id == m.id);

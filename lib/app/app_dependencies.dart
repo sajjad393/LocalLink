@@ -80,6 +80,10 @@ import 'package:locallink/features/messaging/domain/messaging_repository_contrac
 import 'package:locallink/features/groups/domain/group_repository_contract.dart';
 import 'package:locallink/features/groups/domain/group_messaging_repository_contract.dart';
 import 'package:locallink/features/calls/domain/call_repository_contract.dart';
+import 'package:locallink/core/services/ui_sounds.dart';
+import 'package:locallink/features/messaging/data/read_receipts/read_receipt_service.dart';
+import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
+import 'package:locallink/features/messaging/data/read_receipts/voice_played_hub.dart';
 
 /// Owns the long-lived application services used by the Flutter client.
 ///
@@ -235,6 +239,19 @@ class AppDependencies {
       groups: groupMessagingRepository,
       calls: calls,
     );
+    // Bundle 198: read receipts (1-to-1), voice "played", the in-chat pop.
+    readReceipts = ReadReceiptService(
+      localId: () => store.deviceId,
+      send: messaging.sendReadReceipt,
+      isBlocked: store.isBlockedPeer,
+      markPlayed: store.markPlayedByMe,
+      messageById: store.messageById,
+    );
+    notifications.onDirectRead = readReceipts.noteRead;
+    notifications.onActiveChatMessage =
+        ({required bool group}) => UiSounds.play(UiSound.messageReceived);
+    VoicePlayedHub.instance.onPlayed =
+        (id) => unawaited(readReceipts.notePlayed(id));
     presence = PresenceService(store, socket, wifiDirect, directTransport, httpClient: this.httpClient, crypto: crypto, wifiRadio: WifiRadioControlService());
     networkPolicySync = NetworkPolicySyncService(store, api, socket, httpClient: this.httpClient, wifiRadio: WifiRadioControlService());
     final directory = DirectoryRepository(store: store, api: api, transport: directTransport, crypto: crypto);
@@ -417,6 +434,7 @@ class AppDependencies {
   late final ReliableMessagingService messaging;
   late final MessagingRepositoryContract messagingRepository;
   late final LocalLinkNotificationService notifications;
+  late final ReadReceiptService readReceipts; // Bundle 198
   late final PresenceService presence;
   late final NetworkPolicySyncService networkPolicySync;
   late final DirectoryRepositoryContract directoryRepository;
@@ -455,9 +473,18 @@ class AppDependencies {
     messaging.start();
     groupMessagingService.start();
     calls.start();
+    await _loadReadReceiptsSetting();
     await notifications.start();
     try {
       await presence.start();
+    } catch (_) {}
+  }
+
+  /// Bundle 198: Settings › Privacy › Read receipts.
+  Future<void> _loadReadReceiptsSetting() async {
+    try {
+      await ReadReceiptsSetting.instance
+          .load(read: store.readSetting, write: store.writeSetting);
     } catch (_) {}
   }
 
@@ -477,6 +504,7 @@ class AppDependencies {
     messaging.start();
     groupMessagingService.start();
     calls.start();
+    await _loadReadReceiptsSetting();
     await notifications.start();
     await networkPolicySync.start();
     await presence.start();
@@ -552,6 +580,7 @@ class AppDependencies {
   }
 
   Future<void> dispose() async {
+    readReceipts.dispose(); // Bundle 198
     for (final sub in _friendSubs) {
       unawaited(sub.cancel());
     }

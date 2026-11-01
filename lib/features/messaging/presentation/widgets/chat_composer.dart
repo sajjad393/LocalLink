@@ -141,7 +141,10 @@ class ChatComposer extends StatelessWidget {
                   final Widget child;
                   if (holding) {
                     // Bundle 181: the big gradient mic under the finger.
-                    child = AnimatedScale(
+                    // Bundle 198: it follows the finger up to the lock.
+                    child = Transform.translate(
+                      offset: Offset(0, voice!.slideDy),
+                      child: AnimatedScale(
                       key: const ValueKey('voice_big_mic'),
                       scale: 1.45,
                       // Grows to the left so it stays fully on screen (mock).
@@ -156,6 +159,7 @@ class ChatComposer extends StatelessWidget {
                         ),
                         child: const Icon(Icons.mic_rounded, color: Colors.white, size: 26),
                       ),
+                    ),
                     );
                   } else if (voice != null && !hasText && !hasAttachments) {
                     child = Tooltip(
@@ -206,7 +210,12 @@ class ChatComposer extends StatelessWidget {
             ],
           ),
           if (holding)
-            const Positioned(right: 6, bottom: 74, child: VoiceLockBox()),
+            // Bundle 198: the lock box rises a little as the finger goes up.
+            Positioned(
+              right: 6,
+              bottom: 74 + 16 * voice!.lockProgress,
+              child: VoiceLockBox(progress: voice.lockProgress),
+            ),
           if (voice != null && voice.hintVisible && !holding)
             const Positioned(right: 0, bottom: 58, child: VoiceHintBubble()),
         ],

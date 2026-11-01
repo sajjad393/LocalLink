@@ -16,6 +16,13 @@ const String kMessageEnvelopePrefix = 'llmsg:v1:';
 const String kDeleteEnvelopePrefix = 'lldel:v1:';
 const String kReactionEnvelopePrefix = 'llrx:v1:';
 
+/// Bundle 198: read receipt / voice "played" note (control message).
+/// `llread:v1:{"r":["m1"],"p":["m7"],"at":"2026-11-04T09:14:00Z"}`
+const String kReadEnvelopePrefix = 'llread:v1:';
+
+/// Bundle 198: most ids in one read note (read + played together).
+const int kReadReceiptMaxIds = 200;
+
 /// Delete for everyone is offered for 5 minutes after sending.
 const Duration kDeleteForEveryoneWindow = Duration(minutes: 5);
 
@@ -139,7 +146,8 @@ class MessageEnvelope {
   /// control body shows as empty text.
   static MessageEnvelope parse(String body) {
     if (body.startsWith(kDeleteEnvelopePrefix) ||
-        body.startsWith(kReactionEnvelopePrefix)) {
+        body.startsWith(kReactionEnvelopePrefix) ||
+        body.startsWith(kReadEnvelopePrefix)) {
       return const MessageEnvelope(text: '');
     }
     if (!body.startsWith(kMessageEnvelopePrefix)) {
@@ -192,7 +200,70 @@ class MessageEnvelope {
   /// Control bodies are never bubbles.
   static bool isControl(String body) =>
       body.startsWith(kDeleteEnvelopePrefix) ||
-      body.startsWith(kReactionEnvelopePrefix);
+      body.startsWith(kReactionEnvelopePrefix) ||
+      body.startsWith(kReadEnvelopePrefix);
+}
+
+/// Bundle 198: `llread:v1:` - "I read these" ([read]) and "I played these
+/// voice notes" ([played]). Sent by the reader to the sender only.
+class ReadCommand {
+  final List<String> read;
+  final List<String> played;
+  final DateTime at;
+
+  ReadCommand({
+    required List<String> read,
+    List<String> played = const [],
+    required this.at,
+  })  : read = _clean(read),
+        played = _clean(played);
+
+  bool get isEmpty => read.isEmpty && played.isEmpty;
+  int get count => read.length + played.length;
+
+  static List<String> _clean(Iterable<String> ids) {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final raw in ids) {
+      final id = raw.trim();
+      if (id.isEmpty || !seen.add(id)) continue;
+      out.add(id);
+    }
+    return out;
+  }
+
+  static bool isRead(String body) => body.startsWith(kReadEnvelopePrefix);
+
+  String encode() => '$kReadEnvelopePrefix${jsonEncode({
+        'r': read,
+        if (played.isNotEmpty) 'p': played,
+        'at': at.toUtc().toIso8601String(),
+      })}';
+
+  /// Never throws. Bad JSON, no ids, or more than [kReadReceiptMaxIds]
+  /// ids (cut to the cap) are handled here.
+  static ReadCommand? parse(String body) {
+    if (!isRead(body)) return null;
+    try {
+      final raw = jsonDecode(body.substring(kReadEnvelopePrefix.length));
+      if (raw is! Map) return null;
+      List<String> ids(Object? v) =>
+          v is List ? v.map((e) => e?.toString() ?? '').toList() : <String>[];
+      var read = _clean(ids(raw['r']));
+      var played = _clean(ids(raw['p']));
+      if (played.length > kReadReceiptMaxIds) {
+        played = played.sublist(0, kReadReceiptMaxIds);
+      }
+      final room = kReadReceiptMaxIds - played.length;
+      if (read.length > room) read = read.sublist(0, room);
+      if (read.isEmpty && played.isEmpty) return null;
+      final at = DateTime.tryParse(raw['at']?.toString() ?? '');
+      if (at == null) return null;
+      return ReadCommand(read: read, played: played, at: at.toUtc());
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 /// `lldel:v1:` Delete for everyone.

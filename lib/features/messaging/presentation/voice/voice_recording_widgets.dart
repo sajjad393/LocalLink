@@ -184,8 +184,44 @@ class VoiceHoldingContent extends StatelessWidget {
 }
 
 /// White box with a lock and an up arrow, above the big mic (mock screen 1).
-class VoiceLockBox extends StatelessWidget {
-  const VoiceLockBox({super.key});
+/// Bundle 198: the arrow bobs up and down (1 s loop, none with the system
+/// "Remove animations" setting) and fades as the finger nears the lock
+/// ([progress] 0 .. 1).
+class VoiceLockBox extends StatefulWidget {
+  const VoiceLockBox({super.key, this.progress = 0});
+
+  final double progress;
+
+  static const Duration bobTime = Duration(milliseconds: 500);
+  static const double bobHeight = 4;
+
+  @override
+  State<VoiceLockBox> createState() => _VoiceLockBoxState();
+}
+
+class _VoiceLockBoxState extends State<VoiceLockBox>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _bob =
+      AnimationController(vsync: this, duration: VoiceLockBox.bobTime);
+  bool _still = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (_still) {
+      _bob.stop();
+      _bob.value = 0;
+    } else if (!_bob.isAnimating) {
+      _bob.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _bob.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +244,18 @@ class VoiceLockBox extends StatelessWidget {
             height: 22,
             child: OverflowBox(
               maxHeight: 40,
-              child: Icon(Icons.arrow_drop_up_rounded, size: 40, color: iconColor),
+              child: Opacity(
+                key: const ValueKey('voice_lock_arrow'),
+                opacity: (1 - widget.progress).clamp(0.0, 1.0),
+                child: AnimatedBuilder(
+                  animation: _bob,
+                  builder: (context, child) => Transform.translate(
+                    offset: Offset(0, -VoiceLockBox.bobHeight * _bob.value),
+                    child: child,
+                  ),
+                  child: Icon(Icons.arrow_drop_up_rounded, size: 40, color: iconColor),
+                ),
+              ),
             ),
           ),
         ],

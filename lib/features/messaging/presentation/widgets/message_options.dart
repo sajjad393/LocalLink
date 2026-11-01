@@ -228,6 +228,10 @@ Future<void> showMessageInfoSheet(
   bool notSentYet = false,
   String peerName = '',
   Color? barrierColor,
+  // Bundle 198: read receipts (1-to-1 only).
+  DateTime? readAt,
+  DateTime? playedAt,
+  bool receiptsOff = false,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -237,12 +241,14 @@ Future<void> showMessageInfoSheet(
     builder: (sheetContext) {
       final theme = Theme.of(sheetContext);
       final colors = theme.colorScheme;
-      Widget line(Key key, IconData icon, String label, String value) => Padding(
+      Widget line(Key key, IconData icon, String label, String value,
+              {Color? iconColor}) =>
+          Padding(
             key: key,
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Row(
               children: [
-                Icon(icon, size: 18, color: colors.onSurfaceVariant),
+                Icon(icon, size: 18, color: iconColor ?? colors.onSurfaceVariant),
                 const SizedBox(width: 14),
                 Expanded(
                     child: Text(label,
@@ -272,6 +278,19 @@ Future<void> showMessageInfoSheet(
           rows.add(line(const ValueKey('info_delivered'), Icons.done_all_rounded,
               'Delivered', messageInfoTime(deliveredAt)));
         }
+        // Bundle 198: Read (hidden when my switch is OFF) and Played.
+        if (readAt != null && !receiptsOff) {
+          rows.add(Divider(height: 1, color: colors.outlineVariant));
+          rows.add(line(const ValueKey('info_read'), Icons.done_all_rounded,
+              'Read', messageInfoTime(readAt),
+              iconColor: colors.primary));
+        }
+        if (playedAt != null) {
+          rows.add(Divider(height: 1, color: colors.outlineVariant));
+          rows.add(line(const ValueKey('info_played'), Icons.mic_rounded,
+              'Played', messageInfoTime(playedAt),
+              iconColor: colors.primary));
+        }
       }
       return SafeArea(
         child: Padding(
@@ -288,6 +307,15 @@ Future<void> showMessageInfoSheet(
               const SizedBox(height: 8),
               Divider(height: 1, color: colors.outlineVariant),
               ...rows,
+              if (!group && deliveredAt != null && receiptsOff)
+                Padding(
+                  key: const ValueKey('info_receipts_off'),
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Read receipts are off. Turn on in Settings › Privacy.',
+                    style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
+                  ),
+                ),
               if (!group && deliveredAt == null)
                 Padding(
                   key: const ValueKey('info_waiting'),

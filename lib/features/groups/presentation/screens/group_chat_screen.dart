@@ -26,6 +26,7 @@ import 'package:locallink/core/services/message_delete_book.dart';
 import 'package:locallink/features/messaging/data/forward_hub.dart';
 import 'package:locallink/features/messaging/presentation/screens/forward_screen.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
+import 'package:locallink/core/services/ui_sounds.dart';
 
 class GroupChatScreen extends StatefulWidget {
   final LocalGroup group;
@@ -127,6 +128,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     setState(() => _pending.clear());
     final replyTo = _replyTo;
     if (replyTo != null) setState(() => _replyTo = null);
+    UiSounds.play(UiSound.messageSent); // Bundle 198: soft "tick"
     try {
       await _controller.send(body,
           attachments: files,

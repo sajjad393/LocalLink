@@ -36,6 +36,8 @@ import 'package:locallink/core/services/message_delete_book.dart';
 import 'package:locallink/features/messaging/data/forward_hub.dart';
 import 'package:locallink/features/messaging/presentation/screens/forward_screen.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
+import 'package:locallink/core/services/ui_sounds.dart';
+import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
 
 class ChatScreen extends StatefulWidget {
   final ChatBloc controller;
@@ -89,6 +91,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       onRecordStart: () => MediaPlaybackCoordinator.instance.claim(_voice, _voice.interrupt),
       // Something opened over the chat (a call screen...): pause.
       shouldPause: () => mounted && !(ModalRoute.of(context)?.isCurrent ?? true),
+      // Bundle 198: tik / swoosh / tok.
+      tone: (t) => UiSounds.play(switch (t) {
+        VoiceTone.start => UiSound.voiceStart,
+        VoiceTone.send => UiSound.voiceSend,
+        VoiceTone.cancel => UiSound.voiceCancel,
+      }),
     );
     final draft = VoiceDraftStore.take(widget.controller.device.id);
     if (draft != null) _voice.restore(draft);
@@ -256,6 +264,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       _voice.interrupt();
     }
+    // Bundle 198: back to this open chat -> what came meanwhile is read.
+    if (state == AppLifecycleState.resumed &&
+        mounted &&
+        (ModalRoute.of(context)?.isCurrent ?? true)) {
+      unawaited(widget.notifications
+          ?.markDirectConversationRead(widget.controller.device.id));
+    }
   }
 
   Future<void> _send() async {
@@ -263,6 +278,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (body.isEmpty && widget.controller.pendingAttachments.isEmpty) return;
     _textController.clear();
     final reply = _takeReply();
+    UiSounds.play(UiSound.messageSent); // Bundle 198: soft "tick"
     await widget.controller.send(body, reply: reply);
     if (mounted) _scrollToBottom(animated: true);
   }
@@ -464,9 +480,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _showInfo(Message m) async {
     final status = m.status.toLowerCase();
-    final delivered = const {'delivered', 'direct_delivered', 'read'}
+    final delivered = const {'delivered', 'direct_delivered', 'read', 'played'}
             .contains(status)
         ? (DateTime.tryParse(m.deliveredAt ?? '') ?? m.createdAt)
+        : null;
+    // Bundle 198: Read / Played times (local only).
+    final isRead = status == 'read' || status == 'played';
+    final readAt = isRead
+        ? (DateTime.tryParse(m.readAt ?? '')?.toLocal() ?? delivered)
+        : null;
+    final playedAt = status == 'played'
+        ? (DateTime.tryParse(m.playedAt ?? '')?.toLocal() ?? readAt)
         : null;
     await showMessageInfoSheet(
       context,
@@ -475,6 +499,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       deliveredAt: delivered,
       peerName: _peerName(widget.controller.device),
       barrierColor: _heldId != null ? Colors.transparent : null,
+      readAt: readAt,
+      playedAt: playedAt,
+      receiptsOff: !ReadReceiptsSetting.instance.on,
     );
   }
 

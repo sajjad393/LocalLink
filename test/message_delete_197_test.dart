@@ -324,7 +324,12 @@ void main() {
       // Bundle 197b added v27 = only the media_state side table; the
       // 197a message tables stay as they were.
       final s = src('lib/core/services/local_store.dart');
-      expect(s, isNot(contains('_upgradeTo28')));
+      // Bundle 198: v28 only adds messages.played_at (read receipts).
+      final i = s.indexOf('Future<void> _upgradeTo28(');
+      final up28 = s.substring(i, s.indexOf('\n  }\n', i));
+      expect(RegExp('ALTER TABLE').allMatches(up28).length, 1);
+      expect(up28, contains('ADD COLUMN played_at TEXT'));
+      expect(s, isNot(contains('_upgradeTo29')));
       expect(s, contains('CREATE TABLE IF NOT EXISTS media_state ('));
     });
   });

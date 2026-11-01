@@ -20,6 +20,12 @@ class Message {
   /// wrong one. Persisted in the messages.channel column since DB v26.
   final String? channel;
 
+  /// Bundle 198 (local only, never on the network). My own message: when
+  /// the friend read / played it. The friend's message: [playedAt] = when I
+  /// played it (so "played" is sent once).
+  final String? readAt;
+  final String? playedAt;
+
   const Message({
     required this.id,
     required this.senderId,
@@ -31,6 +37,8 @@ class Message {
     this.serverSeq = 0,
     this.attachments = const [],
     this.channel,
+    this.readAt,
+    this.playedAt,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) => Message(
@@ -86,6 +94,8 @@ class Message {
         channel: (row['channel']?.toString() ?? '').isEmpty
             ? null
             : row['channel']?.toString(),
+        readAt: row['read_at']?.toString(),
+        playedAt: row['played_at']?.toString(),
       );
 
   /// Bundle 197a: the body may carry a quote / Forwarded envelope. Every
@@ -99,12 +109,14 @@ class Message {
         id: id, senderId: senderId, recipientId: recipientId, body: body, createdAt: createdAt,
         status: status, deliveredAt: deliveredAt, serverSeq: serverSeq,
         attachments: attachments ?? this.attachments, channel: channel,
+        readAt: readAt, playedAt: playedAt,
       );
 
   Message copyWithChannel(String? value) => Message(
         id: id, senderId: senderId, recipientId: recipientId, body: body,
         createdAt: createdAt, status: status, deliveredAt: deliveredAt,
         serverSeq: serverSeq, attachments: attachments, channel: value,
+        readAt: readAt, playedAt: playedAt,
       );
 
   Map<String, dynamic> toJson() => {

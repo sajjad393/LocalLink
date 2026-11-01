@@ -4,6 +4,7 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
 import 'package:locallink/features/messaging/data/forward_hub.dart';
+import 'package:locallink/core/services/ui_sounds.dart';
 
 /// Bundle 197a (mock 11): "Forward to" - pick any number of chats and
 /// groups. Returns the picks (null / empty = cancelled).
@@ -238,6 +239,7 @@ Future<ForwardTarget?> runForwardFlow(
   if (picks == null || picks.isEmpty) return null;
   try {
     final chats = await hub.forward(items, picks);
+    UiSounds.play(UiSound.messageSent); // Bundle 198: soft "tick"
     messenger.showSnackBar(SnackBar(
         content: Text(chats == 1
             ? 'Sent to ${picks.first.name}'

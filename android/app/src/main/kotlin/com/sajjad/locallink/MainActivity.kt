@@ -889,6 +889,8 @@ class MainActivity : FlutterActivity() {
                     "saved_alive" -> mediaBg(result) { MediaStorageNative.savedAlive(this, call.argument<String>("uri") ?: "") }
                     "open_uri" -> mediaBg(result) { MediaStorageNative.openUri(this, call.argument<String>("uri") ?: "", call.argument<String>("mime") ?: "") }
                     "sdk_int" -> result.success(Build.VERSION.SDK_INT)
+                    // Bundle 198: short in-app sounds (false = could not play).
+                    "tone" -> result.success(UiSounds.play(this, call.argument<String>("name") ?: ""))
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) { result.error("VOICE_NOTE_ERROR", e.message, null) }

@@ -181,6 +181,7 @@ class LocalStore {
         if (oldVersion < 25) await _upgradeTo25(db);
         if (oldVersion < 26) await _upgradeTo26(db);
         if (oldVersion < 27) await _upgradeTo27(db);
+        if (oldVersion < 28) await _upgradeTo28(db);
       },
     );
     _databaseOpened = true;
@@ -347,6 +348,7 @@ class LocalStore {
     await _upgradeTo25(db);
     await _upgradeTo26(db);
     await _upgradeTo27(db);
+    await _upgradeTo28(db);
   }
 
   Future<void> _upgradeTo2(Database db) async {
@@ -758,6 +760,16 @@ class LocalStore {
       removed_at TEXT,
       saved_uri TEXT
     )''');
+  }
+
+  /// Bundle 198: `messages.played_at` (voice note played). Only this one
+  /// column; added only when missing.
+  Future<void> _upgradeTo28(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(messages)');
+    final names = {for (final row in columns) row['name']?.toString() ?? ''};
+    if (!names.contains('played_at')) {
+      await db.execute('ALTER TABLE messages ADD COLUMN played_at TEXT');
+    }
   }
 
   Future<void> _loadMediaBook() async {
@@ -1965,11 +1977,12 @@ class LocalStore {
         : (message.channel ?? '');
     final existing = await _db.query(
       'messages',
-      columns: ['status', 'delivered_at', 'server_seq', 'is_read', 'read_at', 'channel'],
+      columns: ['status', 'delivered_at', 'server_seq', 'is_read', 'read_at', 'played_at', 'channel'],
       where: 'id=?',
       whereArgs: [message.id],
       limit: 1,
     );
+    String? effectivePlayedAt; // Bundle 198: never wiped by a re-save
     // Bundle 197a: a row that is still here (my unsent message kept by Clear
     // chat) may update; a missing one is checked against the lists.
     if (existing.isEmpty && _dropsDirect(message)) return;
@@ -1988,6 +2001,7 @@ class LocalStore {
           current['is_read']?.toString() == '1' || current['is_read'] == true;
       if (currentRead) effectiveRead = 1;
       effectiveReadAt = current['read_at']?.toString();
+      effectivePlayedAt = current['played_at']?.toString();
       // Bundle 132 (G): keep a previously stored receive-transport claim when
       // this save carries none (status flips, server echoes).
       if (effectiveChannel.isEmpty) {
@@ -2008,6 +2022,7 @@ class LocalStore {
         'server_seq': effectiveServerSeq,
         'is_read': effectiveRead,
         'read_at': effectiveReadAt,
+        'played_at': effectivePlayedAt,
         // Bundle 132 (G): persist the receive transport; never let a later
         // status flip (queued→sent) erase it with an empty claim.
         'channel': effectiveChannel,
@@ -2364,6 +2379,8 @@ class LocalStore {
           // Bundle 133+: carry the persisted receive transport so thread
           // dividers survive every history reload (was dropped here).
           channel: m.channel,
+          readAt: m.readAt, // Bundle 198
+          playedAt: m.playedAt,
           attachments: atts));
     }
     return out;
@@ -2660,6 +2677,8 @@ class LocalStore {
       deliveredAt: message.deliveredAt,
       serverSeq: message.serverSeq,
       channel: message.channel,
+      readAt: message.readAt, // Bundle 198
+      playedAt: message.playedAt,
       attachments: attachments,
     );
   }
@@ -2720,6 +2739,66 @@ class LocalStore {
         .map((row) => row['conversation_id']?.toString() ?? '')
         .where((id) => id.isNotEmpty)
         .toList();
+  }
+
+  /// Bundle 198: the friend [fromPeer] read / played my messages. Only my
+  /// own rows sent to that friend change. Returns the ids that changed.
+  Future<List<String>> applyReadReceipt({
+    required String fromPeer,
+    required List<String> readIds,
+    required List<String> playedIds,
+    required String at,
+  }) async {
+    final self = _deviceId;
+    if (self == null || fromPeer.isEmpty) return const [];
+    final played = playedIds.toSet();
+    final all = <String>{...readIds, ...played}.toList();
+    final changed = <String>[];
+    for (var i = 0; i < all.length; i += 100) {
+      final chunk = all.sublist(i, i + 100 > all.length ? all.length : i + 100);
+      final marks = List.filled(chunk.length, '?').join(',');
+      final rows = await _db.query(
+        'messages',
+        columns: ['id', 'status', 'delivered_at', 'read_at', 'played_at'],
+        where: 'id IN ($marks) AND sender_id=? AND recipient_id=?',
+        whereArgs: [...chunk, self, fromPeer],
+      );
+      for (final row in rows) {
+        final id = row['id']?.toString() ?? '';
+        final isPlayed = played.contains(id);
+        final current = row['status']?.toString() ?? 'queued';
+        // A send I cancelled keeps "Not sent - tap to retry" (Bundle 174).
+        if (current.toLowerCase() == 'failed') continue;
+        final next = _mergeMessageStatus(current, isPlayed ? 'played' : 'read');
+        final values = <String, dynamic>{};
+        if (next != current) values['status'] = next;
+        if ((row['delivered_at']?.toString() ?? '').isEmpty) {
+          values['delivered_at'] = at;
+        }
+        if ((row['read_at']?.toString() ?? '').isEmpty) values['read_at'] = at;
+        if (isPlayed && (row['played_at']?.toString() ?? '').isEmpty) {
+          values['played_at'] = at;
+        }
+        if (values.isEmpty) continue;
+        await _db.update('messages', values, where: 'id=?', whereArgs: [id]);
+        changed.add(id);
+      }
+    }
+    return changed;
+  }
+
+  /// Bundle 198: I played the friend's voice note [id]. True only the
+  /// first time (so "played" is sent once).
+  Future<bool> markPlayedByMe(String id) async {
+    final self = _deviceId;
+    if (id.isEmpty || self == null) return false;
+    final count = await _db.update(
+      'messages',
+      {'played_at': DateTime.now().toUtc().toIso8601String()},
+      where: "id=? AND recipient_id=? AND sender_id!=? AND (played_at IS NULL OR played_at='')",
+      whereArgs: [id, self, self],
+    );
+    return count > 0;
   }
 
   Future<void> markMessageRead(String id) async {
@@ -2829,6 +2908,11 @@ class LocalStore {
   String _mergeMessageStatus(String current, String incoming) {
     int rank(String value) {
       switch (value) {
+        // Bundle 198: the friend read / played it (clearly delivered).
+        case 'played':
+          return 7;
+        case 'read':
+          return 6;
         case 'failed':
           return 5;
         case 'delivered':
@@ -2870,6 +2954,8 @@ class LocalStore {
         status: m.status,
         deliveredAt: m.deliveredAt,
         serverSeq: m.serverSeq,
+        readAt: m.readAt, // Bundle 198
+        playedAt: m.playedAt,
         attachments: await _attachmentsForMessage(m.id),
       ));
     }

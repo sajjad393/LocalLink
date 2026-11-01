@@ -68,6 +68,27 @@ final class LocalLinkNotificationService {
   Future<void> Function(String deviceId)? onFriendRequestAccept;
   Future<void> Function(String deviceId)? onFriendRequestDecline;
 
+  /// Bundle 198: a friend's 1-to-1 message became read on this phone
+  /// (read receipts). Set by AppDependencies.
+  void Function(Message message)? onDirectRead;
+
+  /// Bundle 198: a message arrived in the chat that is on screen (the
+  /// "pop-pop" sound). [group] for group chats.
+  void Function({required bool group})? onActiveChatMessage;
+
+  void _noteRead(Message message) {
+    try {
+      onDirectRead?.call(message);
+    } catch (_) {}
+  }
+
+  void _noteActiveChat({required bool group}) {
+    if (policy.shouldBeSilent) return; // a call is ringing / on
+    try {
+      onActiveChatMessage?.call(group: group);
+    } catch (_) {}
+  }
+
   /// Bundle 177 (8.4): one "added you" notice per person per 24 h.
   static const Duration friendNoticeWindow = Duration(hours: 24);
 
@@ -258,6 +279,8 @@ final class LocalLinkNotificationService {
       // UI receives this same message stream, so this message is now viewed.
       await store.markMessageRead(message.id);
       await store.removeNotificationStateForMessage(message.id);
+      _noteRead(message); // Bundle 198
+      _noteActiveChat(group: false);
       return;
     }
     // Bundle 194: a new friend's "Hello 👋" right after the "X added you"
@@ -299,6 +322,7 @@ final class LocalLinkNotificationService {
     if (!policy.shouldNotifyGroup(message.groupId)) {
       await store.markGroupMessageRead(message.id);
       await store.removeNotificationStateForMessage(message.id);
+      _noteActiveChat(group: true); // Bundle 198
       return;
     }
     await _showGroup(message);
@@ -889,6 +913,7 @@ final class LocalLinkNotificationService {
 
   Future<void> _markDirectMessageRead(Message message) async {
     await store.markMessageRead(message.id);
+    _noteRead(message); // Bundle 198
     await store.removeNotificationStateForMessage(message.id);
     await platform.cancelNotification(
       notificationIdForDirectMessage(message.senderId, message.id),
