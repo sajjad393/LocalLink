@@ -126,8 +126,12 @@ class TransferPercentRing extends StatefulWidget {
     this.onCancel,
     this.isVideo = true,
     this.size = 60,
+    this.paused = false,
   });
 
+  /// Bundle 179 (1.6): pause sign instead of the percent (file waits for a
+  /// voice call to end).
+  final bool paused;
   final double? fraction;
   final Future<void> Function()? onCancel;
   final bool isVideo;
@@ -206,7 +210,12 @@ class _TransferPercentRingState extends State<TransferPercentRing> {
                   color: Colors.white, size: 28),
             ),
           )
-        : Text(
+        : widget.paused
+            ? Icon(Icons.pause_rounded,
+                key: const Key('transfer_paused'),
+                color: Colors.white,
+                size: size * .45)
+            : Text(
             text,
             key: const Key('transfer_percent'),
             style: TextStyle(
@@ -217,7 +226,9 @@ class _TransferPercentRingState extends State<TransferPercentRing> {
             ),
           );
     return Semantics(
-      label: text.isEmpty ? 'Transferring' : 'Transferring $text',
+      label: widget.paused
+          ? 'Sends after the call'
+          : (text.isEmpty ? 'Transferring' : 'Transferring $text'),
       button: widget.onCancel != null,
       child: GestureDetector(
         key: const Key('transfer_percent_ring'),

@@ -30,6 +30,8 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
   static const _keepAliveKey = 'keep_alive_enabled';
   // Bundle 177 (10, 9): Nearby while closed + the one-time Location ask.
   String? _nearby;
+  // Bundle 179 (3.4, 3.5): call alerts line on the STATUS card.
+  String? _callAlerts;
   bool _bgLocationNeeded = false;
   bool _bgLocationAsked = false;
 
@@ -75,6 +77,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
         _notificationsOn = raw['notifications'] != false;
         final nearby = raw['nearby']?.toString();
         _nearby = nearby == null ? null : (adminOff ? 'admin_off' : nearby);
+        _callAlerts = raw['call_alerts']?.toString();
       });
     } catch (_) {/* older native side: no card */}
     await _loadBackgroundLocation();
@@ -172,6 +175,16 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
     await Future<void>.delayed(const Duration(milliseconds: 1200));
     await _loadStatus();
     if (mounted) setState(() => _starting = false);
+  }
+
+  /// Bundle 179 (3.4, 3.5): open Android's page for the call alert problem.
+  Future<void> _fixCallAlerts() async {
+    try {
+      await _bg.invokeMethod<void>(
+          'openCallAlertSettings', {'state': _callAlerts ?? ''});
+    } catch (_) {
+      _toast('Could not open notification settings right now.');
+    }
   }
 
   Future<void> _allowNotifications() async {
@@ -376,6 +389,8 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
               onStart: _startService,
               onAllowNotifications: _allowNotifications,
               nearby: _nearby,
+              callAlerts: _callAlerts,
+              onFixCallAlerts: _fixCallAlerts,
             ),
             const SizedBox(height: 20),
           ],

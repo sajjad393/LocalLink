@@ -9,7 +9,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
+import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import android.util.Log
 
 /** Android-only incoming-call notification presentation. */
 object CallNotificationManager {
@@ -51,9 +56,15 @@ object CallNotificationManager {
         if (callId.isBlank() || callerId.isBlank()) return
         initialize(context)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= 33 &&
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) return
+        // Bundle 179 (3.1): say WHY nothing shows (the phone keeps ringing).
+        val fullScreen = fullScreenAllowed(manager)
+        val state = alertState(context, manager, fullScreen)
+        if (CallAlertPolicy.blocked(state)) {
+            Log.w("LocalLinkCall", "CALL_NOTIFY_BLOCKED call=$callId reason=$state")
+            return
+        }
+        val mode = CallAlertPolicy.mode(fullScreen)
+        Log.i("LocalLinkCall", "CALL_NOTIFY_MODE call=$callId mode=$mode")
 
         val openIntent = Intent(context, MainActivity::class.java).apply {
             action = ACTION_OPEN
@@ -112,7 +123,6 @@ object CallNotificationManager {
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
             .setContentIntent(openPending)
-            .setFullScreenIntent(openPending, true)
             .addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(context, android.R.drawable.sym_action_call),
@@ -128,7 +138,79 @@ object CallNotificationManager {
                 ).build(),
             )
 
-        manager.notify(NOTIFICATION_ID, builder.build())
+        // Bundle 179 (3.0b): full screen only when Android allows it.
+        if (mode == CallAlertPolicy.MODE_FULL_SCREEN) builder.setFullScreenIntent(openPending, true)
+
+        try {
+            manager.notify(NOTIFICATION_ID, builder.build())
+        } catch (e: Throwable) {
+            // Bundle 179 (3.0): this used to vanish silently.
+            Log.w("LocalLinkCall", "CALL_NOTIFY_FAILED call=$callId error=${e.javaClass.simpleName}:${e.message?.take(120)}")
+            return
+        }
+        // Bundle 179 (3.2): does Android really show it? (Realme check)
+        if (Build.VERSION.SDK_INT >= 23) {
+            val app = context.applicationContext
+            Handler(Looper.getMainLooper()).postDelayed({
+                val shown = try {
+                    (app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                        .activeNotifications.any { it.id == NOTIFICATION_ID }
+                } catch (_: Throwable) { null }
+                Log.i("LocalLinkCall", "CALL_NOTIFY_POSTED call=$callId shown=${when (shown) { true -> "yes"; false -> "no"; null -> "unknown" }} mode=$mode")
+            }, 700L)
+        }
+    }
+
+    private fun fullScreenAllowed(manager: NotificationManager): Boolean? =
+        if (Build.VERSION.SDK_INT >= 34) {
+            try { manager.canUseFullScreenIntent() } catch (_: Throwable) { null }
+        } else null
+
+    /** Bundle 179 (3.4, 3.5): ok / permission / app_off / category_off / lockscreen_off. */
+    fun alertState(context: Context): String {
+        initialize(context)
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return alertState(context, manager, fullScreenAllowed(manager))
+    }
+
+    private fun alertState(context: Context, manager: NotificationManager, fullScreen: Boolean?): String {
+        val permission = Build.VERSION.SDK_INT < 33 ||
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val appOn = try { manager.areNotificationsEnabled() } catch (_: Throwable) { true }
+        val importance = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try { manager.getNotificationChannel(CHANNEL_ID)?.importance } catch (_: Throwable) { null }
+        } else null
+        return CallAlertPolicy.state(permission, appOn, importance, fullScreen)
+    }
+
+    /**
+     * Bundle 179 (3.4, 3.5): open Android's own page for the problem:
+     * full-screen calls (Android 14+), the call category, or the app's
+     * notification page.
+     */
+    fun openAlertSettings(context: Context, state: String) {
+        val pkg = context.packageName
+        val intents = mutableListOf<Intent>()
+        if (state == CallAlertPolicy.LOCKSCREEN_OFF && Build.VERSION.SDK_INT >= 34) {
+            intents += Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$pkg"))
+        }
+        if (state == CallAlertPolicy.CATEGORY_OFF && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intents += Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, pkg)
+                .putExtra(Settings.EXTRA_CHANNEL_ID, CHANNEL_ID)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intents += Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, pkg)
+        }
+        intents += Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
+        for (intent in intents) {
+            try {
+                if (context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+                Log.i("LocalLinkCall", "CALL_ALERT_SETTINGS_OPENED state=$state page=${intent.action}")
+                return
+            } catch (_: Throwable) {}
+        }
     }
 
     fun cancelIncoming(context: Context) {

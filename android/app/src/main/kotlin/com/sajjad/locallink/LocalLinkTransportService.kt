@@ -416,6 +416,8 @@ class LocalLinkTransportService : Service() {
 
     private val callMediaLock = Any()
     @Volatile private var callMedia: CallMediaSession? = null
+    // Bundle 179 (1.6): files paused for a live voice call (transfer id -> paused at).
+    private val pausedForCall = ConcurrentHashMap<String, Long>()
 
     // CPU and Wi-Fi radio must stay awake for the duration of a call: OEM
     // power managers (ZTE SuperKiller, battery savers) otherwise suspend the
@@ -2041,6 +2043,49 @@ class LocalLinkTransportService : Service() {
         releaseCallLocks()
         if (micForeground && synchronized(callMediaLock) { callMedia == null }) setCallMicForeground(false) // Bundle 175 (7)
         callMediaRecent.clear()
+        // Bundle 179 (1.6): files waiting for the call go again once it is over.
+        if (pausedForCall.isNotEmpty()) Thread {
+            try { Thread.sleep(CallFilePausePolicy.RESUME_DELAY_MS) } catch (_:InterruptedException) { return@Thread }
+            if (!voiceCallLive()) resumeFilesAfterCall()
+        }.start()
+    }
+
+    private fun voiceCallLive(): Boolean = callMedia?.isRunning == true
+
+    /**
+     * Bundle 179 (1.6): true = this file must wait for the call to end
+     * (tells the app once: "Sends after the call"). After the pause limit, or
+     * with no call, a paused file is marked resumed and sends again.
+     */
+    private fun pauseFileForCall(t:OutgoingFileTransfer): Boolean {
+        val now = System.currentTimeMillis()
+        val pausedAt = pausedForCall[t.transferId]
+        if (CallFilePausePolicy.shouldPause(voiceCallLive(), pausedAt, now)) {
+            if (pausedAt == null && pausedForCall.putIfAbsent(t.transferId, now) == null) {
+                Log.i("LOCAL_LINK_TRANSPORT", "FILE_PAUSED_FOR_CALL transfer=${t.transferId.take(12)}")
+                transportEvent("file_paused", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId, "file_id" to t.fileId, "reason" to "call"))
+            }
+            return true
+        }
+        if (pausedAt == null) return false
+        val live = voiceCallLive()
+        // -1 = the pause limit was reached during this call: never pause again
+        // until the call is over.
+        if (live) pausedForCall[t.transferId] = -1L else pausedForCall.remove(t.transferId)
+        if (pausedAt >= 0L) {
+            Log.i("LOCAL_LINK_TRANSPORT", "FILE_RESUMED_AFTER_CALL transfer=${t.transferId.take(12)} reason=${if (live) "pause_limit" else "call_ended"}")
+            transportEvent("file_resumed", mapOf("transfer_id" to t.transferId, "message_id" to t.messageId, "file_id" to t.fileId))
+        }
+        return false
+    }
+
+    private fun resumeFilesAfterCall() {
+        for (id in pausedForCall.keys.toList()) {
+            val t = outgoingTransfers[id]
+            if (t == null) { pausedForCall.remove(id); continue }
+            if ((pausedForCall[id] ?: 0L) < 0L) pausedForCall.remove(id)
+            Thread { sendMissingChunks(t, true) }.start()
+        }
     }
 
     private fun setCallMediaMutedInternal(callId:String, muted:Boolean) {
@@ -2396,6 +2441,18 @@ class LocalLinkTransportService : Service() {
         private var audioFocusRequest:AudioFocusRequest? = null
         private var captureThread:Thread? = null
         private var playbackThread:Thread? = null
+        // Bundle 179 (1.3): the microphone hands sound to this short line;
+        // its own thread sends it, so a slow network never stops the mic.
+        private var senderThread:Thread? = null
+        private val txLock = Object()
+        private val txQueue = ArrayDeque<TxFrame>()
+        // Bundle 179 (1.1, 1.7): catch-up counters + delay log.
+        private val skipped = AtomicLong(0)
+        private var writtenSamples = 0L
+        @Volatile private var maxRxQueueMs = 0
+        @Volatile private var maxTxQueueMs = 0
+        @Volatile private var maxSpeakerMs = 0
+        private var lastDelayLogMs = 0L
         private val playbackLock = Object()
         private val playbackQueue = PriorityQueue<AudioFrame>(compareBy<AudioFrame>{it.sequence})
         private var expectedSequence = 0L
@@ -2419,13 +2476,17 @@ class LocalLinkTransportService : Service() {
                 }
                 val minRecord = AudioRecord.getMinBufferSize(CALL_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
                 if (minRecord <= 0) throw IllegalStateException("AudioRecord is unavailable")
-                val bufferSize = maxOf(minRecord, CALL_FRAME_BYTES * 8)
+                // Bundle 179 (1.4): ~80 ms microphone buffer (was 160 ms).
+                val bufferSize = CallAudioLatencyPolicy.micBufferBytes(minRecord, CALL_FRAME_BYTES)
+                // Bundle 179 (1.2): ~80 ms speaker buffer (was 240 ms), sized
+                // from the SPEAKER minimum (the old code used the mic one).
+                val minTrack = AudioTrack.getMinBufferSize(CALL_SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
                 val r = AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, CALL_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize)
                 if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); throw IllegalStateException("AudioRecord initialization failed") }
                 val t = AudioTrack.Builder()
                     .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                     .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(CALL_SAMPLE_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                    .setBufferSizeInBytes(maxOf(CALL_FRAME_BYTES * 12, minRecord))
+                    .setBufferSizeInBytes(CallAudioLatencyPolicy.speakerBufferBytes(if (minTrack > 0) minTrack else minRecord, CALL_FRAME_BYTES))
                     .setTransferMode(AudioTrack.MODE_STREAM)
                     .build()
                 if (t.state != AudioTrack.STATE_INITIALIZED) { r.release(); t.release(); throw IllegalStateException("AudioTrack initialization failed") }
@@ -2433,6 +2494,7 @@ class LocalLinkTransportService : Service() {
                 requestCallAudioFocus()
                 r.startRecording(); t.play()
                 captureThread=Thread { captureLoop() }.also { it.start() }
+                senderThread=Thread { senderLoop() }.also { it.start() }
                 playbackThread=Thread { playbackLoop() }.also { it.start() }
             } catch (e: Exception) {
                 running.set(false)
@@ -2451,12 +2513,15 @@ class LocalLinkTransportService : Service() {
             try { recorder?.stop() } catch (_:Exception) {}
             try { track?.stop() } catch (_:Exception) {}
             synchronized(playbackLock) { playbackQueue.clear(); playbackLock.notifyAll() }
-            captureThread?.interrupt(); playbackThread?.interrupt()
+            synchronized(txLock) { txQueue.clear(); txLock.notifyAll() }
+            captureThread?.interrupt(); senderThread?.interrupt(); playbackThread?.interrupt()
             recorder?.release(); track?.release(); recorder=null; track=null
             abandonCallAudioFocus()
             opusEncoder?.close(); opusDecoder?.close(); opusEncoder=null; opusDecoder=null
             opusDecoderFailed = false; opusDecodeMisses = 0
-            captureThread=null; playbackThread=null
+            captureThread=null; senderThread=null; playbackThread=null
+            writtenSamples = 0L; lastDelayLogMs = 0L
+            maxRxQueueMs = 0; maxTxQueueMs = 0; maxSpeakerMs = 0
             expectedSequence = 0L
             playbackSequenceInitialized = false
             lastArrivalMs = 0L
@@ -2522,19 +2587,53 @@ class LocalLinkTransportService : Service() {
                             null
                         }
                         if (packets != null) {
-                            for (packet in packets) sendAudioPacket(packet, CallOpus2Format.CODEC)
+                            for (packet in packets) queueTx(packet, CallOpus2Format.CODEC)
                             continue
                         }
                     }
-                    sendAudioPacket(data, CallOpus2Format.PCM)
+                    queueTx(data, CallOpus2Format.PCM)
                 } catch (_:InterruptedException) { break } catch (_:Exception) { dropped.incrementAndGet(); if(!running.get()) break }
             }
         }
 
-        private fun sendAudioPacket(audio:ByteArray, packetCodec:String) {
+        /**
+         * Bundle 179 (1.3): capture thread only. The sequence number is taken
+         * HERE, so sound dropped from a full line shows as a gap on the other
+         * phone (it plays on) instead of arriving late.
+         */
+        private fun queueTx(audio:ByteArray, packetCodec:String) {
             if (audio.isEmpty()) return
-            val seq=sequence.getAndIncrement()
-            val ts=System.currentTimeMillis()
+            val frame = TxFrame(sequence.getAndIncrement(), System.currentTimeMillis(), audio, packetCodec)
+            synchronized(txLock) {
+                repeat(CallAudioLatencyPolicy.txFramesToDrop(txQueue.size)) {
+                    if (txQueue.removeFirstOrNull() != null) { skipped.incrementAndGet(); dropped.incrementAndGet() }
+                }
+                txQueue.addLast(frame)
+                val ms = CallAudioLatencyPolicy.queueMs(txQueue.size)
+                if (ms > maxTxQueueMs) maxTxQueueMs = ms
+                txLock.notifyAll()
+            }
+        }
+
+        /** Bundle 179 (1.3): sends the line; may block on the network, the mic never does. */
+        private fun senderLoop() {
+            while (running.get()) {
+                val frame = try {
+                    synchronized(txLock) {
+                        while (running.get() && txQueue.isEmpty()) txLock.wait(100)
+                        if (!running.get()) null else txQueue.removeFirstOrNull()
+                    }
+                } catch (_:InterruptedException) { Thread.currentThread().interrupt(); return } ?: continue
+                try { sendAudioPacket(frame) } catch (_:Exception) { dropped.incrementAndGet() }
+            }
+        }
+
+        private fun sendAudioPacket(frame:TxFrame) {
+            val audio = frame.audio
+            val packetCodec = frame.codec
+            if (audio.isEmpty()) return
+            val seq=frame.sequence
+            val ts=frame.timestampMs
             val encoded=Base64.encodeToString(audio, Base64.NO_WRAP)
             val payload=JSONObject().put("type","call_media").put("sender_id",transportDeviceId).put("recipient_id",peerId).put("call_id",callId).put("sequence",seq).put("timestamp_ms",ts).put("sample_rate",CALL_SAMPLE_RATE).put("frame_ms",CALL_FRAME_MS).put("codec",packetCodec).put("ttl",8).put("audio_payload",encoded)
             if (codec == CallOpus2Format.CODEC) payload.put("opus2_rx", opusRxOk)
@@ -2614,6 +2713,16 @@ class LocalLinkTransportService : Service() {
                     synchronized(playbackLock) {
                         while(running.get() && playbackQueue.isEmpty()) playbackLock.wait(100)
                         if(!running.get()) return@synchronized null
+                        // Bundle 179 (1.1): line longer than 120 ms -> skip the
+                        // oldest sound back to ~60 ms (catch up, never lag).
+                        val skip = CallAudioLatencyPolicy.rxFramesToSkip(playbackQueue.size)
+                        if (skip > 0) {
+                            repeat(skip) { playbackQueue.poll() }
+                            skipped.addAndGet(skip.toLong())
+                            playbackQueue.peek()?.let { expectedSequence = it.sequence }
+                        }
+                        val rxMs = CallAudioLatencyPolicy.queueMs(playbackQueue.size)
+                        if (rxMs > maxRxQueueMs) maxRxQueueMs = rxMs
                         val head=playbackQueue.peek() ?: return@synchronized null
                         val now=System.currentTimeMillis()
                         if (head.sequence > expectedSequence && now - head.receivedAtMs < CALL_JITTER_BUFFER_MS && playbackQueue.size < 4) {
@@ -2634,9 +2743,26 @@ class LocalLinkTransportService : Service() {
                 try {
                     val pcm = if (frame.codec == CallOpus2Format.CODEC) decodeOpus(frame.audio) else frame.audio
                     if (pcm == null || pcm.isEmpty()) { dropped.incrementAndGet(); continue }
-                    track?.write(pcm,0,pcm.size,AudioTrack.WRITE_BLOCKING); received.incrementAndGet()
+                    val t = track
+                    val written = t?.write(pcm,0,pcm.size,AudioTrack.WRITE_BLOCKING) ?: 0
+                    if (written > 0) writtenSamples += written / 2
+                    received.incrementAndGet()
+                    if (t != null) noteSpeakerDelay(t)
                 } catch (_:Exception) { dropped.incrementAndGet() }
             }
+        }
+
+        /** Bundle 179 (1.7): playback thread only. One log line per 10 s. */
+        private fun noteSpeakerDelay(t:AudioTrack) {
+            val played = try { t.playbackHeadPosition.toLong() and 0xFFFFFFFFL } catch (_:Exception) { return }
+            val speakerMs = CallAudioLatencyPolicy.speakerBacklogMs(writtenSamples, played, CALL_SAMPLE_RATE)
+            if (speakerMs > maxSpeakerMs) maxSpeakerMs = speakerMs
+            val now = System.currentTimeMillis()
+            if (lastDelayLogMs == 0L) { lastDelayLogMs = now; return }
+            if (!CallAudioLatencyPolicy.logDue(now, lastDelayLogMs)) return
+            lastDelayLogMs = now
+            Log.i("LocalLinkCall", CallAudioLatencyPolicy.delayLogLine(callId, maxRxQueueMs, maxSpeakerMs, maxTxQueueMs, skipped.get()))
+            maxRxQueueMs = 0; maxTxQueueMs = 0; maxSpeakerMs = 0
         }
 
         fun setMuted(value:Boolean) { muted=value }
@@ -2664,11 +2790,13 @@ class LocalLinkTransportService : Service() {
 
         fun stats():Map<String,Any?> {
             val s=sent.get(); val r=received.get(); val l=lost.get(); val total=r+l
-            return mapOf("sent_packets" to s, "received_packets" to r, "lost_packets" to l, "dropped_packets" to dropped.get(), "packet_loss_percent" to if(total>0) l*100.0/total else 0.0, "queued_frames" to synchronized(playbackLock){playbackQueue.size}, "jitter_ms" to jitterMs, "codec" to codec, "send_codec" to sendCodec, "rx_codec" to lastRxCodec, "opus_rx_ok" to opusRxOk, "opus_fallback" to fallbackReason, "frame_ms" to CALL_FRAME_MS, "sample_rate" to CALL_SAMPLE_RATE, "muted" to muted)
+            return mapOf("sent_packets" to s, "received_packets" to r, "lost_packets" to l, "dropped_packets" to dropped.get(), "skipped_frames" to skipped.get(), "packet_loss_percent" to if(total>0) l*100.0/total else 0.0, "queued_frames" to synchronized(playbackLock){playbackQueue.size}, "jitter_ms" to jitterMs, "codec" to codec, "send_codec" to sendCodec, "rx_codec" to lastRxCodec, "opus_rx_ok" to opusRxOk, "opus_fallback" to fallbackReason, "frame_ms" to CALL_FRAME_MS, "sample_rate" to CALL_SAMPLE_RATE, "muted" to muted)
         }
     }
 
     private data class AudioFrame(val sequence:Long,val timestampMs:Long,val receivedAtMs:Long,val audio:ByteArray,val codec:String = CallOpus2Format.PCM)
+    /** Bundle 179 (1.3): one frame waiting on the sending line. */
+    private class TxFrame(val sequence:Long, val timestampMs:Long, val audio:ByteArray, val codec:String)
 
     private fun buildRouteAdvertisement(peerId: String): JSONObject {
         val self = transportDeviceId ?: ""
@@ -4277,6 +4405,7 @@ class LocalLinkTransportService : Service() {
                 deleteOutgoingMeta(t);outgoingTransfers.remove(t.transferId);outgoingRetryCounts.remove(t.transferId);cancelledDirectTransfers.remove(t.transferId)
                 transportEvent("file_cancelled",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"file_id" to t.fileId));return
             }
+            if(pauseFileForCall(t)) return // Bundle 179 (1.6)
             val f=File(t.filePath)
             if(!f.isFile||f.length()!=t.size||sha256File(f)!=t.sha256){
                 deleteOutgoingMeta(t);outgoingTransfers.remove(t.transferId);outgoingRetryCounts.remove(t.transferId)
@@ -4289,12 +4418,14 @@ class LocalLinkTransportService : Service() {
             }
             var sentAny=false
             var inFlightSkipped=false
+            var pausedNow=false
             FileInputStream(f).use{input->
                 val buf=ByteArray(directChunkSize);var idx=0
                 while(true){
                     if(cancelledDirectTransfers.contains(t.transferId)){cancelledDirectTransfers.remove(t.transferId);transportEvent("file_cancelled",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"file_id" to t.fileId));return}
                     val n=input.read(buf);if(n<=0)break
                     if(onlyMissing&&t.acknowledged[idx]){idx++;continue}
+                    if(pauseFileForCall(t)){pausedNow=true;break} // Bundle 179 (1.6): a call started
                     // Bundle 144: a chunk sent <10s ago is still in flight. Resending it
                     // flooded the link (every ack re-sent EVERY unconfirmed chunk).
                     if(System.currentTimeMillis()-t.lastSentAt[idx]<DirectFileTransferPolicy.RESEND_AFTER_MS){inFlightSkipped=true;idx++;continue}
@@ -4307,7 +4438,7 @@ class LocalLinkTransportService : Service() {
             if(t.size==0L&&!t.acknowledged[0]){
                 val p=JSONObject().put("type","direct_file_chunk").put("sender_id",t.senderId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("file_id",t.fileId).put("message_id",t.messageId).put("file_name",t.fileName).put("content_type",t.contentType).put("size",0).put("sha256",t.sha256).put("chunk_index",0).put("total_chunks",1).put("data","");sendRoutedPayload(t.recipientId,p);sentAny=true
             }
-            if(!sentAny&&!inFlightSkipped) transportEvent("file_retry_scheduled",mapOf("transfer_id" to t.transferId,"attempt" to attempt))
+            if(!sentAny&&!inFlightSkipped&&!pausedNow) transportEvent("file_retry_scheduled",mapOf("transfer_id" to t.transferId,"attempt" to attempt))
             t.updatedAt=System.currentTimeMillis();persistOutgoingTransfer(t)
         } finally {
             outgoingSendInFlight.remove(t.transferId)
@@ -4423,7 +4554,11 @@ class LocalLinkTransportService : Service() {
         // Bundle 144: same durable path as every other confirmation.
         synchronized(incomingFiles){sendFileAckNow(t)}
     }
-    private fun sendResumeRequests(){val now=System.currentTimeMillis();for(t in outgoingTransfers.values.toList())if(now-t.updatedAt>=DirectFileTransferPolicy.RESEND_AFTER_MS){noteFileStall(t,now);try{sendRoutedPayload(t.recipientId,JSONObject().put("type","direct_file_resume_request").put("sender_id",transportDeviceId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("total_chunks",t.totalChunks))}catch(_:Exception){}}}
+    private fun sendResumeRequests(){val now=System.currentTimeMillis();val live=voiceCallLive();for(t in outgoingTransfers.values.toList())if(now-t.updatedAt>=DirectFileTransferPolicy.RESEND_AFTER_MS){
+        // Bundle 179 (1.6): a file waiting for the call is not stuck.
+        val pausedAt=pausedForCall[t.transferId]
+        if(pausedAt!=null&&CallFilePausePolicy.shouldPause(live,pausedAt,now))continue
+noteFileStall(t,now);try{sendRoutedPayload(t.recipientId,JSONObject().put("type","direct_file_resume_request").put("sender_id",transportDeviceId).put("recipient_id",t.recipientId).put("transfer_id",t.transferId).put("sha256",t.sha256).put("total_chunks",t.totalChunks))}catch(_:Exception){}}}
     /** Bundle 165: a stuck transfer counts one stall per resend period and
      *  switches between plain and locked every few stalls. */
     private fun noteFileStall(t:OutgoingFileTransfer,now:Long){

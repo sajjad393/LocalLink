@@ -12,7 +12,27 @@ class BackgroundStatusCard extends StatelessWidget {
     required this.onAllowNotifications,
     this.starting = false,
     this.nearby,
+    this.callAlerts,
+    this.onFixCallAlerts,
   });
+
+  /// Bundle 179 (3.4, 3.5): ok / category_off / lockscreen_off (null or
+  /// permission / app_off = no row; the Notifications row covers those).
+  final String? callAlerts;
+  final VoidCallback? onFixCallAlerts;
+
+  /// Bundle 179 (3.4, 3.5): (dot colour, title, subtitle, tappable) for the
+  /// call alerts row (approved mock `mocks/bundle179_mock.svg`).
+  static (Color, String, String, bool)? callAlertsRow(String? state) =>
+      switch (state) {
+        'ok' => (green, 'Call alerts on', 'Calls ring with Accept / Reject',
+            false),
+        'category_off' => (red, 'Call alerts off - tap to turn on',
+            'Calls ring, but no Accept button', true),
+        'lockscreen_off' => (orange, 'Lock-screen calls off - turn on',
+            'Android 14+: full screen when locked', true),
+        _ => null,
+      };
 
   /// Bundle 177 (10.2): Nearby while closed - on / no_permission /
   /// no_location / admin_off / battery_low / unsupported (null = no row).
@@ -43,7 +63,8 @@ class BackgroundStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final allGood = running && notifications;
+    final allGood =
+        running && notifications && callAlerts != 'category_off';
     final edge = allGood ? green : red;
     final scheme = Theme.of(context).colorScheme;
     final muted = scheme.onSurface.withValues(alpha: 0.6);
@@ -126,6 +147,32 @@ class BackgroundStatusCard extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+        if (callAlertsRow(callAlerts)
+            case (final color, final title, final sub, final tappable)) ...[
+          const SizedBox(height: 12),
+          InkWell(
+            key: const ValueKey('background-status-call-alerts'),
+            onTap: tappable ? onFixCallAlerts : null,
+            child: Row(
+              children: [
+                _dot(color),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15)),
+                      const SizedBox(height: 2),
+                      Text(sub, style: TextStyle(fontSize: 12, color: muted)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ]),

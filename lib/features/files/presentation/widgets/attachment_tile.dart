@@ -1005,11 +1005,40 @@ class _LiveRing extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<MediaProgress?>(
       valueListenable: MediaProgressHub.instance.watch(messageId),
-      builder: (context, p, _) => TransferPercentRing(
-        fraction: p?.fraction,
-        isVideo: isVideo,
-        onCancel: onCancel,
-      ),
+      builder: (context, p, _) {
+        final ring = TransferPercentRing(
+          fraction: p?.fraction,
+          isVideo: isVideo,
+          onCancel: onCancel,
+          paused: p?.paused ?? false,
+        );
+        if (p?.paused != true) return ring;
+        // Bundle 179 (1.6): approved mock - pause sign + "Sends after the call".
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ring,
+            const SizedBox(height: 6),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                child: Text(
+                  'Sends after the call',
+                  key: Key('transfer_paused_label'),
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -54,6 +54,27 @@ class CallNotificationPlatformService {
     } catch (_) {}
   }
 
+  /// Bundle 179 (2): the Accept tapped on the notification, kept by Android
+  /// for 60 s (survives the screen being rebuilt). Null = none / too old.
+  Future<SavedCallAccept?> acceptedCall() async {
+    if (_disposed) return null;
+    try {
+      final raw =
+          await _channel.invokeMethod<Map<Object?, Object?>>('acceptedCall');
+      return SavedCallAccept.fromMap(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Bundle 179 (2): forget the saved Accept (applied, rejected or too old).
+  Future<void> clearAcceptedCall(String callId) async {
+    if (_disposed) return;
+    try {
+      await _channel.invokeMethod<void>('clearAcceptedCall', {'call_id': callId});
+    } catch (_) {}
+  }
+
   Future<void> cancelIncoming() async {
     if (_disposed) return;
     try {
@@ -89,5 +110,37 @@ class CallNotificationPlatformService {
     } catch (_) {}
     await _nativeActionSub?.cancel();
     await _actions.close();
+  }
+}
+
+/// Bundle 179 (2): a notification Accept saved on the Android side.
+class SavedCallAccept {
+  const SavedCallAccept({
+    required this.callId,
+    required this.callerId,
+    required this.remaining,
+  });
+
+  final String callId;
+  final String callerId;
+
+  /// Time left of the 60 s.
+  final Duration remaining;
+
+  CallNotificationAction get action => CallNotificationAction(
+      type: CallNotificationActionType.accept,
+      callId: callId,
+      callerId: callerId);
+
+  static SavedCallAccept? fromMap(Map<Object?, Object?>? raw) {
+    if (raw == null) return null;
+    final callId = raw['call_id']?.toString().trim() ?? '';
+    final callerId = raw['caller_id']?.toString().trim() ?? '';
+    final ms = int.tryParse(raw['remaining_ms']?.toString() ?? '') ?? 0;
+    if (callId.isEmpty || callerId.isEmpty || ms <= 0) return null;
+    return SavedCallAccept(
+        callId: callId,
+        callerId: callerId,
+        remaining: Duration(milliseconds: ms.clamp(0, 60000)));
   }
 }

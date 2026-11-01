@@ -106,6 +106,8 @@ class BackgroundChannels(
                 "cancelIncoming", "cancelAll" -> { CallNotificationManager.cancelIncoming(context); result.success(null) }
                 // Lock screen / permission need the open app.
                 "setCallLockScreen", "requestPermission" -> result.success(null)
+                // Bundle 179 (2): Accept always opens the app; nothing saved here.
+                "acceptedCall", "clearAcceptedCall" -> result.success(null)
                 else -> result.notImplemented()
             }
         }

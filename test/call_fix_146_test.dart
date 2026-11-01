@@ -503,7 +503,7 @@ void main() {
     late ManagerHarness h;
     setUp(() async => h = await ManagerHarness.create());
     tearDown(() async {
-      CallSessionManager.coldAcceptWindow = const Duration(seconds: 10);
+      CallSessionManager.coldAcceptWindow = const Duration(seconds: 60);
       await h.dispose();
     });
 

@@ -256,7 +256,35 @@ final class CallSessionManager implements CallGateway {
         .listen((msg) => unawaited(_handleServerCallSignal(msg)));
     unawaited(_synchronizeIncomingPresentation());
     unawaited(syncHistory());
+    unawaited(_restoreSavedAccept());
     unawaited(_takeHandover());
+  }
+
+  /// Bundle 179 (2.2): the call id that came from the closed-app hand-over
+  /// (for the CALL_ACCEPT_APPLIED source).
+  String? _handoverCallId;
+
+  /// Bundle 179 (2.2): Accept was tapped on the notification but this app
+  /// (or a rebuilt screen) missed the tap. Android kept it for 60 s: answer
+  /// the matching call as soon as it rings. Never answers another call.
+  Future<void> _restoreSavedAccept() async {
+    final saved = await notificationPlatform.acceptedCall();
+    if (saved == null || _disposed) return;
+    AppLogger.info('CALL_ACCEPT_RESTORED',
+        detail: 'call=${saved.callId} left_ms=${saved.remaining.inMilliseconds}');
+    final session = _session;
+    if (session != null &&
+        !session.isFinished &&
+        (session.id != saved.callId || session.peerId != saved.callerId)) {
+      // A different call is on: the old Accept is not for it.
+      unawaited(notificationPlatform.clearAcceptedCall(saved.callId));
+      return;
+    }
+    if ((session == null || session.isFinished) &&
+        _pendingNotificationAccept != null) {
+      return;
+    }
+    await _handleNotificationAction(saved.action, window: saved.remaining);
   }
 
   /// Bundle 176 (3): a call that rang in the other engine (no-screen engine
@@ -267,6 +295,7 @@ final class CallSessionManager implements CallGateway {
     if (invite == null || _disposed) return;
     AppLogger.info('CALL_HANDOVER_TAKEN',
         detail: 'call=${invite['call_id'] ?? ''}');
+    _handoverCallId = invite['call_id']?.toString();
     await _handleLocalCallSignal(invite);
   }
 
@@ -937,7 +966,8 @@ final class CallSessionManager implements CallGateway {
   CallNotificationAction? _pendingNotificationAccept;
   Timer? _pendingNotificationAcceptTimer;
   @visibleForTesting
-  static Duration coldAcceptWindow = const Duration(seconds: 10);
+  // Bundle 179 (2.3): was 10 s - too short for slow phones (ZTE).
+  static Duration coldAcceptWindow = const Duration(seconds: 60);
 
   @override
   Stream<String> get callScreenRequests => _callScreenRequestController.stream;
@@ -987,7 +1017,8 @@ final class CallSessionManager implements CallGateway {
     _pendingNotificationAccept = null;
   }
 
-  Future<void> _handleNotificationAction(CallNotificationAction action) async {
+  Future<void> _handleNotificationAction(CallNotificationAction action,
+      {Duration? window}) async {
     AppLogger.info('CALL_NOTIFICATION_ACTION',
         detail: 'action=${action.type.name} call=${action.callId} '
             'app=${_appInForeground ? 'foreground' : 'background'} '
@@ -998,27 +1029,41 @@ final class CallSessionManager implements CallGateway {
         session.peerId == action.callerId;
 
     if (action.type == CallNotificationActionType.accept) {
-      if (session == null) {
+      // Bundle 179 (2): an OLD finished call still on file counts as "no
+      // call yet" - before, its Accept was refused and the new call then
+      // rang again asking for a second Accept.
+      if (session == null ||
+          (session.isFinished && session.id != action.callId)) {
         // Cold start: the app was swiped away while ringing, the Accept
         // intent restarted it, and no session exists yet. Wait briefly for a
         // matching ringing session (re-delivered invite), then give up with
         // a visible notice instead of hanging.
         _clearPendingNotificationAccept();
         _pendingNotificationAccept = action;
-        _pendingNotificationAcceptTimer = Timer(coldAcceptWindow, () {
+        final wait = window == null || window > coldAcceptWindow
+            ? coldAcceptWindow
+            : window;
+        _pendingNotificationAcceptTimer = Timer(wait, () {
           final pending = _pendingNotificationAccept;
           if (pending == null || _disposed) return;
           _clearPendingNotificationAccept();
+          AppLogger.info('CALL_ACCEPT_EXPIRED',
+              detail: 'call=${pending.callId} where=app');
+          unawaited(notificationPlatform.clearAcceptedCall(pending.callId));
           _noticeCallUnavailable(pending.callId, 'no_session');
         });
         return;
       }
       if (!matches || session.isFinished) {
+        if (matches) {
+          unawaited(notificationPlatform.clearAcceptedCall(action.callId));
+        }
         _noticeCallUnavailable(
             action.callId, matches ? 'finished' : 'other_call');
         return;
       }
       if (session.direction != CallDirection.incoming) return;
+      unawaited(notificationPlatform.clearAcceptedCall(session.id));
       if (session.state != CallState.ringing) {
         // Already accepted (duplicate action or in-app accept): just make
         // sure the call screen is shown.
@@ -1029,6 +1074,9 @@ final class CallSessionManager implements CallGateway {
         await rejectIncoming(reason: 'blocked');
         return;
       }
+      AppLogger.info('CALL_ACCEPT_APPLIED',
+          detail: 'call=${session.id} '
+              'source=${_handoverCallId == session.id ? 'handover' : 'ring'}');
       // Request first so the session change that acceptIncoming() emits
       // already carries the request to the app.
       _requestCallScreen(session.id);
@@ -1043,6 +1091,7 @@ final class CallSessionManager implements CallGateway {
     }
 
     // Reject
+    unawaited(notificationPlatform.clearAcceptedCall(action.callId));
     if (!matches ||
         session.isFinished ||
         session.direction != CallDirection.incoming ||

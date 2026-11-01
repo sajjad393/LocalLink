@@ -1871,6 +1871,13 @@ class ReliableMessagingService {
       }
       return;
     }
+    // Bundle 179 (1.6): a file waits while a voice call is on.
+    if (eventType == 'file_paused' || eventType == 'file_resumed') {
+      final messageId = event['message_id']?.toString() ?? '';
+      MediaProgressHub.instance
+          .setPaused(messageId, eventType == 'file_paused');
+      return;
+    }
     if (eventType == 'file_sent' ||
         eventType == 'file_failed' ||
         eventType == 'file_cancelled' ||

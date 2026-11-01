@@ -28,6 +28,8 @@ const List<BackgroundBrandGuide> kBackgroundBrandGuides = [
     'Tap Open settings',
     'Auto launch: turn LinkUp ON',
     'App info > Battery: Allow background activity',
+    // Bundle 179 (3.6): Realme showed no call notification at all.
+    'Notifications: allow LinkUp, turn on Banners, Lock screen and Full-screen',
     _lock,
   ]),
   BackgroundBrandGuide('vivo', 'Vivo / iQOO (Funtouch / OriginOS)', [

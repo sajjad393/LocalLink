@@ -154,7 +154,7 @@ void main() {
 
     test('every brand has numbered steps that start with Open settings', () {
       for (final g in kBackgroundBrandGuides) {
-        expect(g.steps.length, inInclusiveRange(3, 4));
+        expect(g.steps.length, inInclusiveRange(3, 5)); // 179: Oppo has 5
         expect(g.steps.first, 'Tap Open settings');
       }
       expect(backgroundBrandByKey('nope').key, 'other');

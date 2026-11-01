@@ -3,20 +3,27 @@ import 'package:flutter/foundation.dart';
 /// Bytes done / total for one message's media transfer.
 @immutable
 class MediaProgress {
-  const MediaProgress({required this.done, required this.total});
+  const MediaProgress(
+      {required this.done, required this.total, this.paused = false});
 
   final int done;
   final int total;
+
+  /// Bundle 179 (1.6): waiting for a voice call to end ("Sends after the call").
+  final bool paused;
 
   double get fraction =>
       total <= 0 ? 0.0 : (done / total).clamp(0.0, 1.0).toDouble();
 
   @override
   bool operator ==(Object other) =>
-      other is MediaProgress && other.done == done && other.total == total;
+      other is MediaProgress &&
+      other.done == done &&
+      other.total == total &&
+      other.paused == paused;
 
   @override
-  int get hashCode => Object.hash(done, total);
+  int get hashCode => Object.hash(done, total, paused);
 }
 
 /// Bundle 150: live Wi-Fi transfer progress per message id.
@@ -41,7 +48,24 @@ class MediaProgressHub {
   void update(String messageId, {required int done, required int total}) {
     if (messageId.isEmpty || total <= 0) return;
     final slot = _slots.putIfAbsent(messageId, () => _Slot(this, messageId));
-    slot.value = MediaProgress(done: done.clamp(0, total), total: total);
+    slot.value = MediaProgress(
+        done: done.clamp(0, total),
+        total: total,
+        paused: slot.value?.paused ?? false);
+  }
+
+  /// Bundle 179 (1.6): the file waits for a voice call to end (or goes again).
+  void setPaused(String messageId, bool paused) {
+    if (messageId.isEmpty) return;
+    final slot = _slots.putIfAbsent(messageId, () => _Slot(this, messageId));
+    final old = slot.value;
+    if (old == null && !paused) return;
+    if (!paused && old != null && old.total <= 0) {
+      slot.value = null; // no number yet: back to the turning ring
+      return;
+    }
+    slot.value = MediaProgress(
+        done: old?.done ?? 0, total: old?.total ?? 0, paused: paused);
   }
 
   void clear(String messageId) {

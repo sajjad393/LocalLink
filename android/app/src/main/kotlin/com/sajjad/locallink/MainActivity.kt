@@ -461,7 +461,14 @@ class MainActivity : FlutterActivity() {
                         "enabled" to BackgroundHealth.isEnabled(this),
                         // Bundle 177 (10.1): Nearby while closed (admin_off is added by Dart).
                         "nearby" to NearbyRadio.statusWord(this),
+                        // Bundle 179 (3.4, 3.5): ok / category_off / lockscreen_off / permission / app_off.
+                        "call_alerts" to CallNotificationManager.alertState(this),
                     ))
+                    // Bundle 179 (3.4, 3.5): STATUS "Call alerts off" / "Lock-screen calls off" tap.
+                    "openCallAlertSettings" -> {
+                        CallNotificationManager.openAlertSettings(this, call.argument<String>("state").orEmpty())
+                        result.success(null)
+                    }
                     // Bundle 177 (9.2): Android 10-12 need "Location: All the time"
                     // for Nearby with no screen. Asked once, by the user's tap only.
                     "backgroundLocationNeeded" -> result.success(
@@ -501,6 +508,12 @@ class MainActivity : FlutterActivity() {
                     }
                     "cancelIncoming", "cancelAll" -> {
                         CallNotificationManager.cancelAll(this)
+                        result.success(null)
+                    }
+                    // Bundle 179 (2): the saved notification Accept (or null).
+                    "acceptedCall" -> result.success(CallAcceptMemory.peek(this))
+                    "clearAcceptedCall" -> {
+                        CallAcceptMemory.clear(this, call.argument<String>("call_id"))
                         result.success(null)
                     }
                     // Bundle 146: Dart keeps the call UI above the lock screen
@@ -1012,6 +1025,11 @@ class MainActivity : FlutterActivity() {
         val callId = safeIntent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID)?.trim().orEmpty()
         val callerId = safeIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_ID)?.trim().orEmpty()
         android.util.Log.i("LocalLinkCall", "CALL_NOTIFICATION_ACTION action=$action source=$source call=$callId engine=${callNotificationEventSink != null}")
+        // Bundle 179 (2.1): remember the Accept for 60 s. The queued event
+        // below is lost if this screen is rebuilt (slow phones like ZTE);
+        // the app then reads this and still answers with ONE tap.
+        if (action == "accept") CallAcceptMemory.save(this, callId, callerId)
+        else if (action == "reject") CallAcceptMemory.clear(this, callId)
         if (action == "open" || action == "accept") {
             // Show over the lock screen right away; Dart keeps it while the
             // call is live and releases it when the call ends.
