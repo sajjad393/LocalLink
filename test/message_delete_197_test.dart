@@ -321,8 +321,11 @@ void main() {
     });
 
     test('no database version change in 197a', () {
+      // Bundle 197b added v27 = only the media_state side table; the
+      // 197a message tables stay as they were.
       final s = src('lib/core/services/local_store.dart');
-      expect(s, isNot(contains('_upgradeTo27')));
+      expect(s, isNot(contains('_upgradeTo28')));
+      expect(s, contains('CREATE TABLE IF NOT EXISTS media_state ('));
     });
   });
 }

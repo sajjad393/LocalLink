@@ -10,7 +10,7 @@ const List<String> kQuickReactions = ['👍', '❤️', '😂', '😮', '😢', 
 /// Purple quote line for "You", blue for the friend (TODO 2.5 R3).
 const Color kQuoteYouColor = Color(0xFF7C3AED);
 
-enum MessageAction { react, reply, copy, forward, info, select, delete }
+enum MessageAction { react, reply, copy, forward, save, info, select, delete }
 
 class MessageActionResult {
   final MessageAction action;
@@ -27,6 +27,7 @@ Future<MessageActionResult?> showMessageActionsSheet(
   bool canReply = true,
   bool canForward = true,
   bool canReact = true,
+  bool canSave = false,
   Color? barrierColor,
 }) {
   return showModalBottomSheet<MessageActionResult>(
@@ -74,6 +75,9 @@ Future<MessageActionResult?> showMessageActionsSheet(
                 if (hasText) row(MessageAction.copy, Icons.copy_outlined, 'Copy'),
                 if (canForward)
                   row(MessageAction.forward, Icons.forward_rounded, 'Forward'),
+                // Bundle 197b (P1): received media, Android 10+.
+                if (canSave && !mine)
+                  row(MessageAction.save, Icons.download_rounded, 'Save to phone'),
                 if (mine)
                   row(MessageAction.info, Icons.info_outline_rounded, 'Message info'),
                 row(MessageAction.select, Icons.check_circle_outline_rounded, 'Select'),

@@ -24,6 +24,7 @@ class ChatPhoto extends StatefulWidget {
     this.uploading = false,
     this.title,
     this.uploadOverlay,
+    this.onOpened,
   });
 
   final String path;
@@ -35,6 +36,9 @@ class ChatPhoto extends StatefulWidget {
 
   /// Bundle 150: drawn while [uploading] (blue ring with %). Null = default.
   final Widget? uploadOverlay;
+
+  /// Bundle 197b: full-screen view opened (counts as "opened").
+  final VoidCallback? onOpened;
 
   @override
   State<ChatPhoto> createState() => _ChatPhotoState();
@@ -113,6 +117,7 @@ class _ChatPhotoState extends State<ChatPhoto> {
   }
 
   void _open() {
+    widget.onOpened?.call();
     Navigator.of(context).push(PageRouteBuilder<void>(
       opaque: true,
       transitionDuration: const Duration(milliseconds: 180),

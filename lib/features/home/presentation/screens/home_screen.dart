@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:locallink/features/storage/data/media_storage_service.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/files/presentation/widgets/chat_video_hub.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/nearby_ready_card.dart';
@@ -293,6 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _registerForwardHub(); // Bundle 197a
+    _startMediaStorage(); // Bundle 197b
     // Dashboard entry: verify the real notification permission once per
     // install (and once per app start), explain WHY, and only then run the
     // official runtime flow. Never repeats on rebuilds or tab refreshes.
@@ -629,6 +633,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     if (identical(ForwardHub.instance, _forwardHub)) ForwardHub.instance = null;
+    _mediaLifecycle?.dispose();
     for (final timer in _bannerTimers) {
       timer.cancel();
     }
@@ -662,6 +667,26 @@ class _HomeScreenState extends State<HomeScreen> {
   // Bundle 197a: Forward targets + hold a chat row (mock 11, 17, 18).
   // ---------------------------------------------------------------------
   ForwardHub? _forwardHub;
+
+  // Bundle 197b: clean-up 60 s after start, then on resume (24 h gap);
+  // never during a call.
+  AppLifecycleListener? _mediaLifecycle;
+
+  void _startMediaStorage() {
+    final service = MediaStorageService.instance;
+    unawaited(service
+        .configure(
+          store: widget.store,
+          files: widget.files,
+          inCall: () => ChatVideoHub.instance.callActive,
+        )
+        .then((_) {
+      if (mounted) service.start();
+    }).catchError((Object error) {
+      AppLogger.warning('MEDIA_STORAGE_START_FAILED', detail: '$error');
+    }));
+    _mediaLifecycle = AppLifecycleListener(onResume: service.onResume);
+  }
 
   void _registerForwardHub() {
     final hub = ForwardHub(

@@ -27,6 +27,8 @@ import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/core/services/message_delete_book.dart';
+import 'package:locallink/core/services/media_book.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/features/calls/data/transport/network_policy.dart';
 
@@ -178,12 +180,15 @@ class LocalStore {
         if (oldVersion < 24) await _upgradeTo24(db);
         if (oldVersion < 25) await _upgradeTo25(db);
         if (oldVersion < 26) await _upgradeTo26(db);
+        if (oldVersion < 27) await _upgradeTo27(db);
       },
     );
     _databaseOpened = true;
     await _loadSettings();
     // Bundle 197a: deleted ids + cleared chats (settings table, no DB change).
     await MessageDeleteBook.instance.load(read: readSetting, write: writeSetting);
+    // Bundle 197b: small pictures, Gallery links, removed / saved media.
+    await _loadMediaBook();
     await _migrateLegacySharedPreferences();
     await _ensureStableDeviceId();
   }
@@ -341,6 +346,7 @@ class LocalStore {
     await _upgradeTo24(db);
     await _upgradeTo25(db);
     await _upgradeTo26(db);
+    await _upgradeTo27(db);
   }
 
   Future<void> _upgradeTo2(Database db) async {
@@ -738,6 +744,97 @@ class LocalStore {
     }
   }
 
+  /// Bundle 197b: one row per media file this phone knows something about
+  /// (small picture, video length, Gallery link, last opened, removed,
+  /// saved copy). Local only. A side table, so message saving / history
+  /// never touches it.
+  Future<void> _upgradeTo27(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS media_state (
+      file_id TEXT PRIMARY KEY,
+      thumb_path TEXT,
+      media_ms INTEGER NOT NULL DEFAULT 0,
+      source_uri TEXT,
+      opened_at TEXT,
+      removed_at TEXT,
+      saved_uri TEXT
+    )''');
+  }
+
+  Future<void> _loadMediaBook() async {
+    try {
+      final rows = await _db.query('media_state');
+      MediaBook.instance.load(rows, write: (row) async {
+        await _db.insert('media_state', row,
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }, delete: (ids) async {
+        for (final id in ids) {
+          await _db.delete('media_state', where: 'file_id=?', whereArgs: [id]);
+        }
+      });
+    } catch (error) {
+      AppLogger.warning('MEDIA_BOOK_LOAD_FAILED', detail: '$error');
+    }
+  }
+
+  /// Bundle 197b: every media file of every chat with its message facts,
+  /// for the clean-up and Settings › Storage.
+  Future<List<Map<String, Object?>>> mediaFileRows() async {
+    final direct = await _db.rawQuery('''
+      SELECT a.message_id AS message_id, a.file_id AS file_id,
+             a.original_name AS original_name, a.content_type AS content_type,
+             a.size AS size, a.local_path AS local_path, a.is_image AS is_image,
+             m.sender_id AS sender_id, m.recipient_id AS recipient_id,
+             m.status AS status, m.created_at AS created_at,
+             0 AS is_group, '' AS group_id, 0 AS server_seq
+      FROM message_attachments a JOIN messages m ON m.id = a.message_id''');
+    final group = await _db.rawQuery('''
+      SELECT a.group_message_id AS message_id, a.file_id AS file_id,
+             a.original_name AS original_name, a.content_type AS content_type,
+             a.size AS size, a.local_path AS local_path, a.is_image AS is_image,
+             g.sender_id AS sender_id, '' AS recipient_id,
+             '' AS status, g.created_at AS created_at,
+             1 AS is_group, g.group_id AS group_id, g.server_seq AS server_seq
+      FROM group_message_attachments a JOIN group_messages g ON g.id = a.group_message_id''');
+    return [...direct, ...group];
+  }
+
+  /// Bundle 197b: every `local_path` any row still points at (sent,
+  /// received and waiting files) - the picks sweep never deletes these.
+  Future<Set<String>> referencedLocalPaths() async {
+    final out = <String>{};
+    for (final table in const [
+      'message_attachments',
+      'group_message_attachments',
+      'pending_attachments',
+      'pending_group_attachments',
+    ]) {
+      try {
+        final rows = await _db.query(table, columns: ['local_path']);
+        for (final row in rows) {
+          final path = row['local_path']?.toString() ?? '';
+          if (path.isNotEmpty) out.add(path);
+        }
+      } catch (_) {}
+    }
+    return out;
+  }
+
+  /// Bundle 197b: the message's files are gone - also its small pictures
+  /// and the server's `-thumb` copies (L3).
+  Future<List<String>> _mediaExtrasFor(List<String> fileIds) async {
+    if (fileIds.isEmpty) return const [];
+    final extras = await MediaBook.instance.forget(fileIds);
+    try {
+      final root = p.join(await getDatabasesPath(), 'attachments');
+      for (final id in fileIds) {
+        if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(id)) continue;
+        extras.add(p.join(root, '$id-thumb.png'));
+        extras.add(p.join(root, '$id-thumb.png.enc'));
+      }
+    } catch (_) {}
+    return extras;
+  }
+
   Future<void> _upgradeTo22(Database db) async {
     await db.execute(
         "ALTER TABLE known_devices ADD COLUMN presence_local_at TEXT NOT NULL DEFAULT ''");
@@ -1062,13 +1159,15 @@ class LocalStore {
         'directory_seen',
         'notification_state',
         'message_reactions',
-        'group_message_reactions'
+        'group_message_reactions',
+        'media_state'
       ]) {
         await txn.delete(table);
       }
     });
     // Bundle 197a: the settings rows are gone; forget the lists too.
     MessageDeleteBook.instance.resetMemory();
+    MediaBook.instance.resetMemory(); // Bundle 197b
     try {
       final root = await getDatabasesPath();
       final attachmentsDir = Directory(p.join(root, 'attachments'));
@@ -1635,10 +1734,12 @@ class LocalStore {
 
   /// Bundle 162 (4.6): Delete on a failed message - drop it from the queue
   /// and from the chat.
-  Future<void> deleteFailedOutbox(String id) async {
-    if (id.isEmpty) return;
+  /// Bundle 197b (L1): also returns the message's file paths (+ small
+  /// pictures) so the caller deletes them - they used to stay on disk.
+  Future<List<String>> deleteFailedOutbox(String id) async {
+    if (id.isEmpty) return const [];
     await removeOutbox(id);
-    await deleteMessage(id);
+    return deleteMessageLocal(id);
   }
 
   Future<void> markOutboxAttempt(String id) async => _db.rawUpdate(
@@ -2112,7 +2213,7 @@ class LocalStore {
     if (id.isEmpty) return const [];
     final paths = <String>{};
     final atts = await _db.query('message_attachments',
-        columns: ['local_path'], where: 'message_id=?', whereArgs: [id]);
+        columns: ['local_path', 'file_id'], where: 'message_id=?', whereArgs: [id]);
     final pending = await _db.query('pending_attachments',
         columns: ['local_path'], where: 'message_id=?', whereArgs: [id]);
     for (final row in [...atts, ...pending]) {
@@ -2121,6 +2222,9 @@ class LocalStore {
     }
     await _db.delete('message_reactions', where: 'message_id=?', whereArgs: [id]);
     await deleteMessage(id);
+    paths.addAll(await _mediaExtrasFor([
+      for (final row in atts) row['file_id']?.toString() ?? '',
+    ]..removeWhere((f) => f.isEmpty)));
     return paths.toList(growable: false);
   }
 
@@ -2128,9 +2232,13 @@ class LocalStore {
   Future<List<String>> deleteGroupMessageLocal(String id) async {
     if (id.isEmpty) return const [];
     final paths = <String>{};
+    final fileIds = <String>[];
     await LocalStore.timedTx('delete_group_message_tx', _db, (txn) async {
       final atts = await txn.query('group_message_attachments',
-          columns: ['local_path'], where: 'group_message_id=?', whereArgs: [id]);
+          columns: ['local_path', 'file_id'], where: 'group_message_id=?', whereArgs: [id]);
+      fileIds.addAll([
+        for (final row in atts) row['file_id']?.toString() ?? '',
+      ]..removeWhere((f) => f.isEmpty));
       final pending = await txn.query('pending_group_attachments',
           columns: ['local_path'], where: 'message_id=?', whereArgs: [id]);
       for (final row in [...atts, ...pending]) {
@@ -2146,6 +2254,7 @@ class LocalStore {
       await txn.delete('group_messages', where: 'id=?', whereArgs: [id]);
       await txn.delete('group_outbox', where: 'id=?', whereArgs: [id]);
     });
+    paths.addAll(await _mediaExtrasFor(fileIds));
     if (!_deletedMessageIds.isClosed) _deletedMessageIds.add(id);
     return paths.toList(growable: false);
   }
@@ -3197,12 +3306,14 @@ class LocalStore {
         'calls',
         'call_quality_samples',
         'restored_files',
-        'notification_state'
+        'notification_state',
+        'media_state'
       ]) {
         await txn.delete(table);
       }
     });
     MessageDeleteBook.instance.resetMemory(); // Bundle 197a
+    MediaBook.instance.resetMemory(); // Bundle 197b
     await _secureStorage.delete(key: _tokenKey);
     await _secureStorage.delete(key: _recoveryRequestSecretKey);
     // Bundle 102: never strand offline credentials in secure storage.

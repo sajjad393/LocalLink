@@ -39,6 +39,9 @@ class MessageBubble extends StatelessWidget {
   final bool quoteMissing;
   final VoidCallback? onQuoteTap;
 
+  /// Bundle 197b: the friend's name ("Ask Sajjad to send it again.").
+  final String senderName;
+
   const MessageBubble({
     super.key,
     required this.message,
@@ -55,6 +58,7 @@ class MessageBubble extends StatelessWidget {
     this.quoteIsYou = false,
     this.quoteMissing = false,
     this.onQuoteTap,
+    this.senderName = '',
   });
 
   bool get _canResend =>
@@ -131,6 +135,8 @@ class MessageBubble extends StatelessWidget {
                         // Bundle 174 (6): cancelled / failed own media.
                         failed: isMine && message.status.toLowerCase() == 'failed',
                         onRetry: _canResend ? onFailedTap : null,
+                        mine: isMine,
+                        senderName: senderName,
                       ),
                   ],
                   footer: Row(

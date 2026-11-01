@@ -25,10 +25,17 @@ class MessageDeleteActions {
     final paths = group
         ? await store.deleteGroupMessageLocal(id)
         : await store.deleteMessageLocal(id);
+    return deleteFiles(paths);
+  }
+
+  /// Bundle 197b: the file can be on disk as `path` or `path.enc`
+  /// (encrypted after the first view) - delete both.
+  Future<int> deleteFiles(Iterable<String> paths) async {
     var files = 0;
     for (final path in paths) {
       try {
         await deleteFile(path);
+        if (!path.endsWith('.enc')) await deleteFile('$path.enc');
         files++;
       } catch (_) {}
     }

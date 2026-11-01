@@ -970,8 +970,10 @@ class ReliableMessagingService {
 
   /// Bundle 162 (4.6): user tapped Delete on a failed message.
   Future<void> deleteFailed(String id) async {
-    await store.deleteFailedOutbox(id);
-    AppLogger.info('MESSAGE_FAILED_DELETED', detail: 'id=$id');
+    // Bundle 197b (L1): its files (+ small picture) go too.
+    final paths = await store.deleteFailedOutbox(id);
+    final files = await deletes.deleteFiles(paths);
+    AppLogger.info('MESSAGE_FAILED_DELETED', detail: 'id=$id files=$files');
   }
 
   Future<void> flush() async {

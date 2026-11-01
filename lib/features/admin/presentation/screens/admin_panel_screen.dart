@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/features/storage/presentation/storage_test_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/models/device.dart';
@@ -331,6 +332,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               ),
               const SizedBox(height: 8),
               const NearbyTestSwitches(),
+              // Bundle 197b (Q4): one clean-up run as if every file were
+              // 11 days old and the phone 80% full.
+              const SizedBox(height: 8),
+              const StorageTestButton(),
               const SizedBox(height: 20),
               Text(
                 online

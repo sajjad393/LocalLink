@@ -590,6 +590,9 @@ void main() {
       final row = find.byKey(const ValueKey('settings_blocked_people'));
       await tester.scrollUntilVisible(row, 100,
           scrollable: find.byType(Scrollable).first);
+      // Bundle 197b: the new Storage row pushes it lower - fully on screen.
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
       await tester.tap(row);
       await tester.pumpAndSettle();
       expect(find.text("You haven't blocked anyone."), findsOneWidget);

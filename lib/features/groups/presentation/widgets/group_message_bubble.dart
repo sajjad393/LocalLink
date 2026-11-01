@@ -91,6 +91,8 @@ class GroupMessageBubble extends StatelessWidget {
                     transfer: files,
                     messageId: message.id,
                     groupMessageId: message.id,
+                    mine: isMine,
+                    senderName: senderName,
                   ),
               ],
               footer: Text(_time(message.createdAt),

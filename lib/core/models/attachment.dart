@@ -81,5 +81,9 @@ class PickedFile {
   final String contentType;
   final int size;
 
-  const PickedFile({required this.path, required this.name, required this.contentType, required this.size});
+  /// Bundle 197b: the picker's "keep access" link to the original file
+  /// (sender's Gallery copy). Local only, never sent.
+  final String? sourceUri;
+
+  const PickedFile({required this.path, required this.name, required this.contentType, required this.size, this.sourceUri});
 }

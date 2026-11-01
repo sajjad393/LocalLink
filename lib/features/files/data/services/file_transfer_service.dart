@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:async';
 import 'dart:convert';
+import 'package:locallink/core/services/media_book.dart';
 import 'dart:io';
 import 'package:http/io_client.dart' as http_io;
 import 'package:flutter/services.dart';
@@ -58,6 +59,9 @@ class FileTransferService {
             contentType:
                 m['content_type']?.toString() ?? 'application/octet-stream',
             size: int.tryParse(m['size']?.toString() ?? '') ?? 0,
+            sourceUri: (m['source_uri']?.toString() ?? '').isEmpty
+                ? null
+                : m['source_uri'].toString(),
           );
         })
         .where((f) => f.path.isNotEmpty)
@@ -272,6 +276,7 @@ class FileTransferService {
         } else {
           AppLogger.warning('FILE_STAGED_REUSED', detail: detail);
         }
+        MediaBook.instance.staged(fileId, file.sourceUri, target, file.contentType, file.name);
         return target; // already staged (retry flush re-resolves it)
       }
       await source.copy(target);
@@ -281,6 +286,8 @@ class FileTransferService {
       AppLogger.info('FILE_STAGED_OUTBOX',
           detail: 'file=$fileId size=${file.size} source=$sourceLen '
               'copy=$copyLen same=${copyLen == sourceLen ? 'y' : 'n'}');
+      // Bundle 197b: Gallery link + small picture for the sender.
+      MediaBook.instance.staged(fileId, file.sourceUri, target, file.contentType, file.name);
       return target;
     } catch (error, stackTrace) {
       AppLogger.error('FILE_STAGE_OUTBOX_FAILED',

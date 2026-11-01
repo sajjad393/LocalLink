@@ -148,6 +148,16 @@ class MainActivity : FlutterActivity() {
         return VideoFramePolicy.isMostlyDark(lumas)
     }
 
+    /** Bundle 197b: run a media helper off the UI thread, answer on it. */
+    private fun mediaBg(result: MethodChannel.Result, work: () -> Any?) {
+        Thread({
+            val out = try { Result.success(work()) } catch (e: Exception) { Result.failure<Any?>(e) }
+            runOnUiThread {
+                out.fold({ result.success(it) }, { result.error("MEDIA_STORAGE_FAILED", it.message ?: it.javaClass.simpleName, null) })
+            }
+        }, "linkup-media").start()
+    }
+
     private fun readVideoInfo(path: String?, maxPx: Int, result: MethodChannel.Result) {
         val file = path?.let { File(it) }
         val dataDir = try { File(applicationInfo.dataDir).canonicalPath } catch (_: Exception) { "" }
@@ -868,6 +878,17 @@ class MainActivity : FlutterActivity() {
                     "stop" -> { voicePlayer?.stop(); voicePlayer?.release(); voicePlayer = null; result.success(null) }
                     // Bundle 145: chat video thumbnail + length + display size.
                     "video_info" -> readVideoInfo(call.argument<String>("path"), call.argument<Int>("max_px") ?: 480, result)
+                    // Bundle 197b: media storage (small pictures, storage, Gallery links, Save to phone).
+                    "make_thumb" -> mediaBg(result) { MediaStorageNative.makeThumb(this, call.argument<String>("in") ?: "", call.argument<String>("out") ?: "", call.argument<Boolean>("video") == true, call.argument<Int>("max_px") ?: MediaStoragePolicy.THUMB_PX) }
+                    "storage_stats" -> mediaBg(result) { MediaStorageNative.storageStats() }
+                    "uri_alive" -> mediaBg(result) { MediaStorageNative.uriAlive(this, call.argument<String>("uri") ?: "") }
+                    "release_uris" -> mediaBg(result) { MediaStorageNative.releaseLinks(this, call.argument<List<*>>("uris")?.mapNotNull { it?.toString() } ?: emptyList()) }
+                    "link_count" -> mediaBg(result) { MediaStorageNative.linkCount(this) }
+                    "restore_from_uri" -> mediaBg(result) { MediaStorageNative.restoreFromUri(this, call.argument<String>("uri") ?: "", call.argument<String>("out") ?: "") }
+                    "save_to_phone" -> mediaBg(result) { MediaStorageNative.saveToPhone(this, call.argument<String>("path") ?: "", call.argument<String>("name") ?: "", call.argument<String>("mime") ?: "application/octet-stream") }
+                    "saved_alive" -> mediaBg(result) { MediaStorageNative.savedAlive(this, call.argument<String>("uri") ?: "") }
+                    "open_uri" -> mediaBg(result) { MediaStorageNative.openUri(this, call.argument<String>("uri") ?: "", call.argument<String>("mime") ?: "") }
+                    "sdk_int" -> result.success(Build.VERSION.SDK_INT)
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) { result.error("VOICE_NOTE_ERROR", e.message, null) }
@@ -1049,7 +1070,8 @@ class MainActivity : FlutterActivity() {
         if (resultCode != Activity.RESULT_OK || data == null) { result.success(null); return }
         try {
             val uris=mutableListOf<Uri>(); data.clipData?.let{clip->for(i in 0 until clip.itemCount)uris.add(clip.getItemAt(i).uri)}; if(uris.isEmpty()&&data.data!=null)uris.add(data.data!!)
-            result.success(uris.map{copyToCache(it)})
+            // Bundle 197b: keep a link to the picked file (sender's Gallery copy).
+            result.success(uris.map{u->val m=copyToCache(u).toMutableMap(); if(MediaStorageNative.keepLink(this,u)) m["source_uri"]=u.toString(); m})
         } catch(e:Exception){result.error("PICK_FAILED",e.message,null)}
     }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:locallink/features/storage/presentation/media_message_actions.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/core/services/app_logger.dart';
@@ -323,7 +324,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         mine: _isMine(message),
         hasText: message.text.trim().isNotEmpty,
         canReply: !blocked,
-        canForward: !_notSentYet(message),
+        canForward: !_notSentYet(message) &&
+            !MediaMessageActions.hasRemoved(message.attachments),
+        canSave: MediaMessageActions.savable(message.attachments,
+                mine: _isMine(message))
+            .isNotEmpty,
         barrierColor: Colors.transparent,
       );
       if (!mounted || result == null) return;
@@ -336,6 +341,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           await _copy([message]);
         case MessageAction.forward:
           await _forward([message]);
+        case MessageAction.save:
+          await MediaMessageActions.save(
+              context,
+              MediaMessageActions.savable(message.attachments,
+                  mine: _isMine(message)));
         case MessageAction.info:
           await _showInfo(message);
         case MessageAction.select:
@@ -374,6 +384,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _forward(List<Message> messages) async {
     final sendable = messages.where((m) => !_notSentYet(m)).toList();
     if (sendable.isEmpty) return;
+    for (final m in sendable) {
+      MediaMessageActions.markOpened(m.attachments);
+    }
     final items = [
       for (final m in sendable)
         ForwardItem(text: m.text, attachments: m.attachments),
@@ -545,7 +558,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             },
             icon: const Icon(Icons.copy_outlined),
           ),
-        if (picked.isNotEmpty && picked.every((m) => !_notSentYet(m)))
+        if (picked.isNotEmpty &&
+            picked.every((m) =>
+                !_notSentYet(m) &&
+                !MediaMessageActions.hasRemoved(m.attachments)))
           IconButton(
             key: const ValueKey('select_forward'),
             tooltip: 'Forward',
@@ -1021,6 +1037,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                       onQuoteTap: reply == null || selecting
                                           ? null
                                           : () => _jumpTo(reply.id, visibleMessages),
+                                      senderName: _peerName(device),
                                     ),
                                   );
                                   return Column(

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:locallink/core/services/media_book.dart';
 import 'dart:math';
 import 'dart:convert';
 import 'package:locallink/core/models/message_reaction.dart';
@@ -133,7 +134,11 @@ class GroupMessagingService {
       'status': 'queued',
     });
     for (final file in attachments) {
-      await store.addPendingGroupAttachment(id: _newId(), messageId: id, file: file);
+      final pendingId = _newId();
+      await store.addPendingGroupAttachment(id: pendingId, messageId: id, file: file);
+      // Bundle 197b: Gallery link + small picture (moved to the server's
+      // file id when the group message is accepted).
+      MediaBook.instance.staged(pendingId, file.sourceUri, file.path, file.contentType, file.name);
     }
     final local = GroupMessage(
       id: id,
@@ -250,6 +255,9 @@ class GroupMessagingService {
       for (var i = 0; i < base.attachments.length; i++) {
         final localPath = i < pending.length ? pending[i]['local_path']?.toString() : null;
         attachments.add(base.attachments[i].copyWith(localPath: localPath));
+        if (i < pending.length) {
+          await MediaBook.instance.rename(pending[i]['id']?.toString() ?? '', base.attachments[i].id);
+        }
       }
       final message = GroupMessage(
         id: base.id,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/features/storage/presentation/media_message_actions.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/attachment.dart';
@@ -177,7 +178,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         context,
         mine: _controller.isMine(message),
         hasText: message.text.trim().isNotEmpty,
-        canForward: !_notSentYet(message),
+        canForward: !_notSentYet(message) &&
+            !MediaMessageActions.hasRemoved(message.attachments),
+        canSave: MediaMessageActions.savable(message.attachments,
+                mine: _controller.isMine(message))
+            .isNotEmpty,
         barrierColor: Colors.transparent,
       );
       if (!mounted || result == null) return;
@@ -190,6 +195,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           await _copy([message]);
         case MessageAction.forward:
           await _forward([message]);
+        case MessageAction.save:
+          await MediaMessageActions.save(
+              context,
+              MediaMessageActions.savable(message.attachments,
+                  mine: _controller.isMine(message)));
         case MessageAction.info:
           await _showInfo(message);
         case MessageAction.select:
@@ -228,6 +238,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   Future<void> _forward(List<GroupMessage> messages) async {
     final sendable = messages.where((m) => !_notSentYet(m)).toList();
     if (sendable.isEmpty) return;
+    for (final m in sendable) {
+      MediaMessageActions.markOpened(m.attachments);
+    }
     final single = await runForwardFlow(context, [
       for (final m in sendable)
         ForwardItem(text: m.text, attachments: m.attachments),
@@ -383,7 +396,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             },
             icon: const Icon(Icons.copy_outlined),
           ),
-        if (picked.isNotEmpty && picked.every((m) => !_notSentYet(m)))
+        if (picked.isNotEmpty &&
+            picked.every((m) =>
+                !_notSentYet(m) &&
+                !MediaMessageActions.hasRemoved(m.attachments)))
           IconButton(
             tooltip: 'Forward',
             onPressed: () => _forward(picked),

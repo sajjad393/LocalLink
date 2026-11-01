@@ -19,6 +19,9 @@ import 'chat_video_player.dart';
 import 'media_frame.dart';
 import 'media_playback_coordinator.dart';
 import 'media_view_cache.dart';
+import 'package:locallink/core/services/media_book.dart';
+import 'package:locallink/features/storage/data/media_storage_service.dart';
+import 'package:locallink/features/storage/presentation/removed_media_view.dart';
 
 class AttachmentTile extends StatefulWidget {
   final Attachment attachment;
@@ -39,6 +42,12 @@ class AttachmentTile extends StatefulWidget {
   /// show a clock + "Waiting" instead of the ring (documents: no change).
   final bool waiting;
 
+  /// Bundle 197b: my own message (removed media: tap restores from my
+  /// Gallery) and the sender's name (receiver: "Ask Sajjad to send it
+  /// again.").
+  final bool mine;
+  final String? senderName;
+
   const AttachmentTile({
     super.key,
     required this.attachment,
@@ -49,6 +58,8 @@ class AttachmentTile extends StatefulWidget {
     this.failed = false,
     this.onRetry,
     this.waiting = false,
+    this.mine = false,
+    this.senderName,
   });
 
   @override
@@ -76,8 +87,47 @@ class _AttachmentTileState extends State<AttachmentTile> {
     _localPath = widget.attachment.localPath;
     _controller = FileTransferBloc(repository: widget.transfer);
     MediaTransferActions.instance.cancelled.addListener(_onCancelledChanged);
+    // Bundle 197b: removed to save space - no file to open, no download.
+    _media = MediaBook.instance.of(widget.attachment.id);
+    MediaBook.instance.addListener(_onMediaBook);
+    if (_removed) return;
     _prepareExistingPath();
     _maybeAutoDownload();
+  }
+
+  // Bundle 197b: this file's small picture / removed / saved state.
+  MediaState? _media;
+  bool get _removed => _media?.isRemoved ?? false;
+
+  void _onMediaBook() {
+    final next = MediaBook.instance.of(widget.attachment.id);
+    if (next == _media || !mounted) return;
+    final wasRemoved = _removed;
+    _media = next;
+    if (!wasRemoved && _removed) {
+      // Removed while on screen: drop the view, show the small picture.
+      _releaseView();
+      setState(() => _displayPath = null);
+    } else if (wasRemoved && !_removed) {
+      // Copied back from my Gallery: open it as normal.
+      _prepareFailures = 0;
+      setState(() {});
+      unawaited(_prepareExistingPath());
+    } else {
+      setState(() {});
+    }
+  }
+
+  void _markOpened() => unawaited(MediaBook.instance.markOpened(widget.attachment.id));
+
+  /// Bundle 197b (T1): first time the plain view exists, make the small
+  /// picture (kept when the file is removed later).
+  void _ensureThumb(String view) {
+    if (_media?.hasThumb ?? false) return;
+    if (!widget.attachment.isImage && !_isVideo) return;
+    if (!MediaStorageService.instance.configured) return;
+    unawaited(MediaStorageService.instance
+        .ensureThumb(widget.attachment.id, view, video: _isVideo && !widget.attachment.isImage));
   }
 
   void _onCancelledChanged() {
@@ -217,7 +267,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
         next.isNotEmpty &&
         next != old.attachment.localPath &&
         next != _localPath &&
-        _displayPath == null) {
+        _displayPath == null &&
+        !_removed) {
       AppLogger.info('ATTACHMENT_PATH_ARRIVED',
           detail: 'file=${widget.attachment.id}');
       _localPath = next;
@@ -296,6 +347,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
       final view = await _acquireView(localPath);
       if (view == null) return;
       setState(() => _displayPath = view);
+      _ensureThumb(view);
     } catch (error) {
       // Bundle 150: the file can still be settling (just written / just
       // protected). Retry once quietly before giving up.
@@ -385,6 +437,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
         _displayPath = view;
         _activeOperation = null;
       });
+      _ensureThumb(view);
+      MediaStorageService.instance.onDownloaded(widget.attachment.size);
     } on FileTransferCancelledException {
       if (mounted) setState(() => _activeOperation = null);
     } catch (error) {
@@ -410,6 +464,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
   Future<void> _openOrRetryLocal() async {
     final local = _localPath;
     if (local == null || local.isEmpty) return;
+    _markOpened();
     await _prepareExistingPath();
   }
 
@@ -490,6 +545,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
     // Bundle 147: give the view back to the cache instead of deleting it,
     // so scrolling back shows it at once (no second decrypt).
     _releaseView();
+    MediaBook.instance.removeListener(_onMediaBook);
     MediaTransferActions.instance.cancelled.removeListener(_onCancelledChanged);
     MediaPlaybackCoordinator.instance.release(this);
     _audioTimer?.cancel();
@@ -505,10 +561,20 @@ class _AttachmentTileState extends State<AttachmentTile> {
         builder: (context, state) {
           // Bundle 147: no synchronous file check in build (it ran on every
           // frame while scrolling); the cache keeps shown views on disk.
+          // Bundle 197b: removed to save space.
+          if (_removed) {
+            return RemovedMediaView(
+              key: ValueKey<String>('removed_${widget.attachment.id}'),
+              attachment: widget.attachment,
+              mine: widget.mine,
+              senderName: widget.senderName,
+            );
+          }
           final displayPath = _displayPath;
+          final saved = !widget.mine && (_media?.isSaved ?? false);
           if (displayPath != null) {
             if (widget.attachment.isImage) {
-              return _withFailed(ChatPhoto(
+              return _withSaved(saved, _withFailed(ChatPhoto(
                 key: ValueKey<String>(displayPath),
                 path: displayPath,
                 sizeKey: _videoCacheKey,
@@ -517,12 +583,13 @@ class _AttachmentTileState extends State<AttachmentTile> {
                 uploading: widget.uploading,
                 uploadOverlay: _sendOverlay(),
                 title: widget.attachment.originalName,
-              ));
+                onOpened: _markOpened,
+              )));
             }
             if (_isVideo) {
               // Bundle 145: inline player (same for sender and receiver).
               final viewKey = _viewKey;
-              return _withFailed(ChatVideoPlayer(
+              return _withSaved(saved, _withFailed(ChatVideoPlayer(
                 key: ValueKey<String>(displayPath),
                 path: displayPath,
                 cacheKey: _videoCacheKey,
@@ -535,11 +602,14 @@ class _AttachmentTileState extends State<AttachmentTile> {
                 // in the mini player after this bubble is gone.
                 onRetainFile: viewKey == null
                     ? null
-                    : () => MediaViewCache.instance.retain(viewKey),
+                    : () {
+                        _markOpened(); // Bundle 197b: played = opened
+                        MediaViewCache.instance.retain(viewKey);
+                      },
                 onReleaseFile: viewKey == null
                     ? null
                     : (_) => MediaViewCache.instance.release(viewKey),
-              ));
+              )));
             }
           }
 
@@ -670,7 +740,10 @@ class _AttachmentTileState extends State<AttachmentTile> {
                     children: [
                       Text(widget.attachment.originalName,
                           maxLines: 1, overflow: TextOverflow.ellipsis),
-                      Text(_sizeLabel(widget.attachment.size),
+                      Text(
+                          saved
+                              ? '${_sizeLabel(widget.attachment.size)} · Saved'
+                              : _sizeLabel(widget.attachment.size),
                           style: Theme.of(context).textTheme.labelSmall),
                       if (progress?.error != null)
                         Text(
@@ -907,6 +980,15 @@ class _AttachmentTileState extends State<AttachmentTile> {
 
   /// Bundle 150: photo not viewable yet. Same frame as the photo (real
   /// shape when known), blue ring while it moves, never the grey file row.
+  /// Bundle 197b (P3): "✓ Saved" bottom-left of a photo / video.
+  Widget _withSaved(bool saved, Widget child) {
+    if (!saved) return child;
+    return Stack(children: [
+      child,
+      const Positioned(left: 8, bottom: 8, child: IgnorePointer(child: SavedMark())),
+    ]);
+  }
+
   Widget _photoPlaceholder(TransferProgress? progress, bool running) {
     final a = widget.attachment;
     final known = MediaSizeCache.get(_videoCacheKey);
