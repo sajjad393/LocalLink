@@ -26,6 +26,11 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="32" />
     <!-- Bundle 177 (9.1): Nearby while closed on Android 10-12 (asked once, never saved). -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" android:maxSdkVersion="32" />
+    <!-- Bundle 185 (B2): ZTE's own power manager, opened from "Keep LinkUp running". -->
+    <queries>
+        <package android:name="com.zte.powersavemode" />
+        <package android:name="com.zte.heartyservice" />
+    </queries>
     <application
         android:label="LinkUp"
         android:icon="@mipmap/ic_launcher"

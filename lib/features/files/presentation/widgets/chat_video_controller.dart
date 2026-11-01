@@ -234,6 +234,13 @@ class VideoInfoCache {
     _inFlight.clear();
   }
 
+  /// Bundle 185 (B1): low memory while hidden. Returns how many were dropped.
+  static int clear() {
+    final n = _cache.length;
+    _cache.clear();
+    return n;
+  }
+
   static Future<VideoInfo?> load(String path, String cacheKey) {
     final hit = _cache[cacheKey];
     if (hit != null) return Future<VideoInfo?>.value(hit);

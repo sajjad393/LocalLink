@@ -73,8 +73,12 @@ final class NativeMeshCallTransport implements CallTransport {
     });
   }
 
+  /// Bundle 186 (B1): the call that already passed [prepare].
+  String? _preparedCallId;
+
   @override
-  Future<void> start(CallSession session) async {
+  Future<void> prepare(CallSession session) async {
+    if (_preparedCallId == session.id && mesh.isStarted) return;
     if (!mesh.isStarted) {
       try {
         await mesh.resume();
@@ -84,17 +88,28 @@ final class NativeMeshCallTransport implements CallTransport {
     if (!await identityTrust.canEstablishLocalCall(session.peerId)) {
       throw StateError('Peer identity is changed or revoked; local call is blocked');
     }
+    _preparedCallId = session.id;
+  }
+
+  @override
+  Future<void> start(CallSession session) async {
+    await prepare(session);
     _callId = session.id;
     _active = true;
     try {
-      await audio.setSpeakerphoneOn(session.speakerOn);
       // Bundle 159: the per-call voice key, when both phones agreed to lock.
       final voiceKey = voiceKeyFor?.call(session.id);
-      await media.start(
-          callId: session.id,
-          peerId: session.peerId,
-          codec: session.mediaCodec,
-          voiceKey: voiceKey);
+      // Bundle 186 (C3): audio mode and mic start are sent together. The
+      // Android side runs them in this order on its own call-audio thread,
+      // so the screen (and Dart) never wait on the slow audio-mode switch.
+      await Future.wait<void>([
+        audio.setSpeakerphoneOn(session.speakerOn),
+        media.start(
+            callId: session.id,
+            peerId: session.peerId,
+            codec: session.mediaCodec,
+            voiceKey: voiceKey),
+      ], eagerError: true);
       // Bundle 146: one line per call so phone logs show the audio format.
       AppLogger.info('CALL_MEDIA_START',
           detail: 'call=${session.id} codec=${session.mediaCodec} rate=16000 '
@@ -137,7 +152,8 @@ final class NativeMeshCallTransport implements CallTransport {
   @override
   Future<void> stop(CallSession session) async {
     // Bundle 146: audio totals at the end of every call (played=0 means the
-    // speaker never got a frame - the 142-145 Opus symptom).
+    // speaker never got a frame - the 142-145 Opus symptom). Bundle 184:
+    // the native CALL_VOICE_SUMMARY line has the full picture.
     try {
       final stats = await media
           .stats(callId: session.id)
@@ -148,7 +164,10 @@ final class NativeMeshCallTransport implements CallTransport {
                 'send=${stats['send_codec'] ?? '-'} rx=${stats['rx_codec'] ?? '-'} '
                 'fallback=${(stats['opus_fallback'] ?? '').toString().isEmpty ? '-' : stats['opus_fallback']} '
                 'sent=${stats['sent_packets']} played=${stats['received_packets']} '
-                'lost=${stats['lost_packets']} dropped=${stats['dropped_packets']}');
+                'lost=${stats['lost_packets']} dropped=${stats['dropped_packets']}'
+                // Bundle 184: share of the arrived voice that was heard,
+                // hidden (repeated) slots and UDP pieces sent / received.
+                '${stats.containsKey('played_percent') ? ' heard=${stats['played_percent']}% hidden=${stats['hidden_frames']} udp_tx=${stats['udp_tx']} udp_rx=${stats['udp_rx']}' : ''}');
       }
     } catch (_) {}
     try {
@@ -157,6 +176,7 @@ final class NativeMeshCallTransport implements CallTransport {
       try { await audio.clearCommunicationDevice(); } catch (_) {}
       _active = false;
       _callId = null;
+      if (_preparedCallId == session.id) _preparedCallId = null;
     }
   }
 

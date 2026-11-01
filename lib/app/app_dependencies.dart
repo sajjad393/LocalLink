@@ -314,9 +314,16 @@ class AppDependencies {
   /// self-guard on the missing token (presence) or are skipped. Publishing
   /// happens later via the deferred-registration flow, which then calls
   /// initializeConfiguredServices() once a real token exists.
-  Future<void> initializeLocalOnlyServices() async {
-    await store.ensureDeviceIdentity();
+  /// Bundle 185 (D2): the part the first screen needs (identity + keys).
+  /// The rest ([initializeLocalOnlyServices] / [initializeConfiguredServices]
+  /// with `coreDone: true`) runs right after the first frame.
+  Future<void> initializeCore({required bool localOnly}) async {
+    if (localOnly) await store.ensureDeviceIdentity();
     await crypto.init(store.deviceId!);
+  }
+
+  Future<void> initializeLocalOnlyServices({bool coreDone = false}) async {
+    if (!coreDone) await initializeCore(localOnly: true);
     await connectivity.start();
     viewMode.setServerConnected(false);
     await mesh.start();
@@ -339,8 +346,8 @@ class AppDependencies {
     } catch (_) {}
   }
 
-  Future<void> initializeConfiguredServices() async {
-    await crypto.init(store.deviceId!);
+  Future<void> initializeConfiguredServices({bool coreDone = false}) async {
+    if (!coreDone) await initializeCore(localOnly: false);
     await connectivity.start();
     viewMode.setServerConnected(socket.isConnected);
     await mesh.start();

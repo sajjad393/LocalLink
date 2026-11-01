@@ -83,12 +83,19 @@ class IdentityCryptoService {
 
     _keyPair = await _x25519.newKeyPairFromSeed(seed);
     final publicBytes = await _keyPair!.extractPublicKey();
-    await _secure.write(key: _publicKeyKey(_keyVersion), value: _encodeUrl(publicBytes.bytes));
+    // Bundle 185 (D3): these were written again on EVERY start (4 slow
+    // secure-storage writes on the ZTE). Now only when the value changed.
+    await _writeIfChanged(_publicKeyKey(_keyVersion), _encodeUrl(publicBytes.bytes));
     // Keep the legacy public key in sync for older local components; the new
     // protocol reads the versioned key first.
-    await _secure.write(key: _legacyPublicKeyStorage, value: _encodeUrl(publicBytes.bytes));
-    await _secure.write(key: _legacyPrivateKeyStorage, value: _encodeUrl(seed));
-    await _writeCurrentVersion(_keyVersion);
+    await _writeIfChanged(_legacyPublicKeyStorage, _encodeUrl(publicBytes.bytes));
+    await _writeIfChanged(_legacyPrivateKeyStorage, _encodeUrl(seed));
+    await _writeIfChanged(_currentVersionStorage, _keyVersion.toString());
+  }
+
+  Future<void> _writeIfChanged(String key, String value) async {
+    if (await _secure.read(key: key) == value) return;
+    await _secure.write(key: key, value: value);
   }
 
   Future<int> _readCurrentVersion() async {

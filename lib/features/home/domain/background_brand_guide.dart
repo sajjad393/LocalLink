@@ -50,11 +50,13 @@ const List<BackgroundBrandGuide> kBackgroundBrandGuides = [
     'Phone Master > Power saving: let LinkUp run in background',
     _lock,
   ]),
+  // Bundle 185 (B2): the ZTE Blade A35 closed LinkUp a few seconds after it
+  // went behind another app. These 3 settings are what keeps it alive.
   BackgroundBrandGuide('zte', 'ZTE / Nubia (MyOS)', [
     'Tap Open settings',
-    'Battery: Allow background activity (No restrictions)',
-    'Power manager > Auto-start: allow LinkUp',
-    _lock,
+    '1. App info > Battery: choose Unrestricted',
+    '2. Power manager > Power management for apps > LinkUp: turn OFF screen-lock cleaning',
+    '3. $_lock',
   ]),
   BackgroundBrandGuide('other', 'Other phones (Pixel, Motorola, Nokia...)', [
     'Tap Open settings',

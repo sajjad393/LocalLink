@@ -127,8 +127,23 @@ class StoreSealKeySource implements SealKeySource {
 /// * Who can open sealed messages is learned from the link hello, from any
 ///   sealed packet that opens, and from a one-off sealed probe.
 class SealingPeerTransport implements PeerTransportContract {
-  SealingPeerTransport(this.inner, {MessageSealService? sealer})
-      : _sealer = sealer ?? MessageSealService();
+  SealingPeerTransport(this.inner,
+      {MessageSealService? sealer, DateTime Function()? clock})
+      : _sealer = sealer ?? MessageSealService(),
+        _clock = clock ?? DateTime.now;
+
+  final DateTime Function() _clock;
+
+  /// Bundle 185 (C): locked messages that came before the keys were ready
+  /// (slow start on the ZTE). Held, then opened in order once [bind] runs.
+  static const int maxHeld = 50;
+  static const Duration holdFor = Duration(seconds: 30);
+  final List<({Map<String, dynamic> event, DateTime at})> _held =
+      <({Map<String, dynamic> event, DateTime at})>[];
+  bool _replaying = false;
+
+  @visibleForTesting
+  int get heldCount => _held.length;
 
   static const String probeType = 'seal_caps';
 
@@ -171,6 +186,7 @@ class SealingPeerTransport implements PeerTransportContract {
     _keys = keys;
     _sessions = sessions;
     unawaited(_loadCapabilities());
+    if (_held.isNotEmpty) unawaited(_replayHeld());
     // Bundle 164 (5.7): a block / unblock reaches the link layer at once.
     _blockedSub ??= LocalStore.blockedChanges.listen((_) {
       unawaited(_pushBlocked());
@@ -229,7 +245,54 @@ class SealingPeerTransport implements PeerTransportContract {
     return event;
   }
 
-  Future<Map<String, dynamic>?> _openMessage(Map<String, dynamic> event) async {
+  /// Bundle 185 (C1): open what was held, oldest first. New locked messages
+  /// that arrive meanwhile wait behind them, so the order stays the same.
+  Future<void> _replayHeld() async {
+    if (_replaying) return;
+    _replaying = true;
+    var opened = 0;
+    var dropped = 0;
+    var waitedMs = 0;
+    try {
+      while (_held.isNotEmpty) {
+        final item = _held.removeAt(0);
+        final age = _clock().difference(item.at);
+        if (age > holdFor) {
+          dropped++;
+          continue;
+        }
+        if (age.inMilliseconds > waitedMs) waitedMs = age.inMilliseconds;
+        final out = await _openMessage(item.event, fromHeld: true);
+        if (out != null) {
+          opened++;
+          _controller?.add(out);
+        }
+      }
+    } catch (error) {
+      AppLogger.warning('SEAL_EVENT_FAILED', detail: 'held $error');
+    } finally {
+      _replaying = false;
+    }
+    if (opened > 0 || waitedMs > 0) {
+      AppLogger.info('SEAL_HELD', detail: 'n=$opened waited_ms=$waitedMs');
+    }
+    if (dropped > 0) {
+      AppLogger.warning('SEAL_HELD_DROPPED', detail: 'n=$dropped reason=too_old');
+    }
+  }
+
+  /// Keeps [event] for later. False when it can't be held (list full).
+  bool _hold(Map<String, dynamic> event) {
+    if (_held.length >= maxHeld) {
+      AppLogger.warning('SEAL_HELD_DROPPED', detail: 'n=1 reason=full');
+      return false;
+    }
+    _held.add((event: event, at: _clock()));
+    return true;
+  }
+
+  Future<Map<String, dynamic>?> _openMessage(Map<String, dynamic> event,
+      {bool fromHeld = false}) async {
     final raw = event['payload']?.toString();
     if (raw == null || !raw.contains('"sealed')) return event;
     final Object? decoded;
@@ -246,7 +309,18 @@ class SealingPeerTransport implements PeerTransportContract {
     final keys = _keys;
     final self = keys?.selfId ?? '';
     final sender = event['sender_id']?.toString() ?? '';
-    if (keys == null || self.isEmpty || sender.isEmpty) {
+    if (sender.isEmpty) {
+      AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=no_sender');
+      return null;
+    }
+    // Bundle 185 (C1): keys not ready yet (or older held ones still being
+    // opened): hold it instead of throwing it away.
+    if (!fromHeld && (keys == null || self.isEmpty || _replaying)) {
+      if (!_hold(event)) return null;
+      if (keys != null && self.isNotEmpty) unawaited(_replayHeld());
+      return null;
+    }
+    if (keys == null || self.isEmpty) {
       AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=not_ready');
       return null;
     }

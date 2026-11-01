@@ -28,7 +28,6 @@ import java.io.FileInputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.io.RandomAccessFile
-import java.util.PriorityQueue
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -90,8 +89,6 @@ class LocalLinkTransportService : Service() {
         private const val CALL_SAMPLE_RATE = 16_000
         private const val CALL_FRAME_MS = 20
         private const val CALL_FRAME_BYTES = CALL_SAMPLE_RATE * CALL_FRAME_MS / 1000 * 2
-        private const val CALL_JITTER_BUFFER_MS = 60L
-        private const val CALL_MAX_JITTER_FRAMES = 12
         /** Bundle 149: codecs a call_media packet may carry. */
         private val CALL_MEDIA_CODECS = setOf("pcm_s16le", "opus2")
         @Volatile private var instance: LocalLinkTransportService? = null
@@ -175,8 +172,9 @@ class LocalLinkTransportService : Service() {
         fun updateConnection(context:Context,connected:Boolean,owner:Boolean,address:String?){instance?.startOrStopTransportForConnection(connected,owner,address)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_CONNECTION;putExtra("connected",connected);putExtra("group_owner",owner);putExtra("group_owner_address",address)})}
         fun resume(context:Context,connected:Boolean,owner:Boolean,address:String?){instance?.resumeTransport(connected,owner,address)?:startCommand(context,Intent(context,LocalLinkTransportService::class.java).apply{action=ACTION_RESUME;putExtra("connected",connected);putExtra("group_owner",owner);putExtra("group_owner_address",address)})}
         fun send(recipientId:String,payload:Map<String,Any?>)=instance?.sendTransportInternal(recipientId,payload)?:false
-        fun startCallMedia(callId:String, peerId:String, codec:String?, voiceKey:String? = null) = instance?.startCallMediaInternal(callId, peerId, codec, voiceKey)
-            ?: throw IllegalStateException("transport service is not running")
+        fun startCallMedia(callId:String, peerId:String, codec:String?, voiceKey:String? = null) {
+            (instance ?: throw IllegalStateException("transport service is not running")).startCallMediaInternal(callId, peerId, codec, voiceKey)
+        }
         fun stopCallMedia(callId:String) { instance?.stopCallMediaInternal(callId) }
         fun setCallMediaMuted(callId:String, muted:Boolean) { instance?.setCallMediaMutedInternal(callId, muted) }
         fun callMediaStats(callId:String): Map<String,Any?> = instance?.callMediaStatsInternal(callId) ?: emptyMap()
@@ -426,6 +424,7 @@ class LocalLinkTransportService : Service() {
     // non-reference-counted and ALWAYS released when call media stops.
     private var callWakeLock: PowerManager.WakeLock? = null
     private var callWifiLock: WifiManager.WifiLock? = null
+    private var callWifiLockScreenOff: WifiManager.WifiLock? = null
 
     private fun acquireCallLocks() {
         try {
@@ -451,6 +450,20 @@ class LocalLinkTransportService : Service() {
                 }
             }
         } catch (_: Exception) {}
+        // Bundle 184 (E2): the low-latency lock works only with the screen on
+        // and the app in front. On Android 10-13 the high-performance lock
+        // also works with the screen off (phone at the ear). From Android 14
+        // Android turns it into the low-latency one, so it isn't taken there.
+        try {
+            if (callWifiLockScreenOff == null && android.os.Build.VERSION.SDK_INT in 29..33) {
+                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                @Suppress("DEPRECATION")
+                callWifiLockScreenOff = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "locallink:call_wifi_screen_off").apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     private fun releaseCallLocks() {
@@ -458,6 +471,8 @@ class LocalLinkTransportService : Service() {
         callWakeLock = null
         try { callWifiLock?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
         callWifiLock = null
+        try { callWifiLockScreenOff?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+        callWifiLockScreenOff = null
     }
     @Volatile private var callVideo: CallVideoSession? = null
     @Volatile private var callVideoPreviewSurface: android.view.Surface? = null
@@ -606,6 +621,7 @@ class LocalLinkTransportService : Service() {
     override fun onCreate(){
         super.onCreate();instance=this;createNotificationChannel()
         LinkUpLogFile.start(this) // Bundle 180: last hour of logs, also while closed
+        AppHealth.logExitsOnce(this) // Bundle 185 (A1): why did LinkUp stop last time?
         foregroundOk=enterForeground(false)
         if(!foregroundOk){
             // Bundle 175 (1): Android said no. Stop cleanly, try again later.
@@ -1996,6 +2012,8 @@ class LocalLinkTransportService : Service() {
                 "mesh_link_kind" to (transportPeers[packet.sourceNodeId]?.transportName ?: "unknown"),
             ))
         }
+        // Bundle 184 (F1, F2): call voice pieces don't tell the app one by one.
+        if (packet.type == "call_media" || packet.type == MeshRelayPolicy.SEALED_VOICE) return
         transportEvent("mesh_delivered", mapOf("packet_id" to packet.packetId, "source_id" to packet.sourceNodeId, "destination_id" to self, "hop_count" to packet.hopCount))
     }
 
@@ -2004,8 +2022,17 @@ class LocalLinkTransportService : Service() {
      * only the call endpoints hold the media key. Relays therefore see routing
      * metadata but never plaintext audio.
      */
-    private fun startCallMediaInternal(callId:String, peerId:String, codec:String?, voiceKeyB64:String? = null) {
+    // Bundle 186 (C2): start/stop now run on the call audio thread; the
+    // main thread can still stop (service end). One at a time.
+    private val callMediaControlLock = Any()
+
+    private fun startCallMediaInternal(callId:String, peerId:String, codec:String?, voiceKeyB64:String? = null) = synchronized(callMediaControlLock) {
+        startCallMediaLocked(callId, peerId, codec, voiceKeyB64)
+    }
+
+    private fun startCallMediaLocked(callId:String, peerId:String, codec:String?, voiceKeyB64:String?) {
         require(callId.length in 1..128) { "invalid call id" }
+        val timer = CallStepTimer() // Bundle 186 (A2)
         require(peerId.length in 1..128) { "invalid peer id" }
         val requested = codec?.trim()?.lowercase().orEmpty()
         // Bundle 146: a second start for the SAME live call must not tear the
@@ -2022,16 +2049,29 @@ class LocalLinkTransportService : Service() {
         val voiceKey = voiceKeyB64?.trim()?.takeIf { it.isNotEmpty() }?.let {
             try { Base64.decode(it, Base64.NO_WRAP) } catch (_:Exception) { null }
         }?.takeIf { CallVoiceSeal.validKey(it) }
+        timer.mark("old_stop")
         val session = CallMediaSession(callId, peerId, requested, voiceKey)
+        timer.mark("session")
         Log.i("LocalLinkCall", "CALL_MEDIA_CODEC call=$callId requested=${requested.ifBlank { "-" }} used=${session.codec} voice_lock=${voiceKey != null}")
         synchronized(callMediaLock) { callMedia = session }
         acquireCallLocks()
+        timer.mark("locks")
         setCallMicForeground(true) // Bundle 175 (7)
-        session.start()
+        timer.mark("mic_notice")
+        // Bundle 184 (E1): no Nearby (Wi-Fi Direct) searching during the call.
+        CallNearbyPause.callStarted(); AppHealth.startWatcher()
+        session.start(timer)
+        AppHealth.noteCall(true) // Bundle 188 (B3)
         transportEvent("call_media_started", mapOf("call_id" to callId, "peer_id" to peerId, "sample_rate" to CALL_SAMPLE_RATE, "frame_ms" to CALL_FRAME_MS, "codec" to session.codec))
+        // Bundle 186 (A2): where the native start time went.
+        Log.i("LocalLinkCall", timer.line("CALL_MEDIA_START_MS", "call=$callId thread=${Thread.currentThread().name}"))
     }
 
-    private fun stopCallMediaInternal(callId:String) {
+    private fun stopCallMediaInternal(callId:String): Unit = synchronized(callMediaControlLock) {
+        stopCallMediaLocked(callId)
+    }
+
+    private fun stopCallMediaLocked(callId:String) {
         synchronized(callMediaLock) {
             val current = callMedia
             if (current != null && (callId.isBlank() || current.callId == callId)) {
@@ -2043,6 +2083,12 @@ class LocalLinkTransportService : Service() {
         // on every call end, hang-up, and media session stop.
         releaseCallLocks()
         if (micForeground && synchronized(callMediaLock) { callMedia == null }) setCallMicForeground(false) // Bundle 175 (7)
+        if (synchronized(callMediaLock) { callMedia == null }) AppHealth.noteCall(false) // Bundle 188 (B3)
+        // Bundle 184 (E1): Nearby may search again 2 s after the call.
+        if (synchronized(callMediaLock) { callMedia == null }) {
+            CallNearbyPause.callEnded()
+            NearbyRadio.resumeAfterCall()
+        }
         callMediaRecent.clear()
         // Bundle 179 (1.6): files waiting for the call go again once it is over.
         if (pausedForCall.isNotEmpty()) Thread {
@@ -2356,7 +2402,7 @@ class LocalLinkTransportService : Service() {
     private fun handleIncomingCallMedia(packet:MeshPacket) =
         handleIncomingCallMediaPayload(packet.payload, packet.sourceNodeId, packet.hopCount, locked = false)
 
-    private fun handleIncomingCallMediaPayload(payload:JSONObject, sourceNodeId:String, hopCount:Int, locked:Boolean) {
+    private fun handleIncomingCallMediaPayload(payload:JSONObject, sourceNodeId:String, hopCount:Int, locked:Boolean, viaUdp:Boolean = false, udpFresh:Boolean = true) {
         val current = callMedia ?: return
         val selfId = transportDeviceId ?: return
         if (payload.optString("call_id") != current.callId) return
@@ -2393,11 +2439,37 @@ class LocalLinkTransportService : Service() {
             val oldest = callMediaRecent.entries.minByOrNull { it.value }
             if (oldest != null) callMediaRecent.remove(oldest.key, oldest.value)
         }
-        current.enqueue(sequence, timestamp, audio, codec)
+        // Bundle 184 (E3): the friend says whether it gets our UDP voice.
+        // Only inside a locked piece (or a direct plain one) - never trusted from a relay.
+        if (locked && payload.has("ur") && (!viaUdp || udpFresh)) current.udp.onPeerFlag(payload.optInt("ur", 0) == 1, now)
+        // Bundle 184 (E4): a UDP piece also carries the one before it. If that
+        // one never came, it is recovered here (before this piece).
+        if (viaUdp && codec == CallOpus2Format.CODEC && sequence > 0L) {
+            val prevEncoded = payload.optString("pa").trim()
+            if (prevEncoded.isNotEmpty()) {
+                val prevKey = "${current.callId}\u0000${sourceNodeId}\u0000${sequence - 1}"
+                if (callMediaRecent.putIfAbsent(prevKey, now) == null) {
+                    val prevAudio = try { Base64.decode(prevEncoded, Base64.DEFAULT) } catch (_:Exception) { null }
+                    if (prevAudio != null && prevAudio.isNotEmpty()) current.enqueue(sequence - 1, timestamp - CALL_FRAME_MS, prevAudio, codec, viaUdp = true, isRecovered = true)
+                }
+            }
+        }
+        current.enqueue(sequence, timestamp, audio, codec, viaUdp = viaUdp)
         if (locked) current.noteLockedReceived()
-        transportEvent("call_media_received", mapOf("call_id" to current.callId, "sequence" to sequence, "bytes" to audio.size, "hop_count" to hopCount, "codec" to codec, "locked" to locked))
+        // Bundle 184 (F1): no app event per voice piece any more (about 50 a
+        // second flooded the Flutter side and froze the ZTE screen). Flutter
+        // only counted them; it reads the totals through callMediaStats().
     }
 
+    /**
+     * Bundle 184: one live voice call. Five threads, each with one job:
+     * - mic: only reads sound (never waits on the encoder or the network);
+     * - send: encodes and sends (UDP when the friend gets it, else TCP);
+     * - decode: turns arrived pieces into sound as soon as they come;
+     * - speaker: plays what the waiting line ([CallJitterBuffer]) gives;
+     * - udp: receives UDP voice + sends the small probes.
+     * All of them run at Android's audio priority.
+     */
     private inner class CallMediaSession(
         val callId:String,
         val peerId:String,
@@ -2432,8 +2504,6 @@ class LocalLinkTransportService : Service() {
         val isRunning: Boolean get() = running.get()
         private val sequence = AtomicLong(0)
         private val sent = AtomicLong(0)
-        private val received = AtomicLong(0)
-        private val lost = AtomicLong(0)
         private val dropped = AtomicLong(0)
         @Volatile private var muted = false
         private var recorder:AudioRecord? = null
@@ -2441,31 +2511,64 @@ class LocalLinkTransportService : Service() {
         private var audioManager:AudioManager? = null
         private var audioFocusRequest:AudioFocusRequest? = null
         private var captureThread:Thread? = null
-        private var playbackThread:Thread? = null
-        // Bundle 179 (1.3): the microphone hands sound to this short line;
-        // its own thread sends it, so a slow network never stops the mic.
         private var senderThread:Thread? = null
+        private var decodeThread:Thread? = null
+        private var playbackThread:Thread? = null
+        private var udpThread:Thread? = null
+
+        // Mic -> send line (raw sound; 179 limit of 60 ms).
         private val txLock = Object()
-        private val txQueue = ArrayDeque<TxFrame>()
-        // Bundle 179 (1.1, 1.7): catch-up counters + delay log.
-        private val skipped = AtomicLong(0)
-        private var writtenSamples = 0L
-        @Volatile private var maxRxQueueMs = 0
+        private val txRaw = ArrayDeque<RawFrame>()
+        private var txGap = 0L
+        // Network -> decode line.
+        private val rxLock = Object()
+        private val rxQueue = ArrayDeque<RxFrame>()
+        // Decoded sound -> speaker: the waiting line.
+        private val jbLock = Object()
+        private val jitterBuffer = CallJitterBuffer()
+
+        // UDP (184 E3/E4).
+        val udp = CallVoiceUdpState()
+        @Volatile private var udpSocket:DatagramSocket? = null
+        private var udpAddressHost:String? = null
+        private var udpAddress:InetAddress? = null
+        private var lastTx:TxFrame? = null
+
+        // Counters (184 A1).
+        private val micErrors = AtomicLong(0)
+        private val txDropped = AtomicLong(0)
+        private val encoderBursts = AtomicLong(0)
+        private val udpTx = AtomicLong(0)
+        private val tcpTx = AtomicLong(0)
+        private val udpRx = AtomicLong(0)
+        private val tcpRx = AtomicLong(0)
+        private val decoderEmpty = AtomicLong(0)
+        private val recovered = AtomicLong(0)
+        @Volatile private var decodeMaxMs = 0L
+        @Volatile private var writeMaxMs = 0L
+        @Volatile private var underruns = 0L
         @Volatile private var maxTxQueueMs = 0
         @Volatile private var maxSpeakerMs = 0
-        private var lastDelayLogMs = 0L
-        private val playbackLock = Object()
-        private val playbackQueue = PriorityQueue<AudioFrame>(compareBy<AudioFrame>{it.sequence})
-        private var expectedSequence = 0L
-        private var playbackSequenceInitialized = false
+        private var writtenSamples = 0L
+        private var lastHealthAt = 0L
+        private var lastSnapshot = CallVoiceHealth.Snapshot()
         private var lastArrivalMs:Long = 0L
         private var lastSenderTimestampMs:Long = 0L
-        private var jitterMs:Double = 0.0
+        @Volatile private var jitterMs:Double = 0.0
+
+        // Decode thread only.
         private var opusEncoder: CallOpusCodec.Encoder? = null
         private var opusDecoder: CallOpusCodec.Decoder? = null
         private var opusDecoderFailed = false
+        private val pendingDecode = ArrayDeque<RxFrame>()
+        private val carry = ByteArray(CALL_FRAME_BYTES * 8)
+        private var carryLen = 0
 
-        fun start() {
+        /** Bundle 186 (A3): when the speaker started, for CALL_FIRST_VOICE. */
+        @Volatile private var startedAtMs = 0L
+        @Volatile private var firstVoiceLogged = false
+
+        fun start(timer: CallStepTimer? = null) {
             if (!running.compareAndSet(false,true)) return
             try {
                 if (codec == CallOpus2Format.CODEC) {
@@ -2475,15 +2578,18 @@ class LocalLinkTransportService : Service() {
                         fallBackToPcm("encoder_create_${e.javaClass.simpleName}")
                     }
                 }
+                timer?.mark("encoder")
                 val minRecord = AudioRecord.getMinBufferSize(CALL_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
                 if (minRecord <= 0) throw IllegalStateException("AudioRecord is unavailable")
                 // Bundle 179 (1.4): ~80 ms microphone buffer (was 160 ms).
                 val bufferSize = CallAudioLatencyPolicy.micBufferBytes(minRecord, CALL_FRAME_BYTES)
-                // Bundle 179 (1.2): ~80 ms speaker buffer (was 240 ms), sized
-                // from the SPEAKER minimum (the old code used the mic one).
+                // Bundle 179 (1.2): ~80 ms speaker buffer, sized from the
+                // SPEAKER minimum. Bundle 184: the waiting line in front of
+                // it now absorbs the network bunches.
                 val minTrack = AudioTrack.getMinBufferSize(CALL_SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
                 val r = AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, CALL_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize)
                 if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); throw IllegalStateException("AudioRecord initialization failed") }
+                timer?.mark("mic")
                 val t = AudioTrack.Builder()
                     .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                     .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(CALL_SAMPLE_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
@@ -2491,12 +2597,19 @@ class LocalLinkTransportService : Service() {
                     .setTransferMode(AudioTrack.MODE_STREAM)
                     .build()
                 if (t.state != AudioTrack.STATE_INITIALIZED) { r.release(); t.release(); throw IllegalStateException("AudioTrack initialization failed") }
+                timer?.mark("speaker")
                 recorder=r; track=t
                 requestCallAudioFocus()
+                timer?.mark("focus")
                 r.startRecording(); t.play()
-                captureThread=Thread { captureLoop() }.also { it.start() }
-                senderThread=Thread { senderLoop() }.also { it.start() }
-                playbackThread=Thread { playbackLoop() }.also { it.start() }
+                timer?.mark("go")
+                startedAtMs = android.os.SystemClock.elapsedRealtime()
+                lastHealthAt = System.currentTimeMillis()
+                captureThread=Thread({ captureLoop() }, "call-mic").also { it.start() }
+                senderThread=Thread({ senderLoop() }, "call-send").also { it.start() }
+                decodeThread=Thread({ decodeLoop() }, "call-decode").also { it.start() }
+                playbackThread=Thread({ playbackLoop() }, "call-speaker").also { it.start() }
+                if (voiceKey != null) udpThread=Thread({ udpLoop() }, "call-udp").also { it.start() }
             } catch (e: Exception) {
                 running.set(false)
                 try { recorder?.release() } catch (_:Exception) {}
@@ -2511,23 +2624,36 @@ class LocalLinkTransportService : Service() {
         fun stop() {
             if (!running.compareAndSet(true,false)) return
             if (voiceKey != null) Log.i("LocalLinkCall", "CALL_VOICE_LOCK call=$callId locked_sent=${lockedSent.get()} locked_rx=${lockedReceived.get()} plain_fallback=${plainFallbacks.get()} open_failed=${voiceOpenFailed.get()}")
+            try { track?.let { underruns = it.underrunCount.toLong() } } catch (_:Throwable) {}
+            try {
+                val total = snapshot()
+                val line = CallVoiceHealth.line("CALL_VOICE_SUMMARY", callId, total, nowInfo())
+                if (CallVoiceHealth.warn(total)) Log.w("LocalLinkCall", line) else Log.i("LocalLinkCall", line)
+            } catch (_:Throwable) {}
             try { recorder?.stop() } catch (_:Exception) {}
             try { track?.stop() } catch (_:Exception) {}
-            synchronized(playbackLock) { playbackQueue.clear(); playbackLock.notifyAll() }
-            synchronized(txLock) { txQueue.clear(); txLock.notifyAll() }
-            captureThread?.interrupt(); senderThread?.interrupt(); playbackThread?.interrupt()
+            synchronized(txLock) { txRaw.clear(); txLock.notifyAll() }
+            synchronized(rxLock) { rxQueue.clear(); rxLock.notifyAll() }
+            try { udpSocket?.close() } catch (_:Exception) {}
+            captureThread?.interrupt(); senderThread?.interrupt(); decodeThread?.interrupt(); playbackThread?.interrupt(); udpThread?.interrupt()
+            // Let the codec threads leave before their codecs are closed.
+            try { senderThread?.join(200) } catch (_:InterruptedException) {}
+            try { decodeThread?.join(200) } catch (_:InterruptedException) {}
+            try { playbackThread?.join(200) } catch (_:InterruptedException) {}
             recorder?.release(); track?.release(); recorder=null; track=null
             abandonCallAudioFocus()
             opusEncoder?.close(); opusDecoder?.close(); opusEncoder=null; opusDecoder=null
             opusDecoderFailed = false; opusDecodeMisses = 0
-            captureThread=null; senderThread=null; playbackThread=null
-            writtenSamples = 0L; lastDelayLogMs = 0L
-            maxRxQueueMs = 0; maxTxQueueMs = 0; maxSpeakerMs = 0
-            expectedSequence = 0L
-            playbackSequenceInitialized = false
+            captureThread=null; senderThread=null; decodeThread=null; playbackThread=null; udpThread=null
+            udpSocket = null
+            writtenSamples = 0L
             lastArrivalMs = 0L
             lastSenderTimestampMs = 0L
             jitterMs = 0.0
+        }
+
+        private fun audioPriority() {
+            try { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO) } catch (_:Throwable) {}
         }
 
         private fun requestCallAudioFocus() {
@@ -2569,65 +2695,76 @@ class LocalLinkTransportService : Service() {
             audioManager = null
         }
 
+        // ---------------- mic + send ----------------
+
+        /** Bundle 184 (C1): the mic thread only reads; the send thread encodes. */
         private fun captureLoop() {
+            audioPriority()
             val buffer=ByteArray(CALL_FRAME_BYTES)
             while(running.get()) {
                 try {
                     val r=recorder?.read(buffer,0,buffer.size,AudioRecord.READ_BLOCKING) ?: -1
-                    if(r<=0) { dropped.incrementAndGet(); continue }
-                    if (muted) { buffer.fill(0, 0, r); }
+                    if(r<=0) {
+                        micErrors.incrementAndGet(); dropped.incrementAndGet()
+                        if (r < 0) Thread.sleep(5)
+                        continue
+                    }
+                    if (muted) { buffer.fill(0, 0, r) }
                     val data=if(r==buffer.size)buffer.copyOf() else buffer.copyOf(r)
+                    synchronized(txLock) {
+                        // Bundle 179 (1.3): a stuck network drops the OLDEST
+                        // sound; the gap shows on the other phone (hidden there).
+                        repeat(CallAudioLatencyPolicy.txFramesToDrop(txRaw.size)) {
+                            if (txRaw.removeFirstOrNull() != null) { txDropped.incrementAndGet(); dropped.incrementAndGet(); txGap++ }
+                        }
+                        txRaw.addLast(RawFrame(data, System.currentTimeMillis()))
+                        val ms = CallAudioLatencyPolicy.queueMs(txRaw.size)
+                        if (ms > maxTxQueueMs) maxTxQueueMs = ms
+                        txLock.notifyAll()
+                    }
+                } catch (_:InterruptedException) { break } catch (_:Exception) { micErrors.incrementAndGet(); dropped.incrementAndGet(); if(!running.get()) break }
+            }
+        }
+
+        /** Encodes and sends; may block on TCP, the mic never does. */
+        private fun senderLoop() {
+            audioPriority()
+            while (running.get()) {
+                var gap = 0L
+                val raw = try {
+                    synchronized(txLock) {
+                        while (running.get() && txRaw.isEmpty()) txLock.wait(100)
+                        gap = txGap; txGap = 0
+                        if (!running.get()) null else txRaw.removeFirstOrNull()
+                    }
+                } catch (_:InterruptedException) { Thread.currentThread().interrupt(); return } ?: continue
+                if (gap > 0) sequence.addAndGet(gap)
+                try {
                     if (sendCodec != CallOpus2Format.CODEC && opusEncoder != null) {
                         opusEncoder?.close(); opusEncoder = null
                     }
                     val encoder = opusEncoder
                     if (sendCodec == CallOpus2Format.CODEC && encoder != null) {
                         // Bundle 149: an encoder may return 0, 1 or more packets.
-                        val packets = try { encoder.encode(data) } catch (e: Exception) {
+                        val packets = try { encoder.encode(raw.pcm) } catch (e: Exception) {
                             fallBackToPcm("encoder_${e.javaClass.simpleName}")
                             null
                         }
                         if (packets != null) {
-                            for (packet in packets) queueTx(packet, CallOpus2Format.CODEC)
+                            if (packets.size >= 2) encoderBursts.incrementAndGet()
+                            for (packet in packets) sendAudioPacket(TxFrame(sequence.getAndIncrement(), raw.timestampMs, packet, CallOpus2Format.CODEC))
                             continue
                         }
                     }
-                    queueTx(data, CallOpus2Format.PCM)
-                } catch (_:InterruptedException) { break } catch (_:Exception) { dropped.incrementAndGet(); if(!running.get()) break }
+                    sendAudioPacket(TxFrame(sequence.getAndIncrement(), raw.timestampMs, raw.pcm, CallOpus2Format.PCM))
+                } catch (_:Exception) { dropped.incrementAndGet() }
             }
         }
 
-        /**
-         * Bundle 179 (1.3): capture thread only. The sequence number is taken
-         * HERE, so sound dropped from a full line shows as a gap on the other
-         * phone (it plays on) instead of arriving late.
-         */
-        private fun queueTx(audio:ByteArray, packetCodec:String) {
-            if (audio.isEmpty()) return
-            val frame = TxFrame(sequence.getAndIncrement(), System.currentTimeMillis(), audio, packetCodec)
-            synchronized(txLock) {
-                repeat(CallAudioLatencyPolicy.txFramesToDrop(txQueue.size)) {
-                    if (txQueue.removeFirstOrNull() != null) { skipped.incrementAndGet(); dropped.incrementAndGet() }
-                }
-                txQueue.addLast(frame)
-                val ms = CallAudioLatencyPolicy.queueMs(txQueue.size)
-                if (ms > maxTxQueueMs) maxTxQueueMs = ms
-                txLock.notifyAll()
-            }
-        }
-
-        /** Bundle 179 (1.3): sends the line; may block on the network, the mic never does. */
-        private fun senderLoop() {
-            while (running.get()) {
-                val frame = try {
-                    synchronized(txLock) {
-                        while (running.get() && txQueue.isEmpty()) txLock.wait(100)
-                        if (!running.get()) null else txQueue.removeFirstOrNull()
-                    }
-                } catch (_:InterruptedException) { Thread.currentThread().interrupt(); return } ?: continue
-                try { sendAudioPacket(frame) } catch (_:Exception) { dropped.incrementAndGet() }
-            }
-        }
+        /** Address of the friend's direct link (same Wi-Fi / Wi-Fi Direct), or null. */
+        private fun directLinkHost(): String? = try {
+            activePeerConnection(peerId)?.remoteAddress?.trim()?.takeIf { it.isNotEmpty() }
+        } catch (_:Exception) { null }
 
         private fun sendAudioPacket(frame:TxFrame) {
             val audio = frame.audio
@@ -2635,14 +2772,35 @@ class LocalLinkTransportService : Service() {
             if (audio.isEmpty()) return
             val seq=frame.sequence
             val ts=frame.timestampMs
+            val now = System.currentTimeMillis()
             val encoded=Base64.encodeToString(audio, Base64.NO_WRAP)
             val payload=JSONObject().put("type","call_media").put("sender_id",transportDeviceId).put("recipient_id",peerId).put("call_id",callId).put("sequence",seq).put("timestamp_ms",ts).put("sample_rate",CALL_SAMPLE_RATE).put("frame_ms",CALL_FRAME_MS).put("codec",packetCodec).put("ttl",8).put("audio_payload",encoded)
             if (codec == CallOpus2Format.CODEC) payload.put("opus2_rx", opusRxOk)
+            val key = voiceKey
+            val self = transportDeviceId
+            if (key != null) payload.put("ur", if (udp.receivingUdp(now)) 1 else 0)
+            // Bundle 184 (E3): UDP while the friend says it gets our UDP.
+            // Each UDP piece also carries the one before it (E4).
+            if (key != null && self != null && udpSocket != null && packetCodec == CallOpus2Format.CODEC) {
+                val target = udp.target(directLinkHost(), now)
+                if (udp.useUdp(target != null, now) && target != null) {
+                    val prev = lastTx
+                    if (prev != null && prev.sequence == seq - 1 && prev.codec == CallOpus2Format.CODEC && packetCodec == CallOpus2Format.CODEC) {
+                        payload.put("pa", Base64.encodeToString(prev.audio, Base64.NO_WRAP))
+                    }
+                    if (sendUdp(payload, target)) {
+                        sent.incrementAndGet(); udpTx.incrementAndGet()
+                        if (lockedSent.incrementAndGet() == 1L) Log.i("LocalLinkCall", "CALL_VOICE_LOCKED call=$callId dir=tx stream=${voiceStream.take(6)}")
+                        lastTx = frame
+                        return
+                    }
+                    payload.remove("pa")
+                }
+            }
+            lastTx = frame
             // Bundle 159: lock the frame so phones in the middle can't hear
             // it. If no voice-capable route exists right now, fall back to
             // plain voice, which still only crosses contacts (156 rule).
-            val key = voiceKey
-            val self = transportDeviceId
             if (key != null && self != null) {
                 val sealedOk = try {
                     val (nonce, cipherText) = CallVoiceSeal.seal(key, self, peerId, voiceStream, payload.toString().toByteArray(Charsets.UTF_8))
@@ -2653,18 +2811,118 @@ class LocalLinkTransportService : Service() {
                     validTransportId(peerId) && sendRoutedPayload(peerId, outer, reportDegraded = false, liveCallId = callId)
                 } catch (_:Exception) { false }
                 if (sealedOk) {
-                    sent.incrementAndGet()
+                    sent.incrementAndGet(); tcpTx.incrementAndGet()
                     if (lockedSent.incrementAndGet() == 1L) Log.i("LocalLinkCall", "CALL_VOICE_LOCKED call=$callId dir=tx stream=${voiceStream.take(6)}")
                     return
                 }
                 plainFallbacks.incrementAndGet()
             }
-            if(sendCallMediaPacket(peerId,callId,payload)) sent.incrementAndGet() else dropped.incrementAndGet()
+            if(sendCallMediaPacket(peerId,callId,payload)) { sent.incrementAndGet(); tcpTx.incrementAndGet() } else dropped.incrementAndGet()
+        }
+
+        /** Locks [inner] with the call key and sends it as one datagram. */
+        private fun sendUdp(inner:JSONObject, target:Pair<String, Int>): Boolean {
+            val key = voiceKey ?: return false
+            val self = transportDeviceId ?: return false
+            val socket = udpSocket ?: return false
+            return try {
+                val (nonce, cipherText) = CallVoiceSeal.seal(key, self, peerId, voiceStream, inner.toString().toByteArray(Charsets.UTF_8))
+                val bytes = CallVoiceUdp.encode(self, peerId, voiceStream, Base64.encodeToString(nonce, Base64.NO_WRAP), Base64.encodeToString(cipherText, Base64.NO_WRAP))
+                if (bytes.size > CallVoiceUdp.MAX_DATAGRAM) return false
+                val address = synchronized(this) {
+                    if (udpAddressHost != target.first || udpAddress == null) {
+                        udpAddress = InetAddress.getByName(target.first)
+                        udpAddressHost = target.first
+                    }
+                    udpAddress!!
+                }
+                socket.send(DatagramPacket(bytes, bytes.size, address, target.second))
+                true
+            } catch (_:Exception) { false }
+        }
+
+        private fun maybeSendProbe(now:Long) {
+            if (voiceKey == null || udpSocket == null) return
+            val target = udp.target(directLinkHost(), now) ?: return
+            if (!udp.probeDue(now)) return
+            val probe = JSONObject().put("type", CallVoiceUdp.PROBE_TYPE).put("call_id", callId)
+                .put("sender_id", transportDeviceId).put("recipient_id", peerId)
+                .put("ur", if (udp.receivingUdp(now)) 1 else 0).put("timestamp_ms", now)
+            sendUdp(probe, target)
+        }
+
+        /** Bundle 184 (E3): UDP receive + probes. No port = TCP only, as before. */
+        private fun udpLoop() {
+            audioPriority()
+            val socket = try {
+                DatagramSocket(null).apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(CallVoiceUdp.PORT))
+                    soTimeout = 250
+                }
+            } catch (e:Exception) {
+                Log.w("LocalLinkCall", "CALL_UDP_OFF call=$callId reason=bind_${e.javaClass.simpleName}")
+                return
+            }
+            udpSocket = socket
+            Log.i("LocalLinkCall", "CALL_UDP_READY call=$callId port=${CallVoiceUdp.PORT}")
+            val buffer = ByteArray(4_096)
+            var lastMode = false
+            try {
+                while (running.get()) {
+                    val now = System.currentTimeMillis()
+                    maybeSendProbe(now)
+                    val mode = udp.useUdp(udp.target(directLinkHost(), now) != null, now)
+                    if (mode != lastMode) {
+                        lastMode = mode
+                        Log.i("LocalLinkCall", "CALL_UDP_MODE call=$callId send=${if (mode) "udp" else "tcp"}")
+                    }
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    try {
+                        socket.receive(packet)
+                    } catch (_:SocketTimeoutException) {
+                        continue
+                    } catch (_:Exception) {
+                        if (!running.get()) break
+                        try { Thread.sleep(50) } catch (_:InterruptedException) { break }
+                        continue
+                    }
+                    handleUdpDatagram(packet)
+                }
+            } finally {
+                try { socket.close() } catch (_:Exception) {}
+            }
+        }
+
+        private fun handleUdpDatagram(packet:DatagramPacket) {
+            val key = voiceKey ?: return
+            val self = transportDeviceId ?: return
+            val d = CallVoiceUdp.decode(packet.data, packet.length) ?: return
+            if (d.recipient != self || d.sender != peerId || d.stream != voiceStream) return
+            val nonce = try { Base64.decode(d.nonce, Base64.NO_WRAP) } catch (_:Exception) { return }
+            val cipherText = try { Base64.decode(d.cipher, Base64.NO_WRAP) } catch (_:Exception) { return }
+            val plain = CallVoiceSeal.open(key, d.sender, self, d.stream, nonce, cipherText) ?: run { noteVoiceOpenFailed(); return }
+            val inner = try { JSONObject(String(plain, Charsets.UTF_8)) } catch (_:Exception) { return }
+            val now = System.currentTimeMillis()
+            when (inner.optString("type")) {
+                CallVoiceUdp.PROBE_TYPE -> {
+                    if (inner.optString("call_id") != callId) return
+                    // Old (replayed) probes change nothing.
+                    if (udp.onUdpProbe(packet.address?.hostAddress, packet.port, inner.optLong("timestamp_ms", 0L), now)) {
+                        udp.onPeerFlag(inner.optInt("ur", 0) == 1, now)
+                    }
+                }
+                "call_media" -> {
+                    if (inner.optString("call_id") != callId) return
+                    val fresh = udp.onUdpMedia(packet.address?.hostAddress, packet.port, inner.optLong("sequence", -1L), now)
+                    handleIncomingCallMediaPayload(inner, d.sender, 1, locked = true, viaUdp = true, udpFresh = fresh)
+                }
+            }
         }
 
         /**
          * Bundle 149: stop SENDING opus2 for the rest of this call. Any
-         * thread; the encoder itself is closed on the capture thread.
+         * thread; the encoder itself is closed on the send thread.
          */
         private fun fallBackToPcm(reason:String) {
             if (sendCodec == CallOpus2Format.PCM || !running.get()) return
@@ -2683,7 +2941,85 @@ class LocalLinkTransportService : Service() {
             Log.w("LocalLinkCall", "CALL_OPUS_RX_FAILED call=$callId reason=$reason")
         }
 
-        /** Playback thread only. Returns 16 kHz mono PCM, or null. */
+        // ---------------- receive ----------------
+
+        /** Network thread: hand the piece to the decode thread (never decodes here). */
+        fun enqueue(seq:Long, timestamp:Long, audio:ByteArray, packetCodec:String = CallOpus2Format.PCM, viaUdp:Boolean = false, isRecovered:Boolean = false) {
+            lastRxCodec = packetCodec
+            val arrival = System.currentTimeMillis()
+            if (!isRecovered) {
+                if (lastArrivalMs > 0L && lastSenderTimestampMs > 0L) {
+                    val arrivalDelta = arrival - lastArrivalMs
+                    val senderDelta = timestamp - lastSenderTimestampMs
+                    val deviation = kotlin.math.abs(arrivalDelta - senderDelta).toDouble()
+                    jitterMs += (deviation - jitterMs) / 16.0
+                }
+                lastArrivalMs = arrival
+                lastSenderTimestampMs = timestamp
+                if (viaUdp) udpRx.incrementAndGet() else tcpRx.incrementAndGet()
+            }
+            synchronized(rxLock) {
+                if (rxQueue.size >= CallJitterBuffer.MAX_STORED) { rxQueue.removeFirstOrNull(); dropped.incrementAndGet() }
+                rxQueue.addLast(RxFrame(seq, arrival, audio, packetCodec, isRecovered))
+                rxLock.notifyAll()
+            }
+        }
+
+        /** Bundle 184 (B1): decodes as soon as a piece arrives. */
+        private fun decodeLoop() {
+            audioPriority()
+            while (running.get()) {
+                val frame = try {
+                    synchronized(rxLock) {
+                        while (running.get() && rxQueue.isEmpty()) rxLock.wait(100)
+                        if (!running.get()) null else rxQueue.removeFirstOrNull()
+                    }
+                } catch (_:InterruptedException) { Thread.currentThread().interrupt(); return } ?: continue
+                val late = synchronized(jbLock) {
+                    if (jitterBuffer.isLate(frame.sequence)) { jitterBuffer.counters.late++; true } else false
+                }
+                if (late) continue
+                val t0 = System.nanoTime()
+                try {
+                    if (frame.codec == CallOpus2Format.CODEC) {
+                        pendingDecode.addLast(frame)
+                        val pcm = decodeOpus(frame.audio)
+                        if (pcm != null && pcm.isNotEmpty()) addCarry(pcm)
+                        while (carryLen >= CALL_FRAME_BYTES && pendingDecode.isNotEmpty()) {
+                            val owner = pendingDecode.removeFirst()
+                            val samples = CallPcm.toShorts(carry, CALL_FRAME_BYTES)
+                            carry.copyInto(carry, 0, CALL_FRAME_BYTES, carryLen)
+                            carryLen -= CALL_FRAME_BYTES
+                            insertDecoded(owner, samples)
+                        }
+                        // The decoder gave nothing for these: count, don't wait forever.
+                        while (pendingDecode.size > 3) { pendingDecode.removeFirst(); decoderEmpty.incrementAndGet() }
+                        if (pendingDecode.isEmpty() && carryLen > CALL_FRAME_BYTES) carryLen = 0
+                    } else {
+                        if (pendingDecode.isNotEmpty()) { decoderEmpty.addAndGet(pendingDecode.size.toLong()); pendingDecode.clear() }
+                        carryLen = 0
+                        val samples = CallPcm.toShorts(frame.audio)
+                        if (samples.size == CallJitterBuffer.FRAME_SAMPLES) insertDecoded(frame, samples) else dropped.incrementAndGet()
+                    }
+                } catch (_:Exception) { dropped.incrementAndGet() }
+                val ms = (System.nanoTime() - t0) / 1_000_000L
+                if (ms > decodeMaxMs) decodeMaxMs = ms
+            }
+        }
+
+        private fun addCarry(pcm:ByteArray) {
+            if (carryLen + pcm.size > carry.size) carryLen = 0
+            if (pcm.size > carry.size) return
+            pcm.copyInto(carry, carryLen)
+            carryLen += pcm.size
+        }
+
+        private fun insertDecoded(frame:RxFrame, samples:ShortArray) {
+            val kept = synchronized(jbLock) { jitterBuffer.insert(frame.sequence, samples, frame.arrivalMs) }
+            if (kept && frame.recovered) recovered.incrementAndGet()
+        }
+
+        /** Decode thread only. Returns 16 kHz mono PCM, or null. */
         private fun decodeOpus(packet:ByteArray): ByteArray? {
             if (opusDecoderFailed) return null
             val decoder = opusDecoder ?: try {
@@ -2708,95 +3044,114 @@ class LocalLinkTransportService : Service() {
             }
         }
 
+        /** Bundle 184 (B7): plays what the waiting line gives; the speaker sets the pace. */
         private fun playbackLoop() {
-            while(running.get()) {
-                val frame=try {
-                    synchronized(playbackLock) {
-                        while(running.get() && playbackQueue.isEmpty()) playbackLock.wait(100)
-                        if(!running.get()) return@synchronized null
-                        // Bundle 179 (1.1): line longer than 120 ms -> skip the
-                        // oldest sound back to ~60 ms (catch up, never lag).
-                        val skip = CallAudioLatencyPolicy.rxFramesToSkip(playbackQueue.size)
-                        if (skip > 0) {
-                            repeat(skip) { playbackQueue.poll() }
-                            skipped.addAndGet(skip.toLong())
-                            playbackQueue.peek()?.let { expectedSequence = it.sequence }
-                        }
-                        val rxMs = CallAudioLatencyPolicy.queueMs(playbackQueue.size)
-                        if (rxMs > maxRxQueueMs) maxRxQueueMs = rxMs
-                        val head=playbackQueue.peek() ?: return@synchronized null
-                        val now=System.currentTimeMillis()
-                        if (head.sequence > expectedSequence && now - head.receivedAtMs < CALL_JITTER_BUFFER_MS && playbackQueue.size < 4) {
-                            playbackLock.wait(10)
-                            return@synchronized null
-                        }
-                        playbackQueue.poll()
-                    }
-                } catch (interrupted:InterruptedException) {
-                    // stop() wakes this worker with interrupt(); an
-                    // InterruptedException out of wait() is the normal
-                    // shutdown path — leave quietly (like captureLoop does)
-                    // instead of escaping as a FATAL uncaught exception.
-                    Thread.currentThread().interrupt()
-                    return
-                } ?: continue
-                if(frame.sequence > expectedSequence) { lost.addAndGet(frame.sequence-expectedSequence); expectedSequence=frame.sequence+1 } else if(frame.sequence < expectedSequence) continue else expectedSequence++
-                try {
-                    val pcm = if (frame.codec == CallOpus2Format.CODEC) decodeOpus(frame.audio) else frame.audio
-                    if (pcm == null || pcm.isEmpty()) { dropped.incrementAndGet(); continue }
-                    val t = track
-                    val written = t?.write(pcm,0,pcm.size,AudioTrack.WRITE_BLOCKING) ?: 0
-                    if (written > 0) writtenSamples += written / 2
-                    received.incrementAndGet()
-                    if (t != null) noteSpeakerDelay(t)
-                } catch (_:Exception) { dropped.incrementAndGet() }
+            audioPriority()
+            while (running.get()) {
+                val t = track ?: break
+                val out = synchronized(jbLock) { jitterBuffer.pull() }
+                if (!firstVoiceLogged && out.kind == CallJitterBuffer.Kind.NORMAL) {
+                    // Bundle 186 (A3): first real voice from the other phone.
+                    firstVoiceLogged = true
+                    Log.i("LocalLinkCall", "CALL_FIRST_VOICE call=$callId ms_after_start=${android.os.SystemClock.elapsedRealtime() - startedAtMs}")
+                }
+                val bytes = CallPcm.toBytes(out.pcm)
+                val t0 = System.nanoTime()
+                val written = try { t.write(bytes, 0, bytes.size, AudioTrack.WRITE_BLOCKING) } catch (_:Exception) { -1 }
+                val ms = (System.nanoTime() - t0) / 1_000_000L
+                if (ms > writeMaxMs) writeMaxMs = ms
+                if (written > 0) writtenSamples += written / 2
+                if (written < 0) {
+                    if (!running.get()) break
+                    dropped.incrementAndGet()
+                    try { Thread.sleep(5) } catch (_:InterruptedException) { break }
+                    continue
+                }
+                noteSpeaker(t)
             }
         }
 
-        /** Bundle 179 (1.7): playback thread only. One log line per 10 s. */
-        private fun noteSpeakerDelay(t:AudioTrack) {
+        /** Speaker thread only. One health line per 10 s (184 A2). */
+        private fun noteSpeaker(t:AudioTrack) {
             val played = try { t.playbackHeadPosition.toLong() and 0xFFFFFFFFL } catch (_:Exception) { return }
             val speakerMs = CallAudioLatencyPolicy.speakerBacklogMs(writtenSamples, played, CALL_SAMPLE_RATE)
             if (speakerMs > maxSpeakerMs) maxSpeakerMs = speakerMs
             val now = System.currentTimeMillis()
-            if (lastDelayLogMs == 0L) { lastDelayLogMs = now; return }
-            if (!CallAudioLatencyPolicy.logDue(now, lastDelayLogMs)) return
-            lastDelayLogMs = now
-            Log.i("LocalLinkCall", CallAudioLatencyPolicy.delayLogLine(callId, maxRxQueueMs, maxSpeakerMs, maxTxQueueMs, skipped.get()))
-            maxRxQueueMs = 0; maxTxQueueMs = 0; maxSpeakerMs = 0
+            if (now - lastHealthAt in 0 until CallVoiceHealth.LOG_EVERY_MS) return
+            lastHealthAt = now
+            try { underruns = t.underrunCount.toLong() } catch (_:Throwable) {}
+            val total = snapshot()
+            val window = total - lastSnapshot
+            lastSnapshot = total
+            val line = CallVoiceHealth.line("CALL_VOICE_HEALTH", callId, window, nowInfo())
+            if (CallVoiceHealth.warn(window)) Log.w("LocalLinkCall", line) else Log.i("LocalLinkCall", line)
+            decodeMaxMs = 0L; writeMaxMs = 0L; maxSpeakerMs = 0; maxTxQueueMs = 0
+            synchronized(jbLock) { jitterBuffer.counters.maxGapMs = 0L }
+        }
+
+        private fun snapshot(): CallVoiceHealth.Snapshot = synchronized(jbLock) {
+            val c = jitterBuffer.counters
+            CallVoiceHealth.Snapshot(
+                arrived = c.arrived, played = c.played, playedTalking = c.playedTalking, arrivedTalking = c.arrivedTalking,
+                cutTalking = c.cutTalking, cutQuiet = c.cutQuiet, squeezed = c.squeezed, concealed = c.concealed,
+                lost = c.lost, late = c.late, overflow = c.overflow, rebuffers = c.rebuffers,
+                underruns = underruns, decoderEmpty = decoderEmpty.get(), micErrors = micErrors.get(),
+                txDropped = txDropped.get(), encoderBursts = encoderBursts.get(), udpTx = udpTx.get(), tcpTx = tcpTx.get(),
+                udpRx = udpRx.get(), tcpRx = tcpRx.get(), recovered = recovered.get(),
+            )
+        }
+
+        private fun nowInfo(): CallVoiceHealth.Now {
+            val (bufferMs, targetMs, gap, bursts) = synchronized(jbLock) {
+                listOf(jitterBuffer.storedMs.toLong(), jitterBuffer.targetMs.toLong(), jitterBuffer.counters.maxGapMs, jitterBuffer.counters.bursts)
+            }
+            val link = try { activePeerConnection(peerId)?.transportName ?: if (routeTable[peerId] != null) "relay" else "-" } catch (_:Exception) { "-" }
+            val screen = try { (getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive } catch (_:Exception) { null }
+            val now = System.currentTimeMillis()
+            return CallVoiceHealth.Now(
+                bufferMs = bufferMs.toInt(), targetMs = targetMs.toInt(), maxGapMs = gap, bursts = bursts,
+                decodeMaxMs = decodeMaxMs, writeMaxMs = writeMaxMs, speakerMs = maxSpeakerMs,
+                link = link, screenOn = screen, output = outputName(), wifiLock = callWifiLock?.isHeld == true,
+                udp = udp.useUdp(udp.target(directLinkHost(), now) != null, now),
+            )
+        }
+
+        private fun outputName(): String {
+            val m = audioManager ?: return "-"
+            return try {
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    when (m.communicationDevice?.type) {
+                        android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
+                        android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "ear"
+                        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "bluetooth"
+                        android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET, android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "wired"
+                        null -> "-"
+                        else -> "other"
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    if (m.isSpeakerphoneOn) "speaker" else "ear"
+                }
+            } catch (_:Throwable) { "-" }
         }
 
         fun setMuted(value:Boolean) { muted=value }
 
-        fun enqueue(seq:Long, timestamp:Long, audio:ByteArray, packetCodec:String = CallOpus2Format.PCM) {
-            lastRxCodec = packetCodec
-            val arrival = System.currentTimeMillis()
-            if (!playbackSequenceInitialized) {
-                expectedSequence = seq
-                playbackSequenceInitialized = true
-            }
-            if (lastArrivalMs > 0L && lastSenderTimestampMs > 0L) {
-                val arrivalDelta = arrival - lastArrivalMs
-                val senderDelta = timestamp - lastSenderTimestampMs
-                val deviation = kotlin.math.abs(arrivalDelta - senderDelta).toDouble()
-                jitterMs += (deviation - jitterMs) / 16.0
-            }
-            lastArrivalMs = arrival
-            lastSenderTimestampMs = timestamp
-            synchronized(playbackLock) {
-                if(playbackQueue.size >= CALL_MAX_JITTER_FRAMES) { playbackQueue.poll(); dropped.incrementAndGet() }
-                playbackQueue.add(AudioFrame(seq,timestamp,System.currentTimeMillis(),audio,packetCodec)); playbackLock.notifyAll()
-            }
-        }
-
         fun stats():Map<String,Any?> {
-            val s=sent.get(); val r=received.get(); val l=lost.get(); val total=r+l
-            return mapOf("sent_packets" to s, "received_packets" to r, "lost_packets" to l, "dropped_packets" to dropped.get(), "skipped_frames" to skipped.get(), "packet_loss_percent" to if(total>0) l*100.0/total else 0.0, "queued_frames" to synchronized(playbackLock){playbackQueue.size}, "jitter_ms" to jitterMs, "codec" to codec, "send_codec" to sendCodec, "rx_codec" to lastRxCodec, "opus_rx_ok" to opusRxOk, "opus_fallback" to fallbackReason, "frame_ms" to CALL_FRAME_MS, "sample_rate" to CALL_SAMPLE_RATE, "muted" to muted)
+            val s = snapshot()
+            val queued = synchronized(jbLock) { jitterBuffer.stored }
+            val notPlayed = s.cutTalking + s.cutQuiet + s.late + s.overflow + s.decoderEmpty + dropped.get()
+            val total = s.played + s.lost
+            return mapOf("sent_packets" to sent.get(), "received_packets" to s.played, "lost_packets" to s.lost, "dropped_packets" to notPlayed, "skipped_frames" to (s.cutTalking + s.cutQuiet), "packet_loss_percent" to if(total>0) s.lost*100.0/total else 0.0, "queued_frames" to queued, "jitter_ms" to jitterMs, "codec" to codec, "send_codec" to sendCodec, "rx_codec" to lastRxCodec, "opus_rx_ok" to opusRxOk, "opus_fallback" to fallbackReason, "frame_ms" to CALL_FRAME_MS, "sample_rate" to CALL_SAMPLE_RATE, "muted" to muted,
+                "played_percent" to CallVoiceHealth.playedPercent(s), "hidden_frames" to s.concealed, "udp_tx" to s.udpTx, "udp_rx" to s.udpRx)
         }
     }
 
-    private data class AudioFrame(val sequence:Long,val timestampMs:Long,val receivedAtMs:Long,val audio:ByteArray,val codec:String = CallOpus2Format.PCM)
-    /** Bundle 179 (1.3): one frame waiting on the sending line. */
+    /** Bundle 184: one mic piece waiting to be encoded and sent. */
+    private class RawFrame(val pcm:ByteArray, val timestampMs:Long)
+    /** Bundle 184: one arrived piece waiting to be decoded. */
+    private class RxFrame(val sequence:Long, val arrivalMs:Long, val audio:ByteArray, val codec:String, val recovered:Boolean)
+    /** Bundle 179 (1.3): one encoded frame on its way out. */
     private class TxFrame(val sequence:Long, val timestampMs:Long, val audio:ByteArray, val codec:String)
 
     private fun buildRouteAdvertisement(peerId: String): JSONObject {
@@ -4045,9 +4400,21 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun transportEvent(type: String, data: Map<String, Any?> = emptyMap()) {
+        if (type.startsWith("file_")) noteFileState(type) // Bundle 188 (B3)
         val full = mapOf("type" to type, *data.entries.map { it.key to it.value }.toTypedArray())
         // Bundle 175 (2, 3): nobody listens (app closed) -> keep it and wake the no-screen engine.
         if (deliverEvent(type, full) && !destroying) requestNoScreenEngine("event")
+    }
+
+    /** Bundle 188 (B3): file counts for the "what was running" note. */
+    private fun noteFileState(type: String) {
+        try {
+            val now = System.currentTimeMillis()
+            val filesIn = incomingFiles.size
+            val filesOut = outgoingTransfers.values.count { now - it.updatedAt < 60_000L }
+            val active = type == "file_progress" || type == "file_queued" || type == "file_resumed"
+            AppHealth.noteFiles(filesIn, filesOut, active)
+        } catch (_: Throwable) {}
     }
 
     private fun unregisterPeer(peerId: String, socket: Socket) {

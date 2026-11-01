@@ -32,6 +32,48 @@ object CallOpusCodec {
 
     @Volatile private var selfTest: Boolean? = null
 
+    const val SELF_TEST_DELAY_MS = 20_000L
+    private val laterAsked = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * Bundle 185 (D1): run the self-test in the background 20 s from now.
+     * A call before that runs it at once (usable() is cached and locked).
+     */
+    fun selfTestLater(context: android.content.Context? = null) {
+        val app = context?.applicationContext
+        if (app != null) {
+            prefsApp = app
+            // Same phone build + same app build as last time: reuse the answer.
+            if (selfTest == null) {
+                try {
+                    val saved = app.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(PREF_KEY, null)
+                    val result = OpusSelfTestMemory.savedResult(saved, buildKey(app))
+                    if (result != null) {
+                        selfTest = result
+                        Log.i(TAG, "CALL_OPUS_SELFTEST saved ok=$result")
+                    }
+                } catch (_: Throwable) {}
+            }
+        }
+        if (selfTest != null || !laterAsked.compareAndSet(false, true)) return
+        Thread({
+            try { Thread.sleep(SELF_TEST_DELAY_MS) } catch (_: InterruptedException) { return@Thread }
+            usable()
+        }, "locallink-opus-selftest").apply { isDaemon = true; priority = Thread.MIN_PRIORITY }.start()
+    }
+
+    private const val PREFS = "linkup_call"
+    private const val PREF_KEY = "opus_selftest_v1"
+    @Volatile private var prefsApp: android.content.Context? = null
+
+    private fun buildKey(app: android.content.Context): String {
+        val version = try {
+            val info = app.packageManager.getPackageInfo(app.packageName, 0)
+            if (Build.VERSION.SDK_INT >= 28) info.longVersionCode.toString() else @Suppress("DEPRECATION") info.versionCode.toString()
+        } catch (_: Throwable) { "0" }
+        return "${Build.FINGERPRINT}|$version"
+    }
+
     /** True when this phone can encode AND decode opus2 correctly. Cached. */
     fun usable(): Boolean {
         selfTest?.let { return it }
@@ -46,6 +88,13 @@ object CallOpusCodec {
                 false
             }
             selfTest = ok
+            // Bundle 185 (D1): remember it for this phone build + app build.
+            prefsApp?.let { app ->
+                try {
+                    app.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit()
+                        .putString(PREF_KEY, OpusSelfTestMemory.savedValue(ok, buildKey(app))).apply()
+                } catch (_: Throwable) {}
+            }
             Log.i(TAG, "CALL_OPUS_SELFTEST ok=$ok $detail ms=${System.currentTimeMillis() - started} sdk=${Build.VERSION.SDK_INT}")
             return ok
         }

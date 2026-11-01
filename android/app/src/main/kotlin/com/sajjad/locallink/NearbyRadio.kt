@@ -345,6 +345,13 @@ object NearbyRadio {
         val m = manager ?: return result.success(null)
         val ch = channel ?: return result.success(null)
         if (!hasPermission(a)) { result.error("PERMISSION", "Nearby Wi-Fi permission is required", null); return }
+        // Bundle 184 (E1): a search makes the Wi-Fi leave the router's channel
+        // for a moment - not during a voice call (voice broke up).
+        if (!CallNearbyPause.searchAllowed()) {
+            if (CallNearbyPause.logDue()) Log.i(TAG, "search paused call")
+            result.success(null)
+            return
+        }
         m.discoverPeers(ch, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
                 result.success(null)
@@ -353,6 +360,13 @@ object NearbyRadio {
             }
             override fun onFailure(reason: Int) { result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: $reason", null) }
         })
+    }
+
+    /** Bundle 184 (E1): look for nearby tags again shortly after a call. */
+    fun resumeAfterCall() {
+        main.postDelayed({
+            if (CallNearbyPause.searchAllowed()) tags?.scheduleDiscovery(0L)
+        }, CallNearbyPause.RESUME_AFTER_MS + 200L)
     }
 
     private fun connectionInfo(result: MethodChannel.Result) {

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:locallink/app/app_dependencies.dart';
 import 'package:locallink/core/diagnostics/app_log_file.dart';
+import 'package:locallink/core/diagnostics/startup_timer.dart';
+import 'package:locallink/core/services/memory_trim.dart';
 import 'package:locallink/core/routing/app_routes.dart';
 import 'package:locallink/core/routing/app_router.dart';
 import 'package:locallink/core/theme/app_theme.dart';
@@ -29,6 +31,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   final AppDependencies _deps = AppDependencies();
   late final AppRouter _router;
   bool _ready = false;
+  // Bundle 185 (D2): services started (the first screen shows before that).
+  bool _servicesReady = false;
   ThemeMode _themeMode = ThemeMode.system;
   bool _configured = false;
   bool _initializing = false;
@@ -126,50 +130,79 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v3 · 3.0.14 · bundles 104-183 (2026-11-01)');
+        detail: 'v3 · 3.0.19 · bundles 104-188 (2026-11-01)');
     if (mounted) {
       setState(() {
         _ready = false;
         _startupError = null;
       });
     }
+    // Bundle 185 (A4, D2): each step is timed, and the chat list shows as
+    // soon as the database, settings and keys are ready. Connectivity, Nearby
+    // and the message / call services start right after the first frame.
+    final timer = StartupTimer();
     try {
-      await _deps.store.init();
-      final savedTheme = await _deps.store.readSetting('appearance_theme');
-      _themeMode = switch (savedTheme) {
-        'light' => ThemeMode.light,
-        'dark' => ThemeMode.dark,
-        _ => ThemeMode.system,
-      };
-      await _deps.files.cleanupSensitiveViewCopies();
-      await _deps.connectivity.start();
-      final configured = await _deps.store.isConfigured();
-      final offlinePending = _deps.store.isOfflinePending;
-      if (!mounted) return;
-
-      if (configured) {
-        await _deps.initializeConfiguredServices();
-        _listenForIncomingCalls();
-        _listenForNotificationOpens();
-      } else if (offlinePending) {
-        // Bundle 102: account exists only on this phone (server was
-        // unreachable at signup). Mesh chat/calls work without a server.
-        await _deps.initializeLocalOnlyServices();
-        _listenForIncomingCalls();
-        // Bundle 151: notification taps work for phone-only accounts too.
-        _listenForNotificationOpens();
-      }
-
-      final signedOut = await _deps.store.isSignedOut();
-      setState(() {
-        // Bundle 110: soft sign-out forces the login gate even though the
-        // account data itself stays on the phone.
-        _configured = (configured || offlinePending) && !signedOut;
-        _ready = true;
-        _startupError = null;
-      });
-      AppLogger.info('startup_ready');
-      _flushPendingNotificationOpen();
+      var configured = false;
+      var offlinePending = false;
+      var signedOut = false;
+      await StartupSequence.run(
+        timer: timer,
+        core: () async {
+          await _deps.store.init();
+          timer.step('database');
+          final savedTheme = await _deps.store.readSetting('appearance_theme');
+          _themeMode = switch (savedTheme) {
+            'light' => ThemeMode.light,
+            'dark' => ThemeMode.dark,
+            _ => ThemeMode.system,
+          };
+          configured = await _deps.store.isConfigured();
+          offlinePending = _deps.store.isOfflinePending;
+          signedOut = await _deps.store.isSignedOut();
+          timer.step('settings');
+          if (configured || offlinePending) {
+            await _deps.initializeCore(localOnly: !configured);
+            // Incoming calls can show from the first screen on.
+            _listenForIncomingCalls();
+          }
+          timer.step('keys');
+        },
+        showFirstScreen: () {
+          if (!mounted) return;
+          setState(() {
+            // Bundle 110: soft sign-out forces the login gate even though the
+            // account data itself stays on the phone.
+            _configured = (configured || offlinePending) && !signedOut;
+            _ready = true;
+            _startupError = null;
+          });
+          AppLogger.info('startup_ready');
+        },
+        // No frame comes while the app is hidden (opened, then Home at
+        // once): never wait more than 1.5 s, the services must start anyway.
+        firstFrame: () => WidgetsBinding.instance.endOfFrame
+            .timeout(const Duration(milliseconds: 1500), onTimeout: () {}),
+        rest: () async {
+          await _deps.connectivity.start();
+          if (!mounted) return;
+          if (configured) {
+            await _deps.initializeConfiguredServices(coreDone: true);
+            _listenForNotificationOpens();
+          } else if (offlinePending) {
+            // Bundle 102: account exists only on this phone (server was
+            // unreachable at signup). Mesh chat/calls work without a server.
+            await _deps.initializeLocalOnlyServices(coreDone: true);
+            // Bundle 151: notification taps work for phone-only accounts too.
+            _listenForNotificationOpens();
+          }
+          // Old decrypted view copies: not needed for the first screen.
+          unawaited(_deps.files.cleanupSensitiveViewCopies());
+        },
+        servicesReady: () {
+          _servicesReady = true;
+          _flushPendingNotificationOpen();
+        },
+      );
     } catch (error, stackTrace) {
       AppLogger.error(
         'startup_initialization_failed',
@@ -289,7 +322,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   Future<void> _openNotificationTarget(LocalLinkNotificationAction action) async {
     if (!mounted) return;
     final navigator = _navigatorKey.currentState;
-    if (!_ready || !_configured || navigator == null) {
+    if (!_ready || !_servicesReady || !_configured || navigator == null) {
       _pendingNotificationOpen = action; // newest tap wins
       return;
     }
@@ -419,6 +452,12 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       AppRoutes.welcome,
       (route) => false,
     );
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    // Bundle 185 (B1): free our caches when Android is short of memory.
+    MemoryTrim.onPressure(_lifecycleState);
   }
 
   @override

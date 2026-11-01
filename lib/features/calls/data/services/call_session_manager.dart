@@ -32,6 +32,7 @@ import 'package:locallink/features/connectivity/domain/peer_transport_contract.d
 import 'package:locallink/features/connectivity/domain/local_route.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
+import 'package:locallink/features/calls/data/services/call_answer_timer.dart';
 
 final class CallSessionManager implements CallGateway {
   final LocalStore store;
@@ -272,6 +273,7 @@ final class CallSessionManager implements CallGateway {
     if (saved == null || _disposed) return;
     AppLogger.info('CALL_ACCEPT_RESTORED',
         detail: 'call=${saved.callId} left_ms=${saved.remaining.inMilliseconds}');
+    _notificationTapAge = saved.tapAge;
     final session = _session;
     if (session != null &&
         !session.isFinished &&
@@ -438,10 +440,16 @@ final class CallSessionManager implements CallGateway {
   }
 
   Future<void> _acceptIncomingOnce(CallSession session) async {
+    // Bundle 186 (A1): how long each answer step takes. sinceTap = Accept
+    // was tapped on the notification that long ago (the app was opening).
+    final tapAge = _notificationTapAge;
+    _notificationTapAge = null;
+    final timer = CallAnswerTimer(callId: session.id, sinceTap: tapAge);
     if (await store.isBlockedPeer(session.peerId)) {
       await rejectIncoming(reason: 'blocked');
       return;
     }
+    timer.step('blocked_check');
     // The store wait above can be slow; the call may have ended meanwhile.
     final live = _session;
     if (live == null ||
@@ -452,6 +460,7 @@ final class CallSessionManager implements CallGateway {
     try {
       _cancelCallTimers();
       final selectedCodec = await _negotiateCodec(session.supportedMediaCodecs);
+      timer.step('codec');
       _setSession(live.copyWith(
         state: CallState.connecting,
         mediaCodec: selectedCodec,
@@ -466,7 +475,14 @@ final class CallSessionManager implements CallGateway {
       unawaited(_persistSession());
       _transport =
           transportFactory.resolve(requested: CallTransportMode.offlineMesh);
-      await _transport!.start(_session!);
+      // Bundle 186 (B1): the quick checks first (link up, identity not
+      // changed), then tell the caller AT ONCE - before our own mic and
+      // speaker start - so both phones start their sound at the same time.
+      // Before 186 the caller kept ringing until our audio was running
+      // (~1.9 s after the tap on the Realme). If our audio then fails, the
+      // catch below sends the normal call end (the caller sees it end).
+      await _transport!.prepare(_session!);
+      timer.step('prepare');
       await _sendSignal({
         'type': 'call_accept',
         'call_id': session.id,
@@ -478,7 +494,16 @@ final class CallSessionManager implements CallGateway {
         // Bundle 159: tells the caller to lock its sound too.
         if (_voiceKeys.containsKey(session.id)) 'voice_lock': true,
       });
+      timer.step('accept_sent');
+      final current = _session;
+      if (current == null || current.id != session.id || _isClosing(current)) {
+        // Hung up while the accept was going out: nothing to start.
+        return;
+      }
+      await _transport!.start(current);
+      timer.step('audio');
       await _markConnected();
+      timer.done();
     } catch (e, stackTrace) {
       // Every failure used to collapse into 'microphone_unavailable', which
       // hid the real cause (most often a missing mic permission on a fresh
@@ -491,6 +516,14 @@ final class CallSessionManager implements CallGateway {
       rethrow;
     }
   }
+
+  /// Bundle 186 (A3): when the first invite of the current outgoing call
+  /// went out (for CALL_CONNECT_MS).
+  (String, Stopwatch)? _inviteSentAt;
+
+  /// Bundle 186 (A1): how long ago Accept was tapped on the notification
+  /// (from the saved Accept), used once by the next answer.
+  Duration? _notificationTapAge;
 
   /// Single display-name rule for every call-surface peer label:
   /// directory profile display_name → username → 'Unknown user'.
@@ -1181,7 +1214,18 @@ final class CallSessionManager implements CallGateway {
         AppLogger.info('CALL_VOICE_LOCK',
             detail: 'call=${session.id} locked=${_voiceKeys.containsKey(session.id)}');
         _transport = transportFactory.resolve(requested: current.transportMode);
+        // Bundle 186 (A3): invite -> answer, answer -> our sound running.
+        final audioWatch = Stopwatch()..start();
         await _transport!.start(current);
+        final sentAt = _inviteSentAt;
+        AppLogger.info('CALL_CONNECT_MS',
+            detail: CallConnectTiming.line(
+                callId: session.id,
+                inviteToAcceptMs: sentAt == null || sentAt.$1 != session.id
+                    ? null
+                    : sentAt.$2.elapsedMilliseconds -
+                        audioWatch.elapsedMilliseconds,
+                acceptToAudioMs: audioWatch.elapsedMilliseconds));
       }
       await _markConnected();
     } catch (error, stackTrace) {
@@ -1569,6 +1613,10 @@ final class CallSessionManager implements CallGateway {
           SealingPeerTransport.voiceKeyField: key,
       });
       AppLogger.info('CALL_INVITE_SENT', detail: 'transport=${route.kind.name} queued=${!routeAvailable}');
+      // Bundle 186 (A3): first invite of this call (repeats keep the time).
+      if (_inviteSentAt?.$1 != session.id) {
+        _inviteSentAt = (session.id, Stopwatch()..start());
+      }
     } catch (error, stackTrace) {
       AppLogger.error(
         'CALL_INVITE_SEND_FAILED',

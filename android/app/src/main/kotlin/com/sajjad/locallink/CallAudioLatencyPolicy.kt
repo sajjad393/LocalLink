@@ -13,9 +13,9 @@ package com.sajjad.locallink
 object CallAudioLatencyPolicy {
     const val FRAME_MS = 20
 
-    /** Receive line: aim 60 ms, never more than 120 ms. */
-    const val RX_TARGET_FRAMES = 3
-    const val RX_MAX_FRAMES = 6
+    // Bundle 184: the 179 receive-line cut (over 120 ms -> back to 60 ms)
+    // is gone. It threw away about a third of the voice on bunchy Wi-Fi;
+    // CallJitterBuffer handles the receive line now.
 
     /** Speaker (AudioTrack) buffer: about 80 ms (was 12 frames = 240 ms). */
     const val SPEAKER_BUFFER_FRAMES = 4
@@ -28,13 +28,6 @@ object CallAudioLatencyPolicy {
 
     /** One CALL_AUDIO_DELAY log line per this period. */
     const val LOG_EVERY_MS = 10_000L
-
-    /**
-     * How many of the oldest frames to skip so the receive line is back at
-     * the target. 0 while the line is short enough.
-     */
-    fun rxFramesToSkip(queued: Int): Int =
-        if (queued > RX_MAX_FRAMES) queued - RX_TARGET_FRAMES else 0
 
     /** How many of the oldest frames to drop before adding one to the sending line. */
     fun txFramesToDrop(queued: Int): Int =

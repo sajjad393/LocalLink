@@ -8,16 +8,8 @@ import org.junit.Test
 /** Bundle 179: voice delay rules, files pause during calls, saved Accept, call alerts. */
 class Call179Test {
     // ---- 1. voice delay ----
-    @Test fun `receive line short enough is left alone`() {
-        for (q in 0..CallAudioLatencyPolicy.RX_MAX_FRAMES) assertEquals(0, CallAudioLatencyPolicy.rxFramesToSkip(q))
-    }
-
-    @Test fun `receive line over 120 ms skips back to 60 ms`() {
-        assertEquals(4, CallAudioLatencyPolicy.rxFramesToSkip(7))
-        assertEquals(9, CallAudioLatencyPolicy.rxFramesToSkip(12))
-        val after = 12 - CallAudioLatencyPolicy.rxFramesToSkip(12)
-        assertEquals(60, CallAudioLatencyPolicy.queueMs(after))
-    }
+    // Bundle 184: the receive-line cut tests moved to Voice184Test (the
+    // 179 cut rule itself is gone).
 
     @Test fun `sending line never holds more than 60 ms`() {
         var q = 0

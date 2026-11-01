@@ -127,6 +127,12 @@ class SavedCallAccept {
   /// Time left of the 60 s.
   final Duration remaining;
 
+  /// Bundle 186 (A1): how long ago Accept was tapped (60 s minus the rest).
+  Duration get tapAge {
+    final ms = 60000 - remaining.inMilliseconds;
+    return Duration(milliseconds: ms < 0 ? 0 : ms);
+  }
+
   CallNotificationAction get action => CallNotificationAction(
       type: CallNotificationActionType.accept,
       callId: callId,

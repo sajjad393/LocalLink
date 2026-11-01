@@ -37,8 +37,18 @@ object VendorBackgroundIntents {
             "com.transsion.phonemanager" to "com.transsion.phonemanager.FunctionActivity",
         )
         "zte" -> listOf(
+            // Older ZTE phones; MyOS (Blade A35 etc.) no longer has it.
             "com.zte.heartyservice" to "com.zte.heartyservice.autorun.AppAutoRunManager",
         )
+        else -> emptyList()
+    }
+
+    /**
+     * Bundle 185 (B2): when no known page opens, open the brand's power
+     * manager app itself (its main screen). Needs <queries> in the manifest.
+     */
+    fun launchPackages(brand: String): List<String> = when (brand.lowercase()) {
+        "zte" -> listOf("com.zte.powersavemode", "com.zte.heartyservice")
         else -> emptyList()
     }
 }

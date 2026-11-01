@@ -10,6 +10,10 @@ abstract interface class CallTransport {
   bool get isActive;
   Stream<Map<String, dynamic>> get events;
 
+  /// Bundle 186 (B1): the quick checks before a call is answered (link up,
+  /// identity not changed). [start] runs it too when it was not called.
+  Future<void> prepare(CallSession session);
+
   Future<void> start(CallSession session);
 
   Future<void> sendControl({required String recipientId, required Map<String, dynamic> payload});

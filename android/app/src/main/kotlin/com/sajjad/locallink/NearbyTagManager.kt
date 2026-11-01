@@ -275,6 +275,11 @@ class NearbyTagManager(
 
     private fun discover() {
         if (!hasPermission()) return
+        // Bundle 184 (E1): no tag search during a voice call.
+        if (!CallNearbyPause.searchAllowed()) {
+            if (CallNearbyPause.logDue()) Log.i(TAG, "tag search paused call")
+            return
+        }
         lastDiscoveryAt = System.currentTimeMillis()
         publish()
         try {

@@ -15,7 +15,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_sqlcipher/sqflite.dart';
 import 'package:locallink/core/storage/database_encryption_service.dart';
-import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/diagnostics/store_health.dart';
 
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/call.dart';
@@ -40,10 +40,10 @@ class LocalStore {
       Future<T> Function(Transaction txn) body) {
     final sw = Stopwatch()..start();
     return db.transaction((txn) => body(txn)).whenComplete(() {
-      final ms = sw.elapsedMilliseconds;
-      if (ms > 1500) {
-        AppLogger.warning('STORE_TX_SLOW', detail: 'tx=$name ms=$ms');
-      }
+      // Bundle 187 (A1/A2): counted for STORE_SUMMARY; over 1.5 s still
+      // logs STORE_TX_SLOW (now with during_stall=y|n|-).
+      unawaited(StoreHealth.instance
+          .record(name, sw.elapsedMilliseconds, tx: true));
     });
   }
 
@@ -52,10 +52,9 @@ class LocalStore {
     try {
       return await op();
     } finally {
-      final ms = sw.elapsedMilliseconds;
-      if (ms > 1500) {
-        AppLogger.warning('STORE_OP_SLOW', detail: 'op=$name ms=$ms');
-      }
+      // Bundle 187 (A1/A2): counted for STORE_SUMMARY; over 1.5 s still
+      // logs STORE_OP_SLOW (now with during_stall=y|n|-).
+      unawaited(StoreHealth.instance.record(name, sw.elapsedMilliseconds));
     }
   }
 

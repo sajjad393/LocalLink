@@ -1775,8 +1775,10 @@ class ReliableMessagingService {
     }
   }
 
-  // Hot-path guardian. During an active call the direct transport emits
+  // Hot-path guardian. During an active call the direct transport emitted
   // 100-300 events/sec (mesh_delivered/call_media_received/route_degraded…).
+  // Bundle 184: native no longer sends call_media_received or mesh_delivered
+  // for voice pieces at all; the names stay here for older native builds.
   // developer.log per event is a marshalled platform hop — on the weaker
   // handset that froze the UI for 15-26s at a time (Choreographer megaskips
   // observed in production logcat). We count hot types and flush one summary

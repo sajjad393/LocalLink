@@ -108,12 +108,24 @@ class MainActivity : FlutterActivity() {
         BackgroundEngine.stop("app_opened")
         super.onCreate(savedInstanceState)
         LinkUpLogFile.start(this) // Bundle 180: last hour of logs
+        // Bundle 185 (A): how long Android took to get here, why LinkUp
+        // stopped last time, what it may do now, and a 2-minute freeze watch.
+        if (Build.VERSION.SDK_INT >= 24) {
+            val sinceStart = android.os.SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime()
+            android.util.Log.i(AppHealthPolicy.TAG, "APP_OPEN since_process_start_ms=$sinceStart")
+        }
+        AppHealth.logExitsOnce(this)
+        AppHealth.logKeepAlive(this, "open")
+        AppHealth.appOpened()
         activeInstance = this
         BackgroundEngine.markAppOpened(this)
         // Bundle 164 (4.3): the app is open - the reboot notice is not needed.
         LocalLinkNotificationManager.cancelBootReconnect(this)
         // Bundle 175 (5): 15-minute health check (KEEP: scheduled once).
-        BackgroundHealth.schedule(this)
+        // Bundle 185 (D4): off the main thread - WorkManager's first start
+        // reads its database, and the main thread also runs Dart now.
+        val appCtx = applicationContext
+        Thread({ BackgroundHealth.schedule(appCtx) }, "linkup-health-schedule").apply { isDaemon = true }.start()
         // Bundle 124: the once-per-install battery-exemption dialog that used
         // to fire here slapped first-time users on TOP of the register/login
         // screen with zero context. The dashboard permission sequencer
@@ -208,7 +220,10 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         // Bundle 149: run the one-time Opus self-test early, in the background,
         // so the first call never waits for it.
-        Thread { CallOpusCodec.usable() }.apply { name = "locallink-opus-selftest"; isDaemon = true }.start()
+        // Bundle 185 (D1): not during the start - it used 0.9 s of CPU on the
+        // ZTE right while the first screen was drawing. 20 s later, or at once
+        // when a call needs it (CallOpusCodec.usable() runs it then).
+        CallOpusCodec.selfTestLater(this)
         chatVideoPip.register(flutterEngine.dartExecutor.binaryMessenger) // Bundle 147
         registerLogChannel(this, flutterEngine.dartExecutor.binaryMessenger) // Bundle 180
         // Stable per-device identity survives app reinstall/data-clear (resets
@@ -221,6 +236,9 @@ class MainActivity : FlutterActivity() {
                 } catch (e: Exception) {
                     result.success("")
                 }
+            } else if (call.method == "stallOverlap") {
+                // Bundle 187 (A2): was the screen frozen while a slow storage step ran?
+                result.success(AppHealth.stallOverlap((call.argument<Number>("window_ms") ?: 0).toLong()))
             } else {
                 result.notImplemented()
             }
@@ -679,25 +697,13 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "setSpeakerphoneOn" -> {
                         val enabled = call.argument<Boolean>("enabled") == true
-                        audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
-                        if (android.os.Build.VERSION.SDK_INT >= 31) {
-                            val devices = audioManager.availableCommunicationDevices
-                            val speaker = devices.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                            val bt = devices.firstOrNull {
-                                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                                    it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-                            }
-                            // Bundle 143: speaker OFF used to pick Bluetooth only —
-                            // with no headset nothing was selected and audio stayed
-                            // on the loudspeaker. Fall back to the earpiece.
-                            val earpiece = devices.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
-                            val target = if (enabled) speaker else (bt ?: earpiece)
-                            if (target != null) audioManager.setCommunicationDevice(target)
-                            else if (!enabled) audioManager.clearCommunicationDevice()
-                        } else {
-                            @Suppress("DEPRECATION") audioManager.isSpeakerphoneOn = enabled
+                        // Bundle 186 (C1): the audio mode switch is slow on some
+                        // phones (Unisoc): it runs on the call audio thread now,
+                        // so the screen and Dart never wait for it.
+                        CallAudioThread.run("route speaker=$enabled", { applyCallRoute(audioManager, enabled) }) { error ->
+                            if (error == null) result.success(null)
+                            else result.error("CALL_AUDIO_ERROR", error.message ?: error.javaClass.simpleName, null)
                         }
-                        result.success(null)
                     }
                     // Bundle 143: in-call phone behaviour, driven by the Dart session.
                     "setCallUi" -> {
@@ -712,10 +718,13 @@ class MainActivity : FlutterActivity() {
                         // Bundle 143: call over — always hand screen + volume keys back.
                         setCallProximity(false)
                         volumeControlStream = android.media.AudioManager.USE_DEFAULT_STREAM_TYPE
-                        if (android.os.Build.VERSION.SDK_INT >= 31) audioManager.clearCommunicationDevice()
-                        @Suppress("DEPRECATION") audioManager.isSpeakerphoneOn = false
-                        audioManager.mode = android.media.AudioManager.MODE_NORMAL
-                        result.success(null)
+                        // Bundle 186 (C1): the audio part on the call audio thread,
+                        // after any speaker change / media stop still queued there.
+                        CallAudioThread.run("route clear", {
+                            if (android.os.Build.VERSION.SDK_INT >= 31) audioManager.clearCommunicationDevice()
+                            @Suppress("DEPRECATION") audioManager.isSpeakerphoneOn = false
+                            audioManager.mode = android.media.AudioManager.MODE_NORMAL
+                        }) { _ -> result.success(null) }
                     }
                     else -> result.notImplemented()
                 }
@@ -744,12 +753,18 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
                         // Bundle 159: per-call voice key (memory only, never logged).
-                        LocalLinkTransportService.startCallMedia(callId, peerId, codec, call.argument<String>("voice_key"))
-                        result.success(null)
+                        val voiceKey = call.argument<String>("voice_key")
+                        // Bundle 186 (C2): mic + speaker start on the call audio
+                        // thread (was ~0.5 s on the main thread = frozen screen).
+                        CallAudioThread.run("media_start", { LocalLinkTransportService.startCallMedia(callId, peerId, codec, voiceKey) }) { error ->
+                            if (error == null) result.success(null)
+                            else result.error("CALL_MEDIA_ERROR", error.message ?: error.javaClass.simpleName, null)
+                        }
                     }
                     "stop" -> {
-                        LocalLinkTransportService.stopCallMedia(call.argument<String>("call_id")?.trim().orEmpty())
-                        result.success(null)
+                        val stopId = call.argument<String>("call_id")?.trim().orEmpty()
+                        // Bundle 186 (C2): same thread, so a stop never overtakes its start.
+                        CallAudioThread.run("media_stop", { LocalLinkTransportService.stopCallMedia(stopId) }) { _ -> result.success(null) }
                     }
                     "mute" -> {
                         LocalLinkTransportService.setCallMediaMuted(call.argument<String>("call_id")?.trim().orEmpty(), call.argument<Boolean>("muted") == true)
@@ -1071,6 +1086,28 @@ class MainActivity : FlutterActivity() {
     // and back on when uncovered; touches are ignored while it is off.
     private var proximityWakeLock: android.os.PowerManager.WakeLock? = null
 
+    /** Bundle 143 + 186 (C1): call audio mode + earpiece/speaker. Runs on the call audio thread. */
+    private fun applyCallRoute(audioManager: android.media.AudioManager, enabled: Boolean) {
+        audioManager.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            val devices = audioManager.availableCommunicationDevices
+            val speaker = devices.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            val bt = devices.firstOrNull {
+                it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            }
+            // Bundle 143: speaker OFF used to pick Bluetooth only —
+            // with no headset nothing was selected and audio stayed
+            // on the loudspeaker. Fall back to the earpiece.
+            val earpiece = devices.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
+            val target = if (enabled) speaker else (bt ?: earpiece)
+            if (target != null) audioManager.setCommunicationDevice(target)
+            else if (!enabled) audioManager.clearCommunicationDevice()
+        } else {
+            @Suppress("DEPRECATION") audioManager.isSpeakerphoneOn = enabled
+        }
+    }
+
     private fun setCallProximity(enabled: Boolean) {
         try {
             val pm = powerManager()
@@ -1106,6 +1143,15 @@ class MainActivity : FlutterActivity() {
             try {
                 startActivity(Intent().setComponent(ComponentName(pkg, cls)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 android.util.Log.i("LocalLinkBackground", "BRAND_SETTINGS_OPENED brand=$brand page=$cls")
+                return "vendor"
+            } catch (_: Exception) {}
+        }
+        // Bundle 185 (B2): the brand's power manager app (ZTE MyOS).
+        for (pkg in VendorBackgroundIntents.launchPackages(brand)) {
+            try {
+                val launch = packageManager.getLaunchIntentForPackage(pkg) ?: continue
+                startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                android.util.Log.i("LocalLinkBackground", "BRAND_SETTINGS_OPENED brand=$brand page=$pkg")
                 return "vendor"
             } catch (_: Exception) {}
         }
@@ -1266,6 +1312,19 @@ class MainActivity : FlutterActivity() {
         val resolver=contentResolver; val name=queryName(uri)?:"attachment"; val mime=resolver.getType(uri)?:"application/octet-stream"; val safeName=name.replace(Regex("[^A-Za-z0-9._-]"),"_"); val pickDir=File(filesDir,"locallink_picks").apply{mkdirs()}; val outFile=File(pickDir,"locallink_${UUID.randomUUID()}_$safeName"); resolver.openInputStream(uri).use{input->requireNotNull(input){"Could not open selected file"};FileOutputStream(outFile).use{output->input.copyTo(output)}}; return mapOf("path" to outFile.absolutePath,"name" to name,"content_type" to mime,"size" to outFile.length())
     }
     private fun queryName(uri:Uri):String?{var cursor:Cursor?=null;return try{cursor=contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null);if(cursor!=null&&cursor.moveToFirst())cursor.getString(0)else uri.lastPathSegment}finally{cursor?.close()}}
+
+    // Bundle 185 (A2): the screen went behind another app (Home, Share, a call app).
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) AppHealth.logKeepAlive(this, "background")
+    }
+
+    // Bundle 185 (B1): Android asks for memory. Flutter drops its picture
+    // cache by itself; the app side drops its own caches (memory_trim.dart).
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        AppHealth.onTrim(level)
+    }
 
     // Bundle 147: Home pressed while a chat video plays (Android 8-11).
     override fun onUserLeaveHint() {
