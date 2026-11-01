@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:locallink/app/app_dependencies.dart';
+import 'package:locallink/core/diagnostics/app_log_file.dart';
 import 'package:locallink/core/routing/app_routes.dart';
 import 'package:locallink/core/routing/app_router.dart';
 import 'package:locallink/core/theme/app_theme.dart';
@@ -125,7 +126,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v3 · 3.0.10 · bundles 104-179 (2026-11-01)');
+        detail: 'v3 · 3.0.11 · bundles 104-180 (2026-11-01)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -389,6 +390,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
 
   Future<void> _resetAccount() async {
     ChatVideoHub.instance.stopAll();
+    // Bundle 180: logging out removes the saved logs too.
+    unawaited(AppLogFile.instance.clearAll());
     PresenceHub.instance.forgetPeople();
     MediaViewCache.instance.forgetAll();
     try {

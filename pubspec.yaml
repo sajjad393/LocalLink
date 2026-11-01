@@ -1,7 +1,7 @@
 name: locallink
 publish_to: 'none'
 description: LinkUp offline LAN communication client.
-version: 3.0.10+81
+version: 3.0.11+82
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

@@ -605,6 +605,7 @@ class LocalLinkTransportService : Service() {
 
     override fun onCreate(){
         super.onCreate();instance=this;createNotificationChannel()
+        LinkUpLogFile.start(this) // Bundle 180: last hour of logs, also while closed
         foregroundOk=enterForeground(false)
         if(!foregroundOk){
             // Bundle 175 (1): Android said no. Stop cleanly, try again later.

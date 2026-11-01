@@ -107,6 +107,7 @@ class MainActivity : FlutterActivity() {
         // engine stops first, so only one engine runs the app at a time.
         BackgroundEngine.stop("app_opened")
         super.onCreate(savedInstanceState)
+        LinkUpLogFile.start(this) // Bundle 180: last hour of logs
         activeInstance = this
         BackgroundEngine.markAppOpened(this)
         // Bundle 164 (4.3): the app is open - the reboot notice is not needed.
@@ -209,6 +210,7 @@ class MainActivity : FlutterActivity() {
         // so the first call never waits for it.
         Thread { CallOpusCodec.usable() }.apply { name = "locallink-opus-selftest"; isDaemon = true }.start()
         chatVideoPip.register(flutterEngine.dartExecutor.binaryMessenger) // Bundle 147
+        registerLogChannel(this, flutterEngine.dartExecutor.binaryMessenger) // Bundle 180
         // Stable per-device identity survives app reinstall/data-clear (resets
         // only on factory reset or signing-key change). Used to re-bind this
         // physical phone to its existing device row and to restore the account.

@@ -8,6 +8,8 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:locallink/core/diagnostics/log_share_flow.dart';
+import 'package:locallink/core/diagnostics/tap_burst_counter.dart';
 import 'package:locallink/core/models/chat_preview.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
@@ -124,6 +126,20 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // Bundle 180: tap "Chats" 5 times fast to share the last hour of logs.
+  final TapBurstCounter _chatsTitleTaps = TapBurstCounter();
+  bool _sharingLogs = false;
+
+  Future<void> _onChatsTitleTap() async {
+    if (!_chatsTitleTaps.tap() || _sharingLogs) return;
+    _sharingLogs = true;
+    try {
+      await runLogShare(context);
+    } finally {
+      _sharingLogs = false;
+    }
+  }
+
   late final HomeBloc _controller = HomeBloc(
     repository: widget.homeRepository,
     onServerSyncUnavailable: widget.connectivityController.discoverWifiDirect,
@@ -703,7 +719,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Chats'),
+        // Bundle 180: looks the same; 5 fast taps share the logs.
+        title: GestureDetector(
+          key: const ValueKey('chats_title_taps'),
+          behavior: HitTestBehavior.opaque,
+          onTap: _onChatsTitleTap,
+          child: const Text('Chats'),
+        ),
         actions: [
           // Bundle 153: no gear here (Settings is a tab), same as Calls.
           ConnectionStatusIndicator(controller: widget.connectivityController),

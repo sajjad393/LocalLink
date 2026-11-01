@@ -39,6 +39,7 @@ class BackgroundChannels(
     }
 
     fun register(messenger: BinaryMessenger) {
+        registerLogChannel(context, messenger) // Bundle 180
         MethodChannel(messenger, "locallink/device").setMethodCallHandler { call, result ->
             if (call.method == "androidId") {
                 val id = try {
