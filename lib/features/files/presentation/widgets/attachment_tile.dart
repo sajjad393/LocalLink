@@ -35,6 +35,10 @@ class AttachmentTile extends StatefulWidget {
   final bool failed;
   final VoidCallback? onRetry;
 
+  /// Bundle 182: [uploading] and the friend is Offline. Photos and videos
+  /// show a clock + "Waiting" instead of the ring (documents: no change).
+  final bool waiting;
+
   const AttachmentTile({
     super.key,
     required this.attachment,
@@ -44,6 +48,7 @@ class AttachmentTile extends StatefulWidget {
     this.uploading = false,
     this.failed = false,
     this.onRetry,
+    this.waiting = false,
   });
 
   @override
@@ -838,6 +843,13 @@ class _AttachmentTileState extends State<AttachmentTile> {
   /// when nothing is moving (then the bubble shows play / download).
   Widget? _ringCenter(TransferProgress? progress, bool running) {
     final size = widget.attachment.size;
+    if (widget.uploading && widget.waiting) {
+      return MediaWaitingBadge(
+        key: const Key('chat_media_waiting'),
+        isVideo: _isVideo,
+        onCancel: _cancelSend,
+      );
+    }
     // Bundle 174 (6): one circle with only the percent, for sending and
     // receiving; tap -> X -> "Cancel this video?".
     if (running) {
@@ -876,13 +888,19 @@ class _AttachmentTileState extends State<AttachmentTile> {
         child: Center(
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            child: _LiveRing(
-              key: const Key('chat_media_sending'),
-              messageId: widget.messageId,
-              sizeBytes: widget.attachment.size,
-              isVideo: _isVideo,
-              onCancel: _cancelSend,
-            ),
+            child: widget.waiting
+                ? MediaWaitingBadge(
+                    key: const Key('chat_media_waiting'),
+                    isVideo: _isVideo,
+                    onCancel: _cancelSend,
+                  )
+                : _LiveRing(
+                    key: const Key('chat_media_sending'),
+                    messageId: widget.messageId,
+                    sizeBytes: widget.attachment.size,
+                    isVideo: _isVideo,
+                    onCancel: _cancelSend,
+                  ),
           ),
         ),
       );

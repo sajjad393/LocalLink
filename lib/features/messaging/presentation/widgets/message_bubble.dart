@@ -6,6 +6,8 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/files/presentation/widgets/attachment_tile.dart';
 
+import 'bubble_layout.dart';
+
 class MessageBubble extends StatelessWidget {
   final Message message;
   final bool isMine;
@@ -16,6 +18,10 @@ class MessageBubble extends StatelessWidget {
   /// Bundle 162 (4.6): tap on a failed (red !) message of mine.
   final VoidCallback? onFailedTap;
 
+  /// Bundle 182: the friend is Offline right now. My photo/video that is not
+  /// sent yet shows a clock + "Waiting" instead of the turning ring.
+  final bool peerOffline;
+
   const MessageBubble({
     super.key,
     required this.message,
@@ -24,6 +30,7 @@ class MessageBubble extends StatelessWidget {
     this.onLongPress,
     this.reactions = const [],
     this.onFailedTap,
+    this.peerOffline = false,
   });
 
   bool get _canResend =>
@@ -55,81 +62,77 @@ class MessageBubble extends StatelessWidget {
         child: GestureDetector(
           onTap: _canResend ? onFailedTap : null,
           onLongPress: onLongPress,
-          child: Container(
-            constraints: BoxConstraints(maxWidth: maxWidth),
-            margin: const EdgeInsets.only(bottom: LocalLinkSpacing.xs),
-            padding: const EdgeInsets.fromLTRB(
-              LocalLinkSpacing.md,
-              LocalLinkSpacing.sm,
-              LocalLinkSpacing.md,
-              LocalLinkSpacing.xs,
-            ),
-            decoration: BoxDecoration(
-              color: isMine
-                  ? colors.surfaceContainer
-                  : colors.surfaceContainerHighest,
-              borderRadius: radius,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (message.body.isNotEmpty)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(message.body, style: TextStyle(color: foreground)),
-                  ),
-                ...message.attachments.map(
-                  (attachment) => AttachmentTile(
-                    key: ValueKey<String>('att:${message.id}:${attachment.id}'),
-                    attachment: attachment,
-                    transfer: files,
-                    messageId: message.id,
-                    // Outgoing media that the outbox is still flushing gets the
-                    // upload ring; once delivered the ring lifts.
-                    uploading: isMine &&
-                        (message.status == 'queued' ||
-                            message.status == 'sending' ||
-                            message.status == 'pending'),
-                    // Bundle 174 (6): cancelled / failed own media.
-                    failed: isMine && message.status.toLowerCase() == 'failed',
-                    onRetry: _canResend ? onFailedTap : null,
-                  ),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: LocalLinkSpacing.xs),
+            // Bundle 182: emoji chips on the bottom edge, bubble fits content.
+            child: BubbleReactionEdge(
+              chips: reactions.isEmpty ? const <Widget>[] : _reactionCounts(context),
+              bubble: Container(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                padding: EdgeInsets.fromLTRB(
+                  LocalLinkSpacing.md,
+                  LocalLinkSpacing.sm,
+                  LocalLinkSpacing.md,
+                  LocalLinkSpacing.xs +
+                      (reactions.isEmpty ? 0 : BubbleReactionEdge.bubblePad),
                 ),
-                if (reactions.isNotEmpty)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 4, bottom: 2),
-                      child: Wrap(
-                        spacing: 4,
-                        runSpacing: 4,
-                        children: _reactionCounts(context),
+                decoration: BoxDecoration(
+                  color: isMine
+                      ? colors.surfaceContainer
+                      : colors.surfaceContainerHighest,
+                  borderRadius: radius,
+                ),
+                child: BubbleContent(
+                  body: message.body.isEmpty
+                      ? null
+                      : Text(message.body, style: TextStyle(color: foreground)),
+                  media: [
+                    for (final attachment in message.attachments)
+                      AttachmentTile(
+                        key: ValueKey<String>('att:${message.id}:${attachment.id}'),
+                        attachment: attachment,
+                        transfer: files,
+                        messageId: message.id,
+                        // Outgoing media that the outbox is still flushing gets the
+                        // upload ring; once delivered the ring lifts.
+                        uploading: _uploading,
+                        // Bundle 182: friend Offline -> "Waiting", no ring.
+                        waiting: _uploading && peerOffline,
+                        // Bundle 174 (6): cancelled / failed own media.
+                        failed: isMine && message.status.toLowerCase() == 'failed',
+                        onRetry: _canResend ? onFailedTap : null,
                       ),
-                    ),
-                  ),
-                const SizedBox(height: 3),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _time(message.createdAt),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: foreground.withValues(alpha: .62),
-                      ),
-                    ),
-                    if (isMine) ...[
-                      const SizedBox(width: LocalLinkSpacing.xs),
-                      _StatusIcon(status: message.status, channel: message.channel),
-                    ],
                   ],
+                  footer: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _time(message.createdAt),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: foreground.withValues(alpha: .62),
+                        ),
+                      ),
+                      if (isMine) ...[
+                        const SizedBox(width: LocalLinkSpacing.xs),
+                        _StatusIcon(status: message.status, channel: message.channel),
+                      ],
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  /// My message is still waiting in the outbox.
+  bool get _uploading =>
+      isMine &&
+      (message.status == 'queued' ||
+          message.status == 'sending' ||
+          message.status == 'pending');
 
   List<Widget> _reactionCounts(BuildContext context) {
     final counts = <String, int>{};

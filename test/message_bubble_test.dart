@@ -129,7 +129,9 @@ void main() {
         )),
       );
 
-      await tester.longPress(find.byType(MessageBubble));
+      // Bundle 182: the bubble now fits its text, so press ON the bubble
+      // (the middle of the screen is empty space now).
+      await tester.longPress(find.text('Hello there'));
       expect(pressed, isTrue);
     });
 

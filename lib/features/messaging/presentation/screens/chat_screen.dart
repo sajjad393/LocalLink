@@ -21,6 +21,7 @@ import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
 import 'package:locallink/features/messaging/presentation/widgets/chat_composer.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_bubble.dart';
 import 'package:locallink/features/messaging/presentation/widgets/pending_attachment_strip.dart';
+import 'package:locallink/features/messaging/presentation/widgets/peer_offline_builder.dart';
 import 'package:locallink/features/messaging/data/services/voice_note_service.dart';
 import 'package:locallink/features/messaging/presentation/voice/voice_recorder_controller.dart';
 import 'package:locallink/features/files/presentation/widgets/media_playback_coordinator.dart';
@@ -220,6 +221,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _searching = false;
       _searchController.clear();
     });
+  }
+
+  /// Bundle 182: my message with an attachment still in the outbox.
+  static bool _awaitingSend(Message message) {
+    final status = message.status;
+    if (status != 'queued' && status != 'sending' && status != 'pending') {
+      return false;
+    }
+    // The tile itself shows "Waiting" only on photos and videos.
+    return message.attachments.isNotEmpty;
   }
 
   String _presenceLabel(Device device) =>
@@ -504,13 +515,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                       if (sectionLabel != null)
                                         _TransportDivider(label: sectionLabel),
                                       if (showDate) _DateDivider(date: message.createdAt),
-                                      MessageBubble(
-                                        message: message,
-                                        isMine: message.senderId == state.localDeviceId,
-                                        files: widget.files,
-                                        reactions: state.reactions[message.id] ?? const [],
-                                        onLongPress: () => _showMessageActions(message.body, message.id),
-                                        onFailedTap: () => _showFailedActions(message.id),
+                                      // Bundle 182: my unsent photo/video
+                                      // follows the friend's live status
+                                      // (Offline -> "Waiting").
+                                      PeerOfflineBuilder(
+                                        listenable: PresenceHub.instance,
+                                        isOffline: () => !PresenceHub.instance.isReachable(device.id),
+                                        enabled: message.senderId == state.localDeviceId &&
+                                            _awaitingSend(message),
+                                        builder: (offline) => MessageBubble(
+                                          message: message,
+                                          isMine: message.senderId == state.localDeviceId,
+                                          files: widget.files,
+                                          reactions: state.reactions[message.id] ?? const [],
+                                          onLongPress: () => _showMessageActions(message.body, message.id),
+                                          onFailedTap: () => _showFailedActions(message.id),
+                                          peerOffline: offline,
+                                        ),
                                       ),
                                     ],
                                   );

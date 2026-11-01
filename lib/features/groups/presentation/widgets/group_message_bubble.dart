@@ -5,6 +5,7 @@ import 'package:locallink/core/models/message_reaction.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/files/presentation/widgets/attachment_tile.dart';
+import 'package:locallink/features/messaging/presentation/widgets/bubble_layout.dart';
 
 class GroupMessageBubble extends StatelessWidget {
   final GroupMessage message;
@@ -31,52 +32,58 @@ class GroupMessageBubble extends StatelessWidget {
     final foreground = isMine ? Colors.white : colors.onSurface;
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(maxWidth: maxWidth.clamp(220.0, 620.0)),
-        margin: const EdgeInsets.only(bottom: LocalLinkSpacing.xs),
-        padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.md, LocalLinkSpacing.sm, LocalLinkSpacing.md, LocalLinkSpacing.xs),
-        decoration: BoxDecoration(
-          gradient: isMine ? LocalLinkBrand.linearGradient : null,
-          color: isMine ? null : colors.surfaceContainerHighest,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(LocalLinkRadius.chat),
-            topRight: const Radius.circular(LocalLinkRadius.chat),
-            bottomLeft: Radius.circular(isMine ? LocalLinkRadius.chat : 6),
-            bottomRight: Radius.circular(isMine ? 6 : LocalLinkRadius.chat),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (!isMine)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
-                  child: Text(senderName, style: Theme.of(context).textTheme.labelLarge?.copyWith(color: colors.primary)),
-                ),
+      // Bundle 182: bubble fits its content, emoji chips on the bottom edge.
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: LocalLinkSpacing.xs),
+        child: BubbleReactionEdge(
+          chips: reactions.isEmpty ? const <Widget>[] : _reactionCounts(context),
+          bubble: Container(
+            constraints: BoxConstraints(maxWidth: maxWidth.clamp(220.0, 620.0)),
+            padding: EdgeInsets.fromLTRB(
+                LocalLinkSpacing.md,
+                LocalLinkSpacing.sm,
+                LocalLinkSpacing.md,
+                LocalLinkSpacing.xs +
+                    (reactions.isEmpty ? 0 : BubbleReactionEdge.bubblePad)),
+            decoration: BoxDecoration(
+              gradient: isMine ? LocalLinkBrand.linearGradient : null,
+              color: isMine ? null : colors.surfaceContainerHighest,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(LocalLinkRadius.chat),
+                topRight: const Radius.circular(LocalLinkRadius.chat),
+                bottomLeft: Radius.circular(isMine ? LocalLinkRadius.chat : 6),
+                bottomRight: Radius.circular(isMine ? 6 : LocalLinkRadius.chat),
               ),
-            if (message.body.isNotEmpty)
-              Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(message.body,
-                      style: TextStyle(color: foreground))),
-            ...message.attachments.map((attachment) => AttachmentTile(
-                  key: ValueKey<String>('att:${message.id}:${attachment.id}'),
-                  attachment: attachment,
-                  transfer: files,
-                  messageId: message.id,
-                  groupMessageId: message.id,
-                )),
-            if (reactions.isNotEmpty)
-              Align(alignment: Alignment.centerLeft, child: Wrap(spacing: 4, children: _reactionCounts(context))),
-            const SizedBox(height: 3),
-            Text(_time(message.createdAt),
-                style: Theme.of(context)
-                    .textTheme
-                    .labelSmall
-                    ?.copyWith(color: foreground.withValues(alpha: .62))),
-          ],
+            ),
+            child: BubbleContent(
+              headerGap: 3,
+              header: isMine
+                  ? null
+                  : Text(senderName,
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelLarge
+                          ?.copyWith(color: colors.primary)),
+              body: message.body.isEmpty
+                  ? null
+                  : Text(message.body, style: TextStyle(color: foreground)),
+              media: [
+                for (final attachment in message.attachments)
+                  AttachmentTile(
+                    key: ValueKey<String>('att:${message.id}:${attachment.id}'),
+                    attachment: attachment,
+                    transfer: files,
+                    messageId: message.id,
+                    groupMessageId: message.id,
+                  ),
+              ],
+              footer: Text(_time(message.createdAt),
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelSmall
+                      ?.copyWith(color: foreground.withValues(alpha: .62))),
+            ),
+          ),
         ),
       ),
     );

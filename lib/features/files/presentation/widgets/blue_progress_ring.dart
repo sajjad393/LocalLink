@@ -113,6 +113,92 @@ String percentText(double? fraction) {
   return '${(f.clamp(0.0, 1.0) * 100).floor()}%';
 }
 
+/// Bundle 174 (6) / 182: "Cancel this photo?" / "Cancel this video?"
+/// (No / Yes). Shared by the ring's X and the "Waiting" label.
+Future<bool> confirmCancelTransfer(BuildContext context,
+    {required bool isVideo}) async {
+  final what = isVideo ? 'video' : 'photo';
+  final yes = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('Cancel this $what?'),
+      actions: [
+        TextButton(
+          key: const Key('transfer_cancel_no'),
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('No'),
+        ),
+        TextButton(
+          key: const Key('transfer_cancel_yes'),
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: const Text('Yes'),
+        ),
+      ],
+    ),
+  );
+  return yes == true;
+}
+
+/// Bundle 182: my photo/video is not sent and the friend is Offline. No
+/// ring (nothing can move) - a clock + "Waiting". Tap: "Cancel this photo?".
+class MediaWaitingBadge extends StatefulWidget {
+  const MediaWaitingBadge({super.key, required this.isVideo, this.onCancel});
+
+  final bool isVideo;
+  final Future<void> Function()? onCancel;
+
+  @override
+  State<MediaWaitingBadge> createState() => _MediaWaitingBadgeState();
+}
+
+class _MediaWaitingBadgeState extends State<MediaWaitingBadge> {
+  bool _asking = false;
+
+  Future<void> _tap() async {
+    final cancel = widget.onCancel;
+    if (cancel == null || _asking) return;
+    _asking = true;
+    final yes = await confirmCancelTransfer(context, isVideo: widget.isVideo);
+    _asking = false;
+    if (yes && mounted) await cancel();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Waiting. Sends when your friend is online',
+      button: widget.onCancel != null,
+      child: GestureDetector(
+        key: const Key('media_waiting'),
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onCancel == null ? null : _tap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: .6),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.schedule_rounded, color: Colors.white, size: 16),
+              SizedBox(width: 6),
+              Text(
+                'Waiting',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Bundle 174 (6): the ONE circle for sending and receiving a photo/video.
 ///
 /// * Only the percent in the middle (e.g. 35%) - no arrow, no MB text.
@@ -168,25 +254,7 @@ class _TransferPercentRingState extends State<TransferPercentRing> {
     if (cancel == null || _asking) return;
     _timer?.cancel();
     _asking = true;
-    final what = widget.isVideo ? 'video' : 'photo';
-    final yes = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Cancel this $what?'),
-        actions: [
-          TextButton(
-            key: const Key('transfer_cancel_no'),
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('No'),
-          ),
-          TextButton(
-            key: const Key('transfer_cancel_yes'),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Yes'),
-          ),
-        ],
-      ),
-    );
+    final yes = await confirmCancelTransfer(context, isVideo: widget.isVideo);
     _asking = false;
     if (!mounted) return;
     setState(() => _showX = false);
