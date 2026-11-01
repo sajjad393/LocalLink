@@ -150,7 +150,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         phoneNumber: phone.text,
         phoneVisibility: visibility,
         discoverableByPhone: true,
-        discoverableByName: true,
+        // Bundle 196: keep my Private profile choice (Settings › PRIVACY).
+        discoverableByName: profile?.discoverableByName ?? true,
         directorySyncEnabled: true,
         avatarFile: image == null ? null : File(image!.path),
       );

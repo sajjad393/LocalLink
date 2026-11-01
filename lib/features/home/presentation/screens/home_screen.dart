@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/nearby_ready_card.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
@@ -833,8 +834,14 @@ class _HomeScreenState extends State<HomeScreen> {
         preview?.createdAt,
         order++,
         ListenableBuilder(
-          listenable: PresenceHub.instance,
+          // Bundle 196 (10.1 / 12.7): blocked rows follow BlockHub live.
+          listenable:
+              Listenable.merge([PresenceHub.instance, BlockHub.instance]),
           builder: (context, _) => MessengerConversationTile(
+            key: BlockHub.instance.isBlockedDevice(device.id)
+                ? ValueKey('chats_blocked_${device.id}')
+                : null,
+            blocked: BlockHub.instance.isBlockedDevice(device.id),
             // People-facing titles show the profile nickname; a
             // device label ("My Android Phone") is never a person.
             title: state.deviceLabels[device.id] ?? 'Unknown user',
@@ -848,7 +855,12 @@ class _HomeScreenState extends State<HomeScreen> {
             device: device,
             unreadCount: _unreadDirectCounts[device.id] ?? 0,
             onTap: () => _openChat(device),
-            onCall: () => _call(device),
+            // Bundle 196: no call button when I blocked them, or when
+            // they blocked me (their signed block state).
+            onCall: BlockHub.instance.isBlockedDevice(device.id) ||
+                    BlockHub.instance.hasBlockedMe(device.id)
+                ? null
+                : () => _call(device),
           ),
         ),
       ));

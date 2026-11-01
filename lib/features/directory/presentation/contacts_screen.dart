@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart' show PresenceAvatar;
@@ -7,6 +9,9 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/core/presence/block_hub.dart';
+import 'package:locallink/features/directory/data/friend_requests.dart';
+import 'package:locallink/features/directory/presentation/contact_sheets.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
@@ -73,7 +78,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
   void initState() {
     super.initState();
     bloc = ContactsBloc(widget.directory)..load();
+    // Bundle 196: block / unblock / add back anywhere -> list again.
+    BlockHub.instance.addListener(_onBlockChange);
   }
+
+  void _onBlockChange() => unawaited(bloc.load());
 
   Device _device(DirectoryProfile p) => Device(
         id: p.deviceId,
@@ -129,6 +138,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   void dispose() {
+    BlockHub.instance.removeListener(_onBlockChange);
     _searchController.dispose();
     bloc.close();
     super.dispose();
@@ -176,7 +186,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
         initialData: bloc.state,
         builder: (context, snapshot) => ListenableBuilder(
           // Bundle 183 (N8): the filtered list follows status changes live.
-          listenable: PresenceHub.instance,
+          // Bundle 196: blocked people + friend requests change it too.
+          listenable: Listenable.merge([
+            PresenceHub.instance,
+            BlockHub.instance,
+            FriendRequestBook.instance,
+          ]),
           builder: (context, _) {
           final all = snapshot.data ?? const <DirectoryProfile>[];
           final query = _query.trim().toLowerCase();
@@ -189,6 +204,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
           // Bundle 183 (N9): search and filter together.
           final contacts = searched.where(_passesFilter).toList();
           final filtered = _filter != PeopleFilter.all;
+          // Bundle 196 (4.3/4.4): BLOCKED part - All only, follows search.
+          final blocked = filtered
+              ? const <BlockedPerson>[]
+              : BlockHub.instance.people.where((p) {
+                  if (query.isEmpty) return true;
+                  return p.label.toLowerCase().contains(query) ||
+                      p.username.toLowerCase().contains(query);
+                }).toList();
+          // Bundle 196 (12b.5): REQUESTS part at the top (every filter).
+          final requests = FriendRequestBook.instance.visible;
 
           return RefreshIndicator(
             onRefresh: bloc.load,
@@ -218,6 +243,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       child: _filterChip(colors),
                     ),
                   ),
+                if (requests.isNotEmpty) ...[
+                  MessengerGroupLabel('Requests',
+                      key: const ValueKey('people_requests_label'),
+                      top: filtered ? 16 : 24),
+                  _requestGroup(context, requests),
+                ],
                 // Bundle 183 (O/N12): the shared small grey CAPITALS title.
                 MessengerGroupLabel('Your contacts', top: filtered ? 16 : 24),
                 if (all.isEmpty || (contacts.isEmpty && query.isNotEmpty))
@@ -251,6 +282,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   ])
                 else
                   _contactGroup(context, contacts),
+                if (blocked.isNotEmpty) ...[
+                  MessengerGroupLabel('Blocked',
+                      key: const ValueKey('people_blocked_label'),
+                      color: colors.error),
+                  _blockedGroup(context, blocked),
+                ],
               ],
             ),
           );
@@ -365,85 +402,197 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   device: _device(profile),
                 ),
           title: Text(title, style: Theme.of(context).textTheme.titleSmall),
-          subtitle: Text('@${profile.username}',
-              maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: PopupMenuButton<String>(
-            tooltip: 'More',
-            onSelected: (value) async {
-              if (value == 'remove') await bloc.remove(profile.userId);
-              if (value == 'block') await bloc.block(profile.userId);
-              if (value == 'privacy') await _editPrivacy(profile);
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                  value: 'privacy', child: Text('Contact privacy…')),
-              PopupMenuItem(value: 'remove', child: Text('Remove contact')),
-              PopupMenuItem(value: 'block', child: Text('Block person')),
+          // Bundle 196 (4.2): "Private" when they made their own profile
+          // private (their signed profile says so).
+          subtitle: Row(
+            children: [
+              Flexible(
+                child: Text('@${profile.username}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              if (!profile.discoverableByName) ...[
+                const SizedBox(width: 6),
+                PrivatePill(key: ValueKey('people_private_${profile.userId}')),
+              ],
             ],
           ),
+          // Bundle 196 (4.1): ⋮ opens the actions sheet (no pop-up menu).
+          trailing: IconButton(
+            key: ValueKey('people_more_${profile.userId}'),
+            tooltip: 'More',
+            icon: const Icon(Icons.more_vert),
+            onPressed: () => _actions(profile),
+          ),
           onTap: () => _chat(profile),
+          onLongPress: () => _actions(profile),
         ),
       );
     }
     return MessengerListGroup(children: tiles);
   }
 
-  Future<void> _editPrivacy(DirectoryProfile profile) async {
-    var isPrivate = true;
-    try {
-      isPrivate = await widget.directory.contactPrivate(profile.userId);
-    } catch (_) {}
-    if (!mounted) return;
-    final name = profile.displayName.isEmpty
-        ? profile.username
-        : profile.displayName;
-    await showDialog<void>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => AlertDialog(
-          title: Text(name),
-          content: SwitchListTile(
-            title: const Text('Searchable by others'),
-            subtitle: const Text(
-              'Public contacts are shared onward so anyone searching can '
-              'find them through you (server, Wi‑Fi Direct, mesh). '
-              'Turning this off marks the contact private — only you know it.',
-            ),
-            value: !isPrivate,
-            onChanged: (value) => setSheetState(() => isPrivate = !value),
+  static String _titleOf(DirectoryProfile p) =>
+      p.displayName.isEmpty ? p.username : p.displayName;
+
+  /// Bundle 196 (5): Message / Voice call / Remove contact / Block.
+  Future<void> _actions(DirectoryProfile profile) async {
+    final name = _titleOf(profile);
+    final choice = await showContactActionsSheet(context,
+        name: name, username: profile.username, userId: profile.userId);
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case ContactSheetChoice.message:
+        await _chat(profile);
+      case ContactSheetChoice.call:
+        await _call(profile);
+      case ContactSheetChoice.remove:
+        await runRemoveFlow(context,
+            userId: profile.userId,
+            name: name,
+            username: profile.username,
+            remove: bloc.remove);
+      case ContactSheetChoice.block:
+        await runBlockFlow(context,
+            userId: profile.userId,
+            name: name,
+            username: profile.username,
+            from: 'people',
+            block: bloc.block);
+    }
+  }
+
+  /// Bundle 196 (5.1): the same call as the chat's call button.
+  Future<void> _call(DirectoryProfile p) async {
+    if (p.deviceId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('This person is not currently available.')));
+      return;
+    }
+    final device = _device(p);
+    await widget.calls.startCall(device);
+    final session = widget.calls.session;
+    if (session == null || !mounted) return;
+    await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+            builder: (_) =>
+                CallScreen(controller: widget.calls, initialSession: session)));
+  }
+
+  /// Bundle 196 (4.3): the red BLOCKED part (tap or ⋮ = Unblock sheet).
+  Widget _blockedGroup(BuildContext context, List<BlockedPerson> people) {
+    final colors = Theme.of(context).colorScheme;
+    return MessengerListGroup(children: [
+      for (final p in people)
+        ListTile(
+          key: ValueKey('people_blocked_row_${p.userId}'),
+          minVerticalPadding: LocalLinkSpacing.sm,
+          leading: MutedAvatar(name: p.label, radius: 24),
+          title: Text(p.label,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: colors.onSurfaceVariant)),
+          subtitle: Align(
+            alignment: Alignment.centerLeft,
+            child: BlockedUserLine(username: p.username),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                // Bundle 162: the dialog is closed below, so its context is
-                // gone — use this screen's messenger.
-                final messenger = ScaffoldMessenger.of(this.context);
-                Navigator.pop(context);
-                try {
-                  await widget.directory
-                      .setContactPrivate(profile.userId, isPrivate);
-                  if (!mounted) return;
-                  messenger.showSnackBar(SnackBar(
-                    content: Text(isPrivate
-                        ? name + ' marked private'
-                        : name + ' is public again'),
-                  ));
-                } catch (e) {
-                  if (!mounted) return;
-                  messenger.showSnackBar(
-                      SnackBar(content: Text('Could not update privacy: ' + e.toString())));
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
+          trailing: IconButton(
+            tooltip: 'More',
+            icon: const Icon(Icons.more_vert),
+            onPressed: () => runUnblockFlow(context, p, from: 'people'),
+          ),
+          onTap: () => runUnblockFlow(context, p, from: 'people'),
         ),
-      ),
-    );
+    ]);
+  }
+
+  /// Bundle 196 (12b.5): people near me who asked to add me (I am private).
+  Widget _requestGroup(BuildContext context, List<FriendRequest> requests) {
+    final colors = Theme.of(context).colorScheme;
+    final now = FriendRequestBook.instance.now();
+    return MessengerListGroup(children: [
+      for (final r in requests)
+        Padding(
+          key: ValueKey('people_request_${r.deviceId}'),
+          padding: const EdgeInsets.fromLTRB(16, 10, 12, 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AccountAvatar(name: r.name, radius: 24),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(r.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      '${r.username.isEmpty ? '' : '@${r.username} · '}'
+                      'wants to add you · ${FriendRequestRules.age(r.atMs, now)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: colors.onSurfaceVariant,
+                          letterSpacing: 0),
+                    ),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 8,
+                      children: [
+                        TextButton(
+                          key: ValueKey('request_decline_${r.deviceId}'),
+                          onPressed: () => _declineRequest(r),
+                          child: const Text('Decline'),
+                        ),
+                        FilledButton.tonal(
+                          key: ValueKey('request_accept_${r.deviceId}'),
+                          onPressed: () => _acceptRequest(r),
+                          child: const Text('Accept'),
+                        ),
+                      ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+    ]);
+  }
+
+  Future<void> _acceptRequest(FriendRequest r) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final accept = FriendRequestBook.instance.onAccept;
+    if (accept == null) return;
+    try {
+      await accept(r.deviceId);
+      await bloc.load();
+      messenger.showSnackBar(SnackBar(content: Text('${r.name} added')));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('Could not add ${r.name}. Try again.')));
+    }
+  }
+
+  Future<void> _declineRequest(FriendRequest r) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final decline = FriendRequestBook.instance.onDecline;
+    try {
+      if (decline != null) {
+        await decline(r.deviceId);
+      } else {
+        await FriendRequestBook.instance.decline(r.deviceId);
+      }
+      messenger
+          .showSnackBar(const SnackBar(content: Text('Request declined')));
+    } catch (_) {}
   }
 }
 

@@ -651,6 +651,32 @@ class MainActivity : FlutterActivity() {
                         )
                         result.success(null)
                     }
+                    // Bundle 196 (12b): "Ali wants to add you" / "accepted".
+                    "showFriendRequest" -> {
+                        LocalLinkNotificationManager.showFriendRequest(
+                            this,
+                            call.argument<Int>("notification_id") ?: 0,
+                            call.argument<String>("user_id")?.trim().orEmpty(),
+                            call.argument<String>("device_id")?.trim().orEmpty(),
+                            call.argument<String>("recipient_id")?.trim().orEmpty(),
+                            call.argument<String>("name")?.trim().orEmpty(),
+                        )
+                        result.success(null)
+                    }
+                    "showFriendAccepted" -> {
+                        LocalLinkNotificationManager.showFriendAccepted(
+                            this,
+                            call.argument<Int>("notification_id") ?: 0,
+                            call.argument<String>("device_id")?.trim().orEmpty(),
+                            call.argument<String>("recipient_id")?.trim().orEmpty(),
+                            call.argument<String>("name")?.trim().orEmpty(),
+                        )
+                        result.success(null)
+                    }
+                    "cancelFriend" -> {
+                        LocalLinkNotificationManager.cancelFriend(this, call.argument<Int>("notification_id") ?: 0)
+                        result.success(null)
+                    }
                     "showSystem" -> {
                         val notificationId = call.argument<Int>("notification_id") ?: 0
                         LocalLinkNotificationManager.showSystem(

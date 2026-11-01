@@ -5,6 +5,7 @@ import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/blocked_pill.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 
@@ -29,6 +30,10 @@ class MessengerConversationTile extends StatelessWidget {
   /// Bundle 163 (4.7): small icon before the preview (photo, mic, ...).
   final IconData? subtitleIcon;
 
+  /// Bundle 196 (10.1): I blocked this person - muted avatar (no badge),
+  /// grey name + Blocked pill, no call button.
+  final bool blocked;
+
   const MessengerConversationTile({
     super.key,
     required this.title,
@@ -44,6 +49,7 @@ class MessengerConversationTile extends StatelessWidget {
     this.group,
     this.time,
     this.subtitleIcon,
+    this.blocked = false,
   });
 
   @override
@@ -56,6 +62,7 @@ class MessengerConversationTile extends StatelessWidget {
             radius: 24,
           );
 
+    if (blocked) return _blockedTile(context);
     return ListTile(
       minVerticalPadding: LocalLinkSpacing.sm,
       // Bundle 100: presence chip moves onto the avatar's UPPER-RIGHT edge —
@@ -115,7 +122,51 @@ class MessengerConversationTile extends StatelessWidget {
     );
   }
 
-  Widget? _buildTrailing(BuildContext context) {
+  Widget _blockedTile(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return ListTile(
+      minVerticalPadding: LocalLinkSpacing.sm,
+      leading: MutedAvatar(name: title, radius: 24),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: text.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700, color: scheme.onSurfaceVariant),
+            ),
+          ),
+          const SizedBox(width: 6),
+          const BlockedPill(),
+          const Spacer(),
+          if (time != null && time!.isNotEmpty)
+            Text(
+              time!,
+              style: text.labelSmall?.copyWith(
+                color: unreadCount > 0 ? scheme.primary : scheme.onSurfaceVariant,
+                fontWeight: unreadCount > 0 ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+        ],
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 3),
+        child: Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ),
+      trailing: _buildTrailing(context, allowCall: false),
+      onTap: onTap,
+    );
+  }
+
+  Widget? _buildTrailing(BuildContext context, {bool allowCall = true}) {
     final scheme = Theme.of(context).colorScheme;
     // Bundle 130: single-digit counts render as a filled CIRCLE (WhatsApp
     // style); only multi-digit labels keep the pill so text stays readable.
@@ -146,7 +197,7 @@ class MessengerConversationTile extends StatelessWidget {
             ),
           )
         : null;
-    final callButton = onCall == null
+    final callButton = (onCall == null || !allowCall)
         ? null
         // Bundle 153: shared call button (same look on the Calls tab).
         : MessengerCallButton(onPressed: onCall);

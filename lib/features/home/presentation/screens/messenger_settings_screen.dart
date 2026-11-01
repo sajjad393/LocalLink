@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/core/presence/block_hub.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/account/bloc/account_bloc.dart';
+import 'package:locallink/features/directory/presentation/blocked_people_screen.dart';
+import 'package:locallink/features/directory/presentation/contact_sheets.dart';
+
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
@@ -231,6 +238,41 @@ class MessengerSettingsScreen extends StatelessWidget {
               },
             ),
           ]),
+          // Bundle 196 (6 / 11.4): my own Private profile + Blocked people.
+          const MessengerGroupLabel('Privacy',
+              key: ValueKey('settings_privacy_label')),
+          MessengerListGroup(dividerIndent: 66, children: [
+            PrivateProfileRow(
+              accountRepository: accountRepository,
+              directoryRepository: directoryRepository,
+            ),
+            ListenableBuilder(
+              listenable: BlockHub.instance,
+              builder: (context, _) => MessengerSettingsRow(
+                key: const ValueKey('settings_blocked_people'),
+                icon: Icons.block,
+                title: 'Blocked people',
+                subtitle: 'See and unblock people you blocked',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${BlockHub.instance.people.length}',
+                      key: const ValueKey('settings_blocked_count'),
+                      style: TextStyle(
+                          fontSize: 14, color: colors.onSurfaceVariant),
+                    ),
+                    Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
+                  ],
+                ),
+                onTap: () => Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const BlockedPeopleScreen()),
+                ),
+              ),
+            ),
+          ]),
           const MessengerGroupLabel('Admin'),
           MessengerListGroup(dividerIndent: 66, children: [
             MessengerSettingsRow(
@@ -263,4 +305,106 @@ class MessengerSettingsScreen extends StatelessWidget {
         ThemeMode.light => 'Light theme',
         ThemeMode.dark => 'Dark theme',
       };
+}
+
+/// Bundle 196 (6.2-6.4): "Private profile" = my own signed
+/// `discoverableByName == false`. ON asks first (sheet); OFF does not.
+class PrivateProfileRow extends StatefulWidget {
+  final AccountRepositoryContract accountRepository;
+  final DirectoryRepositoryContract? directoryRepository;
+
+  const PrivateProfileRow({
+    super.key,
+    required this.accountRepository,
+    required this.directoryRepository,
+  });
+
+  @override
+  State<PrivateProfileRow> createState() => _PrivateProfileRowState();
+}
+
+class _PrivateProfileRowState extends State<PrivateProfileRow> {
+  late final AccountBloc _bloc = AccountBloc(widget.accountRepository);
+  bool _loaded = false;
+  bool _saving = false;
+  bool _private = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    await _bloc.load();
+    if (!mounted) return;
+    final p = _bloc.profile;
+    setState(() {
+      _loaded = p != null;
+      _private = p != null && !p.discoverableByName;
+    });
+  }
+
+  @override
+  void dispose() {
+    _bloc.close();
+    super.dispose();
+  }
+
+  Future<void> _change(bool makePrivate) async {
+    final p = _bloc.profile;
+    if (p == null || _saving) return;
+    if (makePrivate) {
+      final ok = await showPrivateProfileSheet(context);
+      if (!ok || !mounted) return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _saving = true;
+      _private = makePrivate;
+    });
+    try {
+      // Every other field stays as it is - only the name-search flag moves.
+      final synced = await _bloc.saveProfile(
+        displayName: p.displayName,
+        username: p.username,
+        phoneNumber: p.phoneNumber,
+        phoneVisibility: p.phoneVisibility,
+        discoverableByPhone: p.discoverableByPhone,
+        discoverableByName: !makePrivate,
+        directorySyncEnabled: p.directorySyncEnabled,
+      );
+      await widget.directoryRepository?.publishOwnProfile();
+      AppLogger.info('PRIVATE_PROFILE',
+          detail: 'on=${makePrivate ? 'y' : 'n'} saved=y synced=${synced ? 'y' : 'n'}');
+      messenger.showSnackBar(SnackBar(
+        content: Text(!synced
+            ? 'Saved; will update when online'
+            : (makePrivate
+                ? 'Your profile is private'
+                : 'Your profile is public again')),
+      ));
+    } catch (e) {
+      if (mounted) setState(() => _private = !makePrivate);
+      messenger.showSnackBar(SnackBar(content: Text(cleanBlocError(e))));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MessengerSettingsRow(
+      key: const ValueKey('settings_private_profile'),
+      icon: Icons.lock_outline,
+      title: 'Private profile',
+      subtitle: 'Nobody can find you by name search',
+      onTap: (!_loaded || _saving) ? null : () => _change(!_private),
+      trailing: Switch(
+        key: const ValueKey('settings_private_switch'),
+        value: _private,
+        onChanged: (!_loaded || _saving) ? null : _change,
+      ),
+    );
+  }
 }

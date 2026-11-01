@@ -344,6 +344,12 @@ class BackgroundChannels(
             }
             "cancelMessages" -> { LocalLinkNotificationManager.cancelMessages(context); result.success(null) }
             "showFriendAdded" -> { showFriendAdded(call); result.success(null) }
+            "showFriendRequest" -> { showFriendRequest(call); result.success(null) }
+            "showFriendAccepted" -> { showFriendAccepted(call); result.success(null) }
+            "cancelFriend" -> {
+                LocalLinkNotificationManager.cancelFriend(context, call.argument<Int>("notification_id") ?: 0)
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }
@@ -370,6 +376,25 @@ class BackgroundChannels(
         context,
         call.argument<Int>("notification_id") ?: 0,
         call.argument<String>("user_id")?.trim().orEmpty(),
+        call.argument<String>("device_id")?.trim().orEmpty(),
+        call.argument<String>("recipient_id")?.trim().orEmpty(),
+        call.argument<String>("name")?.trim().orEmpty(),
+    )
+
+    /** Bundle 196 (12b): "Ali wants to add you" with Accept / Decline. */
+    private fun showFriendRequest(call: MethodCall) = LocalLinkNotificationManager.showFriendRequest(
+        context,
+        call.argument<Int>("notification_id") ?: 0,
+        call.argument<String>("user_id")?.trim().orEmpty(),
+        call.argument<String>("device_id")?.trim().orEmpty(),
+        call.argument<String>("recipient_id")?.trim().orEmpty(),
+        call.argument<String>("name")?.trim().orEmpty(),
+    )
+
+    /** Bundle 196 (12b): "sumaira accepted your request". */
+    private fun showFriendAccepted(call: MethodCall) = LocalLinkNotificationManager.showFriendAccepted(
+        context,
+        call.argument<Int>("notification_id") ?: 0,
         call.argument<String>("device_id")?.trim().orEmpty(),
         call.argument<String>("recipient_id")?.trim().orEmpty(),
         call.argument<String>("name")?.trim().orEmpty(),

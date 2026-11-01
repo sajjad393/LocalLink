@@ -13,6 +13,9 @@ import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/core/presence/block_hub.dart';
+import 'package:locallink/features/directory/data/friend_requests.dart';
+import 'package:locallink/core/widgets/blocked_pill.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
@@ -127,6 +130,30 @@ class _Account implements AccountRepositoryContract {
 
   @override
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
+/// Bundle 196: records the Private profile save.
+class _SavingAccount extends _Account {
+  final List<bool> savedByName = <bool>[];
+  @override
+  Future<AccountProfileSaveResult> saveProfile(
+      {required String displayName,
+      required String username,
+      File? avatarFile,
+      String phoneNumber = '',
+      String phoneVisibility = 'contacts',
+      bool discoverableByPhone = true,
+      bool discoverableByName = true,
+      bool directorySyncEnabled = true}) async {
+    savedByName.add(discoverableByName);
+    return AccountProfileSaveResult(
+        profile: LocalProfile(
+            userId: 'u1',
+            username: username,
+            displayName: displayName,
+            discoverableByName: discoverableByName),
+        synced: true);
+  }
 }
 
 class _Directory implements DirectoryRepositoryContract {
@@ -500,6 +527,142 @@ void main() {
   });
 
   // ================================================================ F1-F4
+  group('196 Settings PRIVACY + People sheets', () {
+    setUp(() {
+      BlockHub.resetForTest();
+      FriendRequestBook.resetForTest();
+    });
+
+    testWidgets('PRIVACY sits between THIS PHONE and ADMIN, count shown',
+        (tester) async {
+      BlockHub.instance.setForTest(
+          people: const [BlockedPerson(userId: 'u-ali', name: 'Ali')]);
+      await _pushed(tester, _settings());
+      await _settle(tester);
+      await tester.scrollUntilVisible(find.text('Blocked people'), 100,
+          scrollable: find.byType(Scrollable).first);
+      expect(find.text('PRIVACY'), findsOneWidget);
+      expect(find.text('Private profile'), findsOneWidget);
+      expect(find.text('Nobody can find you by name search'), findsOneWidget);
+      expect(find.text('See and unblock people you blocked'), findsOneWidget);
+      final count = tester.widget<Text>(
+          find.byKey(const ValueKey('settings_blocked_count')));
+      expect(count.data, '1');
+      final y = (String t) =>
+          tester.getTopLeft(find.text(t, skipOffstage: false)).dy;
+      expect(y('THIS PHONE'), lessThan(y('PRIVACY')));
+      expect(y('PRIVACY'), lessThan(y('ADMIN')));
+    });
+
+    testWidgets('Private profile: ON asks first; Cancel keeps it OFF',
+        (tester) async {
+      final account = _SavingAccount();
+      await _pushed(tester, _settings(account: account));
+      await _settle(tester);
+      final sw = find.byKey(const ValueKey('settings_private_switch'));
+      await tester.scrollUntilVisible(sw, 100,
+          scrollable: find.byType(Scrollable).first);
+      expect(tester.widget<Switch>(sw).value, isFalse);
+      await tester.tap(sw);
+      await tester.pumpAndSettle();
+      expect(find.text('Make your profile private?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('private_profile_cancel')));
+      await tester.pumpAndSettle();
+      expect(account.savedByName, isEmpty);
+      expect(tester.widget<Switch>(sw).value, isFalse);
+      await tester.tap(sw);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('private_profile_confirm')));
+      await tester.pumpAndSettle();
+      expect(account.savedByName, [false]);
+      expect(tester.widget<Switch>(sw).value, isTrue);
+      expect(find.text('Your profile is private'), findsOneWidget);
+      // OFF: no question.
+      await tester.tap(sw);
+      await tester.pumpAndSettle();
+      expect(find.text('Make your profile private?'), findsNothing);
+      expect(account.savedByName, [false, true]);
+    });
+
+    testWidgets('Blocked people row opens the list', (tester) async {
+      await _pushed(tester, _settings());
+      await _settle(tester);
+      final row = find.byKey(const ValueKey('settings_blocked_people'));
+      await tester.scrollUntilVisible(row, 100,
+          scrollable: find.byType(Scrollable).first);
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(find.text("You haven't blocked anyone."), findsOneWidget);
+    });
+
+    testWidgets('People: ⋮ = actions sheet; Private label; no pop-up',
+        (tester) async {
+      await _pushed(
+          tester,
+          _people(const [
+            DirectoryProfile(
+                userId: 'u-s',
+                deviceId: 'd-s',
+                username: 'sumaira',
+                displayName: 'sumaira',
+                discoverableByName: false),
+            DirectoryProfile(
+                userId: 'u-a', deviceId: 'd-a', username: 'ali', displayName: 'ali'),
+          ]));
+      await _settle(tester);
+      expect(find.byKey(const ValueKey('people_private_u-s')), findsOneWidget);
+      expect(find.byKey(const ValueKey('people_private_u-a')), findsNothing);
+      expect(find.byType(PopupMenuButton<String>), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('people_more_u-a')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('contact_actions_sheet')), findsOneWidget);
+      expect(find.text('Block ali'), findsOneWidget);
+      await tester.tap(find.text('Block ali'));
+      await tester.pumpAndSettle();
+      expect(find.text('Block ali?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('block_sheet_cancel')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('block_sheet')), findsNothing);
+    });
+
+    testWidgets('People: REQUESTS on top, red BLOCKED at the bottom (All only)',
+        (tester) async {
+      BlockHub.instance.setForTest(people: const [
+        BlockedPerson(userId: 'u-ali', name: 'Ali', username: 'ali'),
+      ]);
+      FriendRequestBook.instance.now = () => 1060000;
+      await FriendRequestBook.instance.addIncoming(const FriendRequest(
+          deviceId: 'd-k',
+          userId: 'u-k',
+          name: 'Kamran',
+          username: 'kamran',
+          atMs: 1000000,
+          body: '{}'));
+      await _pushed(tester, _people(_people3));
+      await _settle(tester);
+      expect(find.text('REQUESTS'), findsOneWidget);
+      expect(find.text('@kamran · wants to add you · 1 min'), findsOneWidget);
+      expect(find.byKey(const ValueKey('request_accept_d-k')), findsOneWidget);
+      expect(find.byKey(const ValueKey('request_decline_d-k')), findsOneWidget);
+      final y = (String t) =>
+          tester.getTopLeft(find.text(t, skipOffstage: false)).dy;
+      expect(y('REQUESTS'), lessThan(y('YOUR CONTACTS')));
+      await tester.scrollUntilVisible(find.text('BLOCKED'), 100,
+          scrollable: find.byType(Scrollable).first);
+      expect(y('YOUR CONTACTS'), lessThan(y('BLOCKED')));
+      final label = tester.widget<Text>(find.text('BLOCKED'));
+      expect(label.style?.color, LocalLinkTheme.light().colorScheme.error);
+      expect(find.byType(BlockedPill), findsOneWidget);
+      // Decline: the row goes, nothing else happens.
+      await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('request_decline_d-k')), -100,
+          scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.byKey(const ValueKey('request_decline_d-k')));
+      await _settle(tester);
+      expect(find.text('REQUESTS'), findsNothing);
+    });
+  });
+
   group('F Settings', () {
     testWidgets('one way into Account, plain card line, sections in order',
         (tester) async {

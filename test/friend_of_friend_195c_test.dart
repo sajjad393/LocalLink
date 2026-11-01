@@ -12,6 +12,7 @@ import 'package:locallink/core/services/message_seal_service.dart';
 import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/features/directory/data/contact_edge.dart';
+import 'package:locallink/features/directory/data/block_state.dart';
 import 'package:locallink/features/directory/data/directory_search_merge.dart';
 import 'package:locallink/features/directory/data/friend_link_resend.dart';
 import 'package:locallink/features/directory/data/name_question_policy.dart';
@@ -185,6 +186,13 @@ class _Store implements LocalStore {
   Future<Set<String>> privateContactIds() async => privateIds;
   @override
   Future<bool> isBlocked(String userId) async => blocked.contains(userId);
+  // Bundle 196
+  Future<void> blockUser(String userId) async {
+    blocked.add(userId);
+    friends.remove(userId);
+  }
+
+  Future<void> unblockUser(String userId) async => blocked.remove(userId);
   @override
   Future<bool> isBlockedPeer(String peerId) async =>
       blockedPeers.contains(peerId);
@@ -531,6 +539,107 @@ void main() {
     await fRepo.dispose();
   });
 
+  test('196: block state travels locked; only the "got it" may come back '
+      'from the blocked phone; wrong signature dropped', () async {
+    final sKeys = await _pair(41);
+    final fKeys = await _pair(42);
+    final sInner = _SealInner();
+    final fInner = _SealInner();
+    final sStore = _Store('u-sajjad', 'd-sajjad', 'Sajjad');
+    final fStore = _Store('u-ali', 'd-ali', 'Ali');
+    final sSeal = _Keys('d-sajjad', [sKeys]);
+    final sT = SealingPeerTransport(sInner)..bind(sSeal);
+    final fT = SealingPeerTransport(fInner)..bind(_Keys('d-ali', [fKeys]));
+    final sRepo = DirectoryRepository(
+        store: sStore,
+        api: _Api(),
+        transport: sT,
+        crypto: _Crypto('key-u-sajjad', identity: _b64(sKeys.publicKey)));
+    final fRepo = DirectoryRepository(
+        store: fStore,
+        api: _Api(),
+        transport: fT,
+        crypto: _Crypto('key-u-ali', identity: _b64(fKeys.publicKey)));
+    await sRepo.start();
+    await fRepo.start();
+    await _settle();
+    sStore.profiles['u-ali'] = await _ownProfileOfRepo(fRepo, fStore);
+    sInner.sent.clear();
+    fInner.sent.clear();
+
+    await sRepo.blockUser('u-ali');
+    await _settle();
+    expect(sStore.blocked, contains('u-ali'));
+    // the direct link to Ali is cut in the app; the lock layer blocks him
+    sSeal.blocked.add('d-ali');
+    final locked = sInner.sent
+        .where((s) => s.$2[SealingPeerTransport.friendLinkFlag] == 1)
+        .toList();
+    expect(locked.length, 1);
+    expect(locked.single.$1, 'd-ali');
+    expect(jsonEncode(locked.single.$2).contains('CONTACT_BLOCK_STATE'),
+        isFalse, reason: 'nobody in the middle can read it');
+    expect(
+        WaitingBlockState.decodeAll(
+                sStore.settings[BlockStateResendPolicy.settingKey])
+            .containsKey('u-ali'),
+        isTrue);
+
+    // Ali's phone opens it and saves "Sajjad blocked you"
+    fInner.controller.add(_event('d-sajjad', 'd-ali', locked.single.$2));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await _settle();
+    final states =
+        BlockedByStates.decode(fStore.settings[BlockedByStates.settingKey]);
+    expect(states['u-sajjad']?['state'], 'blocked');
+    expect(BlockedByStates.blockedMeDevices(states), {'d-sajjad'});
+
+    // Ali's "got it" goes back locked and opens although Ali is blocked
+    // (flag 2 = a block "got it": the one thing a blocked phone may send)
+    final ack = fInner.sent
+        .where((s) => s.$2[SealingPeerTransport.friendLinkFlag] == 2)
+        .toList();
+    expect(ack.length, 1);
+    expect(ack.single.$1, 'd-sajjad');
+    sInner.controller.add(_event('d-ali', 'd-sajjad', ack.single.$2));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await _settle();
+    expect(
+        WaitingBlockState.decodeAll(
+            sStore.settings[BlockStateResendPolicy.settingKey]),
+        isEmpty,
+        reason: 'confirmed: no more resends');
+
+    // a forged state (bad signature) changes nothing on Ali's phone
+    sInner.sent.clear();
+    expect(
+        await sT.sendFriendLinkLocked(
+            recipientId: 'd-ali',
+            theirIdentityKey: _b64(fKeys.publicKey),
+            payload: {
+              'type': BlockState.type,
+              'from_user_id': 'u-sajjad',
+              'from_device_id': 'd-sajjad',
+              'to_user_id': 'u-ali',
+              'state': 'unblocked',
+              'state_ts': DateTime.now().millisecondsSinceEpoch + 5000,
+              'state_sig': 'sig:wrong',
+              'state_signing_key': 'key-u-sajjad',
+              'author_profile': await _ownProfileOfRepo(sRepo, sStore),
+              'sync_id': 'forged-1',
+            }),
+        isTrue);
+    fInner.controller.add(_event('d-sajjad', 'd-ali', sInner.sent.last.$2));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await _settle();
+    expect(
+        BlockedByStates.decode(fStore.settings[BlockedByStates.settingKey])[
+            'u-sajjad']?['state'],
+        'blocked');
+    await sRepo.dispose();
+    await fRepo.dispose();
+  });
+
   group('two phones that are not friends (Sajjad asks Bilal)', () {
     late _Phone sajjad;
     late _Phone bilal;
@@ -562,7 +671,7 @@ void main() {
       await bilal.repo.dispose();
     });
 
-    test('finds Safeer: only matching rows, max 10, no hidden, no private',
+    test('finds Safeer: only matching rows, max 10, no hidden',
         () async {
       final found = await sajjad.repo.searchByName('Safeer');
       final answers = bilal.radio.sent
@@ -573,7 +682,6 @@ void main() {
       expect(rows.length, 10);
       final ids = rows.map((r) => r['user_id']).toSet();
       expect(ids.contains('u-hidden'), isFalse);
-      expect(ids.contains('u-private'), isFalse);
       expect(ids.contains('u-other'), isFalse); // not a match: never sent
       expect(found.length, 10);
       expect(found.any((p) => p.userId == 'u-hidden'), isFalse);
@@ -584,6 +692,16 @@ void main() {
       expect(q.$1, 'd-bilal');
       expect(q.$2['query'], 'Safeer');
       expect(q.$2.containsKey('profiles'), isFalse);
+    });
+
+    // Bundle 196 (6.5): only the person controls their privacy - Bilal's
+    // old "private" mark on a contact no longer hides them.
+    test('old per-contact private mark is ignored (196)', () async {
+      final found = await sajjad.repo.searchByName('Safeer Private');
+      expect(found.map((p) => p.userId), contains('u-private'));
+      final hidden = await sajjad.repo.searchByName('Safeer Hidden');
+      expect(hidden.any((p) => p.userId == 'u-hidden'), isFalse,
+          reason: 'their own Private profile still hides them');
     });
 
     test('a short name is not asked; 1 question per 10 s', () async {

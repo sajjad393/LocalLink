@@ -1257,7 +1257,7 @@ class LocalLinkTransportService : Service() {
             val kind = packet.optString("pair")
             val body = packet.optString("body")
             if (!validTransportId(fromNode) || fromNode == self) { Log.w(pairLogTag, "pair-packet dropped: invalid sender '$fromNode' (self=$self)"); return }
-            if (kind != "request" && kind != "accept") { Log.w(pairLogTag, "pair-packet dropped: bad kind '$kind'"); return }
+            if (!PairKind.valid(kind)) { Log.w(pairLogTag, "pair-packet dropped: bad kind '$kind'"); return }
             if (body.isBlank() || body.length > lanPairMaxBytes) return
             Log.d(pairLogTag, "pair-packet accepted from=$fromNode kind=$kind -> dart")
             transportEvent("pair_packet", mapOf(
@@ -1273,7 +1273,7 @@ class LocalLinkTransportService : Service() {
         if (!transportRunning) { Log.w(pairLogTag, "pair-packet tx failed: transport not configured"); cb(false, "transport is not configured"); return }
         val self = transportDeviceId
         if (self.isNullOrBlank()) { Log.w(pairLogTag, "pair-packet tx failed: device identity not configured; cb: not configured"); cb(false, "transport is not configured — identity missing"); return }
-        if (!validTransportId(target) || target == self || (pair != "request" && pair != "accept")) { cb(false, "invalid pair packet"); return }
+        if (!validTransportId(target) || target == self || !PairKind.valid(pair)) { cb(false, "invalid pair packet"); return }
         if (body.isBlank() || body.length > lanPairMaxBytes) { cb(false, "pair payload is too large"); return }
         val endpoint = lanEndpoints[target]
         if (endpoint == null) { Log.w(pairLogTag, "pair-packet tx failed: no LAN endpoint for $target yet"); cb(false, "peer is not visible on the local network yet — wait for it to appear under On this network"); return }

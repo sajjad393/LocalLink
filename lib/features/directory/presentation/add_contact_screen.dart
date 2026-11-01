@@ -1,3 +1,5 @@
+import 'package:locallink/core/presence/block_hub.dart';
+import 'package:locallink/features/directory/presentation/contact_sheets.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -273,7 +275,13 @@ class _AddContactScreenState extends State<AddContactScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Expanded(child: _buildResults(context)),
+                // Bundle 196 (11.3): blocked matches change with BlockHub.
+                Expanded(
+                  child: ListenableBuilder(
+                    listenable: BlockHub.instance,
+                    builder: (context, _) => _buildResults(context),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: searching ? null : _scan,
@@ -292,7 +300,20 @@ class _AddContactScreenState extends State<AddContactScreen> {
   Widget _buildResults(BuildContext context) {
     final text = query.text.trim();
     final typing = text.length >= 2;
-    final noMatch = typing && _noMatch && !searching;
+    // Bundle 196 (11.3): people I blocked who match, first (local only).
+    final lower = text.toLowerCase().replaceFirst(RegExp('^@'), '');
+    final blockedMatches = !typing
+        ? const <BlockedPerson>[]
+        : BlockHub.instance.people
+            .where((p) =>
+                p.label.toLowerCase().contains(lower) ||
+                p.username.toLowerCase().contains(lower))
+            .toList();
+    final results = _results
+        .where((p) => !BlockHub.instance.isBlockedUser(p.userId))
+        .toList();
+    final noMatch =
+        typing && _noMatch && !searching && blockedMatches.isEmpty;
     final theme = Theme.of(context);
     // A Column (not a lazy list) so the Nearby part keeps its state while
     // results come and go above it.
@@ -300,7 +321,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
       child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (typing && _results.isNotEmpty) ...[
+        if (typing && (results.isNotEmpty || blockedMatches.isNotEmpty)) ...[
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
@@ -309,8 +330,14 @@ class _AddContactScreenState extends State<AddContactScreen> {
                   ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
+          for (final person in blockedMatches)
+            BlockedResultCard(
+              key: ValueKey('search_blocked_${person.userId}'),
+              person: person,
+              onUnblock: () => runUnblockFlow(context, person, from: 'search'),
+            ),
           // Bundle 173: same card as Nearby + status dot + Add button.
-          for (final profile in _results)
+          for (final profile in results)
             SearchResultCard(
               key: ValueKey('search_result_${profile.userId}'),
               profile: profile,
@@ -408,9 +435,6 @@ class DirectoryProfileView extends StatefulWidget {
 }
 
 class _DirectoryProfileViewState extends State<DirectoryProfileView> {
-  /// null until the contact-status probe resolves; hidden for non-contacts.
-  bool? _isPrivate;
-
   /// Bundle 170: null until the contacts list has been checked.
   bool? _isContact;
 
@@ -434,10 +458,6 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       final isContact = rows.any((p) => p.userId == profile.userId);
       if (!mounted) return;
       setState(() => _isContact = isContact);
-      if (!isContact) return;
-      setState(() => _isPrivate = false);
-      final value = await widget.repository.contactPrivate(profile.userId);
-      if (mounted) setState(() => _isPrivate = value);
     } catch (_) {
       if (mounted) setState(() => _isContact ??= false);
     }
@@ -475,12 +495,7 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       if (hello != null && profile.deviceId.isNotEmpty) {
         // Bundle 194: the chat opens and one "Hello 👋" follows.
         AppLogger.info('FRIEND_ADD_TAP', detail: 'source=profile already=n');
-        if (mounted) {
-          setState(() {
-            _isContact = true;
-            _isPrivate ??= false;
-          });
-        }
+        if (mounted) setState(() => _isContact = true);
         unawaited(hello.addedByMe(FriendAddedByMe(
           userId: profile.userId,
           deviceId: profile.deviceId,
@@ -495,11 +510,7 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Contact added')),
         );
-        // Reveal the privacy toggle for the freshly added contact.
-        setState(() {
-          _isContact = true;
-          _isPrivate ??= false;
-        });
+        setState(() => _isContact = true);
         _loadPrivacy();
       }
     } catch (e) {
@@ -514,22 +525,130 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
     }
   }
 
+  String get _name =>
+      profile.displayName.isEmpty ? profile.username : profile.displayName;
+
+  /// Bundle 196 (7.3): asks first; the page then shows the blocked view.
   Future<void> _block(BuildContext context) async {
-    try {
-      await widget.repository.blockUser(profile.userId);
-      if (context.mounted) Navigator.pop(context);
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(cleanBlocError(e))),
+    final done = await runBlockFlow(context,
+        userId: profile.userId,
+        name: _name,
+        username: profile.username,
+        from: 'profile',
+        block: widget.repository.blockUser);
+    if (done && mounted) setState(() => _isContact = false);
+  }
+
+  BlockedPerson _blockedPerson() =>
+      BlockHub.instance.personForUser(profile.userId) ??
+      BlockedPerson(
+        userId: profile.userId,
+        deviceId: profile.deviceId,
+        name: _name,
+        username: profile.username,
       );
+
+  /// Bundle 196 (11.2): the two buttons on a blocked profile (no sheet).
+  Future<void> _unblock(BuildContext context, {required bool addBack}) async {
+    final hub = BlockHub.instance;
+    final person = _blockedPerson();
+    final messenger = ScaffoldMessenger.of(context);
+    AppLogger.info('CONTACT_UNBLOCK',
+        detail: 'add_back=${addBack ? 'y' : 'n'} from=profile');
+    try {
+      if (addBack && hub.unblockAndAdd != null) {
+        await hub.unblockAndAdd!(person);
+      } else if (hub.unblock != null) {
+        await hub.unblock!(person.userId);
+      } else {
+        await widget.repository.unblockUser(person.userId);
+      }
+      await hub.reload();
+      if (mounted) setState(() => _isContact = addBack ? true : _isContact);
+      messenger.showSnackBar(SnackBar(
+          content: Text(addBack
+              ? '${person.label} unblocked and added back'
+              : '${person.label} unblocked')));
+      _loadPrivacy();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(cleanBlocError(e))));
     }
   }
 
+  List<Widget> _blockedView(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final when = blockDateLabel(_blockedPerson().blockedAt);
+    return [
+      Center(child: MutedAvatar(name: _name, radius: 48)),
+      const SizedBox(height: 16),
+      Center(
+        child: Text(_name,
+            style: Theme.of(context).textTheme.headlineSmall,
+            textAlign: TextAlign.center),
+      ),
+      if (profile.username.isNotEmpty)
+        Center(child: Text('@${profile.username}')),
+      const SizedBox(height: 10),
+      Center(
+        child: Container(
+          key: const ValueKey('profile_blocked_chip'),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: scheme.errorContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.block, size: 16, color: scheme.error),
+              const SizedBox(width: 6),
+              Text('Blocked',
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.error)),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 14),
+      Text(
+        when.isEmpty
+            ? "You blocked $_name. They can't message or call you."
+            : "You blocked $_name on $when. They can't message or call you.",
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 13.5, color: scheme.onSurfaceVariant),
+      ),
+      const SizedBox(height: 20),
+      FilledButton(
+        key: const ValueKey('profile_unblock_add_back'),
+        onPressed: () => _unblock(context, addBack: true),
+        child: const Text('Unblock and add back'),
+      ),
+      const SizedBox(height: 10),
+      OutlinedButton(
+        key: const ValueKey('profile_unblock_only'),
+        onPressed: () => _unblock(context, addBack: false),
+        child: const Text('Unblock only'),
+      ),
+    ];
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: BlockHub.instance,
+        builder: (context, _) => _page(context),
+      );
+
+  Widget _page(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Profile')),
-        body: ListView(
+        body: BlockHub.instance.isBlockedUser(profile.userId) &&
+                _relation != ProfileRelation.self
+            ? ListView(
+                padding: const EdgeInsets.all(20),
+                children: _blockedView(context),
+              )
+            : ListView(
           padding: const EdgeInsets.all(20),
           children: [
             Center(
@@ -617,10 +736,6 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
             icon: const Icon(Icons.chat_bubble_outline),
             label: const Text('Message'),
           ),
-        if (_isPrivate != null) ...[
-          const SizedBox(height: 8),
-          _privacySwitch(context),
-        ],
         const SizedBox(height: 8),
         block,
       ];
@@ -643,27 +758,6 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       block,
     ];
   }
-
-  Widget _privacySwitch(BuildContext context) => SwitchListTile(
-        title: const Text('Searchable by others'),
-        subtitle: Text(_isPrivate!
-            ? 'Private — this contact is not re-shared from your phone'
-            : 'Public — shared onward so anyone searching can find them'),
-        value: !_isPrivate!,
-        onChanged: (value) async {
-          final makePrivate = !value;
-          setState(() => _isPrivate = makePrivate);
-          try {
-            await widget.repository
-                .setContactPrivate(profile.userId, makePrivate);
-          } catch (e) {
-            if (!mounted || !context.mounted) return;
-            setState(() => _isPrivate = !makePrivate);
-            ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Could not update privacy: $e')));
-          }
-        },
-      );
 }
 
 /// Bundle 111: choose the LOCAL display name at add time. Cancelling
@@ -773,6 +867,45 @@ class SearchResultCard extends StatelessWidget {
                 onPressed: onAdd,
                 child: const Text('Add'),
               ),
+      ),
+    );
+  }
+}
+
+/// Bundle 196 (11.3): a person I blocked in the search results (local only):
+/// muted avatar, "@user" + Blocked pill, outlined "Unblock".
+class BlockedResultCard extends StatelessWidget {
+  final BlockedPerson person;
+  final VoidCallback onUnblock;
+
+  const BlockedResultCard(
+      {super.key, required this.person, required this.onUnblock});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: ListTile(
+        onTap: onUnblock,
+        leading: MutedAvatar(name: person.label, radius: 20),
+        title: Text(person.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: scheme.onSurfaceVariant)),
+        subtitle: Align(
+          alignment: Alignment.centerLeft,
+          child: BlockedUserLine(username: person.username),
+        ),
+        trailing: OutlinedButton(
+          key: const Key('search_result_unblock'),
+          onPressed: onUnblock,
+          style: OutlinedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            side: BorderSide(color: scheme.outline),
+            shape: const StadiumBorder(),
+          ),
+          child: const Text('Unblock'),
+        ),
       ),
     );
   }

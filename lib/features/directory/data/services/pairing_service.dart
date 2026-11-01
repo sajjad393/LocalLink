@@ -10,6 +10,7 @@ import 'package:locallink/features/connectivity/domain/peer_transport_contract.d
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
+import 'package:locallink/features/directory/data/friend_requests.dart';
 
 /// Bundle 108 — verified pairing request pulled from the local network.
 ///
@@ -68,6 +69,20 @@ final class PairingService {
   /// Bundle 194: an Add friend that THIS phone started worked.
   final _addedByMe = StreamController<FriendAddedByMe>.broadcast();
 
+  /// Bundle 196 (12b): the other phone is private and answered "wait"
+  /// (value = their name).
+  final _waiting = StreamController<String>.broadcast();
+
+  /// Bundle 196 (12b.11): a private person accepted my request.
+  final _requestAccepted = StreamController<FriendAddedByMe>.broadcast();
+
+  /// Bundle 196 (12b.4): someone asked to add me while I am private
+  /// (new request only - repeats are quiet).
+  final _friendRequests = StreamController<FriendRequest>.broadcast();
+
+  /// Bundle 196: the book used for requests (tests may swap it).
+  FriendRequestBook get _book => FriendRequestBook.instance;
+
   /// Bundle 194: node id -> when this phone sent its own Add request.
   final Map<String, DateTime> _ownRequestAt = <String, DateTime>{};
   static const Duration _ownRequestWindow = Duration(minutes: 10);
@@ -99,6 +114,15 @@ final class PairingService {
 
   /// Bundle 194: "my Add worked" (opens the chat + one Hello).
   Stream<FriendAddedByMe> get addedByMe => _addedByMe.stream;
+
+  /// Bundle 196 (12b): "Request sent. <name> needs to accept."
+  Stream<String> get waiting => _waiting.stream;
+
+  /// Bundle 196 (12b.11): "<name> accepted your request".
+  Stream<FriendAddedByMe> get requestAccepted => _requestAccepted.stream;
+
+  /// Bundle 196 (12b.4): "<name> wants to add you" (notice).
+  Stream<FriendRequest> get friendRequests => _friendRequests.stream;
 
   /// Bundle 112: human-readable diagnostics (toasts). Pairing used to fail
   /// completely silently, which made field debugging impossible.
@@ -151,6 +175,9 @@ final class PairingService {
     await _paired.close();
     await _addedBy.close();
     await _addedByMe.close();
+    await _waiting.close();
+    await _requestAccepted.close();
+    await _friendRequests.close();
     await _diagnostics.close();
   }
 
@@ -253,7 +280,7 @@ final class PairingService {
       _diag('Pair packet dropped: empty fields');
       return;
     }
-    if (!{'request', 'accept'}.contains(kind)) {
+    if (!{'request', 'accept', 'wait'}.contains(kind)) {
       _diag('Pair packet dropped: unknown kind $kind');
       return;
     }
@@ -282,6 +309,21 @@ final class PairingService {
       // no contact, no notification.
       if (await _isBlocked(profile, nodeId)) {
         AppLogger.info('PAIR_BLOCKED_IGNORED', detail: 'kind=$kind');
+        return;
+      }
+
+      // Bundle 196 (12b.10): they are private - my Add waits for them.
+      if (kind == 'wait') {
+        if (_ownRequestPending(nodeId, _ownRequestWindow) ||
+            _book.isSent(nodeId)) {
+          await _book.markSent(nodeId, profile.userId);
+          AppLogger.info('FRIEND_REQUEST_SENT_WAIT', detail: 'to=${_id6(nodeId)}');
+          if (!_waiting.isClosed) {
+            _waiting.add(profile.displayName.isNotEmpty
+                ? profile.displayName
+                : 'LinkUp user');
+          }
+        }
         return;
       }
 
@@ -323,6 +365,12 @@ final class PairingService {
 
       if (kind == 'request') {
         _mutedUntil[nodeId] = DateTime.now().add(_muteWindow);
+        // Bundle 196 (12b.1): my profile is private and they are not my
+        // contact (and I did not tap Add on them): ask me first.
+        if (await _mustAskFirst(profile, nodeId)) {
+          await _holdRequest(body, profile, nodeId);
+          return;
+        }
         // Bundle 177 (7.4): no accept box - save them here and answer, so
         // both phones have each other. A notice offers Remove / Block.
         await _autoAccept(raw, profile, nodeId);
@@ -330,6 +378,22 @@ final class PairingService {
         // Mutual accept for a request we sent: pair without another dialog.
         _mutedUntil[nodeId] = DateTime.now().add(_muteWindow);
         await _adopt(raw, profile, nodeId);
+        // Bundle 196 (12b.11): the private person accepted my request.
+        if (_book.isSent(nodeId) || _book.isSentUser(profile.userId)) {
+          _ownRequestAt.remove(nodeId);
+          await _book.clearSent(deviceId: nodeId, userId: profile.userId);
+          AppLogger.info('FRIEND_REQUEST_ACCEPTED',
+              detail: 'by=${_id6(nodeId)} path=nearby');
+          if (!_requestAccepted.isClosed) {
+            _requestAccepted.add(FriendAddedByMe(
+              userId: profile.userId,
+              deviceId: profile.deviceId.isNotEmpty ? profile.deviceId : nodeId,
+              displayName: profile.displayName,
+              source: 'nearby',
+            ));
+          }
+          return;
+        }
         // Bundle 194: my own Add worked -> open the chat + one Hello.
         if (_ownRequestPending(nodeId, _ownRequestWindow)) {
           _ownRequestAt.remove(nodeId);
@@ -384,6 +448,86 @@ final class PairingService {
             : 'LinkUp user',
       ));
     }
+  }
+
+  static String _id6(String id) =>
+      id.length > 6 ? id.substring(id.length - 6) : id;
+
+  /// Bundle 196 (12b.1): private me + a stranger asking + I did not ask
+  /// them myself = the request waits for my answer.
+  Future<bool> _mustAskFirst(DirectoryProfile profile, String nodeId) async {
+    if (_ownRequestPending(nodeId, _ownRequestWindow)) return false;
+    if (await _isContact(profile.userId)) return false;
+    try {
+      return (await _store.profile())?.discoverableByName == false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Bundle 196 (12b.1-12b.3): save the request, answer "wait" (signed,
+  /// so they know it arrived) and tell the app when it is new.
+  Future<void> _holdRequest(
+      String body, DirectoryProfile profile, String nodeId) async {
+    final isNew = await _book.addIncoming(FriendRequest(
+      deviceId: nodeId,
+      userId: profile.userId,
+      name: profile.displayName.isNotEmpty ? profile.displayName : 'LinkUp user',
+      username: profile.username,
+      atMs: _book.now(),
+      body: body,
+    ));
+    AppLogger.info('FRIEND_REQUEST_IN',
+        detail: 'from=${_id6(nodeId)} new=${isNew ? 'y' : 'n'}');
+    await _ensureTransportReady();
+    try {
+      final answer = await _payload();
+      await _transport.sendPairPayload(
+          nodeId: nodeId, kind: 'wait', body: answer);
+    } catch (error) {
+      AppLogger.warning('FRIEND_REQUEST_WAIT_FAILED', detail: '$error');
+    }
+    if (isNew && !_friendRequests.isClosed) {
+      final r = _book.incoming(nodeId);
+      if (r != null && !r.declined) _friendRequests.add(r);
+    }
+  }
+
+  /// Bundle 196 (12b.6): Accept a waiting request. Near me: the normal
+  /// accept (answer first). Not near: added here and my friend link goes
+  /// to them through any phone (195c). Returns 'nearby' | 'any'.
+  Future<String> acceptFriendRequest(String deviceId) async {
+    final r = _book.incoming(deviceId);
+    if (r == null) throw StateError('This request has expired.');
+    final parsed = await _verify(r.body, deviceId);
+    if (parsed == null) {
+      await _book.removeIncoming(deviceId);
+      throw StateError('This request could not be checked.');
+    }
+    final (raw, profile) = parsed;
+    if (await _isBlocked(profile, deviceId)) {
+      await _book.removeIncoming(deviceId);
+      return 'blocked';
+    }
+    // Their Hello after my Accept comes in silently (I chose this).
+    FriendAddMemory.noteNotice(deviceId);
+    var path = 'nearby';
+    try {
+      await accept(PairRequest(profile: profile, raw: raw, nodeId: deviceId));
+    } catch (error) {
+      // accept() saves them before it reports a failed answer.
+      if (!await _isContact(profile.userId)) rethrow;
+      path = 'any';
+    }
+    await _book.removeIncoming(deviceId);
+    AppLogger.info('FRIEND_REQUEST_ACCEPT', detail: 'path=$path');
+    return path;
+  }
+
+  /// Bundle 196 (12b.7): Decline - nothing is sent (silent).
+  Future<void> declineFriendRequest(String deviceId) async {
+    await _book.decline(deviceId);
+    AppLogger.info('FRIEND_REQUEST_DECLINE', detail: 'from=${_id6(deviceId)}');
   }
 
   void _emitAddedByMe(DirectoryProfile profile, String nodeId,

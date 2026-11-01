@@ -29,6 +29,9 @@ object LocalLinkNotificationManager {
     // Bundle 177 (7.8): "X added you as a friend" buttons.
     const val ACTION_FRIEND_REMOVE = "com.sajjad.locallink.ACTION_FRIEND_REMOVE"
     const val ACTION_FRIEND_BLOCK = "com.sajjad.locallink.ACTION_FRIEND_BLOCK"
+    // Bundle 196 (12b): "Ali wants to add you" buttons (private profile).
+    const val ACTION_FRIEND_REQUEST_ACCEPT = "com.sajjad.locallink.ACTION_FRIEND_REQUEST_ACCEPT"
+    const val ACTION_FRIEND_REQUEST_DECLINE = "com.sajjad.locallink.ACTION_FRIEND_REQUEST_DECLINE"
 
     const val EXTRA_ACTION = "notification_action"
     const val EXTRA_NOTIFICATION_ID = "notification_id"
@@ -478,6 +481,105 @@ object LocalLinkNotificationManager {
         manager.notify(notificationId, builder.build())
     }
 
+    /**
+     * Bundle 196 (12b): "Ali wants to add you" / "Ali is near you. Accept to
+     * become friends." with Accept and Decline. App icon only. Tap opens the app.
+     */
+    fun showFriendRequest(
+        context: Context,
+        notificationId: Int,
+        userId: String,
+        deviceId: String,
+        recipientId: String,
+        name: String,
+    ) {
+        if (notificationId <= 0 || userId.isBlank() || deviceId.isBlank()) return
+        val builder = friendBuilder(context) ?: return
+        val who = name.ifBlank { "Someone" }.take(64)
+        builder
+            .setContentTitle("$who wants to add you")
+            .setContentText("$who is near you. Accept to become friends.")
+        context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { launch ->
+            builder.setContentIntent(
+                PendingIntent.getActivity(
+                    context,
+                    requestCode(notificationId, 0),
+                    launch,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            )
+        }
+        fun button(action: String, code: Int, label: String) {
+            val pending = PendingIntent.getBroadcast(
+                context,
+                requestCode(notificationId, code),
+                actionIntent(context, action, notificationId, "friend", userId, "friend", deviceId, recipientId, null),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(0, label, pending)
+        }
+        button(ACTION_FRIEND_REQUEST_ACCEPT, 4, "Accept")
+        button(ACTION_FRIEND_REQUEST_DECLINE, 3, "Decline")
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(notificationId, builder.build())
+    }
+
+    /**
+     * Bundle 196 (12b): "sumaira accepted your request" / "You are friends
+     * now. Tap to say hello." No buttons. Tap opens their chat.
+     */
+    fun showFriendAccepted(
+        context: Context,
+        notificationId: Int,
+        deviceId: String,
+        recipientId: String,
+        name: String,
+    ) {
+        if (notificationId <= 0 || deviceId.isBlank()) return
+        val builder = friendBuilder(context) ?: return
+        val who = name.ifBlank { "Someone" }.take(64)
+        builder
+            .setContentTitle("$who accepted your request")
+            .setContentText("You are friends now. Tap to say hello.")
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    context,
+                    requestCode(notificationId, 0),
+                    openActivityIntent(context, notificationId, "direct", deviceId, "", deviceId, recipientId, null),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            )
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(notificationId, builder.build())
+    }
+
+    /** Bundle 196: shared look of the friend notices (null = not allowed). */
+    private fun friendBuilder(context: Context): NotificationCompat.Builder? {
+        initialize(context)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return null
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationCompat.Builder(context, FRIENDS_CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            NotificationCompat.Builder(context)
+        }
+        return builder
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF209DEB.toInt())
+            .setCategory(Notification.CATEGORY_SOCIAL)
+            .setAutoCancel(true)
+            .setPriority(Notification.PRIORITY_DEFAULT)
+    }
+
+    /** Bundle 196: friend notices are posted without the message tag. */
+    fun cancelFriend(context: Context, notificationId: Int) {
+        if (notificationId <= 0) return
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(notificationId)
+    }
+
     fun cancel(context: Context, notificationId: Int) {
         if (notificationId <= 0) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -537,6 +639,8 @@ object LocalLinkNotificationManager {
         ACTION_MARK_READ -> "mark_read"
         ACTION_FRIEND_REMOVE -> "friend_remove"
         ACTION_FRIEND_BLOCK -> "friend_block"
+        ACTION_FRIEND_REQUEST_ACCEPT -> "friend_request_accept"
+        ACTION_FRIEND_REQUEST_DECLINE -> "friend_request_decline"
         else -> ""
     }
 

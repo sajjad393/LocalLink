@@ -10,7 +10,9 @@ import android.os.Build
 class LocalLinkNotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == LocalLinkNotificationManager.ACTION_FRIEND_REMOVE ||
-            intent.action == LocalLinkNotificationManager.ACTION_FRIEND_BLOCK
+            intent.action == LocalLinkNotificationManager.ACTION_FRIEND_BLOCK ||
+            intent.action == LocalLinkNotificationManager.ACTION_FRIEND_REQUEST_ACCEPT ||
+            intent.action == LocalLinkNotificationManager.ACTION_FRIEND_REQUEST_DECLINE
         ) {
             onFriendAction(context, intent)
             return
@@ -129,9 +131,15 @@ class LocalLinkNotificationActionReceiver : BroadcastReceiver() {
         }
         android.util.Log.i("LocalLinkPair", "FRIEND_ACTION action=$action to=$where")
         LocalLinkNotificationManager.cancel(context, notificationId)
+        // Bundle 196: friend notices have no message tag.
+        LocalLinkNotificationManager.cancelFriend(context, notificationId)
     }
 
     companion object {
-        val FRIEND_ACTIONS = setOf("friend_remove", "friend_block")
+        val FRIEND_ACTIONS = setOf(
+            "friend_remove", "friend_block",
+            // Bundle 196 (12b): Accept / Decline on "Ali wants to add you".
+            "friend_request_accept", "friend_request_decline",
+        )
     }
 }

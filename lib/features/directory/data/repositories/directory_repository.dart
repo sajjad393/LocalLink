@@ -11,7 +11,10 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
+import 'package:locallink/core/presence/block_hub.dart';
+import 'package:locallink/features/directory/data/block_state.dart';
 import 'package:locallink/features/directory/data/contact_edge.dart';
+import 'package:locallink/features/directory/data/friend_requests.dart';
 import 'package:locallink/features/directory/data/directory_search_merge.dart';
 import 'package:locallink/features/directory/data/friend_link_resend.dart';
 import 'package:locallink/features/directory/data/name_question_policy.dart';
@@ -42,6 +45,11 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   /// a signed contact edge) - the app shows "X added you as a friend".
   final _addedBy = StreamController<FriendAdded>.broadcast();
   Stream<FriendAdded> get addedBy => _addedBy.stream;
+
+  /// Bundle 196 (12b.11): a private person accepted my Nearby request
+  /// (their friend link came, maybe hours later, through any phone).
+  final _requestAccepted = StreamController<FriendAddedByMe>.broadcast();
+  Stream<FriendAddedByMe> get requestAccepted => _requestAccepted.stream;
   static const firstContactsSyncKey = 'contacts_first_sync_done';
 
   StreamSubscription<Map<String, dynamic>>? _transportSub;
@@ -134,6 +142,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       }
     } catch (_) {}
     await resendFriendLinks();
+    await resendBlockStates(); // Bundle 196
   }
 
   @override
@@ -308,7 +317,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     }
     if (!type.startsWith('DIRECTORY_') &&
         type != 'CONTACT_EDGE' &&
-        type != 'CONTACT_EDGE_ACK') {
+        type != 'CONTACT_EDGE_ACK' &&
+        type != BlockState.type &&
+        type != BlockState.ackType) {
       return;
     }
 
@@ -322,7 +333,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         type == 'DIRECTORY_PROFILE_QUERY' ||
         type == 'DIRECTORY_SYNC_REQUEST' ||
         type == 'CONTACT_EDGE' ||
-        type == 'CONTACT_EDGE_ACK';
+        type == 'CONTACT_EDGE_ACK' ||
+        type == BlockState.type || // Bundle 196 (locked, ttl 1)
+        type == BlockState.ackType;
 
     if (expiresAt <= now ||
         createdAt > now + const Duration(minutes: 2).inMilliseconds) {
@@ -342,6 +355,12 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         return;
       case 'CONTACT_EDGE_ACK': // Bundle 195b
         await _handleContactEdgeAck(message);
+        return;
+      case BlockState.type: // Bundle 196
+        await _handleBlockState(message);
+        return;
+      case BlockState.ackType: // Bundle 196
+        await _handleBlockStateAck(message);
         return;
       case NameQuestionPolicy.questionType: // Bundle 195c
         await _handleNameQuestion(message);
@@ -499,7 +518,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final requesterUserId = message['origin_user_id']?.toString() ?? '';
     final rows = <Map<String, dynamic>>[];
     final profiles = await store.directoryProfiles();
-    final privateIds = await store.privateContactIds();
+    // Bundle 196 (6.5): old per-contact private marks are ignored; only
+    // the person's own Private profile setting counts.
+    const privateIds = <String>{};
     for (final row in profiles) {
       if (rows.length >= _maxSyncProfiles) break;
       final profile = DirectoryProfile.fromMap(row);
@@ -950,6 +971,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     unawaited(syncServerContacts());
     // Bundle 195b: a friend came near / the 2-min cycle: send waiting links.
     unawaited(resendFriendLinks());
+    unawaited(resendBlockStates()); // Bundle 196
   }
 
   @override
@@ -1552,7 +1574,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         _nameAnsweredAt, from, DateTime.now().millisecondsSinceEpoch)) {
       return;
     }
-    final privateIds = await store.privateContactIds();
+    // Bundle 196 (6.5): old per-contact marks ignored (own setting only).
+    const privateIds = <String>{};
     final rows = <Map<String, dynamic>>[];
     for (final row in await store.searchDirectoryByName(query)) {
       if (rows.length >= NameQuestionPolicy.maxRows) break;
@@ -1717,7 +1740,13 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         AppLogger.info('CONTACT_EDGE_APPLIED', // Bundle 195a
             detail: 'from=${_tail6(edge.fromUserId)} new=${isNew ? 'y' : 'n'} '
                 'notice=${isNew ? 'y' : 'n'}');
-        if (isNew) {
+        final book = FriendRequestBook.instance;
+        if (book.isSentUser(edge.fromUserId) || book.isSent(fromDevice)) {
+          // Bundle 196 (12b.11): my request was accepted (not "X added you").
+          unawaited(book.clearSent(deviceId: fromDevice, userId: edge.fromUserId));
+          FriendAddMemory.clearAutoAdded(edge.fromUserId);
+          unawaited(_announceAccepted(edge.fromUserId, fromDevice));
+        } else if (isNew) {
           FriendAddMemory.clearAutoAdded(edge.fromUserId);
           // Noted now (the name lookup below can take seconds) so their
           // Hello right after comes in silently.
@@ -1846,10 +1875,255 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final id = userId.trim();
     if (id.isEmpty || id == store.accountId) return;
     await store.blockUser(id);
+    // Bundle 196: their waiting requests go; their phone is told (locked).
+    unawaited(FriendRequestBook.instance.removeUser(id));
+    await _publishBlockState(id, BlockState.blocked);
   }
 
   @override
-  Future<void> unblockUser(String userId) => store.unblockUser(userId);
+  Future<void> unblockUser(String userId) async {
+    final id = userId.trim();
+    await store.unblockUser(userId);
+    if (id.isEmpty || id == store.accountId) return;
+    await _publishBlockState(id, BlockState.unblocked); // Bundle 196
+  }
+
+  // ------------------------------------------------ Bundle 196 block state
+
+  bool _blockResendInFlight = false;
+  final Map<String, int> _blockAckSentAt = <String, int>{};
+
+  Future<Map<String, WaitingBlockState>> _waitingBlockStates() async {
+    try {
+      return WaitingBlockState.decodeAll(
+          await store.readSetting(BlockStateResendPolicy.settingKey));
+    } catch (_) {
+      return <String, WaitingBlockState>{};
+    }
+  }
+
+  Future<void> _saveWaitingBlockStates(
+      Map<String, WaitingBlockState> all) async {
+    try {
+      await store.writeSetting(
+          BlockStateResendPolicy.settingKey, WaitingBlockState.encodeAll(all));
+    } catch (_) {}
+  }
+
+  /// Bundle 196 (12.2): note the new state (it replaces an older one for
+  /// that person) and send it now; the resend cycle repeats it until
+  /// their phone says "got it".
+  Future<void> _publishBlockState(String userId, String state) async {
+    try {
+      final me = store.accountId ?? '';
+      if (me.isEmpty || userId == me) return;
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final all = await _waitingBlockStates();
+      all[userId] = WaitingBlockState(userId: userId, state: state, ts: ts);
+      await _saveWaitingBlockStates(all);
+      await resendBlockStates();
+    } catch (e) {
+      AppLogger.warning('BLOCK_STATE_PUBLISH_FAILED', detail: '$e');
+    }
+  }
+
+  /// Bundle 196: send waiting block states again (2-min cycle, app start).
+  Future<void> resendBlockStates() async {
+    if (!_started || !transport.isStarted || _blockResendInFlight) return;
+    _blockResendInFlight = true;
+    try {
+      final all = await _waitingBlockStates();
+      if (all.isEmpty) return;
+      var changed = false;
+      for (final w in all.values.toList()) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final step = BlockStateResendPolicy.step(w, nowMs: now);
+        if (step == BlockStateStep.wait) continue;
+        if (step == BlockStateStep.send) {
+          final ok = await _sendBlockState(w, tryNo: w.tries + 1);
+          // Not sent at all (no profile / key yet): keep the try.
+          if (ok) {
+            all[w.userId] = w.tried(now);
+            changed = true;
+          }
+          continue;
+        }
+        all.remove(w.userId);
+        changed = true;
+        AppLogger.info('BLOCK_STATE_CONFIRMED',
+            detail: 'to=${_tail6(w.userId)} '
+                'by=${BlockStateResendPolicy.stopWord(step)} tries=${w.tries}');
+      }
+      if (changed) await _saveWaitingBlockStates(all);
+    } catch (e) {
+      AppLogger.warning('BLOCK_STATE_RESEND_FAILED', detail: '$e');
+    } finally {
+      _blockResendInFlight = false;
+    }
+  }
+
+  Future<bool> _sendBlockState(WaitingBlockState w, {required int tryNo}) async {
+    final me = store.accountId ?? '';
+    final myDevice = store.deviceId ?? '';
+    if (me.isEmpty) return false;
+    final row = await store.directoryProfile(w.userId);
+    final key = row?['identity_public_key']?.toString() ?? '';
+    final device = row?['device_id']?.toString() ?? '';
+    if (key.isEmpty || device.isEmpty) return false;
+    final s = BlockState(
+        fromUserId: me,
+        fromDeviceId: myDevice,
+        toUserId: w.userId,
+        state: w.state,
+        ts: w.ts);
+    final signature = await crypto.signPayload(s.canonical());
+    final signingKey = await crypto.signingPublicKey();
+    Map<String, dynamic>? own;
+    try {
+      own = (await _buildOwnProfile())?.toMap();
+    } catch (_) {}
+    if (own == null) return false;
+    final sync = 'block-state-${myDevice.isEmpty ? 'self' : myDevice}-'
+        '${w.ts}-r$tryNo';
+    await _sendLockedCopy(
+      type: BlockState.type,
+      toUserId: w.userId,
+      syncId: sync,
+      fields: {
+        ...s.toMap(),
+        'state_sig': signature,
+        'state_signing_key': signingKey,
+        'author_profile': own,
+      },
+      tryNo: tryNo,
+    );
+    AppLogger.info('BLOCK_STATE_SENT',
+        detail: 'state=${w.state} to=${_tail6(w.userId)} try=$tryNo ok=y');
+    return true;
+  }
+
+  /// Bundle 196 (12.5): "Sajjad blocked / unblocked you" on Ali's phone.
+  Future<void> _handleBlockState(Map<String, dynamic> message) async {
+    final s = BlockState.fromWire(message);
+    if (s == null) return;
+    final me = store.accountId ?? '';
+    if (me.isEmpty || s.toUserId != me) return; // never passed on
+    if (!_lockedSenderMatches(message, s.fromUserId, s.fromDeviceId)) {
+      AppLogger.warning('BLOCK_STATE_MISMATCH', detail: 'dropped');
+      return;
+    }
+    final key = await _signingKeyFor(s.fromUserId, message['author_profile']);
+    final signature = message['state_sig']?.toString() ?? '';
+    if (key.isEmpty || signature.isEmpty) {
+      AppLogger.warning('BLOCK_STATE_MISMATCH', detail: 'no key');
+      return;
+    }
+    final ok = await crypto.verifyPayloadSignature(
+      canonicalPayload: s.canonical(),
+      signature: signature,
+      signingPublicKey: key,
+    );
+    if (!ok) {
+      AppLogger.warning('BLOCK_STATE_BAD_SIGNATURE', detail: 'dropped');
+      return;
+    }
+    var changed = false;
+    try {
+      final all = BlockedByStates.decode(
+          await store.readSetting(BlockedByStates.settingKey));
+      changed = BlockedByStates.apply(all, s);
+      await store.writeSetting(
+          BlockedByStates.settingKey, BlockedByStates.encode(all));
+    } catch (_) {}
+    AppLogger.info('BLOCK_STATE_RECEIVED',
+        detail: 'state=${s.state} from=${_tail6(s.fromUserId)} '
+            'new=${changed ? 'y' : 'n'}');
+    if (changed) unawaited(BlockHub.instance.reload());
+    unawaited(_sendBlockStateAck(s));
+  }
+
+  /// Bundle 196: "got it" back to the person (locked; allowed even when
+  /// they blocked me). Max 1 per 2 min per state.
+  Future<void> _sendBlockStateAck(BlockState s) async {
+    try {
+      final me = store.accountId ?? '';
+      final myDevice = store.deviceId ?? '';
+      if (me.isEmpty) return;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final k = '${s.fromUserId}|${s.ts}';
+      final last = _blockAckSentAt[k];
+      if (last != null && now - last < BlockStateResendPolicy.minGapMs) return;
+      if (_blockAckSentAt.length > 200) _blockAckSentAt.clear();
+      _blockAckSentAt[k] = now;
+      final signature = await crypto.signPayload(BlockState.ackCanonical(
+          ackFromUserId: me,
+          ackFromDeviceId: myDevice,
+          ackToUserId: s.fromUserId,
+          state: s.state,
+          ts: s.ts));
+      Map<String, dynamic>? own;
+      try {
+        own = (await _buildOwnProfile())?.toMap();
+      } catch (_) {}
+      if (own == null) return;
+      await _sendLockedCopy(
+        type: BlockState.ackType,
+        toUserId: s.fromUserId,
+        syncId: 'block-state-ack-${myDevice.isEmpty ? 'self' : myDevice}-'
+            '${s.ts}-$now',
+        fields: {
+          'from_user_id': me,
+          'from_device_id': myDevice,
+          'to_user_id': s.fromUserId,
+          'state': s.state,
+          'state_ts': s.ts,
+          'ack_sig': signature,
+          'author_profile': own,
+        },
+        tryNo: 1,
+      );
+    } catch (e) {
+      AppLogger.warning('BLOCK_STATE_ACK_FAILED', detail: '$e');
+    }
+  }
+
+  /// Bundle 196: "got it" for my block state -> stop sending it.
+  Future<void> _handleBlockStateAck(Map<String, dynamic> message) async {
+    final from = message['from_user_id']?.toString() ?? '';
+    final fromDevice = message['from_device_id']?.toString() ?? '';
+    final to = message['to_user_id']?.toString() ?? '';
+    final state = message['state']?.toString() ?? '';
+    final ts = int.tryParse(message['state_ts']?.toString() ?? '') ?? 0;
+    final me = store.accountId ?? '';
+    if (from.isEmpty || me.isEmpty || to != me || ts <= 0) return;
+    final all = await _waitingBlockStates();
+    final w = all[from];
+    if (w == null || w.ts != ts || w.state != state) return;
+    if (!_lockedSenderMatches(message, from, fromDevice)) return;
+    final key = await _signingKeyFor(from, message['author_profile']);
+    final signature = message['ack_sig']?.toString() ?? '';
+    if (key.isEmpty || signature.isEmpty) return;
+    final ok = await crypto.verifyPayloadSignature(
+      canonicalPayload: BlockState.ackCanonical(
+          ackFromUserId: from,
+          ackFromDeviceId: fromDevice,
+          ackToUserId: to,
+          state: state,
+          ts: ts),
+      signature: signature,
+      signingPublicKey: key,
+    );
+    if (!ok) {
+      AppLogger.warning('BLOCK_STATE_BAD_SIGNATURE', detail: 'ack dropped');
+      return;
+    }
+    final now = await _waitingBlockStates();
+    if (now[from]?.ts != ts) return;
+    now.remove(from);
+    await _saveWaitingBlockStates(now);
+    AppLogger.info('BLOCK_STATE_CONFIRMED',
+        detail: 'to=${_tail6(from)} by=ack tries=${w.tries}');
+  }
 
   @override
   Future<bool> isBlocked(String userId) => store.isBlocked(userId);
@@ -1876,6 +2150,24 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         displayName: name.isEmpty ? 'LinkUp user' : name));
   }
 
+  /// Bundle 196 (12b.11): "sumaira accepted your request" + my one Hello.
+  Future<void> _announceAccepted(String userId, String deviceId) async {
+    var name = '';
+    try {
+      name = (await store.directoryProfile(userId))?['display_name']
+              ?.toString() ??
+          '';
+    } catch (_) {}
+    AppLogger.info('FRIEND_REQUEST_ACCEPTED',
+        detail: 'by=${_tail6(userId)} path=any');
+    if (_requestAccepted.isClosed) return;
+    _requestAccepted.add(FriendAddedByMe(
+        userId: userId,
+        deviceId: deviceId,
+        displayName: name.isEmpty ? 'LinkUp user' : name,
+        source: 'nearby'));
+  }
+
   @override
   Future<void> dispose() async {
     _syncTimer?.cancel();
@@ -1884,6 +2176,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     _transportSub = null;
     await _updates.close();
     await _addedBy.close();
+    await _requestAccepted.close();
     _started = false;
   }
 }

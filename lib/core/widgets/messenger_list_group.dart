@@ -20,11 +20,15 @@ class MessengerGroupLabel extends StatelessWidget {
   /// Distance of the card from the screen edge (the title sits 6 inside it).
   final double inset;
 
+  /// Bundle 196: optional colour (the red BLOCKED part); grey when null.
+  final Color? color;
+
   const MessengerGroupLabel(
     this.text, {
     super.key,
     this.top = 24,
     this.inset = 16,
+    this.color,
   });
 
   @override
@@ -40,7 +44,7 @@ class MessengerGroupLabel extends StatelessWidget {
               fontWeight: FontWeight.w500,
               letterSpacing: 1.1,
               height: 14 / 11,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
             ),
       ),
     );

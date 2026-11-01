@@ -166,7 +166,18 @@ class SealingPeerTransport implements PeerTransportContract {
   static const Set<String> strangerInnerTypes = {
     'CONTACT_EDGE',
     'CONTACT_EDGE_ACK',
+    // Bundle 196 (12): "I blocked / unblocked you" and its "got it".
+    'CONTACT_BLOCK_STATE',
+    'CONTACT_BLOCK_STATE_ACK',
   };
+
+  /// Bundle 196 (12.4): the ONE thing a phone I blocked may still send me
+  /// (flag [blockAckFlagValue]): the "got it" for my block state. Max 1 per
+  /// 10 s per phone; nothing else from them opens.
+  static const String blockStateAckType = 'CONTACT_BLOCK_STATE_ACK';
+  static const String blockAckFlagValue = '2';
+  static const Duration blockAckGap = Duration(seconds: 10);
+  final Map<String, DateTime> _blockAckAt = <String, DateTime>{};
 
   /// Bundle 195c: set on the opened payload - the sender's key that opened
   /// it (the app checks it against the signed profile inside).
@@ -342,8 +353,11 @@ class SealingPeerTransport implements PeerTransportContract {
     // Bundle 195c: someone who is not my friend yet may send ONE kind of
     // locked message: a friend link (or its "got it").
     var stranger = false;
+    final blockAck = outer[friendLinkFlag]?.toString() == blockAckFlagValue;
     if (theirs == null) {
-      theirs = await _strangerKey(keys, sender, outer);
+      theirs = blockAck
+          ? _blockAckKey(sender, outer)
+          : await _strangerKey(keys, sender, outer);
       if (theirs == null) {
         // Not a contact (or blocked): nothing else from strangers reaches the app.
         AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=not_a_contact');
@@ -388,6 +402,11 @@ class SealingPeerTransport implements PeerTransportContract {
         AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=${e2.reason}');
         return null;
       }
+    }
+    // Bundle 196: a "block ack" lock may hold nothing but the block ack.
+    if (blockAck && inner['type']?.toString() != blockStateAckType) {
+      AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=block_ack_type');
+      return null;
     }
     if (stranger) {
       if (!strangerInnerTypes.contains(inner['type']?.toString())) {
@@ -458,6 +477,19 @@ class SealingPeerTransport implements PeerTransportContract {
     return key;
   }
 
+  /// Bundle 196 (12.4): the key outside a block-state "got it" - also from
+  /// a phone I blocked, but max 1 per [blockAckGap] per phone.
+  List<int>? _blockAckKey(String sender, Map<String, dynamic> outer) {
+    final key = _decodeKey(outer[strangerKeyField]?.toString() ?? '');
+    if (key == null) return null;
+    final now = DateTime.now();
+    final last = _blockAckAt[sender];
+    if (last != null && now.difference(last) < blockAckGap) return null;
+    if (_blockAckAt.length > 200) _blockAckAt.clear();
+    _blockAckAt[sender] = now;
+    return key;
+  }
+
   /// Bundle 195c: send a friend link (or its "got it") locked with the
   /// other person's profile key, so ANY LinkUp phone can carry it but only
   /// they can open it - even if they don't have me as a friend yet.
@@ -486,7 +518,10 @@ class SealingPeerTransport implements PeerTransportContract {
       );
       sealed[strangerKeyField] =
           base64Url.encode(mine.first.publicKey).replaceAll('=', '');
-      sealed[friendLinkFlag] = 1;
+      // Bundle 196: the block-state "got it" uses its own flag (it may go
+      // to a phone that blocked me).
+      sealed[friendLinkFlag] =
+          payload['type']?.toString() == blockStateAckType ? 2 : 1;
       await inner.send(recipientId: recipientId, payload: sealed);
       return true;
     } catch (e) {

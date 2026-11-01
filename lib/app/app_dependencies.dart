@@ -45,6 +45,9 @@ import 'package:locallink/features/connectivity/data/services/voice_relay_watch.
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
+import 'package:locallink/core/presence/block_hub.dart';
+import 'package:locallink/features/directory/data/block_state.dart';
+import 'package:locallink/features/directory/data/friend_requests.dart';
 import 'package:locallink/features/files/data/repositories/file_transfer_repository.dart';
 import 'package:locallink/features/files/data/services/file_transfer_service.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
@@ -264,6 +267,96 @@ class AppDependencies {
     FriendHelloService.instance = friendHello;
     _addedByMeSub = pairing.addedByMe
         .listen((e) => unawaited(friendHello.addedByMe(e)));
+    _wireBlockAndRequests(directory);
+  }
+
+  /// Bundle 196: who is blocked (every screen) + Nearby friend requests.
+  void _wireBlockAndRequests(DirectoryRepository directory) {
+    final hub = BlockHub.instance;
+    hub.block = directoryRepository.blockUser;
+    hub.unblock = directoryRepository.unblockUser;
+    hub.remove = directoryRepository.removeContact;
+    hub.lookupDevice = (deviceId) async {
+      final row = await store.directoryProfileByDeviceId(deviceId);
+      final userId = row?['user_id']?.toString() ?? '';
+      if (userId.isEmpty) return null;
+      return (userId: userId, username: row?['username']?.toString() ?? '');
+    };
+    hub.unblockAndAdd = (person) async {
+      await directoryRepository.unblockUser(person.userId);
+      await directoryRepository.addContact(person.userId);
+      AppLogger.info('FRIEND_ADD_TAP', detail: 'source=unblock already=n');
+      if (person.deviceId.isNotEmpty) {
+        // 194 rules: the Hello only when the chat is empty.
+        unawaited(friendHello.addedByMe(
+            FriendAddedByMe(
+              userId: person.userId,
+              deviceId: person.deviceId,
+              displayName: person.label,
+              source: 'unblock',
+            ),
+            openChat: false));
+      }
+    };
+    unawaited(hub.attach(
+      loadPeople: () async => (await store.blockedPeople())
+          .map(BlockedPerson.fromRow)
+          .toList(growable: false),
+      loadPeerIds: store.blockedPeerIds,
+      loadBlockedMe: () async {
+        final all = BlockedByStates.decode(
+            await store.readSetting(BlockedByStates.settingKey));
+        return (
+          BlockedByStates.blockedMeDevices(all),
+          BlockedByStates.blockedMeUsers(all),
+        );
+      },
+      changes: LocalStore.blockedChanges,
+    ));
+
+    final book = FriendRequestBook.instance;
+    // In-app Accept / Decline (People REQUESTS) also clears the notice.
+    book.onAccept = (deviceId) async {
+      await pairing.acceptFriendRequest(deviceId);
+      unawaited(notifications
+          .cancelFriendRequest(deviceId)
+          .catchError((Object _) {}));
+    };
+    book.onDecline = (deviceId) async {
+      await pairing.declineFriendRequest(deviceId);
+      unawaited(notifications
+          .cancelFriendRequest(deviceId)
+          .catchError((Object _) {}));
+    };
+    unawaited(book.attach(read: store.readSetting, write: store.writeSetting));
+    notifications.onFriendRequestAccept = (deviceId) async {
+      await pairing.acceptFriendRequest(deviceId);
+    };
+    notifications.onFriendRequestDecline = pairing.declineFriendRequest;
+    _requestSubs.add(pairing.friendRequests.listen((r) {
+      AppLogger.info('FRIEND_REQUEST_NOTICE', detail: 'shown=y');
+      unawaited(notifications
+          .showFriendRequest(
+              userId: r.userId, deviceId: r.deviceId, displayName: r.name)
+          .catchError((Object _) {}));
+    }));
+    _acceptedSubs.add(pairing.requestAccepted.listen(_requestAccepted));
+    _acceptedSubs.add(directory.requestAccepted.listen(_requestAccepted));
+  }
+
+  final List<StreamSubscription<FriendRequest>> _requestSubs =
+      <StreamSubscription<FriendRequest>>[];
+  final List<StreamSubscription<FriendAddedByMe>> _acceptedSubs =
+      <StreamSubscription<FriendAddedByMe>>[];
+
+  /// Bundle 196 (12b.11): "sumaira accepted your request" + one Hello from
+  /// me; the chat opens by itself only while Nearby is on screen.
+  void _requestAccepted(FriendAddedByMe e) {
+    unawaited(notifications
+        .showFriendAccepted(deviceId: e.deviceId, displayName: e.displayName)
+        .catchError((Object _) {}));
+    unawaited(friendHello.addedByMe(e,
+        openChat: FriendRequestBook.instance.nearbyOnScreen > 0));
   }
 
   /// Bundle 194: sends the one automatic Hello after my own Add.
@@ -465,6 +558,14 @@ class AppDependencies {
     _friendSubs.clear();
     unawaited(_addedByMeSub?.cancel());
     _addedByMeSub = null;
+    for (final sub in _requestSubs) {
+      unawaited(sub.cancel());
+    }
+    _requestSubs.clear();
+    for (final sub in _acceptedSubs) {
+      unawaited(sub.cancel());
+    }
+    _acceptedSubs.clear();
     if (identical(FriendHelloService.instance, friendHello)) {
       FriendHelloService.instance = null;
     }

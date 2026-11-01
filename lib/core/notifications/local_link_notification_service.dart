@@ -63,6 +63,11 @@ final class LocalLinkNotificationService {
   Future<void> Function(String userId)? onFriendRemove;
   Future<void> Function(String userId)? onFriendBlock;
 
+  /// Bundle 196 (12b): Accept / Decline on "Ali wants to add you"
+  /// (argument = the asking phone's device id).
+  Future<void> Function(String deviceId)? onFriendRequestAccept;
+  Future<void> Function(String deviceId)? onFriendRequestDecline;
+
   /// Bundle 177 (8.4): one "added you" notice per person per 24 h.
   static const Duration friendNoticeWindow = Duration(hours: 24);
 
@@ -563,6 +568,30 @@ final class LocalLinkNotificationService {
   Future<void> _handleFriendAction(LocalLinkNotificationAction action) async {
     final userId = action.conversationId;
     final localId = store.deviceId ?? '';
+    // Bundle 196 (12b): Accept / Decline on a friend request.
+    if (action.action == NotificationActionType.friendRequestAccept ||
+        action.action == NotificationActionType.friendRequestDecline) {
+      final deviceId = action.senderId;
+      if (deviceId.isEmpty ||
+          localId.isEmpty ||
+          action.recipientId != localId ||
+          int.tryParse(action.notificationId) !=
+              LocalLinkNotificationId.friendRequest(deviceId)) {
+        return;
+      }
+      try {
+        if (action.action == NotificationActionType.friendRequestAccept) {
+          await onFriendRequestAccept?.call(deviceId);
+        } else {
+          await onFriendRequestDecline?.call(deviceId);
+        }
+      } catch (_) {
+        // Best effort; the request stays on the People tab.
+      }
+      await platform.cancelFriendNotice(
+          LocalLinkNotificationId.friendRequest(deviceId));
+      return;
+    }
     if (userId.isEmpty ||
         localId.isEmpty ||
         action.recipientId != localId ||
@@ -581,6 +610,54 @@ final class LocalLinkNotificationService {
     }
     await platform
         .cancelNotification(LocalLinkNotificationId.friend(userId));
+  }
+
+  /// Bundle 196 (12b): "Ali wants to add you" (Accept / Decline). The
+  /// caller keeps it to one per phone per 24 h.
+  Future<void> showFriendRequest({
+    required String userId,
+    required String deviceId,
+    required String displayName,
+  }) async {
+    if (_disposed || userId.isEmpty || deviceId.isEmpty) return;
+    final localId = store.deviceId ?? '';
+    if (localId.isEmpty || deviceId == localId) return;
+    try {
+      if (await store.isBlocked(userId) || await store.isBlockedPeer(deviceId)) {
+        return;
+      }
+    } catch (_) {
+      return;
+    }
+    await platform.showFriendRequest(
+      notificationId: LocalLinkNotificationId.friendRequest(deviceId),
+      userId: userId,
+      deviceId: deviceId,
+      recipientId: localId,
+      name: displayName,
+    );
+  }
+
+  Future<void> cancelFriendRequest(String deviceId) async {
+    if (_disposed || deviceId.isEmpty) return;
+    await platform
+        .cancelFriendNotice(LocalLinkNotificationId.friendRequest(deviceId));
+  }
+
+  /// Bundle 196 (12b): "sumaira accepted your request".
+  Future<void> showFriendAccepted({
+    required String deviceId,
+    required String displayName,
+  }) async {
+    if (_disposed || deviceId.isEmpty) return;
+    final localId = store.deviceId ?? '';
+    if (localId.isEmpty || deviceId == localId) return;
+    await platform.showFriendAccepted(
+      notificationId: LocalLinkNotificationId.friendAccepted(deviceId),
+      deviceId: deviceId,
+      recipientId: localId,
+      name: displayName,
+    );
   }
 
   Future<void> _handleAction(LocalLinkNotificationAction action) async {
@@ -655,6 +732,8 @@ final class LocalLinkNotificationService {
         if (!_openRequests.isClosed) _openRequests.add(action);
       case NotificationActionType.friendRemove:
       case NotificationActionType.friendBlock:
+      case NotificationActionType.friendRequestAccept:
+      case NotificationActionType.friendRequestDecline:
         // Bundle 177: friend buttons never reach a message.
         return;
     }
@@ -714,6 +793,8 @@ final class LocalLinkNotificationService {
         if (!_openRequests.isClosed) _openRequests.add(action);
       case NotificationActionType.friendRemove:
       case NotificationActionType.friendBlock:
+      case NotificationActionType.friendRequestAccept:
+      case NotificationActionType.friendRequestDecline:
         // Bundle 177: friend buttons never reach a message.
         return;
     }

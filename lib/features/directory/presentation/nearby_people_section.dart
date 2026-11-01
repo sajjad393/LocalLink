@@ -16,6 +16,7 @@ import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
+import 'package:locallink/features/directory/data/friend_requests.dart';
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 import 'package:locallink/features/directory/presentation/nearby_list_plan.dart';
 import 'package:locallink/features/directory/presentation/nearby_search_animation.dart';
@@ -84,6 +85,9 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
   // Bundle 154: blocked people never show on Nearby.
   Set<String> _blockedIds = const <String>{};
   StreamSubscription<String>? _pairedSub;
+
+  /// Bundle 196 (12b): "wait" reply from a private profile.
+  StreamSubscription<String>? _waitingSub;
   // Bundle 126: burst-duplicated accept packets used to fire the "paired"
   // stream once per copy. Dedupe by a short window.
   DateTime? _lastPairHandledAt;
@@ -107,10 +111,25 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     unawaited(_startSearch(askPermission: false));
     unawaited(_refreshTrusted());
     _pairedSub = widget.pairing.paired.listen(_onPaired);
+    // Bundle 196 (12b): while Nearby is open, an accepted request opens
+    // the chat; "wait" shows a short note.
+    FriendRequestBook.instance.nearbyOnScreen++;
+    _waitingSub = widget.pairing.waiting.listen(_onWaiting);
+  }
+
+  void _onWaiting(String name) {
+    if (!mounted) return;
+    final who = name.trim().isEmpty ? 'They' : name.trim();
+    _snack('Request sent. $who needs to accept.');
   }
 
   @override
   void dispose() {
+    if (FriendRequestBook.instance.nearbyOnScreen > 0) {
+      FriendRequestBook.instance.nearbyOnScreen--;
+    }
+    unawaited(_waitingSub?.cancel());
+    _waitingSub = null;
     unawaited(_pairedSub?.cancel());
     _pairedSub = null;
     _found.dispose();
@@ -656,9 +675,20 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     final wifi = e.wifi;
     final Widget action;
     if (mesh != null) {
-      action = FilledButton.tonal(
-        onPressed: () => _pairSheet(mesh),
-        child: const Text('Add friend'),
+      // Bundle 196 (12b.4): "Requested" (disabled) for 24 h after a private
+      // person answered "wait"; then back to "Add friend".
+      action = ListenableBuilder(
+        listenable: FriendRequestBook.instance,
+        builder: (context, _) => FriendRequestBook.instance.isSent(mesh.nodeId)
+            ? FilledButton.tonal(
+                key: ValueKey('nearby_requested_${mesh.nodeId}'),
+                onPressed: null,
+                child: const Text('Requested'),
+              )
+            : FilledButton.tonal(
+                onPressed: () => _pairSheet(mesh),
+                child: const Text('Add friend'),
+              ),
       );
     } else {
       action = FilledButton.tonal(

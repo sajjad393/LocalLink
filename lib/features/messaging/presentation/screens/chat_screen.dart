@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/core/presence/block_hub.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/directory/presentation/contact_sheets.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -84,12 +87,62 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final draft = VoiceDraftStore.take(widget.controller.device.id);
     if (draft != null) _voice.restore(draft);
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_lookupPeer());
     // Show the jump-to-latest arrow whenever the reader drifts off the tail.
     _scrollController.addListener(_syncJumpArrow);
     unawaited(_load());
   }
 
   bool _showJumpArrow = false;
+
+  /// Bundle 196: who is behind this phone (for Block + the info sheet).
+  String _peerUserId = '';
+  String _peerUsername = '';
+  bool _blockLogged = false;
+
+  Future<void> _lookupPeer() async {
+    final who = await BlockHub.instance.lookup(widget.controller.device.id);
+    if (!mounted || who == null) return;
+    setState(() {
+      _peerUserId = who.userId;
+      _peerUsername = who.username;
+    });
+  }
+
+  String _peerName(Device device) =>
+      device.name.isEmpty ? 'LinkUp user' : device.name;
+
+  /// The blocked person behind this phone (falls back to the phone itself).
+  BlockedPerson _blockedPerson(Device device) =>
+      BlockHub.instance.personForDevice(device.id) ??
+      BlockHub.instance.personForUser(_peerUserId) ??
+      BlockedPerson(
+        userId: _peerUserId.isNotEmpty ? _peerUserId : device.id,
+        deviceId: device.id,
+        name: _peerName(device),
+        username: _peerUsername,
+      );
+
+  Future<void> _unblock(Device device) =>
+      runUnblockFlow(context, _blockedPerson(device), from: 'chat');
+
+  Future<void> _block(Device device) async {
+    var userId = _peerUserId;
+    if (userId.isEmpty) {
+      userId = (await BlockHub.instance.lookup(device.id))?.userId ?? '';
+    }
+    if (!mounted) return;
+    if (userId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Open this person from People to block them.')));
+      return;
+    }
+    await runBlockFlow(context,
+        userId: userId,
+        name: _peerName(device),
+        username: _peerUsername,
+        from: 'chat');
+  }
 
   void _syncJumpArrow() {
     if (!_scrollController.hasClients || !mounted) return;
@@ -324,19 +377,105 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await widget.controller.react(messageId, selected);
   }
 
+  /// Bundle 196 (10.6): Conversation info is a bottom sheet (mock 14b/c).
   Future<void> _showConversationInfo() async {
     final device = widget.controller.device;
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(device.name.isEmpty ? 'Conversation' : device.name),
-        content: Text(_presenceLabel(device)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Close'),
+    final hub = BlockHub.instance;
+    final iBlocked = hub.isBlockedDevice(device.id);
+    final blockedMe = !iBlocked && hub.hasBlockedMe(device.id);
+    final presence = _presenceLabel(device);
+    final choice = await showChatInfoSheet(
+      context,
+      name: _peerName(device),
+      subtitle: _peerUsername.isEmpty
+          ? presence
+          : '@$_peerUsername · $presence',
+      username: _peerUsername.isEmpty ? '' : '@$_peerUsername',
+      blocked: iBlocked,
+      showCall: widget.onStartCall != null && !blockedMe,
+      avatar: PresenceAvatar(
+        avatar: AccountAvatar(name: device.name, radius: 23),
+        device: device,
+      ),
+    );
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case ChatInfoChoice.call:
+        await _startCall();
+      case ChatInfoChoice.search:
+        _startSearch();
+      case ChatInfoChoice.block:
+        await _block(device);
+      case ChatInfoChoice.unblock:
+        await _unblock(device);
+    }
+  }
+
+  /// Bundle 196 (10.3 / 12.6): the bar that replaces the message box.
+  Widget _blockedBar(BuildContext context, Device device,
+      {required bool mine}) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('chat_blocked_bar'),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainer,
+        border: Border(top: BorderSide(color: colors.outlineVariant)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(18, mine ? 6 : 16, 8, mine ? 6 : 16),
+          child: Row(
+            children: [
+              Icon(Icons.block, size: 16, color: colors.onSurfaceVariant),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  mine
+                      ? 'You blocked ${_peerName(device)}.'
+                      : "You can't message ${_peerName(device)}.",
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: colors.onSurfaceVariant,
+                      letterSpacing: 0),
+                ),
+              ),
+              if (mine)
+                TextButton(
+                  key: const ValueKey('chat_blocked_unblock'),
+                  onPressed: () => _unblock(device),
+                  style: TextButton.styleFrom(
+                    textStyle: const TextStyle(
+                        fontSize: 14.5, fontWeight: FontWeight.w700),
+                  ),
+                  child: const Text('Unblock'),
+                ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  /// "You blocked Ali · 8:49 PM" at the end of the messages (not stored).
+  Widget _blockedChip(BuildContext context, Device device) {
+    final colors = Theme.of(context).colorScheme;
+    final at = blockTimeLabel(_blockedPerson(device).blockedAt);
+    return Center(
+      key: const ValueKey('chat_blocked_chip'),
+      child: Container(
+        margin: const EdgeInsets.only(top: 10, bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          at.isEmpty
+              ? 'You blocked ${_peerName(device)}'
+              : 'You blocked ${_peerName(device)} · $at',
+          style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+        ),
       ),
     );
   }
@@ -379,6 +518,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           lastIsMine: visibleMessages.isNotEmpty &&
               visibleMessages.last.senderId == state.localDeviceId,
         );
+        // Bundle 196: block / unblock switches the chat at once.
+        return ListenableBuilder(
+          listenable: BlockHub.instance,
+          builder: (context, _) {
+        final hub = BlockHub.instance;
+        final iBlocked = hub.isBlockedDevice(device.id);
+        // My own block wins over theirs (13.2).
+        final blockedMe = !iBlocked && hub.hasBlockedMe(device.id);
+        if ((iBlocked || blockedMe) && !_blockLogged) {
+          _blockLogged = true;
+          AppLogger.info('CHAT_BLOCKED_VIEW',
+              detail: 'side=${iBlocked ? 'mine' : 'theirs'}');
+        }
+        final showChip = iBlocked && searchQuery.isEmpty;
         return Scaffold(
           appBar: AppBar(
             titleSpacing: 0,
@@ -405,10 +558,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       // Bundle 130: presence badge rides ON the avatar's
                       // upper-right edge — the standalone status icon is gone
                       // from the app-bar actions.
-                      PresenceAvatar(
-                        avatar: AccountAvatar(name: device.name, radius: 20),
-                        device: device,
-                      ),
+                      if (iBlocked)
+                        MutedAvatar(name: device.name, radius: 20)
+                      else
+                        PresenceAvatar(
+                          avatar: AccountAvatar(name: device.name, radius: 20),
+                          device: device,
+                        ),
                       const SizedBox(width: LocalLinkSpacing.md),
                       Expanded(
                         child: Column(
@@ -425,13 +581,37 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     letterSpacing: .1,
                                   ),
                             ),
-                            ListenableBuilder(
-                              listenable: PresenceHub.instance,
-                              builder: (context, _) => Text(
-                                _presenceLabel(device),
-                                style: Theme.of(context).textTheme.bodySmall,
+                            if (iBlocked)
+                              Row(
+                                key: const ValueKey('chat_blocked_subtitle'),
+                                children: [
+                                  Icon(Icons.block,
+                                      size: 12,
+                                      color:
+                                          Theme.of(context).colorScheme.error),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Blocked',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .error,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                ],
+                              )
+                            else
+                              ListenableBuilder(
+                                listenable: PresenceHub.instance,
+                                builder: (context, _) => Text(
+                                  _presenceLabel(device),
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ),
@@ -445,7 +625,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       _ReturnToCallChip(calls: widget.calls!, peerId: device.id),
                     // Bundle 130: the hollow/presence circle moved onto the
                     // title avatar as a badge — nothing else changed here.
-                    if (widget.onStartCall != null)
+                    // Bundle 196: no call icon when either side blocked.
+                    if (widget.onStartCall != null && !iBlocked && !blockedMe)
                       IconButton(tooltip: 'Call', onPressed: _startCall, icon: const Icon(Icons.call_outlined)),
                     PopupMenuButton<String>(
                       tooltip: 'More options',
@@ -496,8 +677,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 physics: const AlwaysScrollableScrollPhysics(),
                                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                                 padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.lg),
-                                itemCount: visibleMessages.length,
+                                itemCount: visibleMessages.length + (showChip ? 1 : 0),
                                 itemBuilder: (_, index) {
+                                  if (index >= visibleMessages.length) {
+                                    return _blockedChip(context, device);
+                                  }
                                   final message = visibleMessages[index];
                                   final showDate = index == 0 || !_sameDay(visibleMessages[index - 1].createdAt, message.createdAt);
                                   // Bundle 132 (G): a transport section label
@@ -551,20 +735,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             ],
                           ),
               ),
-              PendingAttachmentStrip(
-                attachments: state.pendingAttachments,
-                onRemove: widget.controller.removePendingAttachment,
-              ),
-              ChatComposer(
-                controller: _textController,
-                isSending: state.isSending,
-                onPickAttachments: _pickFiles,
-                onSend: _send,
-                voice: _voice,
-                hasAttachments: state.pendingAttachments.isNotEmpty,
-              ),
+              // Bundle 196 (10.3 / 12.6): the message box is replaced on
+              // both phones; the draft stays in the controllers.
+              if (iBlocked)
+                _blockedBar(context, device, mine: true)
+              else if (blockedMe)
+                _blockedBar(context, device, mine: false)
+              else ...[
+                PendingAttachmentStrip(
+                  attachments: state.pendingAttachments,
+                  onRemove: widget.controller.removePendingAttachment,
+                ),
+                ChatComposer(
+                  controller: _textController,
+                  isSending: state.isSending,
+                  onPickAttachments: _pickFiles,
+                  onSend: _send,
+                  voice: _voice,
+                  hasAttachments: state.pendingAttachments.isNotEmpty,
+                ),
+              ],
             ],
           ),
+        );
+          },
         );
       },
     );

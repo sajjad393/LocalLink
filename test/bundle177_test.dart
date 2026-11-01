@@ -17,6 +17,7 @@ import 'package:locallink/features/connectivity/data/services/wifi_direct_fallba
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 import 'package:locallink/features/connectivity/domain/nearby_group_control.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
+import 'package:locallink/features/directory/data/friend_requests.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/home/presentation/screens/background_run_screen.dart';
@@ -132,9 +133,14 @@ class _Store extends FakeStore {
   @override
   Future<bool> isBlockedPeer(String peerId) async =>
       blockedUsers.contains(peerId);
+  /// Bundle 196: my own Private profile switch.
+  bool private = false;
   @override
-  Future<LocalProfile?> profile() async =>
-      const LocalProfile(userId: 'me-user', username: 'me', displayName: 'Me');
+  Future<LocalProfile?> profile() async => LocalProfile(
+      userId: 'me-user',
+      username: 'me',
+      displayName: 'Me',
+      discoverableByName: !private);
   @override
   Future<void> saveDevice(Device device) async {
     saved.add(device);
@@ -447,6 +453,105 @@ void main() {
       await request('ali-user', 'ali-device');
       expect(added, hasLength(1));
       expect(dir.added, ['ali-user']);
+    });
+  });
+
+  group('196: private profile - Nearby adds ask first (12b)', () {
+    late _Store store;
+    late _LinkedDir dir;
+    late FakePeerTransport transport;
+    late PairingService pairing;
+
+    setUp(() {
+      FriendRequestBook.resetForTest();
+      store = _Store()..private = true;
+      dir = _LinkedDir(store);
+      transport = FakePeerTransport();
+      pairing = PairingService(
+          store: store, crypto: _Crypto(), directory: dir, transport: transport);
+      pairing.start();
+    });
+
+    Future<void> request(String userId, String deviceId) async {
+      transport.emit({
+        'type': 'pair_packet',
+        'pair': 'request',
+        'node_id': deviceId,
+        'body': _packet(userId, deviceId),
+      });
+      await _settle();
+    }
+
+    test('a stranger is held: "wait" answer, request saved, one notice',
+        () async {
+      final notices = <FriendRequest>[];
+      pairing.friendRequests.listen(notices.add);
+      await request('ali-user', 'ali-device');
+      expect(dir.added, isEmpty, reason: 'not added before Accept');
+      expect(transport.pairPackets.map((p) => p['pair']), ['wait']);
+      expect(FriendRequestBook.instance.visible.single.userId, 'ali-user');
+      expect(notices.single.name, 'Ali');
+      await request('ali-user', 'ali-device');
+      expect(notices, hasLength(1), reason: 'asking again inside 24 h is quiet');
+    });
+
+    test('public profile: added at once as before', () async {
+      store.private = false;
+      await request('ali-user', 'ali-device');
+      expect(dir.added, ['ali-user']);
+      expect(transport.pairPackets.map((p) => p['pair']), ['accept']);
+      expect(FriendRequestBook.instance.visible, isEmpty);
+    });
+
+    test('a friend is never asked again', () async {
+      store.contactIds.add('ali-user');
+      await request('ali-user', 'ali-device');
+      expect(transport.pairPackets.map((p) => p['pair']), contains('accept'));
+      expect(FriendRequestBook.instance.visible, isEmpty);
+    });
+
+    test('Accept adds them, answers accept and clears the row', () async {
+      await request('ali-user', 'ali-device');
+      transport.pairPackets.clear();
+      final path = await pairing.acceptFriendRequest('ali-device');
+      expect(path, 'nearby');
+      expect(dir.added, ['ali-user']);
+      expect(transport.pairPackets.map((p) => p['pair']), contains('accept'));
+      expect(FriendRequestBook.instance.visible, isEmpty);
+    });
+
+    test('Decline is silent and hides the row', () async {
+      await request('ali-user', 'ali-device');
+      transport.pairPackets.clear();
+      await pairing.declineFriendRequest('ali-device');
+      expect(transport.pairPackets, isEmpty);
+      expect(FriendRequestBook.instance.visible, isEmpty);
+      final notices = <FriendRequest>[];
+      pairing.friendRequests.listen(notices.add);
+      await request('ali-user', 'ali-device');
+      expect(notices, isEmpty, reason: 'declined: quiet for 24 h');
+      expect(dir.added, isEmpty);
+    });
+
+    test('a blocked sender is not held', () async {
+      store.blockedUsers.add('ali-user');
+      await request('ali-user', 'ali-device');
+      expect(transport.pairPackets, isEmpty);
+      expect(FriendRequestBook.instance.visible, isEmpty);
+    });
+
+    test('a "wait" I did not ask for is ignored', () async {
+      final waits = <String>[];
+      pairing.waiting.listen(waits.add);
+      transport.emit({
+        'type': 'pair_packet',
+        'pair': 'wait',
+        'node_id': 'sum-device',
+        'body': _packet('sum-user', 'sum-device', name: 'sumaira'),
+      });
+      await _settle();
+      expect(waits, isEmpty);
+      expect(FriendRequestBook.instance.isSent('sum-device'), isFalse);
     });
   });
 

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/device.dart';
+import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
+import 'package:locallink/features/directory/presentation/contact_sheets.dart';
 
 /// WhatsApp-style call history row: avatar, name, direction arrow + time.
 /// Bundle 99: no trailing call-back button — the ROW itself starts the call.
@@ -48,6 +50,34 @@ class CallHistoryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Bundle 196 (11.1): blocked rows follow BlockHub live.
+    return ListenableBuilder(
+      listenable: BlockHub.instance,
+      builder: (context, _) => _row(context),
+    );
+  }
+
+  Future<void> _openUnblock(BuildContext context, String peerId) async {
+    final hub = BlockHub.instance;
+    var person = hub.personForDevice(peerId);
+    if (person == null) {
+      final who = await hub.lookup(peerId);
+      person = hub.personForUser(who?.userId ?? '') ??
+          BlockedPerson(
+            userId: who?.userId ?? peerId,
+            deviceId: peerId,
+            name: title,
+            username: who?.username ?? '',
+          );
+    }
+    if (!context.mounted) return;
+    await runUnblockFlow(context, person, from: 'calls');
+  }
+
+  Widget _row(BuildContext context) {
+    final peerId = call.peerId(selfId);
+    final blocked = BlockHub.instance.isBlockedDevice(peerId);
+    final blockedMe = !blocked && BlockHub.instance.hasBlockedMe(peerId);
     final outgoing = call.isOutgoing(selfId);
     final colors = Theme.of(context).colorScheme;
     const whatsGreen = Color(0xFF25D366);
@@ -62,7 +92,10 @@ class CallHistoryTile extends StatelessWidget {
     return ListTile(
       // Bundle 153: right padding 16 so the call button lines up with Chats.
       contentPadding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-      leading: PresenceAvatar(
+      key: blocked ? ValueKey('calls_blocked_$peerId') : null,
+      leading: blocked
+          ? MutedAvatar(name: title, radius: 21)
+          : PresenceAvatar(
         // Bundle 137: presence badge overlay, same as the chat header avatar.
         avatar: AccountAvatar(name: title, radius: 21),
         device: Device(
@@ -72,7 +105,25 @@ class CallHistoryTile extends StatelessWidget {
             createdAt: '',
             lastSeenAt: ''),
       ),
-      title: _title(context, colors),
+      title: blocked
+          ? Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: colors.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const BlockedPill(),
+              ],
+            )
+          : _title(context, colors),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 2),
         child: Row(
@@ -96,8 +147,14 @@ class CallHistoryTile extends StatelessWidget {
       ),
       // Bundle 153: the same light-blue call button as the Chats list (the
       // row tap keeps calling too).
-      trailing: MessengerCallButton(tooltip: 'Call back', onPressed: onCall),
-      onTap: onOpen ?? onCall,
+      // Bundle 196: no call-back for a blocked person (either side); a tap
+      // on a row I blocked opens the Unblock sheet instead of calling.
+      trailing: (blocked || blockedMe)
+          ? null
+          : MessengerCallButton(tooltip: 'Call back', onPressed: onCall),
+      onTap: blocked
+          ? () => _openUnblock(context, peerId)
+          : (onOpen ?? (blockedMe ? null : onCall)),
     );
   }
 

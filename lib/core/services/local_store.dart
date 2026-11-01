@@ -1446,6 +1446,15 @@ class LocalStore {
       'FROM blocked_users b '
       'LEFT JOIN directory_profiles p ON p.user_id = b.user_id '
       'ORDER BY b.blocked_at DESC');
+  /// Bundle 196: blocked people for the screens (People, Settings, chat):
+  /// name, @username and the phone from the saved profile, newest first.
+  Future<List<Map<String, Object?>>> blockedPeople() => _db.rawQuery(
+      'SELECT b.user_id AS user_id, b.blocked_at AS blocked_at, '
+      'p.device_id AS device_id, p.username AS username, '
+      'p.display_name AS display_name '
+      'FROM blocked_users b '
+      'LEFT JOIN directory_profiles p ON p.user_id = b.user_id '
+      'ORDER BY b.blocked_at DESC');
   Future<bool> isBlocked(String userId) async =>
       (await _db.query('blocked_users',
               where: 'user_id=?', whereArgs: [userId], limit: 1))

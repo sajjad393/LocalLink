@@ -190,6 +190,54 @@ final class LocalLinkNotificationPlatform {
     } catch (_) {}
   }
 
+  /// Bundle 196 (12b): "Ali wants to add you" with Accept / Decline.
+  Future<void> showFriendRequest({
+    required int notificationId,
+    required String userId,
+    required String deviceId,
+    required String recipientId,
+    required String name,
+  }) async {
+    if (_disposed) return;
+    try {
+      await _channel.invokeMethod<void>('showFriendRequest', {
+        'notification_id': notificationId,
+        'user_id': userId,
+        'device_id': deviceId,
+        'recipient_id': recipientId,
+        'name': name,
+      });
+    } catch (_) {}
+  }
+
+  /// Bundle 196 (12b): "sumaira accepted your request" (tap opens the chat).
+  Future<void> showFriendAccepted({
+    required int notificationId,
+    required String deviceId,
+    required String recipientId,
+    required String name,
+  }) async {
+    if (_disposed) return;
+    try {
+      await _channel.invokeMethod<void>('showFriendAccepted', {
+        'notification_id': notificationId,
+        'device_id': deviceId,
+        'recipient_id': recipientId,
+        'name': name,
+      });
+    } catch (_) {}
+  }
+
+  /// Bundle 196: friend notices are posted without the message tag.
+  Future<void> cancelFriendNotice(int notificationId) async {
+    if (_disposed || notificationId <= 0) return;
+    try {
+      await _channel.invokeMethod<void>('cancelFriend', {
+        'notification_id': notificationId,
+      });
+    } catch (_) {}
+  }
+
   Future<void> cancelNotification(int notificationId) async {
     if (_disposed) return;
     if (notificationId <= 0) return;
