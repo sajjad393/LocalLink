@@ -19,6 +19,12 @@ import 'package:locallink/features/groups/presentation/screens/group_details_scr
 import 'package:locallink/features/groups/presentation/widgets/group_composer.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_message_bubble.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
+import 'package:flutter/services.dart';
+import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/core/services/message_delete_book.dart';
+import 'package:locallink/features/messaging/data/forward_hub.dart';
+import 'package:locallink/features/messaging/presentation/screens/forward_screen.dart';
+import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
 
 class GroupChatScreen extends StatefulWidget {
   final LocalGroup group;
@@ -53,6 +59,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   final _scrollController = ScrollController();
   final _pending = <PickedFile>[];
   Map<String, String> _memberNames = const {};
+
+  /// Bundle 197a: reply bar, held bubble, Select mode, quote flash.
+  GroupMessage? _replyTo;
+  String? _heldId;
+  final GlobalKey _heldKey = GlobalKey();
+  final Set<String> _selected = <String>{};
+  String? _flashId;
+  String? _jumpId;
+  final GlobalKey _jumpKey = GlobalKey();
+  Timer? _flashTimer;
 
   @override
   void initState() {
@@ -108,8 +124,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final files = List<PickedFile>.from(_pending);
     _messageController.clear();
     setState(() => _pending.clear());
+    final replyTo = _replyTo;
+    if (replyTo != null) setState(() => _replyTo = null);
     try {
-      await _controller.send(body, attachments: files);
+      await _controller.send(body,
+          attachments: files,
+          reply: replyTo == null ? null : _replyRefFor(replyTo));
       if (mounted && _scrollController.hasClients) {
         _scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: LocalLinkMotion.quick, curve: Curves.easeOut);
       }
@@ -119,10 +139,263 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Bundle 197a: message options (mock 20, 21) - same as the 1-to-1 chat.
+  // ---------------------------------------------------------------------
+
+  static ReplyRef _replyRefFor(GroupMessage m) => ReplyRef(
+        id: m.id,
+        from: m.senderId,
+        snip: cutSnippet(m.text),
+        kind: replyKindFor(m.attachments),
+      );
+
+  bool _notSentYet(GroupMessage m) => _controller.isMine(m) && m.serverSeq == 0;
+
+  String _nameFor(String senderId) => senderId == widget.localDeviceId
+      ? 'You'
+      : (_memberNames[senderId] ?? 'Group member');
+
+  void _toggleSelect(GroupMessage m) {
+    setState(() {
+      if (!_selected.remove(m.id)) _selected.add(m.id);
+    });
+  }
+
+  List<GroupMessage> get _selectedMessages => _controller.messages
+      .where((m) => _selected.contains(m.id))
+      .toList(growable: false);
+
   Future<void> _showMessageActions(GroupMessage message) async {
-    const emojis=['👍','❤️','😂','😮','😢','🙏'];
-    final selected=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.all(20),child:Row(mainAxisAlignment:MainAxisAlignment.spaceEvenly,children:[for(final emoji in emojis)IconButton(tooltip:'React $emoji',onPressed:()=>Navigator.pop(c,emoji),icon:Text(emoji,style:const TextStyle(fontSize:28)))]))));
-    if(mounted&&selected!=null)await _controller.react(message.id,selected);
+    if (_selected.isNotEmpty) {
+      _toggleSelect(message);
+      return;
+    }
+    setState(() => _heldId = message.id);
+    try {
+      final result = await showMessageActionsSheet(
+        context,
+        mine: _controller.isMine(message),
+        hasText: message.text.trim().isNotEmpty,
+        canForward: !_notSentYet(message),
+        barrierColor: Colors.transparent,
+      );
+      if (!mounted || result == null) return;
+      switch (result.action) {
+        case MessageAction.react:
+          await _controller.react(message.id, result.emoji ?? '');
+        case MessageAction.reply:
+          setState(() => _replyTo = message);
+        case MessageAction.copy:
+          await _copy([message]);
+        case MessageAction.forward:
+          await _forward([message]);
+        case MessageAction.info:
+          await _showInfo(message);
+        case MessageAction.select:
+          setState(() => _selected.add(message.id));
+        case MessageAction.delete:
+          await _delete([message]);
+      }
+    } finally {
+      if (mounted) setState(() => _heldId = null);
+    }
+  }
+
+  static String _clock(DateTime v) {
+    final hour = v.hour % 12 == 0 ? 12 : v.hour % 12;
+    return '$hour:${v.minute.toString().padLeft(2, '0')} ${v.hour >= 12 ? 'PM' : 'AM'}';
+  }
+
+  Future<void> _copy(List<GroupMessage> messages) async {
+    final withText =
+        messages.where((m) => m.text.trim().isNotEmpty).toList(growable: false);
+    if (withText.isEmpty) return;
+    final text = withText.length == 1
+        ? withText.first.text
+        : withText
+            .map((m) =>
+                '[${_clock(m.createdTime)}] ${_nameFor(m.senderId)}: ${m.text}')
+            .join('\n');
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(withText.length == 1
+            ? 'Message copied'
+            : '${withText.length} messages copied')));
+  }
+
+  Future<void> _forward(List<GroupMessage> messages) async {
+    final sendable = messages.where((m) => !_notSentYet(m)).toList();
+    if (sendable.isEmpty) return;
+    final single = await runForwardFlow(context, [
+      for (final m in sendable)
+        ForwardItem(text: m.text, attachments: m.attachments),
+    ]);
+    if (!mounted) return;
+    setState(_selected.clear);
+    if (single == null) return;
+    if (single.isGroup && single.id == widget.group.id) return;
+    final route = ForwardHub.instance?.routeFor?.call(single);
+    if (route != null) unawaited(Navigator.pushReplacement(context, route));
+  }
+
+  Widget _miniBubble(GroupMessage m) {
+    final colors = Theme.of(context).colorScheme;
+    final mine = _controller.isMine(m);
+    final label = m.text.trim().isNotEmpty
+        ? m.text
+        : replyKindLabel(replyKindFor(m.attachments));
+    final fg = mine ? Colors.white : colors.onSurface;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.fromLTRB(12, 7, 10, 5),
+      decoration: BoxDecoration(
+        gradient: mine ? LocalLinkBrand.linearGradient : null,
+        color: mine ? null : colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(LocalLinkRadius.chat),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            widthFactor: 1,
+            child: Text(label,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: fg)),
+          ),
+          Text(_clock(m.createdTime),
+              style: TextStyle(fontSize: 11, color: fg.withValues(alpha: .7))),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _delete(List<GroupMessage> messages) async {
+    if (messages.isEmpty) return;
+    final allowEveryone = messages.every((m) => canDeleteForEveryone(
+        mine: _controller.isMine(m), createdAt: m.createdTime));
+    final choice = await showDeleteMessagesSheet(
+      context,
+      count: messages.length,
+      allowEveryone: allowEveryone,
+      peerName: widget.group.name,
+      group: true,
+      preview: messages.length == 1
+          ? Align(
+              alignment: _controller.isMine(messages.first)
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: _miniBubble(messages.first))
+          : null,
+      barrierColor: _heldId != null ? Colors.transparent : null,
+    );
+    if (!mounted || choice == null) return;
+    final ids = messages.map((m) => m.id).toList(growable: false);
+    if (choice == DeleteChoice.forEveryone) {
+      final ok = await _controller.deleteForEveryone(ids);
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Too late to delete for everyone')));
+      }
+    } else {
+      await _controller.deleteForMe(ids);
+    }
+    if (mounted) setState(() => _selected.removeAll(ids));
+  }
+
+  Future<void> _showInfo(GroupMessage m) => showMessageInfoSheet(
+        context,
+        preview: _miniBubble(m),
+        sentAt: m.createdTime,
+        group: true,
+        notSentYet: _notSentYet(m),
+        barrierColor: _heldId != null ? Colors.transparent : null,
+      );
+
+  void _jumpTo(String id) {
+    final index = _controller.messages.indexWhere((m) => m.id == id);
+    if (index < 0 || !_scrollController.hasClients) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Message not found')));
+      return;
+    }
+    setState(() {
+      _jumpId = id;
+      _flashId = id;
+    });
+    _scrollController.jumpTo(
+        (index * 88.0).clamp(0.0, _scrollController.position.maxScrollExtent));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _jumpKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        Scrollable.ensureVisible(ctx,
+            alignment: .4, duration: LocalLinkMotion.quick);
+      }
+    });
+    _flashTimer?.cancel();
+    _flashTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _flashId = null);
+    });
+  }
+
+  PreferredSizeWidget _selectBar(BuildContext context) {
+    final picked = _selectedMessages;
+    final one = picked.length == 1 ? picked.first : null;
+    final colors = Theme.of(context).colorScheme;
+    return AppBar(
+      key: const ValueKey('select_bar'),
+      backgroundColor: colors.primaryContainer.withValues(alpha: .55),
+      leading: IconButton(
+        tooltip: 'Close',
+        onPressed: () => setState(_selected.clear),
+        icon: const Icon(Icons.close),
+      ),
+      titleSpacing: 0,
+      title: Text('${picked.length}',
+          style: const TextStyle(fontWeight: FontWeight.w700)),
+      actions: [
+        if (one != null)
+          IconButton(
+            tooltip: 'Reply',
+            onPressed: () => setState(() {
+              _replyTo = one;
+              _selected.clear();
+            }),
+            icon: const Icon(Icons.reply_rounded),
+          ),
+        if (one != null && _controller.isMine(one))
+          IconButton(
+            tooltip: 'Message info',
+            onPressed: () => _showInfo(one),
+            icon: const Icon(Icons.info_outline_rounded),
+          ),
+        if (picked.any((m) => m.text.trim().isNotEmpty))
+          IconButton(
+            tooltip: 'Copy',
+            onPressed: () async {
+              await _copy(picked);
+              if (mounted) setState(_selected.clear);
+            },
+            icon: const Icon(Icons.copy_outlined),
+          ),
+        if (picked.isNotEmpty && picked.every((m) => !_notSentYet(m)))
+          IconButton(
+            tooltip: 'Forward',
+            onPressed: () => _forward(picked),
+            icon: const Icon(Icons.forward_rounded),
+          ),
+        IconButton(
+          tooltip: 'Delete',
+          onPressed: () => _delete(picked),
+          icon: const Icon(Icons.delete_outline_rounded),
+        ),
+      ],
+    );
   }
 
   String _senderName(GroupMessage message) {
@@ -133,6 +406,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   @override
   void dispose() {
     widget.notifications?.setActiveGroupConversation(null);
+    _flashTimer?.cancel();
     _controller.close();
     _transferController.close();
     _messageController.dispose();
@@ -144,8 +418,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   Widget build(BuildContext context) {
     return LocalLinkBlocBuilder<GroupChatBloc, GroupChatState>(
       bloc: _controller,
-      builder: (context, state) => Scaffold(
-        appBar: AppBar(
+      builder: (context, state) {
+        // Bundle 197a: drop picks that were deleted meanwhile.
+        final ids = {for (final m in state.messages) m.id};
+        _selected.removeWhere((id) => !ids.contains(id));
+        final selecting = _selected.isNotEmpty;
+        final scaffold = Scaffold(
+        appBar: selecting ? _selectBar(context) : AppBar(
           titleSpacing: 0,
           title: Row(
             children: [
@@ -208,21 +487,22 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               key: ValueKey<String>('gmsg:${message.id}'),
                               children: [
                                 if (showDate) MessengerDateDivider(date: parsed),
-                                GestureDetector(
-                                  onLongPress: () => _showMessageActions(message),
-                                  child: GroupMessageBubble(
-                                    message: message,
-                                    isMine: _controller.isMine(message),
-                                    files: widget.files,
-                                    senderName: _senderName(message),
-                                    reactions: state.reactions[message.id] ?? const [],
-                                  ),
+                                KeyedSubtree(
+                                  key: _jumpId == message.id ? _jumpKey : null,
+                                  child: _groupRow(message, state, ids, selecting),
                                 ),
                               ],
                             );
                           },
                         ),
             ),
+            if (_replyTo != null)
+              ReplyBar(
+                name: _nameFor(_replyTo!.senderId),
+                line: replyLine(_replyRefFor(_replyTo!)),
+                isYou: _controller.isMine(_replyTo!),
+                onClose: () => setState(() => _replyTo = null),
+              ),
             GroupComposer(
               controller: _messageController,
               pending: _pending,
@@ -233,6 +513,58 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             ),
           ],
         ),
+      );
+        return PopScope(
+          canPop: !selecting,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && _selected.isNotEmpty) setState(_selected.clear);
+          },
+          child: Stack(
+            children: [
+              scaffold,
+              if (_heldId != null)
+                Positioned.fill(child: HeldBubbleDimmer(target: _heldKey)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Bundle 197a: one bubble row (hold sheet, Select mode, quote).
+  Widget _groupRow(GroupMessage message, GroupChatState state, Set<String> ids,
+      bool selecting) {
+    final reply = message.replyTo;
+    final picked = _selected.contains(message.id);
+    final bubble = GestureDetector(
+      onLongPress: () => _showMessageActions(message),
+      onTap: selecting ? () => _toggleSelect(message) : null,
+      child: GroupMessageBubble(
+        message: message,
+        isMine: _controller.isMine(message),
+        files: widget.files,
+        senderName: _senderName(message),
+        reactions: state.reactions[message.id] ?? const [],
+        highlighted: picked || _heldId == message.id || _flashId == message.id,
+        bubbleKey: _heldId == message.id ? _heldKey : null,
+        quoteName: reply == null ? '' : _nameFor(reply.from),
+        quoteIsYou: reply?.from == widget.localDeviceId,
+        quoteMissing: reply != null &&
+            (MessageDeleteBook.instance.isDeleted(reply.id) ||
+                !ids.contains(reply.id)),
+        onQuoteTap:
+            reply == null || selecting ? null : () => _jumpTo(reply.id),
+      ),
+    );
+    if (!selecting) return bubble;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _toggleSelect(message),
+      child: Row(
+        children: [
+          SelectCheck(selected: picked),
+          Expanded(child: bubble),
+        ],
       ),
     );
   }

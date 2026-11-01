@@ -14,6 +14,7 @@ import 'package:locallink/features/groups/domain/group_messaging_repository_cont
 import 'package:locallink/features/groups/domain/group_repository_contract.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_message_bubble.dart';
+import 'package:locallink/core/models/message_envelope.dart';
 
 final _group = LocalGroup(
   id: 'g1',
@@ -67,6 +68,17 @@ class _FakeGroupMessaging implements GroupMessagingRepositoryContract {
 
   @override
   Future<List<MessageReaction>> reactions(String messageId) async => const [];
+
+  // Bundle 197a
+  final _deleted = StreamController<String>.broadcast();
+  @override
+  Stream<String> get deletedMessageIds => _deleted.stream;
+  @override
+  Future<void> deleteForMe(String messageId) async {}
+  @override
+  Future<bool> deleteForEveryone(String groupId, String messageId) async => true;
+  @override
+  Future<int> clearChat(String groupId) async => 0;
 }
 
 class _FakeGroupRepository implements GroupRepositoryContract {
@@ -219,6 +231,59 @@ void main() {
       expect(snackBar.behavior, SnackBarBehavior.floating);
 
       await tester.pump(const Duration(seconds: 5));
+    });
+
+    // Bundle 197a (mock 19-21): hold, reply, select in a group.
+    testWidgets('197a hold Sara\'s message: Reply sends a quote',
+        (tester) async {
+      final messaging = _FakeGroupMessaging(historyResult: [
+        _message(id: 'm1', senderId: 'd2', body: 'Meeting at 5?'),
+      ]);
+      await tester.pumpWidget(_host(messaging));
+      await _settle(tester);
+      await tester.longPress(find.text('Meeting at 5?'));
+      await _settle(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Reply'), findsOneWidget);
+      expect(find.text('Message info'), findsNothing); // not mine
+      expect(find.byKey(const ValueKey('held_dimmer')), findsOneWidget);
+      await tester.tap(find.text('Reply'));
+      await _settle(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('reply_bar')), findsOneWidget);
+      expect(find.byKey(const ValueKey('held_dimmer')), findsNothing);
+      await tester.enterText(find.byType(TextField), 'Yes');
+      await tester.tap(find.byTooltip('Send message'));
+      await _settle(tester);
+      final env = MessageEnvelope.parse(messaging.sentBodies.single);
+      expect(env.text, 'Yes');
+      expect(env.reply!.id, 'm1');
+      expect(env.reply!.from, 'd2');
+      expect(find.byKey(const ValueKey('reply_bar')), findsNothing);
+    });
+
+    testWidgets('197a Select mode shows the count bar', (tester) async {
+      final messaging = _FakeGroupMessaging(historyResult: [
+        _message(id: 'm1', senderId: 'me', body: 'Mine'),
+        _message(id: 'm2', senderId: 'd2', body: 'Hers'),
+      ]);
+      await tester.pumpWidget(_host(messaging));
+      await _settle(tester);
+      await tester.longPress(find.text('Mine'));
+      await _settle(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Message info'), findsOneWidget); // mine
+      await tester.tap(find.text('Select'));
+      await _settle(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('select_bar')), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
+      await tester.tap(find.text('Hers'));
+      await _settle(tester);
+      expect(find.text('2'), findsOneWidget);
+      await tester.tap(find.byTooltip('Close'));
+      await _settle(tester);
+      expect(find.byKey(const ValueKey('select_bar')), findsNothing);
     });
   });
 }

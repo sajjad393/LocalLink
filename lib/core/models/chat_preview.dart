@@ -1,3 +1,5 @@
+import 'package:locallink/core/models/message_envelope.dart';
+
 /// Bundle 163 (4.7): the last message of a conversation, for the Chats list.
 class ChatPreview {
   final String messageId;
@@ -27,7 +29,8 @@ class ChatPreview {
     return ChatPreview(
       messageId: id,
       senderId: row['sender_id']?.toString() ?? '',
-      body: row['body']?.toString() ?? '',
+      // Bundle 197a: the text only, never the quote / Forwarded envelope.
+      body: MessageEnvelope.textOf(row['body']?.toString() ?? ''),
       createdAt: created,
       attachmentType: row['att_type']?.toString() ?? '',
       attachmentIsImage: (int.tryParse(row['att_image']?.toString() ?? '') ?? 0) == 1,

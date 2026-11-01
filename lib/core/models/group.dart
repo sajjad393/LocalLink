@@ -1,4 +1,5 @@
 import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/core/models/message_envelope.dart';
 class LocalGroup {
   final String id;
   final String name;
@@ -19,5 +20,11 @@ class GroupMessage {
   final int serverSeq;
   final List<Attachment> attachments;
   const GroupMessage({required this.id,required this.groupId,required this.senderId,required this.body,required this.createdAt,this.serverSeq=0,this.attachments=const []});
+  /// Bundle 197a: see Message.text.
+  MessageEnvelope get envelope => MessageEnvelope.of(body);
+  String get text => envelope.text;
+  ReplyRef? get replyTo => envelope.reply;
+  bool get forwarded => envelope.forwarded;
+  DateTime get createdTime => DateTime.tryParse(createdAt)?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0);
   factory GroupMessage.fromJson(Map<String,dynamic> j)=>GroupMessage(id:j['id']?.toString()??'',groupId:j['group_id']?.toString()??'',senderId:j['sender_id']?.toString()??'',body:j['body']?.toString()??'',createdAt:j['created_at']?.toString()??'',serverSeq:int.tryParse(j['server_seq']?.toString()??'')??0,attachments:(j['attachments'] as List? ?? []).map((e)=>Attachment.fromJson(Map<String,dynamic>.from(e as Map))).toList());
 }

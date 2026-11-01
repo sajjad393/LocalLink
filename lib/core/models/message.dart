@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/core/models/message_envelope.dart';
 class Message {
   final String id;
   final String senderId;
@@ -86,6 +87,13 @@ class Message {
             ? null
             : row['channel']?.toString(),
       );
+
+  /// Bundle 197a: the body may carry a quote / Forwarded envelope. Every
+  /// display, search, preview, notification and Copy uses [text].
+  MessageEnvelope get envelope => MessageEnvelope.of(body);
+  String get text => envelope.text;
+  ReplyRef? get replyTo => envelope.reply;
+  bool get forwarded => envelope.forwarded;
 
   Message copyWithMessageAttachments(List<Attachment>? attachments) => Message(
         id: id, senderId: senderId, recipientId: recipientId, body: body, createdAt: createdAt,

@@ -34,4 +34,18 @@ abstract interface class MessagingRepositoryContract {
 
   /// Bundle 162 (4.6): remove a failed message from the queue and the chat.
   Future<void> deleteFailed(String messageId);
+
+  /// Bundle 197a: ids removed from this phone (any reason) - the open chat
+  /// drops those bubbles at once.
+  Stream<String> get deletedMessageIds;
+
+  /// Bundle 197a: Delete for me (never comes back).
+  Future<void> deleteForMe(String messageId);
+
+  /// Bundle 197a: Delete for everyone (own message, 5 minutes). False = too
+  /// late / not mine; nothing changed.
+  Future<bool> deleteForEveryone(String recipientId, String messageId);
+
+  /// Bundle 197a: Clear chat (keepRow) or Delete chat, this phone only.
+  Future<int> clearChat(String peerId, {bool keepRow = true});
 }

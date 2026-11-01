@@ -71,6 +71,20 @@ final class MessagingRepository implements MessagingRepositoryContract {
   Future<void> deleteFailed(String messageId) => service.deleteFailed(messageId);
 
   @override
+  Stream<String> get deletedMessageIds => store.deletedMessageIds;
+
+  @override
+  Future<void> deleteForMe(String messageId) => service.deleteForMe(messageId);
+
+  @override
+  Future<bool> deleteForEveryone(String recipientId, String messageId) =>
+      service.deleteForEveryone(recipientId, messageId);
+
+  @override
+  Future<int> clearChat(String peerId, {bool keepRow = true}) =>
+      service.clearChat(peerId, keepRow: keepRow);
+
+  @override
   Future<void> send(
     String recipientId,
     String body, {

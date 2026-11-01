@@ -25,6 +25,8 @@ import 'package:locallink/core/models/chat_preview.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/message.dart';
+import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/core/services/message_delete_book.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/features/calls/data/transport/network_policy.dart';
 
@@ -180,6 +182,8 @@ class LocalStore {
     );
     _databaseOpened = true;
     await _loadSettings();
+    // Bundle 197a: deleted ids + cleared chats (settings table, no DB change).
+    await MessageDeleteBook.instance.load(read: readSetting, write: writeSetting);
     await _migrateLegacySharedPreferences();
     await _ensureStableDeviceId();
   }
@@ -1063,6 +1067,8 @@ class LocalStore {
         await txn.delete(table);
       }
     });
+    // Bundle 197a: the settings rows are gone; forget the lists too.
+    MessageDeleteBook.instance.resetMemory();
     try {
       final root = await getDatabasesPath();
       final attachmentsDir = Directory(p.join(root, 'attachments'));
@@ -1842,6 +1848,9 @@ class LocalStore {
           whereArgs: [messageId, fileId]);
 
   Future<void> saveMessage(Message message) async {
+    // Bundle 197a: control bodies are never rows; deleted / cleared messages
+    // never come back (Online history, a late Nearby copy, a relay).
+    if (MessageEnvelope.isControl(message.body)) return;
     var effectiveStatus = message.status;
     var effectiveDeliveredAt = message.deliveredAt;
     var effectiveServerSeq = message.serverSeq;
@@ -1860,6 +1869,9 @@ class LocalStore {
       whereArgs: [message.id],
       limit: 1,
     );
+    // Bundle 197a: a row that is still here (my unsent message kept by Clear
+    // chat) may update; a missing one is checked against the lists.
+    if (existing.isEmpty && _dropsDirect(message)) return;
     if (existing.isNotEmpty) {
       final current = existing.first;
       effectiveStatus = _mergeMessageStatus(
@@ -2045,7 +2057,132 @@ class LocalStore {
       if (sender.isNotEmpty && sender != self) peers.add(sender);
       if (recipient.isNotEmpty && recipient != self) peers.add(recipient);
     }
+    // Bundle 197a: Clear chat keeps the empty row (Delete chat does not).
+    peers.addAll(MessageDeleteBook.instance.keptEmptyDirectPeers());
     return peers;
+  }
+
+  /// Bundle 197a: is this direct message deleted / older than a clear?
+  bool _dropsDirect(Message message) {
+    final self = deviceId ?? '';
+    final peer = message.senderId == self ? message.recipientId : message.senderId;
+    return MessageDeleteBook.instance.dropsMessage(
+      id: message.id,
+      chatKey: MessageDeleteBook.directKey(peer),
+      createdAt: message.createdAt,
+      senderId: message.senderId,
+    );
+  }
+
+  /// Bundle 197a: for the services' incoming streams (sync, no DB read):
+  /// a deleted id, or a received message older than a clear. My own
+  /// messages kept by Clear chat (still sending) keep updating.
+  bool dropsDirectMessage(Message message) {
+    final self = deviceId ?? '';
+    if (message.senderId == self) {
+      return MessageDeleteBook.instance.isDeleted(message.id);
+    }
+    return _dropsDirect(message);
+  }
+
+  /// Bundle 197a: group form of [dropsDirectMessage].
+  bool dropsGroupMessage(GroupMessage message) {
+    final book = MessageDeleteBook.instance;
+    if (message.senderId == (deviceId ?? '')) return book.isDeleted(message.id);
+    return book.dropsMessage(
+      id: message.id,
+      chatKey: MessageDeleteBook.groupKey(message.groupId),
+      createdAt: DateTime.tryParse(message.createdAt) ?? DateTime.now(),
+      senderId: message.senderId,
+    );
+  }
+
+  Future<bool> _groupMessageRowExists(String id) async {
+    if (id.isEmpty) return false;
+    final rows = await _db.query('group_messages',
+        columns: ['id'], where: 'id=?', whereArgs: [id], limit: 1);
+    return rows.isNotEmpty;
+  }
+
+  /// Bundle 197a: Delete one direct message on this phone. Removes the row,
+  /// attachments, reactions, pending files and the outbox item; returns the
+  /// local file paths to delete. Emits [deletedMessageIds] (the notification
+  /// is removed and the open chat drops the bubble).
+  Future<List<String>> deleteMessageLocal(String id) async {
+    if (id.isEmpty) return const [];
+    final paths = <String>{};
+    final atts = await _db.query('message_attachments',
+        columns: ['local_path'], where: 'message_id=?', whereArgs: [id]);
+    final pending = await _db.query('pending_attachments',
+        columns: ['local_path'], where: 'message_id=?', whereArgs: [id]);
+    for (final row in [...atts, ...pending]) {
+      final path = row['local_path']?.toString() ?? '';
+      if (path.isNotEmpty) paths.add(path);
+    }
+    await _db.delete('message_reactions', where: 'message_id=?', whereArgs: [id]);
+    await deleteMessage(id);
+    return paths.toList(growable: false);
+  }
+
+  /// Bundle 197a: Delete one group message on this phone (see above).
+  Future<List<String>> deleteGroupMessageLocal(String id) async {
+    if (id.isEmpty) return const [];
+    final paths = <String>{};
+    await LocalStore.timedTx('delete_group_message_tx', _db, (txn) async {
+      final atts = await txn.query('group_message_attachments',
+          columns: ['local_path'], where: 'group_message_id=?', whereArgs: [id]);
+      final pending = await txn.query('pending_group_attachments',
+          columns: ['local_path'], where: 'message_id=?', whereArgs: [id]);
+      for (final row in [...atts, ...pending]) {
+        final path = row['local_path']?.toString() ?? '';
+        if (path.isNotEmpty) paths.add(path);
+      }
+      await txn.delete('group_message_attachments',
+          where: 'group_message_id=?', whereArgs: [id]);
+      await txn.delete('pending_group_attachments',
+          where: 'message_id=?', whereArgs: [id]);
+      await txn.delete('group_message_reactions',
+          where: 'message_id=?', whereArgs: [id]);
+      await txn.delete('group_messages', where: 'id=?', whereArgs: [id]);
+      await txn.delete('group_outbox', where: 'id=?', whereArgs: [id]);
+    });
+    if (!_deletedMessageIds.isClosed) _deletedMessageIds.add(id);
+    return paths.toList(growable: false);
+  }
+
+  /// Bundle 197a: ids of the direct chat with [peerId] that Clear chat
+  /// removes. Messages of mine still waiting to be sent stay (C2).
+  Future<List<String>> clearableDirectMessageIds(String peerId) async {
+    final self = _deviceId;
+    if (self == null || peerId.isEmpty) return const [];
+    final rows = await _db.query('messages',
+        columns: ['id', 'sender_id', 'status'],
+        where: '(sender_id=? AND recipient_id=?) OR (sender_id=? AND recipient_id=?)',
+        whereArgs: [self, peerId, peerId, self]);
+    return [
+      for (final r in rows)
+        if (!(r['sender_id']?.toString() == self &&
+            const {'queued', 'sending', 'pending'}
+                .contains(r['status']?.toString())))
+          r['id']?.toString() ?? '',
+    ]..removeWhere((id) => id.isEmpty);
+  }
+
+  /// Bundle 197a: ids of a group chat that Clear chat removes (my unsent
+  /// messages, still in the group outbox, stay).
+  Future<List<String>> clearableGroupMessageIds(String groupId) async {
+    if (groupId.isEmpty) return const [];
+    final rows = await _db.query('group_messages',
+        columns: ['id'], where: 'group_id=?', whereArgs: [groupId]);
+    final waiting = (await _db.query('group_outbox',
+            columns: ['id'], where: 'group_id=?', whereArgs: [groupId]))
+        .map((r) => r['id']?.toString() ?? '')
+        .toSet();
+    return [
+      for (final r in rows)
+        if (!waiting.contains(r['id']?.toString() ?? ''))
+          r['id']?.toString() ?? '',
+    ]..removeWhere((id) => id.isEmpty);
   }
 
   /// Bundle 194: does the chat with [otherId] have any message at all
@@ -2778,6 +2915,18 @@ class LocalStore {
 
   Future<void> saveGroupMessage(Map<String, dynamic> m) async {
     final gm = Map<String, dynamic>.from(m);
+    // Bundle 197a: same rule as saveMessage.
+    if (MessageEnvelope.isControl(gm['body']?.toString() ?? '')) return;
+    if (!await _groupMessageRowExists(gm['id']?.toString() ?? '') &&
+        MessageDeleteBook.instance.dropsMessage(
+      id: gm['id']?.toString() ?? '',
+      chatKey: MessageDeleteBook.groupKey(gm['group_id']?.toString() ?? ''),
+      createdAt: DateTime.tryParse(gm['created_at']?.toString() ?? '') ??
+          DateTime.now(),
+      senderId: gm['sender_id']?.toString() ?? '',
+    )) {
+      return;
+    }
     var effectiveRead = gm['sender_id'] == _deviceId ? 1 : 0;
     String? effectiveReadAt;
     final existing = await _db.query(
@@ -3053,6 +3202,7 @@ class LocalStore {
         await txn.delete(table);
       }
     });
+    MessageDeleteBook.instance.resetMemory(); // Bundle 197a
     await _secureStorage.delete(key: _tokenKey);
     await _secureStorage.delete(key: _recoveryRequestSecretKey);
     // Bundle 102: never strand offline credentials in secure storage.

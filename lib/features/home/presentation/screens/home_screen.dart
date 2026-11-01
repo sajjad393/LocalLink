@@ -51,6 +51,12 @@ import 'package:locallink/features/home/presentation/screens/messenger_settings_
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
+import 'package:locallink/core/models/group.dart';
+import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/group_avatar.dart';
+import 'package:locallink/features/messaging/data/forward_hub.dart';
+import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
 import 'package:locallink/features/authentication/data/services/offline_account_sync_service.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 
@@ -286,6 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _registerForwardHub(); // Bundle 197a
     // Dashboard entry: verify the real notification permission once per
     // install (and once per app start), explain WHY, and only then run the
     // official runtime flow. Never repeats on rebuilds or tab refreshes.
@@ -621,6 +628,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    if (identical(ForwardHub.instance, _forwardHub)) ForwardHub.instance = null;
     for (final timer in _bannerTimers) {
       timer.cancel();
     }
@@ -646,9 +654,142 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openChat(Device device) async {
-    await Navigator.push<void>(
+    await Navigator.push<void>(context, _chatRoute(device))
+        .whenComplete(_refreshUnreadCounts);
+  }
+
+  // ---------------------------------------------------------------------
+  // Bundle 197a: Forward targets + hold a chat row (mock 11, 17, 18).
+  // ---------------------------------------------------------------------
+  ForwardHub? _forwardHub;
+
+  void _registerForwardHub() {
+    final hub = ForwardHub(
+      targets: _forwardTargets,
+      send: _forwardSend,
+      files: widget.files,
+      routeFor: _forwardRoute,
+    );
+    _forwardHub = hub;
+    ForwardHub.instance = hub;
+  }
+
+  Future<List<ForwardTarget>> _forwardTargets() async {
+    try {
+      _chatPeerIds = await widget.messagingRepository.chatPeerIds();
+      _directPreviews = await widget.store.directChatPreviews();
+      _groupPreviews = await widget.store.groupChatPreviews();
+    } catch (_) {}
+    final localId = widget.store.deviceId ?? '';
+    final labels = _controller.state.deviceLabels;
+    final hub = BlockHub.instance;
+    final out = <ForwardTarget>[];
+    for (final device in _controller.devices) {
+      if (!_chatPeerIds.contains(device.id)) continue;
+      // Not shown: blocked people and people who blocked me (196).
+      if (hub.isBlockedDevice(device.id) || hub.hasBlockedMe(device.id)) continue;
+      final preview = _directPreviews[device.id];
+      out.add(ForwardTarget(
+        id: device.id,
+        name: labels[device.id] ?? 'Unknown user',
+        subtitle: preview == null
+            ? ''
+            : chatPreviewText(preview, localDeviceId: localId),
+        lastAt: preview?.createdAt,
+      ));
+    }
+    for (final group in _controller.groups) {
+      final preview = _groupPreviews[group.id];
+      out.add(ForwardTarget(
+        id: group.id,
+        name: group.name,
+        isGroup: true,
+        subtitle: preview == null
+            ? 'Group'
+            : chatPreviewText(preview,
+                localDeviceId: localId, senderName: labels[preview.senderId]),
+        lastAt: preview?.createdAt,
+      ));
+    }
+    out.sort((a, b) {
+      final at = a.lastAt, bt = b.lastAt;
+      if (at != null && bt != null) return bt.compareTo(at);
+      if (at != null) return -1;
+      if (bt != null) return 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return out;
+  }
+
+  Future<void> _forwardSend(
+      ForwardTarget target, String body, List<PickedFile> files) async {
+    if (target.isGroup) {
+      await widget.groupMessaging.send(target.id, body, attachments: files);
+    } else {
+      await widget.messagingRepository.send(target.id, body, attachments: files);
+    }
+  }
+
+  Route<void>? _forwardRoute(ForwardTarget target) {
+    if (target.isGroup) {
+      for (final group in _controller.groups) {
+        if (group.id == target.id) return _groupRoute(group);
+      }
+      return null;
+    }
+    for (final device in _controller.devices) {
+      if (device.id == target.id) return _chatRoute(device);
+    }
+    return null;
+  }
+
+  Route<void> _groupRoute(LocalGroup group) => MaterialPageRoute(
+        builder: (_) => GroupChatScreen(
+          group: group,
+          localDeviceId: widget.store.deviceId ?? '',
+          messaging: widget.groupMessaging,
+          groups: widget.groupRepository,
+          files: widget.files,
+          notifications: widget.notifications,
+        ),
+      );
+
+  Future<void> _holdDirectRow(Device device, String name) async {
+    final presence = PresenceHub.instance.labelOf(device.id);
+    final who = await BlockHub.instance.lookup(device.id);
+    if (!mounted) return;
+    final username = who?.username ?? '';
+    final choice = await showChatRowSheet(
       context,
-      MaterialPageRoute(
+      name: name,
+      subtitle: username.isEmpty ? presence : '@$username · $presence',
+      avatar: AccountAvatar(name: name, radius: 22),
+    );
+    if (!mounted || choice == null) return;
+    final delete = choice == ChatRowChoice.delete;
+    final ok = await showClearChatSheet(context, name: name, deleteChat: delete);
+    if (!ok || !mounted) return;
+    await widget.messagingRepository.clearChat(device.id, keepRow: !delete);
+    await _loadChatPeerIds();
+  }
+
+  Future<void> _holdGroupRow(LocalGroup group) async {
+    final choice = await showChatRowSheet(
+      context,
+      name: group.name,
+      subtitle: 'Group',
+      avatar: const GroupAvatar(radius: 22),
+      allowDelete: false, // leaving a group stays in Group info
+    );
+    if (!mounted || choice != ChatRowChoice.clear) return;
+    final ok = await showClearChatSheet(context, name: group.name, group: true);
+    if (!ok || !mounted) return;
+    await widget.groupMessaging.clearChat(group.id);
+    await _refreshUnreadCounts();
+  }
+
+  Route<void> _chatRoute(Device device) {
+    return MaterialPageRoute(
         builder: (_) => ChatScreen(
           controller:
               ChatBloc(repository: widget.messagingRepository, device: device),
@@ -676,8 +817,7 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           },
         ),
-      ),
-    ).whenComplete(_refreshUnreadCounts);
+      );
   }
 
   Future<void> _call(Device device) async {
@@ -812,19 +952,9 @@ class _HomeScreenState extends State<HomeScreen> {
           time: preview == null ? null : chatPreviewTime(preview.createdAt),
           group: group,
           unreadCount: _unreadGroupCounts[group.id] ?? 0,
-          onTap: () => Navigator.push<void>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => GroupChatScreen(
-                group: group,
-                localDeviceId: widget.store.deviceId ?? '',
-                messaging: widget.groupMessaging,
-                groups: widget.groupRepository,
-                files: widget.files,
-                notifications: widget.notifications,
-              ),
-            ),
-          ).whenComplete(_refreshUnreadCounts),
+          onTap: () => Navigator.push<void>(context, _groupRoute(group))
+              .whenComplete(_refreshUnreadCounts),
+          onLongPress: () => _holdGroupRow(group),
         ),
       ));
     }
@@ -855,6 +985,8 @@ class _HomeScreenState extends State<HomeScreen> {
             device: device,
             unreadCount: _unreadDirectCounts[device.id] ?? 0,
             onTap: () => _openChat(device),
+            onLongPress: () => _holdDirectRow(
+                device, state.deviceLabels[device.id] ?? 'Unknown user'),
             // Bundle 196: no call button when I blocked them, or when
             // they blocked me (their signed block state).
             onCall: BlockHub.instance.isBlockedDevice(device.id) ||

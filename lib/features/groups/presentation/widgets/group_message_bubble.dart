@@ -6,6 +6,8 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/files/presentation/widgets/attachment_tile.dart';
 import 'package:locallink/features/messaging/presentation/widgets/bubble_layout.dart';
+import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
+import 'package:locallink/core/models/message_envelope.dart';
 
 class GroupMessageBubble extends StatelessWidget {
   final GroupMessage message;
@@ -14,6 +16,14 @@ class GroupMessageBubble extends StatelessWidget {
   final String senderName;
   final List<MessageReaction> reactions;
 
+  /// Bundle 197a: held / picked bubble (own blue bubble: ring only).
+  final bool highlighted;
+  final Key? bubbleKey;
+  final String quoteName;
+  final bool quoteIsYou;
+  final bool quoteMissing;
+  final VoidCallback? onQuoteTap;
+
   const GroupMessageBubble({
     super.key,
     required this.message,
@@ -21,6 +31,12 @@ class GroupMessageBubble extends StatelessWidget {
     required this.files,
     required this.senderName,
     this.reactions = const [],
+    this.highlighted = false,
+    this.bubbleKey,
+    this.quoteName = '',
+    this.quoteIsYou = false,
+    this.quoteMissing = false,
+    this.onQuoteTap,
   });
 
   @override
@@ -38,6 +54,7 @@ class GroupMessageBubble extends StatelessWidget {
         child: BubbleReactionEdge(
           chips: reactions.isEmpty ? const <Widget>[] : _reactionCounts(context),
           bubble: Container(
+            key: bubbleKey,
             constraints: BoxConstraints(maxWidth: maxWidth.clamp(220.0, 620.0)),
             padding: EdgeInsets.fromLTRB(
                 LocalLinkSpacing.md,
@@ -45,28 +62,27 @@ class GroupMessageBubble extends StatelessWidget {
                 LocalLinkSpacing.md,
                 LocalLinkSpacing.xs +
                     (reactions.isEmpty ? 0 : BubbleReactionEdge.bubblePad)),
-            decoration: BoxDecoration(
-              gradient: isMine ? LocalLinkBrand.linearGradient : null,
-              color: isMine ? null : colors.surfaceContainerHighest,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(LocalLinkRadius.chat),
-                topRight: const Radius.circular(LocalLinkRadius.chat),
-                bottomLeft: Radius.circular(isMine ? LocalLinkRadius.chat : 6),
-                bottomRight: Radius.circular(isMine ? 6 : LocalLinkRadius.chat),
+            decoration: highlightBubble(
+              BoxDecoration(
+                gradient: isMine ? LocalLinkBrand.linearGradient : null,
+                color: isMine ? null : colors.surfaceContainerHighest,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(LocalLinkRadius.chat),
+                  topRight: const Radius.circular(LocalLinkRadius.chat),
+                  bottomLeft: Radius.circular(isMine ? LocalLinkRadius.chat : 6),
+                  bottomRight: Radius.circular(isMine ? 6 : LocalLinkRadius.chat),
+                ),
               ),
+              colors,
+              on: highlighted,
+              gradient: isMine,
             ),
             child: BubbleContent(
               headerGap: 3,
-              header: isMine
+              header: _header(context, colors, foreground),
+              body: message.text.isEmpty
                   ? null
-                  : Text(senderName,
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelLarge
-                          ?.copyWith(color: colors.primary)),
-              body: message.body.isEmpty
-                  ? null
-                  : Text(message.body, style: TextStyle(color: foreground)),
+                  : Text(message.text, style: TextStyle(color: foreground)),
               media: [
                 for (final attachment in message.attachments)
                   AttachmentTile(
@@ -86,6 +102,38 @@ class GroupMessageBubble extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Sender name (others), Bundle 197a "Forwarded" label + quote box.
+  Widget? _header(BuildContext context, ColorScheme colors, Color foreground) {
+    final name = isMine
+        ? null
+        : Text(senderName,
+            style: Theme.of(context)
+                .textTheme
+                .labelLarge
+                ?.copyWith(color: colors.primary));
+    final reply = message.replyTo;
+    final forwarded = message.forwarded;
+    if (reply == null && !forwarded) return name;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (name != null) name,
+        if (forwarded)
+          ForwardedLabel(color: isMine ? Colors.white70 : null),
+        if (reply != null)
+          QuoteBox(
+            name: quoteName,
+            line: replyLine(reply),
+            isYou: quoteIsYou,
+            notAvailable: quoteMissing,
+            onTap: onQuoteTap,
+            onBlue: isMine,
+          ),
+      ],
     );
   }
 

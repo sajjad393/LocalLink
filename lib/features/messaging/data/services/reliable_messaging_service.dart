@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/features/messaging/data/message_delete_actions.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -33,6 +35,10 @@ class ReliableMessagingService {
   final _incoming = StreamController<Message>.broadcast();
   final _reactionIncoming = StreamController<MessageReaction>.broadcast();
   static const _reactionPrefix = 'llrx:v1:';
+
+  /// Bundle 197a: delete for me / for everyone, clear chat.
+  late final MessageDeleteActions deletes =
+      MessageDeleteActions(store: store, deleteFile: files.deleteLocalFile);
 
   StreamSubscription? _socketSub;
   StreamSubscription? _connectionSub;
@@ -253,7 +259,10 @@ class ReliableMessagingService {
     }
   }
 
-  Stream<Message> get incoming => _incoming.stream;
+  // Bundle 197a: a deleted message (or one older than a Clear chat) never
+  // reaches the chat screen or a notification, whatever path it came by.
+  Stream<Message> get incoming =>
+      _incoming.stream.where((m) => !store.dropsDirectMessage(m));
   Stream<MessageReaction> get reactionIncoming => _reactionIncoming.stream;
 
   /// Bundle 132 (A/C): single truthful source for "is the server reachable
@@ -706,6 +715,14 @@ class ReliableMessagingService {
         }
 
         for (final groupMessage in page.groupMessages) {
+          // Bundle 197a: a group Delete for everyone is never a bubble.
+          if (DeleteCommand.isDelete(groupMessage.body)) {
+            await deletes.applyRemote(
+                body: groupMessage.body,
+                envelopeSender: groupMessage.senderId,
+                group: true);
+            continue;
+          }
           await store.saveGroupMessage({
             'id': groupMessage.id,
             'group_id': groupMessage.groupId,
@@ -907,6 +924,49 @@ class ReliableMessagingService {
     unawaited(flush());
     return true;
   }
+
+  /// Bundle 197a: Delete for me (any message of this chat).
+  Future<void> deleteForMe(String id) => deletes.deleteForMe(id, group: false);
+
+  /// Bundle 197a: Delete for everyone. False = too late (over 5 minutes)
+  /// or not my message; nothing is changed then.
+  Future<bool> deleteForEveryone(String recipientId, String id) async {
+    final message = await store.messageById(id);
+    final self = store.deviceId ?? '';
+    if (message == null || self.isEmpty || recipientId.isEmpty) return false;
+    if (!canDeleteForEveryone(
+        mine: message.senderId == self, createdAt: message.createdAt)) {
+      return false;
+    }
+    final now = DateTime.now().toUtc();
+    await deletes.deleteForEveryoneLocal(id, group: false, at: now);
+    // Still sending: stop the file transfer too (the outbox row is gone).
+    _cancelledSends.add(id);
+    if (const {'queued', 'sending', 'pending'}.contains(message.status)) {
+      for (final a in message.attachments) {
+        try {
+          await files.cancelDirectFile(a.id);
+        } catch (_) {}
+      }
+    }
+    final command = DeleteCommand(messageId: id, by: self, at: now);
+    await store.addOutbox({
+      'id': _newId(),
+      'recipient_id': recipientId,
+      'body': command.encode(),
+      'created_at': now.toIso8601String(),
+      'status': 'queued'
+    });
+    AppLogger.info('MESSAGE_DELETE_ALL_SENT',
+        detail: 'id=${MessageDeleteActions.shortId(id)} '
+            'chat=${MessageDeleteActions.shortId(recipientId)}');
+    await _safeFlush('delete');
+    return true;
+  }
+
+  /// Bundle 197a: Clear chat (keepRow) / Delete chat on this phone only.
+  Future<int> clearChat(String peerId, {required bool keepRow}) =>
+      deletes.clearChat(chatId: peerId, group: false, keepRow: keepRow);
 
   /// Bundle 162 (4.6): user tapped Delete on a failed message.
   Future<void> deleteFailed(String id) async {
@@ -1363,6 +1423,18 @@ class ReliableMessagingService {
   }
 
   Future<bool> _consumeReaction(Message message) async {
+    // Bundle 197a: Delete for everyone rides every receive path that
+    // already consumes reactions (sync, socket, direct, history).
+    if (DeleteCommand.isDelete(message.body)) {
+      try {
+        await deletes.applyRemote(
+            body: message.body, envelopeSender: message.senderId, group: false);
+      } catch (error, stackTrace) {
+        AppLogger.error('MESSAGE_DELETE_APPLY_FAILED',
+            error: error, stackTrace: stackTrace);
+      }
+      return true;
+    }
     if (!message.body.startsWith(_reactionPrefix)) return false;
     try {
       final payload =

@@ -944,10 +944,11 @@ final class LocalLinkNotificationService {
   // Bundle 151: "Image received", "Video received", "Document received",
   // "Voice message received" (+ ": caption").
   String _bodyForMessage(Message message) =>
-      notificationBodyFor(message.body, message.attachments);
+      notificationBodyFor(message.text, message.attachments);
 
+  // Bundle 197a: text only (never the quote / Forwarded envelope).
   String _bodyForGroupMessage(GroupMessage message) =>
-      notificationBodyFor(message.body, message.attachments);
+      notificationBodyFor(message.text, message.attachments);
 
   AttachmentTarget? _firstLocalImage(Message message) {
     for (final attachment in message.attachments) {

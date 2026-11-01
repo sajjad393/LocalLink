@@ -30,6 +30,11 @@ import 'package:locallink/features/messaging/presentation/voice/voice_recorder_c
 import 'package:locallink/features/files/presentation/widgets/media_playback_coordinator.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
+import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/core/services/message_delete_book.dart';
+import 'package:locallink/features/messaging/data/forward_hub.dart';
+import 'package:locallink/features/messaging/presentation/screens/forward_screen.dart';
+import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
 
 class ChatScreen extends StatefulWidget {
   final ChatBloc controller;
@@ -94,6 +99,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   bool _showJumpArrow = false;
+
+  /// Bundle 197a: reply bar, held bubble, Select mode, quote jump flash.
+  Message? _replyTo;
+  String? _heldId;
+  final GlobalKey _heldKey = GlobalKey();
+  final Set<String> _selected = <String>{};
+  String? _flashId;
+  String? _jumpId;
+  final GlobalKey _jumpKey = GlobalKey();
+  Timer? _flashTimer;
 
   /// Bundle 196: who is behind this phone (for Block + the info sheet).
   String _peerUserId = '';
@@ -222,7 +237,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   /// Bundle 181: one voice note is ready (one file, parts already joined).
   Future<void> _sendVoiceNote(PickedFile file) async {
     widget.controller.addPendingAttachments([file]);
-    await widget.controller.send('');
+    final reply = _takeReply();
+    await widget.controller.send('', reply: reply);
     if (mounted) _scrollToBottom(animated: true);
   }
 
@@ -245,8 +261,305 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final body = _textController.text.trim();
     if (body.isEmpty && widget.controller.pendingAttachments.isEmpty) return;
     _textController.clear();
-    await widget.controller.send(body);
+    final reply = _takeReply();
+    await widget.controller.send(body, reply: reply);
     if (mounted) _scrollToBottom(animated: true);
+  }
+
+  // ---------------------------------------------------------------------
+  // Bundle 197a: message options (mock v8).
+  // ---------------------------------------------------------------------
+
+  /// The quote for the next send (the bar closes).
+  ReplyRef? _takeReply() {
+    final m = _replyTo;
+    if (m == null) return null;
+    setState(() => _replyTo = null);
+    return _replyRefFor(m);
+  }
+
+  static ReplyRef _replyRefFor(Message m) => ReplyRef(
+        id: m.id,
+        from: m.senderId,
+        snip: cutSnippet(m.text),
+        kind: replyKindFor(m.attachments),
+      );
+
+  bool _isMine(Message m) => m.senderId == widget.controller.localDeviceId;
+
+  static bool _notSentYet(Message m) => const {
+        'queued',
+        'sending',
+        'pending',
+        'failed',
+      }.contains(m.status.toLowerCase());
+
+  String _nameOf(Message m) =>
+      _isMine(m) ? 'You' : _peerName(widget.controller.device);
+
+  void _toggleSelect(Message m) {
+    setState(() {
+      if (!_selected.remove(m.id)) _selected.add(m.id);
+    });
+  }
+
+  List<Message> get _selectedMessages => widget.controller.messages
+      .where((m) => _selected.contains(m.id))
+      .toList(growable: false);
+
+  Future<void> _onHold(Message message) async {
+    if (_selected.isNotEmpty) {
+      _toggleSelect(message);
+      return;
+    }
+    final hub = BlockHub.instance;
+    final device = widget.controller.device;
+    final blocked =
+        hub.isBlockedDevice(device.id) || hub.hasBlockedMe(device.id);
+    setState(() => _heldId = message.id);
+    try {
+      final result = await showMessageActionsSheet(
+        context,
+        mine: _isMine(message),
+        hasText: message.text.trim().isNotEmpty,
+        canReply: !blocked,
+        canForward: !_notSentYet(message),
+        barrierColor: Colors.transparent,
+      );
+      if (!mounted || result == null) return;
+      switch (result.action) {
+        case MessageAction.react:
+          await widget.controller.react(message.id, result.emoji ?? '');
+        case MessageAction.reply:
+          setState(() => _replyTo = message);
+        case MessageAction.copy:
+          await _copy([message]);
+        case MessageAction.forward:
+          await _forward([message]);
+        case MessageAction.info:
+          await _showInfo(message);
+        case MessageAction.select:
+          setState(() => _selected.add(message.id));
+        case MessageAction.delete:
+          await _delete([message]);
+      }
+    } finally {
+      if (mounted) setState(() => _heldId = null);
+    }
+  }
+
+  Future<void> _copy(List<Message> messages) async {
+    final withText =
+        messages.where((m) => m.text.trim().isNotEmpty).toList(growable: false);
+    if (withText.isEmpty) return;
+    final text = withText.length == 1
+        ? withText.first.text
+        : withText
+            .map((m) => '[${_clock(m.createdAt)}] ${_nameOf(m)}: ${m.text}')
+            .join('\n');
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(withText.length == 1
+            ? 'Message copied'
+            : '${withText.length} messages copied')));
+  }
+
+  static String _clock(DateTime raw) {
+    final v = raw.toLocal();
+    final hour = v.hour % 12 == 0 ? 12 : v.hour % 12;
+    return '$hour:${v.minute.toString().padLeft(2, '0')} ${v.hour >= 12 ? 'PM' : 'AM'}';
+  }
+
+  Future<void> _forward(List<Message> messages) async {
+    final sendable = messages.where((m) => !_notSentYet(m)).toList();
+    if (sendable.isEmpty) return;
+    final items = [
+      for (final m in sendable)
+        ForwardItem(text: m.text, attachments: m.attachments),
+    ];
+    final single = await runForwardFlow(context, items);
+    if (!mounted) return;
+    setState(_selected.clear);
+    if (single == null) return;
+    if (!single.isGroup && single.id == widget.controller.device.id) return;
+    final route = ForwardHub.instance?.routeFor?.call(single);
+    if (route != null) unawaited(Navigator.pushReplacement(context, route));
+  }
+
+  /// Small copy of a bubble for the Delete / Message info sheets.
+  Widget _miniBubble(Message m) {
+    final colors = Theme.of(context).colorScheme;
+    final label = m.text.trim().isNotEmpty
+        ? m.text
+        : replyKindLabel(replyKindFor(m.attachments));
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.fromLTRB(12, 7, 10, 5),
+      decoration: BoxDecoration(
+        color: _isMine(m) ? colors.surfaceContainer : colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(LocalLinkRadius.chat),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            widthFactor: 1,
+            child: Text(label, maxLines: 3, overflow: TextOverflow.ellipsis),
+          ),
+          Text(_clock(m.createdAt),
+              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _delete(List<Message> messages) async {
+    if (messages.isEmpty) return;
+    final allowEveryone = messages.every((m) =>
+        canDeleteForEveryone(mine: _isMine(m), createdAt: m.createdAt));
+    final choice = await showDeleteMessagesSheet(
+      context,
+      count: messages.length,
+      allowEveryone: allowEveryone,
+      peerName: _peerName(widget.controller.device),
+      preview: messages.length == 1
+          ? Align(
+              alignment: _isMine(messages.first)
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: _miniBubble(messages.first))
+          : null,
+      barrierColor: _heldId != null ? Colors.transparent : null,
+    );
+    if (!mounted || choice == null) return;
+    final ids = messages.map((m) => m.id).toList(growable: false);
+    if (choice == DeleteChoice.forEveryone) {
+      final ok = await widget.controller.deleteForEveryone(ids);
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Too late to delete for everyone')));
+      }
+    } else {
+      await widget.controller.deleteForMe(ids);
+    }
+    if (mounted) setState(() => _selected.removeAll(ids));
+  }
+
+  Future<void> _showInfo(Message m) async {
+    final status = m.status.toLowerCase();
+    final delivered = const {'delivered', 'direct_delivered', 'read'}
+            .contains(status)
+        ? (DateTime.tryParse(m.deliveredAt ?? '') ?? m.createdAt)
+        : null;
+    await showMessageInfoSheet(
+      context,
+      preview: _miniBubble(m),
+      sentAt: m.createdAt,
+      deliveredAt: delivered,
+      peerName: _peerName(widget.controller.device),
+      barrierColor: _heldId != null ? Colors.transparent : null,
+    );
+  }
+
+  /// Tap a quote: scroll to the old message and flash it.
+  void _jumpTo(String id, List<Message> visible) {
+    final index = visible.indexWhere((m) => m.id == id);
+    if (index < 0 || !_scrollController.hasClients) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Message not found')));
+      return;
+    }
+    setState(() {
+      _jumpId = id;
+      _flashId = id;
+    });
+    final offset =
+        (index * 88.0).clamp(0.0, _scrollController.position.maxScrollExtent);
+    _scrollController.jumpTo(offset);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _jumpKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        Scrollable.ensureVisible(ctx,
+            alignment: .4, duration: LocalLinkMotion.quick);
+      }
+    });
+    _flashTimer?.cancel();
+    _flashTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _flashId = null);
+    });
+  }
+
+  Future<void> _clearChat() async {
+    final ok = await showClearChatSheet(context,
+        name: _peerName(widget.controller.device));
+    if (!ok || !mounted) return;
+    await widget.controller.clearChat();
+  }
+
+  /// Select mode top bar (mock 13): X, count, Copy, Forward, Delete; Reply
+  /// and Info only when one is picked.
+  PreferredSizeWidget _selectBar(BuildContext context, bool blocked) {
+    final picked = _selectedMessages;
+    final one = picked.length == 1 ? picked.first : null;
+    final colors = Theme.of(context).colorScheme;
+    return AppBar(
+      key: const ValueKey('select_bar'),
+      backgroundColor: colors.primaryContainer.withValues(alpha: .55),
+      leading: IconButton(
+        tooltip: 'Close',
+        onPressed: () => setState(_selected.clear),
+        icon: const Icon(Icons.close),
+      ),
+      titleSpacing: 0,
+      title: Text('${picked.length}',
+          style: const TextStyle(fontWeight: FontWeight.w700)),
+      actions: [
+        if (one != null && !blocked)
+          IconButton(
+            key: const ValueKey('select_reply'),
+            tooltip: 'Reply',
+            onPressed: () => setState(() {
+              _replyTo = one;
+              _selected.clear();
+            }),
+            icon: const Icon(Icons.reply_rounded),
+          ),
+        if (one != null && _isMine(one))
+          IconButton(
+            key: const ValueKey('select_info'),
+            tooltip: 'Message info',
+            onPressed: () => _showInfo(one),
+            icon: const Icon(Icons.info_outline_rounded),
+          ),
+        if (picked.any((m) => m.text.trim().isNotEmpty))
+          IconButton(
+            key: const ValueKey('select_copy'),
+            tooltip: 'Copy',
+            onPressed: () async {
+              await _copy(picked);
+              if (mounted) setState(_selected.clear);
+            },
+            icon: const Icon(Icons.copy_outlined),
+          ),
+        if (picked.isNotEmpty && picked.every((m) => !_notSentYet(m)))
+          IconButton(
+            key: const ValueKey('select_forward'),
+            tooltip: 'Forward',
+            onPressed: () => _forward(picked),
+            icon: const Icon(Icons.forward_rounded),
+          ),
+        IconButton(
+          key: const ValueKey('select_delete'),
+          tooltip: 'Delete',
+          onPressed: () => _delete(picked),
+          icon: const Icon(Icons.delete_outline_rounded),
+        ),
+      ],
+    );
   }
 
   Future<void> _startCall() async {
@@ -331,50 +644,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } else if (choice == 'delete') {
       await bloc.deleteFailed(messageId);
     }
-  }
-
-  Future<void> _showMessageActions(String body, String messageId) async {
-    const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  for (final emoji in quickReactions)
-                    IconButton(
-                      tooltip: 'React $emoji',
-                      onPressed: () => Navigator.pop(sheetContext, emoji),
-                      icon: Text(emoji, style: const TextStyle(fontSize: 28)),
-                    ),
-                ],
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.copy_outlined),
-                title: const Text('Copy message'),
-                onTap: () async {
-                  await Clipboard.setData(ClipboardData(text: body));
-                  if (sheetContext.mounted) Navigator.pop(sheetContext, 'copy');
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (!mounted || selected == null) return;
-    if (selected == 'copy') {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message copied')));
-      return;
-    }
-    await widget.controller.react(messageId, selected);
   }
 
   /// Bundle 196 (10.6): Conversation info is a bottom sheet (mock 14b/c).
@@ -482,6 +751,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _flashTimer?.cancel();
     _textController.dispose();
     _searchController.dispose();
     _scrollController.dispose();
@@ -510,7 +780,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final visibleMessages = searchQuery.isEmpty
             ? state.messages
             : state.messages.where((message) {
-                return message.body.toLowerCase().contains(searchQuery) ||
+                return message.text.toLowerCase().contains(searchQuery) ||
                     message.attachments.any((attachment) => attachment.originalName.toLowerCase().contains(searchQuery));
               }).toList();
         _maybeAutoScroll(
@@ -532,8 +802,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               detail: 'side=${iBlocked ? 'mine' : 'theirs'}');
         }
         final showChip = iBlocked && searchQuery.isEmpty;
-        return Scaffold(
-          appBar: AppBar(
+        // Bundle 197a: drop picks that were deleted meanwhile.
+        final ids = {for (final m in state.messages) m.id};
+        _selected.removeWhere((id) => !ids.contains(id));
+        final selecting = _selected.isNotEmpty;
+        final scaffold = Scaffold(
+          appBar: selecting
+              ? _selectBar(context, iBlocked || blockedMe)
+              : AppBar(
             titleSpacing: 0,
             leading: _searching
                 ? IconButton(
@@ -628,8 +904,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     // Bundle 196: no call icon when either side blocked.
                     if (widget.onStartCall != null && !iBlocked && !blockedMe)
                       IconButton(tooltip: 'Call', onPressed: _startCall, icon: const Icon(Icons.call_outlined)),
+                    // Bundle 197a (mock 15A): tidy pop-up under the ⋮, an
+                    // icon on every row, a divider above Clear chat.
                     PopupMenuButton<String>(
+                      key: const ValueKey('chat_more_menu'),
                       tooltip: 'More options',
+                      position: PopupMenuPosition.under,
                       itemBuilder: (_) => const [
                         PopupMenuItem(
                           value: 'search',
@@ -640,11 +920,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             title: Text('Search messages'),
                           ),
                         ),
-                        PopupMenuItem(value: 'info', child: Text('Conversation info')),
+                        PopupMenuItem(
+                          value: 'info',
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.info_outline),
+                            title: Text('Conversation info'),
+                          ),
+                        ),
+                        PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'clear',
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.clear_all_rounded),
+                            title: Text('Clear chat'),
+                          ),
+                        ),
                       ],
                       onSelected: (value) {
                         if (value == 'search') _startSearch();
                         if (value == 'info') _showConversationInfo();
+                        if (value == 'clear') _clearChat();
                       },
                     ),
                   ],
@@ -690,6 +989,40 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   // the previous labeled row). Untagged rows
                                   // and outgoing rows never open a section.
                                   final sectionLabel = _transportSectionLabelAt(visibleMessages, index, state.localDeviceId);
+                                  final reply = message.replyTo;
+                                  final picked = _selected.contains(message.id);
+                                  final bubble = PeerOfflineBuilder(
+                                    listenable: PresenceHub.instance,
+                                    isOffline: () => !PresenceHub.instance.isReachable(device.id),
+                                    enabled: message.senderId == state.localDeviceId &&
+                                        _awaitingSend(message),
+                                    builder: (offline) => MessageBubble(
+                                      message: message,
+                                      isMine: message.senderId == state.localDeviceId,
+                                      files: widget.files,
+                                      reactions: state.reactions[message.id] ?? const [],
+                                      onLongPress: () => _onHold(message),
+                                      onFailedTap: () => _showFailedActions(message.id),
+                                      peerOffline: offline,
+                                      highlighted: picked ||
+                                          _heldId == message.id ||
+                                          _flashId == message.id,
+                                      bubbleKey: _heldId == message.id ? _heldKey : null,
+                                      onTap: selecting ? () => _toggleSelect(message) : null,
+                                      quoteName: reply == null
+                                          ? ''
+                                          : (reply.from == state.localDeviceId
+                                              ? 'You'
+                                              : _peerName(device)),
+                                      quoteIsYou: reply?.from == state.localDeviceId,
+                                      quoteMissing: reply != null &&
+                                          (MessageDeleteBook.instance.isDeleted(reply.id) ||
+                                              !ids.contains(reply.id)),
+                                      onQuoteTap: reply == null || selecting
+                                          ? null
+                                          : () => _jumpTo(reply.id, visibleMessages),
+                                    ),
+                                  );
                                   return Column(
                                     // Bundle 150: one row = one message, so a
                                     // row never inherits another message's
@@ -702,20 +1035,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                       // Bundle 182: my unsent photo/video
                                       // follows the friend's live status
                                       // (Offline -> "Waiting").
-                                      PeerOfflineBuilder(
-                                        listenable: PresenceHub.instance,
-                                        isOffline: () => !PresenceHub.instance.isReachable(device.id),
-                                        enabled: message.senderId == state.localDeviceId &&
-                                            _awaitingSend(message),
-                                        builder: (offline) => MessageBubble(
-                                          message: message,
-                                          isMine: message.senderId == state.localDeviceId,
-                                          files: widget.files,
-                                          reactions: state.reactions[message.id] ?? const [],
-                                          onLongPress: () => _showMessageActions(message.body, message.id),
-                                          onFailedTap: () => _showFailedActions(message.id),
-                                          peerOffline: offline,
-                                        ),
+                                      // Bundle 197a: Select mode = round
+                                      // check on the left, tap the row.
+                                      KeyedSubtree(
+                                        key: _jumpId == message.id ? _jumpKey : null,
+                                        child: selecting
+                                            ? GestureDetector(
+                                                behavior: HitTestBehavior.opaque,
+                                                onTap: () => _toggleSelect(message),
+                                                child: Row(
+                                                  children: [
+                                                    SelectCheck(selected: picked),
+                                                    Expanded(child: bubble),
+                                                  ],
+                                                ),
+                                              )
+                                            : bubble,
                                       ),
                                     ],
                                   );
@@ -742,6 +1077,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               else if (blockedMe)
                 _blockedBar(context, device, mine: false)
               else ...[
+                if (_replyTo != null)
+                  ReplyBar(
+                    name: _nameOf(_replyTo!),
+                    line: replyLine(_replyRefFor(_replyTo!)),
+                    isYou: _isMine(_replyTo!),
+                    onClose: () => setState(() => _replyTo = null),
+                  ),
                 PendingAttachmentStrip(
                   attachments: state.pendingAttachments,
                   onRemove: widget.controller.removePendingAttachment,
@@ -755,6 +1097,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   hasAttachments: state.pendingAttachments.isNotEmpty,
                 ),
               ],
+            ],
+          ),
+        );
+        // Bundle 197a: back leaves Select mode first; while a sheet is open
+        // for a held message the chat dims except that bubble.
+        return PopScope(
+          canPop: !selecting,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && _selected.isNotEmpty) setState(_selected.clear);
+          },
+          child: Stack(
+            children: [
+              scaffold,
+              if (_heldId != null)
+                Positioned.fill(child: HeldBubbleDimmer(target: _heldKey)),
             ],
           ),
         );

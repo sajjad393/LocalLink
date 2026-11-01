@@ -6,6 +6,9 @@ import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/message_reaction.dart';
+import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/message_delete_book.dart';
 import 'package:locallink/features/messaging/domain/messaging_repository_contract.dart';
 
 final class ChatState extends Equatable {
@@ -61,6 +64,7 @@ final class ChatBloc extends Cubit<ChatState> {
   final String localDeviceId;
   late final StreamSubscription<Message> _subscription;
   late final StreamSubscription<MessageReaction> _reactionSubscription;
+  StreamSubscription<String>? _deletedSubscription;
   Timer? _peerTimer;
 
   /// Refreshes `state.device` from the cached directory row; presence
@@ -94,6 +98,11 @@ final class ChatBloc extends Cubit<ChatState> {
             device: device, localDeviceId: repository.localDeviceId)) {
     _subscription = repository.incoming.listen(_onIncoming);
     _reactionSubscription = repository.reactionIncoming.listen(_onReaction);
+    // Bundle 197a: a deleted message (for me, for everyone, Clear chat)
+    // disappears from the open chat at once.
+    try {
+      _deletedSubscription = repository.deletedMessageIds.listen(_onDeleted);
+    } catch (_) {}
     // Presence pipeline does not push into the chat bloc — poll the cached
     // peer row every few seconds so the app-bar status line stays live.
     _peerTimer = Timer.periodic(const Duration(seconds: 5), (_) => unawaited(refreshPeer()));
@@ -151,14 +160,20 @@ final class ChatBloc extends Cubit<ChatState> {
     emit(state.copyWith(pendingAttachments: next));
   }
 
-  Future<void> send(String body) async {
+  Future<void> send(String body, {ReplyRef? reply}) async {
     final text = body.trim();
     if (isClosed || (text.isEmpty && state.pendingAttachments.isEmpty) || state.isSending) return;
     final attachments = List<PickedFile>.from(state.pendingAttachments);
     emit(state.copyWith(
         pendingAttachments: const [], isSending: true, clearError: true));
     try {
-      await repository.send(state.device.id, text, attachments: attachments);
+      // Bundle 197a: a reply carries the quote inside the body envelope.
+      final wire = MessageEnvelope.build(text: text, reply: reply);
+      await repository.send(state.device.id, wire, attachments: attachments);
+      if (reply != null) {
+        AppLogger.info('MESSAGE_REPLY_SENT',
+            detail: 'to=${_short(reply.id)} kind=${reply.kind}');
+      }
       if (isClosed) return;
       await load();
     } catch (e) {
@@ -207,6 +222,76 @@ final class ChatBloc extends Cubit<ChatState> {
     }
   }
 
+  static String _short(String id) =>
+      id.length > 8 ? id.substring(id.length - 8) : id;
+
+  /// Bundle 197a: Delete for me (one or many).
+  Future<void> deleteForMe(List<String> ids) async {
+    if (isClosed || ids.isEmpty) return;
+    try {
+      for (final id in ids) {
+        await repository.deleteForMe(id);
+      }
+      _dropLocal(ids.toSet());
+    } catch (e) {
+      if (!isClosed) emit(state.copyWith(error: cleanBlocError(e)));
+    }
+  }
+
+  /// Bundle 197a: Delete for everyone. The 5 minutes are checked again
+  /// now; false = too late for at least one (nothing changed for those).
+  Future<bool> deleteForEveryone(List<String> ids) async {
+    if (isClosed || ids.isEmpty) return false;
+    var all = true;
+    final done = <String>{};
+    try {
+      for (final id in ids) {
+        final ok = await repository.deleteForEveryone(state.device.id, id);
+        if (ok) {
+          done.add(id);
+        } else {
+          all = false;
+        }
+      }
+    } catch (e) {
+      all = false;
+      if (!isClosed) emit(state.copyWith(error: cleanBlocError(e)));
+    }
+    _dropLocal(done);
+    return all;
+  }
+
+  /// Bundle 197a: Clear chat from the ⋮ pop-up (the row stays).
+  Future<void> clearChat() async {
+    if (isClosed) return;
+    try {
+      await repository.clearChat(state.device.id, keepRow: true);
+      if (isClosed) return;
+      // My unsent messages stay (they are still sending).
+      final kept = state.messages
+          .where((m) =>
+              m.senderId == localDeviceId &&
+              const {'queued', 'sending', 'pending'}.contains(m.status))
+          .toList(growable: false);
+      emit(state.copyWith(messages: kept));
+    } catch (e) {
+      if (!isClosed) emit(state.copyWith(error: cleanBlocError(e)));
+    }
+  }
+
+  void _onDeleted(String id) => _dropLocal({id});
+
+  void _dropLocal(Set<String> ids) {
+    if (isClosed || ids.isEmpty) return;
+    if (!state.messages.any((m) => ids.contains(m.id))) return;
+    final next = {...state.reactions}..removeWhere((k, _) => ids.contains(k));
+    emit(state.copyWith(
+        messages: state.messages
+            .where((m) => !ids.contains(m.id))
+            .toList(growable: false),
+        reactions: next));
+  }
+
   void _onReaction(MessageReaction reaction) {
     if (isClosed) return;
     final current = [...(state.reactions[reaction.messageId] ?? const <MessageReaction>[])];
@@ -225,6 +310,7 @@ final class ChatBloc extends Cubit<ChatState> {
         (m.senderId == state.device.id && m.recipientId == localDeviceId) ||
             (m.recipientId == state.device.id && m.senderId == localDeviceId);
     if (!matches) return;
+    if (MessageDeleteBook.instance.isDeleted(m.id)) return; // Bundle 197a
     final next = [...state.messages];
     final i = next.indexWhere((x) => x.id == m.id);
     if (i < 0) {
@@ -252,6 +338,7 @@ final class ChatBloc extends Cubit<ChatState> {
     _peerTimer?.cancel();
     await _subscription.cancel();
     await _reactionSubscription.cancel();
+    await _deletedSubscription?.cancel();
     return super.close();
   }
 }

@@ -9,6 +9,9 @@ import 'package:locallink/features/files/domain/file_transfer_repository_contrac
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/services/websocket_service.dart';
+import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/messaging/data/message_delete_actions.dart';
 
 class GroupMessagingService {
   final LocalStore store;
@@ -25,7 +28,47 @@ class GroupMessagingService {
 
   GroupMessagingService(this.store, this.api, this.socket, this.files);
 
-  Stream<GroupMessage> get incoming => _incoming.stream;
+  /// Bundle 197a: delete for me / for everyone, clear chat.
+  late final MessageDeleteActions deletes =
+      MessageDeleteActions(store: store, deleteFile: files.deleteLocalFile);
+
+  // Bundle 197a: deleted / cleared messages never reach the screen.
+  Stream<GroupMessage> get incoming =>
+      _incoming.stream.where((m) => !store.dropsGroupMessage(m));
+
+  /// Bundle 197a: ids removed from this phone (the open chat drops them).
+  Stream<String> get deletedMessageIds => store.deletedMessageIds;
+
+  Future<void> deleteForMe(String id) => deletes.deleteForMe(id, group: true);
+
+  /// Bundle 197a: only my own message, within 5 minutes. False = too late.
+  Future<bool> deleteForEveryone(String groupId, String id) async {
+    final message = await store.groupMessageById(id);
+    final self = store.deviceId ?? '';
+    if (message == null || self.isEmpty || groupId.isEmpty) return false;
+    final created = DateTime.tryParse(message.createdAt);
+    if (created == null ||
+        !canDeleteForEveryone(mine: message.senderId == self, createdAt: created)) {
+      return false;
+    }
+    final now = DateTime.now().toUtc();
+    await deletes.deleteForEveryoneLocal(id, group: true, at: now);
+    await store.addGroupOutbox({
+      'id': _newId(),
+      'group_id': groupId,
+      'body': DeleteCommand(messageId: id, by: self, at: now).encode(),
+      'created_at': now.toIso8601String(),
+      'status': 'queued',
+    });
+    AppLogger.info('MESSAGE_DELETE_ALL_SENT',
+        detail: 'id=${MessageDeleteActions.shortId(id)} '
+            'chat=${MessageDeleteActions.shortId(groupId)} group=y');
+    await flush();
+    return true;
+  }
+
+  Future<int> clearChat(String groupId) =>
+      deletes.clearChat(chatId: groupId, group: true, keepRow: true);
   Stream<MessageReaction> get reactionIncoming => _reactionIncoming.stream;
 
   void start() {
@@ -161,6 +204,14 @@ class GroupMessagingService {
   }
 
   Future<bool> _consumeReaction(GroupMessage message) async {
+    // Bundle 197a: Delete for everyone (socket, ack, history).
+    if (DeleteCommand.isDelete(message.body)) {
+      try {
+        await deletes.applyRemote(
+            body: message.body, envelopeSender: message.senderId, group: true);
+      } catch (_) {}
+      return true;
+    }
     if (!message.body.startsWith(_reactionPrefix)) return false;
     try {
       final payload = jsonDecode(message.body.substring(_reactionPrefix.length));

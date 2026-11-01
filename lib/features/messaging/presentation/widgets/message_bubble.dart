@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/message.dart';
+import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/core/models/message_reaction.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/files/presentation/widgets/attachment_tile.dart';
 
 import 'bubble_layout.dart';
+import 'message_options.dart';
 
 class MessageBubble extends StatelessWidget {
   final Message message;
@@ -22,6 +24,21 @@ class MessageBubble extends StatelessWidget {
   /// sent yet shows a clock + "Waiting" instead of the turning ring.
   final bool peerOffline;
 
+  /// Bundle 197a: held / picked bubble = grey + ring (bubble only).
+  final bool highlighted;
+
+  /// Bundle 197a: key on the bubble itself (the dimmer leaves a hole there).
+  final Key? bubbleKey;
+
+  /// Bundle 197a: Select mode - a tap picks / unpicks.
+  final VoidCallback? onTap;
+
+  /// Bundle 197a: quote of a reply (name shown in the box).
+  final String quoteName;
+  final bool quoteIsYou;
+  final bool quoteMissing;
+  final VoidCallback? onQuoteTap;
+
   const MessageBubble({
     super.key,
     required this.message,
@@ -31,6 +48,13 @@ class MessageBubble extends StatelessWidget {
     this.reactions = const [],
     this.onFailedTap,
     this.peerOffline = false,
+    this.highlighted = false,
+    this.bubbleKey,
+    this.onTap,
+    this.quoteName = '',
+    this.quoteIsYou = false,
+    this.quoteMissing = false,
+    this.onQuoteTap,
   });
 
   bool get _canResend =>
@@ -54,13 +78,13 @@ class MessageBubble extends StatelessWidget {
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Semantics(
-        label: message.body.isEmpty ? 'Message with attachment' : message.body,
+        label: message.text.isEmpty ? 'Message with attachment' : message.text,
         button: onLongPress != null || _canResend,
         hint: _canResend
             ? 'Message not sent. Tap to resend or delete'
             : (onLongPress != null ? 'Long press for message actions' : null),
         child: GestureDetector(
-          onTap: _canResend ? onFailedTap : null,
+          onTap: onTap ?? (_canResend ? onFailedTap : null),
           onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.only(bottom: LocalLinkSpacing.xs),
@@ -68,6 +92,7 @@ class MessageBubble extends StatelessWidget {
             child: BubbleReactionEdge(
               chips: reactions.isEmpty ? const <Widget>[] : _reactionCounts(context),
               bubble: Container(
+                key: bubbleKey,
                 constraints: BoxConstraints(maxWidth: maxWidth),
                 padding: EdgeInsets.fromLTRB(
                   LocalLinkSpacing.md,
@@ -76,16 +101,21 @@ class MessageBubble extends StatelessWidget {
                   LocalLinkSpacing.xs +
                       (reactions.isEmpty ? 0 : BubbleReactionEdge.bubblePad),
                 ),
-                decoration: BoxDecoration(
-                  color: isMine
-                      ? colors.surfaceContainer
-                      : colors.surfaceContainerHighest,
-                  borderRadius: radius,
+                decoration: highlightBubble(
+                  BoxDecoration(
+                    color: isMine
+                        ? colors.surfaceContainer
+                        : colors.surfaceContainerHighest,
+                    borderRadius: radius,
+                  ),
+                  colors,
+                  on: highlighted,
                 ),
                 child: BubbleContent(
-                  body: message.body.isEmpty
+                  header: _header(),
+                  body: message.text.isEmpty
                       ? null
-                      : Text(message.body, style: TextStyle(color: foreground)),
+                      : Text(message.text, style: TextStyle(color: foreground)),
                   media: [
                     for (final attachment in message.attachments)
                       AttachmentTile(
@@ -124,6 +154,28 @@ class MessageBubble extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Bundle 197a: "Forwarded" label and / or the quote box.
+  Widget? _header() {
+    final reply = message.replyTo;
+    final forwarded = message.forwarded;
+    if (reply == null && !forwarded) return null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (forwarded) const ForwardedLabel(),
+        if (reply != null)
+          QuoteBox(
+            name: quoteName,
+            line: replyLine(reply),
+            isYou: quoteIsYou,
+            notAvailable: quoteMissing,
+            onTap: onQuoteTap,
+          ),
+      ],
     );
   }
 

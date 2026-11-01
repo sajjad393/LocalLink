@@ -13,6 +13,9 @@ class MessengerConversationTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback? onTap;
+
+  /// Bundle 197a: hold a chat row (Clear chat / Delete chat).
+  final VoidCallback? onLongPress;
   final VoidCallback? onCall;
   final VoidCallback? onMore;
   final Widget? trailing;
@@ -39,6 +42,7 @@ class MessengerConversationTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.onTap,
+    this.onLongPress,
     this.onCall,
     this.onMore,
     this.trailing,
@@ -119,6 +123,7 @@ class MessengerConversationTile extends StatelessWidget {
       ),
       trailing: trailing ?? _buildTrailing(context),
       onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 
@@ -163,6 +168,7 @@ class MessengerConversationTile extends StatelessWidget {
       ),
       trailing: _buildTrailing(context, allowCall: false),
       onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 

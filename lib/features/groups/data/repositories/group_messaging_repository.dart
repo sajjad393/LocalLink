@@ -24,6 +24,19 @@ final class GroupMessagingRepository implements GroupMessagingRepositoryContract
   Future<List<MessageReaction>> reactions(String messageId) => _service.reactions(messageId);
 
   @override
+  Stream<String> get deletedMessageIds => _service.deletedMessageIds;
+
+  @override
+  Future<void> deleteForMe(String messageId) => _service.deleteForMe(messageId);
+
+  @override
+  Future<bool> deleteForEveryone(String groupId, String messageId) =>
+      _service.deleteForEveryone(groupId, messageId);
+
+  @override
+  Future<int> clearChat(String groupId) => _service.clearChat(groupId);
+
+  @override
   Future<GroupMessage> send(
     String groupId,
     String body, {
