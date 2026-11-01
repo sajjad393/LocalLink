@@ -63,6 +63,11 @@ NearbyListPlan planNearbyList({
   List<String> wifiAddresses = const <String>[],
   Map<String, String> tagIdByAddress = const <String, String>{},
   String Function(String nodeId)? hashOf,
+  // Bundle 190: true = the old rule "a linked phone is a contact". Since
+  // bundle 156 strangers' phones can hold a relay link too, so once the
+  // paired list is loaded the screen passes false: a linked phone counts as
+  // a contact only when it is in [trustedIds].
+  bool liveMeansContact = true,
 }) {
   final addable = <String>[];
   final pairedNearby = <String>{};
@@ -76,7 +81,11 @@ NearbyListPlan planNearbyList({
   }
   for (final id in liveNodeIds) {
     if (id.isEmpty || blockedIds.contains(id)) continue;
-    pairedNearby.add(id);
+    if (liveMeansContact || trustedIds.contains(id)) {
+      pairedNearby.add(id);
+    } else if (!addable.contains(id)) {
+      addable.add(id); // Bundle 190: a stranger with a relay link
+    }
   }
   addable.removeWhere(pairedNearby.contains);
 
@@ -164,4 +173,29 @@ String? pickPairTarget({
   if (fresh.length == 1) return fresh.first;
   if (fresh.isEmpty && unpairedNow.length == 1) return unpairedNow.first;
   return null;
+}
+
+/// Bundle 190: how long a phone that was just seen stays on the list while
+/// its link drops for a moment (it used to vanish for ~4 s, then come back).
+const int nearbyRecentMs = 15000;
+
+const Set<String> _nearbyLiveStates = {'CONNECTED', 'AVAILABLE', 'CONNECTING'};
+
+/// Bundle 190: the "seen nearby" (not linked) phones, newest first:
+/// state DISCOVERED, or a short link drop (DISCONNECTED / FAILED / ...)
+/// seen within [nearbyRecentMs]. Linked phones are not in this list.
+List<String> nearbyDiscoveredIds(
+  List<({String id, String state, int? lastSeenAt})> peers, {
+  required int nowMs,
+}) {
+  final picked = [
+    for (final p in peers)
+      if (p.id.isNotEmpty &&
+          !_nearbyLiveStates.contains(p.state) &&
+          (p.state == 'DISCOVERED' ||
+              (p.lastSeenAt != null &&
+                  (nowMs - p.lastSeenAt!).abs() < nearbyRecentMs)))
+        p,
+  ]..sort((a, b) => (b.lastSeenAt ?? 0).compareTo(a.lastSeenAt ?? 0));
+  return [for (final p in picked) p.id];
 }

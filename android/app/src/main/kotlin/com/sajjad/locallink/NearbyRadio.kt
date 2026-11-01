@@ -40,6 +40,7 @@ object NearbyRadio {
     const val TAG = "NEARBY"
     const val CHANNEL = "locallink/wifi_direct"
     const val EVENTS = "locallink/wifi_direct_events"
+    private const val CALL_LOG_TAG = "LocalLinkCall"
 
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var app: Context? = null
@@ -57,6 +58,8 @@ object NearbyRadio {
     // Re-applied to a new tag manager after a lost channel.
     private var lastWanted: List<String>? = null
     private var lastInCall = false
+    // Bundle 189 (A): when a nearby group create/join was last asked for.
+    @Volatile private var lastGroupChangeAt = 0L
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -362,6 +365,46 @@ object NearbyRadio {
         })
     }
 
+    /** Bundle 189 (A): call voice started - stop a search that is already
+     *  running (one started while ringing kept going ~2 min into the call).
+     *  Any thread; the work runs on the main looper. Never throws. */
+    fun stopSearchForCall() {
+        main.post {
+            try { stopSearchNow() } catch (_: Exception) {}
+        }
+    }
+
+    private fun stopSearchNow() {
+        val m = manager
+        val ch = channel
+        if (m == null || ch == null) {
+            Log.i(CALL_LOG_TAG, CallSearchStop.line("none", "none"))
+            return
+        }
+        val clearServices = { peers: String ->
+            try {
+                m.clearServiceRequests(ch, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() { Log.i(CALL_LOG_TAG, CallSearchStop.line(peers, CallSearchStop.result(true))) }
+                    override fun onFailure(reason: Int) { Log.i(CALL_LOG_TAG, CallSearchStop.line(peers, CallSearchStop.result(false, reason))) }
+                })
+            } catch (_: Exception) {
+                Log.i(CALL_LOG_TAG, CallSearchStop.line(peers, "error"))
+            }
+        }
+        if (CallSearchStop.peersAction(System.currentTimeMillis(), lastGroupChangeAt) != "stop") {
+            clearServices("skip_joining")
+            return
+        }
+        try {
+            m.stopPeerDiscovery(ch, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() { clearServices(CallSearchStop.result(true)) }
+                override fun onFailure(reason: Int) { clearServices(CallSearchStop.result(false, reason)) }
+            })
+        } catch (_: Exception) {
+            clearServices("error")
+        }
+    }
+
     /** Bundle 184 (E1): look for nearby tags again shortly after a call. */
     fun resumeAfterCall() {
         main.postDelayed({
@@ -405,6 +448,7 @@ object NearbyRadio {
                 override fun onFailure(reason: Int) { Log.w(TAG, "group create failed reason=$reason"); result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: $reason", null) }
             }
             try {
+                lastGroupChangeAt = System.currentTimeMillis() // Bundle 189 (A)
                 if (Build.VERSION.SDK_INT >= 29) {
                     val name = NearbyGroupPolicy.newNetworkName()
                     val config = WifiP2pConfig.Builder().setNetworkName(name).setPassphrase(NearbyGroupPolicy.newPassphrase()).enablePersistentMode(false).build()
@@ -447,11 +491,13 @@ object NearbyRadio {
                     override fun onFailure(reason: Int) { Log.w(TAG, "group join failed reason=$reason"); result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: $reason", null) }
                 }
                 try {
+                    lastGroupChangeAt = System.currentTimeMillis() // Bundle 189 (A)
                     Log.i(TAG, "group join grp=$name mode=password")
                     m.connect(ch, WifiP2pConfig.Builder().setNetworkName(name!!).setPassphrase(key!!).enablePersistentMode(false).build(), listener)
                 } catch (e: Exception) { result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: ${e.message}", null) }
             }
             if (formed) {
+                lastGroupChangeAt = System.currentTimeMillis() // Bundle 189 (A)
                 Log.i(TAG, "group leave before join host=$owner")
                 m.removeGroup(ch, object : WifiP2pManager.ActionListener {
                     override fun onSuccess() { main.postDelayed({ doJoin() }, 1500L) }

@@ -119,3 +119,56 @@ object CallVoiceHealth {
         append(" wifi_lock=").append(if (n.wifiLock) 1 else 0)
     }
 }
+
+/**
+ * Bundle 189 (B): call sound facts, log only (ZTE "voice breaks" check):
+ * call volume, where the sound really goes, battery, battery saver, mic
+ * mute and audio mode. One `CALL_SOUND_STATE` line when something changes,
+ * at most one per 10 s health tick, else once a minute, plus one at the end.
+ */
+object CallSoundState {
+    const val EVERY_MS = 60_000L
+
+    data class State(
+        val volume: Int = -1,
+        val volumeMax: Int = -1,
+        val output: String = "-",
+        val batteryPercent: Int = -1,
+        val charging: Boolean? = null,
+        val saver: Boolean? = null,
+        val micMuted: Boolean? = null,
+        val mode: Int = -99,
+    )
+
+    /** Battery moves in steps of 5 % so it does not log every tick. */
+    fun key(s: State): String =
+        "${s.volume}|${s.volumeMax}|${s.output}|${s.saver}|${s.charging}|${s.micMuted}|${s.mode}|" +
+            (if (s.batteryPercent < 0) -1 else s.batteryPercent / 5)
+
+    fun due(now: Long, lastAt: Long, lastKey: String?, s: State): Boolean =
+        lastKey == null || key(s) != lastKey || now - lastAt !in 0 until EVERY_MS
+
+    fun modeName(mode: Int): String = when (mode) {
+        0 -> "normal"
+        1 -> "ringtone"
+        2 -> "in_call"
+        3 -> "communication"
+        -99 -> "-"
+        else -> "other_$mode"
+    }
+
+    private fun yn(b: Boolean?) = when (b) { true -> "y"; false -> "n"; null -> "-" }
+
+    fun line(callId: String, s: State, moment: String): String = buildString {
+        append("CALL_SOUND_STATE call=").append(callId)
+        append(" at=").append(moment)
+        append(" vol=").append(if (s.volume < 0) "-" else s.volume.toString())
+        append('/').append(if (s.volumeMax < 0) "-" else s.volumeMax.toString())
+        append(" out=").append(s.output)
+        append(" battery=").append(if (s.batteryPercent < 0) "-" else "${s.batteryPercent}%")
+        append(" charging=").append(yn(s.charging))
+        append(" saver=").append(yn(s.saver))
+        append(" mic_mute=").append(yn(s.micMuted))
+        append(" mode=").append(modeName(s.mode))
+    }
+}

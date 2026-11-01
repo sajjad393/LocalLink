@@ -77,6 +77,9 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
   // Bundle 125: node ids of phones already paired with this device — a
   // paired phone inside the DISCOVERED list must never offer "Pair" again.
   Set<String> _trustedIds = const <String>{};
+  // Bundle 190: false until the paired list is read once - until then a
+  // linked phone still counts as a contact (no flash of contact cards).
+  bool _trustedLoaded = false;
   // Bundle 154: blocked people never show on Nearby.
   Set<String> _blockedIds = const <String>{};
   StreamSubscription<String>? _pairedSub;
@@ -137,7 +140,12 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
   Future<void> _refreshTrusted() async {
     try {
       final ids = await widget.pairing.trustedNodeIds();
-      if (mounted) setState(() => _trustedIds = ids);
+      if (mounted) {
+        setState(() {
+          _trustedIds = ids;
+          _trustedLoaded = true;
+        });
+      }
     } catch (_) {}
     try {
       final blocked = await widget.pairing.blockedNodeIds();
@@ -152,19 +160,24 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
 
   NearbyListPlan _plan(MeshState meshState, List<WifiDirectPeer> wifiPeers) {
     final meshPeers = meshState.peers.values.toList();
-    final discovered = meshPeers
-        .where((p) => p.state == 'DISCOVERED')
-        .toList(growable: false)
-      ..sort((a, b) => (b.lastSeenAt ?? 0).compareTo(a.lastSeenAt ?? 0));
+    // Bundle 190: a short link drop no longer hides the phone.
+    final discovered = nearbyDiscoveredIds(
+      [
+        for (final p in meshPeers)
+          (id: p.nodeId, state: p.state, lastSeenAt: p.lastSeenAt),
+      ],
+      nowMs: DateTime.now().millisecondsSinceEpoch,
+    );
     final live = meshPeers.where((p) =>
         p.state == 'CONNECTED' ||
         p.state == 'AVAILABLE' ||
         p.state == 'CONNECTING');
     return planNearbyList(
-      discoveredNodeIds: [for (final p in discovered) p.nodeId],
+      discoveredNodeIds: discovered,
       liveNodeIds: [for (final p in live) p.nodeId],
       trustedIds: _trustedIds,
       blockedIds: _blockedIds,
+      liveMeansContact: !_trustedLoaded,
       wifiAddresses: [for (final p in wifiPeers) p.address.trim().toLowerCase()],
       tagIdByAddress: {
         for (final e in NearbyTagRegistry.instance.byAddress.entries)

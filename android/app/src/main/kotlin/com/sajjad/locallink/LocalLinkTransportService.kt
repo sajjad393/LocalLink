@@ -2060,6 +2060,8 @@ class LocalLinkTransportService : Service() {
         timer.mark("mic_notice")
         // Bundle 184 (E1): no Nearby (Wi-Fi Direct) searching during the call.
         CallNearbyPause.callStarted(); AppHealth.startWatcher()
+        // Bundle 189 (A): ...and stop a search that is already running.
+        NearbyRadio.stopSearchForCall()
         session.start(timer)
         AppHealth.noteCall(true) // Bundle 188 (B3)
         transportEvent("call_media_started", mapOf("call_id" to callId, "peer_id" to peerId, "sample_rate" to CALL_SAMPLE_RATE, "frame_ms" to CALL_FRAME_MS, "codec" to session.codec))
@@ -2552,6 +2554,10 @@ class LocalLinkTransportService : Service() {
         private var writtenSamples = 0L
         private var lastHealthAt = 0L
         private var lastSnapshot = CallVoiceHealth.Snapshot()
+        // Bundle 189 (B): last CALL_SOUND_STATE line (guarded by soundLock).
+        private val soundLock = Any()
+        private var soundAt = 0L
+        private var soundKey: String? = null
         private var lastArrivalMs:Long = 0L
         private var lastSenderTimestampMs:Long = 0L
         @Volatile private var jitterMs:Double = 0.0
@@ -2630,6 +2636,7 @@ class LocalLinkTransportService : Service() {
                 val line = CallVoiceHealth.line("CALL_VOICE_SUMMARY", callId, total, nowInfo())
                 if (CallVoiceHealth.warn(total)) Log.w("LocalLinkCall", line) else Log.i("LocalLinkCall", line)
             } catch (_:Throwable) {}
+            noteSoundState("end", true) // Bundle 189 (B)
             try { recorder?.stop() } catch (_:Exception) {}
             try { track?.stop() } catch (_:Exception) {}
             synchronized(txLock) { txRaw.clear(); txLock.notifyAll() }
@@ -3085,6 +3092,7 @@ class LocalLinkTransportService : Service() {
             lastSnapshot = total
             val line = CallVoiceHealth.line("CALL_VOICE_HEALTH", callId, window, nowInfo())
             if (CallVoiceHealth.warn(window)) Log.w("LocalLinkCall", line) else Log.i("LocalLinkCall", line)
+            noteSoundState("call", false) // Bundle 189 (B)
             decodeMaxMs = 0L; writeMaxMs = 0L; maxSpeakerMs = 0; maxTxQueueMs = 0
             synchronized(jbLock) { jitterBuffer.counters.maxGapMs = 0L }
         }
@@ -3116,8 +3124,38 @@ class LocalLinkTransportService : Service() {
             )
         }
 
-        private fun outputName(): String {
-            val m = audioManager ?: return "-"
+        /** Bundle 189 (B): log only. Reads run on their own short thread so
+         *  the speaker thread never waits for Android. Never throws. */
+        private fun noteSoundState(moment: String, force: Boolean) {
+            try {
+                val m = audioManager // taken now: the end line runs while the call closes
+                Thread({
+                    try {
+                        val volume = try { m?.getStreamVolume(AudioManager.STREAM_VOICE_CALL) ?: -1 } catch (_:Throwable) { -1 }
+                        val volumeMax = try { m?.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL) ?: -1 } catch (_:Throwable) { -1 }
+                        val micMuted = try { m?.isMicrophoneMute } catch (_:Throwable) { null }
+                        val mode = try { m?.mode ?: -99 } catch (_:Throwable) { -99 }
+                        val (charging, battery) = NearbyRadio.battery(this@LocalLinkTransportService)
+                        val saver = try { (getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode } catch (_:Throwable) { null }
+                        val state = CallSoundState.State(
+                            volume = volume, volumeMax = volumeMax, output = outputName(m),
+                            batteryPercent = battery, charging = if (battery < 0) null else charging,
+                            saver = saver, micMuted = micMuted, mode = mode,
+                        )
+                        val now = System.currentTimeMillis()
+                        val write = synchronized(soundLock) {
+                            val due = force || CallSoundState.due(now, soundAt, soundKey, state)
+                            if (due) { soundAt = now; soundKey = CallSoundState.key(state) }
+                            due
+                        }
+                        if (write) Log.i("LocalLinkCall", CallSoundState.line(callId, state, moment))
+                    } catch (_:Throwable) {}
+                }, "linkup-sound-state").start()
+            } catch (_:Throwable) {}
+        }
+
+        private fun outputName(am: AudioManager? = audioManager): String {
+            val m = am ?: return "-"
             return try {
                 if (android.os.Build.VERSION.SDK_INT >= 31) {
                     when (m.communicationDevice?.type) {

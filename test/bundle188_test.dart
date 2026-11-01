@@ -13,12 +13,4 @@ void main() {
     expect(_read('$k/AppHealthPolicy.kt'), contains('"doing=\$doing "'));
     expect(_read('$k/AppHealth.kt'), contains('setProcessStateSummary'));
   });
-
-  group('Bundle 188 version', () {
-    test('pubspec and stamp', () {
-      expect(_read('pubspec.yaml'), contains('version: 3.0.19+90'));
-      expect(_read('lib/app/local_link_app.dart'),
-          contains("'v3 · 3.0.19 · bundles 104-188 (2026-11-01)'"));
-    });
-  });
 }

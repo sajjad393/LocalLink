@@ -178,3 +178,22 @@ object CallNearbyPause {
     /** Tests only. */
     fun resetForTest() { live = false; endedAt = 0L; lastLogAt = 0L }
 }
+
+/**
+ * Bundle 189 (A): [CallNearbyPause] only blocks NEW searches. A search that
+ * started while the phone was ringing kept running about 2 minutes into the
+ * call (2026-11-02 logs, both phones: voice came in bunches until it ended).
+ * When call voice starts, that running search is stopped. Not while a nearby
+ * group join/create was asked for just now - stopping could break it.
+ */
+object CallSearchStop {
+    const val JOIN_GUARD_MS = 30_000L
+
+    /** "stop" or "skip_joining". */
+    fun peersAction(now: Long, lastGroupChangeAt: Long): String =
+        if (lastGroupChangeAt > 0L && now - lastGroupChangeAt in 0 until JOIN_GUARD_MS) "skip_joining" else "stop"
+
+    fun result(ok: Boolean, reason: Int = 0): String = if (ok) "ok" else "fail_$reason"
+
+    fun line(peers: String, services: String): String = "CALL_NEARBY_STOP peers=$peers services=$services"
+}
