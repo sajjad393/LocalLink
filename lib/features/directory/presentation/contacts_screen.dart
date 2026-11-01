@@ -6,7 +6,9 @@ import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
-import 'package:locallink/core/widgets/messenger_section_header.dart';
+import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/core/widgets/messenger_list_group.dart';
+import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
@@ -21,6 +23,9 @@ import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
 import 'package:locallink/features/messaging/domain/messaging_repository_contract.dart';
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
+
+/// Bundle 183 (N3): the People filter (sliders button).
+enum PeopleFilter { all, nearby, online }
 
 class ContactsScreen extends StatefulWidget {
   final DirectoryRepositoryContract directory;
@@ -61,6 +66,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
   late final ContactsBloc bloc;
   final _searchController = TextEditingController();
   String _query = '';
+  // Bundle 183 (N11): not remembered - starts at All every time.
+  PeopleFilter _filter = PeopleFilter.all;
 
   @override
   void initState() {
@@ -127,14 +134,25 @@ class _ContactsScreenState extends State<ContactsScreen> {
     super.dispose();
   }
 
+  /// Bundle 183 (N7): the person's live status, the same one the avatar dot
+  /// shows. No linked phone = Offline.
+  PresenceStatus _statusOf(DirectoryProfile p) => p.deviceId.isEmpty
+      ? PresenceStatus.offline
+      : PresenceHub.instance.statusOf(p.deviceId);
+
+  bool _passesFilter(DirectoryProfile p) => switch (_filter) {
+        PeopleFilter.all => true,
+        PeopleFilter.nearby => _statusOf(p) == PresenceStatus.nearby,
+        PeopleFilter.online => _statusOf(p) == PresenceStatus.online,
+      };
+
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        // Bundle 170: the separate Nearby button is gone — the + button
-        // opens Add Contact, which shows the people nearby.
-        title: const Text('Contacts'),
-      ),
+      // Bundle 183 (L/N1): the shared tab top bar, "People" like the tab,
+      // no back arrow.
+      appBar: const TabTopBar(title: Text('People')),
       floatingActionButton: FloatingActionButton(
         heroTag: 'add_contact_fab',
         tooltip: 'Add contact',
@@ -156,15 +174,21 @@ class _ContactsScreenState extends State<ContactsScreen> {
       body: StreamBuilder<List<DirectoryProfile>>(
         stream: bloc.stream,
         initialData: bloc.state,
-        builder: (context, snapshot) {
+        builder: (context, snapshot) => ListenableBuilder(
+          // Bundle 183 (N8): the filtered list follows status changes live.
+          listenable: PresenceHub.instance,
+          builder: (context, _) {
           final all = snapshot.data ?? const <DirectoryProfile>[];
           final query = _query.trim().toLowerCase();
-          final contacts = query.isEmpty
+          final searched = query.isEmpty
               ? all
               : all.where((profile) {
                   final title = profile.displayName.isEmpty ? profile.username : profile.displayName;
                   return title.toLowerCase().contains(query) || profile.username.toLowerCase().contains(query);
                 }).toList();
+          // Bundle 183 (N9): search and filter together.
+          final contacts = searched.where(_passesFilter).toList();
+          final filtered = _filter != PeopleFilter.all;
 
           return RefreshIndicator(
             onRefresh: bloc.load,
@@ -177,15 +201,26 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   child: TextField(
                     controller: _searchController,
                     onChanged: (value) => setState(() => _query = value),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'Search people',
-                      prefixIcon: Icon(Icons.search),
-                      suffixIcon: Icon(Icons.tune_outlined),
+                      prefixIcon: const Icon(Icons.search),
+                      // Bundle 183 (N3/N4): the sliders icon is a real
+                      // button now - All / Nearby / Online.
+                      suffixIcon: _filterButton(colors),
                     ),
                   ),
                 ),
-                const MessengerSectionHeader(title: 'Your contacts'),
-                if (contacts.isEmpty)
+                if (filtered)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _filterChip(colors),
+                    ),
+                  ),
+                // Bundle 183 (O/N12): the shared small grey CAPITALS title.
+                MessengerGroupLabel('Your contacts', top: filtered ? 16 : 24),
+                if (all.isEmpty || (contacts.isEmpty && query.isNotEmpty))
                   SizedBox(
                     height: 420,
                     child: LocalLinkEmptyView(
@@ -197,30 +232,128 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       onAction: query.isEmpty ? _addContact : null,
                     ),
                   )
+                else if (contacts.isEmpty)
+                  // Bundle 183 (N10): filter on, nobody matches.
+                  MessengerListGroup(children: [
+                    SizedBox(
+                      key: const ValueKey('people_filter_empty'),
+                      height: 60,
+                      child: Center(
+                        child: Text(
+                          _filter == PeopleFilter.nearby
+                              ? 'No one nearby right now'
+                              : 'No one online right now',
+                          style: TextStyle(
+                              fontSize: 14, color: colors.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
+                  ])
                 else
                   _contactGroup(context, contacts),
               ],
             ),
           );
-        },
+          },
+        ),
       ),
     );
   }
 
-  /// Contact rows grouped in the shared rounded-container language
-  /// (subtle surface, 20 radius, hairline separators).
+  static String _filterLabel(PeopleFilter f) => switch (f) {
+        PeopleFilter.all => 'All',
+        PeopleFilter.nearby => 'Nearby',
+        PeopleFilter.online => 'Online',
+      };
+
+  Widget _filterButton(ColorScheme colors) {
+    return PopupMenuButton<PeopleFilter>(
+      key: const ValueKey('people_filter_button'),
+      tooltip: 'Filter',
+      position: PopupMenuPosition.under,
+      constraints: const BoxConstraints.tightFor(width: 180),
+      color: colors.surfaceContainerLowest,
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      icon: Icon(
+        Icons.tune_outlined,
+        color: _filter == PeopleFilter.all
+            ? colors.onSurfaceVariant
+            : colors.primary,
+      ),
+      onSelected: (f) => setState(() => _filter = f),
+      itemBuilder: (_) => [
+        for (final f in PeopleFilter.values)
+          PopupMenuItem<PeopleFilter>(
+            key: ValueKey('people_filter_${f.name}'),
+            value: f,
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _filterLabel(f),
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: colors.onSurface),
+                  ),
+                ),
+                if (f == _filter)
+                  Icon(Icons.check,
+                      key: const ValueKey('people_filter_tick'),
+                      size: 24,
+                      color: colors.primary),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// "Nearby ×" / "Online ×" - tap it (or the ×) to go back to All.
+  Widget _filterChip(ColorScheme colors) {
+    return Material(
+      key: const ValueKey('people_filter_chip'),
+      color: colors.primaryContainer,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => setState(() => _filter = PeopleFilter.all),
+        child: SizedBox(
+          height: 32,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(width: 12),
+              Text(
+                _filterLabel(_filter),
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: colors.onPrimaryContainer),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.close,
+                  key: const ValueKey('people_filter_clear'),
+                  size: 18,
+                  color: colors.onPrimaryContainer),
+              const SizedBox(width: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Contact rows in the shared Settings-style grey card (183, O).
   Widget _contactGroup(BuildContext context, List<DirectoryProfile> contacts) {
-    final colors = Theme.of(context).colorScheme;
     final tiles = <Widget>[];
     for (var i = 0; i < contacts.length; i++) {
       final profile = contacts[i];
       final title =
           profile.displayName.isEmpty ? profile.username : profile.displayName;
-      if (i > 0) {
-        tiles.add(
-          Divider(height: 1, indent: 72, color: colors.outlineVariant.withValues(alpha: 0.4)),
-        );
-      }
       tiles.add(
         ListTile(
           minVerticalPadding: LocalLinkSpacing.sm,
@@ -252,21 +385,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ),
       );
     }
-    // Material provides the ListTile ink/background layer; the Container only
-    // draws border + radius + horizontal margin.
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.lg),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.35)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: colors.surfaceContainer.withValues(alpha: 0.65),
-        child: Column(children: tiles),
-      ),
-    );
+    return MessengerListGroup(children: tiles);
   }
+
   Future<void> _editPrivacy(DirectoryProfile profile) async {
     var isPrivate = true;
     try {

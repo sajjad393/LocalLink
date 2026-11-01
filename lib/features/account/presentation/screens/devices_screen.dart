@@ -56,18 +56,18 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Revoke device?'),
+        title: const Text('Remove this phone?'),
         content: Text('“${device.name}” will be signed out and blocked from this account. You can add it again later through the normal login flow.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Revoke')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
         ],
       ),
     );
     if (ok != true || !mounted) return;
     try {
       await _controller.revoke(device);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Device revoked')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone removed')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(cleanBlocError(e))));
     }
@@ -86,15 +86,15 @@ class _DevicesScreenState extends State<DevicesScreen> {
     return LocalLinkBlocBuilder(bloc: _controller, builder: (context, state) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Trusted devices'),
+        title: const Text('My phones'),
         actions: [
           IconButton(
-            tooltip: 'Account data',
+            tooltip: 'Backup and restore',
             onPressed: _controller.isLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => AccountRestoreScreen(service: widget.restoreService))),
             icon: const Icon(Icons.restore_outlined),
           ),
           IconButton(
-            tooltip: 'Identity key',
+            tooltip: 'Security key',
             onPressed: _controller.isLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => CryptoMigrationScreen(identityRepository: widget.identityRepository))),
             icon: const Icon(Icons.vpn_key_outlined),
           ),
@@ -128,7 +128,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                               ),
                             ),
                             isThreeLine: false,
-                            trailing: device.current || device.status != 'active' ? null : IconButton(tooltip: 'Revoke', onPressed: () => _revoke(device), icon: const Icon(Icons.logout)),
+                            trailing: device.current || device.status != 'active' ? null : IconButton(tooltip: 'Remove', onPressed: () => _revoke(device), icon: const Icon(Icons.logout)),
                           ),
                         ),
                       ),

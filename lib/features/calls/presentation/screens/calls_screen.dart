@@ -11,6 +11,7 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
+import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart'
     show CallSession;
@@ -19,7 +20,6 @@ import 'package:locallink/features/calls/data/services/call_preflight_exception.
 import 'package:locallink/features/calls/presentation/widgets/call_history_tile.dart';
 import 'package:locallink/features/calls/presentation/call_history_groups.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
-import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 
 class CallsScreen extends StatefulWidget {
@@ -163,19 +163,10 @@ class _CallsScreenState extends State<CallsScreen> {
     return LocalLinkBlocBuilder<CallBloc, CallState>(
       bloc: widget.controller,
       builder: (context, state) => Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: const Text('Calls'),
-          actions: [
-            ConnectionStatusIndicator(
-                controller: widget.connectivityController),
-            IconButton(
-              tooltip: 'Refresh calls',
-              onPressed: widget.controller.refreshHistory,
-              icon: const Icon(Icons.refresh_rounded),
-            ),
-          ],
-        ),
+        // Bundle 183 (L/M): the shared tab top bar - title only. The Wi-Fi
+        // icon and the refresh button are gone (the list updates by itself;
+        // pull down still reloads).
+        appBar: const TabTopBar(title: Text('Calls')),
         floatingActionButton: BrandGradientFab(
           heroTag: 'calls_fab',
           tooltip: 'New call',
@@ -224,8 +215,9 @@ class _CallsScreenState extends State<CallsScreen> {
     }
     final children = <Widget>[];
     groups.forEach((label, records) {
-      // Bundle 153: shared small grey label (same as "Conversations").
-      children.add(MessengerGroupLabel(label));
+      // Bundle 153 / 183 (O): shared small grey CAPITALS title; 12 under
+      // the top bar, 24 between date groups.
+      children.add(MessengerGroupLabel(label, top: children.isEmpty ? 12 : 24));
       // One filled card per date bucket (Settings-style grouping): rows live
       // together inside a rounded white container with hairline dividers.
       // Bundle 171: back-to-back calls with the same person share a row.
@@ -248,7 +240,7 @@ class _CallsScreenState extends State<CallsScreen> {
           onOpen: group.count > 1 ? () => _openGroup(group) : null,
         ));
       }
-      // Bundle 153: shared outlined box (same as the Chats list).
+      // Bundle 153 / 183 (O): the shared Settings-style grey card.
       children.add(MessengerListGroup(children: rows));
     });
     return ListView(

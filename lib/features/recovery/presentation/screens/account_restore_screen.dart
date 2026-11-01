@@ -56,7 +56,7 @@ class _AccountRestoreScreenState extends State<AccountRestoreScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Account data')),
+      appBar: AppBar(title: const Text('Backup and restore')),
       body: LocalLinkBlocBuilder(
         bloc: _controller,
         builder: (context, state) {

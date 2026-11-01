@@ -5,6 +5,8 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/messenger_list_group.dart';
+import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
@@ -101,16 +103,21 @@ class MessengerSettingsScreen extends StatelessWidget {
         ? nickname
         : (deviceLabel.isNotEmpty ? deviceLabel : 'LinkUp user');
     final colors = Theme.of(context).colorScheme;
+    // Bundle 183 (A2/A3): "@username · Account, phones, backup" - never the
+    // default phone name.
+    final cardLine = nickname.isNotEmpty
+        ? '@$nickname · Account, phones, backup'
+        : 'Account, phones, backup';
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      // Bundle 183 (L): the shared tab top bar - no back arrow.
+      appBar: const TabTopBar(title: Text('Settings')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+        padding: const EdgeInsets.fromLTRB(0, 12, 0, 28),
         children: [
-          // Profile banner — the one emphasized surface on this screen.
-          _group(
-            context,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
+          // Bundle 183 (A1): the profile card is the ONLY way into Account.
+          MessengerListGroup(children: [
+            InkWell(
+              key: const ValueKey('settings_profile_card'),
               onTap: () => _openAccount(context),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -130,15 +137,15 @@ class MessengerSettingsScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            deviceLabel.isNotEmpty
-                                ? '$deviceLabel · Account and profile'
-                                : 'Account and profile',
+                            cardLine,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context)
                                 .textTheme
                                 .bodySmall
-                                ?.copyWith(color: colors.onSurfaceVariant),
+                                ?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                    letterSpacing: 0),
                           ),
                         ],
                       ),
@@ -149,33 +156,13 @@ class MessengerSettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-          _sectionLabel(context, 'Account'),
-          _group(context, children: [
-            _row(
-              context,
-              icon: Icons.person_outline,
-              title: 'Account & profile',
-              subtitle: 'Profile, trusted devices, transfer and recovery',
-              onTap: () => _openAccount(context),
-            ),
-            _row(
-              context,
-              icon: Icons.lock_outline,
-              title: 'Privacy & security',
-              subtitle: 'Identity protection and trusted communication',
-              onTap: () => _openAccount(context),
-            ),
           ]),
-          const SizedBox(height: 16),
-          _sectionLabel(context, 'Notifications'),
-          _group(context, children: [
-            _row(
-              context,
+          const MessengerGroupLabel('General'),
+          MessengerListGroup(dividerIndent: 66, children: [
+            MessengerSettingsRow(
               icon: Icons.notifications_none,
               title: 'Notifications',
-              subtitle: 'Messages, groups and incoming calls',
+              subtitle: 'Messages, groups and calls',
               onTap: () => Navigator.push<void>(
                 context,
                 MaterialPageRoute(
@@ -184,12 +171,7 @@ class MessengerSettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
-          ]),
-          const SizedBox(height: 16),
-          _sectionLabel(context, 'Appearance'),
-          _group(context, children: [
-            _row(
-              context,
+            MessengerSettingsRow(
               icon: Icons.palette_outlined,
               title: 'Appearance',
               subtitle: _themeLabel(themeMode),
@@ -204,34 +186,12 @@ class MessengerSettingsScreen extends StatelessWidget {
               ),
             ),
           ]),
-          const SizedBox(height: 16),
-          _sectionLabel(context, 'Advanced'),
-          _group(context, children: [
-            _row(
-              context,
-              icon: Icons.admin_panel_settings_outlined,
-              title: 'Admin panel',
-              // Bundle 134: works offline too — the panel itself locks its
-              // server-only modules when the server is unreachable.
-              subtitle: 'Local link + server tools (works on Wi-Fi Direct / mesh)',
-              onTap: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AdminLoginScreen(
-                    api: api,
-                    viewMode: viewMode,
-                    adminCapability: adminCapability,
-                    repositoryFactory: adminRepositoryFactory,
-                    store: store,
-                  ),
-                ),
-              ),
-            ),
-            _row(
-              context,
+          const MessengerGroupLabel('This phone'),
+          MessengerListGroup(dividerIndent: 66, children: [
+            MessengerSettingsRow(
               icon: Icons.power_settings_new_rounded,
               title: 'Keep LinkUp running',
-              subtitle: 'Background service, battery exemption, reboot restart',
+              subtitle: 'Get messages and calls when closed',
               onTap: () => Navigator.push<void>(
                 context,
                 MaterialPageRoute(
@@ -239,13 +199,10 @@ class MessengerSettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
-            // Bundle 173: "Nearby tests" moved - the 2 tests are in the
-            // Admin panel, strict mode is under Privacy & security.
-            _row(
-              context,
+            MessengerSettingsRow(
               icon: Icons.restart_alt,
               title: 'Reset setup',
-              subtitle: 'Clear this phone’s local setup and start again',
+              subtitle: 'Start again on this phone',
               destructive: true,
               onTap: () async {
                 // Bundle 102: an offline-pending account lives only in secure
@@ -274,6 +231,28 @@ class MessengerSettingsScreen extends StatelessWidget {
               },
             ),
           ]),
+          const MessengerGroupLabel('Admin'),
+          MessengerListGroup(dividerIndent: 66, children: [
+            MessengerSettingsRow(
+              icon: Icons.admin_panel_settings_outlined,
+              title: 'Admin panel',
+              // Bundle 134: works offline too — the panel itself locks its
+              // server-only modules when the server is unreachable.
+              subtitle: 'Tools for testing',
+              onTap: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AdminLoginScreen(
+                    api: api,
+                    viewMode: viewMode,
+                    adminCapability: adminCapability,
+                    repositoryFactory: adminRepositoryFactory,
+                    store: store,
+                  ),
+                ),
+              ),
+            ),
+          ]),
         ],
       ),
     );
@@ -284,90 +263,4 @@ class MessengerSettingsScreen extends StatelessWidget {
         ThemeMode.light => 'Light theme',
         ThemeMode.dark => 'Dark theme',
       };
-
-  Widget _sectionLabel(BuildContext context, String label) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
-      child: Text(
-        label.toUpperCase(),
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              letterSpacing: 1.1,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-      ),
-    );
-  }
-
-  /// Rounded grouped container — the shared visual language for settings and
-  /// conversation groups (subtle surface, 20 radius, hairline border).
-  Widget _group(
-    BuildContext context, {
-    Widget? child,
-    List<Widget>? children,
-  }) {
-    final colors = Theme.of(context).colorScheme;
-    final inner = children ?? (child == null ? const <Widget>[] : <Widget>[child]);
-    final separated = <Widget>[];
-    for (var i = 0; i < inner.length; i++) {
-      if (i > 0) {
-        separated.add(
-          Divider(
-            height: 1,
-            indent: 66,
-            color: colors.outlineVariant.withValues(alpha: 0.4),
-          ),
-        );
-      }
-      separated.add(inner[i]);
-    }
-    // Material provides the ListTile ink/background layer; the Container only
-    // draws border + radius.
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border:
-            Border.all(color: colors.outlineVariant.withValues(alpha: 0.35)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: colors.surfaceContainer.withValues(alpha: 0.65),
-        child: Column(children: separated),
-      ),
-    );
-  }
-
-  Widget _row(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-    bool destructive = false,
-  }) {
-    final colors = Theme.of(context).colorScheme;
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: destructive
-            ? colors.errorContainer.withValues(alpha: 0.6)
-            : colors.primaryContainer.withValues(alpha: 0.6),
-        foregroundColor:
-            destructive ? colors.onErrorContainer : colors.onPrimaryContainer,
-        child: Icon(icon, size: 20),
-      ),
-      title: Text(title, style: Theme.of(context).textTheme.titleSmall),
-      subtitle: Text(
-        subtitle,
-        style: Theme.of(context)
-            .textTheme
-            .bodySmall
-            ?.copyWith(color: colors.onSurfaceVariant),
-      ),
-      trailing: Icon(
-        Icons.chevron_right,
-        color: destructive ? colors.error : colors.onSurfaceVariant,
-        size: 20,
-      ),
-      onTap: onTap,
-    );
-  }
 }

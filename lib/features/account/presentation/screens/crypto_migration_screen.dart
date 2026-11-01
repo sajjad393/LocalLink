@@ -39,13 +39,13 @@ class _CryptoMigrationScreenState extends State<CryptoMigrationScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Rotate identity key?'),
+        title: const Text('Change security key?'),
         content: const Text(
           'A new account identity key will become active. The previous key is retained on this phone as local key history. Other devices will learn the new public key automatically.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Rotate key')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Change key')),
         ],
       ),
     );
@@ -74,7 +74,7 @@ class _CryptoMigrationScreenState extends State<CryptoMigrationScreen> {
       final error = state.errorMessage;
       return Scaffold(
       appBar: AppBar(
-        title: const Text('Identity key'),
+        title: const Text('Security key'),
         actions: [IconButton(onPressed: _controller.isLoading || _controller.isRotating ? null : _controller.load, icon: const Icon(Icons.refresh))],
       ),
       body: _controller.isLoading

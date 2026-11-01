@@ -133,7 +133,8 @@ void main() {
       expect(admin.contains('const NearbyTestSwitches()'), isTrue);
       expect(admin.contains('Nearby tests (testers only)'), isTrue);
     });
-    test('strict mode is under Privacy & security, plain words', () {
+    // Bundle 183: now a normal row in Account > Backup and safety.
+    test('strict mode is in Account (Backup and safety), plain words', () {
       final account = _read(
           'lib/features/account/presentation/screens/account_center_screen.dart');
       expect(account.contains('ExtraNearbySafetySwitch()'), isTrue);

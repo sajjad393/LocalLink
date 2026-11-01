@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
 
 /// Bundle 173: the old Settings > "Nearby tests" screen is gone.
@@ -6,7 +7,7 @@ import 'package:locallink/features/connectivity/data/services/nearby_experiments
 /// * [NearbyTestSwitches] - the two tests (Link full groups, Share a
 ///   LocalLink hotspot) now live in the Admin panel, testers only.
 /// * [ExtraNearbySafetySwitch] - strict mode, in plain words, in
-///   Settings > Privacy & security.
+///   Account > Backup and safety (183).
 ///
 /// How the switches work did not change; all stay OFF by default.
 Future<bool> _confirmTurnOn(
@@ -108,13 +109,17 @@ class ExtraNearbySafetySwitch extends StatelessWidget {
     final x = experiments ?? NearbyExperiments.instance;
     return AnimatedBuilder(
       animation: x,
+      // Bundle 183 (B6): a normal Account row - icon in a light circle,
+      // the same text sizes as every other row, switch on the right.
       builder: (context, _) => SwitchListTile(
         key: const Key('nearby_strict_link_check'),
-        contentPadding: EdgeInsets.zero,
-        secondary: const Icon(Icons.verified_user_outlined),
-        title: const Text('Extra nearby safety'),
-        subtitle: const Text(
-            'Only connect nearby to contacts the app can confirm.'),
+        secondary: const MessengerRowIcon(icon: Icons.verified_user_outlined),
+        title: Text('Extra nearby safety',
+            style: Theme.of(context).textTheme.titleSmall),
+        subtitle: Text('Only contacts the app can confirm',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                letterSpacing: 0)),
         value: x.strictLinkCheck,
         onChanged: (on) async {
           if (on &&

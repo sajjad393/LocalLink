@@ -51,7 +51,7 @@ void main() {
         (tester) async {
       final x = NearbyExperiments.instance;
       await tester.pumpWidget(
-          // Bundle 173: plain words, under Privacy & security.
+          // Bundle 173 / 183: plain words, Account > Backup and safety.
           MaterialApp(home: Scaffold(body: ExtraNearbySafetySwitch(experiments: x))));
       expect(find.text('Extra nearby safety'), findsOneWidget);
       await tester.tap(find.byKey(const Key('nearby_strict_link_check')));

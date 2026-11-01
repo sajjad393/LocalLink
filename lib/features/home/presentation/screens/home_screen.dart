@@ -21,6 +21,7 @@ import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
+import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
@@ -32,7 +33,6 @@ import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/calls/presentation/screens/calls_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
-import 'package:locallink/features/connectivity/presentation/widgets/connection_status_indicator.dart';
 import 'package:locallink/core/permissions/app_permission_gate.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
@@ -717,19 +717,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _chatsTab() {
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        // Bundle 180: looks the same; 5 fast taps share the logs.
+      // Bundle 183 (L/P): the shared tab top bar - title only, the Wi-Fi
+      // connection icon is gone. Bundle 180: 5 fast taps share the logs.
+      appBar: TabTopBar(
         title: GestureDetector(
           key: const ValueKey('chats_title_taps'),
           behavior: HitTestBehavior.opaque,
           onTap: _onChatsTitleTap,
           child: const Text('Chats'),
         ),
-        actions: [
-          // Bundle 153: no gear here (Settings is a tab), same as Calls.
-          ConnectionStatusIndicator(controller: widget.connectivityController),
-        ],
       ),
       floatingActionButton: BrandGradientFab(
         heroTag: 'home_fab',
@@ -768,9 +764,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Bundle 159.1: "Allow nearby devices" / "Turn on Wi-Fi",
                 // only when nearby chat can't work.
                 const NearbyReadyCard(),
-                // Bundle 153: small grey label like "Today" on Calls; the
-                // People link is gone (People is a tab).
-                const MessengerGroupLabel('Conversations'),
+                // Bundle 153 / 183 (O): the shared small grey CAPITALS title
+                // ("CONVERSATIONS"), 12 below the top bar.
+                const MessengerGroupLabel('Conversations', top: 12),
                 if (_visibleDevices(state).isEmpty && state.groups.isEmpty)
                   const SizedBox(
                     height: 420,
@@ -887,7 +883,7 @@ class _HomeScreenState extends State<HomeScreen> {
       .where((device) => _chatPeerIds.contains(device.id))
       .toList();
 
-  /// Bundle 153: the same outlined box as the Calls tab.
+  /// Bundle 153 / 183 (O): the shared Settings-style grey card.
   Widget _conversationGroup(BuildContext context, List<Widget> tiles) =>
       MessengerListGroup(dividerIndent: 72, children: tiles);
 

@@ -26,7 +26,7 @@ class _AccountTransferScreenState extends State<AccountTransferScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Transfer account')),
+      appBar: AppBar(title: const Text('Move to a new phone')),
       body: LocalLinkBlocBuilder(
         bloc: _controller,
         builder: (context, state) {

@@ -114,7 +114,8 @@ void main() {
       expect(tester.getSize(buttons.at(0)), tester.getSize(buttons.at(1)));
     });
 
-    testWidgets('list box: outlined, page colour, lines only between rows',
+    // Bundle 183 (O2): the box is now the Settings grey card everywhere.
+    testWidgets('list box: outlined, Settings grey, lines only between rows',
         (tester) async {
       await tester.pumpWidget(_host(const MessengerListGroup(children: [
         SizedBox(height: 40),
@@ -127,16 +128,18 @@ void main() {
               of: find.byType(MessengerListGroup),
               matching: find.byType(Material))
           .first);
-      expect(material.color, LocalLinkTheme.light().colorScheme.surface);
+      expect(material.color,
+          LocalLinkTheme.light().colorScheme.surfaceContainer.withValues(alpha: .65));
       final shape = material.shape! as RoundedRectangleBorder;
       expect(shape.side.style, BorderStyle.solid);
     });
 
+    // Bundle 183 (O1): small grey CAPITALS (the Settings style).
     testWidgets('small grey label', (tester) async {
       await tester
           .pumpWidget(_host(const MessengerGroupLabel('Conversations')));
-      final text = tester.widget<Text>(find.text('Conversations'));
-      expect(text.style!.fontSize, 12.5);
+      final text = tester.widget<Text>(find.text('CONVERSATIONS'));
+      expect(text.style!.fontSize, 11);
       expect(text.style!.color,
           LocalLinkTheme.light().colorScheme.onSurfaceVariant);
     });
@@ -149,7 +152,8 @@ void main() {
           src.indexOf('Widget _chatsTab()'), src.indexOf('Widget _callsTab()'));
       expect(chats.contains("tooltip: 'Settings'"), isFalse);
       expect(chats.contains("actionLabel"), isFalse);
-      expect(chats.contains("MessengerGroupLabel('Conversations')"), isTrue);
+      expect(chats.contains("MessengerGroupLabel('Conversations', top: 12)"),
+          isTrue);
       expect(chats.contains('MessengerListGroup('), isTrue);
     });
 
@@ -157,7 +161,7 @@ void main() {
       final src =
           File('lib/features/calls/presentation/screens/calls_screen.dart')
               .readAsStringSync();
-      expect(src.contains('MessengerGroupLabel(label)'), isTrue);
+      expect(src.contains('MessengerGroupLabel(label, top:'), isTrue);
       expect(src.contains('MessengerListGroup(children: rows)'), isTrue);
     });
   });
