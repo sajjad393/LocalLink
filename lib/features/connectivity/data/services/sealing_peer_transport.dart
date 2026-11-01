@@ -157,6 +157,20 @@ class SealingPeerTransport implements PeerTransportContract {
 
   /// Inside a sealed message: the sender's current session key.
   static const String sessionField = '_sp';
+
+  /// Bundle 195c: a locked friend link to someone who may not have me as a
+  /// friend yet. Outside the lock: my public key ([strangerKeyField]) and a
+  /// flag ([friendLinkFlag]). Only these inner types may open this way.
+  static const String strangerKeyField = 'spk';
+  static const String friendLinkFlag = 'fl';
+  static const Set<String> strangerInnerTypes = {
+    'CONTACT_EDGE',
+    'CONTACT_EDGE_ACK',
+  };
+
+  /// Bundle 195c: set on the opened payload - the sender's key that opened
+  /// it (the app checks it against the signed profile inside).
+  static const String openedStrangerKeyField = '_locked_spk';
   static const Duration _probeEvery = Duration(minutes: 10);
 
   final PeerTransportContract inner;
@@ -324,11 +338,18 @@ class SealingPeerTransport implements PeerTransportContract {
       AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=not_ready');
       return null;
     }
-    final theirs = await keys.contactPublicKey(sender);
+    var theirs = await keys.contactPublicKey(sender);
+    // Bundle 195c: someone who is not my friend yet may send ONE kind of
+    // locked message: a friend link (or its "got it").
+    var stranger = false;
     if (theirs == null) {
-      // Not a contact (or blocked): nothing from strangers reaches the app.
-      AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=not_a_contact');
-      return null;
+      theirs = await _strangerKey(keys, sender, outer);
+      if (theirs == null) {
+        // Not a contact (or blocked): nothing else from strangers reaches the app.
+        AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=not_a_contact');
+        return null;
+      }
+      stranger = true;
     }
     Map<String, dynamic> inner;
     try {
@@ -368,9 +389,21 @@ class SealingPeerTransport implements PeerTransportContract {
         return null;
       }
     }
+    if (stranger) {
+      if (!strangerInnerTypes.contains(inner['type']?.toString())) {
+        AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=stranger_type');
+        return null;
+      }
+      inner.remove(sessionField);
+      inner[openedStrangerKeyField] = outer[strangerKeyField]?.toString() ?? '';
+      AppLogger.info('FRIEND_LINK_LOCKED_OPENED',
+          detail: 'type=${inner['type']} from=${_id6(sender)}');
+    }
     _setCapable(sender, true);
     // Bundle 166: the sender's current session key rides inside.
-    final sp = PeerSessionKey.fromWire(inner.remove(sessionField));
+    final sp = stranger
+        ? null
+        : PeerSessionKey.fromWire(inner.remove(sessionField));
     if (sp != null) _notePeerSession(sender, sp);
     if (inner['type'] == probeType) {
       if (inner['fs'] == 1) _setFresh(sender);
@@ -391,6 +424,75 @@ class SealingPeerTransport implements PeerTransportContract {
       'payload': jsonEncode(inner),
       'sealed': true,
     };
+  }
+
+  static String _id6(String id) =>
+      id.length <= 6 ? id : id.substring(id.length - 6);
+
+  static List<int>? _decodeKey(String raw) {
+    try {
+      var v = raw.trim();
+      if (v.isEmpty) return null;
+      while (v.length % 4 != 0) {
+        v += '=';
+      }
+      final bytes = base64Url.decode(v);
+      return bytes.length == 32 ? bytes : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Bundle 195c: the key a not-yet-friend put outside its locked friend
+  /// link (never for a blocked phone).
+  Future<List<int>?> _strangerKey(
+      SealKeySource keys, String sender, Map<String, dynamic> outer) async {
+    if (outer[friendLinkFlag]?.toString() != '1') return null;
+    final key = _decodeKey(outer[strangerKeyField]?.toString() ?? '');
+    if (key == null) return null;
+    try {
+      if ((await keys.blockedPeerIds()).contains(sender)) return null;
+    } catch (_) {
+      return null;
+    }
+    return key;
+  }
+
+  /// Bundle 195c: send a friend link (or its "got it") locked with the
+  /// other person's profile key, so ANY LinkUp phone can carry it but only
+  /// they can open it - even if they don't have me as a friend yet.
+  Future<bool> sendFriendLinkLocked({
+    required String recipientId,
+    required String theirIdentityKey,
+    required Map<String, dynamic> payload,
+  }) async {
+    if (!strangerInnerTypes.contains(payload['type']?.toString())) return false;
+    final keys = _keys;
+    final self = keys?.selfId ?? '';
+    final theirs = _decodeKey(theirIdentityKey);
+    if (keys == null || self.isEmpty || recipientId.isEmpty || theirs == null) {
+      return false;
+    }
+    try {
+      final mine = await keys.ownKeys();
+      if (mine.isEmpty) return false;
+      final sealed = await _sealer.seal(
+        payload: payload,
+        senderId: self,
+        recipientId: recipientId,
+        mine: mine.first,
+        theirPublic: theirs,
+        outerType: MessageSealService.sealedType,
+      );
+      sealed[strangerKeyField] =
+          base64Url.encode(mine.first.publicKey).replaceAll('=', '');
+      sealed[friendLinkFlag] = 1;
+      await inner.send(recipientId: recipientId, payload: sealed);
+      return true;
+    } catch (e) {
+      AppLogger.warning('FRIEND_LINK_LOCKED_SEND_FAILED', detail: '$e');
+      return false;
+    }
   }
 
   // ------------------------------------------------------------ capability

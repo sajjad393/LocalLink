@@ -16,6 +16,8 @@ import 'package:locallink/core/notifications/notification_preferences.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart' hide CallState;
 import 'package:locallink/features/groups/domain/group_messaging_repository_contract.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 import 'package:locallink/features/messaging/domain/messaging_repository_contract.dart';
 
 /// Coordinates modern message/system notifications on top of the existing
@@ -252,6 +254,34 @@ final class LocalLinkNotificationService {
       await store.markMessageRead(message.id);
       await store.removeNotificationStateForMessage(message.id);
       return;
+    }
+    // Bundle 194: a new friend's "Hello 👋" right after the "X added you"
+    // notice comes in silently (one notice only). It stays unread.
+    // Bundle 195a: a Hello from someone new (their friend link not here yet)
+    // shows "X added you as a friend" (Remove / Block) instead.
+    if (message.body.trim() == kFriendHelloText) {
+      final action =
+          FriendAddMemory.incomingHelloAction(message.senderId, message.body);
+      final from = message.senderId.length > 6
+          ? message.senderId.substring(message.senderId.length - 6)
+          : message.senderId;
+      AppLogger.info('FRIEND_HELLO_RECEIVED',
+          detail: 'from=$from '
+              'silent=${action == IncomingHelloAction.silent ? 'y' : 'n'} '
+              'notice=${action == IncomingHelloAction.friendNotice ? 'y' : 'n'}');
+      if (action == IncomingHelloAction.silent) return;
+      if (action == IncomingHelloAction.friendNotice) {
+        final who = FriendAddMemory.helloFromNew(message.senderId);
+        if (who != null) {
+          FriendAddMemory.noteNotice(message.senderId);
+          AppLogger.info('FRIEND_ADDED_NOTICE', detail: 'source=hello');
+          await showFriendAdded(
+              userId: who.userId,
+              deviceId: message.senderId,
+              displayName: who.name.isEmpty ? 'LinkUp user' : who.name);
+          return;
+        }
+      }
     }
     await _showDirect(message);
   }

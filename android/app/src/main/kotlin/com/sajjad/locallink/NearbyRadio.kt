@@ -60,6 +60,8 @@ object NearbyRadio {
     private var lastInCall = false
     // Bundle 189 (A): when a nearby group create/join was last asked for.
     @Volatile private var lastGroupChangeAt = 0L
+    /** Bundle 192: last known Wi-Fi Direct group state (null = not seen yet). */
+    @Volatile private var lastFormed: Boolean? = null
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -336,6 +338,13 @@ object NearbyRadio {
                 val connected = info?.groupFormed == true
                 val owner = info?.isGroupOwner == true
                 val address = if (connected) info?.groupOwnerAddress?.hostAddress else null
+                // Bundle 192 (logs only): Wi-Fi Direct link lost / back during a call.
+                try {
+                    val change = WdLinkPolicy.changeInCall(CallNearbyPause.inCall(), lastFormed, connected)
+                    lastFormed = connected
+                    if (change == "drop_in_call") Log.w(CALL_LOG_TAG, WdLinkPolicy.line(change, false, false, -1, -1))
+                    else if (change != null) logLinkNow(change)
+                } catch (_: Exception) {}
                 emit(mapOf("type" to "connection", "connection" to connectionMap(a, info)))
                 tags?.onConnection(connected, owner)
                 LocalLinkTransportService.resume(a, connected, owner, address)
@@ -402,6 +411,45 @@ object NearbyRadio {
             })
         } catch (_: Exception) {
             clearServices("error")
+        }
+    }
+
+    /** Bundle 192 (logs only): one `WD_LINK` line (call start / end).
+     *  Any thread; the work runs on the main looper. Never throws. */
+    fun logLinkForCall(moment: String) {
+        main.post {
+            try { logLinkNow(moment) } catch (_: Exception) {}
+        }
+    }
+
+    private fun logLinkNow(moment: String) {
+        val a = app
+        val m = manager
+        val ch = channel
+        if (a == null || m == null || ch == null || !hasPermission(a)) {
+            Log.i(CALL_LOG_TAG, "WD_LINK at=$moment group=- reason=no_radio")
+            return
+        }
+        try {
+            m.requestConnectionInfo(ch) { info: WifiP2pInfo? ->
+                val formed = info?.groupFormed == true
+                val owner = info?.isGroupOwner == true
+                if (!formed) {
+                    Log.i(CALL_LOG_TAG, WdLinkPolicy.line(moment, false, false, -1, -1))
+                    return@requestConnectionInfo
+                }
+                try {
+                    m.requestGroupInfo(ch) { g ->
+                        val members = if (owner) g?.clientList?.size ?: 0 else -1
+                        val freq = if (Build.VERSION.SDK_INT >= 29) (g?.frequency ?: -1) else -1
+                        Log.i(CALL_LOG_TAG, WdLinkPolicy.line(moment, true, owner, members, freq))
+                    }
+                } catch (_: Exception) {
+                    Log.i(CALL_LOG_TAG, WdLinkPolicy.line(moment, true, owner, -1, -1))
+                }
+            }
+        } catch (_: Exception) {
+            Log.i(CALL_LOG_TAG, "WD_LINK at=$moment group=- reason=error")
         }
     }
 

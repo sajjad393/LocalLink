@@ -2039,6 +2039,50 @@ class LocalStore {
     return peers;
   }
 
+  /// Bundle 194: does the chat with [otherId] have any message at all
+  /// (sent, received or still waiting in the outbox)? One cheap row lookup.
+  Future<bool> hasDirectMessages(String otherId) async {
+    final self = _deviceId;
+    if (self == null || otherId.trim().isEmpty) return false;
+    final rows = await _db.query(
+      'messages',
+      columns: ['id'],
+      where:
+          '((sender_id=? AND recipient_id=?) OR (sender_id=? AND recipient_id=?))',
+      whereArgs: [self, otherId, otherId, self],
+      limit: 1,
+    );
+    if (rows.isNotEmpty) return true;
+    final queued = await _db.query('outbox',
+        columns: ['id'], where: 'recipient_id=?', whereArgs: [otherId], limit: 1);
+    return queued.isNotEmpty;
+  }
+
+  /// Bundle 195b: did my message [body] to [otherId], sent at or after
+  /// [sinceMs], reach their phone (delivered)? A few rows only.
+  Future<bool> sentMessageDeliveredSince(
+      String otherId, String body, int sinceMs) async {
+    final self = _deviceId;
+    if (self == null || otherId.trim().isEmpty) return false;
+    final rows = await _db.query(
+      'messages',
+      columns: ['created_at'],
+      where: "sender_id=? AND recipient_id=? AND body=? AND "
+          "status IN ('delivered','direct_delivered')",
+      whereArgs: [self, otherId, body],
+      orderBy: 'created_at DESC',
+      limit: 5,
+    );
+    for (final r in rows) {
+      final at = DateTime.tryParse(r['created_at']?.toString() ?? '');
+      // a minute of slack: the Hello is written just after the add
+      if (at != null && at.millisecondsSinceEpoch >= sinceMs - 60000) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<List<Message>> messagesFor(String otherId) async {
     final self = _deviceId;
     if (self == null) return [];

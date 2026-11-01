@@ -9,6 +9,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
+import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 
 /// Bundle 108 — verified pairing request pulled from the local network.
 ///
@@ -64,6 +65,19 @@ final class PairingService {
   /// Bundle 177 (7.4): someone else's Add friend saved them here.
   final _addedBy = StreamController<FriendAdded>.broadcast();
 
+  /// Bundle 194: an Add friend that THIS phone started worked.
+  final _addedByMe = StreamController<FriendAddedByMe>.broadcast();
+
+  /// Bundle 194: node id -> when this phone sent its own Add request.
+  final Map<String, DateTime> _ownRequestAt = <String, DateTime>{};
+  static const Duration _ownRequestWindow = Duration(minutes: 10);
+  static const Duration _mutualWindow = Duration(minutes: 2);
+
+  bool _ownRequestPending(String nodeId, Duration window) {
+    final at = _ownRequestAt[nodeId];
+    return at != null && DateTime.now().difference(at) < window;
+  }
+
   StreamSubscription<Map<String, dynamic>>? _events;
   final Map<String, DateTime> _mutedUntil = <String, DateTime>{};
   bool _started = false;
@@ -82,6 +96,9 @@ final class PairingService {
 
   /// Bundle 177 (7.4): "X added you as a friend" (Remove / Block notice).
   Stream<FriendAdded> get addedBy => _addedBy.stream;
+
+  /// Bundle 194: "my Add worked" (opens the chat + one Hello).
+  Stream<FriendAddedByMe> get addedByMe => _addedByMe.stream;
 
   /// Bundle 112: human-readable diagnostics (toasts). Pairing used to fail
   /// completely silently, which made field debugging impossible.
@@ -133,6 +150,7 @@ final class PairingService {
     await _requests.close();
     await _paired.close();
     await _addedBy.close();
+    await _addedByMe.close();
     await _diagnostics.close();
   }
 
@@ -142,6 +160,9 @@ final class PairingService {
   /// is not currently visible on the local network (native error).
   Future<void> requestPair(String nodeId) async {
     AppLogger.warning('PAIR_STAGE', detail: 'requestPair entered node=$nodeId');
+    // Bundle 194: remember the tap (the answer = "my Add worked").
+    if (_ownRequestAt.length > 50) _ownRequestAt.clear();
+    _ownRequestAt[nodeId] = DateTime.now();
     final body = await _payload();
     AppLogger.warning('PAIR_STAGE', detail: 'payload built');
     await _ensureTransportReady();
@@ -264,6 +285,15 @@ final class PairingService {
         return;
       }
 
+      // Bundle 194: a request only comes from a real Add tap on that phone
+      // (used when both phones tap Add at once: only one Hello).
+      if (kind == 'request') {
+        FriendAddMemory.notePeerTapped(nodeId);
+        if (profile.deviceId.isNotEmpty && profile.deviceId != nodeId) {
+          FriendAddMemory.notePeerTapped(profile.deviceId);
+        }
+      }
+
       // Bundle 177: a trusted phone that was removed from the contacts
       // (Remove on the notice) and adds again is a new add, not a silent
       // answer - otherwise only one phone would list the other.
@@ -300,6 +330,11 @@ final class PairingService {
         // Mutual accept for a request we sent: pair without another dialog.
         _mutedUntil[nodeId] = DateTime.now().add(_muteWindow);
         await _adopt(raw, profile, nodeId);
+        // Bundle 194: my own Add worked -> open the chat + one Hello.
+        if (_ownRequestPending(nodeId, _ownRequestWindow)) {
+          _ownRequestAt.remove(nodeId);
+          _emitAddedByMe(profile, nodeId, mutual: false);
+        }
       }
     } catch (error) {
       _diag('Pair packet failed: $error');
@@ -314,6 +349,11 @@ final class PairingService {
   /// sender here and tell the app (notification with Remove / Block).
   Future<void> _autoAccept(Map<String, dynamic> raw, DirectoryProfile profile,
       String nodeId) async {
+    // Bundle 194: the notice will show; their Hello right after is silent.
+    if (!_ownRequestPending(nodeId, _mutualWindow)) {
+      FriendAddMemory.noteNotice(nodeId);
+      if (profile.deviceId.isNotEmpty) FriendAddMemory.noteNotice(profile.deviceId);
+    }
     await _ensureTransportReady();
     try {
       final body = await _payload();
@@ -325,6 +365,16 @@ final class PairingService {
       AppLogger.warning('PAIR_ACCEPT_SEND_FAILED', detail: '$error');
     }
     await _adopt(raw, profile, nodeId, signalPaired: false);
+    // Bundle 194: both phones tapped Add at the same time. This phone tapped
+    // too, so it is an adder: open the chat (no "X added you" notice); the
+    // Hello rule makes sure only one Hello is sent.
+    if (_ownRequestPending(nodeId, _mutualWindow)) {
+      _ownRequestAt.remove(nodeId);
+      AppLogger.info('FRIEND_ADD_MUTUAL',
+          detail: 'node=…${nodeId.length > 6 ? nodeId.substring(nodeId.length - 6) : nodeId}');
+      _emitAddedByMe(profile, nodeId, mutual: true);
+      return;
+    }
     if (!_addedBy.isClosed) {
       _addedBy.add(FriendAdded(
         userId: profile.userId,
@@ -334,6 +384,18 @@ final class PairingService {
             : 'LinkUp user',
       ));
     }
+  }
+
+  void _emitAddedByMe(DirectoryProfile profile, String nodeId,
+      {required bool mutual}) {
+    if (_addedByMe.isClosed) return;
+    _addedByMe.add(FriendAddedByMe(
+      userId: profile.userId,
+      deviceId: profile.deviceId.isNotEmpty ? profile.deviceId : nodeId,
+      displayName: profile.displayName,
+      source: 'nearby',
+      mutual: mutual,
+    ));
   }
 
   Future<bool> _isContact(String userId) async {

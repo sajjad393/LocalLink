@@ -44,6 +44,7 @@ import 'package:locallink/features/connectivity/data/services/wifi_direct_fallba
 import 'package:locallink/features/connectivity/data/services/voice_relay_watch.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
+import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 import 'package:locallink/features/files/data/repositories/file_transfer_repository.dart';
 import 'package:locallink/features/files/data/services/file_transfer_service.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
@@ -247,12 +248,33 @@ class AppDependencies {
     notifications.onFriendBlock = directoryRepository.blockUser;
     _friendSubs.add(pairing.addedBy.listen(_friendAdded));
     _friendSubs.add(directory.addedBy.listen(_friendAdded));
+    // Bundle 194: my own Add worked -> open the chat + one "Hello 👋".
+    friendHello = FriendHelloService(
+      readSetting: store.readSetting,
+      writeSetting: store.writeSetting,
+      chatHasMessages: store.hasDirectMessages,
+      isBlocked: (userId, deviceId) async =>
+          (userId.isNotEmpty && await store.isBlocked(userId)) ||
+          (deviceId.isNotEmpty && await store.isBlockedPeer(deviceId)),
+      isFriend: store.isContact,
+      send: (deviceId, body) => messagingRepository.send(deviceId, body),
+      myUserId: () => store.accountId ?? '',
+      myDeviceId: () => store.deviceId ?? '',
+    );
+    FriendHelloService.instance = friendHello;
+    _addedByMeSub = pairing.addedByMe
+        .listen((e) => unawaited(friendHello.addedByMe(e)));
   }
+
+  /// Bundle 194: sends the one automatic Hello after my own Add.
+  late final FriendHelloService friendHello;
+  StreamSubscription<FriendAddedByMe>? _addedByMeSub;
 
   final List<StreamSubscription<FriendAdded>> _friendSubs =
       <StreamSubscription<FriendAdded>>[];
 
   void _friendAdded(FriendAdded f) {
+    FriendAddMemory.noteNotice(f.deviceId); // Bundle 194: their Hello is silent
     AppLogger.info('FRIEND_ADDED_NOTICE', detail: 'source=add');
     unawaited(notifications
         .showFriendAdded(
@@ -441,6 +463,11 @@ class AppDependencies {
       unawaited(sub.cancel());
     }
     _friendSubs.clear();
+    unawaited(_addedByMeSub?.cancel());
+    _addedByMeSub = null;
+    if (identical(FriendHelloService.instance, friendHello)) {
+      FriendHelloService.instance = null;
+    }
     await directoryRepository.dispose();
     await messaging.dispose();
     await groupMessagingService.dispose();

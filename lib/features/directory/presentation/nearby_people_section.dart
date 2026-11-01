@@ -16,6 +16,7 @@ import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
+import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 import 'package:locallink/features/directory/presentation/nearby_list_plan.dart';
 import 'package:locallink/features/directory/presentation/nearby_search_animation.dart';
 import 'package:locallink/features/directory/presentation/profile_view_rules.dart';
@@ -304,7 +305,24 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
 
   /// Bundle 108: ask the discovered peer to pair — a signed identity packet
   /// rides the LAN beacon channel; the other phone shows Accept/Connect.
+  /// Bundle 194: already my friend -> no add, no toast, open the chat.
+  Future<bool> _openIfFriend(String nodeId) async {
+    final hello = FriendHelloService.instance;
+    if (hello == null) return false;
+    final userId = PresenceHub.instance.userOf(nodeId) ?? '';
+    if (userId.isEmpty || !await hello.isFriend(userId)) return false;
+    if (!mounted) return true;
+    await hello.openExistingChat(
+        deviceId: nodeId,
+        displayName: _personName(nodeId) ?? '',
+        source: 'nearby');
+    return true;
+  }
+
   Future<void> _requestPair(MeshPeer peer) async {
+    if (await _openIfFriend(peer.nodeId)) return; // Bundle 194
+    if (!mounted) return;
+    AppLogger.info('FRIEND_ADD_TAP', detail: 'source=nearby already=n');
     // Bundle 115: every stage of the tap chain is loud. Anything that throws
     // before this print line-by-line scaffold runs means the tap never left
     // the sheet — it lands in the console as PAIR_TAP lines either way.
@@ -343,6 +361,8 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
   /// one id line WITH a copy affordance (the icon the old sheet lost), one
   /// transport chip, one primary action, one cancel. No paragraphs.
   Future<void> _pairSheet(MeshPeer peer) async {
+    if (await _openIfFriend(peer.nodeId)) return; // Bundle 194
+    if (!mounted) return;
     final scheme = Theme.of(context).colorScheme;
     final tail = peer.nodeId.length > 8
         ? peer.nodeId.substring(peer.nodeId.length - 8)

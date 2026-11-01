@@ -13,6 +13,8 @@ import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/core/notifications/notification_action.dart';
+import 'package:locallink/core/models/device.dart';
+import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
@@ -84,6 +86,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       onThemeModeChanged: _setThemeMode,
     );
     _pairingDoneSub = _deps.pairing.paired.listen(_showPairComplete);
+    // Bundle 194: after an Add the chat opens (instead of a toast).
+    FriendChatOpener.open = _openFriendChat;
+    FriendChatOpener.toast = _showAppSnackBar;
     // Bundle 126: pairing diagnostics are demoted to logcat-only (the
     // service still prints every PAIR_DIAG line). While bring-up was broken,
     // toasting every stage line was worth it; now each packet produced 1–3
@@ -109,7 +114,49 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   }
 
   void _showPairComplete(String displayName) {
-    _showAppSnackBar('$displayName added');
+    // Bundle 194: no "X added" toast - the chat opens instead
+    // (FriendHelloService; the toast stays as the fallback there).
+    AppLogger.info('PAIR_COMPLETE', detail: 'toast=no');
+  }
+
+  /// Bundle 194: open the chat with [deviceId] (same chat screen as a
+  /// message notification tap). Never during a call.
+  Future<bool> _openFriendChat(String deviceId, String displayName) async {
+    if (!mounted || deviceId.trim().isEmpty) return false;
+    final navigator = _navigatorKey.currentState;
+    if (!_ready || !_servicesReady || !_configured || navigator == null) {
+      return false;
+    }
+    final policy = _deps.notifications.policy;
+    if (policy.shouldBeSilent) return false; // ringing / live call
+    if (policy.activeDirectConversationId == deviceId) return true;
+    if (deviceId == _deps.store.deviceId) return false;
+    Device? device;
+    try {
+      device = await _deps.store.deviceById(deviceId);
+    } catch (_) {}
+    device ??= Device(
+      id: deviceId,
+      name: displayName.trim().isEmpty ? 'LinkUp user' : displayName.trim(),
+      platform: 'android',
+      createdAt: '',
+      lastSeenAt: '',
+    );
+    if (!mounted) return false;
+    navigator.popUntil((route) => route.isFirst);
+    unawaited(navigator.push(
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          controller: ChatBloc(
+            repository: _deps.messagingRepository,
+            device: device!,
+          ),
+          files: _deps.files,
+          notifications: _deps.notifications,
+        ),
+      ),
+    ));
+    return true;
   }
 
   Future<void> _setThemeMode(ThemeMode mode) async {
@@ -130,7 +177,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v3 · 3.0.21 · bundles 104-190 (2026-11-02)');
+        detail: 'v3 · 3.0.28 · bundles 104-195c (2026-11-02)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -494,6 +541,10 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   @override
   void dispose() {
     _pairingDoneSub?.cancel();
+    if (FriendChatOpener.open == _openFriendChat) {
+      FriendChatOpener.open = null;
+      FriendChatOpener.toast = null;
+    }
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_callSub?.cancel());
     unawaited(_callScreenRequestSub?.cancel());

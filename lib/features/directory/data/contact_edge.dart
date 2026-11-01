@@ -79,4 +79,14 @@ class ContactEdge {
 
   /// Encode the full gossip message (all stable fields as strings).
   String describe() => jsonEncode(toMap());
+
+  /// Bundle 195b: "I got your friend link" from the person who was added
+  /// ([ackFromUserId]) back to the one who added ([ackToUserId]).
+  static String ackCanonical({
+    required String ackFromUserId,
+    required String ackFromDeviceId,
+    required String ackToUserId,
+    required int edgeTs,
+  }) =>
+      'contact-edge-ack|v1|$ackFromUserId|$ackFromDeviceId|$ackToUserId|$edgeTs';
 }

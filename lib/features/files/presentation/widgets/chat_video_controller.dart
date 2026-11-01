@@ -4,7 +4,61 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:video_player/video_player.dart';
+
+/// Bundle 193 (logs only): one line when a video is ready, one when it stops
+/// (end / pause / error) — never per frame. Shows if the player sees the full
+/// length but stops early (e.g. after 1 s).
+///   VIDEO_PLAY_READY duration_ms=<n> size=<bytes> w=<n> h=<n>
+///   VIDEO_PLAY_STOP reason=end|paused|error pos_ms=<n> duration_ms=<n> size=<bytes>
+///   VIDEO_PLAY_ERROR pos_ms=<n> duration_ms=<n> size=<bytes> error=<text>
+class VideoPlayLog {
+  VideoPlayLog(this.size);
+
+  final int size;
+  bool _ready = false;
+  bool _wasPlaying = false;
+  bool _errorLogged = false;
+
+  /// Returns (event, detail) pairs to log for this state change.
+  List<(String, String)> update({
+    required bool initialized,
+    required bool playing,
+    required bool completed,
+    required bool hasError,
+    required Duration position,
+    required Duration duration,
+    double width = 0,
+    double height = 0,
+    String? error,
+  }) {
+    final out = <(String, String)>[];
+    final pos = position.inMilliseconds;
+    final dur = duration.inMilliseconds;
+    if (initialized && !_ready) {
+      _ready = true;
+      out.add(('VIDEO_PLAY_READY',
+          'duration_ms=$dur size=$size w=${width.round()} h=${height.round()}'));
+    }
+    if (hasError && !_errorLogged) {
+      _errorLogged = true;
+      final text = (error ?? '-').replaceAll(RegExp(r'\s+'), ' ');
+      out.add(('VIDEO_PLAY_ERROR',
+          'pos_ms=$pos duration_ms=$dur size=$size '
+              'error=${text.length > 120 ? text.substring(0, 120) : text}'));
+    }
+    if (_wasPlaying && !playing) {
+      final reason = hasError
+          ? 'error'
+          : (completed || (dur > 0 && pos >= dur) ? 'end' : 'paused');
+      out.add(('VIDEO_PLAY_STOP',
+          'reason=$reason pos_ms=$pos duration_ms=$dur size=$size'));
+    }
+    _wasPlaying = playing;
+    return out;
+  }
+}
 
 /// Bundle 145: snapshot of an inline chat video.
 @immutable
@@ -90,11 +144,47 @@ ChatVideoController defaultChatVideoControllerFactory(String path) =>
 class VideoPlayerChatController extends ChangeNotifier
     implements ChatVideoController {
   VideoPlayerChatController(String path)
-      : _c = VideoPlayerController.file(File(path)) {
+      : _c = VideoPlayerController.file(File(path)),
+        _playLog = VideoPlayLog(_sizeOf(path)) {
     _c.addListener(notifyListeners);
+    _c.addListener(_logPlay);
   }
 
   final VideoPlayerController _c;
+  final VideoPlayLog _playLog;
+
+  static int _sizeOf(String path) {
+    try {
+      return File(path).lengthSync();
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  // Bundle 193 (logs only): ready / stop lines; never changes playback.
+  void _logPlay() {
+    try {
+      final v = _c.value;
+      final lines = _playLog.update(
+        initialized: v.isInitialized,
+        playing: v.isPlaying,
+        completed: v.isCompleted,
+        hasError: v.hasError,
+        position: v.position,
+        duration: v.duration,
+        width: v.size.width,
+        height: v.size.height,
+        error: v.errorDescription,
+      );
+      for (final (event, detail) in lines) {
+        if (event == 'VIDEO_PLAY_ERROR') {
+          AppLogger.warning(event, detail: detail);
+        } else {
+          AppLogger.info(event, detail: detail);
+        }
+      }
+    } catch (_) {}
+  }
   bool _muted = false;
   bool _closed = false;
   // Bundle 174: the real time, asked 4x a second while playing (some phones
@@ -188,6 +278,7 @@ class VideoPlayerChatController extends ChangeNotifier
     _closed = true;
     _stopPoll();
     _c.removeListener(notifyListeners);
+    _c.removeListener(_logPlay);
     await _c.dispose();
     super.dispose();
   }

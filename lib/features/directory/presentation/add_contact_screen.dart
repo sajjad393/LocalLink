@@ -14,6 +14,9 @@ import 'package:locallink/features/directory/presentation/my_qr_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
+import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
+import 'package:locallink/features/directory/data/directory_search_merge.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/directory/presentation/nearby_people_section.dart';
 import 'package:locallink/features/directory/presentation/profile_view_rules.dart';
 
@@ -56,6 +59,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
   Timer? _debounce;
   List<DirectoryProfile> _results = const [];
   bool _noMatch = false;
+  bool _lastSearchByName = false; // Bundle 195a: the hint is for names only
   /// Token of the request whose results may land; stale responses die here.
   int _searchSeq = 0;
 
@@ -83,6 +87,20 @@ class _AddContactScreenState extends State<AddContactScreen> {
   /// Bundle 173: Add straight from the search card (same name box as the
   /// profile page).
   Future<void> _addFromResults(DirectoryProfile profile) async {
+    // Bundle 194: already my friend -> no add, no toast, open the chat.
+    final hello = FriendHelloService.instance;
+    if (hello != null &&
+        profile.deviceId.isNotEmpty &&
+        await hello.isFriend(profile.userId)) {
+      if (!mounted) return;
+      setState(() => _contactIds = {..._contactIds, profile.userId});
+      await hello.openExistingChat(
+          deviceId: profile.deviceId,
+          displayName: profile.displayName,
+          source: 'online');
+      return;
+    }
+    if (!mounted) return;
     final customName =
         await showSaveContactDialog(context, profile.displayName);
     if (customName == null || !mounted) return;
@@ -91,6 +109,19 @@ class _AddContactScreenState extends State<AddContactScreen> {
           .addContact(profile.userId, customName: customName.trim());
       if (!mounted) return;
       setState(() => _contactIds = {..._contactIds, profile.userId});
+      if (hello != null && profile.deviceId.isNotEmpty) {
+        // Bundle 194: the chat opens and one "Hello 👋" follows.
+        AppLogger.info('FRIEND_ADD_TAP', detail: 'source=online already=n');
+        unawaited(hello.addedByMe(FriendAddedByMe(
+          userId: profile.userId,
+          deviceId: profile.deviceId,
+          displayName: customName.trim().isNotEmpty
+              ? customName.trim()
+              : profile.displayName,
+          source: 'online',
+        )));
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Contact added')),
       );
@@ -147,6 +178,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
       setState(() {
         _results = state.profiles;
         _noMatch = state.profiles.isEmpty;
+        _lastSearchByName = !asPhone;
       });
     } else if (state is DirectoryError) {
       _showError(state.message);
@@ -298,6 +330,18 @@ class _AddContactScreenState extends State<AddContactScreen> {
               style: theme.textTheme.bodyMedium,
             ),
           ),
+        // Bundle 195a: the server could not be asked -> say how to find more.
+        if (_lastSearchByName &&
+            DirectorySearchInfo.showOfflineHint(noMatch: noMatch))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              DirectorySearchInfo.offlineHint,
+              key: const ValueKey('search_offline_hint'),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
         if (_hasNearby)
           NearbyPeopleSection(
             key: _nearbyKey,
@@ -410,11 +454,43 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       showSaveContactDialog(context, profile.displayName);
 
   Future<void> _addContact(BuildContext context) async {
+    // Bundle 194: already my friend -> no add, no toast, open the chat.
+    final hello = FriendHelloService.instance;
+    if (hello != null &&
+        profile.deviceId.isNotEmpty &&
+        await hello.isFriend(profile.userId)) {
+      if (!context.mounted) return;
+      await hello.openExistingChat(
+          deviceId: profile.deviceId,
+          displayName: profile.displayName,
+          source: 'profile');
+      return;
+    }
+    if (!context.mounted) return;
     final customName = await _contactNameDialog(context);
     if (customName == null || !context.mounted) return;
     try {
       await widget.repository
           .addContact(profile.userId, customName: customName.trim());
+      if (hello != null && profile.deviceId.isNotEmpty) {
+        // Bundle 194: the chat opens and one "Hello 👋" follows.
+        AppLogger.info('FRIEND_ADD_TAP', detail: 'source=profile already=n');
+        if (mounted) {
+          setState(() {
+            _isContact = true;
+            _isPrivate ??= false;
+          });
+        }
+        unawaited(hello.addedByMe(FriendAddedByMe(
+          userId: profile.userId,
+          deviceId: profile.deviceId,
+          displayName: customName.trim().isNotEmpty
+              ? customName.trim()
+              : profile.displayName,
+          source: 'profile',
+        )));
+        return;
+      }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Contact added')),

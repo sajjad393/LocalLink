@@ -3,18 +3,24 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
+import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 import 'package:locallink/features/directory/data/contact_edge.dart';
+import 'package:locallink/features/directory/data/directory_search_merge.dart';
+import 'package:locallink/features/directory/data/friend_link_resend.dart';
+import 'package:locallink/features/directory/data/name_question_policy.dart';
 import 'package:locallink/features/directory/data/own_profile_match.dart';
 import 'package:locallink/features/directory/data/shareable_profile_filter.dart';
 import 'package:locallink/features/directory/data/phone_number_normalizer.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
+import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 
 class DirectoryRepository implements DirectoryRepositoryContract {
   static const Duration _periodicSyncInterval = Duration(minutes: 2);
@@ -57,6 +63,16 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   // profile lands; gossip round-trips are seconds, not minutes.
   final List<Map<String, dynamic>> _pendingEdges = <Map<String, dynamic>>[];
 
+  /// Bundle 195b: friend links still waiting for "got it" (by user id).
+  Map<String, WaitingFriendLink>? _waiting;
+  bool _resendInFlight = false;
+  final Map<String, int> _ackSentAt = <String, int>{};
+
+  /// Bundle 195c: name questions to nearby phones that are not friends.
+  int _lastNameAskAt = 0;
+  final Map<String, int> _nameAnsweredAt = <String, int>{};
+  final Map<String, _NameAsk> _nameAsks = <String, _NameAsk>{};
+
   DirectoryRepository({
     required this.store,
     required this.api,
@@ -91,6 +107,33 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     }
     unawaited(sync());
     unawaited(syncServerContacts());
+    unawaited(_startFriendLinks());
+  }
+
+  /// Bundle 195b: parked links back from settings, then the waiting resends.
+  Future<void> _startFriendLinks() async {
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final saved = ParkedFriendLinks.decode(
+          await store.readSetting(ParkedFriendLinks.settingKey),
+          nowMs: now);
+      if (saved.isNotEmpty) {
+        final merged =
+            ParkedFriendLinks.prune([...saved, ..._pendingEdges], nowMs: now);
+        _pendingEdges
+          ..clear()
+          ..addAll(merged);
+        AppLogger.info('CONTACT_EDGE_PARKED',
+            detail: 'saved=${_pendingEdges.length} restored=y');
+        final authors = <String>{
+          for (final m in _pendingEdges) m['from_user_id']?.toString() ?? ''
+        }..remove('');
+        for (final id in authors) {
+          await _flushPendingEdgesFor(id);
+        }
+      }
+    } catch (_) {}
+    await resendFriendLinks();
   }
 
   @override
@@ -258,7 +301,16 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     }
 
     final type = message['type']?.toString() ?? '';
-    if (!type.startsWith('DIRECTORY_') && type != 'CONTACT_EDGE') return;
+    // Bundle 195c: who asked / answered (the link layer's sender, never a
+    // field the other phone wrote itself).
+    if (NameQuestionPolicy.isNameType(type)) {
+      message['_from'] = event['sender_id']?.toString() ?? '';
+    }
+    if (!type.startsWith('DIRECTORY_') &&
+        type != 'CONTACT_EDGE' &&
+        type != 'CONTACT_EDGE_ACK') {
+      return;
+    }
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final createdAt = int.tryParse(message['created_at']?.toString() ?? '') ?? now;
@@ -269,7 +321,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         type == 'DIRECTORY_PROFILE_REVOKED' ||
         type == 'DIRECTORY_PROFILE_QUERY' ||
         type == 'DIRECTORY_SYNC_REQUEST' ||
-        type == 'CONTACT_EDGE';
+        type == 'CONTACT_EDGE' ||
+        type == 'CONTACT_EDGE_ACK';
 
     if (expiresAt <= now ||
         createdAt > now + const Duration(minutes: 2).inMilliseconds) {
@@ -286,6 +339,15 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     switch (type) {
       case 'CONTACT_EDGE':
         await _handleContactEdge(message);
+        return;
+      case 'CONTACT_EDGE_ACK': // Bundle 195b
+        await _handleContactEdgeAck(message);
+        return;
+      case NameQuestionPolicy.questionType: // Bundle 195c
+        await _handleNameQuestion(message);
+        return;
+      case NameQuestionPolicy.answerType: // Bundle 195c
+        await _handleNameAnswer(message);
         return;
       case 'DIRECTORY_PROFILE':
         final map = message['profile'];
@@ -319,6 +381,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         final profile = DirectoryProfile.fromMap(Map<String, dynamic>.from(map));
         if (await _saveVerified(profile, allowDisabled: true)) {
           _updates.add(profile);
+          await _flushPendingEdgesFor(profile.userId); // Bundle 195b
         }
         return;
 
@@ -337,6 +400,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
                 : maxVersion;
             if (await _saveVerified(profile, allowDisabled: true)) {
               _updates.add(profile);
+              await _flushPendingEdgesFor(profile.userId); // Bundle 195b
             }
           }
         }
@@ -615,22 +679,17 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final q = query.trim();
     if (q.isEmpty) return const [];
 
-    final localRows = await store.searchDirectoryByName(q);
-    final local = <DirectoryProfile>[];
-    for (final row in localRows) {
-      final id = row['user_id']?.toString() ?? '';
-      if (row['discoverable_by_name']?.toString() == '0' ||
-          id == store.accountId ||
-          await store.isBlocked(id) ||
-          await _isMe(DirectoryProfile.fromMap(row))) {
-        continue;
-      }
-      local.add(DirectoryProfile.fromMap(row));
-    }
-    if (local.isNotEmpty) return local;
+    final local = await _savedNameMatches(q);
 
+    // Bundle 195a: online, the server is asked too (it used to be asked only
+    // when no saved profile matched, so a second "Safeer" was never shown).
+    List<DirectoryProfile>? server; // null = server not reached
     try {
-      final remoteProfiles = await api.directoryByName(q);
+      final call = api.directoryByName(q);
+      final remoteProfiles = local.isEmpty
+          ? await call
+          : await call.timeout(const Duration(seconds: 4));
+      final localIds = {for (final p in local) p.userId};
       final results = <DirectoryProfile>[];
       for (final remote in remoteProfiles) {
         if (remote.userId == store.accountId ||
@@ -639,17 +698,57 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         }
         final result = _fromServerProfile(remote);
         if (await _isMe(result)) continue;
-        await _saveServerProfile(result);
+        // A saved (signed) profile is kept as it is.
+        if (!localIds.contains(result.userId)) {
+          await _saveServerProfile(result);
+        }
         results.add(result);
       }
-      if (results.isNotEmpty) return results;
+      server = results;
     } catch (_) {}
+    DirectorySearchInfo.serverReached = server != null;
+
+    final merged = <DirectoryProfile>[];
+    for (final p in mergeSearchResults(local, server ?? const [])) {
+      if (!await _isMe(p)) merged.add(p); // never show my own account
+    }
+    if (merged.isNotEmpty) {
+      AppLogger.info('FRIEND_SEARCH',
+          detail: friendSearchLogLine(
+              queryLength: q.length,
+              saved: local.length,
+              server: server?.length,
+              friendsAsked: false,
+              shown: merged.length));
+      return merged;
+    }
 
     // A reachable peer sync may have profiles that were never on the server.
     await sync();
-    final refreshed = await store.searchDirectoryByName(q);
-    final results = <DirectoryProfile>[];
-    for (final row in refreshed) {
+    var results = await _savedNameMatches(q);
+    // Bundle 195c: still nothing -> ask nearby phones that are not friends
+    // (name question only, max 10 matching rows back).
+    var nearby = -1;
+    if (results.isEmpty) {
+      nearby = await _askNearbyByName(q);
+      if (nearby > 0) results = await _savedNameMatches(q);
+    }
+    AppLogger.info('FRIEND_SEARCH',
+        detail: friendSearchLogLine(
+            queryLength: q.length,
+            saved: local.length,
+            server: server?.length,
+            friendsAsked: true,
+            shown: results.length,
+            nearby: nearby));
+    return results;
+  }
+
+  /// Saved profiles matching [q] (hidden / blocked / self removed).
+  Future<List<DirectoryProfile>> _savedNameMatches(String q) async {
+    final rows = await store.searchDirectoryByName(q);
+    final out = <DirectoryProfile>[];
+    for (final row in rows) {
       final id = row['user_id']?.toString() ?? '';
       if (row['discoverable_by_name']?.toString() == '0' ||
           id == store.accountId ||
@@ -657,9 +756,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
           await _isMe(DirectoryProfile.fromMap(row))) {
         continue;
       }
-      results.add(DirectoryProfile.fromMap(row));
+      out.add(DirectoryProfile.fromMap(row));
     }
-    return results;
+    return out;
   }
 
   @override
@@ -849,6 +948,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       _syncInFlight = false;
     }
     unawaited(syncServerContacts());
+    // Bundle 195b: a friend came near / the 2-min cycle: send waiting links.
+    unawaited(resendFriendLinks());
   }
 
   @override
@@ -943,6 +1044,12 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   /// server is unreachable. Gossip hops/ttl/expiry/replay-dedupe match the
   /// directory sync envelopes; the signature lets relays forward freely while
   /// only the addressee applies (and only after verifying it).
+  static String _tail6(String id) {
+    final t = id.trim();
+    if (t.isEmpty) return '-';
+    return t.length <= 6 ? t : t.substring(t.length - 6);
+  }
+
   Future<void> publishContactEdge(String op, String toUserId) async {
     try {
       final fromUserId = store.accountId ?? '';
@@ -957,37 +1064,598 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       );
       if (!edge.isValid || toUserId == fromUserId) return;
       await store.saveContactEdgeState(toUserId, op, edgedTs);
+      // Bundle 195b: an add is sent again until their phone says "got it".
+      await _noteWaitingLink(op, toUserId, edgedTs);
       if (!transport.isStarted) return; // server sync is the fallback path
-      final signature = await crypto.signPayload(edge.canonical());
-      final signingKey = await crypto.signingPublicKey();
-      await transport.broadcast({
-        ..._gossipEnvelope(
-          type: 'CONTACT_EDGE',
-          syncId: 'contact-edge-${fromDeviceId.isEmpty ? 'self' : fromDeviceId}-${edge.edgeTs}',
-          originId: store.deviceId,
-          originUserId: store.accountId,
-        ),
-        ...edge.toMap(),
-        'edge_sig': signature,
-        'edge_signing_key': signingKey,
-      });
-      await transport.flushQueue();
+      await _broadcastEdge(edge, tryNo: 1, friends: await _connectedFriendCount());
+      if (op == ContactEdge.opAdd) await _markTried(toUserId, edgedTs);
     } catch (e) {
       AppLogger.warning('CONTACT_EDGE_PUBLISH_FAILED', detail: e.toString());
     }
   }
 
-  Future<void> _handleContactEdge(Map<String, dynamic> message) async {
+  /// Bundle 195b: one signed friend link, with my signed profile inside so
+  /// the other phone can check it even if it never saw my profile.
+  /// Each try has its own sync id (phones in between drop exact copies).
+  Future<void> _broadcastEdge(ContactEdge edge,
+      {required int tryNo, required int friends}) async {
+    final signature = await crypto.signPayload(edge.canonical());
+    final signingKey = await crypto.signingPublicKey();
+    Map<String, dynamic>? own;
+    try {
+      own = (await _buildOwnProfile())?.toMap();
+    } catch (_) {}
+    var onServer = false;
+    try {
+      onServer =
+          (await store.serverConfirmedContactIds()).contains(edge.toUserId);
+    } catch (_) {}
+    AppLogger.info('CONTACT_EDGE_SENT', // Bundle 195a / 195b
+        detail: 'to=${_tail6(edge.toUserId)} op=${edge.op} try=$tryNo '
+            'friends=${friends < 0 ? '?' : friends} '
+            'server=${onServer ? 'y' : 'n'} profile=${own != null ? 'y' : 'n'}');
+    final device = edge.fromDeviceId.isEmpty ? 'self' : edge.fromDeviceId;
+    final syncId =
+        'contact-edge-$device-${edge.edgeTs}${tryNo > 1 ? '-r$tryNo' : ''}';
+    // My own copy coming back through friends is not handled again.
+    await _markOwnSent(syncId);
+    await transport.broadcast({
+      ..._gossipEnvelope(
+        type: 'CONTACT_EDGE',
+        syncId: syncId,
+        originId: store.deviceId,
+        originUserId: store.accountId,
+      ),
+      ...edge.toMap(),
+      'edge_sig': signature,
+      'edge_signing_key': signingKey,
+      if (own != null) 'author_profile': own,
+    });
+    await transport.flushQueue();
+    // Bundle 195c: the same link, locked for them, through ANY phone.
+    if (edge.op == ContactEdge.opAdd && own != null) {
+      await _sendLockedCopy(
+        type: 'CONTACT_EDGE',
+        toUserId: edge.toUserId,
+        syncId: '$syncId-d',
+        fields: {
+          ...edge.toMap(),
+          'edge_sig': signature,
+          'edge_signing_key': signingKey,
+          'author_profile': own,
+        },
+        tryNo: tryNo,
+      );
+    }
+  }
+
+  /// Bundle 195c: one copy locked with their profile key, sent to their
+  /// phone (any phone may carry it, only they can open it; it waits in the
+  /// queue when there is no path yet). Lives 7 days, never passed on.
+  Future<void> _sendLockedCopy({
+    required String type,
+    required String toUserId,
+    required String syncId,
+    required Map<String, dynamic> fields,
+    required int tryNo,
+  }) async {
+    final sealing = transport;
+    if (sealing is! SealingPeerTransport) return;
+    try {
+      final row = await store.directoryProfile(toUserId);
+      final device = row?['device_id']?.toString() ?? '';
+      final key = row?['identity_public_key']?.toString() ?? '';
+      if (device.isEmpty || key.isEmpty || device == store.deviceId) return;
+      await _markOwnSent(syncId);
+      final now = DateTime.now().toUtc();
+      final ok = await sealing.sendFriendLinkLocked(
+        recipientId: device,
+        theirIdentityKey: key,
+        payload: {
+          'type': type,
+          'sync_id': syncId,
+          'created_at': now.millisecondsSinceEpoch,
+          'expires_at': now
+              .add(const Duration(days: 7))
+              .millisecondsSinceEpoch,
+          'gossip_ttl': 1, // for this phone only, never passed on
+          'origin_id': store.deviceId,
+          'origin_user_id': store.accountId,
+          ...fields,
+        },
+      );
+      AppLogger.info('FRIEND_LINK_LOCKED_SENT',
+          detail: 'type=$type to=${_tail6(toUserId)} try=$tryNo '
+              'ok=${ok ? 'y' : 'n'}');
+    } catch (e) {
+      AppLogger.warning('FRIEND_LINK_LOCKED_SEND_FAILED', detail: '$e');
+    }
+  }
+
+  /// Bundle 195c: a link opened with a not-yet-friend key must come from
+  /// the phone named in it, and that key must be the one in their signed
+  /// profile. Links that came the normal way pass.
+  bool _lockedSenderMatches(
+      Map<String, dynamic> message, String fromUserId, String fromDeviceId) {
+    final opened =
+        message[SealingPeerTransport.openedStrangerKeyField]?.toString();
+    if (opened == null) return true;
+    if (opened.isEmpty) return false;
+    final sender = message['sender_id']?.toString() ?? '';
+    if (sender.isEmpty || sender != fromDeviceId) return false;
+    final embedded = message['author_profile'];
+    if (embedded is! Map) return false;
+    final idKey = embedded['identity_public_key']?.toString() ?? '';
+    final userId = embedded['user_id']?.toString() ?? '';
+    String norm(String v) => v.trim().replaceAll('=', '');
+    return userId == fromUserId && norm(idKey) == norm(opened);
+  }
+
+  /// Bundle 195c: trust a friend's phone (known devices + link roster), as
+  /// Nearby pairing does, so locked messages / calls work through others.
+  Future<void> _trustFriendDevice(String userId, String deviceId) async {
+    if (deviceId.isEmpty || deviceId == store.deviceId) return;
+    try {
+      if (await store.isBlocked(userId) || await store.isBlockedPeer(deviceId)) {
+        return;
+      }
+      final devices = await store.localDevices();
+      if (devices.any((d) => d.id == deviceId)) return; // known (or revoked)
+      final name =
+          (await store.directoryProfile(userId))?['display_name']?.toString() ??
+              '';
+      final now = DateTime.now().toUtc().toIso8601String();
+      await store.saveDevice(Device(
+        id: deviceId,
+        name: name.isEmpty ? 'LinkUp user' : name,
+        platform: 'android',
+        createdAt: now,
+        lastSeenAt: now,
+      ));
+      final ids = (await store.localDevices())
+          .where((d) => d.revokedAt.isEmpty)
+          .map((d) => d.id)
+          .toList();
+      await transport.updateKnownPeers(ids);
+      AppLogger.info('FRIEND_DEVICE_TRUSTED',
+          detail: 'device=${_tail6(deviceId)} peers=${ids.length}');
+    } catch (e) {
+      AppLogger.warning('FRIEND_DEVICE_TRUST_FAILED', detail: '$e');
+    }
+  }
+
+  Future<void> _markOwnSent(String syncId) async {
+    try {
+      await store.markDirectorySyncSeen(syncId);
+    } catch (_) {}
+  }
+
+  /// Bundle 195b/195c: phones linked right now (-1 = not known). Since
+  /// 195c any linked phone counts: the locked copy can go through it.
+  Future<int> _connectedFriendCount() async {
+    try {
+      final t = await transport.topology().timeout(const Duration(seconds: 3));
+      final peers = t['peers'];
+      if (peers is! List) return -1;
+      return peers.whereType<Map>().length;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  Future<Map<String, WaitingFriendLink>> _waitingLinks() async {
+    final cached = _waiting;
+    if (cached != null) return cached;
+    var loaded = <String, WaitingFriendLink>{};
+    try {
+      loaded = WaitingFriendLink.decodeAll(
+          await store.readSetting(FriendLinkResendPolicy.settingKey));
+    } catch (_) {}
+    return _waiting ??= loaded;
+  }
+
+  /// Tests only: read the waiting list from settings again.
+  void debugForgetWaitingCache() => _waiting = null;
+
+  Future<void> _saveWaiting() async {
+    final waiting = _waiting;
+    if (waiting == null) return;
+    try {
+      await store.writeSetting(FriendLinkResendPolicy.settingKey,
+          WaitingFriendLink.encodeAll(waiting));
+    } catch (_) {}
+  }
+
+  Future<void> _noteWaitingLink(String op, String userId, int edgeTs) async {
+    final waiting = await _waitingLinks();
+    if (op == ContactEdge.opAdd) {
+      waiting[userId] = WaitingFriendLink(
+          userId: userId,
+          edgeTs: edgeTs,
+          addedAtMs: DateTime.now().millisecondsSinceEpoch);
+    } else {
+      final old = waiting.remove(userId);
+      if (old == null) return;
+      AppLogger.info('FRIEND_LINK_CONFIRMED',
+          detail: 'to=${_tail6(userId)} by=removed tries=${old.tries}');
+    }
+    await _saveWaiting();
+  }
+
+  Future<void> _markTried(String userId, int edgeTs) async {
+    final waiting = await _waitingLinks();
+    final w = waiting[userId];
+    if (w == null || w.edgeTs != edgeTs) return;
+    waiting[userId] = w.tried(DateTime.now().millisecondsSinceEpoch);
+    await _saveWaiting();
+  }
+
+  /// Bundle 195b: did my "Hello 👋" (sent after this add) reach them?
+  Future<bool> _helloDelivered(WaitingFriendLink w) async {
+    try {
+      final row = await store.directoryProfile(w.userId);
+      final device = row?['device_id']?.toString() ?? '';
+      if (device.isEmpty) return false;
+      return await store.sentMessageDeliveredSince(
+          device, kFriendHelloText, w.addedAtMs);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Bundle 195b: send waiting friend links again (a friend came near, the
+  /// 2-min cycle, app start). Stops on "got it", delivered Hello, remove,
+  /// block, 7 days or 50 tries. Never more than 1 send per 2 min per person.
+  Future<void> resendFriendLinks() async {
+    if (!_started || !transport.isStarted || _resendInFlight) return;
+    _resendInFlight = true;
+    try {
+      final waiting = await _waitingLinks();
+      if (waiting.isEmpty) return;
+      final me = store.accountId ?? '';
+      final myDevice = store.deviceId ?? '';
+      if (me.isEmpty) return;
+      final friends = await _connectedFriendCount();
+      var changed = false;
+      for (final w in waiting.values.toList()) {
+        final step = FriendLinkResendPolicy.step(
+          w,
+          nowMs: DateTime.now().millisecondsSinceEpoch,
+          isFriend: await store.isContact(w.userId),
+          isBlocked: await store.isBlocked(w.userId),
+          helloDelivered: await _helloDelivered(w),
+          friendsNearby: friends,
+        );
+        // Changed while we looked (got it / added again): leave it.
+        if (waiting[w.userId]?.edgeTs != w.edgeTs) continue;
+        if (step == FriendLinkStep.wait) continue;
+        if (step == FriendLinkStep.send) {
+          await _broadcastEdge(
+              ContactEdge(
+                  op: ContactEdge.opAdd,
+                  fromUserId: me,
+                  fromDeviceId: myDevice,
+                  toUserId: w.userId,
+                  edgeTs: w.edgeTs),
+              tryNo: w.tries + 1,
+              friends: friends);
+          final now = waiting[w.userId];
+          if (now != null && now.edgeTs == w.edgeTs) {
+            waiting[w.userId] =
+                now.tried(DateTime.now().millisecondsSinceEpoch);
+            changed = true;
+          }
+          continue;
+        }
+        waiting.remove(w.userId);
+        changed = true;
+        AppLogger.info('FRIEND_LINK_CONFIRMED',
+            detail: 'to=${_tail6(w.userId)} '
+                'by=${FriendLinkResendPolicy.stopWord(step)} tries=${w.tries}');
+      }
+      if (changed) await _saveWaiting();
+    } catch (e) {
+      AppLogger.warning('FRIEND_LINK_RESEND_FAILED', detail: e.toString());
+    } finally {
+      _resendInFlight = false;
+    }
+  }
+
+  /// Bundle 195b: signing key of [userId]; when this phone does not know it
+  /// yet, the signed profile sent inside the link/ack is checked and saved.
+  Future<String> _signingKeyFor(String userId, Object? embedded) async {
+    var key = '';
+    try {
+      key = (await store.directoryProfile(userId))?['signing_public_key']
+              ?.toString() ??
+          '';
+    } catch (_) {}
+    if (key.isNotEmpty || embedded is! Map) return key;
+    try {
+      final profile =
+          DirectoryProfile.fromMap(Map<String, dynamic>.from(embedded));
+      if (profile.userId != userId) return '';
+      if (await _saveVerified(profile, allowDisabled: true)) {
+        if (!_updates.isClosed) _updates.add(profile);
+        AppLogger.info('CONTACT_EDGE_PROFILE_USED',
+            detail: 'from=${_tail6(userId)}');
+        return profile.signingPublicKey;
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  /// Bundle 195b: tell the phone that added me "I got your friend link".
+  /// Max 1 per 2 min per link (their resends may arrive many times).
+  Future<void> _sendEdgeAck(ContactEdge edge) async {
+    try {
+      if (!transport.isStarted) return;
+      final me = store.accountId ?? '';
+      final myDevice = store.deviceId ?? '';
+      if (me.isEmpty) return;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final k = '${edge.fromUserId}|${edge.edgeTs}';
+      final last = _ackSentAt[k];
+      if (last != null && now - last < FriendLinkResendPolicy.minGapMs) return;
+      if (_ackSentAt.length > 200) _ackSentAt.clear();
+      _ackSentAt[k] = now;
+      final signature = await crypto.signPayload(ContactEdge.ackCanonical(
+          ackFromUserId: me,
+          ackFromDeviceId: myDevice,
+          ackToUserId: edge.fromUserId,
+          edgeTs: edge.edgeTs));
+      Map<String, dynamic>? own;
+      try {
+        own = (await _buildOwnProfile())?.toMap();
+      } catch (_) {}
+      final syncId = 'contact-edge-ack-${myDevice.isEmpty ? 'self' : myDevice}-'
+          '${edge.edgeTs}-$now';
+      await _markOwnSent(syncId);
+      await transport.broadcast({
+        ..._gossipEnvelope(
+          type: 'CONTACT_EDGE_ACK',
+          syncId: syncId,
+          originId: store.deviceId,
+          originUserId: me,
+        ),
+        'from_user_id': me,
+        'from_device_id': myDevice,
+        'to_user_id': edge.fromUserId,
+        'edge_ts': edge.edgeTs,
+        'ack_sig': signature,
+        if (own != null) 'author_profile': own,
+      });
+      AppLogger.info('CONTACT_EDGE_ACK_SENT',
+          detail: 'to=${_tail6(edge.fromUserId)}');
+      await transport.flushQueue();
+      // Bundle 195c: and locked to their phone, through any phone.
+      if (own != null) {
+        await _sendLockedCopy(
+          type: 'CONTACT_EDGE_ACK',
+          toUserId: edge.fromUserId,
+          syncId: '$syncId-d',
+          fields: {
+            'from_user_id': me,
+            'from_device_id': myDevice,
+            'to_user_id': edge.fromUserId,
+            'edge_ts': edge.edgeTs,
+            'ack_sig': signature,
+            'author_profile': own,
+          },
+          tryNo: 1,
+        );
+      }
+    } catch (e) {
+      AppLogger.warning('CONTACT_EDGE_ACK_FAILED', detail: e.toString());
+    }
+  }
+
+  /// Bundle 195b: "got it" from the person I added -> stop sending.
+  Future<void> _handleContactEdgeAck(Map<String, dynamic> message) async {
+    final from = message['from_user_id']?.toString() ?? '';
+    final fromDevice = message['from_device_id']?.toString() ?? '';
+    final to = message['to_user_id']?.toString() ?? '';
+    final ts = int.tryParse(message['edge_ts']?.toString() ?? '') ?? 0;
+    if (from.isEmpty || to.isEmpty || from == to || ts <= 0) return;
+    await _forwardGossip(message);
+    final me = store.accountId ?? '';
+    if (me.isEmpty || to != me) return; // only passed on
+    final waiting = await _waitingLinks();
+    final w = waiting[from];
+    if (w == null || w.edgeTs != ts) return; // nothing waiting for this one
+    if (!_lockedSenderMatches(message, from, fromDevice)) return; // 195c
+    final key = await _signingKeyFor(from, message['author_profile']);
+    final signature = message['ack_sig']?.toString() ?? '';
+    if (key.isEmpty || signature.isEmpty) {
+      AppLogger.warning('CONTACT_EDGE_ACK_UNCHECKED', detail: 'no key yet');
+      return;
+    }
+    final ok = await crypto.verifyPayloadSignature(
+      canonicalPayload: ContactEdge.ackCanonical(
+          ackFromUserId: from,
+          ackFromDeviceId: fromDevice,
+          ackToUserId: to,
+          edgeTs: ts),
+      signature: signature,
+      signingPublicKey: key,
+    );
+    if (!ok) {
+      AppLogger.warning('CONTACT_EDGE_ACK_BAD_SIGNATURE', detail: 'dropped');
+      return;
+    }
+    if (waiting[from]?.edgeTs != ts) return;
+    waiting.remove(from);
+    await _saveWaiting();
+    AppLogger.info('FRIEND_LINK_CONFIRMED',
+        detail: 'to=${_tail6(from)} by=ack tries=${w.tries}');
+  }
+
+  /// Bundle 195c: ask nearby phones that are not friends "anyone know
+  /// [q]?". Returns how many new profiles came back (-1 = not asked).
+  Future<int> _askNearbyByName(String q) async {
+    final query = NameQuestionPolicy.cleanQuery(q);
+    if (query == null || !transport.isStarted) return -1;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastNameAskAt < NameQuestionPolicy.gapMs) return -1;
+    _lastNameAskAt = now;
+    var peers = const <String>[];
+    try {
+      peers = NameQuestionPolicy.nearbyNonFriends(
+          await transport.topology().timeout(const Duration(seconds: 3)));
+    } catch (_) {}
+    AppLogger.info('FRIEND_SEARCH_ASK',
+        detail: 'len=${query.length} peers=${peers.length} kind=nearby');
+    if (peers.isEmpty) return 0;
+    final requestId = 'nameq-${DateTime.now().microsecondsSinceEpoch}';
+    final ask = _NameAsk(peers.toSet());
+    _nameAsks[requestId] = ask;
+    try {
+      for (final peer in peers) {
+        try {
+          await transport.send(recipientId: peer, payload: {
+            'type': NameQuestionPolicy.questionType,
+            'request_id': requestId,
+            'query': query,
+            'origin_user_id': store.accountId ?? '',
+            'created_at': now,
+            'expires_at': now + 30 * 1000,
+          });
+        } catch (_) {
+          ask.waiting.remove(peer); // that phone could not be reached
+        }
+      }
+      if (ask.waiting.isNotEmpty) {
+        await ask.done.future.timeout(
+            const Duration(milliseconds: NameQuestionPolicy.waitMs),
+            onTimeout: () {});
+      }
+      return ask.saved;
+    } finally {
+      _nameAsks.remove(requestId);
+    }
+  }
+
+  /// Bundle 195c: answer a nearby phone's name question with ONLY matching
+  /// profiles (max 10): no private contacts, no hidden people, no private
+  /// phone numbers, no blocked people. Max 1 answer per 10 s per phone.
+  Future<void> _handleNameQuestion(Map<String, dynamic> message) async {
+    final from = message['_from']?.toString() ?? '';
+    final query = NameQuestionPolicy.cleanQuery(message['query']);
+    final asker = message['origin_user_id']?.toString() ?? '';
+    if (from.isEmpty || query == null || from == store.deviceId) return;
+    if (!transport.isStarted) return;
+    if (await store.isBlockedPeer(from) ||
+        (asker.isNotEmpty && await store.isBlocked(asker))) {
+      return;
+    }
+    if (!NameQuestionPolicy.allow(
+        _nameAnsweredAt, from, DateTime.now().millisecondsSinceEpoch)) {
+      return;
+    }
+    final privateIds = await store.privateContactIds();
+    final rows = <Map<String, dynamic>>[];
+    for (final row in await store.searchDirectoryByName(query)) {
+      if (rows.length >= NameQuestionPolicy.maxRows) break;
+      if (!NameQuestionPolicy.rowShareable(row,
+          privateIds: privateIds, askerUserId: asker)) {
+        continue;
+      }
+      final profile = DirectoryProfile.fromMap(row);
+      if (!profile.isSigned || await store.isBlocked(profile.userId)) continue;
+      rows.add(_redactForGossip(profile).toMap());
+    }
+    final kind = asker.isNotEmpty && await store.isContact(asker)
+        ? 'friend'
+        : 'nearby';
+    AppLogger.info('FRIEND_SEARCH_ANSWER',
+        detail: 'to=${_tail6(from)} rows=${rows.length} kind=$kind');
+    if (rows.isEmpty) return; // nothing to say
+    final now = DateTime.now().millisecondsSinceEpoch;
+    try {
+      await transport.send(recipientId: from, payload: {
+        'type': NameQuestionPolicy.answerType,
+        'request_id': message['request_id']?.toString() ?? '',
+        'profiles': rows,
+        'created_at': now,
+        'expires_at': now + 30 * 1000,
+      });
+    } catch (e) {
+      // the asking phone left (name answers go one step only, never queued)
+      AppLogger.warning('FRIEND_SEARCH_ANSWER_FAILED', detail: '$e');
+    }
+  }
+
+  /// Bundle 195c: an answer to MY question, from a phone I asked.
+  Future<void> _handleNameAnswer(Map<String, dynamic> message) async {
+    final from = message['_from']?.toString() ?? '';
+    final ask = _nameAsks[message['request_id']?.toString() ?? ''];
+    if (ask == null || from.isEmpty || !ask.waiting.remove(from)) return;
+    final list = message['profiles'];
+    if (list is List) {
+      for (final row in list.whereType<Map>().take(NameQuestionPolicy.maxRows)) {
+        final profile = DirectoryProfile.fromMap(Map<String, dynamic>.from(row));
+        if (!profile.discoverableByName) continue;
+        if (await _saveVerified(profile)) {
+          ask.saved++;
+          if (!_updates.isClosed) _updates.add(profile);
+          await _flushPendingEdgesFor(profile.userId);
+        }
+      }
+    }
+    if (ask.waiting.isEmpty && !ask.done.isCompleted) ask.done.complete();
+  }
+
+  /// Bundle 195b: keep a link that came before its sender's profile (saved,
+  /// so an app restart does not lose it).
+  Future<void> _parkEdge(Map<String, dynamic> message) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final m = Map<String, dynamic>.from(message)..remove('author_profile');
+    m[ParkedFriendLinks.parkedAtField] ??= now;
+    _pendingEdges.add(m);
+    final kept = ParkedFriendLinks.prune(_pendingEdges, nowMs: now);
+    _pendingEdges
+      ..clear()
+      ..addAll(kept);
+    await _saveParked();
+    AppLogger.info('CONTACT_EDGE_PARKED', detail: 'saved=${_pendingEdges.length}');
+  }
+
+  Future<void> _saveParked() async {
+    try {
+      await store.writeSetting(ParkedFriendLinks.settingKey,
+          ParkedFriendLinks.encode(_pendingEdges));
+    } catch (_) {}
+  }
+
+  Future<void> _handleContactEdge(Map<String, dynamic> message,
+      {bool fromPark = false}) async {
     final edge = ContactEdge.fromWire(message);
     if (edge == null) return;
-    final expiresAt = int.tryParse(message['expires_at']?.toString() ?? '') ?? 0;
-    if (expiresAt > 0 && expiresAt <= DateTime.now().millisecondsSinceEpoch) return;
-    // Forward first so the envelope can reach its intended recipient over
-    // multi-hop links; the dedupe marker was already set above.
-    await _forwardGossip(message);
+    // Bundle 195b: a parked link is kept 7 days (not the 5-min gossip life)
+    // and was already passed on when it first came.
+    if (!fromPark) {
+      final expiresAt =
+          int.tryParse(message['expires_at']?.toString() ?? '') ?? 0;
+      if (expiresAt > 0 &&
+          expiresAt <= DateTime.now().millisecondsSinceEpoch) {
+        return;
+      }
+      // Forward first so the envelope can reach its intended recipient over
+      // multi-hop links; the dedupe marker was already set above.
+      await _forwardGossip(message);
+    }
 
     final me = store.accountId ?? '';
-    if (me.isEmpty || edge.toUserId != me) return; // not addressed to us
+    if (me.isEmpty || edge.toUserId != me) {
+      // Bundle 195a: this phone only passed it on (Bilal between two people).
+      final ttl = int.tryParse(message['gossip_ttl']?.toString() ?? '') ?? 0;
+      if (me.isNotEmpty && ttl > 1) {
+        AppLogger.info('CONTACT_EDGE_FORWARDED',
+            detail: 'from=${_tail6(edge.fromUserId)} to=${_tail6(edge.toUserId)} '
+                'ttl=${ttl - 1}');
+      }
+      return; // not addressed to us
+    }
     // Only the claimed AUTHOR may be trusted: source user must sign with the
     // directory signing key we already hold for them (profiles arrive via the
     // same gossip; fail secure when the key is unknown yet).
@@ -996,17 +1664,22 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       AppLogger.warning('CONTACT_EDGE_BLOCKED_SENDER', detail: 'ignored');
       return;
     }
-    Map<String, dynamic>? author;
-    try {
-      author = await store.directoryProfile(edge.fromUserId);
-    } catch (_) {}
-    final key = author?['signing_public_key']?.toString() ?? '';
+    // Bundle 195c: came locked from someone not yet a friend: the key that
+    // opened it, the phone that sent it and the signed profile inside must
+    // all be the same person.
+    if (!_lockedSenderMatches(message, edge.fromUserId, edge.fromDeviceId)) {
+      AppLogger.warning('CONTACT_EDGE_LOCKED_MISMATCH', detail: 'dropped');
+      return;
+    }
+    // Bundle 195b: the sender's signed profile may come inside the link.
+    final key =
+        await _signingKeyFor(edge.fromUserId, message['author_profile']);
     final signature = message['edge_sig']?.toString() ?? '';
     if (key.isEmpty || signature.isEmpty) {
       // Profile/gossip race: the edge legitimately arrived BEFORE the
       // author's directory profile. Park it and re-apply when that profile
       // arrives (see the DIRECTORY_PROFILE case).
-      if (_pendingEdges.length < 32) _pendingEdges.add(Map<String, dynamic>.from(message));
+      if (signature.isNotEmpty) await _parkEdge(message);
       AppLogger.warning('CONTACT_EDGE_DEFERRED', detail: 'waiting for author profile');
       return;
     }
@@ -1019,6 +1692,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       AppLogger.warning('CONTACT_EDGE_BAD_SIGNATURE', detail: 'dropped forged edge');
       return;
     }
+    // Bundle 195b: "got it" back to the sender (also for a copy we already
+    // applied - our first "got it" may have been lost on the way).
+    if (edge.op == ContactEdge.opAdd) unawaited(_sendEdgeAck(edge));
     // Last-writer-wins on the sender-claimed timestamp; stale relays can't
     // resurrect an edge that is newer than the local ledger entry.
     final localRaw = await store.contactEdgeState(edge.fromUserId);
@@ -1029,9 +1705,23 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       final fromDevice = edge.fromDeviceId;
       // Bundle 177 (8.1): new here = "X added you as a friend".
       final wasContact = await store.isContact(edge.fromUserId);
+      // Bundle 194: their Hello may arrive before this link and auto-add
+      // them; that must not hide "X added you".
+      final isNew = FriendHelloPolicy.treatAsNewFriend(
+          wasContact: wasContact,
+          nowMs: FriendAddMemory.now(),
+          autoAddedAtMs: FriendAddMemory.autoAddedAt(edge.fromUserId));
       if (fromDevice.isNotEmpty) {
         await store.addContact(edge.fromUserId, fromDevice);
-        if (!wasContact) {
+        await _trustFriendDevice(edge.fromUserId, fromDevice); // Bundle 195c
+        AppLogger.info('CONTACT_EDGE_APPLIED', // Bundle 195a
+            detail: 'from=${_tail6(edge.fromUserId)} new=${isNew ? 'y' : 'n'} '
+                'notice=${isNew ? 'y' : 'n'}');
+        if (isNew) {
+          FriendAddMemory.clearAutoAdded(edge.fromUserId);
+          // Noted now (the name lookup below can take seconds) so their
+          // Hello right after comes in silently.
+          FriendAddMemory.noteNotice(fromDevice);
           unawaited(_announceAdded(edge.fromUserId, fromDevice));
         }
       } else if (!await store.isContact(edge.fromUserId)) {
@@ -1054,8 +1744,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         m['from_user_id']?.toString() == userId).toList();
     if (pending.isEmpty) return;
     _pendingEdges.removeWhere((m) => pending.contains(m));
+    await _saveParked(); // Bundle 195b
     for (final message in pending) {
-      await _handleContactEdge(message);
+      await _handleContactEdge(message, fromPark: true);
     }
   }
 
@@ -1086,6 +1777,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       throw Exception('Contact has no active device');
     }
     await store.addContact(id, profile.deviceId, customName: customName);
+    // Bundle 195c: a friend's phone is trusted, so locked messages and calls
+    // can go through any phone (as with Nearby pairing).
+    await _trustFriendDevice(id, profile.deviceId);
     // Bundle 125: the People tab lives in an always-mounted IndexedStack and
     // only repaints on stream events — a pair-added contact used to stay
     // invisible ("No contacts yet") until a manual pull-to-refresh. Emit.
@@ -1208,4 +1902,12 @@ List<List<T>> directorySyncPages<T>(List<T> rows,
     for (var i = 0; i < rows.length; i += size)
       rows.sublist(i, i + size > rows.length ? rows.length : i + size),
   ];
+}
+
+/// Bundle 195c: one name question waiting for answers.
+class _NameAsk {
+  _NameAsk(this.waiting);
+  final Set<String> waiting;
+  final Completer<void> done = Completer<void>();
+  int saved = 0;
 }

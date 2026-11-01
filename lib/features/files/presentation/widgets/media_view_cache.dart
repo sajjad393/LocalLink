@@ -87,6 +87,8 @@ class MediaViewCache {
     // Size only matters for the budget; measured in the background.
     unawaited(File(path).length().then((b) {
       entry.bytes = b;
+      // Bundle 193 (logs only): size of the open copy that gets played.
+      AppLogger.info('MEDIA_VIEW_SIZE', detail: 'key=${_short(key)} bytes=$b');
     }, onError: (Object _) {}));
     _scheduleSweep();
     return path;

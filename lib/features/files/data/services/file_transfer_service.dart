@@ -261,16 +261,40 @@ class FileTransferService {
       final target =
           '${dir.path}/outbox-${_safeAttachmentId(fileId)}${_safeExtension(file.name, file.contentType, false)}';
       if (FileSystemEntity.typeSync(target) != FileSystemEntityType.notFound) {
+        // Bundle 193 (logs only): the copy already there vs the original.
+        final copyLen = _lengthOr(target);
+        final sourceLen = _lengthOr(file.path);
+        final same = copyLen == sourceLen;
+        final detail = 'file=$fileId copy=$copyLen source=$sourceLen '
+            'same=${same ? 'y' : 'n'}';
+        if (same) {
+          AppLogger.info('FILE_STAGED_REUSED', detail: detail);
+        } else {
+          AppLogger.warning('FILE_STAGED_REUSED', detail: detail);
+        }
         return target; // already staged (retry flush re-resolves it)
       }
       await source.copy(target);
+      // Bundle 193 (logs only): real sizes on disk, not just the picker's.
+      final copyLen = _lengthOr(target);
+      final sourceLen = _lengthOr(file.path);
       AppLogger.info('FILE_STAGED_OUTBOX',
-          detail: 'file=$fileId size=${file.size}');
+          detail: 'file=$fileId size=${file.size} source=$sourceLen '
+              'copy=$copyLen same=${copyLen == sourceLen ? 'y' : 'n'}');
       return target;
     } catch (error, stackTrace) {
       AppLogger.error('FILE_STAGE_OUTBOX_FAILED',
           error: error, stackTrace: stackTrace, detail: 'file=$fileId');
       return file.path; // fall back: keep today's behavior rather than fail
+    }
+  }
+
+  /// Bundle 193: file size for a log line, -1 when it can't be read.
+  static int _lengthOr(String path) {
+    try {
+      return File(path).lengthSync();
+    } catch (_) {
+      return -1;
     }
   }
 

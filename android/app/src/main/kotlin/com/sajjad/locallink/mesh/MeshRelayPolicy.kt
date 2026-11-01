@@ -47,6 +47,23 @@ object MeshRelayPolicy {
 
     fun isSealed(type: String?): Boolean = type == SEALED || type == SEALED_LIVE
 
+    /** Bundle 195c: "anyone know this name?" and its answer (max 10 matching
+     *  profiles). Plain, but ONE step only: straight between two linked
+     *  phones, never passed on. Also allowed on a relay link. */
+    const val NAME_QUESTION: String = "DIRECTORY_NAME_QUESTION"
+    const val NAME_ANSWER: String = "DIRECTORY_NAME_ANSWER"
+
+    fun isNameQuestion(type: String?): Boolean = type == NAME_QUESTION || type == NAME_ANSWER
+
+    /** Bundle 195c: a name packet that came straight from the phone on this
+     *  link and is for this phone (anything else is dropped). */
+    fun isOneStepName(type: String?, sourceId: String, destinationId: String, linkPeerId: String, selfId: String): Boolean =
+        isNameQuestion(type) && selfId.isNotBlank() && sourceId == linkPeerId && destinationId == selfId
+
+    /** Bundle 195c: may this phone send a name packet on a link to [linkPeerId]? */
+    fun canSendOneStepName(type: String?, sourceId: String, destinationId: String, linkPeerId: String, selfId: String): Boolean =
+        isNameQuestion(type) && selfId.isNotBlank() && sourceId == selfId && destinationId == linkPeerId
+
     /** Bundle 159: a locked voice frame. */
     fun isSealedVoice(type: String?): Boolean = type == SEALED_VOICE
 

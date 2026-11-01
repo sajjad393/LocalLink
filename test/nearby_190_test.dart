@@ -285,12 +285,12 @@ void main() {
     });
   });
 
-  group('Bundle 190 version', () {
+  group('Bundle 192 version', () {
     test('pubspec and stamp', () {
       expect(File('pubspec.yaml').readAsStringSync(),
-          contains('version: 3.0.21+92'));
+          contains('version: 3.0.28+99'));
       expect(File('lib/app/local_link_app.dart').readAsStringSync(),
-          contains("'v3 · 3.0.21 · bundles 104-190 (2026-11-02)'"));
+          contains("'v3 · 3.0.28 · bundles 104-195c (2026-11-02)'"));
     });
   });
 }

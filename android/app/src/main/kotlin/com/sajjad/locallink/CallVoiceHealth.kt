@@ -71,6 +71,10 @@ object CallVoiceHealth {
         val output: String = "-",
         val wifiLock: Boolean = false,
         val udp: Boolean = false,
+        // Bundle 192: hops of the last voice piece that came in, and the
+        // middle phone when the voice goes through one.
+        val hopsRx: Int = -1,
+        val via: String = "-",
     )
 
     fun playedPercent(s: Snapshot): Int {
@@ -117,6 +121,8 @@ object CallVoiceHealth {
         append(" screen=").append(when (n.screenOn) { true -> "on"; false -> "off"; null -> "-" })
         append(" out=").append(n.output)
         append(" wifi_lock=").append(if (n.wifiLock) 1 else 0)
+        append(" hops_rx=").append(if (n.hopsRx < 0) "-" else n.hopsRx.toString())
+        append(" via=").append(n.via)
     }
 }
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/models/attachment.dart';
@@ -1332,8 +1333,17 @@ class ReliableMessagingService {
           : '.bin';
       final view = await files.materializeForDisplay(protectedPath,
           extension: ext);
+      // Bundle 193 (logs only): sizes of the locked file and the open copy.
+      int len(String p) {
+        try {
+          return File(p).lengthSync();
+        } catch (_) {
+          return -1;
+        }
+      }
       AppLogger.info('DIRECT_FILE_SEND_FROM_PROTECTED',
-          detail: 'name=$originalName');
+          detail: 'name=$originalName locked=${len(protectedPath)} '
+              'open_copy=${len(view)}');
       return view;
     } catch (error, stackTrace) {
       AppLogger.error('DIRECT_FILE_PROTECTED_VIEW_FAILED',
@@ -2111,9 +2121,16 @@ class ReliableMessagingService {
           return;
         }
 
+        // Bundle 195a: a "Hello 👋" from someone who is not a friend yet
+        // (their friend link has not arrived): noted BEFORE the auto-add so
+        // the notification shows "X added you" instead of the message.
+        if (message.body.trim() == kFriendHelloText) {
+          await _noteHelloFromNew(message.senderId);
+        }
+
         // A peer that messages us belongs in the local contact list: add them
         // by directory user (once) so conversations start from a known person.
-        unawaited(_autoAddContact(message.senderId));
+        unawaited(_autoAddContact(message.senderId, incoming: true));
 
         // Mesh delivery just proved the peer is alive: refresh its binary
         // presence stamp (our clock, not theirs).
@@ -2560,13 +2577,28 @@ class ReliableMessagingService {
   /// they are not already present. Contacts are keyed by user id so a user
   /// with several devices never produces duplicate contacts. Peers that
   /// cannot be resolved through the directory are left untouched.
-  Future<void> _autoAddContact(String deviceId) async {
+  /// Bundle 195a: remember that this Hello came from someone new.
+  Future<void> _noteHelloFromNew(String deviceId) async {
+    try {
+      final profile = await store.directoryProfileByDeviceId(deviceId);
+      final userId = profile?['user_id']?.toString().trim() ?? '';
+      if (userId.isEmpty || await store.isContact(userId)) return;
+      FriendAddMemory.noteHelloFromNew(deviceId,
+          userId: userId,
+          name: profile?['display_name']?.toString() ?? '');
+    } catch (_) {}
+  }
+
+  Future<void> _autoAddContact(String deviceId, {bool incoming = false}) async {
     try {
       final profile = await store.directoryProfileByDeviceId(deviceId);
       final userId = profile?['user_id']?.toString().trim() ?? '';
       if (userId.isEmpty) return;
       if (await store.isContact(userId)) return;
       await store.addContact(userId, deviceId);
+      // Bundle 194: a friend's Hello that beat their friend link here must
+      // not hide the "X added you" notice that link brings.
+      if (incoming) FriendAddMemory.noteAutoAdded(userId);
       AppLogger.info(
         'CONTACT_AUTO_ADDED',
         detail: 'device=${_shortId(deviceId)}',

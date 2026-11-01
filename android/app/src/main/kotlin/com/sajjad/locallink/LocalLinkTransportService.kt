@@ -286,6 +286,10 @@ class LocalLinkTransportService : Service() {
     private val forwardedFileChunks = AtomicLong(0)
     // Bundle 167 (5.5): voice of someone else's call passes through here.
     private val voiceRelay = VoiceRelayTracker()
+    /** Bundle 192 (logs only): per-call counts for voice passing through. */
+    private val relayVoiceHealth = com.sajjad.locallink.mesh.RelayVoiceHealth()
+    private fun relayVoiceKey(p: MeshPacket): String = p.payload.optString("vs").ifBlank { p.payload.optString("call_id") }
+    private fun isRelayVoice(p: MeshPacket): Boolean = MeshRelayPolicy.isSealedVoice(p.type) || p.type == "call_media"
     private val relayFileBudget = MeshRelayFileBudget()
     private val fileSealPeers: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val fileSealTrial: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -773,7 +777,10 @@ class LocalLinkTransportService : Service() {
     // Bundle 142: JSONObject.wrap — Android's org.json writes raw Kotlin List/Map
     // values as their toString() text, so attachments arrived as a String and
     // every media direct_message crashed the receiver's Message.fromJson.
-    private fun sendTransportInternal(target:String,map:Map<String,Any?>):Boolean{if(!transportRunning||!validTransportId(target))return false;val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,JSONObject.wrap(v))};return sendRoutedPayload(target,p)}
+    private fun sendTransportInternal(target:String,map:Map<String,Any?>):Boolean{if(!transportRunning||!validTransportId(target))return false;val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,JSONObject.wrap(v))}
+        // Bundle 195c: the name question / answer only to a phone linked right now (one step, not routed).
+        if(MeshRelayPolicy.isNameQuestion(p.optString("type"))){val peer=activePeerConnection(target)?:return false;return sendToPeer(peer,p)}
+        return sendRoutedPayload(target,p)}
     private fun broadcastTransportInternal(map:Map<String,Any?>):Boolean{val self=transportDeviceId?:return false;var ok=false;for((id,peer) in transportPeers){if(peer.trust!=MeshRelayPolicy.TRUST_CONTACT)continue;val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,JSONObject.wrap(v))};p.put("sender_id",self).put("recipient_id",id);if(sendToPeer(peer,p))ok=true};return ok||transportPeers.isEmpty()}
     private fun sendFileTransportInternal(target:String,path:String,fileId:String,messageId:String,fileName:String,contentType:String,cb:(Boolean,String?)->Unit){
         if(!transportRunning){cb(false,"transport is not configured");return}
@@ -792,7 +799,13 @@ class LocalLinkTransportService : Service() {
                 outgoingReservations[fileId]=f.length()
             }
         }
-        Thread{try{val t=prepareOutgoingTransfer(target,f,fileId,messageId,fileName,contentType);persistOutgoingTransfer(t);sendMissingChunks(t,true);transportEvent("file_queued",mapOf("transfer_id" to t.transferId,"message_id" to messageId,"size" to t.size,"total_chunks" to t.totalChunks));cb(true,null)}catch(e:Exception){cb(false,e.message)}finally{outgoingReservations.remove(fileId)}}.start()
+        Thread{try{val before=outgoingTransfers[fileId];val busyBefore=outgoingSendInFlight.contains(fileId);val t=prepareOutgoingTransfer(target,f,fileId,messageId,fileName,contentType)
+            // Bundle 193 (logs only): which copy goes out, and did this continue or start again.
+            try{
+                if(before!=null&&before!==t)Log.w("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.sendReplaced(t.transferId,before.size,before.sha256,before.acknowledged.count{it},before.filePath,t.size,t.sha256,t.filePath))
+                Log.i("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.sendStart(t.transferId,fileId,t.size,t.sha256,t.totalChunks,t.acknowledged.count{it},before===t,busyBefore,t.filePath))
+            }catch(_:Exception){}
+            persistOutgoingTransfer(t);sendMissingChunks(t,true);transportEvent("file_queued",mapOf("transfer_id" to t.transferId,"message_id" to messageId,"size" to t.size,"total_chunks" to t.totalChunks));cb(true,null)}catch(e:Exception){cb(false,e.message)}finally{outgoingReservations.remove(fileId)}}.start()
     }
 
     /** Bundle 113: idempotent transport bootstrap used by pairing before any
@@ -1746,6 +1759,7 @@ class LocalLinkTransportService : Service() {
                                 val fresh = !relayVoiceBudget.knows(vs)
                                 if (!relayVoiceBudget.allow(vs)) {
                                     if (fresh) Log.w("RELAY", "RELAY call refused stream=${vs.take(6)} reason=budget")
+                                    relayVoiceHealth.onDropped(vs, parsed.sourceNodeId, parsed.destinationNodeId, System.currentTimeMillis())?.let { Log.w("RELAY", it) } // Bundle 192
                                     transportEvent("mesh_dropped", mapOf("packet_id" to parsed.packetId, "peer_id" to from, "reason" to "relay_voice_budget"))
                                     continue
                                 }
@@ -1777,8 +1791,15 @@ class LocalLinkTransportService : Service() {
                             ))
                             continue
                         }
-                        // Bundle 156: a relay link carries sealed packets only.
-                        if (!MeshRelayPolicy.canCarry(connection.trust, packet.type)) {
+                        // Bundle 195c: the name question / answer goes one step
+                        // only (on any link): never passed on, never routed.
+                        if (MeshRelayPolicy.isNameQuestion(packet.type)) {
+                            if (!MeshRelayPolicy.isOneStepName(packet.type, packet.sourceNodeId, packet.destinationNodeId, from, transportDeviceId ?: "")) {
+                                transportEvent("mesh_dropped", mapOf("packet_id" to packet.packetId, "peer_id" to from, "reason" to "name_not_one_step"))
+                                continue
+                            }
+                        } else if (!MeshRelayPolicy.canCarry(connection.trust, packet.type)) {
+                            // Bundle 156: a relay link carries sealed packets only.
                             transportEvent("mesh_dropped", mapOf("packet_id" to packet.packetId, "peer_id" to from, "reason" to "relay_plain_refused"))
                             continue
                         }
@@ -1939,6 +1960,7 @@ class LocalLinkTransportService : Service() {
                 // event per frame); both mark "a call passes through here".
                 if (MeshRelayPolicy.isSealedVoice(packet.type) || packet.type == "call_media") {
                     forwardedVoiceFrames.incrementAndGet()
+                    relayVoiceHealth.onPassed(relayVoiceKey(packet), packet.sourceNodeId, packet.destinationNodeId, now)?.let { Log.i("RELAY", it) } // Bundle 192
                     if (voiceRelay.onForward(now)) {
                         Log.i("RELAY", "RELAY voice passing through on")
                         transportEvent("voice_relay", mapOf("active" to true))
@@ -1951,6 +1973,10 @@ class LocalLinkTransportService : Service() {
             MeshRouteResult.QUEUED -> transportEvent("mesh_queued", mapOf("packet_id" to packet.packetId, "target_id" to packet.destinationNodeId, "reason" to "no_route"))
             MeshRouteResult.NO_ROUTE -> transportEvent("mesh_unroutable", mapOf("packet_id" to packet.packetId, "target_id" to packet.destinationNodeId))
             MeshRouteResult.DROPPED -> transportEvent("mesh_dropped", mapOf("packet_id" to packet.packetId, "reason" to "router_validation"))
+        }
+        // Bundle 192 (logs only): someone else's call voice that could not go on.
+        if (result != MeshRouteResult.FORWARDED && result != MeshRouteResult.LOCAL_DELIVERY && isRelayVoice(packet)) {
+            relayVoiceHealth.onDropped(relayVoiceKey(packet), packet.sourceNodeId, packet.destinationNodeId, now)?.let { Log.w("RELAY", it) }
         }
     }
 
@@ -2063,6 +2089,8 @@ class LocalLinkTransportService : Service() {
         // Bundle 189 (A): ...and stop a search that is already running.
         NearbyRadio.stopSearchForCall()
         session.start(timer)
+        session.notePath("start", true) // Bundle 192 (logs only)
+        NearbyRadio.logLinkForCall("call_start") // Bundle 192 (logs only)
         AppHealth.noteCall(true) // Bundle 188 (B3)
         transportEvent("call_media_started", mapOf("call_id" to callId, "peer_id" to peerId, "sample_rate" to CALL_SAMPLE_RATE, "frame_ms" to CALL_FRAME_MS, "codec" to session.codec))
         // Bundle 186 (A2): where the native start time went.
@@ -2089,6 +2117,7 @@ class LocalLinkTransportService : Service() {
         // Bundle 184 (E1): Nearby may search again 2 s after the call.
         if (synchronized(callMediaLock) { callMedia == null }) {
             CallNearbyPause.callEnded()
+            NearbyRadio.logLinkForCall("call_end") // Bundle 192 (logs only)
             NearbyRadio.resumeAfterCall()
         }
         callMediaRecent.clear()
@@ -2411,6 +2440,7 @@ class LocalLinkTransportService : Service() {
         if (sourceNodeId != current.peerId) return
         if (payload.optString("sender_id").trim() != sourceNodeId) return
         if (payload.optString("recipient_id").trim() != selfId) return
+        current.lastRxHops = hopCount // Bundle 192 (logs only)
         val sequence = payload.optLong("sequence", -1L)
         if (sequence < 0L || sequence > Long.MAX_VALUE - 1L) return
         val timestamp = payload.optLong("timestamp_ms", 0L)
@@ -2510,6 +2540,14 @@ class LocalLinkTransportService : Service() {
         @Volatile private var muted = false
         private var recorder:AudioRecord? = null
         private var track:AudioTrack? = null
+        /** Bundle 191 (A): phone echo cancel + noise reduction on the call mic. */
+        private var micEffects: CallMicEffects? = null
+        /** Bundle 192 (logs only): which way the voice travels. */
+        @Volatile var lastRxHops = -1
+        @Volatile private var udpOn = false
+        private val pathLock = Any()
+        private var lastPath: CallPathPolicy.Path? = null
+        private var lastPathCheckAt = 0L
         private var audioManager:AudioManager? = null
         private var audioFocusRequest:AudioFocusRequest? = null
         private var captureThread:Thread? = null
@@ -2596,6 +2634,14 @@ class LocalLinkTransportService : Service() {
                 val r = AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, CALL_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize)
                 if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); throw IllegalStateException("AudioRecord initialization failed") }
                 timer?.mark("mic")
+                // Bundle 191 (A): turn on the phone's echo cancel + noise
+                // reduction (guarded; never stops the call) and log it.
+                try {
+                    val fx = CallMicEffects.attach(r.audioSessionId)
+                    micEffects = fx
+                    val fxLine = CallMicEffectsPolicy.line(callId, fx.echoResult, fx.noiseResult, r.audioSessionId)
+                    if (CallMicEffectsPolicy.warn(fx.echoResult)) Log.w("LocalLinkCall", fxLine) else Log.i("LocalLinkCall", fxLine)
+                } catch (_: Throwable) {}
                 val t = AudioTrack.Builder()
                     .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                     .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(CALL_SAMPLE_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
@@ -2618,6 +2664,8 @@ class LocalLinkTransportService : Service() {
                 if (voiceKey != null) udpThread=Thread({ udpLoop() }, "call-udp").also { it.start() }
             } catch (e: Exception) {
                 running.set(false)
+                try { micEffects?.release() } catch (_:Throwable) {}
+                micEffects = null
                 try { recorder?.release() } catch (_:Exception) {}
                 try { track?.release() } catch (_:Exception) {}
                 recorder=null; track=null
@@ -2637,6 +2685,7 @@ class LocalLinkTransportService : Service() {
                 if (CallVoiceHealth.warn(total)) Log.w("LocalLinkCall", line) else Log.i("LocalLinkCall", line)
             } catch (_:Throwable) {}
             noteSoundState("end", true) // Bundle 189 (B)
+            notePath("end", true) // Bundle 192
             try { recorder?.stop() } catch (_:Exception) {}
             try { track?.stop() } catch (_:Exception) {}
             synchronized(txLock) { txRaw.clear(); txLock.notifyAll() }
@@ -2647,6 +2696,8 @@ class LocalLinkTransportService : Service() {
             try { senderThread?.join(200) } catch (_:InterruptedException) {}
             try { decodeThread?.join(200) } catch (_:InterruptedException) {}
             try { playbackThread?.join(200) } catch (_:InterruptedException) {}
+            try { micEffects?.release() } catch (_:Throwable) {} // Bundle 191 (A): before the mic
+            micEffects = null
             recorder?.release(); track?.release(); recorder=null; track=null
             abandonCallAudioFocus()
             opusEncoder?.close(); opusDecoder?.close(); opusEncoder=null; opusDecoder=null
@@ -2880,6 +2931,7 @@ class LocalLinkTransportService : Service() {
                     val now = System.currentTimeMillis()
                     maybeSendProbe(now)
                     val mode = udp.useUdp(udp.target(directLinkHost(), now) != null, now)
+                    udpOn = mode // Bundle 192
                     if (mode != lastMode) {
                         lastMode = mode
                         Log.i("LocalLinkCall", "CALL_UDP_MODE call=$callId send=${if (mode) "udp" else "tcp"}")
@@ -3078,12 +3130,40 @@ class LocalLinkTransportService : Service() {
             }
         }
 
+        /** Bundle 192 (logs only): the way the voice goes right now. */
+        private fun pathNow(): CallPathPolicy.Path {
+            val conn = try { activePeerConnection(peerId) } catch (_:Exception) { null }
+            val route = if (conn == null) (try { routeTable[peerId] } catch (_:Exception) { null }) else null
+            val kind = CallPathPolicy.kind(conn?.transportName, route != null)
+            val hops = if (conn != null) 1 else route?.hopCount ?: 0
+            val via = if (conn == null && route != null) CallPathPolicy.shortId(route.nextHopNodeId) else "-"
+            return CallPathPolicy.Path(kind, hops, via, udpOn)
+        }
+
+        /** Bundle 192 (logs only): `CALL_PATH` at start and when the way changes. Never throws. */
+        fun notePath(moment: String, force: Boolean = false) {
+            try {
+                val now = System.currentTimeMillis()
+                synchronized(pathLock) {
+                    if (!force && now - lastPathCheckAt in 0 until CallPathPolicy.CHECK_EVERY_MS) return
+                    lastPathCheckAt = now
+                    val p = pathNow()
+                    val old = lastPath
+                    if (moment != "end" && !CallPathPolicy.changed(old, p)) return
+                    lastPath = p
+                    val line = CallPathPolicy.line(callId, if (old == null) "start" else moment, p)
+                    if (CallPathPolicy.warn(old, p)) Log.w("LocalLinkCall", line) else Log.i("LocalLinkCall", line)
+                }
+            } catch (_:Throwable) {}
+        }
+
         /** Speaker thread only. One health line per 10 s (184 A2). */
         private fun noteSpeaker(t:AudioTrack) {
             val played = try { t.playbackHeadPosition.toLong() and 0xFFFFFFFFL } catch (_:Exception) { return }
             val speakerMs = CallAudioLatencyPolicy.speakerBacklogMs(writtenSamples, played, CALL_SAMPLE_RATE)
             if (speakerMs > maxSpeakerMs) maxSpeakerMs = speakerMs
             val now = System.currentTimeMillis()
+            notePath("change") // Bundle 192: checked every 2 s, logged on change
             if (now - lastHealthAt in 0 until CallVoiceHealth.LOG_EVERY_MS) return
             lastHealthAt = now
             try { underruns = t.underrunCount.toLong() } catch (_:Throwable) {}
@@ -3121,6 +3201,8 @@ class LocalLinkTransportService : Service() {
                 decodeMaxMs = decodeMaxMs, writeMaxMs = writeMaxMs, speakerMs = maxSpeakerMs,
                 link = link, screenOn = screen, output = outputName(), wifiLock = callWifiLock?.isHeld == true,
                 udp = udp.useUdp(udp.target(directLinkHost(), now) != null, now),
+                hopsRx = lastRxHops,
+                via = synchronized(pathLock) { lastPath?.via ?: "-" },
             )
         }
 
@@ -3706,7 +3788,9 @@ class LocalLinkTransportService : Service() {
         val self = transportDeviceId ?: return false
         if (peer.trust == MeshRelayPolicy.TRUST_RELAY) {
             // Bundle 156: only sealed packets may use a relay as next hop.
-            if (!MeshRelayPolicy.canCarry(peer.trust, packet.type) || blockedPeers.contains(peer.peerId)) return false
+            // Bundle 195c: plus the one-step name question / answer.
+            val oneStepName = MeshRelayPolicy.canSendOneStepName(packet.type, packet.sourceNodeId, packet.destinationNodeId, peer.peerId, self)
+            if (!(MeshRelayPolicy.canCarry(peer.trust, packet.type) || oneStepName) || blockedPeers.contains(peer.peerId)) return false
         } else if (!knownPeers.contains(peer.peerId)) return false
         return try {
             if (packet.nextHopNodeId != peer.peerId) return false
@@ -4015,6 +4099,7 @@ class LocalLinkTransportService : Service() {
                         Log.i("RELAY", "RELAY voice passing through off")
                         transportEvent("voice_relay", mapOf("active" to false))
                     }
+                    for (l in relayVoiceHealth.tick(now)) Log.i("RELAY", l) // Bundle 192
                     for (peer in allPhysicalPeerLinks()) {
                         try {
                             peer.lastPingAt = now
@@ -4279,7 +4364,11 @@ class LocalLinkTransportService : Service() {
             // whose final confirmation was lost still learns the file arrived.
             if (isCompletedTransfer(transferId, sha)) { ackCompletedTransfer(originSenderId, transferId, sha, totalChunks); return }
             val transfer = incomingFiles[transferId] ?: createIncomingTransfer(transferId, fileId, messageId, originSenderId, fileName, contentType, size, sha, totalChunks)
-            if (transfer.senderId != originSenderId || transfer.fileId != fileId || transfer.messageId != messageId || transfer.fileName != fileName || transfer.contentType != contentType || transfer.totalChunks != totalChunks || transfer.size != size || transfer.sha256 != sha) return
+            if (transfer.senderId != originSenderId || transfer.fileId != fileId || transfer.messageId != messageId || transfer.fileName != fileName || transfer.contentType != contentType || transfer.totalChunks != totalChunks || transfer.size != size || transfer.sha256 != sha) {
+                // Bundle 193 (logs only): a piece of a different version of this file.
+                if (fileLogDue("ignored>$transferId")) Log.w("LOCAL_LINK_TRANSPORT", FileSendLogPolicy.chunkIgnored(transferId, transfer.size, transfer.sha256, size, sha))
+                return
+            }
             if (transfer.received[index]) {
                 transfer.updatedAt = System.currentTimeMillis()
                 // Bundle 144: duplicates get at most one confirmation per second (each
@@ -4316,6 +4405,7 @@ class LocalLinkTransportService : Service() {
                     actual.delete()
                 }
                 incomingFiles.remove(transferId);deleteIncomingMeta(transfer);File(finalDir,".done_${transferId}_${sha}").writeText("ok",Charsets.UTF_8)
+                Log.i("LOCAL_LINK_TRANSPORT", FileSendLogPolicy.receivedOk(transferId, size, sha, totalChunks)) // Bundle 193
                 // Bundle 144: verified and stored -> now confirm everything to the sender.
                 ackCompletedTransfer(originSenderId, transferId, sha, totalChunks)
                 transportEvent("file_received", mapOf(
@@ -4395,8 +4485,8 @@ class LocalLinkTransportService : Service() {
 
     private fun createIncomingTransfer(transferId:String,fileId:String,messageId:String,senderId:String,fileName:String,contentType:String,size:Long,sha256:String,totalChunks:Int):IncomingFileTransfer{
         incomingFiles[transferId]?.let{return it};val dir=File(filesDir,"locallink_direct_files").apply{mkdirs()};val part=File(dir,"$transferId.part");val meta=File(dir,"$transferId.meta.json")
-        if(meta.exists()&&part.exists())try{val j=JSONObject(meta.readText());if(j.optString("sha256")==sha256&&j.optString("sender_id")==senderId){val t=IncomingFileTransfer(transferId,fileId,messageId,senderId,fileName,contentType,size,sha256,totalChunks,part.absolutePath,RandomAccessFile(part,"rw"),bitsetDecode(j.optString("received"),totalChunks),j.optLong("updated_at",System.currentTimeMillis()));incomingFiles[transferId]=t;return t}}catch(_:Exception){}
-        val raf=RandomAccessFile(part,"rw");if(size>0&&raf.length()!=size)raf.setLength(size);val t=IncomingFileTransfer(transferId,fileId,messageId,senderId,fileName,contentType,size,sha256,totalChunks,part.absolutePath,raf,BooleanArray(totalChunks),System.currentTimeMillis());incomingFiles[transferId]=t;persistIncomingTransfer(t);return t
+        if(meta.exists()&&part.exists())try{val j=JSONObject(meta.readText());if(j.optString("sha256")==sha256&&j.optString("sender_id")==senderId){val t=IncomingFileTransfer(transferId,fileId,messageId,senderId,fileName,contentType,size,sha256,totalChunks,part.absolutePath,RandomAccessFile(part,"rw"),bitsetDecode(j.optString("received"),totalChunks),j.optLong("updated_at",System.currentTimeMillis()));incomingFiles[transferId]=t;Log.i("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.receiveStart(transferId,size,sha256,totalChunks,true,t.received.count{it}));return t}}catch(_:Exception){}
+        val raf=RandomAccessFile(part,"rw");if(size>0&&raf.length()!=size)raf.setLength(size);val t=IncomingFileTransfer(transferId,fileId,messageId,senderId,fileName,contentType,size,sha256,totalChunks,part.absolutePath,raf,BooleanArray(totalChunks),System.currentTimeMillis());incomingFiles[transferId]=t;persistIncomingTransfer(t);Log.i("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.receiveStart(transferId,size,sha256,totalChunks,false,0));return t
     }
 
     private fun validTransportId(value: String): Boolean {
@@ -4743,13 +4833,21 @@ class LocalLinkTransportService : Service() {
                 !validTransportId(senderId) || !validTransportId(recipientId) ||
                 !DirectFileTransferPolicy.validTransferSize(size) || sha.length!=64 ||
                 total != DirectFileTransferPolicy.expectedChunks(size) ||
-                now-updatedAt>DirectFileTransferPolicy.IDLE_TIMEOUT_MS){f.delete();return@forEach}
+                now-updatedAt>DirectFileTransferPolicy.IDLE_TIMEOUT_MS){
+                Log.i("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.restoreDropped(transferId,if(now-updatedAt>DirectFileTransferPolicy.IDLE_TIMEOUT_MS)"idle" else "bad_saved_info")) // Bundle 193
+                f.delete();return@forEach}
             if(outgoingTransfers.size>=DirectFileTransferPolicy.MAX_ACTIVE_OUTGOING_TRANSFERS ||
-                DirectFileTransferPolicy.activeBytes(outgoingTransfers.values.map{it.size}) > DirectFileTransferPolicy.MAX_ACTIVE_TRANSFER_BYTES-size){return@forEach}
+                DirectFileTransferPolicy.activeBytes(outgoingTransfers.values.map{it.size}) > DirectFileTransferPolicy.MAX_ACTIVE_TRANSFER_BYTES-size){
+                Log.i("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.restoreDropped(transferId,"too_many")) // Bundle 193
+                return@forEach}
             val source=File(j.optString("file_path"))
-            if(!source.isFile || source.length()!=size || sha256File(source)!=sha){f.delete();return@forEach}
+            val problem=FileSendLogPolicy.sourceProblem(source.isFile, if(source.isFile) source.length() else -1L, size){ sha256File(source)==sha } // Bundle 193
+            if(problem!=null){
+                Log.w("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.restoreDropped(transferId,"source_$problem")+" src=${FileSendLogPolicy.srcKind(source.path)}")
+                f.delete();return@forEach}
             val t=OutgoingFileTransfer(transferId,fileId,messageId,senderId,recipientId,source.absolutePath,safeFileName(j.optString("file_name")),j.optString("content_type","application/octet-stream"),size,sha,total,bitsetDecode(j.optString("acknowledged"),total),updatedAt)
             outgoingTransfers[t.transferId]=t
+            Log.i("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.restored(t.transferId,t.size,t.sha256,t.acknowledged.count{it},t.totalChunks,t.filePath)) // Bundle 193
         }catch(_:Exception){f.delete()}}
     }
 
@@ -4814,6 +4912,10 @@ class LocalLinkTransportService : Service() {
             if(pauseFileForCall(t)) return // Bundle 179 (1.6)
             val f=File(t.filePath)
             if(!f.isFile||f.length()!=t.size||sha256File(f)!=t.sha256){
+                try{ // Bundle 193 (logs only)
+                    val why=FileSendLogPolicy.sourceProblem(f.isFile, if(f.isFile) f.length() else -1L, t.size){ false } ?: "content_changed"
+                    Log.w("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.sourceBad(t.transferId,why,t.size,if(f.isFile) f.length() else -1L,t.filePath))
+                }catch(_:Exception){}
                 deleteOutgoingMeta(t);outgoingTransfers.remove(t.transferId);outgoingRetryCounts.remove(t.transferId)
                 transportEvent("file_failed",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"reason" to "source_changed_or_missing"));return
             }
@@ -4945,7 +5047,7 @@ class LocalLinkTransportService : Service() {
         fileStalls.remove(t.transferId);fileStallAt.remove(t.transferId)
         if(fileSealTrial.contains(t.recipientId)&&fileStalls.keys.none{k->outgoingTransfers[k]?.recipientId==t.recipientId})fileSealTrial.remove(t.recipientId)
         t.updatedAt=System.currentTimeMillis()
-        if(missingChunkCount(t)==0){deleteOutgoingMeta(t);outgoingTransfers.remove(id);outgoingRetryCounts.remove(id);outgoingSendInFlight.remove(id);transportEvent("file_sent",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"file_id" to t.fileId,"size" to t.size,"sha256" to t.sha256))}
+        if(missingChunkCount(t)==0){Log.i("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.sendDone(t.transferId,t.size,t.sha256,t.totalChunks)) /* Bundle 193 */;deleteOutgoingMeta(t);outgoingTransfers.remove(id);outgoingRetryCounts.remove(id);outgoingSendInFlight.remove(id);transportEvent("file_sent",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"file_id" to t.fileId,"size" to t.size,"sha256" to t.sha256))}
         else{persistOutgoingTransfer(t);transportEvent("file_progress",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"acked_chunks" to t.totalChunks-missingChunkCount(t),"total_chunks" to t.totalChunks));if(hasStaleMissingChunk(t))Thread{sendMissingChunks(t,true)}.start()}
     }
     private fun handleFileResumeRequest(p:JSONObject){
@@ -4957,6 +5059,9 @@ class LocalLinkTransportService : Service() {
             return
         }
         if(p.optString("sender_id")!=t.senderId||p.optString("recipient_id")!=transportDeviceId||p.optString("sha256")!=t.sha256||p.optInt("total_chunks",-1)!=t.totalChunks)return
+        // Bundle 193 (logs only): the sender asked where to continue from.
+        try{ if(fileLogDue("resume>$id")){val have=t.received.count{it};val first=t.received.indexOfFirst{!it}
+            Log.i("LOCAL_LINK_TRANSPORT","FILE_RESUME_REQUEST transfer=${FileSendLogPolicy.id(id)} have=$have/${t.totalChunks} first_missing=$first")} }catch(_:Exception){}
         // Bundle 144: same durable path as every other confirmation.
         synchronized(incomingFiles){sendFileAckNow(t)}
     }
