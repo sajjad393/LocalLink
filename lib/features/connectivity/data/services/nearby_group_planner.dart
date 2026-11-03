@@ -217,6 +217,22 @@ abstract final class NearbySearchCadence {
   static const int lowBatteryLevel = 20;
   static const int stopBatteryLevel = 10;
 
+  /// Bundle 205 (P2): linked in a group with the app open - a slow search
+  /// only (a search can drop the group on some phones).
+  static const int linkedForegroundMs = 5 * 60 * 1000;
+
+  /// Bundle 205 (P2): a friend was lost lately - search every 30 s for
+  /// 5 min, then every 60 s until 30 min, then the old rules.
+  static const int reconnectFastMs = 30 * 1000;
+  static const int reconnectFastForMs = 5 * 60 * 1000;
+  static const int reconnectSlowMs = 60 * 1000;
+  static const int reconnectSlowForMs = 30 * 60 * 1000;
+
+  /// Bundle 205 (P2): a search starts in the first 6 s of a clock slot
+  /// (:00 / :30 ...), so two phones with the app closed search at the
+  /// same moment and see each other.
+  static const int slotStartMs = 6 * 1000;
+
   static int everyMs({
     required bool urgent,
     required bool foreground,
@@ -225,6 +241,8 @@ abstract final class NearbySearchCadence {
     required bool waiting,
     int batteryLevel = -1,
     bool charging = false,
+    bool linked = false,
+    int reconnectAgoMs = -1,
   }) {
     // Bundle 177 (Q2): app closed, not charging: 10% or less = no search,
     // under 20% = every 10 min. Charging or unknown level = normal rules.
@@ -233,6 +251,13 @@ abstract final class NearbySearchCadence {
       if (batteryLevel < lowBatteryLevel) return backgroundLowBatteryMs;
     }
     if (urgent) return urgentMs;
+    // Bundle 205 (P2, L7): linked and nobody waiting - leave the group alone.
+    if (linked && !waiting) return foreground ? linkedForegroundMs : 0;
+    // Bundle 205 (P2, L5/L6): a friend was lost lately.
+    if (!linked && !onWifi && reconnectAgoMs >= 0) {
+      if (reconnectAgoMs < reconnectFastForMs) return reconnectFastMs;
+      if (reconnectAgoMs < reconnectSlowForMs) return reconnectSlowMs;
+    }
     if (foreground) {
       return (waiting || (!inGroup && !onWifi))
           ? foregroundMs
@@ -241,6 +266,37 @@ abstract final class NearbySearchCadence {
     if (waiting) return backgroundWaitingMs;
     if (inGroup || !onWifi) return backgroundIdleMs;
     return 0;
+  }
+
+  /// Bundle 205 (P2): is a search due now? [lastAt] = last search (0 =
+  /// none yet / search soon). Due at the start of a new clock slot, or when
+  /// a whole slot was missed (phone asleep), or at once when [soon].
+  static bool due({
+    required int now,
+    required int lastAt,
+    required int everyMs,
+    bool soon = false,
+  }) {
+    if (everyMs <= 0) return false;
+    if (soon || lastAt <= 0) return true;
+    final ago = now - lastAt;
+    if (ago < 0) return true; // clock went back
+    if (ago >= 2 * everyMs) return true;
+    if (ago < everyMs ~/ 2) return false;
+    return now ~/ everyMs != lastAt ~/ everyMs && now % everyMs < slotStartMs;
+  }
+
+  /// Why [due] said yes (for the log).
+  static String dueWhy({
+    required int now,
+    required int lastAt,
+    required int everyMs,
+    bool soon = false,
+  }) {
+    if (soon) return 'soon';
+    if (lastAt <= 0) return 'first';
+    if (now - lastAt >= 2 * everyMs || now < lastAt) return 'late';
+    return 'slot';
   }
 }
 

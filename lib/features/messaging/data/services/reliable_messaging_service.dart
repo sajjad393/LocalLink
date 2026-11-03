@@ -24,6 +24,7 @@ import 'package:locallink/features/connectivity/data/services/local_route_policy
 import 'package:locallink/features/files/data/services/media_progress_hub.dart';
 import 'package:locallink/features/files/domain/file_size_rule.dart';
 import 'package:locallink/features/messaging/data/services/send_copy_book.dart';
+import 'package:locallink/features/messaging/data/services/online_backup_rule.dart';
 import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_transport_service.dart';
 
@@ -1141,6 +1142,11 @@ class ReliableMessagingService {
 
         final status = item['status']?.toString() ?? 'queued';
         if (status == 'failed') continue;
+        // Bundle 205 (P5): no "got it" over the nearby way after 15 s -
+        // send the words through the server too (same id, shown once).
+        if (status == 'sending' && _firstDirectSendAt.containsKey(id)) {
+          await _maybeOnlineBackup(id, item, status);
+        }
         if (!store.isOutboxRetryEligible(item)) {
           AppLogger.info('MESSAGE_RETRY_BACKOFF_SKIP',
               detail: 'id=$id attempt=${item['attempt_count'] ?? 0}');
@@ -1300,6 +1306,7 @@ class ReliableMessagingService {
               detail: 'id=$id '
                   'recipient=${_shortId(recipientId)}',
             );
+            _noteDirectSend(id, wordsOnly: pending.isEmpty);
 
             await store.updateOutboxStatus(
               id,
@@ -2786,6 +2793,75 @@ class ReliableMessagingService {
         error: error,
         stackTrace: stackTrace,
       );
+    }
+  }
+
+  // ------------------------------------------------ Bundle 205 (P5)
+  /// Message id -> first nearby send time (words only; in memory).
+  final Map<String, int> _firstDirectSendAt = <String, int>{};
+
+  /// Ids already sent through the server as a backup (in memory).
+  final Set<String> _onlineBackupSent = <String>{};
+
+  void _noteDirectSend(String id, {required bool wordsOnly}) {
+    if (!wordsOnly) return;
+    _firstDirectSendAt.putIfAbsent(
+        id, () => DateTime.now().millisecondsSinceEpoch);
+    while (_firstDirectSendAt.length > OnlineBackupRule.maxRemembered) {
+      _firstDirectSendAt.remove(_firstDirectSendAt.keys.first);
+    }
+  }
+
+  Future<void> _maybeOnlineBackup(
+    String id,
+    Map<String, dynamic> item,
+    String status,
+  ) async {
+    try {
+      final first = _firstDirectSendAt[id] ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (!OnlineBackupRule.due(
+        firstDirectSendAt: first,
+        now: now,
+        status: status,
+        wordsOnly: true,
+        serverConnected: socket.isConnected,
+        internetOnly: store.internetOnly,
+        alreadySent: _onlineBackupSent.contains(id),
+      )) {
+        return;
+      }
+      if ((await store.pendingAttachments(id)).isNotEmpty) {
+        _firstDirectSendAt.remove(id);
+        return;
+      }
+      final body = item['body']?.toString() ?? '';
+      final recipientId = item['recipient_id']?.toString() ?? '';
+      if (recipientId.isEmpty) return;
+      _onlineBackupSent.add(id);
+      while (_onlineBackupSent.length > OnlineBackupRule.maxRemembered) {
+        _onlineBackupSent.remove(_onlineBackupSent.first);
+      }
+      await store.setOutboxNetworkBody(id, body);
+      final sent = socket.send(
+        {
+          'type': 'send_message',
+          'id': id,
+          'recipient_id': recipientId,
+          'body': body,
+          'created_at': _rfc3339Utc(item['created_at']),
+        },
+        durable: true,
+      );
+      AppLogger.info(
+        'ONLINE_BACKUP_SEND',
+        detail: '${OnlineBackupRule.line(id, now - first)} sent=$sent '
+            'recipient=${_shortId(recipientId)}',
+      );
+      if (!sent) _onlineBackupSent.remove(id);
+    } catch (error, stackTrace) {
+      AppLogger.error('ONLINE_BACKUP_FAILED',
+          error: error, stackTrace: stackTrace, detail: 'id=$id');
     }
   }
 

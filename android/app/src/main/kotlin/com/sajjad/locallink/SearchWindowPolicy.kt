@@ -21,6 +21,15 @@ object SearchWindowPolicy {
 
     enum class Retry { NONE, LATER, RESET }
 
+    /**
+     * Bundle 205 (P2, L7): a search while this phone is linked in a group
+     * (member, or host with members) sometimes dropped the group 5-15 s
+     * later (logs 21:04:48 -> 21:04:55, 21:14:43 -> 21:14:49). A "peers
+     * changed" event never starts a window then.
+     */
+    fun peersWindowAllowed(member: Boolean, host: Boolean, members: Int): Boolean =
+        !(member || (host && members > 0))
+
     fun isOpen(startedAt: Long, now: Long): Boolean =
         startedAt > 0L && now >= startedAt && now - startedAt < WINDOW_MS
 

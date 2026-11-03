@@ -2066,7 +2066,67 @@ final class CallSessionManager implements CallGateway {
     }));
   }
 
+  // ------------------------------------------------ Bundle 205 (P7)
+  /// Calls go over nearby ways only: "Reconnecting…" for at most this long
+  /// without any nearby way, then "Call ended: no nearby connection".
+  static const Duration noNearbyAfter = Duration(seconds: 20);
+  Timer? _noNearbyTimer;
+  String? _noNearbyCallId;
+
+  bool _waitingForNearby(CallSession s) =>
+      !_isClosing(s) &&
+      s.answeredAt != null &&
+      (s.state == CallState.reconnecting ||
+          s.quality == CallQuality.reconnecting);
+
+  void _syncNoNearbyTimer(CallSession? s) {
+    if (s == null || _disposed || !_waitingForNearby(s)) {
+      _noNearbyTimer?.cancel();
+      _noNearbyTimer = null;
+      _noNearbyCallId = null;
+      return;
+    }
+    if (_noNearbyTimer != null && _noNearbyCallId == s.id) return;
+    _noNearbyTimer?.cancel();
+    _noNearbyCallId = s.id;
+    final callId = s.id;
+    _noNearbyTimer =
+        Timer(noNearbyAfter, () => unawaited(_onNoNearbyTimer(callId)));
+  }
+
+  Future<void> _onNoNearbyTimer(String callId) async {
+    _noNearbyTimer = null;
+    final s = _session;
+    if (s == null || s.id != callId || _disposed || !_waitingForNearby(s)) {
+      _noNearbyCallId = null;
+      return;
+    }
+    var route = false;
+    try {
+      route = await _hasLocalRouteTo(s.peerId);
+    } catch (_) {}
+    final now = _session;
+    if (now == null || now.id != callId || !_waitingForNearby(now)) {
+      _noNearbyCallId = null;
+      return;
+    }
+    if (route) {
+      // A nearby way is there; the recovery may still make it. Wait again.
+      AppLogger.info('CALL_NO_NEARBY_WAIT',
+          detail: 'call=$callId reason=route_present');
+      _noNearbyCallId = null;
+      _syncNoNearbyTimer(now);
+      return;
+    }
+    AppLogger.info('CALL_NO_NEARBY_END',
+        detail: 'call=$callId waited_s=${noNearbyAfter.inSeconds}');
+    await endCall(reason: 'no_nearby_connection');
+  }
+
   void _cancelCallTimers() {
+    _noNearbyTimer?.cancel();
+    _noNearbyTimer = null;
+    _noNearbyCallId = null;
     _ringTimer?.cancel();
     _statsTimer?.cancel();
     _heartbeatTimer?.cancel();
@@ -2127,6 +2187,7 @@ final class CallSessionManager implements CallGateway {
     }
     _syncCallUi(session);
     _syncCallLockScreen(session);
+    _syncNoNearbyTimer(session);
     final pending = _pendingNotificationAccept;
     if (pending != null &&
         isRinging &&

@@ -627,6 +627,13 @@ class LocalLinkTransportService : Service() {
                 try { startLanTransport(); lanBeaconNow = true } catch (e: Exception) { Log.w(BG_TAG, "NET_CHANGE lan_restart_failed reason=${e.javaClass.simpleName}") }
             }, "locallink-net-change").start()
         }
+        if (action.wifiDown && transportRunning) {
+            // Bundle 205 (P1/P2): Connecting… at once, and stay awake while
+            // the phones find another way.
+            val hadPeers = transportPeers.isNotEmpty()
+            Thread({ try { dropRouterLinks() } catch (_: Exception) {} }, "locallink-wifi-down").start()
+            if (hadPeers || knownPeers.isNotEmpty()) startReconnectWake("wifi_off")
+        }
         transportEvent("network_changed", mapOf("wifi" to snap.wifi, "internet" to snap.internet, "wifi_up" to action.wifiUp, "wifi_down" to action.wifiDown))
     }
 
@@ -913,7 +920,18 @@ class LocalLinkTransportService : Service() {
         transportGroupOwner = groupOwner
         transportGroupOwnerAddress = groupOwnerAddress
         persistState()
+        lastConnNote = Triple(connected, groupOwner, groupOwnerAddress)
         if (!connected) {
+            // Bundle 205 (P1, L4): a stale "not connected" (sent before the
+            // group formed, arriving after) closed a fresh Wi-Fi Direct link
+            // 24 ms after it was made (logs 21:10:10). Check again in 5 s.
+            val now = System.currentTimeMillis()
+            if (!LinkKindPolicy.mayCloseOnDisconnect(lastWdLinkAt, now)) {
+                Log.i("NEARBY", "WD_DISCONNECT_NOTE_LATER age_ms=${now - lastWdLinkAt}")
+                mainHandler.removeCallbacks(disconnectRecheck)
+                mainHandler.postDelayed(disconnectRecheck, LinkKindPolicy.STALE_DISCONNECT_GUARD_MS + 500L)
+                return
+            }
             stopWifiDirectSockets()
             transportEvent("state", mapOf("connected" to false, "transport_active" to transportRunning, "group_owner" to groupOwner))
             return
@@ -928,6 +946,82 @@ class LocalLinkTransportService : Service() {
             }
             connectTransportToOwner(groupOwnerAddress)
         }
+    }
+
+    // ------------------------------------------------- Bundle 205 switching
+    @Volatile private var lastWdLinkAt = 0L
+    @Volatile private var lastConnNote: Triple<Boolean, Boolean, String?>? = null
+    private val disconnectRecheck = Runnable {
+        val note = lastConnNote ?: return@Runnable
+        if (!note.first) {
+            Log.i("NEARBY", "WD_DISCONNECT_NOTE_RECHECK still_not_connected=true")
+            startOrStopTransportForConnection(note.first, note.second, note.third)
+        }
+    }
+
+    // Bundle 205 (P2): stay awake a short time after a nearby link broke.
+    private var reconnectWakeLock: PowerManager.WakeLock? = null
+    @Volatile private var reconnectWakeAt = 0L
+    @Volatile private var reconnectTimeoutAt = 0L
+    private val reconnectTimeout = Runnable { stopReconnectWake("timeout") }
+
+    private fun batteryNow(): Pair<Boolean, Int> = try {
+        val i = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        val status = i?.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val plugged = i?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val level = i?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = i?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val charging = plugged != 0 || status == android.os.BatteryManager.BATTERY_STATUS_CHARGING || status == android.os.BatteryManager.BATTERY_STATUS_FULL
+        charging to (if (level >= 0 && scale > 0) level * 100 / scale else -1)
+    } catch (_: Exception) { false to -1 }
+
+    @Synchronized
+    private fun startReconnectWake(why: String) {
+        try {
+            if (destroying || !transportRunning || knownPeers.isEmpty()) return
+            val now = System.currentTimeMillis()
+            val holding = reconnectWakeLock?.isHeld == true
+            val (charging, level) = batteryNow()
+            if (!ReconnectWakePolicy.mayStart(now, holding, reconnectTimeoutAt, level, charging)) {
+                if (!holding) Log.i("NEARBY", ReconnectWakePolicy.skipLine(why, ReconnectWakePolicy.skipReason(now, holding, reconnectTimeoutAt, level, charging)))
+                return
+            }
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            reconnectWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "locallink:reconnect").apply {
+                setReferenceCounted(false)
+                acquire(ReconnectWakePolicy.HOLD_MS + 10_000L)
+            }
+            reconnectWakeAt = now
+            mainHandler.removeCallbacks(reconnectTimeout)
+            mainHandler.postDelayed(reconnectTimeout, ReconnectWakePolicy.HOLD_MS)
+            Log.i("NEARBY", ReconnectWakePolicy.onLine(why))
+        } catch (e: Exception) {
+            Log.w("NEARBY", "RECONNECT_WAKE failed reason=${e.javaClass.simpleName}")
+        }
+    }
+
+    @Synchronized
+    private fun stopReconnectWake(why: String) {
+        val lock = reconnectWakeLock ?: return
+        try { if (lock.isHeld) lock.release() } catch (_: Exception) {}
+        reconnectWakeLock = null
+        mainHandler.removeCallbacks(reconnectTimeout)
+        val now = System.currentTimeMillis()
+        if (why == "timeout") reconnectTimeoutAt = now else reconnectTimeoutAt = 0L
+        Log.i("NEARBY", ReconnectWakePolicy.offLine(why, now - reconnectWakeAt))
+    }
+
+    /** Bundle 205 (P1): my Wi-Fi (router) went off - router links can't live
+     *  on; close them now so every screen shows "Connecting…" at once. */
+    private fun dropRouterLinks() {
+        var n = 0
+        for (link in allPhysicalPeerLinks()) {
+            if (LinkKindPolicy.dropOnWifiDown(link.transportName, link.remoteAddress)) {
+                try { link.socket.close() } catch (_: Exception) {}
+                n++
+            }
+        }
+        if (n > 0) Log.i("NEARBY", "SWITCH router_links_closed n=$n why=wifi_off")
     }
 
     private fun startLanTransport() {
@@ -1627,6 +1721,9 @@ class LocalLinkTransportService : Service() {
             return false
         }
         val links = peerLinks.computeIfAbsent(connection.peerId) { ConcurrentHashMap() }
+        // Bundle 205 (P1, L4): a late "not connected" note must not close this
+        // fresh Wi-Fi Direct link.
+        if (connection.transportName == MeshTransportPolicy.WIFI_DIRECT) lastWdLinkAt = System.currentTimeMillis()
         val existingSameTransport = links.put(connection.transportName, connection)
         if (existingSameTransport != null && existingSameTransport !== connection) {
             try { existingSameTransport.socket.close() } catch (_: Exception) {}
@@ -1654,6 +1751,13 @@ class LocalLinkTransportService : Service() {
         }
         if (active.routeDelta) Thread { sendRouteDeltas(triggered = true) }.start()
         val isRelay = connection.trust == MeshRelayPolicy.TRUST_RELAY
+        if (!isRelay) {
+            // Bundle 205 (P1/P2): log the real way once, and a link is back:
+            // the phone may sleep again.
+            val kindNow = LinkKindPolicy.pathKind(connection.transportName, connection.remoteAddress)
+            if (kindNow != connection.transportName) Log.i("NEARBY", LinkKindPolicy.fixedLine(connection.peerId, connection.transportName, kindNow))
+            stopReconnectWake("linked")
+        }
         if (isRelay) {
             // Bundle 156: a stranger's phone that only passes on sealed
             // packets. Not a contact — never shown as one.
@@ -1667,6 +1771,8 @@ class LocalLinkTransportService : Service() {
             "peer_id" to connection.peerId,
             "transport" to connection.transportName,
             "active_transport" to active.transportName,
+            // Bundle 205 (P1): the real way of the active link.
+            "path_kind" to LinkKindPolicy.pathKind(active.transportName, active.remoteAddress),
             "address" to connection.remoteAddress,
             "physical_links" to links.keys.toList().sorted(),
             // Bundle 156: the peer's app can open sealed messages.
@@ -1926,7 +2032,26 @@ class LocalLinkTransportService : Service() {
                 if (connection.trust == MeshRelayPolicy.TRUST_RELAY) {
                     Log.i("RELAY", "relay link down peer=${connection.peerId} cause=$exitCause")
                     transportEvent("relay_disconnected", mapOf("peer_id" to connection.peerId, "cause" to exitCause))
-                } else transportEvent("peer_disconnected", mapOf("peer_id" to connection.peerId))
+                } else {
+                    transportEvent("peer_disconnected", mapOf("peer_id" to connection.peerId))
+                    // Bundle 205 (P2): the last link to a contact broke - stay
+                    // awake a short time so another way is found with the app closed.
+                    if (transportPeers.values.none { it.trust != MeshRelayPolicy.TRUST_RELAY }) startReconnectWake("link_died")
+                }
+            }
+            // Bundle 205 (P1): the Wi-Fi Direct link died but the group is
+            // still there - dial the host again soon (not after the 2.5 s
+            // throttle + the next connection note, which may never come).
+            val ownerAddr = transportGroupOwnerAddress
+            if (connection.transportName == MeshTransportPolicy.WIFI_DIRECT && !transportGroupOwner &&
+                !ownerAddr.isNullOrEmpty() && lastConnNote?.first == true && !destroying && transportRunning) {
+                mainHandler.postDelayed({
+                    if (lastConnNote?.first == true && !transportGroupOwner && !destroying) {
+                        Log.i("NEARBY", "WD_REDIAL why=link_died")
+                        lastOwnerConnectAt.set(0L)
+                        connectTransportToOwner(ownerAddr)
+                    }
+                }, 1_000L)
             }
             transportEvent("topology", meshTopologySnapshot())
         }
@@ -3215,7 +3340,7 @@ class LocalLinkTransportService : Service() {
         private fun pathNow(): CallPathPolicy.Path {
             val conn = try { activePeerConnection(peerId) } catch (_:Exception) { null }
             val route = if (conn == null) (try { routeTable[peerId] } catch (_:Exception) { null }) else null
-            val kind = CallPathPolicy.kind(conn?.transportName, route != null)
+            val kind = CallPathPolicy.kind(conn?.transportName, route != null, conn?.remoteAddress)
             val hops = if (conn != null) 1 else route?.hopCount ?: 0
             val via = if (conn == null && route != null) CallPathPolicy.shortId(route.nextHopNodeId) else "-"
             return CallPathPolicy.Path(kind, hops, via, udpOn)
@@ -4305,6 +4430,9 @@ class LocalLinkTransportService : Service() {
                 "transport" to peer.transportName,
                 "active_transport" to peer.transportName,
                 "available_transports" to links.map { it.transportName }.distinct().sorted(),
+                // Bundle 205 (P1): the real way (a `lan` link inside a Wi-Fi
+                // Direct group is phone to phone).
+                "path_kind" to LinkKindPolicy.pathKind(peer.transportName, peer.remoteAddress),
                 "physical_link_count" to links.size,
                 "address" to peer.remoteAddress,
                 "group_owner" to (peer.transportName == MeshTransportPolicy.WIFI_DIRECT && peer.ownerAddress == null),
@@ -5178,5 +5306,5 @@ noteFileStall(t,now);try{sendRoutedPayload(t.recipientId,JSONObject().put("type"
         if(changed)Log.i("RELAY","RELAY file stalled to=${t.recipientId} stalls=$stalls try=${if(fileSealPeers.contains(t.recipientId)!=flip)"locked" else "plain"}")
     }
 
-    override fun onDestroy(){destroying=true;networkWatcher?.stop();networkWatcher=null;stopCallVideoInternal("");stopCallMediaInternal("");meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();running=false;if(instance===this)instance=null;super.onDestroy()}
+    override fun onDestroy(){destroying=true;try{mainHandler.removeCallbacks(disconnectRecheck);stopReconnectWake("destroy")}catch(_:Exception){};networkWatcher?.stop();networkWatcher=null;stopCallVideoInternal("");stopCallMediaInternal("");meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();running=false;if(instance===this)instance=null;super.onDestroy()}
 }

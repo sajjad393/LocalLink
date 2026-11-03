@@ -68,6 +68,8 @@ object NearbyRadio {
     // Bundle 201 (A3): host/member and Android's last word on the link.
     @Volatile private var lastOwner = false
     @Volatile private var lastConnDetail = WdGroupLost.detail(null, null, null)
+    // Bundle 205 (P6): when the app screen last closed (for WD_GROUP_LOST why=).
+    @Volatile private var lastAppCloseAt = 0L
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -231,6 +233,7 @@ object NearbyRadio {
 
     /** 177 (1): what survives when the screen closes / opens (log only). */
     fun logState(context: Context, moment: String) {
+        if (moment == "close") lastAppCloseAt = System.currentTimeMillis()
         val a = context.applicationContext
         val perm = hasPermission(a)
         val m = manager
@@ -305,7 +308,10 @@ object NearbyRadio {
             "createFriendGroup" -> createFriendGroup(call.argument<String>("name"), call.argument<String>("key"), result)
             "joinNearbyGroup" -> joinNearbyGroup(call.argument<String>("name"), call.argument<String>("key"), call.argument<String>("address"), call.argument<Boolean>("leave") ?: false, result)
             "cancelConnect" -> if (m != null && ch != null) m.cancelConnect(ch, actionResult(result)) else result.success(null)
-            "disconnect" -> if (m != null && ch != null) m.removeGroup(ch, actionResult(result)) else result.success(null)
+            "disconnect" -> if (m != null && ch != null) {
+                lastGroupChangeAt = System.currentTimeMillis() // Bundle 205 (P6): this phone closed it
+                m.removeGroup(ch, actionResult(result))
+            } else result.success(null)
             "connectionInfo" -> connectionInfo(result)
             // 177 (2.6): closing a screen never stops Nearby any more.
             "dispose" -> result.success(null)
@@ -372,7 +378,11 @@ object NearbyRadio {
                 val address = if (connected) info?.groupOwnerAddress?.hostAddress else null
                 // Bundle 201 (A3, logs only): the group went away.
                 try {
-                    if (WdGroupLost.lost(lastFormed, connected)) Log.i(TAG, WdGroupLost.line(lastOwner, p2pEnabled, lastConnDetail))
+                    if (WdGroupLost.lost(lastFormed, connected)) {
+                        // Bundle 205 (P6): plus a best guess of who ended it.
+                        val why = WdGroupLost.why(System.currentTimeMillis(), p2pEnabled, lastGroupChangeAt, tags?.lastWindowAt ?: 0L, lastAppCloseAt)
+                        Log.i(TAG, WdGroupLost.line(lastOwner, p2pEnabled, lastConnDetail, why))
+                    }
                     if (connected) lastOwner = owner
                 } catch (_: Exception) {}
                 // Bundle 192 (logs only): Wi-Fi Direct link lost / back during a call.
@@ -515,8 +525,21 @@ object NearbyRadio {
      *  groups and the linked group / LocalLink hotspot are not counted. */
     fun onWifiNetwork(context: Context): Boolean = try {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        // Bundle 205 (P3, L8): only a real router / hotspot counts. Some
+        // phones list their own Wi-Fi Direct group as a restricted Wi-Fi
+        // network (false router_back at 21:09:50, right after hosting).
         @Suppress("DEPRECATION")
-        cm.allNetworks.any { n -> localNet?.owns(n) != true && cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true }
+        cm.allNetworks.any { n ->
+            val caps = cm.getNetworkCapabilities(n)
+            val lp = try { cm.getLinkProperties(n) } catch (_: Exception) { null }
+            RouterNetworkPolicy.isRouter(
+                wifiTransport = caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true,
+                notRestricted = caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED) == true,
+                iface = lp?.interfaceName,
+                ownedByLocalNet = localNet?.owns(n) == true,
+                ipv4 = lp?.linkAddresses?.mapNotNull { la -> (la.address as? java.net.Inet4Address)?.hostAddress }.orEmpty(),
+            )
+        }
     } catch (_: Exception) { false }
 
     /** Bundle 157: start a new shared group and become its host. Android 10+

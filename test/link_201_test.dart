@@ -451,7 +451,7 @@ void main() {
       expect(tags, contains('"type" to "tag_window"'));
       expect(tags, contains('SearchWindowPolicy.PEERS_REFRESH_MS'));
       final radio = read('${k}NearbyRadio.kt');
-      expect(radio, contains('WdGroupLost.line(lastOwner, p2pEnabled, lastConnDetail)'));
+      expect(radio, contains('WdGroupLost.line(lastOwner, p2pEnabled, lastConnDetail, why)'));
       expect(radio, contains('refreshPeers = { main.post { requestPeers() } }'));
       expect(read('${k}mesh/MeshTransportPolicy.kt'), contains('fun linksOwner('));
       final svc = read('${k}LocalLinkTransportService.kt');

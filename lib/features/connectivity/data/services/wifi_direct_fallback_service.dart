@@ -254,6 +254,13 @@ final class WifiDirectFallbackService {
   List<String> _lastWanted = const <String>[];
   String _lastPlanReason = '';
   int _lastGroupDiscoveryAt = 0;
+
+  /// Bundle 205 (P2): search at the next tick (group lost / Wi-Fi off).
+  bool _searchSoon = false;
+
+  /// Bundle 205 (P2): when a friend that was reachable nearby went missing
+  /// (0 = nobody missing).
+  int _friendLostAt = 0;
   bool _groupBusy = false;
   Timer? _groupTimer;
 
@@ -837,6 +844,8 @@ final class WifiDirectFallbackService {
     _batteryCharging = c.charging;
     if (c.wifiNetwork && !_onWifiNetwork) _wifiSince = _clock();
     if (!c.wifiNetwork) _wifiSince = 0;
+    // Bundle 205 (P2): the router went away - look for phones at once.
+    if (!c.wifiNetwork && _onWifiNetwork) _searchSoon = true;
     _onWifiNetwork = c.wifiNetwork;
     _setRole(!c.connected
         ? NearbyGroupRole.none
@@ -852,6 +861,8 @@ final class WifiDirectFallbackService {
     _role = role;
     if (role == NearbyGroupRole.host) _hostSince = now;
     if (role != NearbyGroupRole.host) _hostSince = 0;
+    // Bundle 205 (P2): the group ended - look for phones at once.
+    if (role == NearbyGroupRole.none) _searchSoon = true;
     if (role == NearbyGroupRole.none) {
       _myGroup = null;
       _myMembers = 0;
@@ -1015,6 +1026,10 @@ final class WifiDirectFallbackService {
     final urgent = _pairTarget != null ||
         _pendingKind != null ||
         (_lostAt > 0 && now - _lostAt <= NearbyGroupRules.lostWindowMs);
+    // Bundle 205 (P2): linked = in a group with someone; reconnect = a
+    // friend nearby lately is missing now.
+    final linked = _role == NearbyGroupRole.member ||
+        (_role == NearbyGroupRole.host && _myMembers > 0);
     final everyMs = NearbySearchCadence.everyMs(
       urgent: urgent,
       foreground: _foreground,
@@ -1023,6 +1038,10 @@ final class WifiDirectFallbackService {
       waiting: _waitingSince.isNotEmpty,
       batteryLevel: _batteryLevel,
       charging: _batteryCharging,
+      linked: linked,
+      reconnectAgoMs: _friendLostAt > 0 && now >= _friendLostAt
+          ? now - _friendLostAt
+          : -1,
     );
     // Bundle 177 (Q2): log the battery stop once per low-battery spell.
     final batteryStop = !_foreground &&
@@ -1036,10 +1055,26 @@ final class WifiDirectFallbackService {
       _batteryStopLogged = false;
     }
     if (_off()) return;
-    if (everyMs > 0 &&
-        !_discoveryInFlight &&
-        now - _lastGroupDiscoveryAt >= everyMs) {
+    if (!_discoveryInFlight &&
+        NearbySearchCadence.due(
+          now: now,
+          lastAt: _lastGroupDiscoveryAt,
+          everyMs: everyMs,
+          soon: _searchSoon,
+        )) {
+      final why = NearbySearchCadence.dueWhy(
+        now: now,
+        lastAt: _lastGroupDiscoveryAt,
+        everyMs: everyMs,
+        soon: _searchSoon,
+      );
+      _searchSoon = false;
       _lastGroupDiscoveryAt = now;
+      if (!_foreground || why != 'slot' || everyMs >= 60000) {
+        AppLogger.info('NEARBY',
+            detail: 'WD_SEARCH_SLOT every_s=${everyMs ~/ 1000} why=$why '
+                'role=${_role.name} linked=$linked fg=$_foreground');
+      }
       unawaited(_groupDiscovery());
     }
     await _evaluateGroup();
@@ -1208,6 +1243,7 @@ final class WifiDirectFallbackService {
     final out = <FriendLinkFriend>[];
     final names = <String>{};
     var missingRecent = 0;
+    var lostAt = 0;
     for (final entry in keys.entries) {
       final id = entry.key.trim();
       if (id.isEmpty || entry.value.isEmpty) continue;
@@ -1228,6 +1264,11 @@ final class WifiDirectFallbackService {
           now - (_memo.lastReachable[id] ?? -FriendLinkRules.recentFriendMs - 1) <=
               FriendLinkRules.recentFriendMs) {
         missingRecent += 1;
+      }
+      // Bundle 205 (P2): a friend that was reachable is missing now.
+      if (!reachable && !tagSeen && !_usableWifi) {
+        final was = _memo.lastReachable[id] ?? 0;
+        if (was > lostAt) lostAt = was;
       }
       if (reachable || tagSeen || _usableWifi) {
         _friendWantedSince.remove(id);
@@ -1250,6 +1291,7 @@ final class WifiDirectFallbackService {
     _memo.lastReachable.removeWhere((id, _) => !keys.containsKey(id));
     _memo.wdAddress.removeWhere((id, _) => !keys.containsKey(id));
     _friendGroupNames = names;
+    _friendLostAt = lostAt;
     // Bundle 201 (D): hints for the Nearby list (open app only).
     if (_foreground) {
       FriendNearbyHints.instance
@@ -1284,6 +1326,7 @@ final class WifiDirectFallbackService {
       myMembers: _myMembers,
       hostSince: _hostSince,
       onWifi: _usableWifi,
+      wifiSince: _wifiSince,
       busy: busy,
       allowed: _friendAllowed(),
       friends: friends,

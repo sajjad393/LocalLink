@@ -104,8 +104,11 @@ final class LocalRoutePolicyService {
     LocalRouteResult? wifiDirect;
     for (final peer in directCandidates) {
       final transports = _transports(peer);
+      // Bundle 205 (P1): a `lan` link inside a Wi-Fi Direct group
+      // (192.168.49.x) is phone to phone - the native side says so.
+      final p2p = peer['path_kind']?.toString() == 'wifi_direct';
       final route = LocalRouteResult(
-        kind: transports.contains('lan')
+        kind: transports.contains('lan') && !p2p
             ? LocalRouteKind.lan
             : LocalRouteKind.wifiDirect,
         peerId: normalized,

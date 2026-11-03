@@ -277,6 +277,9 @@ class NearbyTagManager(
         }
     }
 
+    /** Bundle 205 (P6): when the last search window started (0 = never). */
+    val lastWindowAt: Long get() = windowStartedAt
+
     /** Bundle 200 (A): a tag search window is running now. */
     fun searchWindowOpen(now: Long = System.currentTimeMillis()): Boolean =
         SearchWindowPolicy.isOpen(windowStartedAt, now)
@@ -300,6 +303,8 @@ class NearbyTagManager(
     fun onPeersChanged() {
         val now = System.currentTimeMillis()
         if (searchWindowOpen(now) || now - lastDiscoveryAt < SearchWindowPolicy.PEERS_GAP_MS) return
+        // Bundle 205 (P2, L7): never disturb a linked group with a search.
+        if (!SearchWindowPolicy.peersWindowAllowed(member, host, members)) return
         scheduleDiscovery(why = "peers")
     }
 

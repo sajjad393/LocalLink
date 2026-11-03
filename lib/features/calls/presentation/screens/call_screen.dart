@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart' as call_bloc;
 import 'package:locallink/features/calls/data/models/call_session.dart';
+import 'package:locallink/features/calls/presentation/call_end_words.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_action_bar.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_header.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
@@ -34,6 +35,7 @@ class _CallScreenState extends State<CallScreen> {
   late CallSession _session = widget.initialSession;
   Timer? _ticker;
   bool _switchDialogOpen = false;
+  bool _endPopScheduled = false;
 
   @override
   void initState() {
@@ -97,7 +99,8 @@ class _CallScreenState extends State<CallScreen> {
               'Identity changed or revoked — verify this user again',
             _ => 'Call failed',
           },
-        CallState.ended => 'Call ended',
+        // Bundle 205 (P7): say why when no nearby way came back.
+        CallState.ended => CallEndWords.endedText(session.reason) ?? 'Call ended',
       };
 
   String _formatDuration(int seconds) {
@@ -123,9 +126,20 @@ class _CallScreenState extends State<CallScreen> {
           });
         }
         if (session.isFinished && session.id == _session.id) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) Navigator.of(context).maybePop();
-          });
+          // Bundle 205 (P7): keep "Call ended: no nearby connection" up 2 s.
+          if (CallEndWords.holdScreen(session.reason)) {
+            if (!_endPopScheduled) {
+              _endPopScheduled = true;
+              final navigator = Navigator.of(context);
+              Future<void>.delayed(CallEndWords.readTime, () {
+                if (mounted) navigator.maybePop();
+              });
+            }
+          } else {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) Navigator.of(context).maybePop();
+            });
+          }
         }
 
         // Bundle 93: peer turned their camera on mid-call while ours is off —

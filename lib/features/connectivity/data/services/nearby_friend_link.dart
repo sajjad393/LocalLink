@@ -163,6 +163,10 @@ abstract final class FriendLinkRules {
   /// Bundle 201 (D): a friend reachable nearby this recently and missing
   /// now explains one Wi-Fi Direct phone without a tag.
   static const int recentFriendMs = 10 * 60 * 1000;
+
+  /// Bundle 205 (P3, L8): the router must be up this long before the
+  /// friend group closes (`router_back`).
+  static const int routerSteadyMs = 5 * 1000;
 }
 
 class FriendLinkInput {
@@ -175,6 +179,10 @@ class FriendLinkInput {
 
   /// On a normal Wi-Fi network that really connects phones.
   final bool onWifi;
+
+  /// Bundle 205 (P3): when this phone joined its Wi-Fi (0 = unknown, taken
+  /// as steady). `router_back` waits until the Wi-Fi is up 5 s.
+  final int wifiSince;
 
   /// A call goes on (a group is never closed or changed under it).
   final bool busy;
@@ -211,6 +219,7 @@ class FriendLinkInput {
     this.myMembers = 0,
     this.hostSince = 0,
     this.onWifi = false,
+    this.wifiSince = 0,
     this.busy = false,
     this.allowed = true,
     this.friends = const <FriendLinkFriend>[],
@@ -262,6 +271,10 @@ FriendLinkAction planFriendLink(FriendLinkInput input) {
         mine != null &&
         input.myMembers == 0 &&
         !input.busy) {
+      if (input.wifiSince > 0 &&
+          input.now - input.wifiSince < FriendLinkRules.routerSteadyMs) {
+        return const FriendLinkAction.none('router_settling');
+      }
       return const FriendLinkAction.close('router_back');
     }
     return const FriendLinkAction.none('on_router');

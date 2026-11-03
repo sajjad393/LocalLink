@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:locallink/core/presence/switch_rules.dart';
 import 'package:locallink/core/services/app_logger.dart';
 
 /// What every screen shows for a person.
@@ -119,6 +120,11 @@ class PresenceHub extends ChangeNotifier {
   final Map<String, PresenceRoute> _routeOf = <String, PresenceRoute>{};
   final Map<String, DateTime> _pathDownAt = <String, DateTime>{};
 
+  /// Bundle 205 (P4): the shown way per person ('u:<user>' / 'd:<device>').
+  final Map<String, WayShowState> _wayShown = <String, WayShowState>{};
+  final Map<String, String> _wayDevice = <String, String>{};
+  final Map<String, PresenceWay> _loggedWay = <String, PresenceWay>{};
+
   /// Bundle 158: Nearby is kept this long after the last local path ended.
   static const Duration pathGrace = Duration(seconds: 20);
 
@@ -204,6 +210,9 @@ class PresenceHub extends ChangeNotifier {
     _pathUp.clear();
     _pathDownAt.clear();
     _routeOf.clear();
+    _wayShown.clear();
+    _wayDevice.clear();
+    _loggedWay.clear();
     _queueNotify();
   }
 
@@ -224,6 +233,9 @@ class PresenceHub extends ChangeNotifier {
     _pathUp.clear();
     _pathDownAt.clear();
     _routeOf.clear();
+    _wayShown.clear();
+    _wayDevice.clear();
+    _loggedWay.clear();
     _tickCount = 0;
     refreshPaths = null;
     userResolver = null;
@@ -367,7 +379,40 @@ class PresenceHub extends ChangeNotifier {
   /// Bundle 201 (F): HOW the person is reached (best of their devices:
   /// Wi-Fi, then Wi-Fi Direct, then Mesh). "Connecting" = the local path just
   /// ended and the 20 s grace runs (the status is still Nearby for logic).
+  ///
+  /// Bundle 205 (P4): the shown way follows [SwitchRules] (a better way
+  /// must stay up 5 s first; a worse way shows at once).
   PresenceWayInfo wayInfoOf(String deviceId) {
+    final raw = _rawWayInfoOf(deviceId);
+    if (deviceId.isEmpty) return raw;
+    final user = _userOf[deviceId] ?? '';
+    final key = user.isEmpty ? 'd:$deviceId' : 'u:$user';
+    final state = _wayShown[key];
+    if (state == null) {
+      _wayShown[key] = WayShowState(raw);
+      _wayDevice[key] = deviceId;
+      _loggedWay[key] = raw.way;
+      return raw;
+    }
+    _wayDevice[key] = deviceId;
+    final shown = state.update(raw, _now());
+    final logged = _loggedWay[key];
+    if (logged != shown.way) {
+      _loggedWay[key] = shown.way;
+      if (logged != null &&
+          SwitchRules.isNearbyWay(logged) &&
+          SwitchRules.isNearbyWay(shown.way)) {
+        AppLogger.info(
+          'SWITCH',
+          detail: 'peer=${_short(deviceId)} from=${logged.name} '
+              'to=${shown.way.name}',
+        );
+      }
+    }
+    return shown;
+  }
+
+  PresenceWayInfo _rawWayInfoOf(String deviceId) {
     final status = statusOf(deviceId);
     if (status == PresenceStatus.offline) {
       return const PresenceWayInfo(PresenceWay.offline);
@@ -399,6 +444,8 @@ class PresenceHub extends ChangeNotifier {
     return switch (r?.kind) {
       'lan' => const PresenceWayInfo(PresenceWay.wifi),
       'wifi_direct' => const PresenceWayInfo(PresenceWay.wifiDirect),
+      // Bundle 205 (P1): a linked group / hotspot is phone to phone too.
+      'local_net' => const PresenceWayInfo(PresenceWay.wifiDirect),
       'mesh' => PresenceWayInfo(PresenceWay.mesh, hops: r!.hops, via: r.via),
       _ => const PresenceWayInfo(PresenceWay.nearby),
     };
@@ -454,6 +501,13 @@ class PresenceHub extends ChangeNotifier {
           );
         }
       }
+    }
+    // Bundle 205 (P4): a better way that is now steady shows on its own
+    // (no new event may come).
+    for (final entry in _wayDevice.entries.toList()) {
+      final before = _wayShown[entry.key]?.shown.way;
+      final after = wayInfoOf(entry.value).way;
+      if (before != after) changed = true;
     }
     if (changed) _queueNotify();
   }

@@ -216,7 +216,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v3 · 3.0.45 · bundles 104-204 + groups G1-G7 (2026-11-04)');
+        detail: 'v3 · 3.0.46 · bundles 104-205 + groups G1-G7 (2026-11-04)');
     if (mounted) {
       setState(() {
         _ready = false;
