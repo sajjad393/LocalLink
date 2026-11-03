@@ -61,17 +61,22 @@ void main() {
     expect(v.state, VoiceRecState.holding);
     v.pressMove(const Offset(0, -30), 360);
     expect(v.slideDy, -30);
-    expect(v.lockProgress, closeTo(0.5, 0.001));
+    expect(v.lockProgress, closeTo(30 / VoiceHoldGesture.lockDistance, 0.001));
     v.pressMove(const Offset(0, -30.4), 360); // < 1 px: no repaint needed
     expect(v.slideDy, -30);
     v.pressMove(const Offset(0, 10), 360); // finger back down
     expect(v.slideDy, 0);
     expect(v.lockProgress, 0);
-    v.pressMove(const Offset(-10, -59), 360);
+    v.pressMove(const Offset(-10, -124), 360);
     expect(v.state, VoiceRecState.holding);
-    expect(v.slideDy, -59);
+    expect(v.slideDy, -124);
     v.pressMove(const Offset(0, -VoiceHoldGesture.lockDistance), 360);
-    expect(v.state, VoiceRecState.locked); // lock still at 60 px
+    expect(v.state, VoiceRecState.locked); // bundle 199: lock at 125 px
+    // Bundle 199: the mic stays at the lock for a moment, then resets.
+    expect(v.lockClosing, isTrue);
+    expect(v.slideDy, -VoiceHoldGesture.lockDistance);
+    await wait(tester, VoiceRecorderController.lockShowTime);
+    expect(v.lockClosing, isFalse);
     expect(v.slideDy, 0);
     v.discard();
     await wait(tester, const Duration(milliseconds: 200));

@@ -104,6 +104,12 @@ class VoiceRecorderController extends ChangeNotifier {
   Timer? _tickTimer;
   Timer? _hintTimer;
   Timer? _previewTimer;
+
+  /// Bundle 199b (mic lock): after a slide-up lock the closed lock is shown
+  /// for [lockShowTime] before the locked panel replaces the bar.
+  bool _lockClosing = false;
+  Timer? _lockShowTimer;
+  static const Duration lockShowTime = Duration(milliseconds: 250);
   Future<void> _chain = Future<void>.value();
 
   VoiceRecState get state => _state;
@@ -112,6 +118,10 @@ class VoiceRecorderController extends ChangeNotifier {
   List<double> get levels => List<double>.unmodifiable(_levels);
   double get slideDx => _slideDx;
   double get slideDy => _slideDy;
+
+  /// Bundle 199b: true for a moment after the finger reached the lock - the
+  /// bar still shows the big mic at the top and the CLOSED blue lock.
+  bool get lockClosing => _lockClosing;
 
   /// Bundle 198: 0 (finger at the mic) .. 1 (at the lock).
   double get lockProgress =>
@@ -168,7 +178,17 @@ class VoiceRecorderController extends ChangeNotifier {
         haptic?.call(false);
         discard();
       case VoiceHoldDecision.lock:
+        // Bundle 199b: show the lock closing first, then the panel.
+        _lockClosing = true;
+        _slideDy = -VoiceHoldGesture.lockDistance;
         lock();
+        if (_state == VoiceRecState.locked) {
+          _slideDy = -VoiceHoldGesture.lockDistance;
+          _lockShowTimer?.cancel();
+          _lockShowTimer = Timer(lockShowTime, _endLockShow);
+        } else {
+          _lockClosing = false;
+        }
       case VoiceHoldDecision.none:
         final dx = moved.dx < 0 ? moved.dx : 0.0;
         // Bundle 198: the big mic follows the finger up (to the lock).
@@ -256,8 +276,18 @@ class VoiceRecorderController extends ChangeNotifier {
     if (_state != VoiceRecState.holding) return;
     _state = VoiceRecState.locked;
     _slideDx = 0;
-    _slideDy = 0;
+    // Bundle 199b: a slide-up lock keeps the mic at the top for a moment.
+    _slideDy = _lockClosing ? -VoiceHoldGesture.lockDistance : 0;
     haptic?.call(false);
+    notifyListeners();
+  }
+
+  void _endLockShow() {
+    _lockShowTimer?.cancel();
+    _lockShowTimer = null;
+    if (!_lockClosing || _disposed) return;
+    _lockClosing = false;
+    _slideDy = 0;
     notifyListeners();
   }
 
@@ -431,6 +461,10 @@ class VoiceRecorderController extends ChangeNotifier {
       }
     }
     _state = VoiceRecState.paused;
+    // Bundle 199b: a call during the lock moment - no closed-lock moment left.
+    _lockShowTimer?.cancel();
+    _lockShowTimer = null;
+    _lockClosing = false;
     notifyListeners();
   }
 
@@ -489,6 +523,9 @@ class VoiceRecorderController extends ChangeNotifier {
 
   void _reset() {
     _stopTick();
+    _lockShowTimer?.cancel();
+    _lockShowTimer = null;
+    _lockClosing = false;
     _state = VoiceRecState.idle;
     _runStart = null;
     _doneMs = 0;
@@ -519,6 +556,7 @@ class VoiceRecorderController extends ChangeNotifier {
     _tickTimer?.cancel();
     _hintTimer?.cancel();
     _previewTimer?.cancel();
+    _lockShowTimer?.cancel();
     super.dispose();
   }
 }

@@ -157,6 +157,8 @@ void main() {
       v.pressDown();
       await wait(tester, const Duration(milliseconds: 300));
       v.pressMove(const Offset(0, -70), 360);
+      expect(v.state, VoiceRecState.holding); // bundle 199: 125 px now
+      v.pressMove(const Offset(0, -130), 360);
       expect(v.state, VoiceRecState.locked);
       v.pressUp();
       await wait(tester, const Duration(seconds: 3));
@@ -309,10 +311,11 @@ void main() {
       expect(VoiceLevels.fit([], 2), [0, 0]);
     });
 
-    test('slide left about 1/3 = cancel, slide up 60 px = lock', () {
+    test('slide left about 1/3 = cancel, slide up 125 px (199) = lock', () {
       expect(VoiceHoldGesture.decide(const Offset(-50, 0), 360), VoiceHoldDecision.none);
       expect(VoiceHoldGesture.decide(const Offset(-125, 0), 360), VoiceHoldDecision.cancel);
-      expect(VoiceHoldGesture.decide(const Offset(-10, -65), 360), VoiceHoldDecision.lock);
+      expect(VoiceHoldGesture.decide(const Offset(-10, -65), 360), VoiceHoldDecision.none);
+      expect(VoiceHoldGesture.decide(const Offset(-10, -130), 360), VoiceHoldDecision.lock);
       expect(VoiceHoldGesture.decide(const Offset(-130, -65), 360), VoiceHoldDecision.cancel);
       expect(voiceClock(const Duration(seconds: 5)), '0:05');
       expect(voiceClock(const Duration(seconds: 754)), '12:34');
@@ -374,6 +377,14 @@ void main() {
       await tester.pump();
       await g.moveBy(const Offset(0, -40));
       await tester.pump();
+      // Bundle 199: 80 px is not a lock any more (125 px now).
+      expect(find.byKey(const ValueKey('voice_locked_panel')), findsNothing);
+      await g.moveBy(const Offset(0, -50));
+      await tester.pump();
+      // First the closed blue lock, then the panel.
+      expect(find.byKey(const ValueKey('voice_lock_closed')), findsOneWidget);
+      expect(find.byKey(const ValueKey('voice_locked_panel')), findsNothing);
+      await wait(tester, const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey('voice_locked_panel')), findsOneWidget);
       expect(find.byKey(const ValueKey('voice_delete')), findsOneWidget);
       expect(find.byKey(const ValueKey('voice_pause')), findsOneWidget);

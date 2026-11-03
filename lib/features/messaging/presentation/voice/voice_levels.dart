@@ -48,8 +48,9 @@ enum VoiceHoldDecision { none, cancel, lock }
 class VoiceHoldGesture {
   const VoiceHoldGesture._();
 
-  /// About 1 cm up.
-  static const double lockDistance = 60;
+  /// About 2 cm up (bundle 199b; was 60 = about 1 cm). The mic follows the
+  /// finger all the way up to the lock box.
+  static const double lockDistance = 125;
 
   /// About 1/3 of the bar to the left (at least 80 px).
   static double cancelDistance(double barWidth) => math.max(80, barWidth / 3);

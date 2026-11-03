@@ -187,13 +187,25 @@ class VoiceHoldingContent extends StatelessWidget {
 /// Bundle 198: the arrow bobs up and down (1 s loop, none with the system
 /// "Remove animations" setting) and fades as the finger nears the lock
 /// ([progress] 0 .. 1).
+/// Bundle 199b: the box is tall at the start and gets shorter as the mic comes
+/// up ([progress]), down to a round lock. The lock is open while sliding and
+/// snaps shut in blue when [closed].
 class VoiceLockBox extends StatefulWidget {
-  const VoiceLockBox({super.key, this.progress = 0});
+  const VoiceLockBox({super.key, this.progress = 0, this.closed = false});
 
   final double progress;
+  final bool closed;
 
   static const Duration bobTime = Duration(milliseconds: 500);
   static const double bobHeight = 4;
+
+  /// Width, and the height when the mic has reached the lock.
+  static const double size = 40;
+
+  /// Height for [progress]: [size] + the slide still to go.
+  static double heightFor(double progress) =>
+      size +
+      VoiceHoldGesture.lockDistance * (1 - progress.clamp(0.0, 1.0));
 
   @override
   State<VoiceLockBox> createState() => _VoiceLockBoxState();
@@ -226,24 +238,60 @@ class _VoiceLockBoxState extends State<VoiceLockBox>
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final iconColor = dark ? Theme.of(context).colorScheme.onSurface : VoiceBarColors.icon;
+    final colors = Theme.of(context).colorScheme;
+    final iconColor = dark ? colors.onSurface : VoiceBarColors.icon;
+    final closed = widget.closed;
+    // Bundle 199b (mock v2 style S1, WhatsApp look): no grey line, a soft
+    // shadow; at the lock the circle fills with the app's blue gradient and
+    // shows a white closed lock.
     return Container(
       key: const ValueKey('voice_lock_box'),
-      width: 40,
-      height: 76,
+      width: VoiceLockBox.size,
+      height: VoiceLockBox.heightFor(closed ? 1 : widget.progress),
       decoration: BoxDecoration(
-        color: dark ? Theme.of(context).colorScheme.surfaceContainerHigh : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: VoiceBarColors.line),
+        color: closed
+            ? null
+            : (dark ? colors.surfaceContainerHigh : Colors.white),
+        gradient: closed ? LocalLinkBrand.linearGradient : null,
+        borderRadius: BorderRadius.circular(VoiceLockBox.size / 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: dark ? .6 : .18),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.lock_rounded, size: 22, color: iconColor),
           SizedBox(
-            height: 22,
+            height: VoiceLockBox.size,
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: _still
+                    ? Duration.zero
+                    : const Duration(milliseconds: 150),
+                transitionBuilder: (child, a) =>
+                    ScaleTransition(scale: a, child: child),
+                child: closed
+                    ? const Icon(Icons.lock_rounded,
+                        key: ValueKey('voice_lock_closed'),
+                        size: 22,
+                        color: Colors.white)
+                    : Icon(Icons.lock_open_rounded,
+                        key: const ValueKey('voice_lock_open'),
+                        size: 22,
+                        color: iconColor),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ClipRect(
             child: OverflowBox(
+              minHeight: 0,
               maxHeight: 40,
+              // Bundle 199b: the arrow sits in the middle of the free space.
+              alignment: Alignment.center,
               child: Opacity(
                 key: const ValueKey('voice_lock_arrow'),
                 opacity: (1 - widget.progress).clamp(0.0, 1.0),
@@ -256,6 +304,7 @@ class _VoiceLockBoxState extends State<VoiceLockBox>
                   child: Icon(Icons.arrow_drop_up_rounded, size: 40, color: iconColor),
                 ),
               ),
+            ),
             ),
           ),
         ],

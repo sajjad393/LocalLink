@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/features/messaging/presentation/voice/voice_levels.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
 import 'package:locallink/features/messaging/presentation/voice/voice_recorder_controller.dart';
 import 'package:locallink/features/messaging/presentation/voice/voice_recording_widgets.dart';
+
+/// Bundle 199b: the big mic while holding (52 px circle shown 1.45x, grown
+/// to the left from its right edge). The lock box is centred over it.
+const double _kMicSize = 52;
+const double _kBigMicScale = 1.45;
+const double _kLockBoxRight =
+    _kMicSize * _kBigMicScale / 2 - VoiceLockBox.size / 2;
 
 class ChatComposer extends StatelessWidget {
   final TextEditingController controller;
@@ -43,6 +51,8 @@ class ChatComposer extends StatelessWidget {
       builder: (context, _) {
         switch (voice.state) {
           case VoiceRecState.locked:
+            // Bundle 199b: first the closed lock (a moment), then the panel.
+            if (voice.lockClosing) return _bar(context, voice);
             return VoiceLockedPanel(voice: voice);
           case VoiceRecState.paused:
             return VoicePausedPanel(voice: voice);
@@ -56,7 +66,9 @@ class ChatComposer extends StatelessWidget {
 
   Widget _bar(BuildContext context, VoiceRecorderController? voice) {
     final colors = Theme.of(context).colorScheme;
-    final holding = voice?.state == VoiceRecState.holding;
+    final closing =
+        voice?.state == VoiceRecState.locked && voice!.lockClosing;
+    final holding = voice?.state == VoiceRecState.holding || closing;
     final barWidth = MediaQuery.sizeOf(context).width;
     return SafeArea(
       top: false,
@@ -151,7 +163,7 @@ class ChatComposer extends StatelessWidget {
                       offset: Offset(0, voice!.slideDy),
                       child: AnimatedScale(
                       key: const ValueKey('voice_big_mic'),
-                      scale: 1.45,
+                      scale: _kBigMicScale,
                       // Grows to the left so it stays fully on screen (mock).
                       alignment: Alignment.centerRight,
                       duration: const Duration(milliseconds: 120),
@@ -215,11 +227,16 @@ class ChatComposer extends StatelessWidget {
             ],
           ),
           if (holding)
-            // Bundle 198: the lock box rises a little as the finger goes up.
+            // Bundle 199b: the lock box top stays still; its bottom rises
+            // with the mic (the box gets shorter) until the mic reaches the
+            // lock, which then snaps shut (WhatsApp).
             Positioned(
-              right: 6,
-              bottom: 74 + 16 * voice!.lockProgress,
-              child: VoiceLockBox(progress: voice.lockProgress),
+              // Bundle 199b: centred over the big mic (was right: 6).
+              right: _kLockBoxRight,
+              bottom: 74 +
+                  VoiceHoldGesture.lockDistance * voice!.lockProgress,
+              child: VoiceLockBox(
+                  progress: voice.lockProgress, closed: closing),
             ),
           if (voice != null && voice.hintVisible && !holding)
             const Positioned(right: 0, bottom: 58, child: VoiceHintBubble()),
