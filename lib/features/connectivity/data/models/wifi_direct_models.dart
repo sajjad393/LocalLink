@@ -5,10 +5,14 @@ class WifiDirectPeer {
   final String address;
   final int status;
 
+  /// Bundle 200 (B): that phone hosts a Wi-Fi Direct group right now.
+  final bool groupOwner;
+
   const WifiDirectPeer({
     required this.name,
     required this.address,
     required this.status,
+    this.groupOwner = false,
   });
 
   bool get isAvailable => status == availableStatus;
@@ -17,6 +21,7 @@ class WifiDirectPeer {
         name: map['name']?.toString() ?? 'Unknown device',
         address: map['address']?.toString() ?? '',
         status: (map['status'] as num?)?.toInt() ?? 4,
+        groupOwner: map['go'] == true,
       );
 }
 

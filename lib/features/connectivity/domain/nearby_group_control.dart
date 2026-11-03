@@ -20,6 +20,13 @@ abstract interface class NearbyGroupControl {
   });
 }
 
+/// Bundle 200 (B): host the friend backup group with the pair's own name and
+/// password (worked out from the friends' link key). Own interface so older
+/// fakes keep working.
+abstract interface class NearbyFriendGroupControl {
+  Future<void> createFriendGroup({required String name, required String key});
+}
+
 /// Bundle 158: advertise this phone as its group's bridge (`br=1`). Kept as
 /// its own interface so older fakes keep working.
 abstract interface class NearbyBridgeControl {

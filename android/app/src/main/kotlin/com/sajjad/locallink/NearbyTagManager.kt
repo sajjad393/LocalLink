@@ -30,6 +30,8 @@ class NearbyTagManager(
     private val hasPermission: () -> Boolean,
     /** Bundle 160: on a normal Wi-Fi network (published as `wf=1`). */
     private val onWifi: () -> Boolean = { false },
+    /** Bundle 200 (C): how many Wi-Fi Direct peers are seen (for the log). */
+    private val peerCount: () -> Int = { 0 },
     private val emit: (Map<String, Any?>) -> Unit,
 ) {
     private val main = Handler(Looper.getMainLooper())
@@ -59,6 +61,16 @@ class NearbyTagManager(
     @Volatile private var charging = false
     // Bundle 167 (5.5): a voice call goes on (or through) this phone.
     @Volatile private var inCall = false
+    // Bundle 200 (A): one tag search window at a time. A new start never
+    // cancels a running window (the old code restarted every ~5 s, so no
+    // tag ever arrived).
+    @Volatile private var windowStartedAt = 0L
+    private var windowSeq = 0
+    private var windowWhy = ""
+    private var windowHeard = 0
+    private var windowLinkUp = 0
+    private var windowRetried = false
+    private var windowFixed = false
 
     /** Bundle 159: (charging, level 0-100 or -1). Never throws. */
     private fun batteryState(): Pair<Boolean, Int> = try {
@@ -255,32 +267,43 @@ class NearbyTagManager(
         }
     }
 
+    /** Bundle 200 (A): a tag search window is running now. */
+    fun searchWindowOpen(now: Long = System.currentTimeMillis()): Boolean =
+        SearchWindowPolicy.isOpen(windowStartedAt, now)
+
     /** Runs a tag search shortly after a peer discovery started (some phones
-     *  answer BUSY when both start in the same instant). */
-    fun scheduleDiscovery(delayMs: Long = 1_500L) {
-        if (discoveryScheduled) return
+     *  answer BUSY when both start in the same instant). Bundle 200 (A): never
+     *  while a window runs; a random 0-3 s offset so two phones don't start in
+     *  the same instant every time. */
+    fun scheduleDiscovery(delayMs: Long = 1_500L, why: String = "dart") {
+        if (discoveryScheduled || searchWindowOpen()) return
         discoveryScheduled = true
         main.postDelayed({
             discoveryScheduled = false
-            discover()
-        }, delayMs)
+            discover(why)
+        }, delayMs + (Math.random() * SearchWindowPolicy.RANDOM_OFFSET_MS).toLong())
     }
 
-    /** Bundle 157: a new phone appeared nearby — look at its tag soon
-     *  (at most once every 8 s). */
+    /** Bundle 157: a new phone appeared nearby — look at its tag soon.
+     *  Bundle 200 (A): at most one window per [SearchWindowPolicy.PEERS_GAP_MS]
+     *  (was every 8 s, which cut the running window). */
     fun onPeersChanged() {
-        if (System.currentTimeMillis() - lastDiscoveryAt < 8_000L) return
-        scheduleDiscovery()
+        val now = System.currentTimeMillis()
+        if (searchWindowOpen(now) || now - lastDiscoveryAt < SearchWindowPolicy.PEERS_GAP_MS) return
+        scheduleDiscovery(why = "peers")
     }
 
-    private fun discover() {
+    private fun discover(why: String = "dart") {
         if (!hasPermission()) return
         // Bundle 184 (E1): no tag search during a voice call.
         if (!CallNearbyPause.searchAllowed()) {
             if (CallNearbyPause.logDue()) Log.i(TAG, "tag search paused call")
             return
         }
-        lastDiscoveryAt = System.currentTimeMillis()
+        val now = System.currentTimeMillis()
+        if (searchWindowOpen(now)) return
+        lastDiscoveryAt = now
+        openWindow(now, why)
         publish()
         try {
             if (!listenersSet) {
@@ -289,39 +312,102 @@ class NearbyTagManager(
                     { fullDomainName, txt, device -> onTxt(fullDomainName, txt, device?.deviceAddress) })
                 listenersSet = true
             }
-            val request = WifiP2pDnsSdServiceRequest.newInstance(NearbyTagPolicy.SERVICE_TYPE)
+            startRequest(windowSeq)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "tag search denied: ${e.message}")
+        }
+    }
+
+    /** Bundle 200 (A/C): start a 20 s window and log its end once. */
+    private fun openWindow(now: Long, why: String) {
+        windowStartedAt = now
+        windowSeq += 1
+        windowWhy = why
+        windowHeard = 0
+        windowLinkUp = 0
+        windowRetried = false
+        windowFixed = false
+        val seq = windowSeq
+        Log.i(TAG, "WD_SEARCH start window=${SearchWindowPolicy.WINDOW_MS / 1000}s why=$why peers=${safePeerCount()}")
+        main.postDelayed({
+            if (seq == windowSeq) {
+                Log.i(TAG, "WD_SEARCH end why=$windowWhy heard=$windowHeard linkup=$windowLinkUp peers=${safePeerCount()}")
+            }
+        }, SearchWindowPolicy.WINDOW_MS)
+    }
+
+    private fun safePeerCount(): Int = try { peerCount() } catch (_: Exception) { 0 }
+
+    private fun startRequest(seq: Int) {
+        val request = WifiP2pDnsSdServiceRequest.newInstance(NearbyTagPolicy.SERVICE_TYPE)
+        try {
             manager.clearServiceRequests(channel, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() = addRequest(request)
-                override fun onFailure(reason: Int) = addRequest(request)
+                override fun onSuccess() = addRequest(request, seq)
+                override fun onFailure(reason: Int) = addRequest(request, seq)
             })
         } catch (e: SecurityException) {
             Log.w(TAG, "tag search denied: ${e.message}")
         }
     }
 
-    private fun addRequest(request: WifiP2pDnsSdServiceRequest) {
+    private fun addRequest(request: WifiP2pDnsSdServiceRequest, seq: Int) {
         try {
             manager.addServiceRequest(channel, request, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    try {
-                        manager.discoverServices(channel, object : WifiP2pManager.ActionListener {
-                            override fun onSuccess() { Log.d(TAG, "tag search started") }
-                            override fun onFailure(reason: Int) { Log.w(TAG, "tag search failed reason=$reason") }
-                        })
-                    } catch (e: SecurityException) {
-                        Log.w(TAG, "tag search denied: ${e.message}")
-                    }
+                override fun onSuccess() = discoverServices(seq)
+                override fun onFailure(reason: Int) {
+                    Log.w(TAG, "WD_TAG_FAIL step=request reason=$reason")
                 }
-                override fun onFailure(reason: Int) { Log.w(TAG, "tag request failed reason=$reason") }
             })
         } catch (e: SecurityException) {
             Log.w(TAG, "tag request denied: ${e.message}")
         }
     }
 
+    private fun discoverServices(seq: Int) {
+        try {
+            manager.discoverServices(channel, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() { Log.d(TAG, "tag search started") }
+                override fun onFailure(reason: Int) {
+                    Log.w(TAG, "WD_TAG_FAIL step=discover reason=$reason")
+                    onDiscoverFailed(seq, reason)
+                }
+            })
+        } catch (e: SecurityException) {
+            Log.w(TAG, "tag search denied: ${e.message}")
+        }
+    }
+
+    /** Bundle 200 (A): BUSY -> one retry 3 s later inside the same window;
+     *  NO_SERVICE_REQUESTS -> stop peer discovery, clear, add again (once). */
+    private fun onDiscoverFailed(seq: Int, reason: Int) {
+        if (seq != windowSeq) return
+        when (SearchWindowPolicy.onFailure(reason, windowRetried, windowFixed)) {
+            SearchWindowPolicy.Retry.LATER -> {
+                windowRetried = true
+                main.postDelayed({
+                    if (seq == windowSeq && searchWindowOpen()) discoverServices(seq)
+                }, SearchWindowPolicy.BUSY_RETRY_MS)
+            }
+            SearchWindowPolicy.Retry.RESET -> {
+                windowFixed = true
+                try {
+                    manager.stopPeerDiscovery(channel, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() = startRequest(seq)
+                        override fun onFailure(reason: Int) = startRequest(seq)
+                    })
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "tag search denied: ${e.message}")
+                }
+            }
+            SearchWindowPolicy.Retry.NONE -> Unit
+        }
+    }
+
     private fun onTxt(fullDomainName: String?, txt: Map<String, String>?, address: String?) {
         val now = System.currentTimeMillis()
+        windowHeard += 1
         val tag = NearbyTagPolicy.decode(fullDomainName, txt, address, now) ?: return
+        windowLinkUp += 1
         tags[tag["address"] as String] = tag
         tags.entries.removeIf { now - ((it.value["seen_at"] as? Long) ?: 0L) > NearbyTagPolicy.TAG_MAX_AGE_MS }
         Log.i(TAG, "tag found id=${tag["id"]} addr=${tag["address"]} host=${tag["host"]} m=${tag["member"]} n=${tag["members"]} grp=${tag["group"] ?: "-"} key=${if (tag.containsKey("key")) 1 else 0}")

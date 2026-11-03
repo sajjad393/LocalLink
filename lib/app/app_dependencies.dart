@@ -159,6 +159,17 @@ class AppDependencies {
         (peerId) => routePolicy.routes[peerId]?.isAvailable ?? false;
     // Bundle 158: phones on this Wi-Fi (a bridge is only for the others).
     wifiDirectFallback.lanPeerIds = () => routePolicy.lanPeerIds;
+    // Bundle 200 (B): the friend backup group (pair name + password from the
+    // link key) and who has messages waiting.
+    final sealingForFriends = directTransport;
+    if (sealingForFriends is SealingPeerTransport) {
+      wifiDirectFallback.friendLinkKeys = () => sealingForFriends.friendLinkKeys;
+    }
+    wifiDirectFallback.pendingPeers = () async => <String>{
+          for (final row in await store.outbox(pendingOnly: true))
+            if ((row['recipient_id']?.toString() ?? '').isNotEmpty)
+              row['recipient_id'].toString(),
+        };
     // Bundle 177 (4.4): admin "Wi-Fi off" = Nearby does nothing.
     wifiDirectFallback.nearbyOff = () =>
         store.effectiveNetworkPolicy.wifiRadioPolicy ==

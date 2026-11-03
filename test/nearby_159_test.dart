@@ -158,9 +158,9 @@ void main() {
             onWifi: wifi,
             waiting: waiting);
 
-    test('app open: 15 s when needed, else 60 s', () {
-      expect(every(), 15000);
-      expect(every(wifi: true, waiting: true), 15000);
+    test('app open: 30 s when needed, else 60 s', () {
+      expect(every(), 30000); // Bundle 200 (A)
+      expect(every(wifi: true, waiting: true), 30000);
       expect(every(group: true), 60000);
       expect(every(wifi: true), 60000);
     });
@@ -173,8 +173,8 @@ void main() {
       expect(every(fg: false, wifi: true), 0);
     });
 
-    test('something going on: 8 s', () {
-      expect(every(urgent: true, fg: false, wifi: true), 8000);
+    test('something going on: 25 s', () {
+      expect(every(urgent: true, fg: false, wifi: true), 25000);
     });
   });
 

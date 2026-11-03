@@ -192,6 +192,11 @@ class SealingPeerTransport implements PeerTransportContract {
   final LinkKeyService _linkKeys = LinkKeyService();
   String _linkKeysPushed = '';
 
+  /// Bundle 200 (B): link keys per contact (hex, newest own key first) for
+  /// the friend backup Wi-Fi Direct group. Blocked people left out.
+  Map<String, List<String>> _friendLinkKeys = const <String, List<String>>{};
+  Map<String, List<String>> get friendLinkKeys => _friendLinkKeys;
+
   final Set<String> _capable = <String>{};
 
   // Bundle 166 (5.2): fresh keys.
@@ -847,6 +852,17 @@ class SealingPeerTransport implements PeerTransportContract {
         mine: await keys.ownKeys(),
         publicKeyOf: keys.contactPublicKey,
       );
+      try {
+        final blocked = (await keys.blockedPeerIds()).toSet();
+        _friendLinkKeys = <String, List<String>>{
+          for (final e in map.entries)
+            if (!blocked.contains(e.key))
+              e.key: <String>[
+                for (final k in e.value)
+                  if ((k['k'] ?? '').isNotEmpty) k['k']!,
+              ],
+        };
+      } catch (_) {}
       final signature = jsonEncode(map);
       if (signature == _linkKeysPushed) return;
       if (!await base.updateLinkKeys(map)) return; // service not up yet

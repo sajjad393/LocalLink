@@ -16,6 +16,7 @@ class ConnectivityRepository
         NearbyGroupControl,
         NearbyBridgeControl,
         NearbyCallFlagControl,
+        NearbyFriendGroupControl,
         NearbyLocalNetControl {
   final WebSocketService socket;
   final WifiDirectService wifiDirect;
@@ -97,6 +98,11 @@ class ConnectivityRepository
 
   @override
   Future<void> createNearbyGroup() => wifiDirect.createNearbyGroup();
+
+  /// Bundle 200 (B): the friend backup group.
+  @override
+  Future<void> createFriendGroup({required String name, required String key}) =>
+      wifiDirect.createFriendGroup(name: name, key: key);
 
   @override
   Future<void> joinNearbyGroup({

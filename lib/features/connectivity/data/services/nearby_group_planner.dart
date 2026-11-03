@@ -204,8 +204,10 @@ abstract final class NearbyWifiCheck {
 }
 
 abstract final class NearbySearchCadence {
-  static const int urgentMs = 8 * 1000;
-  static const int foregroundMs = 15 * 1000;
+  // Bundle 200 (A): one search is a 20 s window now (it was cut every ~5 s),
+  // so a new one at most every 25 s (urgent) / 30 s (app open, waiting).
+  static const int urgentMs = 25 * 1000;
+  static const int foregroundMs = 30 * 1000;
   static const int foregroundIdleMs = 60 * 1000;
   static const int backgroundWaitingMs = 60 * 1000;
   static const int backgroundIdleMs = 3 * 60 * 1000;

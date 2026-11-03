@@ -52,6 +52,10 @@ class WifiDirectService {
       _channel.invokeMethod('setNearbyWanted', {'ids': ids});
   Future<void> createNearbyGroup() =>
       _channel.invokeMethod('createNearbyGroup');
+  /// Bundle 200 (B): host the friend backup group (name + password from the
+  /// pair's link key; never logged).
+  Future<void> createFriendGroup({required String name, required String key}) =>
+      _channel.invokeMethod('createFriendGroup', {'name': name, 'key': key});
   /// Bundle 158: advertise `br=1` (this phone bridges its group and Wi-Fi).
   Future<void> setNearbyBridge(bool on) =>
       _channel.invokeMethod('setNearbyBridge', {'on': on});

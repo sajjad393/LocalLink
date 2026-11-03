@@ -7,6 +7,7 @@ import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
+import 'package:locallink/features/connectivity/data/services/nearby_friend_link.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_group_planner.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_local_net_planner.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
@@ -251,6 +252,33 @@ final class WifiDirectFallbackService {
   int _lastGroupDiscoveryAt = 0;
   bool _groupBusy = false;
   Timer? _groupTimer;
+
+  // ------------------------------------------ Bundle 200: friend link (B)
+  /// Link keys per friend: device id -> link keys (hex, newest first). From
+  /// the sealing transport (Bundle 160). Null = no friend backup link.
+  Map<String, List<String>> Function()? friendLinkKeys;
+
+  /// Friends with messages waiting (outbox). Read at most every 15 s.
+  Future<Set<String>> Function()? pendingPeers;
+  final Map<String, int> _friendWantedSince = <String, int>{};
+  final Set<String> _friendSignLogged = <String>{};
+  final Map<String, int> _friendSkipUntil = <String, int>{};
+  final Map<String, int> _friendFailures = <String, int>{};
+  final Map<String, FriendLinkCredentials> _friendCreds =
+      <String, FriendLinkCredentials>{};
+  Set<String> _friendGroupNames = const <String>{};
+  Set<String> _friendPending = const <String>{};
+  int _friendPendingAt = -1;
+  int _friendOpenRestUntil = 0;
+  int _friendIdleCloses = 0;
+  String? _friendPendingSkipKey;
+  bool _inFriendGroup = false;
+  String _lastFriendReason = '';
+
+  @visibleForTesting
+  int get friendOpenRestUntil => _friendOpenRestUntil;
+  @visibleForTesting
+  Set<String> get friendSkipped => _friendSkipUntil.keys.toSet();
 
   // ---------------------------------------------------- Bundle 158 bridge
   /// Device ids of LocalLink phones seen on this Wi-Fi (LAN beacons).
@@ -676,6 +704,9 @@ final class WifiDirectFallbackService {
     if (name != null && name.isNotEmpty && name != _myGroup) _mates.clear();
     _myGroup = (name == null || name.isEmpty) ? null : name;
     _myMembers = (event['members'] as num?)?.toInt() ?? 0;
+    // Bundle 200 (B): in the friend backup group (no D4 new host for it).
+    if (_myGroup != null) _inFriendGroup = _friendGroupNames.contains(_myGroup);
+    if (_inFriendGroup && _myMembers > 0) _friendIdleCloses = 0;
     // Bundle 159: on a charger = preferred host/bridge on a tie.
     if (event.containsKey('charging')) _selfCharging = event['charging'] == true;
     _setRole(role);
@@ -710,7 +741,8 @@ final class WifiDirectFallbackService {
         _pendingKind == NearbyGroupActionKind.leaveAndJoin;
     if (before == NearbyGroupRole.member &&
         role == NearbyGroupRole.none &&
-        !leaving) {
+        !leaving &&
+        !_inFriendGroup) {
       // D4: our host left. Wait 1–4 s, then join the new host — or, as the
       // smallest id of the old group, become it.
       _lostAt = now;
@@ -724,6 +756,11 @@ final class WifiDirectFallbackService {
     if (role != NearbyGroupRole.none) {
       _lostAt = 0;
       _mates.clear();
+    }
+    if (role == NearbyGroupRole.none && _inFriendGroup) {
+      _inFriendGroup = false;
+      AppLogger.info('WD_FRIEND_CLOSE',
+          detail: 'reason=link_lost was=${before.name}');
     }
     _checkPending(now);
     AppLogger.info('NEARBY',
@@ -749,6 +786,16 @@ final class WifiDirectFallbackService {
       _backoff.succeeded();
       if (_pendingHost != null) _joinFailures.remove(_pendingHost);
       final reason = _pendingReason;
+      // Bundle 200 (B): the friend group is up.
+      if (reason == 'friend_join' || reason == 'friend_open') {
+        final skipKey = _friendPendingSkipKey;
+        if (skipKey != null) _friendFailures.remove(skipKey);
+        _friendPendingSkipKey = null;
+        _inFriendGroup = true;
+        AppLogger.info(
+            reason == 'friend_join' ? 'WD_FRIEND_JOIN' : 'WD_FRIEND_OPEN',
+            detail: reason == 'friend_join' ? 'linked' : 'hosting');
+      }
       _pendingKind = null;
       _pendingHost = null;
       _pendingReason = null;
@@ -769,6 +816,24 @@ final class WifiDirectFallbackService {
     _backoff.failed(now);
     final reason = _pendingReason;
     _pendingReason = null;
+    // Bundle 200 (B): a friend join that did not form - that host phone is
+    // not our friend (or out of range): stop trying and skip it a while.
+    final skipKey = _friendPendingSkipKey;
+    _friendPendingSkipKey = null;
+    if (reason == 'friend_join' && skipKey != null) {
+      final n = (_friendFailures[skipKey] ?? 0) + 1;
+      _friendFailures[skipKey] = n;
+      if (_friendFailures.length > 64) {
+        _friendFailures.remove(_friendFailures.keys.first);
+      }
+      final ms = n >= 2 ? FriendLinkRules.longSkipMs : FriendLinkRules.skipMs;
+      _friendSkipUntil[skipKey] = now + ms;
+      AppLogger.info('WD_FRIEND_SKIP',
+          detail: 'host=${skipKey.split('|').first} min=${ms ~/ 60000} fails=$n');
+      unawaited(_cancelConnectQuietly());
+    } else if (reason == 'friend_open') {
+      AppLogger.info('WD_FRIEND_OPEN', detail: 'failed');
+    }
     if (reason != null && reason.startsWith('bridge_')) {
       // Bundle 158: a bridge join/create that fails (busy radio, no
       // Wi-Fi + group at once): no bridging for 10 min.
@@ -938,7 +1003,11 @@ final class WifiDirectFallbackService {
                 'role=${_role.name} members=$_myMembers '
                 'tags=${_tags.length}');
       }
-      if (!plan.acts) return;
+      if (!plan.acts) {
+        // Bundle 200 (B): no tag rule acts - the friend backup link.
+        await _evaluateFriendLink(group, now, busy);
+        return;
+      }
       // Bundle 177 (Q6): never the pop-up connect (older app on the other
       // phone). It needs the new app.
       if (plan.kind == NearbyGroupActionKind.legacyConnect) {
@@ -954,6 +1023,195 @@ final class WifiDirectFallbackService {
       _groupBusy = false;
       if (_pendingUserTap && !_disposed) unawaited(_evaluateGroup());
     }
+  }
+
+  // ------------------------------------------ Bundle 200: friend link (B)
+
+  bool _friendAllowed() =>
+      _foreground ||
+      _batteryCharging ||
+      _batteryLevel < 0 ||
+      _batteryLevel > NearbySearchCadence.stopBatteryLevel;
+
+  Future<void> _refreshFriendPending(int now) async {
+    final read = pendingPeers;
+    if (read == null) return;
+    if (_friendPendingAt >= 0 && now - _friendPendingAt < 15 * 1000) return;
+    _friendPendingAt = now;
+    try {
+      _friendPending = await read();
+    } catch (_) {}
+  }
+
+  List<FriendLinkFriend> _friendList(int now) {
+    Map<String, List<String>> keys;
+    try {
+      keys = friendLinkKeys?.call() ?? const <String, List<String>>{};
+    } catch (_) {
+      keys = const <String, List<String>>{};
+    }
+    final tagHashes = <String>{
+      for (final t in _tags.values)
+        if (now - t.seenAt <= NearbyGroupRules.freshMs) t.idHash,
+    };
+    final busy = _isBusy();
+    final out = <FriendLinkFriend>[];
+    final names = <String>{};
+    for (final entry in keys.entries) {
+      final id = entry.key.trim();
+      if (id.isEmpty || entry.value.isEmpty) continue;
+      final hex = entry.value.first;
+      final creds =
+          _friendCreds[hex] ?? FriendLinkCredentials.fromKeyHex(hex);
+      if (creds == null) continue;
+      if (_friendCreds.length >= 32) _friendCreds.clear();
+      _friendCreds[hex] = creds;
+      names.add(creds.name);
+      final hash = NearbyTag.idFor(id);
+      final reachable = _reachableLocally(id);
+      final tagSeen = tagHashes.contains(hash);
+      if (reachable || tagSeen || _usableWifi) {
+        _friendWantedSince.remove(id);
+        _friendSignLogged.remove(id);
+      } else {
+        _friendWantedSince.putIfAbsent(id, () => now);
+      }
+      out.add(FriendLinkFriend(
+        id: id,
+        hash: hash,
+        creds: creds,
+        reachable: reachable,
+        tagSeen: tagSeen,
+        wantedSince: _friendWantedSince[id] ?? 0,
+        pending: busy || _friendPending.contains(id),
+      ));
+    }
+    _friendWantedSince.removeWhere((id, _) => !keys.containsKey(id));
+    _friendSignLogged.removeWhere((id) => !keys.containsKey(id));
+    _friendGroupNames = names;
+    return out;
+  }
+
+  Future<void> _evaluateFriendLink(
+      NearbyGroupControl group, int now, bool busy) async {
+    if (friendLinkKeys == null || _selfHash == null) return;
+    await _refreshFriendPending(now);
+    _friendSkipUntil.removeWhere((_, until) => until <= now);
+    final friends = _friendList(now);
+    for (final f in friends) {
+      if (f.wantedSince > 0 &&
+          now - f.wantedSince >= FriendLinkRules.signWaitMs &&
+          _friendSignLogged.add(f.id)) {
+        // Part C: one search window passed without this friend's tag.
+        AppLogger.info('WD_SIGN',
+            detail: 'none friend=${f.hash.substring(0, 8)} '
+                'after_s=${(now - f.wantedSince) ~/ 1000} '
+                'peers=${_lastPeers.length}');
+      }
+    }
+    final plan = planFriendLink(FriendLinkInput(
+      now: now,
+      selfHash: _selfHash!,
+      role: _role,
+      myGroup: _myGroup,
+      myMembers: _myMembers,
+      hostSince: _hostSince,
+      onWifi: _usableWifi,
+      busy: busy,
+      allowed: _friendAllowed(),
+      friends: friends,
+      peers: _lastPeers,
+      taggedAddresses: <String>{
+        for (final t in _tags.values)
+          if (now - t.seenAt <= NearbyGroupRules.freshMs)
+            t.address.toLowerCase(),
+      },
+      skip: _friendSkipUntil.keys.toSet(),
+      openRestUntil: _friendOpenRestUntil,
+    ));
+    if (plan.reason != _lastFriendReason) {
+      _lastFriendReason = plan.reason;
+      if (plan.acts || friends.any((f) => f.wantedSince > 0)) {
+        AppLogger.info('WD_FRIEND',
+            detail: 'plan=${plan.kind.name} reason=${plan.reason} '
+                'role=${_role.name} friends=${friends.length} '
+                'peers=${_lastPeers.length} '
+                'hosts=${_lastPeers.where((p) => p.groupOwner).length}');
+      }
+    }
+    if (!plan.acts) return;
+    if (!_backoff.mayAct(now)) return;
+    await _runFriendAction(group, plan, now);
+  }
+
+  Future<void> _runFriendAction(
+      NearbyGroupControl group, FriendLinkAction plan, int now) async {
+    final friend = plan.friend;
+    final who = friend == null ? '-' : friend.hash.substring(0, 8);
+    _backoff.acted(now);
+    _pendingSince = now;
+    _pendingHost = null;
+    _friendPendingSkipKey = null;
+    try {
+      switch (plan.kind) {
+        case FriendLinkKind.open:
+          final c = connectivity;
+          if (c is! NearbyFriendGroupControl || friend == null) return;
+          _pendingKind = NearbyGroupActionKind.create;
+          _pendingReason = 'friend_open';
+          AppLogger.info('WD_FRIEND_OPEN',
+              detail: 'friend=$who grp=${friend.creds.shortName} '
+                  'reason=${plan.reason}');
+          await (c as NearbyFriendGroupControl)
+              .createFriendGroup(name: friend.creds.name, key: friend.creds.pass);
+        case FriendLinkKind.join:
+        case FriendLinkKind.leaveAndJoin:
+          if (friend == null || plan.address == null) return;
+          final leave = plan.kind == FriendLinkKind.leaveAndJoin;
+          _pendingKind = leave
+              ? NearbyGroupActionKind.leaveAndJoin
+              : NearbyGroupActionKind.join;
+          _pendingReason = 'friend_join';
+          _friendPendingSkipKey = friendSkipKey(plan.address!, friend.hash);
+          AppLogger.info('WD_FRIEND_JOIN',
+              detail: 'friend=$who host=${plan.address} '
+                  'grp=${friend.creds.shortName} leave=${leave ? 1 : 0} '
+                  'reason=${plan.reason}');
+          await group.joinNearbyGroup(
+            name: friend.creds.name,
+            key: friend.creds.pass,
+            address: plan.address!,
+            leave: leave,
+          );
+        case FriendLinkKind.close:
+          _pendingKind = NearbyGroupActionKind.leave;
+          _pendingReason = 'friend_close';
+          var restS = 0;
+          if (plan.reason == 'idle') {
+            _friendIdleCloses += 1;
+            final rest = _friendIdleCloses >= FriendLinkRules.longRestAfterCloses
+                ? FriendLinkRules.openLongRestMs
+                : FriendLinkRules.openRestMs;
+            _friendOpenRestUntil = now + rest;
+            restS = rest ~/ 1000;
+          }
+          AppLogger.info('WD_FRIEND_CLOSE',
+              detail: 'reason=${plan.reason} rest_s=$restS');
+          await connectivity.disconnectWifiDirect();
+        case FriendLinkKind.none:
+          return;
+      }
+    } catch (error) {
+      AppLogger.info('WD_FRIEND',
+          detail: '${plan.kind.name} failed error=$error');
+      _failPending(now);
+    }
+  }
+
+  Future<void> _cancelConnectQuietly() async {
+    try {
+      await connectivity.cancelWifiDirectConnect();
+    } catch (_) {}
   }
 
   bool _isBusy() {

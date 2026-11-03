@@ -60,6 +60,9 @@ object NearbyRadio {
     private var lastInCall = false
     // Bundle 189 (A): when a nearby group create/join was last asked for.
     @Volatile private var lastGroupChangeAt = 0L
+    // Bundle 200 (C): the WD_PEERS line, only when the list changed (or 60 s).
+    private var lastPeersLine = ""
+    private var lastPeersLogAt = 0L
     /** Bundle 192: last known Wi-Fi Direct group state (null = not seen yet). */
     @Volatile private var lastFormed: Boolean? = null
 
@@ -111,7 +114,7 @@ object NearbyRadio {
             val ch = m.initialize(a, Looper.getMainLooper(), channelListener) ?: return false
             manager = m
             channel = ch
-            tags = NearbyTagManager(a, m, ch, { hasPermission(a) }, onWifi = { onWifiNetwork(a) }) { event -> emit(event) }
+            tags = NearbyTagManager(a, m, ch, { hasPermission(a) }, onWifi = { onWifiNetwork(a) }, peerCount = { peers.size }) { event -> emit(event) }
             lastWanted?.let { tags?.setWanted(it) }
             if (lastInCall) tags?.setInCall(true)
             // Bundle 161: linked groups + LocalLink hotspot (tests, off by default).
@@ -285,6 +288,8 @@ object NearbyRadio {
             "setNearbyLinkTarget" -> { tags?.setLinkTarget(call.argument<String>("id")); result.success(null) }
             "localNetStatus" -> result.success(localNet?.status() ?: emptyMap<String, Any?>())
             "createNearbyGroup" -> createNearbyGroup(result)
+            // Bundle 200 (B): the friend backup group (name + password from the pair's link key).
+            "createFriendGroup" -> createFriendGroup(call.argument<String>("name"), call.argument<String>("key"), result)
             "joinNearbyGroup" -> joinNearbyGroup(call.argument<String>("name"), call.argument<String>("key"), call.argument<String>("address"), call.argument<Boolean>("leave") ?: false, result)
             "cancelConnect" -> if (m != null && ch != null) m.cancelConnect(ch, actionResult(result)) else result.success(null)
             "disconnect" -> if (m != null && ch != null) m.removeGroup(ch, actionResult(result)) else result.success(null)
@@ -308,8 +313,22 @@ object NearbyRadio {
         try {
             m.requestPeers(ch) { list: WifiP2pDeviceList? ->
                 peers = list?.deviceList?.toList() ?: emptyList()
+                logPeers()
                 emit(mapOf("type" to "peers", "peers" to peers.map { peerMap(it) }))
             }
+        } catch (_: Exception) {}
+    }
+
+    /** Bundle 200 (C): `WD_PEERS n=2 list=realme C71/3/go,ZTE/3` (name, status,
+     *  go = it hosts a group). Only when it changed, or once a minute. */
+    private fun logPeers() {
+        try {
+            val line = SearchWindowPolicy.peersLine(peers.map { Triple(it.deviceName ?: "?", it.status, it.isGroupOwner) })
+            val now = System.currentTimeMillis()
+            if (line == lastPeersLine && now - lastPeersLogAt < 60_000L) return
+            lastPeersLine = line
+            lastPeersLogAt = now
+            Log.i(TAG, "WD_PEERS $line")
         } catch (_: Exception) {}
     }
 
@@ -361,6 +380,12 @@ object NearbyRadio {
         // for a moment - not during a voice call (voice broke up).
         if (!CallNearbyPause.searchAllowed()) {
             if (CallNearbyPause.logDue()) Log.i(TAG, "search paused call")
+            result.success(null)
+            return
+        }
+        // Bundle 200 (A): one search window at a time - a new peer discovery
+        // would cut the tag search that runs now.
+        if (tags?.searchWindowOpen() == true) {
             result.success(null)
             return
         }
@@ -510,6 +535,38 @@ object NearbyRadio {
         }
     }
 
+    /** Bundle 200 (B): host the friend backup group. Name + password come from
+     *  Dart (made from the pair's link key, so only the friend can work them
+     *  out). Android 10+, never while already in a group. The password is
+     *  never logged. */
+    private fun createFriendGroup(name: String?, key: String?, result: MethodChannel.Result) {
+        val a = app ?: return result.success(null)
+        val m = manager ?: return result.success(null)
+        val ch = channel ?: return result.success(null)
+        if (!hasPermission(a)) { result.error("PERMISSION", "Nearby Wi-Fi permission is required", null); return }
+        if (Build.VERSION.SDK_INT < 29 || !NearbyGroupPolicy.validNetworkName(name) || !NearbyGroupPolicy.validPassphrase(key)) {
+            Log.i(TAG, "WD_FRIEND_OPEN skipped reason=invalid sdk=${Build.VERSION.SDK_INT}")
+            result.error("INVALID", "A friend group needs Android 10+ and a valid name", null)
+            return
+        }
+        m.requestConnectionInfo(ch) { info ->
+            if (info?.groupFormed == true) {
+                Log.i(TAG, "WD_FRIEND_OPEN skipped reason=already_in_group host=${info.isGroupOwner}")
+                result.error("IN_GROUP", "This phone is already in a nearby group", null)
+                return@requestConnectionInfo
+            }
+            val listener = object : WifiP2pManager.ActionListener {
+                override fun onSuccess() { Log.i(TAG, "WD_FRIEND_OPEN ok grp=$name"); result.success(null) }
+                override fun onFailure(reason: Int) { Log.w(TAG, "WD_FRIEND_OPEN failed reason=$reason"); result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: $reason", null) }
+            }
+            try {
+                lastGroupChangeAt = System.currentTimeMillis()
+                val config = WifiP2pConfig.Builder().setNetworkName(name!!).setPassphrase(key!!).enablePersistentMode(false).build()
+                m.createGroup(ch, config, listener)
+            } catch (e: Exception) { result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: ${e.message}", null) }
+        }
+    }
+
     /** Bundle 157: join a nearby shared group with its name + password, like a
      *  normal Wi-Fi network (Android 10+, no pop-up). 177 (Q6): the classic
      *  connect (one pop-up on the other phone) is gone - SILENT_ONLY. A phone
@@ -555,5 +612,6 @@ object NearbyRadio {
         }
     }
 
-    private fun peerMap(device: WifiP2pDevice) = mapOf("name" to device.deviceName, "address" to device.deviceAddress, "status" to device.status)
+    // Bundle 200 (B): `go` = that phone hosts a Wi-Fi Direct group now.
+    private fun peerMap(device: WifiP2pDevice) = mapOf("name" to device.deviceName, "address" to device.deviceAddress, "status" to device.status, "go" to device.isGroupOwner)
 }

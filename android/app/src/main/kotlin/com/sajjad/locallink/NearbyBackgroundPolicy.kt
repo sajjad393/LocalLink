@@ -15,6 +15,8 @@ object NearbyBackgroundPolicy {
         "setNearbyIdentity", "setNearbyWanted", "setNearbyInCall",
         // Q3: a closed phone can join AND start a group (both silent).
         "createNearbyGroup", "joinNearbyGroup",
+        // Bundle 200 (B): the friend backup group (silent, same as above).
+        "createFriendGroup",
         // Leaving / stopping is always silent and saves battery (an empty
         // group nobody joined closes itself).
         "disconnect", "cancelConnect", "leaveLocalNet", "stopLocalHotspot",
