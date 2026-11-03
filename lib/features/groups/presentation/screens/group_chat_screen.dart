@@ -26,6 +26,10 @@ import 'package:locallink/core/services/message_delete_book.dart';
 import 'package:locallink/features/messaging/data/forward_hub.dart';
 import 'package:locallink/features/messaging/presentation/screens/forward_screen.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
+import 'package:locallink/features/messaging/presentation/widgets/pinch_text_zoom.dart';
+import 'package:locallink/features/messaging/presentation/widgets/quote_thumb.dart';
+import 'package:locallink/features/messaging/presentation/widgets/swipe_to_reply.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/ui_sounds.dart';
 
 class GroupChatScreen extends StatefulWidget {
@@ -59,6 +63,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   late final FileTransferBloc _transferController;
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+
+  /// Bundle 199: the message box, so a reply can open the keyboard.
+  final FocusNode _composerFocus = FocusNode();
   final _pending = <PickedFile>[];
   Map<String, String> _memberNames = const {};
 
@@ -146,6 +153,23 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   // Bundle 197a: message options (mock 20, 21) - same as the 1-to-1 chat.
   // ---------------------------------------------------------------------
 
+  /// Bundle 199: start a reply (swipe / Hold > Reply / Select > Reply):
+  /// the reply bar opens and the keyboard opens (WhatsApp).
+  void _startReply(GroupMessage m, {required String from}) {
+    if (!mounted) return;
+    setState(() {
+      _replyTo = m;
+      _selected.clear();
+    });
+    AppLogger.info('REPLY_START',
+        detail: 'from=$from kind=${replyKindFor(m.attachments)} group=y');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _composerFocus.canRequestFocus) {
+        _composerFocus.requestFocus();
+      }
+    });
+  }
+
   static ReplyRef _replyRefFor(GroupMessage m) => ReplyRef(
         id: m.id,
         from: m.senderId,
@@ -192,7 +216,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         case MessageAction.react:
           await _controller.react(message.id, result.emoji ?? '');
         case MessageAction.reply:
-          setState(() => _replyTo = message);
+          _startReply(message, from: 'hold');
         case MessageAction.copy:
           await _copy([message]);
         case MessageAction.forward:
@@ -353,7 +377,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       }
     });
     _flashTimer?.cancel();
-    _flashTimer = Timer(const Duration(milliseconds: 1400), () {
+    // Bundle 199: blue border for 2 s (was a grey ring for 1.4 s).
+    _flashTimer = Timer(FlashRing.hold, () {
       if (mounted) setState(() => _flashId = null);
     });
   }
@@ -377,10 +402,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         if (one != null)
           IconButton(
             tooltip: 'Reply',
-            onPressed: () => setState(() {
-              _replyTo = one;
-              _selected.clear();
-            }),
+            onPressed: () => _startReply(one, from: 'select'),
             icon: const Icon(Icons.reply_rounded),
           ),
         if (one != null && _controller.isMine(one))
@@ -429,6 +451,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     _transferController.close();
     _messageController.dispose();
     _scrollController.dispose();
+    _composerFocus.dispose();
     super.dispose();
   }
 
@@ -439,6 +462,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       builder: (context, state) {
         // Bundle 197a: drop picks that were deleted meanwhile.
         final ids = {for (final m in state.messages) m.id};
+        // Bundle 199: the original of a quote (its small picture).
+        final byId = {for (final m in state.messages) m.id: m};
         _selected.removeWhere((id) => !ids.contains(id));
         final selecting = _selected.isNotEmpty;
         final scaffold = Scaffold(
@@ -487,8 +512,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                           message: 'Send a message or share a file with everyone in this group.',
                           lottieAsset: 'assets/animations/empty_inbox.json',
                         )
-                      : ListView.builder(
+                      // Bundle 199: two fingers = text size.
+                      : PinchTextZoom(
+                          scrollController: _scrollController,
+                          builder: (context, pinching) => ListView.builder(
                           controller: _scrollController,
+                          physics: pinching
+                              ? const NeverScrollableScrollPhysics()
+                              : null,
                           // Bundle 147: keep ~1.5 screens of bubbles built above/below so
                           // photos/videos are ready before they scroll in.
                           // ignore: deprecated_member_use
@@ -507,12 +538,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                 if (showDate) MessengerDateDivider(date: parsed),
                                 KeyedSubtree(
                                   key: _jumpId == message.id ? _jumpKey : null,
-                                  child: _groupRow(message, state, ids, selecting),
+                                  child: _groupRow(message, state, ids, selecting, byId),
                                 ),
                               ],
                             );
                           },
-                        ),
+                        )),
             ),
             if (_replyTo != null)
               ReplyBar(
@@ -520,6 +551,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 line: replyLine(_replyRefFor(_replyTo!)),
                 isYou: _controller.isMine(_replyTo!),
                 onClose: () => setState(() => _replyTo = null),
+                thumb: QuoteThumb.forAttachments(_replyTo!.attachments),
               ),
             GroupComposer(
               controller: _messageController,
@@ -528,6 +560,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               onPick: _pickFiles,
               onRemove: (index) => setState(() => _pending.removeAt(index)),
               onSend: _send,
+              focusNode: _composerFocus,
             ),
           ],
         ),
@@ -551,7 +584,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   /// Bundle 197a: one bubble row (hold sheet, Select mode, quote).
   Widget _groupRow(GroupMessage message, GroupChatState state, Set<String> ids,
-      bool selecting) {
+      bool selecting, Map<String, GroupMessage> byId) {
     final reply = message.replyTo;
     final picked = _selected.contains(message.id);
     final bubble = GestureDetector(
@@ -563,7 +596,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         files: widget.files,
         senderName: _senderName(message),
         reactions: state.reactions[message.id] ?? const [],
-        highlighted: picked || _heldId == message.id || _flashId == message.id,
+        highlighted: picked || _heldId == message.id,
+        flashed: _flashId == message.id,
         bubbleKey: _heldId == message.id ? _heldKey : null,
         quoteName: reply == null ? '' : _nameFor(reply.from),
         quoteIsYou: reply?.from == widget.localDeviceId,
@@ -572,9 +606,20 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 !ids.contains(reply.id)),
         onQuoteTap:
             reply == null || selecting ? null : () => _jumpTo(reply.id),
+        quoteThumb: reply == null
+            ? null
+            : QuoteThumb.forAttachments(
+                byId[reply.id]?.attachments ?? const <Attachment>[]),
       ),
     );
-    if (!selecting) return bubble;
+    // Bundle 199: slide right to reply.
+    if (!selecting) {
+      return SwipeToReply(
+        enabled: _heldId == null,
+        onReply: () => _startReply(message, from: 'swipe'),
+        child: bubble,
+      );
+    }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _toggleSelect(message),

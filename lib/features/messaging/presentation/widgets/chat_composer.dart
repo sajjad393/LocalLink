@@ -20,6 +20,9 @@ class ChatComposer extends StatelessWidget {
   /// appear even with an empty text field (image-without-caption send).
   final bool hasAttachments;
 
+  /// Bundle 199: focus for the message box (reply opens the keyboard).
+  final FocusNode? focusNode;
+
   const ChatComposer({
     super.key,
     required this.controller,
@@ -28,6 +31,7 @@ class ChatComposer extends StatelessWidget {
     required this.onSend,
     this.voice,
     this.hasAttachments = false,
+    this.focusNode,
   });
 
   @override
@@ -98,6 +102,7 @@ class ChatComposer extends StatelessWidget {
                             Expanded(
                               child: LocalLinkTextField(
                                 controller: controller,
+                                focusNode: focusNode,
                                 enabled: !isSending,
                                 textInputAction: TextInputAction.send,
                                 onSubmitted: (_) => onSend(),

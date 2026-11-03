@@ -514,12 +514,16 @@ class ReplyBar extends StatelessWidget {
   final bool isYou;
   final VoidCallback onClose;
 
+  /// Bundle 199: small picture of the photo / video being answered.
+  final Widget? thumb;
+
   const ReplyBar({
     super.key,
     required this.name,
     required this.line,
     required this.isYou,
     required this.onClose,
+    this.thumb,
   });
 
   @override
@@ -540,18 +544,22 @@ class ReplyBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 border: Border(left: BorderSide(color: accent, width: 4)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(name,
-                      style: TextStyle(
-                          color: accent, fontWeight: FontWeight.w700, fontSize: 13)),
-                  Text(line,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, color: colors.onSurface)),
-                ],
+              child: _withThumb(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(name,
+                        style: TextStyle(
+                            color: accent, fontWeight: FontWeight.w700, fontSize: 13)),
+                    Text(line,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: colors.onSurface)),
+                  ],
+                ),
+                thumb,
+                expand: true,
               ),
             ),
           ),
@@ -576,6 +584,9 @@ class QuoteBox extends StatelessWidget {
   final VoidCallback? onTap;
   final bool onBlue;
 
+  /// Bundle 199: small picture of the quoted photo / video.
+  final Widget? thumb;
+
   const QuoteBox({
     super.key,
     required this.name,
@@ -584,6 +595,7 @@ class QuoteBox extends StatelessWidget {
     this.notAvailable = false,
     this.onTap,
     this.onBlue = false,
+    this.thumb,
   });
 
   @override
@@ -606,7 +618,7 @@ class QuoteBox extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           border: Border(left: BorderSide(color: accent, width: 3.5)),
         ),
-        child: Column(
+        child: _withThumb(Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -625,10 +637,23 @@ class QuoteBox extends StatelessWidget {
               ),
             ),
           ],
-        ),
+        ), notAvailable ? null : thumb),
       ),
     );
   }
+}
+
+/// Bundle 199: text on the left, the small picture on the right.
+/// No picture = exactly the old layout.
+Widget _withThumb(Widget text, Widget? thumb, {bool expand = false}) {
+  if (thumb == null) return text;
+  return Row(
+    mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+    children: [
+      if (expand) Expanded(child: text) else Flexible(child: text),
+      thumb,
+    ],
+  );
 }
 
 /// "↪ Forwarded" (mock 12).
@@ -688,6 +713,57 @@ BoxDecoration highlightBubble(BoxDecoration base, ColorScheme colors,
       colors.onSurface.withValues(alpha: .10),
       base.color ?? colors.surfaceContainerHighest);
   return base.copyWith(color: fill, border: ring);
+}
+
+/// Bundle 199: after tapping a reply box, the original bubble gets a blue
+/// border (the app colour) for 2 s, then it fades out (~0.3 s). No grey fill;
+/// Hold / Select keep their grey highlight. Drawn on top of the bubble, so
+/// the bubble itself is unchanged.
+class FlashRing extends StatelessWidget {
+  const FlashRing({
+    super.key,
+    required this.on,
+    required this.radius,
+    required this.child,
+    this.onBlue = false,
+  });
+
+  static const Duration hold = Duration(seconds: 2);
+  static const Duration fade = Duration(milliseconds: 300);
+
+  final bool on;
+  final BorderRadius radius;
+  final Widget child;
+
+  /// Own group bubble (blue gradient): white border instead.
+  final bool onBlue;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    return Stack(
+      children: [
+        child,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: on ? 1 : 0,
+              duration: still ? Duration.zero : fade,
+              child: DecoratedBox(
+                key: const ValueKey('bubble_flash_ring'),
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(
+                      color: onBlue ? Colors.white : colors.primary, width: 2),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// Dims the whole chat while a sheet is open, but leaves a hole around the

@@ -15,6 +15,7 @@ import 'package:locallink/features/groups/domain/group_repository_contract.dart'
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_message_bubble.dart';
 import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
 
 final _group = LocalGroup(
   id: 'g1',
@@ -284,6 +285,83 @@ void main() {
       await tester.tap(find.byTooltip('Close'));
       await _settle(tester);
       expect(find.byKey(const ValueKey('select_bar')), findsNothing);
+    });
+
+    // Bundle 199: swipe right to reply, keyboard opens, blue flash 2 s.
+    testWidgets('199 swipe Sara\'s message right: reply bar + keyboard',
+        (tester) async {
+      final messaging = _FakeGroupMessaging(historyResult: [
+        _message(id: 'm1', senderId: 'd2', body: 'Meeting at 5?'),
+      ]);
+      await tester.pumpWidget(_host(messaging));
+      await _settle(tester);
+      await tester.drag(find.text('Meeting at 5?'), const Offset(170, 0));
+      await _settle(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('reply_bar')), findsOneWidget);
+      final edit = tester.widget<EditableText>(find.byType(EditableText));
+      expect(edit.focusNode.hasFocus, isTrue);
+      await tester.enterText(find.byType(TextField), 'Yes');
+      await tester.tap(find.byTooltip('Send message'));
+      await _settle(tester);
+      final env = MessageEnvelope.parse(messaging.sentBodies.single);
+      expect(env.reply!.id, 'm1');
+    });
+
+    testWidgets('199 tap a quote: original gets the blue border for 2 s',
+        (tester) async {
+      final quote = MessageEnvelope.build(
+          text: 'Yes',
+          reply: const ReplyRef(
+              id: 'm1', from: 'd2', snip: 'Meeting at 5?', kind: 'text'));
+      final messaging = _FakeGroupMessaging(historyResult: [
+        _message(id: 'm1', senderId: 'd2', body: 'Meeting at 5?'),
+        _message(id: 'm2', senderId: 'me', body: quote),
+      ]);
+      await tester.pumpWidget(_host(messaging));
+      await _settle(tester);
+      double ringOf(String text) {
+        final bubble = find.ancestor(
+            of: find.text(text), matching: find.byType(GroupMessageBubble));
+        final ring = find.descendant(
+            of: bubble,
+            matching: find.byKey(const ValueKey('bubble_flash_ring')));
+        return tester
+            .widget<AnimatedOpacity>(find
+                .ancestor(of: ring, matching: find.byType(AnimatedOpacity))
+                .first)
+            .opacity;
+      }
+
+      expect(ringOf('Yes'), 0);
+      await tester.tap(find.byType(QuoteBox));
+      await _settle(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      final original = find.text('Meeting at 5?').first;
+      expect(
+          tester
+              .widget<AnimatedOpacity>(find
+                  .descendant(
+                      of: find.ancestor(
+                          of: original,
+                          matching: find.byType(GroupMessageBubble)),
+                      matching: find.byType(AnimatedOpacity))
+                  .first)
+              .opacity,
+          1);
+      await tester.pump(const Duration(milliseconds: 1700));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+          tester
+              .widget<AnimatedOpacity>(find
+                  .descendant(
+                      of: find.ancestor(
+                          of: original,
+                          matching: find.byType(GroupMessageBubble)),
+                      matching: find.byType(AnimatedOpacity))
+                  .first)
+              .opacity,
+          0);
     });
   });
 }

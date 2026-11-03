@@ -13,6 +13,9 @@ class GroupComposer extends StatelessWidget {
   final ValueChanged<int> onRemove;
   final VoidCallback onSend;
 
+  /// Bundle 199: focus for the message box (reply opens the keyboard).
+  final FocusNode? focusNode;
+
   const GroupComposer({
     super.key,
     required this.controller,
@@ -21,6 +24,7 @@ class GroupComposer extends StatelessWidget {
     required this.onPick,
     required this.onRemove,
     required this.onSend,
+    this.focusNode,
   });
 
   @override
@@ -68,6 +72,7 @@ class GroupComposer extends StatelessWidget {
                   ),
                   child: LocalLinkTextField(
                     controller: controller,
+                    focusNode: focusNode,
                     enabled: !isSending,
                     onSubmitted: (_) => onSend(),
                     textInputAction: TextInputAction.send,

@@ -10,6 +10,7 @@ import 'package:locallink/features/messaging/data/read_receipts/read_receipts_se
 
 import 'bubble_layout.dart';
 import 'message_options.dart';
+import 'pinch_text_zoom.dart';
 
 class MessageBubble extends StatelessWidget {
   final Message message;
@@ -43,6 +44,12 @@ class MessageBubble extends StatelessWidget {
   /// Bundle 197b: the friend's name ("Ask Sajjad to send it again.").
   final String senderName;
 
+  /// Bundle 199: blue border for 2 s after a reply box jumped here.
+  final bool flashed;
+
+  /// Bundle 199: small picture of the quoted photo / video (null = none).
+  final Widget? quoteThumb;
+
   const MessageBubble({
     super.key,
     required this.message,
@@ -60,6 +67,8 @@ class MessageBubble extends StatelessWidget {
     this.quoteMissing = false,
     this.onQuoteTap,
     this.senderName = '',
+    this.flashed = false,
+    this.quoteThumb,
   });
 
   bool get _canResend =>
@@ -96,7 +105,10 @@ class MessageBubble extends StatelessWidget {
             // Bundle 182: emoji chips on the bottom edge, bubble fits content.
             child: BubbleReactionEdge(
               chips: reactions.isEmpty ? const <Widget>[] : _reactionCounts(context),
-              bubble: Container(
+              bubble: FlashRing(
+                on: flashed,
+                radius: radius,
+                child: Container(
                 key: bubbleKey,
                 constraints: BoxConstraints(maxWidth: maxWidth),
                 padding: EdgeInsets.fromLTRB(
@@ -120,7 +132,7 @@ class MessageBubble extends StatelessWidget {
                   header: _header(),
                   body: message.text.isEmpty
                       ? null
-                      : Text(message.text, style: TextStyle(color: foreground)),
+                      : ChatBodyText(message.text, color: foreground),
                   media: [
                     for (final attachment in message.attachments)
                       AttachmentTile(
@@ -159,6 +171,7 @@ class MessageBubble extends StatelessWidget {
                   ),
                 ),
               ),
+              ),
             ),
           ),
         ),
@@ -194,6 +207,7 @@ class MessageBubble extends StatelessWidget {
             isYou: quoteIsYou,
             notAvailable: quoteMissing,
             onTap: onQuoteTap,
+            thumb: quoteThumb,
           ),
       ],
     );

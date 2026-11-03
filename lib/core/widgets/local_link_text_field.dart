@@ -18,6 +18,9 @@ class LocalLinkTextField extends StatelessWidget {
   final bool autocorrect;
   final InputDecoration? decoration;
 
+  /// Bundle 199: lets a chat open the keyboard (swipe to reply). Null = as before.
+  final FocusNode? focusNode;
+
   const LocalLinkTextField({
     super.key,
     required this.controller,
@@ -36,12 +39,14 @@ class LocalLinkTextField extends StatelessWidget {
     this.onSubmitted,
     this.autocorrect = true,
     this.decoration,
+    this.focusNode,
   });
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
+      focusNode: focusNode,
       enabled: enabled,
       obscureText: obscureText,
       maxLength: maxLength,

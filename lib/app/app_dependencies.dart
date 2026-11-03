@@ -83,6 +83,7 @@ import 'package:locallink/features/calls/domain/call_repository_contract.dart';
 import 'package:locallink/core/services/ui_sounds.dart';
 import 'package:locallink/features/messaging/data/read_receipts/read_receipt_service.dart';
 import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
+import 'package:locallink/features/messaging/data/chat_text_scale.dart';
 import 'package:locallink/features/messaging/data/read_receipts/voice_played_hub.dart';
 
 /// Owns the long-lived application services used by the Flutter client.
@@ -484,6 +485,11 @@ class AppDependencies {
   Future<void> _loadReadReceiptsSetting() async {
     try {
       await ReadReceiptsSetting.instance
+          .load(read: store.readSetting, write: store.writeSetting);
+    } catch (_) {}
+    // Bundle 199: chat text size (pinch), same settings table.
+    try {
+      await ChatTextScale.instance
           .load(read: store.readSetting, write: store.writeSetting);
     } catch (_) {}
   }

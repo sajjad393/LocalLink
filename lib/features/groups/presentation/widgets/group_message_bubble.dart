@@ -7,6 +7,7 @@ import 'package:locallink/features/files/domain/file_transfer_repository_contrac
 import 'package:locallink/features/files/presentation/widgets/attachment_tile.dart';
 import 'package:locallink/features/messaging/presentation/widgets/bubble_layout.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
+import 'package:locallink/features/messaging/presentation/widgets/pinch_text_zoom.dart';
 import 'package:locallink/core/models/message_envelope.dart';
 
 class GroupMessageBubble extends StatelessWidget {
@@ -24,6 +25,12 @@ class GroupMessageBubble extends StatelessWidget {
   final bool quoteMissing;
   final VoidCallback? onQuoteTap;
 
+  /// Bundle 199: blue border for 2 s after a reply box jumped here.
+  final bool flashed;
+
+  /// Bundle 199: small picture of the quoted photo / video (null = none).
+  final Widget? quoteThumb;
+
   const GroupMessageBubble({
     super.key,
     required this.message,
@@ -37,6 +44,8 @@ class GroupMessageBubble extends StatelessWidget {
     this.quoteIsYou = false,
     this.quoteMissing = false,
     this.onQuoteTap,
+    this.flashed = false,
+    this.quoteThumb,
   });
 
   @override
@@ -46,6 +55,12 @@ class GroupMessageBubble extends StatelessWidget {
     // Outgoing = brand blue→cyan gradient pill with white text (matches the
     // direct-message bubble); incoming = neutral surface.
     final foreground = isMine ? Colors.white : colors.onSurface;
+    final radius = BorderRadius.only(
+      topLeft: const Radius.circular(LocalLinkRadius.chat),
+      topRight: const Radius.circular(LocalLinkRadius.chat),
+      bottomLeft: Radius.circular(isMine ? LocalLinkRadius.chat : 6),
+      bottomRight: Radius.circular(isMine ? 6 : LocalLinkRadius.chat),
+    );
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       // Bundle 182: bubble fits its content, emoji chips on the bottom edge.
@@ -53,7 +68,11 @@ class GroupMessageBubble extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: LocalLinkSpacing.xs),
         child: BubbleReactionEdge(
           chips: reactions.isEmpty ? const <Widget>[] : _reactionCounts(context),
-          bubble: Container(
+          bubble: FlashRing(
+            on: flashed,
+            radius: radius,
+            onBlue: isMine,
+            child: Container(
             key: bubbleKey,
             constraints: BoxConstraints(maxWidth: maxWidth.clamp(220.0, 620.0)),
             padding: EdgeInsets.fromLTRB(
@@ -66,12 +85,7 @@ class GroupMessageBubble extends StatelessWidget {
               BoxDecoration(
                 gradient: isMine ? LocalLinkBrand.linearGradient : null,
                 color: isMine ? null : colors.surfaceContainerHighest,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(LocalLinkRadius.chat),
-                  topRight: const Radius.circular(LocalLinkRadius.chat),
-                  bottomLeft: Radius.circular(isMine ? LocalLinkRadius.chat : 6),
-                  bottomRight: Radius.circular(isMine ? 6 : LocalLinkRadius.chat),
-                ),
+                borderRadius: radius,
               ),
               colors,
               on: highlighted,
@@ -82,7 +96,7 @@ class GroupMessageBubble extends StatelessWidget {
               header: _header(context, colors, foreground),
               body: message.text.isEmpty
                   ? null
-                  : Text(message.text, style: TextStyle(color: foreground)),
+                  : ChatBodyText(message.text, color: foreground),
               media: [
                 for (final attachment in message.attachments)
                   AttachmentTile(
@@ -101,6 +115,7 @@ class GroupMessageBubble extends StatelessWidget {
                       .labelSmall
                       ?.copyWith(color: foreground.withValues(alpha: .62))),
             ),
+          ),
           ),
         ),
       ),
@@ -134,6 +149,7 @@ class GroupMessageBubble extends StatelessWidget {
             notAvailable: quoteMissing,
             onTap: onQuoteTap,
             onBlue: isMine,
+            thumb: quoteThumb,
           ),
       ],
     );
