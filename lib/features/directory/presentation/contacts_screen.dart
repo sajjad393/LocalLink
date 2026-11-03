@@ -9,6 +9,7 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/core/widgets/presence_way.dart';
 import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/features/directory/data/friend_requests.dart';
 import 'package:locallink/features/directory/presentation/contact_sheets.dart';
@@ -404,16 +405,34 @@ class _ContactsScreenState extends State<ContactsScreen> {
           title: Text(title, style: Theme.of(context).textTheme.titleSmall),
           // Bundle 196 (4.2): "Private" when they made their own profile
           // private (their signed profile says so).
-          subtitle: Row(
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Flexible(
-                child: Text('@${profile.username}',
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text('@${profile.username}',
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                  if (!profile.discoverableByName) ...[
+                    const SizedBox(width: 6),
+                    PrivatePill(
+                        key: ValueKey('people_private_${profile.userId}')),
+                  ],
+                ],
               ),
-              if (!profile.discoverableByName) ...[
-                const SizedBox(width: 6),
-                PrivatePill(key: ValueKey('people_private_${profile.userId}')),
-              ],
+              // Bundle 201 (F, mock ST S4): how they are reached.
+              if (profile.deviceId.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: PresenceWayLine(
+                    deviceId: profile.deviceId,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontSize: 12.5,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                ),
             ],
           ),
           // Bundle 196 (4.1): ⋮ opens the actions sheet (no pop-up menu).

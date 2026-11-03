@@ -10,6 +10,10 @@ object SearchWindowPolicy {
     const val RANDOM_OFFSET_MS = 3_000L
     /** A "peers changed" event starts a window at most this often. */
     const val PEERS_GAP_MS = 25_000L
+    /** Bundle 201 (A2): start the search this long after publishing at most. */
+    const val PUBLISH_WAIT_MS = 3_000L
+    /** Bundle 201 (A4): second fresh peer list inside a window. */
+    const val PEERS_REFRESH_MS = 10_000L
 
     /** WifiP2pManager failure codes. */
     const val BUSY = 2

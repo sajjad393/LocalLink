@@ -300,7 +300,9 @@ class ReliableMessagingService {
     );
 
     _wifiSub ??= connectivity.wifiDirectEvents.listen(
-      (_) {
+      (event) {
+        // Bundle 201 (A2): the search-window count is not a link change.
+        if (event is Map && event['type'] == 'tag_window') return;
         AppLogger.info(
           'MESSAGE_WIFI_DIRECT_EVENT',
         );

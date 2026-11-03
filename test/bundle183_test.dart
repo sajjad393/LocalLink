@@ -454,19 +454,24 @@ void main() {
       await open(tester);
       await tester.tap(find.byKey(const ValueKey('people_filter_button')));
       await tester.pumpAndSettle();
-      expect(find.text('All'), findsOneWidget);
-      expect(find.text('Nearby'), findsOneWidget);
-      expect(find.text('Online'), findsOneWidget);
+      // Bundle 201: People rows also show way words ("Nearby" when the way
+      // is not known yet) - look inside the menu only.
+      Finder item(String key, String text) => find.descendant(
+          of: find.byKey(ValueKey('people_filter_$key')),
+          matching: find.text(text));
+      expect(item('all', 'All'), findsOneWidget);
+      expect(item('nearby', 'Nearby'), findsOneWidget);
+      expect(item('online', 'Online'), findsOneWidget);
       expect(
           find.descendant(
               of: find.byKey(const ValueKey('people_filter_all')),
               matching: find.byIcon(Icons.check)),
           findsOneWidget);
       // Order: All above Nearby above Online.
-      expect(tester.getTopLeft(find.text('All')).dy,
-          lessThan(tester.getTopLeft(find.text('Nearby')).dy));
-      expect(tester.getTopLeft(find.text('Nearby')).dy,
-          lessThan(tester.getTopLeft(find.text('Online')).dy));
+      expect(tester.getTopLeft(item('all', 'All')).dy,
+          lessThan(tester.getTopLeft(item('nearby', 'Nearby')).dy));
+      expect(tester.getTopLeft(item('nearby', 'Nearby')).dy,
+          lessThan(tester.getTopLeft(item('online', 'Online')).dy));
     });
 
     testWidgets('Nearby: only nearby people, chip, x = All again',
@@ -950,12 +955,13 @@ void main() {
   });
 
   // ================================================================ T7
-  test('T7 status dot widget untouched', () {
+  // Bundle 201 (mock ST S6-S7, chosen by the user): the photo badge now
+  // draws one icon per way; it stays the same widget in the same place.
+  test('T7 status badge widget: one icon per way (201)', () {
     final src = _src('lib/core/widgets/messenger_conversation_tile.dart');
     expect(src.contains('class PresenceAvatar'), isTrue);
-    expect(src.contains('width: 14,'), isTrue);
-    expect(src.contains("'nearby' => (colors.primary, Icons.wifi_rounded),"),
-        isTrue);
+    expect(src.contains('PresenceHub.instance.wayOf(device.id)'), isTrue);
+    expect(src.contains('PresenceWayIcon('), isTrue);
   });
 }
 

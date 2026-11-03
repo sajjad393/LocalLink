@@ -32,6 +32,8 @@ class NearbyTagManager(
     private val onWifi: () -> Boolean = { false },
     /** Bundle 200 (C): how many Wi-Fi Direct peers are seen (for the log). */
     private val peerCount: () -> Int = { 0 },
+    /** Bundle 201 (A4): ask Android for a fresh peer list (host flag). */
+    private val refreshPeers: () -> Unit = {},
     private val emit: (Map<String, Any?>) -> Unit,
 ) {
     private val main = Handler(Looper.getMainLooper())
@@ -71,6 +73,11 @@ class NearbyTagManager(
     private var windowLinkUp = 0
     private var windowRetried = false
     private var windowFixed = false
+    // Bundle 201 (A2): the search starts after publishing (once per window),
+    // and the first raw answer of each kind is logged.
+    private var requestStartedSeq = 0
+    private var rawPtrLogged = false
+    private var rawTxtLogged = false
 
     /** Bundle 159: (charging, level 0-100 or -1). Never throws. */
     private fun batteryState(): Pair<Boolean, Int> = try {
@@ -223,9 +230,9 @@ class NearbyTagManager(
         ))
     }
 
-    fun publish(force: Boolean = false) {
-        val id = tagId ?: return
-        if (!hasPermission()) return
+    fun publish(force: Boolean = false, then: (() -> Unit)? = null) {
+        val id = tagId ?: run { then?.invoke(); return }
+        if (!hasPermission()) { then?.invoke(); return }
         val (nowCharging, level) = batteryState()
         noteBattery(nowCharging, level, System.currentTimeMillis())
         if (nowCharging != charging) {
@@ -237,33 +244,36 @@ class NearbyTagManager(
         val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge, charging, wifi,
             v6 = groupV6(), hotspotSsid = hotspotSsid, hotspotKey = hotspotKey, linkTarget = linkTarget, inCall = inCall)
         val signature = txt.toString()
-        if (!force && signature == lastPublished) return
+        if (!force && signature == lastPublished) { then?.invoke(); return }
         lastPublished = signature
         val info = WifiP2pDnsSdServiceInfo.newInstance(
             NearbyTagPolicy.INSTANCE_NAME, NearbyTagPolicy.SERVICE_TYPE, txt)
         try {
             manager.clearLocalServices(channel, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() = addService(info, txt)
-                override fun onFailure(reason: Int) = addService(info, txt)
+                override fun onSuccess() = addService(info, txt, then)
+                override fun onFailure(reason: Int) = addService(info, txt, then)
             })
         } catch (e: SecurityException) {
             lastPublished = ""
             Log.w(TAG, "tag publish denied: ${e.message}")
+            then?.invoke()
         }
     }
 
-    private fun addService(info: WifiP2pDnsSdServiceInfo, txt: Map<String, String>) {
+    private fun addService(info: WifiP2pDnsSdServiceInfo, txt: Map<String, String>, then: (() -> Unit)? = null) {
         try {
             manager.addLocalService(channel, info, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"} wf=${txt["wf"] ?: "0"} v6=${if (txt.containsKey("v6")) 1 else 0} hs=${if (txt.containsKey("hs")) 1 else 0} lt=${txt["lt"] ?: "-"} call=${txt["call"] ?: "0"}") }
+                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"} wf=${txt["wf"] ?: "0"} v6=${if (txt.containsKey("v6")) 1 else 0} hs=${if (txt.containsKey("hs")) 1 else 0} lt=${txt["lt"] ?: "-"} call=${txt["call"] ?: "0"}"); then?.invoke() }
                 override fun onFailure(reason: Int) {
                     lastPublished = ""
                     Log.w(TAG, "tag publish failed reason=$reason")
+                    then?.invoke()
                 }
             })
         } catch (e: SecurityException) {
             lastPublished = ""
             Log.w(TAG, "tag publish denied: ${e.message}")
+            then?.invoke()
         }
     }
 
@@ -304,18 +314,29 @@ class NearbyTagManager(
         if (searchWindowOpen(now)) return
         lastDiscoveryAt = now
         openWindow(now, why)
-        publish()
+        val seq = windowSeq
         try {
             if (!listenersSet) {
                 manager.setDnsSdResponseListeners(channel,
-                    { _, _, _ -> },
+                    { instanceName, _, device -> onPtr(instanceName, device?.deviceAddress) },
                     { fullDomainName, txt, device -> onTxt(fullDomainName, txt, device?.deviceAddress) })
                 listenersSet = true
             }
-            startRequest(windowSeq)
         } catch (e: SecurityException) {
             Log.w(TAG, "tag search denied: ${e.message}")
+            return
         }
+        // Bundle 201 (A2): publish first, search after (some phones drop the
+        // search when both run on the channel at the same moment). If Android
+        // never answers the publish, the search still starts after 3 s.
+        publish { startOnce(seq) }
+        main.postDelayed({ startOnce(seq) }, SearchWindowPolicy.PUBLISH_WAIT_MS)
+    }
+
+    private fun startOnce(seq: Int) {
+        if (seq != windowSeq || requestStartedSeq == seq || !searchWindowOpen()) return
+        requestStartedSeq = seq
+        startRequest(seq)
     }
 
     /** Bundle 200 (A/C): start a 20 s window and log its end once. */
@@ -327,11 +348,20 @@ class NearbyTagManager(
         windowLinkUp = 0
         windowRetried = false
         windowFixed = false
+        rawPtrLogged = false
+        rawTxtLogged = false
         val seq = windowSeq
+        // Bundle 201 (A4): a fresh peer list now and 10 s later, so a phone
+        // that just became a host is seen as one.
+        main.postDelayed({ if (seq == windowSeq) try { refreshPeers() } catch (_: Exception) {} }, 1_000L)
+        main.postDelayed({ if (seq == windowSeq) try { refreshPeers() } catch (_: Exception) {} }, SearchWindowPolicy.PEERS_REFRESH_MS)
         Log.i(TAG, "WD_SEARCH start window=${SearchWindowPolicy.WINDOW_MS / 1000}s why=$why peers=${safePeerCount()}")
         main.postDelayed({
             if (seq == windowSeq) {
-                Log.i(TAG, "WD_SEARCH end why=$windowWhy heard=$windowHeard linkup=$windowLinkUp peers=${safePeerCount()}")
+                val peersNow = safePeerCount()
+                Log.i(TAG, "WD_SEARCH end why=$windowWhy heard=$windowHeard linkup=$windowLinkUp peers=$peersNow")
+                // Bundle 201 (A2): Dart counts windows that heard nothing.
+                try { emit(mapOf("type" to "tag_window", "heard" to windowHeard, "peers" to peersNow)) } catch (_: Exception) {}
             }
         }, SearchWindowPolicy.WINDOW_MS)
     }
@@ -403,9 +433,20 @@ class NearbyTagManager(
         }
     }
 
+    /** Bundle 201 (A2): first raw service answer of a window (diagnosis). */
+    private fun onPtr(instanceName: String?, address: String?) {
+        if (rawPtrLogged) return
+        rawPtrLogged = true
+        Log.i(TAG, "WD_TAG raw kind=ptr name=${instanceName ?: "-"} from=${address ?: "-"}")
+    }
+
     private fun onTxt(fullDomainName: String?, txt: Map<String, String>?, address: String?) {
         val now = System.currentTimeMillis()
         windowHeard += 1
+        if (!rawTxtLogged) {
+            rawTxtLogged = true
+            Log.i(TAG, "WD_TAG raw kind=txt keys=${txt?.size ?: 0} from=${address ?: "-"}")
+        }
         val tag = NearbyTagPolicy.decode(fullDomainName, txt, address, now) ?: return
         windowLinkUp += 1
         tags[tag["address"] as String] = tag

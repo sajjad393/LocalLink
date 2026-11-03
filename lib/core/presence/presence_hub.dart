@@ -21,6 +21,53 @@ extension PresenceStatusX on PresenceStatus {
   };
 }
 
+/// Bundle 201 (F, mock ST): HOW a person is reached. Only for words and the
+/// photo badge - [PresenceStatus] stays the one rule for filters and logic.
+enum PresenceWay { wifi, wifiDirect, mesh, nearby, connecting, online, offline }
+
+/// Bundle 201 (F): one local route report. [kind] = 'lan' | 'wifi_direct' |
+/// 'mesh' | 'none'; [hops] = hops to them on a mesh route (null = unknown);
+/// [via] = the next phone's device id on a mesh route.
+class PresenceRoute {
+  final String deviceId;
+  final String kind;
+  final int? hops;
+  final String? via;
+  const PresenceRoute(this.deviceId, this.kind, {this.hops, this.via});
+
+  bool sameAs(PresenceRoute? o) =>
+      o != null && o.kind == kind && o.hops == hops && o.via == via;
+}
+
+/// Bundle 201 (F): the way + mesh details for the words.
+class PresenceWayInfo {
+  final PresenceWay way;
+  final int? hops;
+  final String? via;
+  const PresenceWayInfo(this.way, {this.hops, this.via});
+
+  /// Phones in between on a mesh route (at least 1), null when unknown.
+  int? get phonesBetween {
+    final h = hops;
+    if (h == null || h <= 0) return null;
+    return h - 1 < 1 ? 1 : h - 1;
+  }
+
+  /// The words under a name (mock ST).
+  String get label => switch (way) {
+        PresenceWay.wifi => 'Nearby · Wi-Fi',
+        PresenceWay.wifiDirect => 'Nearby · Wi-Fi Direct',
+        PresenceWay.mesh => phonesBetween == null
+            ? 'Nearby · Mesh'
+            : 'Nearby · Mesh, via $phonesBetween '
+                '${phonesBetween == 1 ? 'phone' : 'phones'}',
+        PresenceWay.nearby => 'Nearby',
+        PresenceWay.connecting => 'Connecting…',
+        PresenceWay.online => 'Online',
+        PresenceWay.offline => 'Offline',
+      };
+}
+
 class _Seen {
   DateTime? nearbyAt;
   DateTime? serverAt;
@@ -67,6 +114,9 @@ class PresenceHub extends ChangeNotifier {
 
   /// Bundle 158: is there a local path (direct or relayed) right now?
   final Map<String, bool> _pathUp = <String, bool>{};
+
+  /// Bundle 201 (F): last route report per device (words only).
+  final Map<String, PresenceRoute> _routeOf = <String, PresenceRoute>{};
   final Map<String, DateTime> _pathDownAt = <String, DateTime>{};
 
   /// Bundle 158: Nearby is kept this long after the last local path ended.
@@ -97,6 +147,9 @@ class PresenceHub extends ChangeNotifier {
     Iterable<MapEntry<String, bool>> initialPaths =
         const <MapEntry<String, bool>>[],
     Future<void> Function()? refreshPaths,
+    // Bundle 201 (F): route kind + hops (words / badge only).
+    Stream<PresenceRoute>? localRoutes,
+    Iterable<PresenceRoute> initialRoutes = const <PresenceRoute>[],
   }) {
     this.localDeviceId = localDeviceId ?? this.localDeviceId;
     this.userResolver = userResolver ?? this.userResolver;
@@ -105,6 +158,12 @@ class PresenceHub extends ChangeNotifier {
     if (_subs.isNotEmpty) return;
     for (final p in initialPaths) {
       notePath(p.key, up: p.value);
+    }
+    for (final r in initialRoutes) {
+      noteRoute(r);
+    }
+    if (localRoutes != null) {
+      _subs.add(localRoutes.listen(noteRoute, onError: (Object _) {}));
     }
     if (localPaths != null) {
       _subs.add(
@@ -144,6 +203,7 @@ class PresenceHub extends ChangeNotifier {
     _lastShown.clear();
     _pathUp.clear();
     _pathDownAt.clear();
+    _routeOf.clear();
     _queueNotify();
   }
 
@@ -163,6 +223,7 @@ class PresenceHub extends ChangeNotifier {
     _lastShown.clear();
     _pathUp.clear();
     _pathDownAt.clear();
+    _routeOf.clear();
     _tickCount = 0;
     refreshPaths = null;
     userResolver = null;
@@ -216,6 +277,15 @@ class PresenceHub extends ChangeNotifier {
   }
 
   /// We received something from [deviceId] through the server.
+  /// Bundle 201 (F): how the local path goes. Tells listeners only when the
+  /// kind / hops changed (route reports come in bursts during calls).
+  void noteRoute(PresenceRoute route) {
+    if (!_accept(route.deviceId)) return;
+    if (route.sameAs(_routeOf[route.deviceId])) return;
+    _routeOf[route.deviceId] = route;
+    _queueNotify();
+  }
+
   void noteServer(String deviceId) {
     if (!_accept(deviceId)) return;
     (_seen[deviceId] ??= _Seen()).serverAt = _now();
@@ -294,6 +364,46 @@ class PresenceHub extends ChangeNotifier {
   /// Status of this one device only (no merging).
   PresenceStatus statusOfDevice(String deviceId) => _deviceStatus(deviceId);
 
+  /// Bundle 201 (F): HOW the person is reached (best of their devices:
+  /// Wi-Fi, then Wi-Fi Direct, then Mesh). "Connecting" = the local path just
+  /// ended and the 20 s grace runs (the status is still Nearby for logic).
+  PresenceWayInfo wayInfoOf(String deviceId) {
+    final status = statusOf(deviceId);
+    if (status == PresenceStatus.offline) {
+      return const PresenceWayInfo(PresenceWay.offline);
+    }
+    if (status == PresenceStatus.online) {
+      return const PresenceWayInfo(PresenceWay.online);
+    }
+    final user = _userOf[deviceId] ?? '';
+    final ids = user.isEmpty
+        ? <String>{deviceId}
+        : <String>{deviceId, ...?_devicesOf[user]};
+    PresenceWayInfo? best;
+    for (final id in ids) {
+      if (_deviceStatus(id) != PresenceStatus.nearby) continue;
+      final info = _deviceWay(id);
+      if (best == null || info.way.index < best.way.index) best = info;
+    }
+    return best ?? const PresenceWayInfo(PresenceWay.nearby);
+  }
+
+  PresenceWay wayOf(String deviceId) => wayInfoOf(deviceId).way;
+  String wayLabelOf(String deviceId) => wayInfoOf(deviceId).label;
+
+  PresenceWayInfo _deviceWay(String id) {
+    final path = _pathUp[id];
+    if (path == false) return const PresenceWayInfo(PresenceWay.connecting);
+    if (path == null) return const PresenceWayInfo(PresenceWay.nearby);
+    final r = _routeOf[id];
+    return switch (r?.kind) {
+      'lan' => const PresenceWayInfo(PresenceWay.wifi),
+      'wifi_direct' => const PresenceWayInfo(PresenceWay.wifiDirect),
+      'mesh' => PresenceWayInfo(PresenceWay.mesh, hops: r!.hops, via: r.via),
+      _ => const PresenceWayInfo(PresenceWay.nearby),
+    };
+  }
+
   String channelOf(String deviceId) => statusOf(deviceId).channel;
   String labelOf(String deviceId) => statusOf(deviceId).label;
   bool isReachable(String deviceId) =>
@@ -332,9 +442,17 @@ class PresenceHub extends ChangeNotifier {
       ..._pathUp.keys,
     }) {
       final now = _deviceStatus(id);
-      if (_lastShown[id] != now) {
+      final before = _lastShown[id];
+      if (before != now) {
         _lastShown[id] = now;
         changed = true;
+        // Bundle 201 (E2): the timed flip is logged too (it was silent).
+        if (before != null) {
+          AppLogger.info(
+            'PRESENCE_CHANGED',
+            detail: 'peer=${_short(id)} ${before.label}>${now.label} why=expiry',
+          );
+        }
       }
     }
     if (changed) _queueNotify();

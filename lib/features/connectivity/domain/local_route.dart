@@ -1,3 +1,5 @@
+import 'package:locallink/core/presence/presence_hub.dart';
+
 enum LocalRouteKind { none, lan, wifiDirect, mesh }
 
 enum LocalTransportState {
@@ -56,3 +58,16 @@ final class LocalRouteResult {
         hopCount,
       );
 }
+
+/// Bundle 201 (F): a route as PresenceHub reads it (words / badge only).
+PresenceRoute presenceRouteOf(LocalRouteResult r) => PresenceRoute(
+      r.peerId,
+      switch (r.kind) {
+        LocalRouteKind.lan => 'lan',
+        LocalRouteKind.wifiDirect => 'wifi_direct',
+        LocalRouteKind.mesh => 'mesh',
+        LocalRouteKind.none => 'none',
+      },
+      hops: r.kind == LocalRouteKind.mesh ? r.hopCount : null,
+      via: r.kind == LocalRouteKind.mesh ? r.nextHopId : null,
+    );

@@ -170,6 +170,9 @@ class AppDependencies {
             if ((row['recipient_id']?.toString() ?? '').isNotEmpty)
               row['recipient_id'].toString(),
         };
+    // Bundle 201 (A1/A5): the friend link memo survives app open/close.
+    wifiDirectFallback.readMemo = store.readSetting;
+    wifiDirectFallback.writeMemo = store.writeSetting;
     // Bundle 177 (4.4): admin "Wi-Fi off" = Nearby does nothing.
     wifiDirectFallback.nearbyOff = () =>
         store.effectiveNetworkPolicy.wifiRadioPolicy ==

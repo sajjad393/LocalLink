@@ -141,6 +141,28 @@ abstract final class FriendLinkRules {
 
   /// At most this many friends at once (Q4 b; more in TODO_201).
   static const int maxFriends = 2;
+
+  /// Bundle 201 (A2): after this many search windows that heard no tag at
+  /// all (while phones were seen), the tags are taken as "deaf" on this
+  /// phone and the friend wait is only [deafSignWaitMs].
+  static const int deafAfterWindows = 3;
+  static const int deafSignWaitMs = 5 * 1000;
+
+  /// Bundle 201 (A3): a phone without a tag seen this recently still counts
+  /// as "a phone nearby" (Android drops it from the list for a moment).
+  static const int recentPhoneMs = 60 * 1000;
+
+  /// Bundle 201 (A1): the saved "friend missing since" is used again after
+  /// an app open/close only when it was saved this recently.
+  static const int memoFreshMs = 10 * 60 * 1000;
+
+  /// Bundle 201 (A5): the friend's Wi-Fi Direct address is remembered this
+  /// long.
+  static const int knownHostMs = 24 * 60 * 60 * 1000;
+
+  /// Bundle 201 (D): a friend reachable nearby this recently and missing
+  /// now explains one Wi-Fi Direct phone without a tag.
+  static const int recentFriendMs = 10 * 60 * 1000;
 }
 
 class FriendLinkInput {
@@ -171,6 +193,16 @@ class FriendLinkInput {
   /// No new open before this time (rest after idle closes).
   final int openRestUntil;
 
+  /// Bundle 201 (A2): how long to wait for the friend's tag (5 s when the
+  /// tags are deaf on this phone).
+  final int signWaitMs;
+
+  /// Bundle 201 (A5): friend device id -> remembered Wi-Fi Direct address.
+  final Map<String, String> knownHosts;
+
+  /// Bundle 201 (A3): last time a phone without a tag was seen (0 = never).
+  final int phoneSeenAt;
+
   const FriendLinkInput({
     required this.now,
     required this.selfHash,
@@ -186,6 +218,9 @@ class FriendLinkInput {
     this.taggedAddresses = const <String>{},
     this.skip = const <String>{},
     this.openRestUntil = 0,
+    this.signWaitMs = FriendLinkRules.signWaitMs,
+    this.knownHosts = const <String, String>{},
+    this.phoneSeenAt = 0,
   });
 }
 
@@ -256,12 +291,28 @@ FriendLinkAction planFriendLink(FriendLinkInput input) {
   }
 
   if (!input.allowed) return const FriendLinkAction.none('battery');
+
+  // 0. Bundle 201 (A5): the friend's remembered address is a host now -
+  // join at once (no wait, any id order). A wrong guess fails and that
+  // address is skipped 5 min like any failed join.
+  for (final f in input.friends) {
+    if (f.reachable || f.tagSeen || f.wantedSince <= 0) continue;
+    final known = input.knownHosts[f.id]?.trim().toLowerCase();
+    if (known == null || known.isEmpty) continue;
+    if (input.skip.contains(friendSkipKey(known, f.hash))) continue;
+    final hostNow = input.peers.any((p) =>
+        p.groupOwner &&
+        p.address.toLowerCase() == known &&
+        !input.taggedAddresses.contains(known));
+    if (hostNow) return FriendLinkAction.join(f, known, 'known_host');
+  }
+
   final wanted = [
     for (final f in input.friends)
       if (!f.reachable &&
           !f.tagSeen &&
           f.wantedSince > 0 &&
-          input.now - f.wantedSince >= FriendLinkRules.signWaitMs)
+          input.now - f.wantedSince >= input.signWaitMs)
         f,
   ]..sort((a, b) {
       if (a.pending != b.pending) return a.pending ? -1 : 1;
@@ -288,10 +339,13 @@ FriendLinkAction planFriendLink(FriendLinkInput input) {
     return const FriendLinkAction.none('open_rest');
   }
   final phoneSeen = input.peers.any((p) =>
-      p.isAvailable &&
-      !p.groupOwner &&
-      p.address.isNotEmpty &&
-      !input.taggedAddresses.contains(p.address.toLowerCase()));
+          p.isAvailable &&
+          !p.groupOwner &&
+          p.address.isNotEmpty &&
+          !input.taggedAddresses.contains(p.address.toLowerCase())) ||
+      // Bundle 201 (A3): seen a moment ago still counts.
+      (input.phoneSeenAt > 0 &&
+          input.now - input.phoneSeenAt <= FriendLinkRules.recentPhoneMs);
   if (!phoneSeen) return const FriendLinkAction.none('no_phone_seen');
   for (final f in top) {
     if (input.selfHash.compareTo(f.hash) < 0) {
@@ -301,7 +355,7 @@ FriendLinkAction planFriendLink(FriendLinkInput input) {
   for (final f in top) {
     if (f.pending &&
         input.now - f.wantedSince >=
-            FriendLinkRules.signWaitMs + FriendLinkRules.biggerWaitMs) {
+            input.signWaitMs + FriendLinkRules.biggerWaitMs) {
       return FriendLinkAction.open(f, 'bigger_opens_waiting');
     }
   }

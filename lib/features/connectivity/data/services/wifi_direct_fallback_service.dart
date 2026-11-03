@@ -6,6 +6,7 @@ import 'package:locallink/core/diagnostics/app_diagnostics.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
+import 'package:locallink/features/connectivity/data/services/friend_link_memo.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_friend_link.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_group_planner.dart';
@@ -275,6 +276,27 @@ final class WifiDirectFallbackService {
   bool _inFriendGroup = false;
   String _lastFriendReason = '';
 
+  // ------------------------------------------ Bundle 201: friend memo (A)
+  /// Read / write one small setting (the store). Null = memory only.
+  Future<String?> Function(String key)? readMemo;
+  Future<void> Function(String key, String value)? writeMemo;
+  final FriendLinkMemo _memo = FriendLinkMemo();
+  bool _memoLoaded = false;
+  String _memoWritten = '';
+  bool _memoWriting = false;
+  int _phoneSeenAt = 0;
+  String? _friendPendingId;
+  String? _friendPendingAddress;
+  String _friendPendingReason = '';
+
+  @visibleForTesting
+  FriendLinkMemo get friendMemo => _memo;
+
+  /// Wait for the friend's tag: 20 s, 5 s when tags are deaf here (A2).
+  int get _signWaitMs => _memo.deaf
+      ? FriendLinkRules.deafSignWaitMs
+      : FriendLinkRules.signWaitMs;
+
   @visibleForTesting
   int get friendOpenRestUntil => _friendOpenRestUntil;
   @visibleForTesting
@@ -366,6 +388,7 @@ final class WifiDirectFallbackService {
     if (_started || _disposed) return;
     _started = true;
     _wifiSubscription = connectivity.wifiDirectEvents.listen(_handleWifiEvent);
+    unawaited(_loadMemo());
     // Bundle 177 (5.2): start from the real group state (the closed app may
     // already be in a group), never "leave then join again".
     unawaited(_readRealState());
@@ -374,6 +397,78 @@ final class WifiDirectFallbackService {
       _listening = true;
       experiments.addListener(_onExperimentsChanged);
     }
+  }
+
+  /// Bundle 201 (A1): what the other engine (screen / background) knew.
+  Future<void> _loadMemo() async {
+    final read = readMemo;
+    if (read == null || _memoLoaded) return;
+    try {
+      final raw = await read(FriendLinkMemo.settingKey);
+      final now = _clock();
+      final saved = FriendLinkMemo.decode(raw, now);
+      _memoWritten = raw ?? '';
+      // Merge: the older "missing since" wins (it is the real one).
+      for (final e in saved.wantedSince.entries) {
+        final mine = _friendWantedSince[e.key];
+        if (mine == null || e.value < mine) _friendWantedSince[e.key] = e.value;
+      }
+      for (final e in saved.lastReachable.entries) {
+        final mine = _memo.lastReachable[e.key] ?? 0;
+        if (e.value > mine) _memo.lastReachable[e.key] = e.value;
+      }
+      for (final e in saved.wdAddress.entries) {
+        _memo.wdAddress.putIfAbsent(e.key, () => e.value);
+      }
+      if (_memo.quietAt < saved.quietAt) {
+        _memo.quietWindows = saved.quietWindows;
+        _memo.quietAt = saved.quietAt;
+      }
+      AppLogger.info('WD_FRIEND_MEMO',
+          detail: 'loaded missing=${saved.wantedSince.length} '
+              'quiet=${_memo.quietWindows} known=${_memo.wdAddress.length}');
+    } catch (_) {
+    } finally {
+      _memoLoaded = true;
+    }
+  }
+
+  /// Writes the memo only when it changed (minute steps keep it rare).
+  void _saveMemo() {
+    final write = writeMemo;
+    if (write == null || !_memoLoaded || _memoWriting || _disposed) return;
+    final now = _clock();
+    _memo.wantedSince
+      ..clear()
+      ..addAll(_friendWantedSince);
+    final text = _memo.encode(now);
+    // 'at' changes every call: compare without it.
+    if (_memoBody(text) == _memoBody(_memoWritten)) return;
+    _memoWriting = true;
+    _memoWritten = text;
+    unawaited(() async {
+      try {
+        await write(FriendLinkMemo.settingKey, text);
+      } catch (_) {
+      } finally {
+        _memoWriting = false;
+      }
+    }());
+  }
+
+  static String _memoBody(String text) =>
+      text.replaceFirst(RegExp(r'"at":\d+,'), '');
+
+  /// Bundle 201 (A2): one tag search window ended.
+  void _onTagWindow(Map<dynamic, dynamic> event) {
+    final heard = (event['heard'] as num?)?.toInt() ?? 0;
+    final peers = (event['peers'] as num?)?.toInt() ?? 0;
+    if (_memo.tagWindow(heard: heard, peers: peers, now: _clock())) {
+      AppLogger.info('WD_SIGN',
+          detail: 'deaf windows=${_memo.quietWindows} '
+              'wait_s=${FriendLinkRules.deafSignWaitMs ~/ 1000}');
+    }
+    _saveMemo();
   }
 
   Future<void> _readRealState() async {
@@ -510,6 +605,10 @@ final class WifiDirectFallbackService {
       _applyMyGroup(event);
       return;
     }
+    if (type == 'tag_window') {
+      _onTagWindow(event);
+      return;
+    }
     if (type == 'local_net') {
       _applyLocalNetEvent(event);
       return;
@@ -535,10 +634,27 @@ final class WifiDirectFallbackService {
             .toList(growable: false)
         : const <WifiDirectPeer>[];
     _lastPeers = peers;
+    _notePhoneSeen(peers);
     if (groupMode) {
       unawaited(_evaluateGroup());
     } else {
       unawaited(_tryConnect(peers));
+    }
+  }
+
+  /// Bundle 201 (A3): when a phone without a tag was last in the list.
+  void _notePhoneSeen(List<WifiDirectPeer> peers) {
+    final now = _clock();
+    final tagged = <String>{
+      for (final t in _tags.values)
+        if (now - t.seenAt <= NearbyGroupRules.freshMs) t.address.toLowerCase(),
+    };
+    if (peers.any((p) =>
+        p.isAvailable &&
+        !p.groupOwner &&
+        p.address.isNotEmpty &&
+        !tagged.contains(p.address.toLowerCase()))) {
+      _phoneSeenAt = now;
     }
   }
 
@@ -791,6 +907,19 @@ final class WifiDirectFallbackService {
         final skipKey = _friendPendingSkipKey;
         if (skipKey != null) _friendFailures.remove(skipKey);
         _friendPendingSkipKey = null;
+        // Bundle 201 (A5): remember the friend's address for next time.
+        final id = _friendPendingId;
+        final address = _friendPendingAddress;
+        if (reason == 'friend_join' && id != null && address != null) {
+          _memo.learnAddress(id, address, now);
+          if (_foreground) {
+            FriendNearbyHints.instance.wdAddresses =
+                _memo.knownHosts(now).values.toSet();
+          }
+          _saveMemo();
+        }
+        _friendPendingId = null;
+        _friendPendingAddress = null;
         _inFriendGroup = true;
         AppLogger.info(
             reason == 'friend_join' ? 'WD_FRIEND_JOIN' : 'WD_FRIEND_OPEN',
@@ -820,6 +949,11 @@ final class WifiDirectFallbackService {
     // not our friend (or out of range): stop trying and skip it a while.
     final skipKey = _friendPendingSkipKey;
     _friendPendingSkipKey = null;
+    final pendingFriendId = _friendPendingId;
+    final pendingFriendReason = _friendPendingReason;
+    _friendPendingId = null;
+    _friendPendingAddress = null;
+    _friendPendingReason = '';
     if (reason == 'friend_join' && skipKey != null) {
       final n = (_friendFailures[skipKey] ?? 0) + 1;
       _friendFailures[skipKey] = n;
@@ -828,6 +962,13 @@ final class WifiDirectFallbackService {
       }
       final ms = n >= 2 ? FriendLinkRules.longSkipMs : FriendLinkRules.skipMs;
       _friendSkipUntil[skipKey] = now + ms;
+      // Bundle 201 (A5): a remembered address that failed twice is wrong.
+      if (pendingFriendReason == 'known_host' &&
+          pendingFriendId != null &&
+          n >= 2) {
+        _memo.forgetAddress(pendingFriendId);
+        _saveMemo();
+      }
       AppLogger.info('WD_FRIEND_SKIP',
           detail: 'host=${skipKey.split('|').first} min=${ms ~/ 60000} fails=$n');
       unawaited(_cancelConnectQuietly());
@@ -1057,6 +1198,7 @@ final class WifiDirectFallbackService {
     final busy = _isBusy();
     final out = <FriendLinkFriend>[];
     final names = <String>{};
+    var missingRecent = 0;
     for (final entry in keys.entries) {
       final id = entry.key.trim();
       if (id.isEmpty || entry.value.isEmpty) continue;
@@ -1070,6 +1212,14 @@ final class WifiDirectFallbackService {
       final hash = NearbyTag.idFor(id);
       final reachable = _reachableLocally(id);
       final tagSeen = tagHashes.contains(hash);
+      // Bundle 201 (D): reachable nearby lately, missing now.
+      if (reachable) {
+        _memo.lastReachable[id] = FriendLinkMemo.minute(now);
+      } else if (!tagSeen &&
+          now - (_memo.lastReachable[id] ?? -FriendLinkRules.recentFriendMs - 1) <=
+              FriendLinkRules.recentFriendMs) {
+        missingRecent += 1;
+      }
       if (reachable || tagSeen || _usableWifi) {
         _friendWantedSince.remove(id);
         _friendSignLogged.remove(id);
@@ -1088,7 +1238,15 @@ final class WifiDirectFallbackService {
     }
     _friendWantedSince.removeWhere((id, _) => !keys.containsKey(id));
     _friendSignLogged.removeWhere((id) => !keys.containsKey(id));
+    _memo.lastReachable.removeWhere((id, _) => !keys.containsKey(id));
+    _memo.wdAddress.removeWhere((id, _) => !keys.containsKey(id));
     _friendGroupNames = names;
+    // Bundle 201 (D): hints for the Nearby list (open app only).
+    if (_foreground) {
+      FriendNearbyHints.instance
+        ..wdAddresses = _memo.knownHosts(now).values.toSet()
+        ..missingRecent = _usableWifi ? 0 : missingRecent;
+    }
     return out;
   }
 
@@ -1100,7 +1258,7 @@ final class WifiDirectFallbackService {
     final friends = _friendList(now);
     for (final f in friends) {
       if (f.wantedSince > 0 &&
-          now - f.wantedSince >= FriendLinkRules.signWaitMs &&
+          now - f.wantedSince >= _signWaitMs &&
           _friendSignLogged.add(f.id)) {
         // Part C: one search window passed without this friend's tag.
         AppLogger.info('WD_SIGN',
@@ -1128,7 +1286,11 @@ final class WifiDirectFallbackService {
       },
       skip: _friendSkipUntil.keys.toSet(),
       openRestUntil: _friendOpenRestUntil,
+      signWaitMs: _signWaitMs,
+      knownHosts: _memo.knownHosts(now),
+      phoneSeenAt: _phoneSeenAt,
     ));
+    _saveMemo();
     if (plan.reason != _lastFriendReason) {
       _lastFriendReason = plan.reason;
       if (plan.acts || friends.any((f) => f.wantedSince > 0)) {
@@ -1173,6 +1335,9 @@ final class WifiDirectFallbackService {
               : NearbyGroupActionKind.join;
           _pendingReason = 'friend_join';
           _friendPendingSkipKey = friendSkipKey(plan.address!, friend.hash);
+          _friendPendingId = friend.id;
+          _friendPendingAddress = plan.address;
+          _friendPendingReason = plan.reason;
           AppLogger.info('WD_FRIEND_JOIN',
               detail: 'friend=$who host=${plan.address} '
                   'grp=${friend.creds.shortName} leave=${leave ? 1 : 0} '

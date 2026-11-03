@@ -20,6 +20,7 @@ import 'package:locallink/features/messaging/presentation/screens/chat_screen.da
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
 import 'package:locallink/features/files/presentation/widgets/chat_video_hub.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/features/connectivity/domain/local_route.dart';
 import 'package:locallink/features/files/presentation/widgets/media_view_cache.dart';
 
 class LocalLinkApp extends StatefulWidget {
@@ -76,6 +77,12 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
           MapEntry(r.peerId, r.isAvailable),
       ],
       refreshPaths: _deps.routePolicy.refresh,
+      // Bundle 201 (F): which way (Wi-Fi / Wi-Fi Direct / Mesh) - words and
+      // the photo badge only.
+      localRoutes: _deps.routePolicy.routeChanges.map(presenceRouteOf),
+      initialRoutes: [
+        for (final r in _deps.routePolicy.routes.values) presenceRouteOf(r),
+      ],
     );
     _router = AppRouter(
       dependencies: _deps,
@@ -153,10 +160,37 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
           ),
           files: _deps.files,
           notifications: _deps.notifications,
+          calls: _deps.calls,
+          onStartCall: _startOrResumeCall,
         ),
       ),
     ));
     return true;
+  }
+
+  /// Bundle 201 (C): the chat's call button for chats opened from here (new
+  /// friend, notification tap) - same as the Home chat route: a live call
+  /// resumes, otherwise a new call starts and its screen opens.
+  Future<void> _startOrResumeCall(Device peer) async {
+    final calls = _deps.calls;
+    final live = calls.session;
+    final navigator = _navigatorKey.currentState;
+    if (live != null && !live.isFinished) {
+      if (navigator == null || CallScreen.visibleCallId == live.id) return;
+      await navigator.push<void>(MaterialPageRoute(
+        builder: (_) => CallScreen(controller: calls, initialSession: live),
+      ));
+      return;
+    }
+    await calls.startCall(peer);
+    if (!mounted) return;
+    final session = calls.session;
+    final nav = _navigatorKey.currentState;
+    if (session == null || nav == null) return;
+    if (CallScreen.visibleCallId == session.id) return;
+    await nav.push<void>(MaterialPageRoute(
+      builder: (_) => CallScreen(controller: calls, initialSession: session),
+    ));
   }
 
   Future<void> _setThemeMode(ThemeMode mode) async {
@@ -177,7 +211,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v3 · 3.0.35 · bundles 104-200 (2026-11-03)');
+        detail: 'v3 · 3.0.38 · bundles 104-201 (2026-11-04)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -397,6 +431,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
             ),
             files: _deps.files,
             notifications: _deps.notifications,
+            calls: _deps.calls,
+            onStartCall: _startOrResumeCall,
             initialMessageId: messageId,
             initialAttachmentId: action.attachmentId,
           ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/presence_way.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
 
@@ -50,6 +51,10 @@ class CallHeader extends StatelessWidget {
           ),
           textAlign: TextAlign.center,
         ),
+        // Bundle 201 (F, mock ST S5): "Wi-Fi Direct call" etc. under the
+        // timer, only while the call is up.
+        if (session.state == CallState.connected && session.peerId.isNotEmpty)
+          PresenceWayCallChip(deviceId: session.peerId),
       ],
     );
   }

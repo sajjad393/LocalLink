@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:locallink/features/storage/presentation/media_message_actions.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/core/widgets/presence_way.dart';
 import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/directory/presentation/contact_sheets.dart';
@@ -666,7 +667,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _presenceLabel(Device device) =>
       // Bundle 148: the one app-wide live status (PresenceHub) — identical
       // to the Chats list, Calls tab, Contacts and Nearby screen.
-      PresenceHub.instance.labelOf(device.id);
+      // Bundle 201 (F): with the way (mock ST).
+      PresenceHub.instance.wayLabelOf(device.id);
 
   /// Bundle 162 (4.6): tap on the red (!) - "Message not sent" sheet.
   Future<void> _showFailedActions(String messageId) async {
@@ -730,6 +732,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         avatar: AccountAvatar(name: device.name, radius: 23),
         device: device,
       ),
+      // Bundle 201 (F, mock ST S3): "Connected by …".
+      wayCard: PresenceWayCard(deviceId: device.id),
     );
     if (!mounted || choice == null) return;
     switch (choice) {
@@ -948,12 +952,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 ],
                               )
                             else
-                              ListenableBuilder(
-                                listenable: PresenceHub.instance,
-                                builder: (context, _) => Text(
-                                  _presenceLabel(device),
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
+                              // Bundle 201 (F, mock ST S1): icon + way words.
+                              PresenceWayLine(
+                                deviceId: device.id,
+                                style: Theme.of(context).textTheme.bodySmall,
                               ),
                           ],
                         ),

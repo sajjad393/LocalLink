@@ -41,11 +41,16 @@ class DiscoveryService {
     });
 
     try {
-      socket.send(
-        utf8.encode(request),
-        InternetAddress('255.255.255.255'),
-        discoveryPort,
-      );
+      try {
+        socket.send(
+          utf8.encode(request),
+          InternetAddress('255.255.255.255'),
+          discoveryPort,
+        );
+      } on SocketException {
+        // Bundle 201 (E1): no network (Wi-Fi off) = nothing found, no error.
+        return const <DiscoveredServer>[];
+      }
       timer = Timer(timeout, finish);
       await completer.future;
     } finally {

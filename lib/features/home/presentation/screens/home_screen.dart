@@ -780,7 +780,8 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
   Future<void> _holdDirectRow(Device device, String name) async {
-    final presence = PresenceHub.instance.labelOf(device.id);
+    // Bundle 201 (F): the way words (mock ST).
+    final presence = PresenceHub.instance.wayLabelOf(device.id);
     final who = await BlockHub.instance.lookup(device.id);
     if (!mounted) return;
     final username = who?.username ?? '';
@@ -879,7 +880,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _deviceSubtitle(Device device) =>
       // Bundle 148: the one app-wide live status (PresenceHub).
-      PresenceHub.instance.labelOf(device.id);
+      // Bundle 201 (F): with the way (Wi-Fi / Wi-Fi Direct / Mesh).
+      PresenceHub.instance.wayLabelOf(device.id);
 
   Widget _chatsTab() {
     return Scaffold(

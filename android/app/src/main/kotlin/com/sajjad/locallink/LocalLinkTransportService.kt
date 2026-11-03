@@ -1363,7 +1363,8 @@ class LocalLinkTransportService : Service() {
     private fun connectTransportToOwner(address: String) {
         val normalized = address.trim()
         if (normalized.isEmpty()) return
-        if (allPhysicalPeerLinks().any { it.ownerAddress == normalized && it.socket.isConnected && !it.socket.isClosed }) return
+        // Bundle 201 (B): a client link is matched by its remote address too.
+        if (allPhysicalPeerLinks().any { MeshTransportPolicy.linksOwner(normalized, it.ownerAddress, it.transportName, it.remoteAddress) && it.socket.isConnected && !it.socket.isClosed }) return
         val now = System.currentTimeMillis()
         if (now - lastOwnerConnectAt.get() < 2500L) return
         if (!ownerConnectInFlight.compareAndSet(false, true)) return
@@ -4061,7 +4062,9 @@ class LocalLinkTransportService : Service() {
                     flushMeshQueue()
                     if (!transportGroupOwner) {
                         val owner = transportGroupOwnerAddress
-                        if (!owner.isNullOrEmpty() && transportPeers.values.none { it.ownerAddress == owner && !it.socket.isClosed }) {
+                        // Bundle 201 (B): look at every physical link (a LAN link may be
+                        // the preferred one) and match client links by address.
+                        if (!owner.isNullOrEmpty() && allPhysicalPeerLinks().none { MeshTransportPolicy.linksOwner(owner, it.ownerAddress, it.transportName, it.remoteAddress) && !it.socket.isClosed }) {
                             connectTransportToOwner(owner)
                         }
                     }

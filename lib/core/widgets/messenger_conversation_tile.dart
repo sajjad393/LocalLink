@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/core/widgets/presence_way.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
@@ -249,36 +250,39 @@ class PresenceAvatar extends StatelessWidget {
   }
 
   Widget _badge(BuildContext context) {
-    final channel = PresenceHub.instance.channelOf(device.id);
+    // Bundle 201 (F, mock ST S6-S7): one icon and colour per way - Wi-Fi,
+    // Wi-Fi Direct, Mesh, Online; orange dot = connecting, grey dot =
+    // offline. Same place as before (top-right of the photo).
+    final way = PresenceHub.instance.wayOf(device.id);
     final colors = Theme.of(context).colorScheme;
-    final (chipColor, icon) = switch (channel) {
-      'nearby' => (colors.primary, Icons.wifi_rounded),
-      'server' => (colors.primary, Icons.public_rounded),
-      _ => (colors.outline.withOpacity(.55), null),
-    };
     return Stack(
       clipBehavior: Clip.none,
       children: [
         avatar,
         Positioned(
-          right: -1,
-          top: -1,
+          right: -2,
+          top: -2,
           child: Container(
-            width: 14,
-            height: 14,
+            key: ValueKey('presence_badge_${way.name}'),
+            width: 16,
+            height: 16,
             decoration: BoxDecoration(
-              color: chipColor,
+              color: colors.surface,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Theme.of(context).colorScheme.surface,
-                width: 2,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: .12),
+                  blurRadius: 1.5,
+                  spreadRadius: .5,
+                ),
+              ],
+            ),
+            child: Center(
+              child: PresenceWayIcon(
+                way: way,
+                size: PresenceWayStyle.hasIcon(way) ? 11.5 : 14,
               ),
             ),
-            child: icon == null
-                ? null
-                : Center(
-                    child: Icon(icon, size: 7.5, color: Colors.white),
-                  ),
           ),
         ),
       ],

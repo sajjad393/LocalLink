@@ -68,6 +68,12 @@ NearbyListPlan planNearbyList({
   // paired list is loaded the screen passes false: a linked phone counts as
   // a contact only when it is in [trustedIds].
   bool liveMeansContact = true,
+  // Bundle 201 (D): Wi-Fi Direct addresses known to be friends (learned by
+  // the friend backup link) are hidden even without a tag ...
+  Set<String> friendWifiAddresses = const <String>{},
+  // ... and each friend that was nearby in the last 10 min and is missing
+  // now explains one Wi-Fi Direct phone without a tag.
+  int missingFriends = 0,
 }) {
   final addable = <String>[];
   final pairedNearby = <String>{};
@@ -104,8 +110,14 @@ NearbyListPlan planNearbyList({
   final shownWifi = <String>[];
   final untagged = <String>[];
   final matchedPaired = <String>{};
+  var knownFriendWifi = 0;
   for (final address in wifiAddresses) {
     final tagId = tagIdByAddress[address.trim().toLowerCase()];
+    if (tagId == null &&
+        friendWifiAddresses.contains(address.trim().toLowerCase())) {
+      knownFriendWifi += 1;
+      continue;
+    }
     if (tagId == null) {
       untagged.add(address);
       continue;
@@ -122,8 +134,9 @@ NearbyListPlan planNearbyList({
   // an unpaired LAN card exists, or when contacts nearby (not already matched
   // by a tag) can explain them all.
   final unexplainedPaired = pairedNearby
-      .where((id) => !matchedPaired.contains(hash(id)))
-      .length;
+          .where((id) => !matchedPaired.contains(hash(id)))
+          .length +
+      (missingFriends < 0 ? 0 : missingFriends);
   if (addable.isEmpty &&
       untagged.isNotEmpty &&
       untagged.length > unexplainedPaired) {
@@ -134,7 +147,10 @@ NearbyListPlan planNearbyList({
   final NearbyEmptyState empty;
   if (addable.isNotEmpty || showWifiOnly) {
     empty = NearbyEmptyState.none;
-  } else if (pairedNearby.isNotEmpty || matchedPaired.isNotEmpty) {
+  } else if (pairedNearby.isNotEmpty ||
+      matchedPaired.isNotEmpty ||
+      knownFriendWifi > 0 ||
+      (untagged.isNotEmpty && missingFriends > 0)) {
     empty = NearbyEmptyState.everyoneAdded;
   } else {
     empty = NearbyEmptyState.nothingFound;

@@ -272,7 +272,9 @@ void main() {
       await tester.pump();
       expect(find.text('label:Nearby'), findsOneWidget);
       expect(find.text('Nearby'), findsOneWidget); // status badge
-      expect(find.byIcon(Icons.wifi_rounded), findsNWidgets(2));
+      // Bundle 201 (S6-S7): the photo badge draws the way (own icon).
+      expect(find.byIcon(Icons.wifi_rounded), findsOneWidget);
+      expect(find.byKey(const ValueKey('presence_badge_nearby')), findsOneWidget);
 
       PresenceHub.instance.serverLinkLost(); // server drop: still Nearby
       await tester.pump();
@@ -288,7 +290,8 @@ void main() {
             id: 'far', name: 'Far', platform: 'android', createdAt: '', lastSeenAt: ''),
       )));
       await tester.pump();
-      expect(find.byIcon(Icons.public_rounded), findsOneWidget);
+      // Bundle 201 (S6-S7): the photo badge draws the way (globe).
+      expect(find.byKey(const ValueKey('presence_badge_online')), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
   });

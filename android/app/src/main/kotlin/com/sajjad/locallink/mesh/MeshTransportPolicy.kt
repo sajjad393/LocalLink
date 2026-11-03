@@ -11,6 +11,18 @@ object MeshTransportPolicy {
      *  normal Wi-Fi user (another nearby group, or a LocalLink hotspot). */
     const val LOCAL_NET: String = "local_net"
 
+    /** Bundle 201 (B): is this link already our link to the Wi-Fi Direct host
+     *  at [owner]? A Wi-Fi Direct client link keeps no owner address (null
+     *  means "the other side is the host" elsewhere), so it is matched by the
+     *  remote address of its socket. Before 201 the check never matched and
+     *  the client dialed the host again every ~5 s, replacing a good link. */
+    fun linksOwner(owner: String?, ownerAddress: String?, transportName: String, remoteAddress: String?): Boolean {
+        val o = owner?.trim()?.removePrefix("/").orEmpty()
+        if (o.isEmpty()) return false
+        if (ownerAddress?.trim()?.removePrefix("/") == o) return true
+        return transportName == WIFI_DIRECT && remoteAddress?.trim()?.removePrefix("/") == o
+    }
+
     const val WIFI_DIRECT_PORT: Int = 8988
     const val LAN_PORT: Int = 8989
     const val LAN_DISCOVERY_PORT: Int = 8990

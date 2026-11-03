@@ -14,6 +14,7 @@ import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
+import 'package:locallink/features/connectivity/data/services/friend_link_memo.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/directory/data/friend_requests.dart';
@@ -204,6 +205,8 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
           e.key: e.value.idHash,
       },
       hashOf: _tagIdOf,
+      friendWifiAddresses: FriendNearbyHints.instance.wdAddresses,
+      missingFriends: FriendNearbyHints.instance.missingRecent,
     );
   }
 

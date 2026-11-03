@@ -456,6 +456,7 @@ Future<ChatInfoChoice?> showChatInfoSheet(
   required bool showCall,
   String username = '',
   Widget? avatar,
+  Widget? wayCard,
 }) {
   AppLogger.info('CHAT_INFO_SHEET', detail: 'action=open');
   return _showSheet<ChatInfoChoice>(
@@ -468,6 +469,7 @@ Future<ChatInfoChoice?> showChatInfoSheet(
         blocked: blocked,
         avatar: blocked ? null : avatar,
       ),
+      if (!blocked && wayCard != null) wayCard,
       Builder(
         builder: (c) => Column(
           mainAxisSize: MainAxisSize.min,

@@ -65,6 +65,9 @@ object NearbyRadio {
     private var lastPeersLogAt = 0L
     /** Bundle 192: last known Wi-Fi Direct group state (null = not seen yet). */
     @Volatile private var lastFormed: Boolean? = null
+    // Bundle 201 (A3): host/member and Android's last word on the link.
+    @Volatile private var lastOwner = false
+    @Volatile private var lastConnDetail = WdGroupLost.detail(null, null, null)
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -81,7 +84,16 @@ object NearbyRadio {
                     }
                 }
                 WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> { requestPeers(); tags?.onPeersChanged() }
-                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> requestConnectionInfo()
+                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
+                    // Bundle 201 (A3): keep what Android said (logs only).
+                    try {
+                        @Suppress("DEPRECATION")
+                        val ni = intent.getParcelableExtra<android.net.NetworkInfo>(WifiP2pManager.EXTRA_NETWORK_INFO)
+                        @Suppress("DEPRECATION")
+                        if (ni != null) lastConnDetail = WdGroupLost.detail(ni.detailedState?.name, ni.reason, ni.extraInfo)
+                    } catch (_: Exception) {}
+                    requestConnectionInfo()
+                }
                 WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> emit(mapOf("type" to "device_changed"))
             }
         }
@@ -114,7 +126,8 @@ object NearbyRadio {
             val ch = m.initialize(a, Looper.getMainLooper(), channelListener) ?: return false
             manager = m
             channel = ch
-            tags = NearbyTagManager(a, m, ch, { hasPermission(a) }, onWifi = { onWifiNetwork(a) }, peerCount = { peers.size }) { event -> emit(event) }
+            tags = NearbyTagManager(a, m, ch, { hasPermission(a) }, onWifi = { onWifiNetwork(a) }, peerCount = { peers.size },
+                refreshPeers = { main.post { requestPeers() } }) { event -> emit(event) }
             lastWanted?.let { tags?.setWanted(it) }
             if (lastInCall) tags?.setInCall(true)
             // Bundle 161: linked groups + LocalLink hotspot (tests, off by default).
@@ -357,6 +370,11 @@ object NearbyRadio {
                 val connected = info?.groupFormed == true
                 val owner = info?.isGroupOwner == true
                 val address = if (connected) info?.groupOwnerAddress?.hostAddress else null
+                // Bundle 201 (A3, logs only): the group went away.
+                try {
+                    if (WdGroupLost.lost(lastFormed, connected)) Log.i(TAG, WdGroupLost.line(lastOwner, p2pEnabled, lastConnDetail))
+                    if (connected) lastOwner = owner
+                } catch (_: Exception) {}
                 // Bundle 192 (logs only): Wi-Fi Direct link lost / back during a call.
                 try {
                     val change = WdLinkPolicy.changeInCall(CallNearbyPause.inCall(), lastFormed, connected)
