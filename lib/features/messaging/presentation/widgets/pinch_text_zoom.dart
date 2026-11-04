@@ -1,3 +1,4 @@
+import 'package:locallink/core/models/group_mentions.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -254,11 +255,25 @@ class _PinchTextZoomState extends State<PinchTextZoom> {
 /// Bundle 199: the message text inside a bubble. Grows with [ChatTextScale];
 /// at the normal size it is exactly the old `Text(text, style: color)`.
 class ChatBodyText extends StatelessWidget {
-  const ChatBodyText(this.text, {super.key, required this.color, this.scale});
+  const ChatBodyText(this.text,
+      {super.key,
+      required this.color,
+      this.scale,
+      this.highlight = '',
+      this.mentions = false});
 
   final String text;
   final Color color;
   final ChatTextScale? scale;
+
+  /// Bundle G1 (mock 24): search words marked yellow ('' = none).
+  final String highlight;
+
+  /// Bundle G5 (mock 17): show `@[Ali](id)` as a blue "@Ali" (groups).
+  final bool mentions;
+
+  /// Mock 24 search mark colour.
+  static const Color markColor = Color(0xFFFFE58A);
 
   @override
   Widget build(BuildContext context) {
@@ -267,13 +282,54 @@ class ChatBodyText extends StatelessWidget {
       listenable: s,
       builder: (context, _) {
         final factor = s.value;
-        if (factor == ChatTextScale.min) {
-          return Text(text, style: TextStyle(color: color));
+        final style = factor == ChatTextScale.min
+            ? TextStyle(color: color)
+            : TextStyle(
+                color: color,
+                fontSize:
+                    (DefaultTextStyle.of(context).style.fontSize ?? 14) * factor);
+        if (mentions && GroupMentions.token.hasMatch(text)) {
+          final blue = TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w600);
+          return Text.rich(
+              TextSpan(children: [
+                for (final (piece, isMention) in GroupMentions.pieces(text))
+                  if (isMention)
+                    TextSpan(text: piece, style: blue)
+                  else
+                    ...(markSpans(piece, highlight) ??
+                        <TextSpan>[TextSpan(text: piece)]),
+              ]),
+              key: const ValueKey('chat_body_mentions'),
+              style: style);
         }
-        final base = DefaultTextStyle.of(context).style.fontSize ?? 14;
-        return Text(text,
-            style: TextStyle(color: color, fontSize: base * factor));
+        final spans = markSpans(text, highlight);
+        if (spans == null) return Text(text, style: style);
+        return Text.rich(TextSpan(children: spans), style: style);
       },
     );
+  }
+
+  /// Splits [text] so every [query] match gets the yellow mark. Null when
+  /// there is nothing to mark.
+  static List<TextSpan>? markSpans(String text, String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return null;
+    final lower = text.toLowerCase();
+    var at = lower.indexOf(q);
+    if (at < 0) return null;
+    final out = <TextSpan>[];
+    var from = 0;
+    while (at >= 0) {
+      if (at > from) out.add(TextSpan(text: text.substring(from, at)));
+      out.add(TextSpan(
+          text: text.substring(at, at + q.length),
+          style: const TextStyle(backgroundColor: markColor)));
+      from = at + q.length;
+      at = lower.indexOf(q, from);
+    }
+    if (from < text.length) out.add(TextSpan(text: text.substring(from)));
+    return out;
   }
 }

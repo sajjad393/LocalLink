@@ -8,6 +8,11 @@ import 'package:locallink/features/files/domain/file_transfer_repository_contrac
 import 'package:locallink/features/files/presentation/widgets/attachment_tile.dart';
 import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
 
+import 'package:locallink/features/groups/data/group_invite_link.dart'
+    show GroupInviteLink;
+import 'package:locallink/features/groups/presentation/screens/group_link_screens.dart'
+    show GroupInviteCard;
+
 import 'bubble_layout.dart';
 import 'bubble_media.dart';
 import 'message_options.dart';
@@ -147,7 +152,12 @@ class MessageBubble extends StatelessWidget {
                       : (tight ? BubbleMedia.caption(body) : body),
                   bodyAfterMedia: tight,
                   footerGap: media.timeOnMedia ? 0 : 3,
-                  media: media.build(
+                  media: [
+                    // Bundle G6 (mock L3): a group invite link -> card.
+                    if (GroupInviteLink.tokenIn(message.text) case final t?)
+                      GroupInviteCard(
+                          key: ValueKey<String>('inv:${message.id}'), token: t),
+                    ...media.build(
                     context,
                     isMine: isMine,
                     hasHeader: header != null,
@@ -177,6 +187,7 @@ class MessageBubble extends StatelessWidget {
                         playedMark: _playedMark,
                       ),
                   ),
+                  ],
                   footer: media.timeOnMedia
                       ? const SizedBox.shrink()
                       : (tight

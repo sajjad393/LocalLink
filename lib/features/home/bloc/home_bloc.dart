@@ -207,6 +207,13 @@ final class HomeBloc extends Cubit<HomeState> {
     await startDiscovery();
   }
 
+  /// Bundle G1: a group I just made shows in Chats at once.
+  void addCreatedGroup(LocalGroup group) {
+    if (_closed) return;
+    final rest = state.groups.where((g) => g.id != group.id);
+    emit(state.copyWith(groups: [...rest, group], clearError: true));
+  }
+
   Future<LocalGroup?> createGroup(String name, List<String> memberIds) async {
     if (_closed) return null;
     try {

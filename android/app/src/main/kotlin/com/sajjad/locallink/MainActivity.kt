@@ -67,6 +67,9 @@ class MainActivity : FlutterActivity() {
         }
 
         private const val EXTRA_MESSAGE_ACTION_CONSUMED = "message_notification_action_consumed"
+        // Bundle G6: invite link waiting for Dart ("take").
+        private const val EXTRA_JOIN_LINK_CONSUMED = "join_link_consumed"
+        @Volatile private var pendingJoinLink: String? = null
     }
 
     private val channelName = "locallink/files"
@@ -912,8 +915,34 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // Bundle G6: group invite links (linkup://join/<token>).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "locallink/join_link").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "take" -> {
+                    val link = pendingJoinLink
+                    pendingJoinLink = null
+                    result.success(link)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         dispatchCallNotificationIntent(intent, "activity")
         dispatchNotificationIntent(intent)
+        captureJoinLink(intent)
+    }
+
+    /** Bundle G6: keep a tapped linkup://join/<token> link until Dart takes it. */
+    private fun captureJoinLink(intent: Intent?) {
+        val safe = intent ?: return
+        if (safe.action != Intent.ACTION_VIEW) return
+        val data = safe.data ?: return
+        if (data.scheme != "linkup" || data.host != "join") return
+        if ((safe.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+        if (safe.getBooleanExtra(EXTRA_JOIN_LINK_CONSUMED, false)) return
+        safe.putExtra(EXTRA_JOIN_LINK_CONSUMED, true)
+        pendingJoinLink = data.toString().take(200)
+        android.util.Log.i(AppHealthPolicy.TAG, "GROUP_LINK_INTENT")
     }
 
     private fun ensureCallVideoTextures() {
@@ -1034,6 +1063,7 @@ class MainActivity : FlutterActivity() {
         setIntent(intent)
         dispatchCallNotificationIntent(intent, "activity")
         dispatchNotificationIntent(intent)
+        captureJoinLink(intent)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

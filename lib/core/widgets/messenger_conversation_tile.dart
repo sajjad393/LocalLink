@@ -38,6 +38,16 @@ class MessengerConversationTile extends StatelessWidget {
   /// grey name + Blocked pill, no call button.
   final bool blocked;
 
+  /// Bundle G1 (mock 10): muted group - bell with a line, grey count, the
+  /// time stays grey.
+  final bool muted;
+
+  /// Bundle G5 (mock 10): "Sara is typing…" - the line in blue.
+  final bool subtitleBlue;
+
+  /// Bundle G5 (mock 10): an unread message names me - blue "@".
+  final bool mentioned;
+
   const MessengerConversationTile({
     super.key,
     required this.title,
@@ -55,12 +65,19 @@ class MessengerConversationTile extends StatelessWidget {
     this.time,
     this.subtitleIcon,
     this.blocked = false,
+    this.muted = false,
+    this.subtitleBlue = false,
+    this.mentioned = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final avatar = group != null
-        ? GroupAvatar(radius: 24, icon: fallbackIcon ?? Icons.groups_rounded)
+        ? GroupAvatar(
+            radius: 24,
+            icon: fallbackIcon ?? Icons.groups_rounded,
+            groupId: group!.id,
+            photoVersion: group!.photoVersion)
         : AccountAvatar(
             name: title,
             localPath: avatarPath ?? '',
@@ -89,10 +106,12 @@ class MessengerConversationTile extends StatelessWidget {
             Text(
               time!,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: unreadCount > 0
+                    color: unreadCount > 0 && !muted
                         ? Theme.of(context).colorScheme.primary
                         : Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontWeight: unreadCount > 0 ? FontWeight.w700 : FontWeight.w400,
+                    fontWeight: unreadCount > 0 && !muted
+                        ? FontWeight.w700
+                        : FontWeight.w400,
                   ),
             ),
           ],
@@ -102,7 +121,7 @@ class MessengerConversationTile extends StatelessWidget {
         padding: const EdgeInsets.only(top: 3),
         child: Row(
           children: [
-            if (subtitleIcon != null) ...[
+            if (subtitleIcon != null && !subtitleBlue) ...[
               Icon(subtitleIcon,
                   size: 16,
                   color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -113,10 +132,14 @@ class MessengerConversationTile extends StatelessWidget {
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: subtitleBlue
+                    ? Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w500)
+                    : Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
           ],
@@ -186,7 +209,7 @@ class MessengerConversationTile extends StatelessWidget {
                 : const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
             margin: const EdgeInsets.only(right: 8),
             decoration: BoxDecoration(
-              color: scheme.primary,
+              color: muted ? const Color(0xFFB9BAC2) : scheme.primary,
               shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
               borderRadius:
                   isCircle ? null : BorderRadius.circular(12),
@@ -196,7 +219,7 @@ class MessengerConversationTile extends StatelessWidget {
               child: Text(
                 label,
                 style: TextStyle(
-                  color: scheme.onPrimary,
+                  color: muted ? Colors.white : scheme.onPrimary,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -215,10 +238,39 @@ class MessengerConversationTile extends StatelessWidget {
             onPressed: onMore,
             icon: const Icon(Icons.more_vert),
           );
-    if (badge == null && callButton == null && moreButton == null) return null;
+    final bell = muted
+        ? Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Icon(Icons.notifications_off_outlined,
+                key: const ValueKey('row_muted_bell'),
+                size: 16,
+                color: scheme.onSurfaceVariant),
+          )
+        : null;
+    final at = mentioned
+        ? Container(
+            key: const ValueKey('row_mention_at'),
+            width: 22,
+            height: 22,
+            margin: const EdgeInsets.only(right: 6),
+            decoration:
+                BoxDecoration(color: scheme.primary, shape: BoxShape.circle),
+            alignment: Alignment.center,
+            child: Text('@',
+                style: TextStyle(
+                    color: scheme.onPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
+          )
+        : null;
+    if (badge == null && callButton == null && moreButton == null && bell == null && at == null) {
+      return null;
+    }
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (bell != null) bell,
+        if (at != null) at,
         if (badge != null) badge,
         if (callButton != null) callButton,
         if (moreButton != null) moreButton,

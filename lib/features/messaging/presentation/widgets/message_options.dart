@@ -10,7 +10,22 @@ const List<String> kQuickReactions = ['👍', '❤️', '😂', '😮', '😢', 
 /// Purple quote line for "You", blue for the friend (TODO 2.5 R3).
 const Color kQuoteYouColor = Color(0xFF7C3AED);
 
-enum MessageAction { react, reply, copy, forward, save, info, select, delete }
+enum MessageAction {
+  react,
+  reply,
+  copy,
+  forward,
+  save,
+  info,
+  select,
+  delete,
+  // Bundle G5b (mock P1/P4): groups only (admins).
+  pin,
+  unpin,
+}
+
+/// Bundle G5b: the pin row of the hold sheet (groups, admins only).
+enum PinRow { none, pin, unpin }
 
 class MessageActionResult {
   final MessageAction action;
@@ -29,6 +44,7 @@ Future<MessageActionResult?> showMessageActionsSheet(
   bool canReact = true,
   bool canSave = false,
   Color? barrierColor,
+  PinRow pinRow = PinRow.none,
 }) {
   return showModalBottomSheet<MessageActionResult>(
     context: context,
@@ -80,6 +96,35 @@ Future<MessageActionResult?> showMessageActionsSheet(
                   row(MessageAction.save, Icons.download_rounded, 'Save to phone'),
                 if (mine)
                   row(MessageAction.info, Icons.info_outline_rounded, 'Message info'),
+                // Bundle G5b (mock P1 / P4).
+                if (pinRow == PinRow.pin)
+                  row(MessageAction.pin, Icons.push_pin_outlined, 'Pin'),
+                if (pinRow == PinRow.unpin)
+                  ListTile(
+                    key: const ValueKey('msg_action_unpin'),
+                    leading: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Stack(alignment: Alignment.center, children: [
+                        Icon(Icons.push_pin_outlined,
+                            color: colors.onSurfaceVariant),
+                        Transform.rotate(
+                          angle: -.785,
+                          child: Container(
+                              width: 2.2,
+                              height: 26,
+                              color: colors.onSurfaceVariant),
+                        ),
+                      ]),
+                    ),
+                    title: Text('Unpin',
+                        style: TextStyle(
+                            color: colors.onSurface,
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w500)),
+                    onTap: () => Navigator.pop(
+                        sheetContext, const MessageActionResult(MessageAction.unpin)),
+                  ),
                 row(MessageAction.select, Icons.check_circle_outline_rounded, 'Select'),
                 row(MessageAction.delete, Icons.delete_outline_rounded, 'Delete',
                     danger: true),

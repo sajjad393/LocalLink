@@ -1,3 +1,6 @@
+import 'package:locallink/core/models/group_extras.dart';
+import 'package:locallink/core/models/group_mentions.dart';
+import 'package:locallink/core/models/group_event.dart';
 import 'package:locallink/core/models/message_envelope.dart';
 
 /// Bundle 163 (4.7): the last message of a conversation, for the Chats list.
@@ -54,7 +57,18 @@ String chatPreviewText(
   required String localDeviceId,
   String? senderName,
 }) {
-  final body = preview.body.trim().replaceAll(RegExp(r'\s+'), ' ');
+  // Bundle G2: a group system line reads as itself ("Ali left").
+  final event = GroupEvent.parse(preview.body);
+  if (event != null) return event.preview(localDeviceId);
+  // Bundle G5: "@Ali", never the stored mention token.
+  // Bundle G5b: "📊 Poll: question", never the stored poll text.
+  final poll = GroupPoll.parse(preview.body);
+  final body = (poll?.preview ??
+          (preview.body.startsWith('llsk:v1:')
+              ? '🔒 Waiting for this message' // Bundle G6
+              : GroupMentions.plain(preview.body)))
+      .trim()
+      .replaceAll(RegExp(r'\s+'), ' ');
   final hasMedia = preview.attachmentType.isNotEmpty || preview.attachmentIsImage;
   final text = body.isNotEmpty
       ? body

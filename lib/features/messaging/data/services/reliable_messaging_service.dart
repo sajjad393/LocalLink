@@ -1,3 +1,5 @@
+import 'package:locallink/features/groups/data/group_photo_book.dart';
+import 'package:locallink/features/groups/data/group_change_hub.dart';
 import 'dart:io';
 import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/features/messaging/data/message_delete_actions.dart';
@@ -704,31 +706,39 @@ class ReliableMessagingService {
               'hasMore=${page.hasMore}',
         );
 
+        // Bundle G2: full group facts + the whole member list (people who
+        // left disappear); a removed group stays read only on this phone.
+        final upserted = <String>{};
         for (final group in page.groups) {
-          await store.saveGroup({
-            'id': group.id,
-            'name': group.name,
-            'owner_id': group.ownerId,
-            'created_at': group.createdAt,
-          });
+          await store.saveGroup(group.toServerRow());
+          upserted.add(group.id);
+          unawaited(GroupPhotoBook.instance.ensure(
+              group.id, group.photoVersion, () => api.groupPhoto(group.id)));
         }
 
-        for (final member in page.groupMembers) {
-          await store.saveGroupMember({
-            'group_id': member.groupId,
-            'device_id': member.deviceId,
-            'role': member.role,
-            'joined_at': member.joinedAt,
-            'name': member.name,
-          });
+        for (final groupId in upserted) {
+          await store.replaceGroupMembers(groupId, [
+            for (final member in page.groupMembers)
+              if (member.groupId == groupId)
+                {
+                  'device_id': member.deviceId,
+                  'role': member.role,
+                  'joined_at': member.joinedAt,
+                  'name': member.name,
+                  'added_by': member.addedBy,
+                }
+          ]);
+          GroupChangeHub.instance.changed(groupId);
         }
 
         for (final groupId in page.removedGroupIds) {
-          final localPaths = await store.deleteGroupLocal(groupId);
-
-          for (final path in localPaths) {
-            await files.deleteLocalFile(path);
+          if (upserted.contains(groupId)) continue;
+          final local = await store.groupById(groupId);
+          if (local != null && local.isActive) {
+            await store.setGroupState(groupId, 'removed');
+            AppLogger.info('GROUP_MARKED_REMOVED', detail: 'why=sync');
           }
+          GroupChangeHub.instance.changed(groupId);
         }
 
         for (final groupMessage in page.groupMessages) {

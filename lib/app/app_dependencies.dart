@@ -1,3 +1,8 @@
+import 'package:locallink/features/groups/data/group_mention_book.dart';
+import 'package:locallink/core/services/message_seal_service.dart';
+import 'package:locallink/features/groups/data/group_sender_keys.dart';
+import 'package:locallink/features/groups/data/group_invite_link.dart';
+import 'package:locallink/features/groups/data/group_mute_book.dart';
 import 'dart:async';
 
 import 'package:locallink/features/connectivity/data/services/nearby_admin_status.dart';
@@ -52,6 +57,9 @@ import 'package:locallink/features/files/data/repositories/file_transfer_reposit
 import 'package:locallink/features/files/data/services/file_transfer_service.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/groups/data/services/group_messaging_service.dart';
+import 'package:locallink/features/groups/data/services/group_nearby_service.dart';
+import 'package:locallink/features/groups/data/services/group_nearby_store.dart';
+import 'package:locallink/features/groups/presentation/widgets/group_nearby_widgets.dart';
 import 'package:locallink/features/messaging/data/repositories/messaging_repository.dart';
 import 'package:locallink/features/groups/data/repositories/group_messaging_repository.dart';
 import 'package:locallink/features/groups/data/repositories/group_repository.dart';
@@ -189,7 +197,86 @@ class AppDependencies {
     final fileTransferService = FileTransferService(store, connectivity: connectivityRepository);
     files = FileTransferRepository(service: fileTransferService);
     groupMessagingService = GroupMessagingService(store, api, socket, files);
-    groupRepository = GroupRepository(api: api, store: store);
+    // Bundle G3: Nearby groups - locked packets to each member, signed card.
+    final groupLink = directTransport;
+    if (groupLink is SealingPeerTransport) {
+      final groupNearbyStore = LocalGroupNearbyStore(store);
+      groupNearby = GroupNearbyService(
+        store: groupNearbyStore,
+        // Bundle G4: catch-up between members (not at 10% battery or less).
+        copies: groupNearbyStore,
+        catchUpAllowed: () => !wifiDirectFallback.batteryLow,
+        joins: groupNearbyStore,
+        keys: GroupCardKeys(
+          sign: crypto.signPayload,
+          verify: (text, signature, key) => crypto.verifyPayloadSignature(
+              canonicalPayload: text,
+              signature: signature,
+              signingPublicKey: key),
+          ownSignKey: crypto.signingPublicKey,
+          ownSealKey: crypto.publicKey,
+        ),
+        send: groupLink.sendGroupLocked,
+        events: groupLink.events,
+        onMessage: groupMessagingService.receiveNearby,
+        onSentNearby: groupMessagingService.sentNearby,
+        postToServer: groupMessagingService.postControl,
+      );
+      groupMessagingService.nearby = groupNearby;
+      GroupNearbyHub.bind(groupNearby);
+    }
+    // Bundle G6: end-to-end sender keys for the server road.
+    final memberKeys = GroupMemberKeys(
+      cardOrFriend: groupNearby?.memberSealKey,
+      directory: store.directoryProfileByDeviceId,
+      server: api.identityKeys,
+    );
+    groupMessagingService.senderKeys = GroupSenderKeys(
+      selfId: () => store.deviceId ?? '',
+      read: store.readSetting,
+      write: store.writeSetting,
+      ownKeys: () async => [
+        for (final p in await crypto.sealKeyPairs()) await SealKeyPair.from(p)
+      ],
+      publicKeyOf: memberKeys.lookup,
+    );
+    // Bundle G6: invite link.
+    final groupInvites = GroupInviteService(
+      api: api,
+      nearby: groupNearby,
+      refreshGroup: groupMessagingService.refreshGroup,
+      selfId: () => store.deviceId ?? '',
+    );
+    GroupInviteService.instance = groupInvites;
+    groupMessagingService.onJoinRequest = (gid) async {
+      final g = await store.groupById(gid);
+      if (g != null) await groupInvites.autoApprove(g);
+    };
+    groupRepository = GroupRepository(
+      api: api,
+      store: store,
+      deleteFile: files.deleteLocalFile,
+      nearby: groupNearby,
+      // Bundle G3 (9.17): one 8 s search round for a group made offline
+      // (never at battery 10% or less).
+      searchRound: (ids) {
+        final battery = wifiDirectFallback.batteryLevel;
+        if (battery >= 0 && battery <= 10) return;
+        final waiting = <String>[];
+        for (final id in ids) {
+          if (routePolicy.routes[id]?.isAvailable ?? false) continue;
+          waiting.add(id);
+          unawaited(wifiDirectFallback.requestRoute(id));
+        }
+        if (waiting.isEmpty) return;
+        AppLogger.info('GROUP_SEARCH_ROUND', detail: 'people=${waiting.length}');
+        Timer(const Duration(seconds: 8), () {
+          for (final id in waiting) {
+            wifiDirectFallback.cancelWaiting(id);
+          }
+        });
+      },
+    );
     homeRepository = HomeRepository(api: api, store: store, socket: socket, directTransport: directTransport, groups: groupRepository);
     adminRepositoryFactory = DefaultAdminRepositoryFactory(api: api, httpClient: this.httpClient);
     groupMessagingRepository = GroupMessagingRepository(service: groupMessagingService);
@@ -434,6 +521,9 @@ class AppDependencies {
   late final IdentityRepositoryContract identity;
   late final FileTransferRepositoryContract files;
   late final GroupMessagingService groupMessagingService;
+
+  /// Bundle G3: Nearby groups (null only without the sealing transport).
+  GroupNearbyService? groupNearby;
   late final GroupRepositoryContract groupRepository;
   late final GroupMessagingRepositoryContract groupMessagingRepository;
   late final CallAudioPlatformService callAudioPlatform;
@@ -504,6 +594,15 @@ class AppDependencies {
     // Bundle 199: chat text size (pinch), same settings table.
     try {
       await ChatTextScale.instance
+          .load(read: store.readSetting, write: store.writeSetting);
+    } catch (_) {}
+    // Bundle G1 (mock 34): muted groups.
+    try {
+      await GroupMuteBook.instance
+          .load(read: store.readSetting, write: store.writeSetting);
+    } catch (_) {}    // Bundle G5 (mock 10): groups with an unread mention (blue @).
+    try {
+      await GroupMentionBook.instance
           .load(read: store.readSetting, write: store.writeSetting);
     } catch (_) {}
   }

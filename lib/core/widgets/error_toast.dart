@@ -3,10 +3,18 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+/// Bundle G2: an error whose [friendly] text can be shown as it is.
+abstract interface class FriendlyError {
+  String get friendly;
+}
+
 /// User-facing error policy: raw exceptions must never appear in the UI.
 /// Surfaces whether a failure needs attention is a floating toast; anything
 /// shown inline must pass through [friendlyErrorMessage] first.
 String friendlyErrorMessage(Object? error) {
+  // Bundle G2: errors that already carry plain words ("Only admins can do
+  // this.").
+  if (error is FriendlyError) return error.friendly;
   final text = error?.toString() ?? '';
   if (error is SocketException ||
       text.contains('SocketException') ||

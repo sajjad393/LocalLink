@@ -13,6 +13,15 @@ import 'package:locallink/core/services/websocket_service.dart';
 import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/messaging/data/message_delete_actions.dart';
+import 'package:locallink/core/models/group_event.dart';
+import 'package:locallink/features/groups/data/group_photo_book.dart';
+import 'package:locallink/features/groups/data/group_change_hub.dart';
+import 'package:locallink/features/groups/data/services/group_nearby_service.dart';
+import 'package:locallink/features/groups/data/group_receipts.dart';
+import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
+import 'package:locallink/core/models/group_extras.dart';
+import 'package:locallink/features/groups/data/group_extras_book.dart';
+import 'package:locallink/features/groups/data/group_sender_keys.dart';
 
 class GroupMessagingService {
   final LocalStore store;
@@ -28,6 +37,112 @@ class GroupMessagingService {
   bool _flushing = false;
 
   GroupMessagingService(this.store, this.api, this.socket, this.files);
+
+  /// Bundle G3: Nearby groups (set once at start; null in old tests).
+  GroupNearbyService? nearby;
+
+  /// Bundle G6: end-to-end locks for the server road (null = off, old
+  /// tests).
+  GroupSenderKeys? senderKeys;
+
+  /// Bundle G6: an invite-link request arrived (admins; may auto-add).
+  Future<void> Function(String gid)? onJoinRequest;
+
+  /// Bundle G3: one outgoing group message / reaction / delete note. It
+  /// waits in the server outbox (a group only on phones keeps it there
+  /// until the group is on the server = the sender's bridge) and, for a
+  /// group with a card, also goes to every member Nearby when the server
+  /// can't be reached right now.
+  Future<void> _queue(Map<String, dynamic> row) async {
+    await store.addGroupOutbox(row);
+    final near = nearby;
+    final groupId = row['group_id']?.toString() ?? '';
+    final body = row['body']?.toString() ?? '';
+    if (near == null || groupId.isEmpty || body.isEmpty) return;
+    final group = await store.groupById(groupId);
+    if (group == null || !group.worksNearby || !group.isActive) return;
+    if (group.nearbyOnly || !socket.isConnected) {
+      try {
+        await near.fanOut(groupId, row['id'].toString(), body,
+            row['created_at']?.toString() ?? '');
+      } catch (error) {
+        AppLogger.warning('GROUP_NEARBY_FANOUT_FAILED', detail: '$error');
+      }
+    }
+  }
+
+  /// Bundle G3: a member's message / reaction / delete note / system line
+  /// that came Nearby.
+  Future<void> receiveNearby(GroupMessage message) async {
+    // Bundle G6: a locked copy (catch-up from a member) opens here too.
+    if (GroupSenderKeys.isKeyNote(message.body)) return;
+    message = await _open(message);
+    if (await _consumeReaction(message)) return;
+    if (!GroupEvent.isEvent(message.body) &&
+        await store.isBlockedPeer(message.senderId)) {
+      return;
+    }
+    final existed = (await store.groupMessageById(message.id)) != null;
+    await store.saveGroupMessage(_messageMap(message));
+    if (!existed) _incoming.add(message);
+    if (GroupEvent.isEvent(message.body)) {
+      GroupChangeHub.instance.changed(message.groupId);
+    }
+  }
+
+  /// Bundle G3: groups made on this phone (I own them) go on the server
+  /// with the same id; then the outbox sends the waiting messages.
+  Future<void> bridge() async {
+    final near = nearby;
+    if (near == null) return;
+    try {
+      final done = await near.bridge((card) async {
+        final self = store.deviceId ?? '';
+        final others = [
+          for (final m in card.members)
+            if (m.id != self) m.id
+        ];
+        final g = await api.createGroup(card.name, others,
+            description: card.description,
+            editInfo: card.editInfo,
+            sendMessages: card.sendMessages,
+            addMembers: card.addMembers,
+            id: card.gid,
+            bridge: true);
+        if (g.id != card.gid) return false;
+        for (final m in card.members) {
+          if (m.role == 'admin') {
+            try {
+              await api.setGroupRole(card.gid, m.id, admin: true);
+            } catch (_) {}
+          }
+        }
+        return true;
+      });
+      if (done > 0) await flush();
+    } catch (error) {
+      AppLogger.warning('GROUP_BRIDGE_FAILED', detail: '$error');
+    }
+  }
+
+  /// Bundle G3: a quiet note through the server only (a group card for a
+  /// group that is on the server too).
+  Future<void> postControl(String groupId, String body) async {
+    await store.addGroupOutbox({
+      'id': _newId(),
+      'group_id': groupId,
+      'body': body,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+      'status': 'queued',
+    });
+    await flush();
+  }
+
+  /// Bundle G3: my message reached a member Nearby (bubble shows ✓).
+  Future<void> sentNearby(String id) async {
+    final message = await store.groupMessageById(id);
+    if (message != null) _incoming.add(message);
+  }
 
   /// Bundle 197a: delete for me / for everyone, clear chat.
   late final MessageDeleteActions deletes =
@@ -54,7 +169,7 @@ class GroupMessagingService {
     }
     final now = DateTime.now().toUtc();
     await deletes.deleteForEveryoneLocal(id, group: true, at: now);
-    await store.addGroupOutbox({
+    await _queue({
       'id': _newId(),
       'group_id': groupId,
       'body': DeleteCommand(messageId: id, by: self, at: now).encode(),
@@ -72,11 +187,201 @@ class GroupMessagingService {
       deletes.clearChat(chatId: groupId, group: true, keepRow: true);
   Stream<MessageReaction> get reactionIncoming => _reactionIncoming.stream;
 
+  // ------------------------------------------------ Bundle G5 receipts
+
+  final GroupTypingBook typingBook = GroupTypingBook();
+  final _receiptChanges = StreamController<String>.broadcast();
+  Stream<String> get receiptChanges => _receiptChanges.stream;
+
+  void _bindReceiptHub() {
+    GroupReceiptHub.load = (gid) async =>
+        groupReceiptsByMessage(await store.groupReceipts(gid));
+    GroupReceiptHub.changes = () => _receiptChanges.stream;
+    GroupReceiptHub.markRead = markRead;
+    GroupReceiptHub.refresh = pullReceipts;
+    GroupReceiptHub.sendTyping = sendTyping;
+    GroupReceiptHub.typing = typingBook.typing;
+    GroupReceiptHub.typingChanges = () => typingBook.changes;
+    _typingTickSub ??= typingBook.changes
+        .listen((_) => GroupReceiptHub.typingVersion.value++);
+  }
+
+  StreamSubscription<String>? _typingTickSub;
+
+  /// A member got / read one of my messages (server or Nearby).
+  Future<void> recordReceipt(String gid, String messageId, String member,
+      String status, {String at = ''}) async {
+    final self = store.deviceId ?? '';
+    if (gid.isEmpty || messageId.isEmpty || member.isEmpty || member == self) {
+      return;
+    }
+    final when = at.isNotEmpty ? at : DateTime.now().toUtc().toIso8601String();
+    try {
+      await store.putGroupReceipt(messageId, gid, member,
+          deliveredAt: status == 'delivered' ? when : '',
+          readAt: status == 'read' ? when : '');
+      _receiptChanges.add(gid);
+    } catch (error) {
+      AppLogger.warning('GROUP_RECEIPT_SAVE_FAILED', detail: '$error');
+    }
+  }
+
+  bool _sendReceipt(String gid, List<String> ids, String status) {
+    if (ids.isEmpty || !socket.isConnected) return false;
+    return socket.send({
+      'type': 'group_receipt',
+      'group_id': gid,
+      'status': status,
+      'message_ids': ids,
+    });
+  }
+
+  /// The group chat is open: every message from others not read yet is
+  /// read now. "Read" goes to the writers only when my switch is on.
+  Future<void> markRead(String gid) async {
+    final self = store.deviceId ?? '';
+    if (gid.isEmpty || self.isEmpty) return;
+    final group = await store.groupById(gid);
+    if (group == null) return;
+    final have = groupReceiptsByMessage(await store.groupReceipts(gid));
+    final unread = (await store.groupMessages(gid))
+        .map(GroupMessage.fromJson)
+        .where((m) =>
+            m.senderId.isNotEmpty &&
+            m.senderId != self &&
+            GroupEvent.parse(m.body) == null &&
+            have[m.id]?[self]?.readAt == null)
+        .toList();
+    if (unread.isEmpty) return;
+    final list = unread.length > 200 ? unread.sublist(unread.length - 200) : unread;
+    final on = ReadReceiptsSetting.instance.on;
+    final now = DateTime.now().toUtc().toIso8601String();
+    final serverIds = <String>[];
+    final done = <GroupMessage>[];
+    if (on && !group.nearbyOnly && socket.isConnected) {
+      serverIds.addAll(list.where((m) => m.serverSeq > 0).map((m) => m.id));
+      if (serverIds.isNotEmpty) _sendReceipt(gid, serverIds, 'read');
+    }
+    if (on && group.worksNearby && nearby != null) {
+      final byWriter = <String, List<String>>{};
+      for (final m in list) {
+        (byWriter[m.senderId] ??= <String>[]).add(m.id);
+      }
+      for (final entry in byWriter.entries) {
+        try {
+          await nearby!.sendRead(gid, entry.key, entry.value);
+        } catch (_) {}
+      }
+    }
+    for (final m in list) {
+      // A server-only message read while the server is away waits for the
+      // next open (so the writer still gets "read").
+      final waitsForServer = on &&
+          !group.worksNearby &&
+          m.serverSeq > 0 &&
+          !serverIds.contains(m.id);
+      if (!waitsForServer) done.add(m);
+    }
+    for (final m in done) {
+      await store.putGroupReceipt(m.id, gid, self, deliveredAt: now, readAt: now);
+    }
+    if (done.isNotEmpty) {
+      AppLogger.info('GROUP_READ',
+          detail: 'n=${done.length} server=${serverIds.length} on=${on ? 'y' : 'n'}');
+    }
+  }
+
+  /// Ask the server for receipts of my messages I may have missed.
+  Future<void> pullReceipts(String gid) async {
+    if (!socket.isConnected) return;
+    final group = await store.groupById(gid);
+    if (group == null || group.nearbyOnly) return;
+    final key = 'group_rcpt_since_$gid';
+    String since;
+    try {
+      since = await store.readSetting(key) ?? '';
+    } catch (_) {
+      since = '';
+    }
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await api.groupReceipts(gid, since: since);
+    } catch (_) {
+      return;
+    }
+    var last = since;
+    for (final r in rows) {
+      final mid = r['message_id']?.toString() ?? '';
+      final dev = r['device_id']?.toString() ?? '';
+      if (mid.isEmpty || dev.isEmpty) continue;
+      await store.putGroupReceipt(mid, gid, dev,
+          deliveredAt: r['delivered_at']?.toString() ?? '',
+          readAt: r['read_at']?.toString() ?? '');
+      final updated = r['updated_at']?.toString() ?? '';
+      if (updated.compareTo(last) > 0) last = updated;
+    }
+    if (last != since) await store.writeSetting(key, last);
+    if (rows.isNotEmpty) _receiptChanges.add(gid);
+  }
+
+  /// Back online: pull receipts and say "got it" for server messages that
+  /// came while I could not tell.
+  Future<void> receiptsCatchUp() async {
+    final self = store.deviceId ?? '';
+    if (self.isEmpty || !socket.isConnected) return;
+    for (final row in await store.groups()) {
+      final group = LocalGroup.fromJson(row);
+      if (!group.isActive || group.nearbyOnly) continue;
+      await pullReceipts(group.id);
+      final have = groupReceiptsByMessage(await store.groupReceipts(group.id));
+      final ids = (await store.groupMessages(group.id))
+          .map(GroupMessage.fromJson)
+          .where((m) =>
+              m.serverSeq > 0 &&
+              m.senderId.isNotEmpty &&
+              m.senderId != self &&
+              GroupEvent.parse(m.body) == null &&
+              have[m.id]?[self] == null)
+          .map((m) => m.id)
+          .toList();
+      if (ids.isEmpty) continue;
+      final list = ids.length > 200 ? ids.sublist(ids.length - 200) : ids;
+      if (_sendReceipt(group.id, list, 'delivered')) {
+        final now = DateTime.now().toUtc().toIso8601String();
+        for (final id in list) {
+          await store.putGroupReceipt(id, group.id, self, deliveredAt: now);
+        }
+      }
+    }
+  }
+
+  /// "I am typing" (server road only; at most one per 3 s from the composer).
+  void sendTyping(String gid, bool on) {
+    if (gid.isEmpty || !socket.isConnected) return;
+    socket.send({'type': 'group_typing', 'group_id': gid, 'enabled': on});
+  }
+
   void start() {
     _socketSub ??= socket.messages.listen(_onMessage);
     _connectionSub ??= socket.connectionState.listen((connected) async {
-      if (connected) await flush();
+      if (connected) {
+        await bridge();
+        await flush();
+        unawaited(receiptsCatchUp().catchError((Object e) {
+          AppLogger.warning('GROUP_RECEIPTS_CATCHUP_FAILED', detail: '$e');
+        }));
+        // Bundle G6: rows saved locked (sync) open when the key is here.
+        unawaited(openLockedRows().catchError((Object e) {
+          AppLogger.warning('GROUP_SK_REOPEN_FAILED', detail: '$e');
+          return 0;
+        }));
+      }
     });
+    _bindReceiptHub();
+    _bindExtrasHub();
+    nearby?.onReceipt = recordReceipt;
+    nearby?.start();
+    if (socket.isConnected) unawaited(bridge());
     _retryTimer ??= Timer.periodic(const Duration(seconds: 5), (_) async {
       if (socket.isConnected) await flush();
     });
@@ -84,10 +389,17 @@ class GroupMessagingService {
 
   Future<List<GroupMessage>> history(String groupId) async {
     final local = (await store.groupMessages(groupId)).map((e) => GroupMessage.fromJson(e)).toList();
+    // Bundle G3: a group only on phones has nothing on the server yet.
+    final group = await store.groupById(groupId);
+    if (group != null && group.nearbyOnly) return local;
     try {
       final remote = await api.groupMessages(groupId);
-      for (final m in remote) {
+      for (final raw in remote) {
+        // Bundle G6: key notes; locked text opens here.
+        if (await _consumeKeyNote(raw)) continue;
+        final m = await _open(raw, ask: true);
         if (await _consumeReaction(m)) continue;
+        if (await nearby?.consumeServerCard(m) ?? false) continue;
         await store.saveGroupMessage(_messageMap(m));
       }
       return (await store.groupMessages(groupId)).map((e) => GroupMessage.fromJson(e)).toList();
@@ -98,13 +410,29 @@ class GroupMessagingService {
 
   Future<void> sendReaction(String groupId, String messageId, String emoji) async {
     final normalized = emoji.trim();
-    if (normalized.isEmpty || messageId.trim().isEmpty) throw const FormatException('Reaction is required');
+    if (messageId.trim().isEmpty) throw const FormatException('Reaction is required');
+    if (normalized.isEmpty) {
+      await _removeReaction(groupId, messageId);
+      return;
+    }
     final id = _newId();
     final createdAt = DateTime.now().toUtc().toIso8601String();
     final payload = jsonEncode({'message_id': messageId, 'emoji': normalized, 'reactor_id': store.deviceId, 'created_at': createdAt});
-    await store.addGroupOutbox({'id': id, 'group_id': groupId, 'body': '$_reactionPrefix$payload', 'created_at': createdAt, 'status': 'queued'});
+    await _queue({'id': id, 'group_id': groupId, 'body': '$_reactionPrefix$payload', 'created_at': createdAt, 'status': 'queued'});
     await store.saveGroupMessageReaction(messageId: messageId, reactorId: store.deviceId ?? '', emoji: normalized, createdAt: createdAt);
     _reactionIncoming.add(MessageReaction(messageId: messageId, reactorId: store.deviceId ?? '', emoji: normalized, createdAt: DateTime.parse(createdAt).toLocal()));
+    await flush();
+  }
+
+  /// Bundle G1 (mock 21): "Tap to remove" my reaction. Sent as the same
+  /// llrx note with an empty emoji; older apps ignore an empty emoji.
+  Future<void> _removeReaction(String groupId, String messageId) async {
+    final id = _newId();
+    final createdAt = DateTime.now().toUtc().toIso8601String();
+    final payload = jsonEncode({'message_id': messageId, 'emoji': '', 'reactor_id': store.deviceId, 'created_at': createdAt});
+    await _queue({'id': id, 'group_id': groupId, 'body': '$_reactionPrefix$payload', 'created_at': createdAt, 'status': 'queued'});
+    await store.deleteGroupMessageReaction(messageId: messageId, reactorId: store.deviceId ?? '');
+    _reactionIncoming.add(MessageReaction(messageId: messageId, reactorId: store.deviceId ?? '', emoji: '', createdAt: DateTime.parse(createdAt).toLocal()));
     await flush();
   }
 
@@ -126,7 +454,7 @@ class GroupMessagingService {
     if (group == null) throw Exception('Group not found');
     final id = _newId();
     final now = DateTime.now().toUtc().toIso8601String();
-    await store.addGroupOutbox({
+    await _queue({
       'id': id,
       'group_id': groupId,
       'body': body,
@@ -157,6 +485,7 @@ class GroupMessagingService {
   Future<void> flush() async {
     if (_flushing || !socket.isConnected) return;
     _flushing = true;
+    final keysSent = <String>{};
     try {
       final items = await store.groupOutbox();
       for (final item in items) {
@@ -164,6 +493,11 @@ class GroupMessagingService {
         final groupId = item['group_id']?.toString() ?? '';
         final createdAt = item['created_at']?.toString() ?? '';
         if (id.isEmpty || groupId.isEmpty || createdAt.isEmpty) continue;
+        // Bundle G2: nothing goes out from a group I left / was removed from.
+        final group = await store.groupById(groupId);
+        if (group != null && !group.isActive) continue;
+        // Bundle G3: not on the server yet - it waits for the bridge.
+        if (group != null && group.nearbyOnly) continue;
 
         final body = item['body']?.toString() ?? '';
 
@@ -193,11 +527,17 @@ class GroupMessagingService {
         }
         if (uploadFailed) continue;
 
+        // Bundle G6: the server gets only the locked text.
+        var wire = body;
+        if (_lockable(body)) {
+          wire = await _lockForServer(groupId, id, body, keysSent) ?? body;
+        }
+
         socket.send({
           'type': 'send_group_message',
           'id': id,
           'group_id': groupId,
-          'body': body,
+          'body': wire,
           'created_at': createdAt,
           if (remoteIds.isNotEmpty) 'attachment_ids': remoteIds,
         }, durable: true);
@@ -208,7 +548,376 @@ class GroupMessagingService {
     }
   }
 
+  // ---------------------------------------- Bundle G6 sender keys
+
+  final Map<String, DateTime> _asked = <String, DateTime>{};
+  final Set<String> _plainLogged = <String>{};
+
+  bool _lockable(String body) =>
+      senderKeys != null &&
+      body.isNotEmpty &&
+      !body.startsWith(GroupNearbyService.cardBodyPrefix) &&
+      !GroupSenderKeys.isKeyNote(body) &&
+      !GroupSenderKeys.isLocked(body) &&
+      !GroupEvent.isEvent(body);
+
+  Future<List<String>> _otherMembers(String gid) async {
+    final self = store.deviceId ?? '';
+    try {
+      return [
+        for (final row in await store.groupMembers(gid))
+          if ((row['device_id']?.toString() ?? '').isNotEmpty &&
+              row['device_id'].toString() != self)
+            row['device_id'].toString()
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// My key for [gid] with its note on the way (once per flush). Null =
+  /// a member's public key is missing: the message goes as before.
+  Future<GroupMyKey?> _keyReady(String gid, Set<String> keysSent) async {
+    final sk = senderKeys;
+    if (sk == null) return null;
+    final members = await _otherMembers(gid);
+    if (members.isEmpty) return null;
+    final key = await sk.current(gid, members);
+    if (key.distributed || keysSent.contains(gid)) return key;
+    final note = await sk.keysNote(gid, key.kid, key.key, key.members);
+    if (note == null) {
+      if (_plainLogged.add(gid)) {
+        AppLogger.warning('GROUP_SK_PLAIN', detail: 'reason=no_member_key');
+      }
+      return null;
+    }
+    final noteId = await sk.noteIdFor(gid, _newId);
+    socket.send({
+      'type': 'send_group_message',
+      'id': noteId,
+      'group_id': gid,
+      'body': note,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    }, durable: true);
+    keysSent.add(gid);
+    AppLogger.info('GROUP_SK_KEYS_SENT', detail: 'n=${key.members.length}');
+    return key;
+  }
+
+  Future<String?> _lockForServer(
+      String gid, String id, String body, Set<String> keysSent) async {
+    try {
+      final key = await _keyReady(gid, keysSent);
+      if (key == null) return null;
+      return await senderKeys!.lock(gid, id, body, key);
+    } catch (error) {
+      AppLogger.warning('GROUP_SK_LOCK_FAILED', detail: '$error');
+      return null;
+    }
+  }
+
+  /// The open text of [m] (or [m] as it is). A locked message this phone
+  /// can't open stays locked ("🔒 Waiting…") and, with [ask], the writer
+  /// is asked once for the key.
+  Future<GroupMessage> _open(GroupMessage m, {bool ask = false}) async {
+    final sk = senderKeys;
+    if (!GroupSenderKeys.isLocked(m.body)) return m;
+    final opened =
+        sk == null ? null : await sk.open(m.groupId, m.senderId, m.id, m.body);
+    if (opened != null) return _withBody(m, opened);
+    // Already open on this phone (it came Nearby too): keep that.
+    final local = await store.groupMessageById(m.id);
+    if (local != null && !GroupSenderKeys.isLocked(local.body)) {
+      return _withBody(m, local.body);
+    }
+    if (ask) unawaited(_askKey(m.groupId, m.senderId, GroupSenderKeys.kidOf(m.body)));
+    return m;
+  }
+
+  GroupMessage _withBody(GroupMessage m, String body) => GroupMessage(
+        id: m.id,
+        groupId: m.groupId,
+        senderId: m.senderId,
+        body: body,
+        createdAt: m.createdAt,
+        serverSeq: m.serverSeq,
+        attachments: m.attachments,
+        nearbySent: m.nearbySent,
+      );
+
+  Future<void> _askKey(String gid, String writer, String kid) async {
+    final self = store.deviceId ?? '';
+    if (kid.isEmpty || writer.isEmpty || writer == self) return;
+    final k = '$gid|$writer|$kid';
+    final last = _asked[k];
+    final now = DateTime.now();
+    if (last != null && now.difference(last) < const Duration(minutes: 10)) return;
+    if (!socket.isConnected) return;
+    _asked[k] = now;
+    socket.send({
+      'type': 'send_group_message',
+      'id': _newId(),
+      'group_id': gid,
+      'body': GroupSenderKeys.askNote(writer, kid),
+      'created_at': now.toUtc().toIso8601String(),
+    }, durable: true);
+    AppLogger.info('GROUP_SK_ASK');
+  }
+
+  /// Key notes and key asks (never chat lines). True = it was one.
+  Future<bool> _consumeKeyNote(GroupMessage m) async {
+    final sk = senderKeys;
+    final self = store.deviceId ?? '';
+    if (GroupSenderKeys.isKeys(m.body)) {
+      if (sk == null || m.senderId == self) return true;
+      final kid = await sk.acceptKeys(m.groupId, m.senderId, m.body);
+      if (kid != null) {
+        AppLogger.info('GROUP_SK_KEYS_GOT');
+        unawaited(openLockedRows(gid: m.groupId, sender: m.senderId)
+            .catchError((Object _) => 0));
+      }
+      return true;
+    }
+    final ask = GroupSenderKeys.parseAsk(m.body);
+    if (ask == null) return GroupSenderKeys.isAsk(m.body);
+    final (to, kid) = ask;
+    if (sk == null || to != self || m.senderId == self) return true;
+    final k = 'give|${m.groupId}|${m.senderId}|$kid';
+    final last = _asked[k];
+    final now = DateTime.now();
+    if (last != null && now.difference(last) < const Duration(minutes: 1)) {
+      return true;
+    }
+    _asked[k] = now;
+    try {
+      final members = await _otherMembers(m.groupId);
+      if (!members.contains(m.senderId)) return true;
+      final current = await sk.current(m.groupId, members);
+      if (current.kid == kid) {
+        // Send my current key again (a new note id = a new server line).
+        await sk.markUndistributed(m.groupId);
+        await _keyReady(m.groupId, <String>{});
+      } else {
+        // An older key (old messages): only to the one who asked.
+        if (!await sk.ownKeyWasFor(m.groupId, kid, m.senderId)) return true;
+        final old = await sk.ownKey(m.groupId, kid);
+        if (old == null) return true;
+        final note = await sk.keysNote(m.groupId, kid, old, [m.senderId]);
+        if (note == null || !socket.isConnected) return true;
+        socket.send({
+          'type': 'send_group_message',
+          'id': _newId(),
+          'group_id': m.groupId,
+          'body': note,
+          'created_at': now.toUtc().toIso8601String(),
+        }, durable: true);
+      }
+      AppLogger.info('GROUP_SK_KEY_RESENT');
+    } catch (error) {
+      AppLogger.warning('GROUP_SK_RESEND_FAILED', detail: '$error');
+    }
+    return true;
+  }
+
+  /// Opens rows saved locked (no key at the time, or saved by sync).
+  /// Notes inside (reactions, pins, votes, deletes) are applied and their
+  /// locked row removed; messages are saved open and shown.
+  Future<int> openLockedRows({String? gid, String? sender}) async {
+    final sk = senderKeys;
+    if (sk == null) return 0;
+    final ids = <String>[];
+    if (gid != null) {
+      ids.add(gid);
+    } else {
+      for (final row in await store.groups()) {
+        ids.add(row['id']?.toString() ?? '');
+      }
+    }
+    var opened = 0;
+    for (final g in ids) {
+      if (g.isEmpty) continue;
+      final rows = (await store.groupMessages(g))
+          .map(GroupMessage.fromJson)
+          .where((m) =>
+              GroupSenderKeys.isLocked(m.body) &&
+              (sender == null || m.senderId == sender))
+          .toList();
+      for (final locked in rows) {
+        final text = await sk.open(g, locked.senderId, locked.id, locked.body);
+        if (text == null) continue;
+        final m = _withBody(locked, text);
+        opened++;
+        if (await _consumeReaction(m) ||
+            (await nearby?.consumeServerCard(m) ?? false)) {
+          await store.deleteGroupMessageLocal(m.id);
+          continue;
+        }
+        await store.saveGroupMessage(_messageMap(m));
+        _incoming.add(m);
+      }
+    }
+    if (opened > 0) AppLogger.info('GROUP_SK_REOPENED', detail: 'n=$opened');
+    return opened;
+  }
+
+  // ------------------------------------------- Bundle G5b pin + polls
+
+  void _bindExtrasHub() {
+    final book = GroupExtrasBook.instance;
+    book.read = store.readSetting;
+    book.write = store.writeSetting;
+    GroupExtrasHub.pin = pinMessage;
+    GroupExtrasHub.unpin = unpin;
+    GroupExtrasHub.sendPoll = sendPoll;
+    GroupExtrasHub.vote = vote;
+  }
+
+  /// Owner or admin of [gid] (from this phone's member list).
+  Future<bool> isGroupAdmin(String gid, String deviceId) async {
+    if (gid.isEmpty || deviceId.isEmpty) return false;
+    try {
+      for (final row in await store.groupMembers(gid)) {
+        if (row['device_id']?.toString() != deviceId) continue;
+        final role = row['role']?.toString() ?? '';
+        return role == 'owner' || role == 'admin';
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// P1/P2: pin [messageId] for [length] (admins only). One pin per group;
+  /// a new pin replaces the old one.
+  Future<bool> pinMessage(String gid, String messageId, Duration length) async {
+    final self = store.deviceId ?? '';
+    final group = await store.groupById(gid);
+    if (group == null || !group.isActive || messageId.isEmpty) return false;
+    if (!await isGroupAdmin(gid, self)) return false;
+    final now = DateTime.now().toUtc();
+    final note = GroupPinNote(
+        messageId: messageId,
+        at: now.toIso8601String(),
+        until: now.add(length).toIso8601String(),
+        by: self);
+    final id = _newId();
+    await GroupExtrasBook.instance.applyPin(gid, note);
+    await _savePinLine(GroupMessage(
+        id: id,
+        groupId: gid,
+        senderId: self,
+        body: note.encode(),
+        createdAt: note.at), note);
+    await _queue({
+      'id': id,
+      'group_id': gid,
+      'body': note.encode(),
+      'created_at': note.at,
+      'status': 'queued',
+    });
+    AppLogger.info('GROUP_PIN', detail: 'days=${length.inDays}');
+    await flush();
+    return true;
+  }
+
+  /// P4: take the pin away (admins only). No line in the chat.
+  Future<bool> unpin(String gid) async {
+    final self = store.deviceId ?? '';
+    final group = await store.groupById(gid);
+    if (group == null || !group.isActive) return false;
+    if (!await isGroupAdmin(gid, self)) return false;
+    final at = DateTime.now().toUtc().toIso8601String();
+    final note = GroupPinNote(messageId: '', at: at, by: self);
+    await GroupExtrasBook.instance.applyPin(gid, note);
+    await _queue({
+      'id': _newId(),
+      'group_id': gid,
+      'body': note.encode(),
+      'created_at': at,
+      'status': 'queued',
+    });
+    AppLogger.info('GROUP_UNPIN');
+    await flush();
+    return true;
+  }
+
+  /// Q2: a poll is a normal message (everyone who can send may make one).
+  Future<bool> sendPoll(String gid, GroupPoll poll) async {
+    await send(gid, poll.encode());
+    AppLogger.info('GROUP_POLL_SENT',
+        detail: 'options=${poll.options.length} multi=${poll.multi ? 'y' : 'n'}');
+    return true;
+  }
+
+  /// Q3: my picks on a poll (empty = take my vote back).
+  Future<bool> vote(String gid, String pollId, List<int> choices) async {
+    final self = store.deviceId ?? '';
+    final group = await store.groupById(gid);
+    if (self.isEmpty || group == null || !group.isActive || pollId.isEmpty) {
+      return false;
+    }
+    final at = DateTime.now().toUtc().toIso8601String();
+    final v = GroupVote(
+        pollId: pollId, choices: List<int>.of(choices)..sort(), at: at, voter: self);
+    await GroupExtrasBook.instance.applyVote(v);
+    await _queue({
+      'id': _newId(),
+      'group_id': gid,
+      'body': v.encode(),
+      'created_at': at,
+      'status': 'queued',
+    });
+    AppLogger.info('GROUP_VOTE', detail: 'n=${choices.length}');
+    await flush();
+    return true;
+  }
+
+  /// "Ali pinned a message" (a grey system line, never unread).
+  Future<void> _savePinLine(GroupMessage note, GroupPinNote pin) async {
+    final line = GroupMessage(
+      id: note.id,
+      groupId: note.groupId,
+      senderId: note.senderId,
+      body: GroupEvent(kind: 'pin', by: note.senderId, targets: [pin.messageId])
+          .encode(),
+      createdAt: note.createdAt,
+      serverSeq: note.serverSeq,
+    );
+    final existed = (await store.groupMessageById(line.id)) != null;
+    await store.saveGroupMessage(_messageMap(line));
+    if (!existed) _incoming.add(line);
+  }
+
+  /// Pin / vote notes (socket, ack, history, Nearby). True = it was one
+  /// (never shown as a bubble).
+  Future<bool> _consumeExtra(GroupMessage message) async {
+    final body = message.body;
+    if (GroupPinNote.isPin(body)) {
+      final note = GroupPinNote.parse(body, by: message.senderId);
+      if (note == null) return true;
+      if (!await isGroupAdmin(message.groupId, message.senderId)) {
+        AppLogger.warning('GROUP_PIN_REFUSED', detail: 'reason=not_admin');
+        return true;
+      }
+      try {
+        await GroupExtrasBook.instance.applyPin(message.groupId, note);
+        if (!note.isUnpin) await _savePinLine(message, note);
+      } catch (_) {}
+      return true;
+    }
+    if (GroupVote.isVote(body)) {
+      final v = GroupVote.parse(body, voter: message.senderId);
+      if (v != null && message.senderId.isNotEmpty) {
+        try {
+          await GroupExtrasBook.instance.applyVote(v);
+        } catch (_) {}
+      }
+      return true;
+    }
+    return false;
+  }
+
   Future<bool> _consumeReaction(GroupMessage message) async {
+    // Bundle G5b: pin + vote notes.
+    if (await _consumeExtra(message)) return true;
     // Bundle 197a: Delete for everyone (socket, ack, history).
     if (DeleteCommand.isDelete(message.body)) {
       try {
@@ -225,7 +934,13 @@ class GroupMessagingService {
       final emoji = payload['emoji']?.toString() ?? '';
       final reactorId = payload['reactor_id']?.toString() ?? message.senderId;
       final createdAt = payload['created_at']?.toString() ?? message.createdAt;
-      if (messageId.isEmpty || emoji.isEmpty || reactorId != message.senderId) return true;
+      if (messageId.isEmpty || reactorId != message.senderId) return true;
+      if (emoji.isEmpty) {
+        // Bundle G1: the sender took the reaction back.
+        await store.deleteGroupMessageReaction(messageId: messageId, reactorId: reactorId);
+        _reactionIncoming.add(MessageReaction(messageId: messageId, reactorId: reactorId, emoji: '', createdAt: DateTime.tryParse(createdAt)?.toLocal() ?? DateTime.now()));
+        return true;
+      }
       await store.saveGroupMessageReaction(messageId: messageId, reactorId: reactorId, emoji: emoji, createdAt: createdAt);
       _reactionIncoming.add(MessageReaction(messageId: messageId, reactorId: reactorId, emoji: emoji, createdAt: DateTime.tryParse(createdAt)?.toLocal() ?? DateTime.now()));
     } catch (_) {}
@@ -236,7 +951,38 @@ class GroupMessagingService {
     final type = data['type']?.toString();
     if (type == 'error') {
       final id = data['id']?.toString();
-      if (id != null && id.isNotEmpty) await store.updateGroupOutboxStatus(id, 'queued');
+      if (id == null || id.isEmpty) return;
+      // Bundle G2: the server will never take it (removed / admins only):
+      // stop retrying and take the bubble away.
+      final code = data['error_code']?.toString() ?? '';
+      if (code == 'GROUP_ADMINS_ONLY' || code == 'GROUP_NOT_MEMBER') {
+        final outbox = (await store.groupOutbox())
+            .where((row) => row['id']?.toString() == id)
+            .toList();
+        if (outbox.isEmpty) return;
+        final groupId = outbox.first['group_id']?.toString() ?? '';
+        // Bundle G3: a group with a card lives on phones too - the message
+        // went Nearby; the server copy is just not possible.
+        final cardGroup = await store.groupById(groupId);
+        if (cardGroup != null && cardGroup.worksNearby) {
+          await store.removeGroupOutbox(id);
+          await store.removePendingGroupAttachments(id);
+          AppLogger.warning('GROUP_SEND_REFUSED', detail: 'code=$code nearby=y');
+          return;
+        }
+        await store.removeGroupOutbox(id);
+        await store.removePendingGroupAttachments(id);
+        try {
+          await deletes.deleteForMe(id, group: true);
+        } catch (_) {}
+        AppLogger.warning('GROUP_SEND_REFUSED', detail: 'code=$code');
+        if (code == 'GROUP_NOT_MEMBER' && groupId.isNotEmpty) {
+          await store.setGroupState(groupId, 'removed');
+          GroupChangeHub.instance.changed(groupId);
+        }
+        return;
+      }
+      await store.updateGroupOutboxStatus(id, 'queued');
       return;
     }
     if (type == 'group_message_ack') {
@@ -244,10 +990,22 @@ class GroupMessagingService {
       if (id == null || id.isEmpty) return;
       final pending = await store.pendingGroupAttachments(id);
       final localPaths = pending.map((row) => row['local_path']?.toString()).whereType<String>().where((path) => path.isNotEmpty).toList();
-      final base = GroupMessage.fromJson(data);
+      final echoed = GroupMessage.fromJson(data);
+      // Bundle G6: my key note / key ask reached the server.
+      if (GroupSenderKeys.isKeys(echoed.body)) {
+        await senderKeys?.markDistributed(echoed.groupId, id);
+        return;
+      }
+      if (GroupSenderKeys.isAsk(echoed.body)) return;
+      final base = await _open(echoed);
       final localRows = await store.groupMessages(base.groupId);
       final existing = localRows.map(GroupMessage.fromJson).where((m) => m.id == id).cast<GroupMessage?>().firstOrNull;
       if (existing == null && await _consumeReaction(base)) {
+        await store.removeGroupOutbox(id);
+        return;
+      }
+      // Bundle G3: my group card reached the server.
+      if (base.body.startsWith(GroupNearbyService.cardBodyPrefix)) {
         await store.removeGroupOutbox(id);
         return;
       }
@@ -275,23 +1033,155 @@ class GroupMessagingService {
       _incoming.add(message);
       return;
     }
+    // Bundle G5: a member got / read my message; someone is typing.
+    if (type == 'group_receipt') {
+      await recordReceipt(
+          data['group_id']?.toString() ?? '',
+          data['id']?.toString() ?? '',
+          data['device_id']?.toString() ?? '',
+          data['status']?.toString() == 'read' ? 'read' : 'delivered',
+          at: data['created_at']?.toString() ?? '');
+      return;
+    }
+    if (type == 'group_typing') {
+      final sender = data['sender_id']?.toString() ?? '';
+      if (sender.isEmpty || sender == (store.deviceId ?? '')) return;
+      if (await store.isBlockedPeer(sender)) return;
+      typingBook.note(data['group_id']?.toString() ?? '', sender,
+          data['enabled'] != false);
+      return;
+    }
+    // Bundle G6: someone asked to join with the invite link (admins only).
+    if (type == 'group_join_request') {
+      final gid = data['group_id']?.toString() ?? '';
+      if (gid.isEmpty) return;
+      AppLogger.info('GROUP_LINK_REQUEST', detail: 'gid=${gid.length > 6 ? gid.substring(0, 6) : gid}');
+      try {
+        await onJoinRequest?.call(gid);
+      } catch (_) {}
+      GroupChangeHub.instance.changed(gid);
+      return;
+    }
     if (type != 'group_message') return;
     try {
-      final message = GroupMessage.fromJson(data);
+      var message = GroupMessage.fromJson(data);
+      // Bundle G6: key notes; locked text opens here.
+      if (await _consumeKeyNote(message)) return;
+      message = await _open(message, ask: true);
       if (await _consumeReaction(message)) return;
+      // Bundle G3: a group card through the server ('both' groups).
+      if (await nearby?.consumeServerCard(message) ?? false) return;
+      // Bundle G2: a system line ("Ali added you", "Sara left" ...).
+      final event = GroupEvent.parse(message.body);
+      if (event != null) {
+        await applyEvent(message, event);
+        return;
+      }
       if (await store.isBlockedPeer(message.senderId)) return;
       final existed = (await store.groupMessages(message.groupId)).any((m) => m['id']?.toString() == message.id);
       await store.saveGroupMessage(_messageMap(message));
+      typingBook.note(message.groupId, message.senderId, false);
       if (!existed) _incoming.add(message);
+      // Bundle G5: tell the writer "got it".
+      final self = store.deviceId ?? '';
+      if (self.isNotEmpty && message.senderId != self &&
+          _sendReceipt(message.groupId, [message.id], 'delivered')) {
+        await store.putGroupReceipt(message.id, message.groupId, self,
+            deliveredAt: DateTime.now().toUtc().toIso8601String());
+      }
     } catch (_) {}
+  }
+
+  /// Bundle G2: one system line arrived (socket or history). Saves the
+  /// line, updates my state (removed / left / added again) and reads the
+  /// group info + members again.
+  Future<void> applyEvent(GroupMessage message, GroupEvent event) async {
+    final self = store.deviceId ?? '';
+    final gid = message.groupId;
+    if (gid.isEmpty) return;
+    // Someone I blocked added me: leave quietly, nothing is shown.
+    if (event.addsMe(self) &&
+        event.by != self &&
+        await store.isBlockedPeer(event.by)) {
+      AppLogger.info('GROUP_ADD_BY_BLOCKED', detail: 'action=leave');
+      try {
+        await api.leaveGroup(gid);
+      } catch (_) {}
+      final paths = await store.deleteGroupLocal(gid);
+      for (final path in paths) {
+        await files.deleteLocalFile(path);
+      }
+      GroupChangeHub.instance.changed(gid);
+      return;
+    }
+    var local = await store.groupById(gid);
+    if (event.removesMe(self)) {
+      if (local != null) await store.setGroupState(gid, 'removed');
+    } else if (event.kind == 'leave' && event.by == self) {
+      if (local != null) await store.setGroupState(gid, 'left');
+    } else {
+      if (event.addsMe(self) && local != null && !local.isActive) {
+        await store.setGroupState(gid, 'active');
+      }
+      await refreshGroup(gid);
+      local = await store.groupById(gid);
+    }
+    final existed = (await store.groupMessages(gid))
+        .any((m) => m['id']?.toString() == message.id);
+    await store.saveGroupMessage(_messageMap(message));
+    AppLogger.info('GROUP_EVENT', detail: 'kind=${event.kind} new=${!existed}');
+    if (!existed) _incoming.add(message);
+    GroupChangeHub.instance.changed(gid);
+  }
+
+  /// Bundle G2: info + members from the server into this phone (the group
+  /// row is made when it is new, e.g. "Ali added you").
+  Future<void> refreshGroup(String gid) async {
+    final local = await store.groupById(gid);
+    // Bundle G3: a group only on phones: the card is the truth.
+    if (local != null && local.nearbyOnly) return;
+    try {
+      final info = await api.groupInfo(gid);
+      await store.saveGroup(info.toServerRow());
+      // Bundle G3: a group with a card keeps the card's member list.
+      if (local != null && local.worksNearby) {
+        unawaited(GroupPhotoBook.instance
+            .ensure(gid, info.photoVersion, () => api.groupPhoto(gid)));
+        return;
+      }
+      final members = await api.groupMembers(gid);
+      await store.replaceGroupMembers(gid, [
+        for (final m in members)
+          {
+            'device_id': m.deviceId,
+            'role': m.role,
+            'joined_at': m.joinedAt,
+            'name': m.name,
+            'added_by': m.addedBy,
+          }
+      ]);
+      unawaited(GroupPhotoBook.instance
+          .ensure(gid, info.photoVersion, () => api.groupPhoto(gid)));
+    } on GroupActionException catch (error) {
+      if (error.code == 'GROUP_NOT_MEMBER' &&
+          !(local != null && local.worksNearby)) {
+        await store.setGroupState(gid, 'removed');
+      }
+    } catch (_) {
+      // Offline: the next sync / home load fixes it.
+    }
   }
 
   Future<void> dispose() async {
     _retryTimer?.cancel();
+    await nearby?.dispose();
     await _socketSub?.cancel();
     await _connectionSub?.cancel();
     await _reactionIncoming.close();
     await _incoming.close();
+    await _typingTickSub?.cancel();
+    typingBook.dispose();
+    await _receiptChanges.close();
   }
 
   Map<String, dynamic> _messageMap(GroupMessage m) => {

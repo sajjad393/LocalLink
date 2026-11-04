@@ -183,6 +183,9 @@ final class WifiDirectFallbackService {
 
   /// Bundle 177 (4.3): battery for the closed-app search rules (Q2).
   int _batteryLevel = -1;
+
+  /// Bundle G3: last known battery % (-1 = not known yet).
+  int get batteryLevel => _batteryLevel;
   bool _batteryCharging = false;
   bool _batteryStopLogged = false;
 
@@ -1167,6 +1170,12 @@ final class WifiDirectFallbackService {
   }
 
   // ------------------------------------------ Bundle 200: friend link (B)
+
+  /// Bundle G4: 10% battery or less and not charging (no group catch-up).
+  bool get batteryLow =>
+      !_batteryCharging &&
+      _batteryLevel >= 0 &&
+      _batteryLevel <= NearbySearchCadence.stopBatteryLevel;
 
   bool _friendAllowed() =>
       _foreground ||

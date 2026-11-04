@@ -392,6 +392,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           setState(() => _selected.add(message.id));
         case MessageAction.delete:
           await _delete([message]);
+        // Bundle G5b: group-only rows (never shown here).
+        case MessageAction.pin:
+        case MessageAction.unpin:
+          break;
       }
     } finally {
       if (mounted) setState(() => _heldId = null);

@@ -305,23 +305,25 @@ class BubbleReactionEdge extends StatelessWidget {
       if (k > 0) row.add(const SizedBox(width: 4));
       row.add(chips[k]);
     }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: below),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          bubble,
-          PositionedDirectional(
-            start: 8,
-            bottom: -below,
-            child: Row(
-              key: const Key('bubble_reaction_edge'),
-              mainAxisSize: MainAxisSize.min,
-              children: row,
-            ),
+    // Bundle G1: the space under the bubble is INSIDE the Stack, so the
+    // chips can be tapped (group: who reacted). Same place as before.
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: below),
+          child: bubble,
+        ),
+        PositionedDirectional(
+          start: 8,
+          bottom: 0,
+          child: Row(
+            key: const Key('bubble_reaction_edge'),
+            mainAxisSize: MainAxisSize.min,
+            children: row,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

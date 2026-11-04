@@ -18,6 +18,9 @@ import 'package:locallink/features/directory/data/services/friend_hello_service.
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
+import 'package:locallink/features/groups/data/group_invite_link.dart';
+import 'package:locallink/features/groups/presentation/screens/group_link_screens.dart'
+    show JoinGroupByLinkScreen;
 import 'package:locallink/features/files/presentation/widgets/chat_video_hub.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/features/connectivity/domain/local_route.dart';
@@ -96,6 +99,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // Bundle 194: after an Add the chat opens (instead of a toast).
     FriendChatOpener.open = _openFriendChat;
     FriendChatOpener.toast = _showAppSnackBar;
+    // Bundle G6: Join by invite link opens the group chat.
+    GroupInviteService.openGroup = _openGroupChat;
     // Bundle 126: pairing diagnostics are demoted to logcat-only (the
     // service still prints every PAIR_DIAG line). While bring-up was broken,
     // toasting every stage line was worth it; now each packet produced 1–3
@@ -211,7 +216,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
     AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v3 · 3.0.41 · bundles 104-202 (2026-11-04)');
+        detail: 'v3 · 3.0.42 · bundles 104-202 + groups G1-G6 (2026-11-04)');
     if (mounted) {
       setState(() {
         _ready = false;
@@ -470,6 +475,39 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     if (!mounted) return;
     setState(() => _configured = configured && !signedOut);
     _flushPendingNotificationOpen();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkJoinLink());
+  }
+
+  /// Bundle G6: a `linkup://join/…` link opened the app -> Join group.
+  Future<void> _checkJoinLink() async {
+    if (!mounted || !_configured) return;
+    final token = await GroupInviteLink.takeOpenedLink();
+    if (token == null || !mounted) return;
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return;
+    AppLogger.info('GROUP_LINK_OPENED');
+    unawaited(navigator.push(MaterialPageRoute<void>(
+        builder: (_) => JoinGroupByLinkScreen(token: token))));
+  }
+
+  /// Bundle G6: after joining by link, open the group chat.
+  Future<void> _openGroupChat(String gid) async {
+    final navigator = _navigatorKey.currentState;
+    if (!mounted || navigator == null) return;
+    final group = await _deps.store.groupById(gid);
+    if (group == null || !mounted) return;
+    unawaited(navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => GroupChatScreen(
+          group: group,
+          localDeviceId: _deps.store.deviceId ?? '',
+          messaging: _deps.groupMessagingRepository,
+          groups: _deps.groupRepository,
+          files: _deps.files,
+          notifications: _deps.notifications,
+        ),
+      ),
+    ));
   }
 
   Future<void> _finishOnboarding() async {
@@ -571,6 +609,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       _deps.connectivity.refresh();
       unawaited(_deps.api.syncPendingProfile());
       _listenForIncomingCalls();
+      unawaited(_checkJoinLink());
     }
   }
 
@@ -580,6 +619,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     if (FriendChatOpener.open == _openFriendChat) {
       FriendChatOpener.open = null;
       FriendChatOpener.toast = null;
+    }
+    if (GroupInviteService.openGroup == _openGroupChat) {
+      GroupInviteService.openGroup = null;
     }
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_callSub?.cancel());

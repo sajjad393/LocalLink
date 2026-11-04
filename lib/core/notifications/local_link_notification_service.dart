@@ -1,9 +1,13 @@
+import 'package:locallink/core/models/group_mentions.dart';
+import 'package:locallink/features/groups/data/group_mention_book.dart';
+import 'package:locallink/features/groups/data/group_mute_book.dart';
 import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'package:locallink/core/models/group.dart';
+import 'package:locallink/core/models/group_event.dart';
 import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/notifications/local_link_notification_platform.dart';
@@ -317,6 +321,11 @@ final class LocalLinkNotificationService {
   Future<void> _onGroupMessage(GroupMessage message) async {
     if (_disposed || !_validGroupIncomingMessage(message)) return;
     if (await store.isBlockedPeer(message.senderId)) return;
+    // Bundle G6: not open yet - it notifies when the key comes.
+    if (message.body.startsWith('llsk:v1:')) return;
+    // Bundle G2: of the system lines only "Ali added you" notifies (mock 8).
+    final event = GroupEvent.parse(message.body);
+    if (event != null && !event.countsAsUnread(store.deviceId ?? '')) return;
     if (!await _isValidGroupNotificationSender(message)) return;
 
     if (!policy.shouldNotifyGroup(message.groupId)) {
@@ -325,6 +334,13 @@ final class LocalLinkNotificationService {
       _noteActiveChat(group: true); // Bundle 198
       return;
     }
+    // Bundle G5 (mock 17): a mention of me (or @all from an admin) puts a
+    // blue @ in Chats and notifies even when the group is muted.
+    final mentioned = await _groupMentionsMe(message);
+    if (mentioned) GroupMentionBook.instance.add(message.groupId);
+    // Bundle G1 (mock 34): muted group - no pop-up, no sound. The message
+    // stays unread (grey count in Chats).
+    if (GroupMuteBook.instance.isMuted(message.groupId) && !mentioned) return;
     await _showGroup(message);
   }
 
@@ -355,6 +371,23 @@ final class LocalLinkNotificationService {
       message.groupId.trim().isNotEmpty &&
       message.senderId.trim().isNotEmpty &&
       message.senderId != store.deviceId;
+
+  Future<bool> _groupMentionsMe(GroupMessage message) async {
+    final self = store.deviceId ?? '';
+    final text = message.text;
+    if (self.isEmpty || !text.contains('@[')) return false;
+    var admin = false;
+    try {
+      final rows = await store.groupMembers(message.groupId);
+      final role = rows
+              .where((r) => r['device_id']?.toString() == message.senderId)
+              .firstOrNull?['role']
+              ?.toString() ??
+          '';
+      admin = role == 'owner' || role == 'admin';
+    } catch (_) {}
+    return GroupMentions.mentionsMe(text, self, writerIsAdmin: admin);
+  }
 
   Future<bool> _isValidGroupNotificationSender(GroupMessage message) async {
     final members = await store.groupMembers(message.groupId);
@@ -459,7 +492,10 @@ final class LocalLinkNotificationService {
         isGroup: true,
         senderName: identity.displayName,
       ),
-      body: _bodyForPrivacy(_bodyForGroupMessage(target)),
+      body: GroupEvent.isEvent(target.body)
+          ? _bodyForPrivacy(_bodyForGroupMessage(target))
+          : _groupBodyForPrivacy(
+              identity.displayName, _bodyForGroupMessage(target)),
       summary: _summaryForConversation(
         displayName: groupName,
         unreadCount: unread.length,
@@ -972,8 +1008,12 @@ final class LocalLinkNotificationService {
       notificationBodyFor(message.text, message.attachments);
 
   // Bundle 197a: text only (never the quote / Forwarded envelope).
-  String _bodyForGroupMessage(GroupMessage message) =>
-      notificationBodyFor(message.text, message.attachments);
+  String _bodyForGroupMessage(GroupMessage message) {
+    // Bundle G2: "Ali added you".
+    final event = GroupEvent.parse(message.body);
+    if (event != null) return event.preview(store.deviceId ?? '');
+    return notificationBodyFor(GroupMentions.plain(message.text), message.attachments);
+  }
 
   AttachmentTarget? _firstLocalImage(Message message) {
     for (final attachment in message.attachments) {
@@ -1010,7 +1050,8 @@ final class LocalLinkNotificationService {
   }) {
     switch (preferences.privacyMode) {
       case NotificationPrivacyMode.full:
-        return isGroup ? '$title • ${senderName ?? 'Message'}' : title;
+        // Bundle G1 (mock 8): title = group name, "Sara: ..." in the text.
+        return title;
       case NotificationPrivacyMode.senderOnly:
         return isGroup ? (senderName ?? 'New message') : title;
       case NotificationPrivacyMode.hidden:
@@ -1025,12 +1066,22 @@ final class LocalLinkNotificationService {
   }) {
     switch (preferences.privacyMode) {
       case NotificationPrivacyMode.full:
-        return isGroup ? '$title • ${senderName ?? 'Message'}' : title;
+        // Bundle G1 (mock 8): title = group name, "Sara: ..." in the text.
+        return title;
       case NotificationPrivacyMode.senderOnly:
         return isGroup ? (senderName ?? 'New message') : title;
       case NotificationPrivacyMode.hidden:
         return 'LinkUp';
     }
+  }
+
+  /// Bundle G1 (mock 8): "Sajjad: Lunch at 1?" / "Sara: image received".
+  String _groupBodyForPrivacy(String senderName, String body) {
+    if (preferences.privacyMode != NotificationPrivacyMode.full) {
+      return _bodyForPrivacy(body);
+    }
+    final who = senderName.trim();
+    return who.isEmpty ? body : '$who: $body';
   }
 
   String _bodyForPrivacy(String body) {

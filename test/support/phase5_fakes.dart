@@ -326,6 +326,38 @@ class FakeStore extends LocalStore {
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
+  /// Bundle G5: receipts per member (key = message|device).
+  final Map<String, Map<String, dynamic>> groupReceiptRows = {};
+
+  @override
+  Future<void> putGroupReceipt(String messageId, String groupId,
+      String deviceId, {String deliveredAt = '', String readAt = ''}) async {
+    final key = '$messageId|$deviceId';
+    final old = groupReceiptRows[key];
+    final delivered = deliveredAt.isNotEmpty ? deliveredAt : readAt;
+    groupReceiptRows[key] = {
+      'message_id': messageId,
+      'group_id': groupId,
+      'device_id': deviceId,
+      'delivered_at': (old?['delivered_at'] ?? '').toString().isNotEmpty
+          ? old!['delivered_at']
+          : delivered,
+      'read_at': (old?['read_at'] ?? '').toString().isNotEmpty
+          ? old!['read_at']
+          : readAt,
+    };
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> groupReceipts(String groupId,
+          {String? messageId}) async =>
+      groupReceiptRows.values
+          .where((r) =>
+              r['group_id'] == groupId &&
+              (messageId == null || r['message_id'] == messageId))
+          .map((r) => Map<String, dynamic>.from(r))
+          .toList();
+
   @override
   Future<void> saveCall(CallRecord call) async {
     savedCalls.removeWhere((c) => c.id == call.id);

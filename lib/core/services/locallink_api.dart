@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:locallink/core/widgets/error_toast.dart' show FriendlyError;
 import 'package:http/http.dart' as http;
 import 'package:locallink/core/network/api_http_client.dart';
 import 'package:locallink/core/security/security_policy.dart';
@@ -902,9 +903,21 @@ class LocalLinkApi {
       );
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
-  Future<LocalGroup> createGroup(String name, List<String> memberIds, {String? idempotencyKey}) async {
-    final response = await http.post(Uri.parse('$baseUrl/api/v1/groups'), headers:{..._headers(),'Content-Type':'application/json','Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()}, body:jsonEncode({'name':name.trim(),'member_ids':memberIds})).timeout(const Duration(seconds:8));
-    if (response.statusCode != 201) throw Exception(_error(response));
+  /// Bundle G2: [description] and settings are sent only when they are not
+  /// the defaults, so the request stays the same as before for old servers.
+  /// Bundle G3: [id] = the group id made on the phone (Nearby groups keep
+  /// the same id on the server); the server answers 200 when it already has
+  /// it from me.
+  Future<LocalGroup> createGroup(String name, List<String> memberIds, {String? idempotencyKey, String description = '', String editInfo = 'admins', String sendMessages = 'all', String addMembers = 'admins', String? id, bool bridge = false}) async {
+    final response = await http.post(Uri.parse('$baseUrl/api/v1/groups'), headers:{..._headers(),'Content-Type':'application/json','Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()}, body:jsonEncode({'name':name.trim(),'member_ids':memberIds,
+      if (id != null && id.isNotEmpty) 'id': id,
+      if (bridge) 'bridge': true,
+      if (description.trim().isNotEmpty) 'description': description.trim(),
+      if (editInfo != 'admins') 'edit_info': editInfo,
+      if (sendMessages != 'all') 'send_messages': sendMessages,
+      if (addMembers != 'admins') 'add_members': addMembers,
+    })).timeout(const Duration(seconds:8));
+    if (response.statusCode != 201 && !(id != null && response.statusCode == 200)) throw Exception(_error(response));
     return LocalGroup.fromJson(jsonDecode(response.body) as Map<String,dynamic>);
   }
 
@@ -926,6 +939,146 @@ class LocalLinkApi {
     final uri = Uri.parse('$baseUrl/api/v1/groups/members').replace(queryParameters: {'group_id': groupId, 'device_id': deviceId});
     final response = await httpClient.delete(uri, headers: _headers()).timeout(const Duration(seconds: 5));
     if (response.statusCode != 200) throw Exception(_error(response));
+  }
+
+  // ---- Bundle G2: admins, info, photo, leave --------------------------
+
+  Never _groupError(http.Response response) {
+    var code = '';
+    try {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      code = json['error_code']?.toString() ?? '';
+    } catch (_) {}
+    throw GroupActionException(code, _error(response), response.statusCode);
+  }
+
+  /// Bundle G5: "got it" / "read" rows for MY messages in a group,
+  /// changed after [since] (server time text, '' = all).
+  Future<List<Map<String, dynamic>>> groupReceipts(String groupId,
+      {String since = ''}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/receipts').replace(
+        queryParameters: {'group_id': groupId, if (since.isNotEmpty) 'since': since});
+    final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) _groupError(response);
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = json['receipts'];
+    if (list is! List) return const [];
+    return list.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+  }
+
+  // ---- Bundle G6: invite link ------------------------------------------
+
+  /// Admins: the group's link token (made the first time; [reset] = new).
+  Future<String> groupInviteToken(String groupId,
+      {bool approve = false, bool reset = false}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/invite')
+        .replace(queryParameters: {'group_id': groupId});
+    final response = await http
+        .post(uri,
+            headers: {..._headers(), 'Content-Type': 'application/json'},
+            body: jsonEncode({'approve': approve, 'reset': reset}))
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) _groupError(response);
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return json['token']?.toString() ?? '';
+  }
+
+  /// Anyone signed in: what the link opens (name, members, my status).
+  Future<Map<String, dynamic>> groupJoinPreview(String token) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/join')
+        .replace(queryParameters: {'token': token});
+    final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) _groupError(response);
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  /// Join (or ask to join). Returns {status: member|joined|requested, group_id}.
+  Future<Map<String, dynamic>> joinGroupByLink(String token,
+      {String seal = '', String sign = ''}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/join')
+        .replace(queryParameters: {'token': token});
+    final response = await http
+        .post(uri,
+            headers: {..._headers(), 'Content-Type': 'application/json'},
+            body: jsonEncode({'seal': seal, 'sign': sign}))
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) _groupError(response);
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  /// Admins: people who asked to join with the link (last 24 h).
+  Future<List<Map<String, dynamic>>> groupLinkRequests(String groupId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/join-requests')
+        .replace(queryParameters: {'group_id': groupId});
+    final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) _groupError(response);
+    final list = (jsonDecode(response.body) as Map)['requests'];
+    if (list is! List) return const [];
+    return list.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
+  }
+
+  /// Admins: "Ignore" a link request (the asker is not told).
+  Future<void> declineGroupLinkRequest(String groupId, String deviceId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/join-requests')
+        .replace(queryParameters: {'group_id': groupId, 'device_id': deviceId});
+    final response = await http.delete(uri, headers: _headers()).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) _groupError(response);
+  }
+
+  Future<LocalGroup> groupInfo(String groupId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/info').replace(queryParameters: {'group_id': groupId});
+    final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 5));
+    if (response.statusCode != 200) _groupError(response);
+    return LocalGroup.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<LocalGroup> updateGroup(String groupId, {String? name, String? description, String? editInfo, String? sendMessages, String? addMembers}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups').replace(queryParameters: {'group_id': groupId});
+    final response = await http.patch(uri, headers: {..._headers(), 'Content-Type': 'application/json'}, body: jsonEncode({
+      if (name != null) 'name': name.trim(),
+      if (description != null) 'description': description.trim(),
+      if (editInfo != null) 'edit_info': editInfo,
+      if (sendMessages != null) 'send_messages': sendMessages,
+      if (addMembers != null) 'add_members': addMembers,
+    })).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) _groupError(response);
+    return LocalGroup.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// A small JPEG (max 256 KB). Returns the new photo version.
+  Future<int> setGroupPhoto(String groupId, List<int> jpeg) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/photo').replace(queryParameters: {'group_id': groupId});
+    final response = await http.put(uri, headers: {..._headers(), 'Content-Type': 'image/jpeg'}, body: jpeg).timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) _groupError(response);
+    return int.tryParse((jsonDecode(response.body) as Map)['photo_version']?.toString() ?? '') ?? 0;
+  }
+
+  Future<int> removeGroupPhoto(String groupId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/photo').replace(queryParameters: {'group_id': groupId});
+    final response = await http.delete(uri, headers: _headers()).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) _groupError(response);
+    return int.tryParse((jsonDecode(response.body) as Map)['photo_version']?.toString() ?? '') ?? 0;
+  }
+
+  /// Null = the group has no photo.
+  Future<List<int>?> groupPhoto(String groupId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/photo').replace(queryParameters: {'group_id': groupId});
+    final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 20));
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) _groupError(response);
+    return response.bodyBytes;
+  }
+
+  Future<void> leaveGroup(String groupId) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/leave').replace(queryParameters: {'group_id': groupId});
+    final response = await http.post(uri, headers: _headers()).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) _groupError(response);
+  }
+
+  Future<void> setGroupRole(String groupId, String deviceId, {required bool admin}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/groups/role').replace(queryParameters: {'group_id': groupId});
+    final response = await http.post(uri, headers: {..._headers(), 'Content-Type': 'application/json'}, body: jsonEncode({'device_id': deviceId, 'role': admin ? 'admin' : 'member'})).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) _groupError(response);
   }
 
   Future<List<GroupMessage>> groupMessages(String groupId) => _fetchAllPaged<GroupMessage>(
@@ -996,3 +1149,28 @@ class ServerStatus {
     messages: int.tryParse(json['messages']?.toString() ?? '') ?? 0,
   );
 }
+
+
+/// Bundle G2: a group action the server refused. [code] e.g.
+/// GROUP_ADMINS_ONLY, GROUP_NOT_MEMBER, GROUP_NOT_CONTACT.
+class GroupActionException implements Exception, FriendlyError {
+  const GroupActionException(this.code, this.message, [this.status = 0]);
+  final String code;
+  final String message;
+  final int status;
+
+  /// Plain words for a toast.
+  @override
+  String get friendly => switch (code) {
+        'GROUP_ADMINS_ONLY' => 'Only admins can do this.',
+        'GROUP_NOT_MEMBER' => "You're no longer a participant in this group.",
+        'GROUP_NOT_CONTACT' => 'You can only add your friends.',
+        'GROUP_LINK_INVALID' => "This invite link doesn't work any more.",
+        'GROUP_FULL' => 'This group is full (100 people).',
+        _ => message,
+      };
+
+  @override
+  String toString() => friendly;
+}
+

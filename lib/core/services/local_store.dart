@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:locallink/core/models/group_event.dart';
 import 'package:locallink/core/crypto/recovery_code.dart';
 import 'dart:io';
 import 'dart:math';
@@ -182,6 +183,10 @@ class LocalStore {
         if (oldVersion < 26) await _upgradeTo26(db);
         if (oldVersion < 27) await _upgradeTo27(db);
         if (oldVersion < 28) await _upgradeTo28(db);
+        if (oldVersion < 29) await _upgradeTo29(db);
+        if (oldVersion < 30) await _upgradeTo30(db);
+        if (oldVersion < 31) await _upgradeTo31(db);
+        if (oldVersion < 32) await _upgradeTo32(db);
       },
     );
     _databaseOpened = true;
@@ -349,6 +354,10 @@ class LocalStore {
     await _upgradeTo26(db);
     await _upgradeTo27(db);
     await _upgradeTo28(db);
+    await _upgradeTo29(db);
+    await _upgradeTo30(db);
+    await _upgradeTo31(db);
+    await _upgradeTo32(db);
   }
 
   Future<void> _upgradeTo2(Database db) async {
@@ -770,6 +779,237 @@ class LocalStore {
     if (!names.contains('played_at')) {
       await db.execute('ALTER TABLE messages ADD COLUMN played_at TEXT');
     }
+  }
+
+  /// Bundle G2: group info, settings, photo, my state (removed / left)
+  /// and who added each member.
+  Future<void> _upgradeTo29(Database db) async {
+    Future<void> add(String table, String column, String def) async {
+      final columns = await db.rawQuery('PRAGMA table_info($table)');
+      final names = {for (final row in columns) row['name']?.toString() ?? ''};
+      if (!names.contains(column)) {
+        await db.execute('ALTER TABLE $table ADD COLUMN $column $def');
+      }
+    }
+
+    await add('groups', 'description', "TEXT NOT NULL DEFAULT ''");
+    await add('groups', 'photo_version', 'INTEGER NOT NULL DEFAULT 0');
+    await add('groups', 'edit_info', "TEXT NOT NULL DEFAULT 'admins'");
+    await add('groups', 'send_messages', "TEXT NOT NULL DEFAULT 'all'");
+    await add('groups', 'add_members', "TEXT NOT NULL DEFAULT 'admins'");
+    await add('groups', 'created_by', "TEXT NOT NULL DEFAULT ''");
+    await add('groups', 'state', "TEXT NOT NULL DEFAULT 'active'");
+    await add('group_members', 'added_by', "TEXT NOT NULL DEFAULT ''");
+  }
+
+  /// Bundle G3: Nearby groups. Where the group lives (origin), its signed
+  /// group card, the per-member Nearby queue and who was reached.
+  Future<void> _upgradeTo30(Database db) async {
+    Future<void> add(String table, String column, String def) async {
+      final columns = await db.rawQuery('PRAGMA table_info($table)');
+      final names = {for (final row in columns) row['name']?.toString() ?? ''};
+      if (!names.contains(column)) {
+        await db.execute('ALTER TABLE $table ADD COLUMN $column $def');
+      }
+    }
+
+    await add('groups', 'origin', "TEXT NOT NULL DEFAULT 'server'");
+    await add('groups', 'card_json', "TEXT NOT NULL DEFAULT ''");
+    await add('groups', 'card_version', 'INTEGER NOT NULL DEFAULT 0');
+    await add('group_messages', 'nearby_sent', 'INTEGER NOT NULL DEFAULT 0');
+    await db.execute('CREATE TABLE IF NOT EXISTS group_peer_outbox ('
+        'id TEXT NOT NULL, member_id TEXT NOT NULL, group_id TEXT NOT NULL, '
+        'kind TEXT NOT NULL, payload TEXT NOT NULL, tries INTEGER NOT NULL DEFAULT 0, '
+        'next_at INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, '
+        'PRIMARY KEY(id, member_id))');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_group_peer_outbox_next '
+        'ON group_peer_outbox(next_at)');
+    await db.execute('CREATE TABLE IF NOT EXISTS group_invites ('
+        'group_id TEXT NOT NULL, member_id TEXT NOT NULL, state TEXT NOT NULL, '
+        'at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(group_id, member_id))');
+  }
+
+  /// Bundle G4: signed copies of Nearby group messages (kept 7 days), so a
+  /// member can hand missed messages to another member (catch-up).
+  Future<void> _upgradeTo31(Database db) async {
+    await db.execute('CREATE TABLE IF NOT EXISTS group_copies ('
+        'id TEXT PRIMARY KEY, group_id TEXT NOT NULL, writer TEXT NOT NULL, '
+        'created_at TEXT NOT NULL, body TEXT NOT NULL, sig TEXT NOT NULL, '
+        'kept_at INTEGER NOT NULL DEFAULT 0)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_group_copies_group '
+        'ON group_copies(group_id, created_at)');
+    // Join with QR: kind "ask" (I scanned a code) / "req" (someone asks me).
+    await db.execute('CREATE TABLE IF NOT EXISTS group_joins ('
+        'kind TEXT NOT NULL, group_id TEXT NOT NULL, member_id TEXT NOT NULL, '
+        'data TEXT NOT NULL DEFAULT \'\', at INTEGER NOT NULL DEFAULT 0, '
+        'PRIMARY KEY(kind, group_id, member_id))');
+  }
+
+  /// Bundle G5: "got it" / "read" per member for group messages. A row
+  /// with my own id on someone else's message = I already told them.
+  Future<void> _upgradeTo32(Database db) async {
+    await db.execute('CREATE TABLE IF NOT EXISTS group_receipts ('
+        'message_id TEXT NOT NULL, group_id TEXT NOT NULL, '
+        'device_id TEXT NOT NULL, delivered_at TEXT NOT NULL DEFAULT \'\', '
+        'read_at TEXT NOT NULL DEFAULT \'\', '
+        'PRIMARY KEY(message_id, device_id))');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_group_receipts_group '
+        'ON group_receipts(group_id)');
+  }
+
+  /// Keeps the first delivered / read time (read also means delivered).
+  Future<void> putGroupReceipt(String messageId, String groupId,
+      String deviceId, {String deliveredAt = '', String readAt = ''}) async {
+    final delivered = deliveredAt.isNotEmpty ? deliveredAt : readAt;
+    await _db.rawInsert(
+        'INSERT INTO group_receipts(message_id,group_id,device_id,delivered_at,read_at) '
+        'VALUES(?,?,?,?,?) ON CONFLICT(message_id,device_id) DO UPDATE SET '
+        "delivered_at=CASE WHEN group_receipts.delivered_at='' THEN excluded.delivered_at ELSE group_receipts.delivered_at END, "
+        "read_at=CASE WHEN group_receipts.read_at='' THEN excluded.read_at ELSE group_receipts.read_at END",
+        [messageId, groupId, deviceId, delivered, readAt]);
+  }
+
+  Future<List<Map<String, dynamic>>> groupReceipts(String groupId,
+      {String? messageId}) async {
+    final rows = await _db.query('group_receipts',
+        where: messageId == null ? 'group_id=?' : 'group_id=? AND message_id=?',
+        whereArgs: messageId == null ? [groupId] : [groupId, messageId]);
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<void> putGroupJoin(String kind, String groupId, String memberId,
+          String data, int atMs) async =>
+      _db.insert(
+          'group_joins',
+          {
+            'kind': kind,
+            'group_id': groupId,
+            'member_id': memberId,
+            'data': data,
+            'at': atMs,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace);
+
+  Future<List<Map<String, dynamic>>> groupJoins(String kind,
+      {String? groupId}) async {
+    final rows = await _db.query('group_joins',
+        where: groupId == null ? 'kind=?' : 'kind=? AND group_id=?',
+        whereArgs: groupId == null ? [kind] : [kind, groupId],
+        orderBy: 'at ASC');
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<void> removeGroupJoin(String kind, String groupId,
+          {String? memberId}) async =>
+      _db.delete('group_joins',
+          where: memberId == null
+              ? 'kind=? AND group_id=?'
+              : 'kind=? AND group_id=? AND member_id=?',
+          whereArgs: memberId == null
+              ? [kind, groupId]
+              : [kind, groupId, memberId]);
+
+  // ---- Bundle G4: catch-up copies ------------------------------------------
+
+  Future<void> putGroupCopy(Map<String, Object?> row) async =>
+      _db.insert('group_copies', row,
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+
+  /// Newest first, at most [limit].
+  Future<List<Map<String, dynamic>>> groupCopies(String groupId,
+      {int limit = 500}) async {
+    final rows = await _db.query('group_copies',
+        where: 'group_id=?',
+        whereArgs: [groupId],
+        orderBy: 'kept_at DESC',
+        limit: limit);
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<void> purgeGroupCopies(int olderThanMs) async =>
+      _db.delete('group_copies', where: 'kept_at<?', whereArgs: [olderThanMs]);
+
+  // ---- Bundle G3: Nearby groups ------------------------------------------
+
+  /// Origin "server" | "nearby" (made on this phone, not on the server yet)
+  /// | "both"; the card is the signed group card (JSON).
+  Future<void> setGroupCard(String groupId,
+      {required String cardJson, required int version, String? origin}) async {
+    if (groupId.isEmpty) return;
+    await _db.update(
+        'groups',
+        {
+          'card_json': cardJson,
+          'card_version': version,
+          if (origin != null) 'origin': origin,
+        },
+        where: 'id=?',
+        whereArgs: [groupId]);
+  }
+
+  /// Bundle G3: a member's phone got my Nearby message (✓ without server).
+  Future<void> markGroupMessageNearbySent(String id) async {
+    if (id.isEmpty) return;
+    await _db.update('group_messages', {'nearby_sent': 1},
+        where: 'id=?', whereArgs: [id]);
+  }
+
+  Future<void> setGroupOrigin(String groupId, String origin) async {
+    if (groupId.isEmpty) return;
+    await _db.update('groups', {'origin': origin},
+        where: 'id=?', whereArgs: [groupId]);
+  }
+
+  Future<String> groupCardJson(String groupId) async {
+    final rows = await _db.query('groups',
+        columns: ['card_json'], where: 'id=?', whereArgs: [groupId], limit: 1);
+    return rows.isEmpty ? '' : rows.first['card_json']?.toString() ?? '';
+  }
+
+  Future<void> putGroupPeerOutbox(Map<String, Object?> row) async =>
+      _db.insert('group_peer_outbox', row,
+          conflictAlgorithm: ConflictAlgorithm.replace);
+
+  Future<List<Map<String, dynamic>>> groupPeerOutboxDue(int nowMs,
+      {int limit = 50}) async {
+    final rows = await _db.query('group_peer_outbox',
+        where: 'next_at<=?',
+        whereArgs: [nowMs],
+        orderBy: 'created_at',
+        limit: limit);
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> groupPeerOutboxFor(String groupId) async {
+    final rows = await _db.query('group_peer_outbox',
+        where: 'group_id=?', whereArgs: [groupId]);
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<void> markGroupPeerOutboxTry(
+          String id, String memberId, int tries, int nextAt) async =>
+      _db.update('group_peer_outbox', {'tries': tries, 'next_at': nextAt},
+          where: 'id=? AND member_id=?', whereArgs: [id, memberId]);
+
+  Future<void> removeGroupPeerOutbox(String id, String memberId) async =>
+      _db.delete('group_peer_outbox',
+          where: 'id=? AND member_id=?', whereArgs: [id, memberId]);
+
+  Future<void> removeGroupPeerOutboxForMember(
+          String groupId, String memberId) async =>
+      _db.delete('group_peer_outbox',
+          where: 'group_id=? AND member_id=?', whereArgs: [groupId, memberId]);
+
+  Future<void> setGroupInvite(
+          String groupId, String memberId, String state, int atMs) async =>
+      _db.insert('group_invites',
+          {'group_id': groupId, 'member_id': memberId, 'state': state, 'at': atMs},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+
+  Future<List<Map<String, dynamic>>> groupInvites(String groupId) async {
+    final rows = await _db.query('group_invites',
+        where: 'group_id=?', whereArgs: [groupId]);
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
   Future<void> _loadMediaBook() async {
@@ -2977,6 +3217,12 @@ class LocalStore {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// Bundle G1: a member took their reaction back.
+  Future<void> deleteGroupMessageReaction({required String messageId, required String reactorId}) async {
+    await _db.delete('group_message_reactions',
+        where: 'message_id=? AND reactor_id=?', whereArgs: [messageId, reactorId]);
+  }
+
   Future<List<Map<String, dynamic>>> groupMessageReactions(String messageId) async =>
       _db.query('group_message_reactions', where: 'message_id=?', whereArgs: [messageId], orderBy: 'created_at ASC');
 
@@ -3007,16 +3253,77 @@ class LocalStore {
       await _db.update('messages', values, where: 'id=?', whereArgs: [id]);
   }
 
-  Future<void> saveGroup(Map<String, dynamic> g) async => _db.insert(
-        'groups',
-        {
-          'id': g['id'],
-          'name': g['name'],
-          'owner_id': g['owner_id'],
-          'created_at': g['created_at']
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+  /// Server facts of a group. Bundle G2: only the given columns change
+  /// (an old caller with id/name/owner/created keeps the info); a group
+  /// the server gives me is mine again, so [state] goes back to active
+  /// unless the map says otherwise.
+  Future<void> saveGroup(Map<String, dynamic> g) async {
+    const columns = [
+      'name',
+      'owner_id',
+      'created_at',
+      'description',
+      'photo_version',
+      'edit_info',
+      'send_messages',
+      'add_members',
+      'created_by',
+      'state',
+    ];
+    final id = g['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final values = <String, Object?>{
+      for (final c in columns)
+        if (g.containsKey(c) && g[c] != null) c: g[c],
+    };
+    values.putIfAbsent('state', () => 'active');
+    final changed =
+        await _db.update('groups', values, where: 'id=?', whereArgs: [id]);
+    if (changed > 0) return;
+    await _db.insert(
+      'groups',
+      {
+        'id': id,
+        'name': g['name'] ?? '',
+        'owner_id': g['owner_id'] ?? '',
+        'created_at': g['created_at'] ?? '',
+        ...values,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Bundle G2: "removed" / "left" = read only; "active" again when added.
+  Future<void> setGroupState(String groupId, String state) async {
+    if (groupId.isEmpty) return;
+    await _db.update('groups', {'state': state},
+        where: 'id=?', whereArgs: [groupId]);
+  }
+
+  /// Bundle G2: the full member list from the server (people who left or
+  /// were removed disappear here too).
+  Future<void> replaceGroupMembers(
+      String groupId, List<Map<String, dynamic>> members) async {
+    if (groupId.isEmpty) return;
+    await LocalStore.timedTx('group_members_tx', _db, (txn) async {
+      await txn
+          .delete('group_members', where: 'group_id=?', whereArgs: [groupId]);
+      for (final m in members) {
+        await txn.insert(
+          'group_members',
+          {
+            'group_id': groupId,
+            'device_id': m['device_id'],
+            'role': m['role'] ?? 'member',
+            'joined_at': m['joined_at'] ?? '',
+            'name': m['name'] ?? '',
+            'added_by': m['added_by'] ?? '',
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
 
   Future<List<LocalGroup>> localGroups() async {
     final rows = await _db.query('groups', orderBy: 'name COLLATE NOCASE');
@@ -3078,6 +3385,11 @@ class LocalStore {
           .delete('group_messages', where: 'group_id=?', whereArgs: [groupId]);
       await txn
           .delete('group_members', where: 'group_id=?', whereArgs: [groupId]);
+      // Bundle G3: the Nearby queue and invite list of this group too.
+      await txn.delete('group_peer_outbox',
+          where: 'group_id=?', whereArgs: [groupId]);
+      await txn
+          .delete('group_invites', where: 'group_id=?', whereArgs: [groupId]);
       await txn.delete('groups', where: 'id=?', whereArgs: [groupId]);
     });
     return localPaths;
@@ -3093,7 +3405,8 @@ class LocalStore {
           'device_id': m['device_id'],
           'role': m['role'] ?? 'member',
           'joined_at': m['joined_at'] ?? '',
-          'name': m['name'] ?? ''
+          'name': m['name'] ?? '',
+          'added_by': m['added_by'] ?? '',
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -3112,6 +3425,16 @@ class LocalStore {
     final gm = Map<String, dynamic>.from(m);
     // Bundle 197a: same rule as saveMessage.
     if (MessageEnvelope.isControl(gm['body']?.toString() ?? '')) return;
+    // Bundle G3: a group card through the server is never a chat line.
+    if ((gm['body']?.toString() ?? '').startsWith('llgc:v1:')) return;
+    // Bundle G5b / G6: pin, vote and key notes are never chat lines.
+    final noteBody = gm['body']?.toString() ?? '';
+    if (noteBody.startsWith('llpin:v1:') ||
+        noteBody.startsWith('llvote:v1:') ||
+        noteBody.startsWith('llskd:v1:') ||
+        noteBody.startsWith('llskq:v1:')) {
+      return;
+    }
     if (!await _groupMessageRowExists(gm['id']?.toString() ?? '') &&
         MessageDeleteBook.instance.dropsMessage(
       id: gm['id']?.toString() ?? '',
@@ -3123,10 +3446,18 @@ class LocalStore {
       return;
     }
     var effectiveRead = gm['sender_id'] == _deviceId ? 1 : 0;
+    // Bundle G2: system lines are read at once, except "X added you".
+    final eventBody = gm['body']?.toString() ?? '';
+    if (GroupEvent.isEvent(eventBody) &&
+        !(GroupEvent.parse(eventBody)?.countsAsUnread(_deviceId ?? '') ??
+            false)) {
+      effectiveRead = 1;
+    }
     String? effectiveReadAt;
+    var nearbySent = gm['nearby_sent'] == 1 || gm['nearby_sent'] == true ? 1 : 0;
     final existing = await _db.query(
       'group_messages',
-      columns: ['is_read', 'read_at'],
+      columns: ['is_read', 'read_at', 'nearby_sent'],
       where: 'id=?',
       whereArgs: [gm['id']],
       limit: 1,
@@ -3135,6 +3466,8 @@ class LocalStore {
       final row = existing.first;
       if (row['is_read'] == 1 || row['is_read'] == true) effectiveRead = 1;
       effectiveReadAt = row['read_at']?.toString();
+      // Bundle G3: a saved again message keeps its Nearby ✓.
+      if (row['nearby_sent'] == 1) nearbySent = 1;
     }
     if (gm['is_read'] == 1 || gm['is_read'] == true) effectiveRead = 1;
     if (gm['read_at']?.toString().trim().isNotEmpty == true) {
@@ -3150,7 +3483,8 @@ class LocalStore {
         'created_at': gm['created_at'],
         'server_seq': gm['server_seq'] ?? 0,
         'is_read': effectiveRead,
-        'read_at': effectiveReadAt
+        'read_at': effectiveReadAt,
+        'nearby_sent': nearbySent,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );

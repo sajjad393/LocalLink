@@ -329,7 +329,25 @@ void main() {
       final up28 = s.substring(i, s.indexOf('\n  }\n', i));
       expect(RegExp('ALTER TABLE').allMatches(up28).length, 1);
       expect(up28, contains('ADD COLUMN played_at TEXT'));
-      expect(s, isNot(contains('_upgradeTo29')));
+      // Bundle G2: v29 only adds group columns (no message table change).
+      final j = s.indexOf('Future<void> _upgradeTo29(');
+      final up29 = s.substring(j, s.indexOf('\n  }\n', j));
+      expect(up29, isNot(contains("'messages'")));
+      expect(up29, isNot(contains('_upgradeTo30')));
+      // Bundle G3: v30 only adds group tables / columns (no 'messages').
+      final k = s.indexOf('Future<void> _upgradeTo30(');
+      final up30 = s.substring(k, s.indexOf('\n  }\n', k));
+      expect(up30, isNot(contains("'messages'")));
+      expect(up30, isNot(contains('TABLE messages')));
+      // Bundle G4: v31 only adds group_copies (no 'messages').
+      final l = s.indexOf('Future<void> _upgradeTo31(');
+      final up31 = s.substring(l, s.indexOf('\n  }\n', l));
+      expect(up31, isNot(contains('TABLE messages')));
+      // Bundle G5: v32 only adds group_receipts.
+      final m32 = s.indexOf('Future<void> _upgradeTo32(');
+      final up32 = s.substring(m32, s.indexOf('\n  }\n', m32));
+      expect(up32, isNot(contains('TABLE messages')));
+      expect(s, isNot(contains('_upgradeTo33')));
       expect(s, contains('CREATE TABLE IF NOT EXISTS media_state ('));
     });
   });

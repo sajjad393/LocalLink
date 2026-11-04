@@ -182,6 +182,12 @@ class SealingPeerTransport implements PeerTransportContract {
   /// Bundle 195c: set on the opened payload - the sender's key that opened
   /// it (the app checks it against the signed profile inside).
   static const String openedStrangerKeyField = '_locked_spk';
+
+  /// Bundle G3: a locked group packet (flag [groupFlagValue]) - may come
+  /// from a group member who is not my friend. Only `group_*` inner types
+  /// open this way; the app checks the key against the group card.
+  static const String groupFlagValue = '3';
+  static const String groupTypePrefix = 'group_';
   static const Duration _probeEvery = Duration(minutes: 10);
 
   final PeerTransportContract inner;
@@ -359,10 +365,13 @@ class SealingPeerTransport implements PeerTransportContract {
     // locked message: a friend link (or its "got it").
     var stranger = false;
     final blockAck = outer[friendLinkFlag]?.toString() == blockAckFlagValue;
+    final groupPacket = outer[friendLinkFlag]?.toString() == groupFlagValue;
     if (theirs == null) {
       theirs = blockAck
           ? _blockAckKey(sender, outer)
-          : await _strangerKey(keys, sender, outer);
+          : groupPacket
+              ? await _groupKey(keys, sender, outer)
+              : await _strangerKey(keys, sender, outer);
       if (theirs == null) {
         // Not a contact (or blocked): nothing else from strangers reaches the app.
         AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=not_a_contact');
@@ -413,7 +422,16 @@ class SealingPeerTransport implements PeerTransportContract {
       AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=block_ack_type');
       return null;
     }
-    if (stranger) {
+    // Bundle G3: a group lock holds group packets only.
+    if (groupPacket &&
+        !(inner['type']?.toString() ?? '').startsWith(groupTypePrefix)) {
+      AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=group_type');
+      return null;
+    }
+    if (stranger && groupPacket) {
+      inner.remove(sessionField);
+      inner[openedStrangerKeyField] = outer[strangerKeyField]?.toString() ?? '';
+    } else if (stranger) {
       if (!strangerInnerTypes.contains(inner['type']?.toString())) {
         AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=stranger_type');
         return null;
@@ -480,6 +498,58 @@ class SealingPeerTransport implements PeerTransportContract {
       return null;
     }
     return key;
+  }
+
+  /// Bundle G3: the key outside a group packet (never for a blocked phone).
+  Future<List<int>?> _groupKey(
+      SealKeySource keys, String sender, Map<String, dynamic> outer) async {
+    final key = _decodeKey(outer[strangerKeyField]?.toString() ?? '');
+    if (key == null) return null;
+    try {
+      if ((await keys.blockedPeerIds()).contains(sender)) return null;
+    } catch (_) {
+      return null;
+    }
+    return key;
+  }
+
+  /// Bundle G3: send one group packet locked with the member's key from the
+  /// group card. Any LinkUp phone can carry it (and the native queue keeps
+  /// it), only that member can open it - also when we are not friends.
+  Future<bool> sendGroupLocked({
+    required String recipientId,
+    required String theirIdentityKey,
+    required Map<String, dynamic> payload,
+  }) async {
+    if (!(payload['type']?.toString() ?? '').startsWith(groupTypePrefix)) {
+      return false;
+    }
+    final keys = _keys;
+    final self = keys?.selfId ?? '';
+    final theirs = _decodeKey(theirIdentityKey);
+    if (keys == null || self.isEmpty || recipientId.isEmpty || theirs == null) {
+      return false;
+    }
+    try {
+      final mine = await keys.ownKeys();
+      if (mine.isEmpty) return false;
+      final sealed = await _sealer.seal(
+        payload: payload,
+        senderId: self,
+        recipientId: recipientId,
+        mine: mine.first,
+        theirPublic: theirs,
+        outerType: MessageSealService.sealedType,
+      );
+      sealed[strangerKeyField] =
+          base64Url.encode(mine.first.publicKey).replaceAll('=', '');
+      sealed[friendLinkFlag] = 3;
+      await inner.send(recipientId: recipientId, payload: sealed);
+      return true;
+    } catch (e) {
+      AppLogger.warning('GROUP_LOCKED_SEND_FAILED', detail: '$e');
+      return false;
+    }
   }
 
   /// Bundle 196 (12.4): the key outside a block-state "got it" - also from

@@ -1,3 +1,5 @@
+import 'package:locallink/features/groups/data/group_mention_book.dart';
+import 'package:locallink/features/groups/data/group_receipts.dart';
 import 'dart:async';
 
 import 'package:locallink/features/storage/data/media_storage_service.dart';
@@ -45,6 +47,21 @@ import 'package:locallink/features/files/domain/file_transfer_repository_contrac
 import 'package:locallink/features/groups/domain/group_messaging_repository_contract.dart';
 import 'package:locallink/features/groups/domain/group_repository_contract.dart';
 import 'package:locallink/features/groups/presentation/screens/group_chat_screen.dart';
+import 'package:locallink/features/groups/presentation/screens/group_info_screen.dart';
+import 'package:locallink/features/groups/presentation/screens/group_qr_screens.dart'
+    show GroupScanScreen;
+import 'package:locallink/features/groups/presentation/widgets/group_info_sheets.dart';
+import 'package:locallink/features/groups/presentation/group_people_hub.dart';
+import 'package:locallink/features/groups/data/group_change_hub.dart';
+import 'package:locallink/features/groups/data/group_photo_book.dart';
+import 'package:locallink/features/directory/presentation/add_contact_screen.dart' show showSaveContactDialog;
+import 'package:locallink/features/directory/data/services/friend_hello_service.dart' show FriendHelloService, FriendAddedByMe;
+import 'package:locallink/core/widgets/error_toast.dart' show showErrorToast;
+import 'package:locallink/features/groups/presentation/screens/new_group_screen.dart';
+import 'package:locallink/features/groups/presentation/widgets/group_sheets.dart';
+import 'package:locallink/features/groups/data/group_mute_book.dart';
+import 'package:locallink/features/groups/data/services/group_nearby_service.dart'
+    show NoNearbyMembersException;
 import 'package:locallink/features/home/bloc/home_bloc.dart';
 import 'package:locallink/features/home/domain/home_repository_contract.dart';
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
@@ -56,7 +73,6 @@ import 'package:locallink/features/transfer/domain/account_transfer_repository_c
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
-import 'package:locallink/core/widgets/group_avatar.dart';
 import 'package:locallink/features/messaging/data/forward_hub.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
@@ -173,6 +189,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // Bundle 163 (4.7): last message per chat for the Chats list.
   Map<String, ChatPreview> _directPreviews = const {};
   Map<String, ChatPreview> _groupPreviews = const {};
+
+  /// Bundle G1: last quiet reload for a new group (at most every 30 s).
+  DateTime? _newGroupReloadAt;
   Timer? _unreadTimer;
 
   // Bundle 102: offline-pending account state (session-scoped UI).
@@ -282,6 +301,17 @@ class _HomeScreenState extends State<HomeScreen> {
         // Preview is best-effort; keep the last good one.
       }
       if (!mounted) return;
+      // Bundle G1 (mock 9): a group someone added me to shows in Chats as
+      // soon as its first message is here (no pull-to-refresh).
+      final knownGroups = {for (final g in _controller.groups) g.id};
+      if (groupPreviews.keys.any((id) => !knownGroups.contains(id))) {
+        final now = DateTime.now();
+        final last = _newGroupReloadAt;
+        if (last == null || now.difference(last).inSeconds >= 30) {
+          _newGroupReloadAt = now;
+          unawaited(_controller.load(quiet: true));
+        }
+      }
       setState(() {
         _unreadDirectCounts = direct;
         _unreadGroupCounts = group;
@@ -301,6 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(PhoneVisibilityAlign.runOnce(
         account: widget.accountRepository,
         directory: widget.directoryRepository));
+    _registerPeopleHub(); // Bundle G2
     _startMediaStorage(); // Bundle 197b
     // Dashboard entry: verify the real notification permission once per
     // install (and once per app start), explain WHY, and only then run the
@@ -343,7 +374,21 @@ class _HomeScreenState extends State<HomeScreen> {
     // Poll keeps badges truthful when messages arrive via silent paths.
     _unreadTimer = Timer.periodic(
         const Duration(seconds: 6), (_) => _refreshUnreadCounts());
+    // Bundle G2: a group changed (added me, removed me, new name / photo):
+    // read the list again (once per second at most).
+    unawaited(GroupPhotoBook.instance.init());
+    _groupChangeSub = GroupChangeHub.instance.changes.listen((_) {
+      _groupChangeTimer?.cancel();
+      _groupChangeTimer = Timer(const Duration(seconds: 1), () {
+        if (!mounted) return;
+        unawaited(_controller.load(quiet: true));
+        unawaited(_refreshUnreadCounts());
+      });
+    });
   }
+
+  StreamSubscription<String>? _groupChangeSub;
+  Timer? _groupChangeTimer;
 
   // ---------------- Bundle 102: offline-account publish flow ---------------
 
@@ -644,6 +689,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _unreadTimer?.cancel();
     _incomingSub?.cancel();
+    _groupChangeSub?.cancel();
+    _groupChangeTimer?.cancel();
+    if (identical(GroupPeopleHub.instance, _peopleHub)) {
+      GroupPeopleHub.instance = null;
+    }
     _controller.close();
     super.dispose();
   }
@@ -773,8 +823,57 @@ class _HomeScreenState extends State<HomeScreen> {
     return null;
   }
 
-  Route<void> _groupRoute(LocalGroup group) => MaterialPageRoute(
+  // ---- Bundle G2: Group info needs friends / 1:1 chat / add friend ----
+  GroupPeopleHub? _peopleHub;
+
+  void _registerPeopleHub() {
+    final hub = GroupPeopleHub(
+      loadFriends: _loadGroupFriends,
+      chatRoute: (deviceId) {
+        for (final device in _controller.devices) {
+          if (device.id == deviceId) return _chatRoute(device);
+        }
+        return null;
+      },
+      addFriend: _groupAddFriend,
+    );
+    _peopleHub = hub;
+    GroupPeopleHub.instance = hub;
+  }
+
+  /// Mock 29b "Add friend": the same as Add in People search (name box,
+  /// then the chat with one "Hello 👋").
+  Future<void> _groupAddFriend(BuildContext context, GroupMember member) async {
+    if (member.userId.isEmpty) return;
+    final customName = await showSaveContactDialog(context, member.name);
+    if (customName == null || !context.mounted) return;
+    try {
+      await widget.directoryRepository
+          .addContact(member.userId, customName: customName.trim());
+      AppLogger.info('FRIEND_ADD_TAP', detail: 'source=group already=n');
+      final hello = FriendHelloService.instance;
+      if (hello != null) {
+        unawaited(hello.addedByMe(FriendAddedByMe(
+          userId: member.userId,
+          deviceId: member.deviceId,
+          displayName: customName.trim().isNotEmpty
+              ? customName.trim()
+              : member.name,
+          source: 'group',
+        )));
+      } else if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Contact added')));
+      }
+    } catch (error) {
+      if (context.mounted) showErrorToast(context, error: error);
+    }
+  }
+
+  Route<void> _groupRoute(LocalGroup group, {bool search = false}) =>
+      MaterialPageRoute(
         builder: (_) => GroupChatScreen(
+          startSearch: search,
           group: group,
           localDeviceId: widget.store.deviceId ?? '',
           messaging: widget.groupMessaging,
@@ -804,19 +903,212 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadChatPeerIds();
   }
 
+  /// Bundle G1 (mock 11): hold a group row.
   Future<void> _holdGroupRow(LocalGroup group) async {
-    final choice = await showChatRowSheet(
+    var members = const <GroupMember>[];
+    try {
+      members = await widget.groupRepository
+          .listMembers(group.id)
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {}
+    if (!mounted) return;
+    final choice = await showGroupRowSheet(
       context,
       name: group.name,
-      subtitle: 'Group',
-      avatar: const GroupAvatar(radius: 22),
-      allowDelete: false, // leaving a group stays in Group info
+      memberCount: members.length,
+      muted: GroupMuteBook.instance.isMuted(group.id),
+      active: group.isActive,
+      groupId: group.id,
+      photoVersion: group.photoVersion,
     );
-    if (!mounted || choice != ChatRowChoice.clear) return;
-    final ok = await showClearChatSheet(context, name: group.name, group: true);
-    if (!ok || !mounted) return;
-    await widget.groupMessaging.clearChat(group.id);
-    await _refreshUnreadCounts();
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case GroupRowChoice.markRead:
+        await widget.notifications.markGroupConversationRead(group.id);
+        await _refreshUnreadCounts();
+      case GroupRowChoice.mute:
+        final pick = await showGroupMuteSheet(context);
+        if (pick == null) return;
+        await GroupMuteBook.instance.mute(group.id, pick.length);
+      case GroupRowChoice.unmute:
+        await GroupMuteBook.instance.unmute(group.id);
+      case GroupRowChoice.info:
+        final result = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => GroupInfoScreen(
+                group: group,
+                localDeviceId: widget.store.deviceId ?? '',
+                groups: widget.groupRepository),
+          ),
+        );
+        if (result == 'search' && mounted) {
+          await Navigator.push<void>(context, _groupRoute(group, search: true))
+              .whenComplete(_refreshUnreadCounts);
+        }
+      case GroupRowChoice.exit:
+        // Mock 31 (also from the row).
+        final me = widget.store.deviceId ?? '';
+        final rules = GroupRules(group, members, me);
+        final next = rules.isOwner ? rules.nextOwner : null;
+        var myName = 'You';
+        for (final m in members) {
+          if (m.deviceId == me && m.name.trim().isNotEmpty) myName = m.name.trim();
+        }
+        final ok = await showExitGroupSheet(
+          context,
+          groupName: group.name,
+          me: myName,
+          owner: rules.isOwner,
+          nextOwner: next == null
+              ? ''
+              : (next.name.trim().isEmpty ? 'Group member' : next.name.trim()),
+          nextIsAdmin: next?.role == 'admin',
+        );
+        if (!ok || !mounted) return;
+        try {
+          await widget.groupRepository.leave(group.id);
+        } catch (error) {
+          if (mounted) showErrorToast(context, error: error);
+        }
+      case GroupRowChoice.delete:
+        final ok = await showDeleteGroupSheet(context, groupName: group.name);
+        if (!ok || !mounted) return;
+        await widget.groupRepository.deleteLocal(group.id);
+        if (mounted) unawaited(_controller.load(quiet: true));
+      case GroupRowChoice.clear:
+        final ok =
+            await showClearChatSheet(context, name: group.name, group: true);
+        if (!ok || !mounted) return;
+        await widget.groupMessaging.clearChat(group.id);
+        await _refreshUnreadCounts();
+    }
+  }
+
+  /// Bundle G1 (mock 2): New chat (People tab) / New group.
+  Future<void> _openStartSheet() async {
+    final choice = await showStartSheet(context);
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case StartChoice.newChat:
+        setState(() => _index = 2);
+      case StartChoice.joinQr:
+        // Bundle G4 (mock 2 / 38): scan a group code.
+        await Navigator.push<void>(
+          context,
+          MaterialPageRoute(builder: (_) => const GroupScanScreen()),
+        );
+      case StartChoice.newGroup:
+        final result = await Navigator.push<GroupCreateResult>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => NewGroupScreen(
+              loadFriends: _loadGroupFriends,
+              onCreate: _createGroup,
+              onGoToPeople: () {
+                if (mounted) setState(() => _index = 2);
+              },
+            ),
+          ),
+        );
+        if (!mounted || result == null) return;
+        if (result.skipped.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Not added yet: ${result.skipped.join(', ')}. '
+                  'They need to open LinkUp Online once.')));
+        }
+        unawaited(Navigator.push<void>(context, _groupRoute(result.group))
+            .whenComplete(_refreshUnreadCounts));
+    }
+  }
+
+  /// Bundle G1 (mock 3): my friends (People), not blocked.
+  Future<List<GroupFriend>> _loadGroupFriends() async {
+    final rows = await widget.store.contacts();
+    final me = widget.store.deviceId ?? '';
+    final seen = <String>{};
+    final out = <GroupFriend>[];
+    for (final row in rows) {
+      final id = row['device_id']?.toString().trim() ?? '';
+      if (id.isEmpty || id == me || !seen.add(id)) continue;
+      if (BlockHub.instance.isBlockedDevice(id)) continue;
+      final custom = row['custom_name']?.toString().trim() ?? '';
+      final display = row['display_name']?.toString().trim() ?? '';
+      out.add(GroupFriend(
+          deviceId: id,
+          name: custom.isNotEmpty
+              ? custom
+              : (display.isNotEmpty ? display : 'LinkUp user')));
+    }
+    out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return out;
+  }
+
+  /// Bundle G1 + G3: Online the group is made on the server (and, when
+  /// everyone's keys are here, works Nearby too). Without internet it is
+  /// made on this phone and reaches each person Nearby (mock 6). People
+  /// who can't be added are named.
+  Future<GroupCreateResult> _createGroup(String name, List<GroupFriend> people,
+      [GroupCreateOptions options = const GroupCreateOptions()]) async {
+    // Online: only people the server knows (as in G1). No server: everyone
+    // picked; the phone-made group reaches them Nearby.
+    var picked = people;
+    try {
+      final known = {
+        for (final d in await widget.groupRepository.availableMemberDevices())
+          d.id
+      };
+      picked = people.where((p) => known.contains(p.deviceId)).toList();
+      if (picked.isEmpty) {
+        throw GroupCreateError(
+            '${people.map((p) => p.name).join(', ')} can\'t be added yet. '
+            'They need to open LinkUp Online once.');
+      }
+    } on GroupCreateError {
+      rethrow;
+    } catch (_) {
+      picked = people;
+    }
+    final LocalGroup group;
+    try {
+      group = await widget.groupRepository.createGroup(
+        name,
+        [for (final p in picked) p.deviceId],
+        description: options.description,
+        editInfo: options.editInfo,
+        sendMessages: options.sendMessages,
+        addMembers: options.addMembers,
+        photoJpeg: options.photoJpeg,
+      );
+    } on NoNearbyMembersException {
+      throw GroupCreateError(
+          '${people.map((p) => p.name).join(', ')} can\'t be added yet. '
+          'They need to be Online or Nearby with you once.');
+    } on GroupActionException catch (error) {
+      throw GroupCreateError(error.friendly);
+    } catch (error) {
+      AppLogger.warning('GROUP_CREATE_FAILED', detail: '$error');
+      throw const GroupCreateError(
+          'Making a group needs Online for now. Try again when Online.');
+    }
+    Set<String> inGroup;
+    try {
+      inGroup = {
+        for (final m in await widget.groupRepository.listMembers(group.id))
+          m.deviceId
+      };
+    } catch (_) {
+      inGroup = {for (final p in people) p.deviceId};
+    }
+    final skipped = [
+      for (final p in people)
+        if (!inGroup.contains(p.deviceId)) p.name
+    ];
+    _controller.addCreatedGroup(group);
+    AppLogger.info('GROUP_CREATE',
+        detail: 'members=${people.length - skipped.length} '
+            'skipped=${skipped.length} origin=${group.origin}');
+    return GroupCreateResult(group, skipped: skipped);
   }
 
   Route<void> _chatRoute(Device device) {
@@ -905,7 +1197,8 @@ class _HomeScreenState extends State<HomeScreen> {
         tooltip: 'New conversation',
         // Bundle 104: brand-gradient FAB (People tab look) + modern icon.
         icon: Icons.chat_bubble_outline_rounded,
-        onPressed: () => setState(() => _index = 2),
+        // Bundle G1 (mock 2): + opens the Start sheet.
+        onPressed: _openStartSheet,
       ),
       bottomNavigationBar: _OngoingCallBar(calls: widget.calls, onOpen: _resumeCall),
       body: LocalLinkBlocBuilder<HomeBloc, HomeState>(
@@ -973,10 +1266,28 @@ class _HomeScreenState extends State<HomeScreen> {
       entries.add((
         preview?.createdAt,
         order++,
-        MessengerConversationTile(
+        ListenableBuilder(
+          // Bundle G1 (mock 10): muted bell + grey count follow the switch.
+          // Bundle G5 (mock 10): "Sara is typing…" (blue) and the blue @.
+          listenable: Listenable.merge([
+            GroupMuteBook.instance,
+            GroupMentionBook.instance,
+            GroupReceiptHub.typingVersion,
+          ]),
+          builder: (context, _) {
+          final typing = (GroupReceiptHub.typing?.call(group.id) ?? const <String>[])
+              .where((id) => id != localId)
+              .map((id) => state.deviceLabels[id] ?? 'Someone')
+              .toList();
+          return MessengerConversationTile(
+          muted: GroupMuteBook.instance.isMuted(group.id),
+          mentioned: GroupMentionBook.instance.has(group.id),
+          subtitleBlue: typing.isNotEmpty,
           title: group.name,
-          subtitle: preview == null
-              ? 'Group conversation'
+          subtitle: typing.isNotEmpty
+              ? groupTypingText(typing)
+              : preview == null
+              ? _emptyGroupLine(group, state)
               : chatPreviewText(preview,
                   localDeviceId: localId,
                   senderName: state.deviceLabels[preview.senderId]),
@@ -987,6 +1298,8 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: () => Navigator.push<void>(context, _groupRoute(group))
               .whenComplete(_refreshUnreadCounts),
           onLongPress: () => _holdGroupRow(group),
+        );
+        },
         ),
       ));
     }
@@ -1042,6 +1355,16 @@ class _HomeScreenState extends State<HomeScreen> {
       return a.$2.compareTo(b.$2);
     });
     return entries.map((e) => e.$3).toList(growable: false);
+  }
+
+  /// Bundle G1 (mock 9): a group without messages yet.
+  String _emptyGroupLine(LocalGroup group, HomeState state) {
+    final me = widget.store.deviceId ?? '';
+    if (group.ownerId.isNotEmpty && group.ownerId == me) {
+      return 'You created this group';
+    }
+    final owner = state.deviceLabels[group.ownerId]?.trim() ?? '';
+    return owner.isEmpty ? 'Group conversation' : '$owner added you';
   }
 
   static IconData? _previewIcon(ChatPreview? preview) =>
