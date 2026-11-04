@@ -14,6 +14,7 @@ import 'package:locallink/features/storage/presentation/media_message_actions.da
 
 import 'chat_video_player.dart';
 import 'media_grid.dart';
+import 'prepare_ring.dart';
 import 'media_view_cache.dart';
 
 /// Bundle 202: one page of the swipe viewer.
@@ -481,31 +482,14 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
               attachmentId: item.attachment?.id ?? '',
               fallback: const SizedBox.shrink()),
         ),
+        // Bundle 208 (D5): only the percent in a ring that fills up (was a
+        // spinner + "Preparing…" + a small line).
         Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const SizedBox(
-              width: 44,
-              height: 44,
-              child: CircularProgressIndicator(
-                  strokeWidth: 3, color: Colors.white),
-            ),
-            const SizedBox(height: 12),
-            const Text('Preparing…',
-                key: Key('media_gallery_preparing'),
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            // Bundle 207 (M2, mock 207 page 4 screen 12).
-            Text(
-                '${item.video ? 'Your video' : 'Your photo'}'
-                '${(item.attachment?.size ?? 0) > 0 ? ' · ${FileSizeRule.sizeLabel(item.attachment!.size)}' : ''}'
-                ' · ${item.video ? 'plays' : 'opens'} in a moment',
-                key: const Key('media_gallery_preparing_line'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70, fontSize: 12.5)),
-          ]),
+          child: PrepareRing(
+            path: item.attachment?.localPath ?? '',
+            ringKey: const Key('media_gallery_prepare_ring'),
+            pctKey: const Key('media_gallery_prepare_pct'),
+          ),
         ),
       ]);
     }

@@ -169,6 +169,20 @@ class _Phone {
   late final DirectoryRepository repo;
 }
 
+/// Bundle 208 (A2): background work (unawaited) gets time to finish, also
+/// on a slower Windows PC (was a fixed 20-30 ms).
+Future<void> _settle() =>
+    Future<void>.delayed(const Duration(milliseconds: 150));
+
+/// Bundle 208 (A2): wait until [ok] (checks every 20 ms, max [max]).
+Future<void> _waitFor(bool Function() ok,
+    {Duration max = const Duration(seconds: 3)}) async {
+  final end = DateTime.now().add(max);
+  while (!ok() && DateTime.now().isBefore(end)) {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
+}
+
 Map<String, dynamic> _msg(String from, Map<String, dynamic> payload) => {
       'type': 'message',
       'sender_id': from,
@@ -181,7 +195,7 @@ Future<Map<String, dynamic>> _cardTo(_Phone owner, _Phone to) async {
   await owner.repo.publishOwnProfile();
   final env = owner.net.broadcasts.single;
   await to.repo.debugHandleEvent(_msg(owner.store.device, env));
-  await Future<void>.delayed(const Duration(milliseconds: 30));
+  await _settle();
   return Map<String, dynamic>.from(env['profile'] as Map);
 }
 
@@ -352,7 +366,7 @@ void main() {
       expect(ali.repo.photoBook.fileFor('d-ali')!.readAsBytesSync(), b);
       ali.store.avatarPath = '';
       await ali.repo.publishOwnProfile();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await _settle();
       expect(ali.repo.photoBook.fileFor('d-ali'), isNull);
     });
 
@@ -466,7 +480,7 @@ void main() {
       expect(sara.net.sent, isEmpty);
       sara.net.started = true;
       await sara.repo.debugHandleEvent({'type': 'peer_connected', 'peer_id': 'd-ali'});
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await _settle();
       await _askReaches(sara, ali);
       await _fileReaches(ali, sara, tmp);
       expect(sara.repo.photoBook.fileFor('ali'), isNotNull);
@@ -496,7 +510,7 @@ void main() {
       own(ali, jpeg(32), 'own2.jpg');
       ali.store.version = 2;
       await ali.repo.publishOwnProfile();
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await _settle();
       ali.net.sent.clear();
       await ali.repo.debugHandleEvent(_msg('d-sara', {
         'type': DirectoryRepository.photoNeedType,
@@ -511,7 +525,7 @@ void main() {
       expect((cards.single.$2['profile'] as Map)['avatar_url'], ProfilePhotoCode.make(jpeg(32)));
       // Sara takes that card and asks again with the new code -> the picture
       await sara.repo.debugHandleEvent(_msg('d-ali', cards.single.$2));
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await _settle();
       await _askReaches(sara, ali);
       expect(ali.net.files, hasLength(1));
     });
@@ -525,14 +539,14 @@ void main() {
       own(ali, jpeg(34), 'own3.jpg');
       ali.store.version = 2;
       await ali.repo.publishOwnProfile();
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await _settle();
       final direct = ali.net.sent.where((e) => e.$1 == 'd-sara').toList();
       expect(direct, hasLength(1));
       expect(direct.single.$2['type'], 'DIRECTORY_PROFILE');
       expect(ali.repo.debugCardOwed.keys, ['d-sara']);
       // seen again right away: the 60 s gap holds
       await ali.repo.debugHandleEvent({'type': 'peer_discovered', 'peer_id': 'd-sara'});
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await _settle();
       expect(ali.net.sent.where((e) => e.$1 == 'd-sara'), hasLength(1));
       // Sara asks with the new code: she has the card, nothing owed
       await ali.repo.debugHandleEvent(_msg('d-sara', {
@@ -603,7 +617,9 @@ void main() {
       expect(sara.repo.photoBook.codeOf('ali'), isNull);
       sara.api.server['ali'] = b;
       await sara.repo.debugLoadPhotoCodes();
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      // Bundle 208 (A2): the server picture is fetched without waiting
+      // (unawaited ensurePhoto) - a slow PC needs more than 30 ms.
+      await _waitFor(() => sara.repo.photoBook.fileFor('ali') != null);
       expect(sara.repo.photoBook.codeOf('ali')!.code,
           ProfilePhotoCode.make(b));
       expect(sara.repo.photoBook.fileFor('ali'), isNotNull);

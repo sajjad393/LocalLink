@@ -17,6 +17,7 @@ import 'package:locallink/features/files/presentation/widgets/media_view_cache.d
 
 import 'support/chat_video_fakes.dart';
 import 'support/phase5_fakes.dart';
+import 'support/safe_delete.dart';
 
 class _ViewFiles extends FakeFilesRepository {
   _ViewFiles(this.viewPath);
@@ -225,7 +226,7 @@ void main() {
 
     testWidgets('size read from the decoded photo; viewer opens and closes', (t) async {
       final dir = Directory.systemTemp.createTempSync('photo');
-      addTearDown(() => dir.deleteSync(recursive: true));
+      addTearDown(() => safeDeleteDir(dir));
       final path = '${dir.path}/wide.png';
       await t.runAsync(() async {
         final rec = ui.PictureRecorder();

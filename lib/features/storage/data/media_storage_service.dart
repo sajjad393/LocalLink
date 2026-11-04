@@ -59,6 +59,15 @@ class MediaStorageService extends ChangeNotifier {
   Timer? _backfillTimer;
   Timer? _afterDownload;
 
+  /// Bundle 208 (C5): small pictures skipped during a voice call, made
+  /// when the call is over (file id -> (plain path, video)).
+  final Map<String, (String, bool)> _afterCall = <String, (String, bool)>{};
+  Timer? _afterCallTimer;
+  static Duration afterCallCheck = const Duration(seconds: 15);
+
+  @visibleForTesting
+  int get debugAfterCallCount => _afterCall.length;
+
   bool get configured => _store != null;
   bool get autoClean => _autoClean;
   bool get busy => _busy;
@@ -392,7 +401,10 @@ class MediaStorageService extends ChangeNotifier {
       {required bool video, bool retry = true}) async {
     if (fileId.isEmpty || plainPath.isEmpty) return false;
     if (book.of(fileId)?.hasThumb ?? false) return true;
-    if (inCall()) return false;
+    if (inCall()) {
+      _rememberAfterCall(fileId, plainPath, video);
+      return false;
+    }
     try {
       final out = await _thumbTarget(fileId);
       final info = await _channel.invokeMapMethod<String, Object?>('make_thumb', {
@@ -420,6 +432,31 @@ class MediaStorageService extends ChangeNotifier {
   }
 
   static String _short(String id) => id.length > 8 ? id.substring(id.length - 8) : id;
+
+  void _rememberAfterCall(String fileId, String plainPath, bool video) {
+    if (_afterCall.length >= 20 && !_afterCall.containsKey(fileId)) return;
+    _afterCall[fileId] = (plainPath, video);
+    _afterCallTimer ??= Timer.periodic(afterCallCheck, (_) => _afterCallTick());
+  }
+
+  void _afterCallTick() {
+    if (inCall()) return;
+    _afterCallTimer?.cancel();
+    _afterCallTimer = null;
+    final todo = Map<String, (String, bool)>.of(_afterCall);
+    _afterCall.clear();
+    var n = 0;
+    for (final e in todo.entries) {
+      final (path, video) = e.value;
+      // The open copy can be gone by now; the chat makes it again later.
+      if (!File(path).existsSync()) continue;
+      n++;
+      unawaited(ensureThumb(e.key, path, video: video));
+    }
+    if (todo.isNotEmpty) {
+      AppLogger.info('THUMB_AFTER_CALL', detail: 'files=$n of=${todo.length}');
+    }
+  }
 
   /// A plain copy of the small picture for display (kept for this run).
   Future<String?> thumbView(String fileId) async {
@@ -688,6 +725,10 @@ class MediaStorageService extends ChangeNotifier {
     _startTimer?.cancel();
     _backfillTimer?.cancel();
     _afterDownload?.cancel();
+    _afterCallTimer?.cancel();
+    _afterCallTimer = null;
+    _afterCall.clear();
+    afterCallCheck = const Duration(seconds: 15);
     inCall = () => false;
   }
 

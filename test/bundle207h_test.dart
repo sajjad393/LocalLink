@@ -7,6 +7,7 @@ import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/account/data/own_profile_signal.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/home/presentation/screens/messenger_settings_screen.dart';
+import 'support/safe_delete.dart';
 
 class _Account implements AccountRepositoryContract {
   String path = '';
@@ -20,7 +21,7 @@ class _Account implements AccountRepositoryContract {
 void main() {
   testWidgets('207 H1: Settings card shows my profile file and reloads on save', (tester) async {
     final dir = Directory.systemTemp.createTempSync('b207h');
-    addTearDown(() => dir.deleteSync(recursive: true));
+    addTearDown(() => safeDeleteDir(dir));
     final a = File('${dir.path}/profile_avatar_a.jpg')..writeAsBytesSync(const [1]);
     final b = File('${dir.path}/profile_avatar_b.jpg')..writeAsBytesSync(const [2]);
     final account = _Account()..path = a.path;
@@ -44,6 +45,10 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
     await tester.pump();
     expect(avatar().localPath, '');
+    // Bundle 208 (A1): take the picture off the screen before the temp
+    // folder goes (Windows keeps an open file locked).
+    await tester.pumpWidget(const SizedBox());
+    imageCache.clear();
   });
 
   test('207 H1: Profile save bumps the signal (source)', () {

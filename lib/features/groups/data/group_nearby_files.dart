@@ -576,7 +576,9 @@ class GroupFileWatch {
       return true;
     }
     if (type == 'file_expired' || type == 'file_cancelled') {
-      MediaTransferActions.instance.markCancelled(id);
+      // Bundle 208 (E7): the writer pressed X -> no auto ask.
+      MediaTransferActions.instance
+          .markCancelled(id, bySender: type == 'file_cancelled');
       return true;
     }
     return false;

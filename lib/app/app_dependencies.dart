@@ -1,4 +1,8 @@
 import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/features/files/data/services/auto_fetch_service.dart';
+import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
+import 'package:locallink/features/files/presentation/widgets/chat_video_hub.dart';
+import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/features/files/presentation/widgets/media_gallery_viewer.dart';
 import 'package:locallink/features/groups/data/group_mention_book.dart';
 import 'package:locallink/core/services/message_seal_service.dart';
@@ -386,6 +390,38 @@ class AppDependencies {
     messaging.onGroupFile = groupMessagingService.receiveNearbyFile;
     messaging.groupMediaResend = groupMessagingService.requestFileAgain;
     messaging.groupMediaCancel = groupMessagingService.cancelFile;
+    // Bundle 208 (E): every file that comes to me downloads by itself.
+    autoFetch = AutoFetch(
+      missing: () async {
+        final out = <AutoFile>[];
+        for (final r in await store.missingIncomingAttachments()) {
+          final f = AutoFile.fromRow(r);
+          if (f != null) out.add(f);
+        }
+        for (final r in await store.missingGroupAttachments()) {
+          final f = AutoFile.fromRow(r);
+          if (f != null) out.add(f);
+        }
+        return out;
+      },
+      download: (f, {required operationId, required onProgress}) async {
+        final path = f.group
+            ? await files.downloadForGroupMessage(f.messageId, f.attachment,
+                operationId: operationId, onProgress: onProgress)
+            : await files.downloadForMessage(f.messageId, f.attachment,
+                operationId: operationId, onProgress: onProgress);
+        MediaStorageService.instance.onDownloaded(f.size);
+        return path;
+      },
+      ask: messaging.requestMediaResend,
+      cancelDownload: files.cancel,
+      inCall: () => ChatVideoHub.instance.callActive,
+      serverUp: () => socket.isConnected,
+      freeBytes: () async =>
+          (await MediaStorageService.instance.phoneStorage()).free,
+      isNear: (id) => PresenceHub.instance.statusOf(id) == PresenceStatus.nearby,
+      selfId: () => store.deviceId ?? '',
+    );
     groupMessagingService.allowIncomingFile =
         (id) => messaging.allowIncomingFile(id);
     messagingRepository = MessagingRepository(store: store, service: messaging);
@@ -594,6 +630,7 @@ class AppDependencies {
   late final AdminRepositoryFactory adminRepositoryFactory;
   late final CallBloc calls;
   late final ReliableMessagingService messaging;
+  late final AutoFetch autoFetch; // Bundle 208 (E)
   late final MessagingRepositoryContract messagingRepository;
   late final LocalLinkNotificationService notifications;
   late final ReadReceiptService readReceipts; // Bundle 198
@@ -634,12 +671,29 @@ class AppDependencies {
     } catch (_) {}
     messaging.start();
     groupMessagingService.start();
+    _startAutoFetch(); // Bundle 208 (E)
     calls.start();
     await _loadReadReceiptsSetting();
     await notifications.start();
     try {
       await presence.start();
     } catch (_) {}
+  }
+
+  /// Bundle 208 (E): background downloads (offline first), also with the
+  /// chat closed.
+  void _startAutoFetch() {
+    final self = store.deviceId ?? '';
+    autoFetch.start(
+      events: directTransport.events,
+      newMessages: [
+        messaging.incoming
+            .where((m) => m.attachments.isNotEmpty && m.senderId != self),
+        groupMessagingService.incoming
+            .where((m) => m.attachments.isNotEmpty && m.senderId != self),
+      ],
+      server: socket.connectionState,
+    );
   }
 
   /// Bundle 198: Settings › Privacy › Read receipts.
@@ -652,6 +706,11 @@ class AppDependencies {
     try {
       await ChatTextScale.instance
           .load(read: store.readSetting, write: store.writeSetting);
+    } catch (_) {}
+    // Bundle 208 (E2): files I stopped with X stay stopped.
+    try {
+      await MediaTransferActions.instance
+          .loadStops(read: store.readSetting, write: store.writeSetting);
     } catch (_) {}
     // Bundle G1 (mock 34): muted groups.
     try {
@@ -679,6 +738,7 @@ class AppDependencies {
     await directoryRepository.start();
     messaging.start();
     groupMessagingService.start();
+    _startAutoFetch(); // Bundle 208 (E)
     calls.start();
     await _loadReadReceiptsSetting();
     await notifications.start();
@@ -757,6 +817,9 @@ class AppDependencies {
 
   Future<void> dispose() async {
     readReceipts.dispose(); // Bundle 198
+    try {
+      autoFetch.dispose(); // Bundle 208 (E)
+    } catch (_) {}
     for (final sub in _friendSubs) {
       unawaited(sub.cancel());
     }

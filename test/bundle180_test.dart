@@ -9,6 +9,7 @@ import 'package:locallink/core/diagnostics/log_share_flow.dart';
 import 'package:locallink/core/diagnostics/log_share_service.dart';
 import 'package:locallink/core/diagnostics/tap_burst_counter.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'support/safe_delete.dart';
 
 String nativeLine(DateTime t, String level, String tag, String msg) {
   final ms = t.millisecondsSinceEpoch;
@@ -245,7 +246,7 @@ void main() {
 
     test('AppLogger lines go to the file with full details', () {
       final dir = Directory.systemTemp.createTempSync('l180');
-      addTearDown(() => dir.deleteSync(recursive: true));
+      addTearDown(() => safeDeleteDir(dir));
       final f = AppLogFile.instance..resetForTest();
       AppLogger.warning('FILE_PAUSED_FOR_CALL', detail: 'transfer=${'a' * 300}');
       AppLogger.error('boom_event', error: StateError('bad'), detail: 'x=1');
@@ -261,7 +262,7 @@ void main() {
 
     test('clearAll removes our files only', () async {
       final dir = Directory.systemTemp.createTempSync('l180c');
-      addTearDown(() => dir.deleteSync(recursive: true));
+      addTearDown(() => safeDeleteDir(dir));
       File('${dir.path}/native-5.log').writeAsStringSync('a');
       File('${dir.path}/app-ui-5.log').writeAsStringSync('a');
       File('${dir.path}/keep.txt').writeAsStringSync('a');

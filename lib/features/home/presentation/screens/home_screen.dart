@@ -1017,6 +1017,12 @@ class _HomeScreenState extends State<HomeScreen> {
             builder: (_) => NewGroupScreen(
               loadFriends: _loadGroupFriends,
               onCreate: _createGroup,
+              // Bundle 208 (B): my photo on "You".
+              loadOwnPhoto: () async =>
+                  (await widget.accountRepository.cachedProfile())
+                      ?.localAvatarPath ??
+                  '',
+              ownPeerId: widget.store.deviceId,
               onGoToPeople: () {
                 if (mounted) setState(() => _index = 2);
               },

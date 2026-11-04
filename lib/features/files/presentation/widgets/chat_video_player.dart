@@ -150,9 +150,20 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
     }
   }
 
+  bool _infoRetried = false;
+  Timer? _infoRetry;
+
   Future<void> _loadInfo() async {
     final info = await widget.infoLoader(widget.path, widget.cacheKey);
     if (mounted && info != null) setState(() => _info = info);
+    // Bundle 208 (C4): reading failed (file still being written) - one
+    // more try a moment later instead of a picture-less bubble.
+    if (mounted && info == null && !_infoRetried) {
+      _infoRetried = true;
+      _infoRetry = Timer(VideoInfoCache.retryGap, () {
+        if (mounted && _info == null) unawaited(_loadInfo());
+      });
+    }
   }
 
   // Bundle 147: no per-bubble app-lifecycle pause any more. ChatVideoHub
@@ -161,6 +172,7 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _infoRetry?.cancel();
     _scroll?.removeListener(_onScroll);
     final s = _session;
     if (s != null) {

@@ -1,6 +1,7 @@
 import 'package:locallink/features/groups/data/group_photo_book.dart';
 import 'package:locallink/features/groups/data/group_change_hub.dart';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/features/messaging/data/message_delete_actions.dart';
 import 'dart:async';
@@ -96,6 +97,99 @@ class ReliableMessagingService {
   /// Messages whose sending the user cancelled (until Resend).
   final Set<String> _cancelledSends = <String>{};
   final Map<String, List<DateTime>> _resendAsks = <String, List<DateTime>>{};
+
+  // Bundle 208 (E5): my 1:1 files that broke on the way (out of range):
+  // sent again once when that friend is connected again. Never a file
+  // stopped with X (file_cancelled). Kept after a restart (max 100).
+  static const String repushKey = 'media_repush_v1';
+  static const int maxRepush = 100;
+  static const Duration repushGap = Duration(minutes: 2);
+  final Map<String, Map<String, String>> _repush = <String, Map<String, String>>{};
+  final Map<String, DateTime> _repushAt = <String, DateTime>{};
+  bool _repushLoaded = false;
+
+  Future<void> _loadRepush() async {
+    if (_repushLoaded) return;
+    _repushLoaded = true;
+    try {
+      final raw = await store.readSetting(repushKey);
+      if (raw == null || raw.isEmpty) return;
+      final map = jsonDecode(raw);
+      if (map is! Map) return;
+      map.forEach((k, v) {
+        if (v is Map) {
+          _repush[k.toString()] = {
+            'm': v['m']?.toString() ?? '',
+            'p': v['p']?.toString() ?? '',
+          };
+        }
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveRepush() async {
+    try {
+      await store.writeSetting(repushKey, jsonEncode(_repush));
+    } catch (_) {}
+  }
+
+  Future<void> _rememberRepush(String fileId, String messageId) async {
+    if (fileId.isEmpty || messageId.isEmpty) return;
+    // Group files have their own sender (GroupFileSender); not photos.
+    if (_groupWire.firstMatch(fileId) != null || messageId.startsWith('avatar-')) {
+      return;
+    }
+    await _loadRepush();
+    final message = await store.messageById(messageId);
+    if (message == null || message.senderId != store.deviceId) return;
+    if (!message.attachments.any((a) => a.id == fileId)) return;
+    _repush.remove(fileId);
+    _repush[fileId] = {'m': messageId, 'p': message.recipientId};
+    while (_repush.length > maxRepush) {
+      _repush.remove(_repush.keys.first);
+    }
+    AppLogger.info('MEDIA_REPUSH_REMEMBER', detail: 'id=$fileId');
+    await _saveRepush();
+  }
+
+  Future<void> _forgetRepush(String fileId) async {
+    await _loadRepush();
+    if (_repush.remove(fileId) != null) await _saveRepush();
+  }
+
+  /// [peer] is connected again: my broken files to it go once more.
+  Future<void> _repushFor(String peer) async {
+    if (peer.isEmpty) return;
+    await _loadRepush();
+    final now = DateTime.now();
+    final due = _repush.entries
+        .where((e) => e.value['p'] == peer)
+        .where((e) {
+          final last = _repushAt[e.key];
+          return last == null || now.difference(last) >= repushGap;
+        })
+        .map((e) => MapEntry(e.key, e.value['m'] ?? ''))
+        .toList();
+    if (due.isEmpty) return;
+    for (final e in due) {
+      _repush.remove(e.key);
+      _repushAt[e.key] = now;
+    }
+    await _saveRepush();
+    for (final e in due) {
+      final message = await store.messageById(e.value);
+      if (message == null) continue;
+      AppLogger.info('MEDIA_REPUSH_AUTO', detail: 'id=${e.key}');
+      await _repushMedia(message, onlyFileId: e.key);
+    }
+  }
+
+  @visibleForTesting
+  Map<String, Map<String, String>> get repushForTest => _repush;
+
+  @visibleForTesting
+  Future<void> handleDirectEventForTest(Map<String, dynamic> event) =>
+      _handleDirectEvent(event);
 
   void _registerMediaActions() {
     final actions = MediaTransferActions.instance;
@@ -290,6 +384,11 @@ class ReliableMessagingService {
         await _repushMedia(message, onlyFileId: fileId);
       case 'media_resend_start':
         if (!theySent) return;
+        // Bundle 208 (E2): I stopped this file with X - it stays stopped.
+        if (MediaTransferActions.instance.stoppedByMe(fileId)) {
+          AppLogger.info('MEDIA_RESEND_IGNORED', detail: 'id=$id why=stopped');
+          return;
+        }
         try {
           await allowIncomingFile(fileId);
         } catch (_) {}
@@ -2314,7 +2413,16 @@ class ReliableMessagingService {
       if (eventType == 'file_cancelled' &&
           messageId.isNotEmpty &&
           event['recipient_id']?.toString() == store.deviceId) {
-        MediaTransferActions.instance.markCancelled(messageId);
+        MediaTransferActions.instance.markCancelled(messageId, bySender: true);
+      }
+      // Bundle 208 (E5): my 1:1 file broke on the way -> again when near.
+      if ((eventType == 'file_failed' || eventType == 'file_expired') &&
+          endedId.isNotEmpty &&
+          event['recipient_id']?.toString() != store.deviceId) {
+        unawaited(_rememberRepush(endedId, messageId).catchError((Object _) {}));
+      }
+      if (eventType == 'file_sent' && endedId.isNotEmpty) {
+        unawaited(_forgetRepush(endedId).catchError((Object _) {}));
       }
       // fall through: other handlers below may still use these events.
     }
@@ -2451,6 +2559,13 @@ class ReliableMessagingService {
     // ------------------------------------------------------------------------
     if (eventType == 'peer_connected' || eventType == 'route_recovered') {
       unawaited(_flushPendingDirectAcks());
+      // Bundle 208 (E5): my files that broke on the way to it go again.
+      final peer = event['peer_id']?.toString() ?? '';
+      if (peer.isNotEmpty) {
+        unawaited(_repushFor(peer).catchError((Object e) {
+          AppLogger.warning('MEDIA_REPUSH_AUTO_FAILED', detail: '$e');
+        }));
+      }
 
       return;
     }

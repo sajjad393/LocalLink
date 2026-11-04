@@ -71,11 +71,18 @@ class NewGroupScreen extends StatefulWidget {
     required this.loadFriends,
     required this.onCreate,
     required this.onGoToPeople,
+    this.loadOwnPhoto,
+    this.ownPeerId,
   });
 
   final Future<List<GroupFriend>> Function() loadFriends;
   final GroupCreateCallback onCreate;
   final VoidCallback onGoToPeople;
+
+  /// Bundle 208 (B): my profile picture file for "You" on the name screen
+  /// (null = the letter). [ownPeerId] = my phone id (picture book fallback).
+  final Future<String> Function()? loadOwnPhoto;
+  final String? ownPeerId;
 
   /// Bundle 207 (M2, mock 207 page 1): "2 selected · up to 32" (was
   /// "Add people · 2 of 32", which read like page 2 of 32).
@@ -131,6 +138,8 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
         builder: (_) => NewGroupNameScreen(
           people: List<GroupFriend>.from(_picked),
           onCreate: widget.onCreate,
+          loadOwnPhoto: widget.loadOwnPhoto,
+          ownPeerId: widget.ownPeerId,
         ),
       ),
     );
@@ -363,10 +372,16 @@ class NewGroupNameScreen extends StatefulWidget {
     super.key,
     required this.people,
     required this.onCreate,
+    this.loadOwnPhoto,
+    this.ownPeerId,
   });
 
   final List<GroupFriend> people;
   final GroupCreateCallback onCreate;
+
+  /// Bundle 208 (B): see [NewGroupScreen.loadOwnPhoto].
+  final Future<String> Function()? loadOwnPhoto;
+  final String? ownPeerId;
 
   @override
   State<NewGroupNameScreen> createState() => _NewGroupNameScreenState();
@@ -384,6 +399,20 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
   String _editInfo = 'admins';
   String _sendMessages = 'all';
   String _addMembers = 'admins';
+
+  /// Bundle 208 (B): my profile picture file ('' = letter / picture book).
+  String _ownPath = '';
+
+  @override
+  void initState() {
+    super.initState();
+    final load = widget.loadOwnPhoto;
+    if (load != null) {
+      load().then((path) {
+        if (mounted && path != _ownPath) setState(() => _ownPath = path);
+      }, onError: (_) {});
+    }
+  }
 
   @override
   void dispose() {
@@ -671,7 +700,13 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
                     width: 56,
                     child: Column(
                       children: [
-                        const AccountAvatar(name: 'You', radius: 26),
+                        // Bundle 208 (B): my real photo (was always "Y").
+                        AccountAvatar(
+                            key: ValueKey('new_group_you_avatar:$_ownPath'),
+                            name: 'You',
+                            radius: 26,
+                            localPath: _ownPath,
+                            peerId: widget.ownPeerId),
                         const SizedBox(height: 4),
                         Text('You',
                             style: TextStyle(

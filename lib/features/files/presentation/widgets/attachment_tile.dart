@@ -13,6 +13,7 @@ import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/features/files/data/services/media_progress_hub.dart';
 import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
+import 'package:locallink/features/files/data/services/auto_fetch_service.dart';
 import 'blue_progress_ring.dart';
 import 'chat_photo.dart';
 import 'chat_video_controller.dart';
@@ -26,6 +27,7 @@ import 'package:locallink/features/storage/presentation/removed_media_view.dart'
 import 'package:locallink/features/messaging/data/read_receipts/voice_played_hub.dart';
 import 'media_tile_look.dart';
 import 'media_grid.dart';
+import 'prepare_ring.dart';
 
 class AttachmentTile extends StatefulWidget {
   final Attachment attachment;
@@ -98,6 +100,11 @@ class _AttachmentTileState extends State<AttachmentTile> {
   String? _viewKey;
   // Bundle 150: one quiet retry when opening the local file fails.
   int _prepareFailures = 0;
+  // Bundle 208 (C1): the grid square asked for the video's first frame.
+  bool _frameAsked = false;
+  // Bundle 208 (D6): my saved file is being opened (ring with %).
+  bool _opening = false;
+  Timer? _frameRetry;
 
   @override
   void initState() {
@@ -108,10 +115,66 @@ class _AttachmentTileState extends State<AttachmentTile> {
     // Bundle 197b: removed to save space - no file to open, no download.
     _media = MediaBook.instance.of(widget.attachment.id);
     MediaBook.instance.addListener(_onMediaBook);
+    _auto = AutoFetch.instance;
+    _auto?.arrived.addListener(_onAutoFetch);
     if (_removed) return;
     _prepareExistingPath();
     _maybeAutoDownload();
   }
+
+  // Bundle 208 (E6): the background downloader (null in some tests).
+  AutoFetch? _auto;
+
+  bool get _autoFetching =>
+      _auto?.isFetching(widget.messageId, widget.attachment.id) ?? false;
+
+  /// An online download by [AutoFetch] ended (saved, failed or stopped).
+  void _onAutoFetch() {
+    if (!mounted) return;
+    final path = _auto?.pathFor(widget.attachment.id);
+    final local = _localPath;
+    if (path != null && path.isNotEmpty && (local == null || local.isEmpty)) {
+      AppLogger.info('ATTACHMENT_PATH_ARRIVED',
+          detail: 'file=${widget.attachment.id} by=auto');
+      _localPath = path;
+      _prepareFailures = 0;
+      unawaited(_prepareExistingPath());
+    }
+    setState(() {});
+  }
+
+  AutoFile _autoFile() => AutoFile(
+        messageId: widget.groupMessageId ?? widget.messageId,
+        attachment: widget.attachment,
+        senderId: '',
+        createdAt: DateTime.now().toUtc(),
+        groupId: widget.groupMessageId == null ? null : '',
+      );
+
+  Future<void> _stopAuto() async {
+    AppLogger.info('MEDIA_CANCEL_RECEIVE',
+        detail: 'file=${widget.attachment.id} way=online');
+    await _auto?.stop(widget.messageId, widget.attachment.id);
+    if (mounted) setState(() {});
+  }
+
+  /// Bundle 208 (E6): small ring with X for a voice note / document row.
+  Widget _autoMiniRing() => ValueListenableBuilder<MediaProgress?>(
+        valueListenable: MediaProgressHub.instance
+            .watchFile(widget.messageId, widget.attachment.id),
+        builder: (context, p, _) => Stack(
+          key: const Key('chat_media_auto_mini_ring'),
+          alignment: Alignment.center,
+          children: [
+            CircularProgressIndicator(value: p?.fraction, strokeWidth: 3),
+            IconButton(
+              tooltip: 'Cancel download',
+              onPressed: () => unawaited(_stopAuto()),
+              icon: const Icon(Icons.close, size: 18),
+            ),
+          ],
+        ),
+      );
 
   // Bundle 197b: this file's small picture / removed / saved state.
   MediaState? _media;
@@ -177,6 +240,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
   Future<void> _cancelReceive() async {
     final id = widget.attachment.id;
     AppLogger.info('MEDIA_CANCEL_RECEIVE', detail: 'file=$id');
+    // Bundle 208 (E2): I stopped it - never again by itself.
+    MediaTransferActions.instance.stopByMe(id);
     MediaTransferActions.instance.markCancelled(widget.messageId);
     final action = MediaTransferActions.instance.cancelReceive;
     try {
@@ -194,6 +259,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
   Future<void> _requestResend() async {
     final id = widget.attachment.id;
     AppLogger.info('MEDIA_RESEND_ASK', detail: 'file=$id');
+    // Bundle 208 (E2): I want it again - it may come by itself again.
+    MediaTransferActions.instance.clearStops(widget.messageId, id);
     MediaTransferActions.instance.clearCancelled(widget.messageId);
     final action = MediaTransferActions.instance.requestResend;
     var ok = false;
@@ -207,7 +274,56 @@ class _AttachmentTileState extends State<AttachmentTile> {
     }
   }
 
-  Widget _tapToDownload() => Column(
+  /// Bundle 208 (E7): a stuck Nearby file the phone asks for by itself.
+  bool get _waitsForSender =>
+      _auto != null &&
+      !widget.mine &&
+      _auto!.willAsk(widget.messageId, widget.attachment.id);
+
+  Widget _tapToDownload() => _waitsForSender ? _waitingFor() : _tapToDownloadButton();
+
+  /// Bundle 208 (E7): "Waiting for Sajjad" (small grey text); a tap still
+  /// asks at once.
+  Widget _waitingFor() {
+    final name = (widget.senderName ?? '').trim();
+    return GestureDetector(
+      key: const Key('chat_media_waiting_for'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => unawaited(_requestResend()),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const DecoratedBox(
+            decoration:
+                BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: Icon(Icons.schedule_rounded, color: Colors.white70, size: 26),
+            ),
+          ),
+          const SizedBox(height: 6),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black45,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              child: Text(
+                name.isEmpty ? 'Waiting for sender' : 'Waiting for $name',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Color(0xFFD0D4DC), fontSize: 11.5),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tapToDownloadButton() => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Material(
@@ -282,6 +398,31 @@ class _AttachmentTileState extends State<AttachmentTile> {
           child: FittedBox(fit: BoxFit.scaleDown, child: child),
         );
 
+  /// Bundle 208 (C1): ask once for the first frame of [path]; redraw when
+  /// it comes.
+  void _askFrame(String path) {
+    if (_frameAsked) return;
+    _frameAsked = true;
+    final key = _videoCacheKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(VideoInfoCache.load(path, key).then((info) {
+        if (!mounted) return;
+        if (info?.thumbnail != null) {
+          setState(() {});
+        } else if (info == null) {
+          // Bundle 208 (C4): the file may still be being written - once more.
+          _frameRetry = Timer(VideoInfoCache.retryGap, () {
+            if (!mounted) return;
+            unawaited(VideoInfoCache.load(path, key).then((again) {
+              if (mounted && again?.thumbnail != null) setState(() {});
+            }));
+          });
+        }
+      }));
+    });
+  }
+
   /// Bundle 202 (mock A2-A6): a ready photo / video as a grid square -
   /// cover crop, videos get a play button and their length. Tap = viewer.
   Widget _compactReady(String path) {
@@ -290,6 +431,10 @@ class _AttachmentTileState extends State<AttachmentTile> {
     final video = !a.isImage;
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 2.0;
     final info = video ? VideoInfoCache.peek(_videoCacheKey) : null;
+    // Bundle 208 (C1): a grid square never builds a ChatVideoPlayer, so it
+    // reads the first frame itself (was: only after the video was played).
+    if (video && info == null) _askFrame(path);
+    if (info?.thumbnail != null) MediaThumbs.shown(a.id, 'frame', where: 'grid');
     const dark = ColoredBox(color: Color(0xFF2A2F3A));
     final Widget picture;
     if (!video) {
@@ -429,6 +574,28 @@ class _AttachmentTileState extends State<AttachmentTile> {
     if (hasLocal || widget.uploading) return;
     // Bundle 150: arriving over Wi-Fi — it shows by itself when it lands.
     if (_arrivingDirect) return;
+    // Bundle 208 (E6): AutoFetch already gets every file of the last 7
+    // days (any type, up to 50 MB) in the background, one at a time. On
+    // screen the bubble only asks for its small photo / voice / video (any
+    // age, as before) - through the same line, never twice.
+    final auto = _auto;
+    if (auto != null) {
+      if (widget.mine || auto.gaveUp(widget.messageId, widget.attachment.id)) {
+        return;
+      }
+      if (MediaTransferActions.instance.stoppedByMe(widget.attachment.id)) {
+        return;
+      }
+      final small = (widget.attachment.isImage || _isAudio || _isVideo) &&
+          widget.attachment.size <= 10 * 1024 * 1024;
+      if (!small) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _activeOperation != null) return;
+        auto.fetchNow(_autoFile());
+        setState(() {});
+      });
+      return;
+    }
     // Auto-fetch anything small: images, voice notes and (bundle 145)
     // videos up to 10 MB (WhatsApp parity). Bigger ones wait for a tap.
     final inlineCandidate = widget.attachment.isImage || _isAudio || _isVideo;
@@ -443,6 +610,13 @@ class _AttachmentTileState extends State<AttachmentTile> {
   Future<void> _prepareExistingPath() async {
     final path = _localPath;
     if (path == null || path.isEmpty) return;
+    if (!_opening) {
+      _opening = true;
+      // Called from initState / didUpdateWidget too: redraw a moment later.
+      scheduleMicrotask(() {
+        if (mounted) setState(() {});
+      });
+    }
     try {
       var localPath = path;
       if (!await widget.transfer.isProtectedLocalFile(localPath)) {
@@ -469,6 +643,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
       AppLogger.error('ATTACHMENT_PREPARE_FAILED',
           error: error, detail: 'file=${widget.attachment.id}');
       if (mounted) setState(() => _displayPath = null);
+    } finally {
+      if (mounted && _opening) setState(() => _opening = false);
     }
   }
 
@@ -516,6 +692,16 @@ class _AttachmentTileState extends State<AttachmentTile> {
       // Bundle 150: nothing to download from the server; it is on its way.
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
           content: Text('Still receiving over Wi-Fi. It will appear by itself.')));
+      return;
+    }
+    // Bundle 208 (E6): a tap goes to the front of the background line
+    // (never two downloads of the same file).
+    final auto = _auto;
+    if (auto != null && auto.serverUp()) {
+      MediaTransferActions.instance
+          .clearStops(widget.messageId, widget.attachment.id);
+      auto.fetchNow(_autoFile(), force: true);
+      setState(() {});
       return;
     }
     try {
@@ -658,6 +844,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
     if (shown != null) MediaGalleryRegistry.drop(widget.attachment.id, shown);
     _releaseView();
     MediaBook.instance.removeListener(_onMediaBook);
+    _auto?.arrived.removeListener(_onAutoFetch);
+    _frameRetry?.cancel();
     MediaTransferActions.instance.cancelled.removeListener(_onCancelledChanged);
     MediaPlaybackCoordinator.instance.release(this);
     _audioTimer?.cancel();
@@ -764,7 +952,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
                   SizedBox(
                     width: 42,
                     height: 42,
-                    child: running
+                    child: !running && _autoFetching
+                        ? _autoMiniRing()
+                        : running
                         ? Stack(
                             alignment: Alignment.center,
                             children: [
@@ -917,6 +1107,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
                       ],
                     ),
                   )
+                else if (_autoFetching)
+                  SizedBox(width: 44, height: 44, child: _autoMiniRing())
                 else
                   IconButton(
                     tooltip: _displayPath == null &&
@@ -945,6 +1137,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
           );
         });
   }
+
+  /// Bundle 208 (D6): files up to this size open too fast for a ring.
+  static const int ringMinBytes = 2 * 1024 * 1024;
 
   /// Bundle 145: video not viewable yet. Arriving: dimmed thumbnail (or
   /// grey), progress ring with X, "4.1 / 11.8 MB". Bigger than 10 MB:
@@ -980,6 +1175,17 @@ class _AttachmentTileState extends State<AttachmentTile> {
       center = FittedBox(fit: BoxFit.scaleDown, child: ring);
     } else if (_receiveCancelled) {
       center = FittedBox(fit: BoxFit.scaleDown, child: _tapToDownload());
+    } else if (hasLocal &&
+        _opening &&
+        !widget.uploading &&
+        a.size > ringMinBytes) {
+      // Bundle 208 (D6): a big saved video being opened - the same "45%"
+      // ring as the viewer (small files are too quick to see it).
+      center = PrepareRing(
+          path: _localPath!,
+          size: 56,
+          ringKey: const Key('chat_video_prepare_ring'),
+          pctKey: const Key('chat_video_prepare_pct'));
     } else if (hasLocal || widget.uploading) {
       center = circle(Icons.play_arrow_rounded, 'Play', _openOrRetryLocal,
           const Key('chat_video_prepare'));
@@ -1010,7 +1216,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                   child: Image.memory(thumb,
                       fit: BoxFit.cover, gaplessPlayback: true),
                 )
-              else
+              else ...[
                 ColoredBox(
                   color: const Color(0xFF2A2F3A),
                   child: Align(
@@ -1019,6 +1225,17 @@ class _AttachmentTileState extends State<AttachmentTile> {
                         color: Colors.white.withValues(alpha: .25), size: 30),
                   ),
                 ),
+                // Bundle 208 (C3): the saved small picture while the file
+                // is still being locked / opened (was only the plain box).
+                Opacity(
+                  opacity: .55,
+                  child: MediaThumbFill(
+                    key: ValueKey<String>('video_wait_thumb:${a.id}'),
+                    attachmentId: a.id,
+                    fallback: const SizedBox.shrink(),
+                  ),
+                ),
+              ],
               Center(child: center),
               if (cached != null && cached.durationMs > 0)
                 Positioned(
@@ -1078,6 +1295,18 @@ class _AttachmentTileState extends State<AttachmentTile> {
         fraction: known ? progress.fraction : null,
         isVideo: _isVideo,
         onCancel: _cancel,
+      );
+    }
+    // Bundle 208 (E6): downloading online in the background.
+    if (_autoFetching) {
+      final file = widget.attachment.id;
+      return _LiveRing(
+        key: const Key('chat_media_auto_ring'),
+        messageId: widget.messageId,
+        fileId: file,
+        sizeBytes: size,
+        isVideo: _isVideo,
+        onCancel: _stopAuto,
       );
     }
     if (_arrivingDirect && !_receiveCancelled) {

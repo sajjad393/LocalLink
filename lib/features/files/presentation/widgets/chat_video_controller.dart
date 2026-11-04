@@ -319,10 +319,18 @@ class VideoInfoCache {
 
   static VideoInfo? peek(String cacheKey) => _cache[cacheKey];
 
+  /// Bundle 208 (C4): when reading a key last failed. A new ask within
+  /// [retryGap] gets null at once (no native call loop while the file is
+  /// still being written); after it, one more real try.
+  static final Map<String, DateTime> _failedAt = <String, DateTime>{};
+  static Duration retryGap = const Duration(seconds: 3);
+
   @visibleForTesting
   static void resetForTest() {
     _cache.clear();
     _inFlight.clear();
+    _failedAt.clear();
+    retryGap = const Duration(seconds: 3);
   }
 
   /// Bundle 185 (B1): low memory while hidden. Returns how many were dropped.
@@ -335,6 +343,12 @@ class VideoInfoCache {
   static Future<VideoInfo?> load(String path, String cacheKey) {
     final hit = _cache[cacheKey];
     if (hit != null) return Future<VideoInfo?>.value(hit);
+    final failed = _failedAt[cacheKey];
+    if (failed != null &&
+        DateTime.now().difference(failed) < retryGap &&
+        !_inFlight.containsKey(cacheKey)) {
+      return Future<VideoInfo?>.value(null);
+    }
     // Bundle 150: block body. `() => _inFlight.remove(k)` returned the very
     // future being completed, so it waited on itself forever (blank video
     // bubble until a refresh).
@@ -347,7 +361,10 @@ class VideoInfoCache {
     try {
       final raw = await _channel.invokeMapMethod<String, dynamic>(
           'video_info', <String, dynamic>{'path': path, 'max_px': 480});
-      if (raw == null) return null;
+      if (raw == null) {
+        _failed(cacheKey);
+        return null;
+      }
       final thumb = raw['thumbnail'];
       final info = VideoInfo(
         thumbnail: thumb is Uint8List && thumb.isNotEmpty ? thumb : null,
@@ -360,9 +377,18 @@ class VideoInfoCache {
       while (_cache.length > _max) {
         _cache.remove(_cache.keys.first);
       }
+      _failedAt.remove(cacheKey);
       return info;
     } catch (_) {
+      _failed(cacheKey);
       return null;
+    }
+  }
+
+  static void _failed(String cacheKey) {
+    _failedAt[cacheKey] = DateTime.now();
+    while (_failedAt.length > 200) {
+      _failedAt.remove(_failedAt.keys.first);
     }
   }
 }

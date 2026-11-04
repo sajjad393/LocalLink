@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 
 import 'media_tile_look.dart';
@@ -115,10 +117,21 @@ class MediaThumbs {
   @visibleForTesting
   static void debugReset() {
     _found.clear();
+    _shownLogged.clear();
     debugLoader = null;
   }
 
   static String? cached(String id) => _found[id];
+
+  static final Set<String> _shownLogged = <String>{};
+
+  /// Bundle 208 (C6): `THUMB_SHOWN` once per file per run.
+  static void shown(String id, String from, {String where = 'square'}) {
+    if (id.isEmpty || !_shownLogged.add(id)) return;
+    if (_shownLogged.length > 400) _shownLogged.remove(_shownLogged.first);
+    final short = id.length > 8 ? id.substring(id.length - 8) : id;
+    AppLogger.info('THUMB_SHOWN', detail: 'file=$short where=$where from=$from');
+  }
 
   static Future<String?> load(String id) async {
     final hit = _found[id];
@@ -167,12 +180,27 @@ class _MediaThumbFillState extends State<MediaThumbFill> {
   void initState() {
     super.initState();
     _load();
+    // Bundle 208 (C2): the small picture is made a moment after the
+    // square is drawn - look again when it is saved.
+    MediaBook.instance.addListener(_onBook);
+  }
+
+  @override
+  void dispose() {
+    MediaBook.instance.removeListener(_onBook);
+    super.dispose();
+  }
+
+  void _onBook() {
+    if (_path != null || !mounted) return;
+    if (MediaBook.instance.of(widget.attachmentId)?.hasThumb ?? false) _load();
   }
 
   @override
   void didUpdateWidget(MediaThumbFill old) {
     super.didUpdateWidget(old);
-    if (old.attachmentId != widget.attachmentId) _load();
+    // Bundle 208 (C2): also when nothing was found yet (same id redrawn).
+    if (old.attachmentId != widget.attachmentId || _path == null) _load();
   }
 
   void _load() {
@@ -181,7 +209,10 @@ class _MediaThumbFillState extends State<MediaThumbFill> {
     if (_path != null || id.isEmpty) return;
     final ask = ++_ask;
     unawaited(MediaThumbs.load(id).then((p) {
-      if (p != null && mounted && ask == _ask) setState(() => _path = p);
+      if (p != null && mounted && ask == _ask) {
+        setState(() => _path = p);
+        MediaThumbs.shown(id, 'saved');
+      }
     }));
   }
 

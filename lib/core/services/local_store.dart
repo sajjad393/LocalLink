@@ -2300,6 +2300,70 @@ class LocalStore {
         where: 'local_path=?', whereArgs: [oldPath]);
   }
 
+  /// Bundle 208 (E1): files friends sent me (1:1) that are not saved on
+  /// this phone yet, newest first. SELECT only (no DB change). Deleted /
+  /// cleared messages are left out.
+  Future<List<Map<String, Object?>>> missingIncomingAttachments(
+      {int limit = 300}) async {
+    final self = _deviceId;
+    if (self == null || self.isEmpty) return const [];
+    final rows = await _db.rawQuery(
+        'SELECT a.message_id AS message_id, a.file_id AS file_id, '
+        'a.original_name AS original_name, a.content_type AS content_type, '
+        'a.size AS size, a.sha256 AS sha256, a.width AS width, '
+        'a.height AS height, a.is_image AS is_image, '
+        'a.download_url AS download_url, a.thumbnail_url AS thumbnail_url, '
+        'm.sender_id AS sender_id, m.created_at AS created_at '
+        'FROM message_attachments a JOIN messages m ON m.id = a.message_id '
+        "WHERE (a.local_path IS NULL OR a.local_path = '') "
+        'AND m.sender_id <> ? AND m.recipient_id = ? '
+        'ORDER BY m.created_at DESC LIMIT ?',
+        [self, self, limit]);
+    final book = MessageDeleteBook.instance;
+    return [
+      for (final r in rows)
+        if (!book.dropsMessage(
+            id: r['message_id']?.toString() ?? '',
+            chatKey: MessageDeleteBook.directKey(r['sender_id']?.toString() ?? ''),
+            createdAt: DateTime.tryParse(r['created_at']?.toString() ?? '') ??
+                DateTime.now(),
+            senderId: r['sender_id']?.toString() ?? ''))
+          r,
+    ];
+  }
+
+  /// Bundle 208 (E1): the same for group files from other members.
+  Future<List<Map<String, Object?>>> missingGroupAttachments(
+      {int limit = 300}) async {
+    final self = _deviceId;
+    if (self == null || self.isEmpty) return const [];
+    final rows = await _db.rawQuery(
+        'SELECT a.group_message_id AS message_id, a.file_id AS file_id, '
+        'a.original_name AS original_name, a.content_type AS content_type, '
+        'a.size AS size, a.sha256 AS sha256, a.width AS width, '
+        'a.height AS height, a.is_image AS is_image, '
+        'a.download_url AS download_url, a.thumbnail_url AS thumbnail_url, '
+        'm.sender_id AS sender_id, m.created_at AS created_at, '
+        'm.group_id AS group_id '
+        'FROM group_message_attachments a '
+        'JOIN group_messages m ON m.id = a.group_message_id '
+        "WHERE (a.local_path IS NULL OR a.local_path = '') "
+        'AND m.sender_id <> ? '
+        'ORDER BY m.created_at DESC LIMIT ?',
+        [self, limit]);
+    final book = MessageDeleteBook.instance;
+    return [
+      for (final r in rows)
+        if (!book.dropsMessage(
+            id: r['message_id']?.toString() ?? '',
+            chatKey: MessageDeleteBook.groupKey(r['group_id']?.toString() ?? ''),
+            createdAt: DateTime.tryParse(r['created_at']?.toString() ?? '') ??
+                DateTime.now(),
+            senderId: r['sender_id']?.toString() ?? ''))
+          r,
+    ];
+  }
+
   Future<void> setGroupAttachmentLocalPath(
           String messageId, String fileId, String path) async =>
       _db.update('group_message_attachments', {'local_path': path},

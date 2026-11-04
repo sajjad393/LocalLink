@@ -158,11 +158,12 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: MediaGalleryViewer(items: [GalleryItem.fromAttachment(a)]),
       ));
-      expect(find.byKey(const Key('media_gallery_preparing')), findsOneWidget);
+      // Bundle 208 (D5): only the % ring now (was "Preparing…").
+      expect(find.byKey(const Key('media_gallery_prepare_ring')), findsOneWidget);
       expect(find.byKey(const Key('media_gallery_not_ready')), findsNothing);
-      // Bundle 207 (M2, mock page 4 screen 12): the short line under it.
-      expect(find.textContaining('Your photo'), findsOneWidget);
-      expect(find.textContaining('opens in a moment'), findsOneWidget);
+      // Bundle 208 (D5): no words at all (the short line went too).
+      expect(find.textContaining('Your photo'), findsNothing);
+      expect(find.textContaining('Preparing'), findsNothing);
       for (var i = 0; i < 10; i++) {
         await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
         await tester.pump();
