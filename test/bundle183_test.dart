@@ -145,7 +145,8 @@ class _SavingAccount extends _Account {
       String phoneVisibility = 'contacts',
       bool discoverableByPhone = true,
       bool discoverableByName = true,
-      bool directorySyncEnabled = true}) async {
+      bool directorySyncEnabled = true,
+      bool removeAvatar = false}) async {
     savedByName.add(discoverableByName);
     return AccountProfileSaveResult(
         profile: LocalProfile(

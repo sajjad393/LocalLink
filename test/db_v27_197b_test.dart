@@ -11,7 +11,7 @@ void main() {
     final store = _read('lib/core/services/local_store.dart');
 
     test('version 27 with a side table (attachment rows untouched)', () {
-      expect(DatabaseConfig.version, 32); // Bundle G5: v32 = group receipts
+      expect(DatabaseConfig.version, 33); // Bundle G7: v33 = group files Nearby
       expect(store, contains('if (oldVersion < 27) await _upgradeTo27(db);'));
       expect(store, contains('CREATE TABLE IF NOT EXISTS media_state ('));
       for (final c in ['file_id TEXT PRIMARY KEY', 'thumb_path TEXT', 'media_ms INTEGER NOT NULL DEFAULT 0',

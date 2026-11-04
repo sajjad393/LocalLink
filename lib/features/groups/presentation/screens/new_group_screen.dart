@@ -207,6 +207,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                               FriendPickRow(
                                 key: ValueKey('pick_${f.deviceId}'),
                                 name: f.name,
+                                peerId: f.deviceId,
                                 status: PresenceHub.instance.statusOf(f.deviceId),
                                 picked: _isPicked(f),
                                 onTap: () => _toggle(f),
@@ -245,7 +246,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      AccountAvatar(name: f.name, radius: 23),
+                      AccountAvatar(name: f.name, radius: 23, peerId: f.deviceId),
                       Positioned(
                         right: -2,
                         bottom: -2,
@@ -617,7 +618,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
                   width: 52,
                   child: Column(
                     children: [
-                      AccountAvatar(name: f.name, radius: 20),
+                      AccountAvatar(name: f.name, radius: 20, peerId: f.deviceId),
                       const SizedBox(height: 4),
                       Text(f.name,
                           maxLines: 1,
@@ -668,9 +669,13 @@ class FriendPickRow extends StatelessWidget {
     required this.onTap,
     this.note,
     this.enabled = true,
+    this.peerId,
   });
 
   final String name;
+
+  /// Bundle 204: the friend's phone id (their picture).
+  final String? peerId;
   final PresenceStatus status;
   final bool picked;
   final VoidCallback onTap;
@@ -697,7 +702,7 @@ class FriendPickRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            AccountAvatar(name: name, radius: 21),
+            AccountAvatar(name: name, radius: 21, peerId: peerId),
             const SizedBox(width: 14),
             Expanded(
               child: Column(

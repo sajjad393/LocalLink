@@ -29,7 +29,8 @@ class _Account implements AccountRepositoryContract {
       String phoneVisibility = 'contacts',
       bool discoverableByPhone = true,
       bool discoverableByName = true,
-      bool directorySyncEnabled = true}) async {
+      bool directorySyncEnabled = true,
+      bool removeAvatar = false}) async {
     saves.add((phone: phoneVisibility, byName: discoverableByName));
     profile = LocalProfile(
         userId: 'u1',

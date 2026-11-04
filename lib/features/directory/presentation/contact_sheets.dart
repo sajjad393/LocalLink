@@ -46,12 +46,16 @@ class ContactSheetHeader extends StatelessWidget {
   final bool blocked;
   final Widget? avatar;
 
+  /// Bundle 204: the friend's id (their picture instead of the letter).
+  final String? peerId;
+
   const ContactSheetHeader({
     super.key,
     required this.name,
     this.subtitle = '',
     this.blocked = false,
     this.avatar,
+    this.peerId,
   });
 
   @override
@@ -66,7 +70,7 @@ class ContactSheetHeader extends StatelessWidget {
           avatar ??
               (blocked
                   ? MutedAvatar(name: name, radius: 23)
-                  : AccountAvatar(name: name, radius: 23)),
+                  : AccountAvatar(name: name, radius: 23, peerId: peerId)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -289,7 +293,9 @@ Future<ContactSheetChoice?> showContactActionsSheet(
     key: const Key('contact_actions_sheet'),
     children: [
       ContactSheetHeader(
-          name: name, subtitle: username.isEmpty ? '' : '@$username'),
+          name: name,
+          subtitle: username.isEmpty ? '' : '@$username',
+          peerId: userId),
       Builder(
         builder: (c) => Column(
           mainAxisSize: MainAxisSize.min,

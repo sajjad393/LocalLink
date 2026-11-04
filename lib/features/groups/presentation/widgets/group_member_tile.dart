@@ -24,7 +24,7 @@ class GroupMemberTile extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: LocalLinkSpacing.sm),
       child: ListTile(
-        leading: AccountAvatar(name: label, radius: 22),
+        leading: AccountAvatar(name: label, radius: 22, peerId: member.deviceId),
         title: Text(label),
         subtitle: Text(member.deviceId),
         trailing: isOwner

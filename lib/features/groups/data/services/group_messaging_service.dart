@@ -22,6 +22,10 @@ import 'package:locallink/features/messaging/data/read_receipts/read_receipts_se
 import 'package:locallink/core/models/group_extras.dart';
 import 'package:locallink/features/groups/data/group_extras_book.dart';
 import 'package:locallink/features/groups/data/group_sender_keys.dart';
+import 'package:locallink/features/groups/data/group_nearby_files.dart';
+import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
+import 'package:crypto/crypto.dart' as hash;
+import 'dart:io' show File;
 
 class GroupMessagingService {
   final LocalStore store;
@@ -53,18 +57,26 @@ class GroupMessagingService {
   /// until the group is on the server = the sender's bridge) and, for a
   /// group with a card, also goes to every member Nearby when the server
   /// can't be reached right now.
-  Future<void> _queue(Map<String, dynamic> row) async {
+  Future<void> _queue(Map<String, dynamic> row,
+      {List<GroupNearbyFile> files = const []}) async {
     await store.addGroupOutbox(row);
     final near = nearby;
     final groupId = row['group_id']?.toString() ?? '';
     final body = row['body']?.toString() ?? '';
-    if (near == null || groupId.isEmpty || body.isEmpty) return;
+    // Bundle G7: a photo with no words goes Nearby too.
+    final nearbyFiles = [
+      for (final f in files)
+        if (f.size <= GroupFileWire.maxBytes) f
+    ];
+    if (near == null || groupId.isEmpty) return;
+    if (body.isEmpty && nearbyFiles.isEmpty) return;
     final group = await store.groupById(groupId);
     if (group == null || !group.worksNearby || !group.isActive) return;
     if (group.nearbyOnly || !socket.isConnected) {
       try {
         await near.fanOut(groupId, row['id'].toString(), body,
-            row['created_at']?.toString() ?? '');
+            row['created_at']?.toString() ?? '',
+            files: nearbyFiles);
       } catch (error) {
         AppLogger.warning('GROUP_NEARBY_FANOUT_FAILED', detail: '$error');
       }
@@ -83,10 +95,336 @@ class GroupMessagingService {
       return;
     }
     final existed = (await store.groupMessageById(message.id)) != null;
+    // Bundle G7: a file that came before its message.
+    if (message.attachments.isNotEmpty) {
+      message = await _withEarlyFiles(message);
+    }
     await store.saveGroupMessage(_messageMap(message));
     if (!existed) _incoming.add(message);
+    if (message.attachments.any((a) => (a.localPath ?? '').isEmpty)) {
+      fileWatch.expect(message.id);
+      unawaited(refreshFileKeys?.call().catchError((Object _) {}));
+    }
     if (GroupEvent.isEvent(message.body)) {
       GroupChangeHub.instance.changed(message.groupId);
+    }
+  }
+
+  // ------------------------------------------- Bundle G7: Nearby files
+
+  /// Files that come to me Nearby but don't move: "Tap to download".
+  final GroupFileWatch fileWatch = GroupFileWatch();
+
+  /// Set at start: re-allows a file the user cancelled before (1:1 rule).
+  Future<void> Function(String wireId)? allowIncomingFile;
+
+  /// Set at start: stops a file coming to me.
+  Future<void> Function(String wireId)? cancelIncomingFile;
+
+  Future<GroupMessage> _withEarlyFiles(GroupMessage m) async {
+    final self = store.deviceId ?? '';
+    var changed = false;
+    final out = <Attachment>[];
+    for (final a in m.attachments) {
+      if ((a.localPath ?? '').isNotEmpty) {
+        out.add(a);
+        continue;
+      }
+      final early = await store.directFile(GroupFileWire.wireId(a.id, self));
+      final path = early?['local_path']?.toString() ?? '';
+      if (path.isNotEmpty) {
+        out.add(a.copyWith(localPath: path));
+        changed = true;
+      } else {
+        out.add(a);
+      }
+    }
+    if (!changed) return m;
+    return GroupMessage(
+        id: m.id,
+        groupId: m.groupId,
+        senderId: m.senderId,
+        body: m.body,
+        createdAt: m.createdAt,
+        serverSeq: m.serverSeq,
+        attachments: out,
+        nearbySent: m.nearbySent);
+  }
+
+  /// A file for a group message came to me Nearby (after the 1:1 file code
+  /// saved and locked it). [file]: file_id (wire id), message_id, path,
+  /// sender_id, original_name, content_type, size.
+  Future<bool> receiveNearbyFile(Map<String, dynamic> file) async {
+    final wire = file['file_id']?.toString() ?? '';
+    final messageId = file['message_id']?.toString() ?? '';
+    final path = file['path']?.toString() ?? '';
+    final sender = file['sender_id']?.toString() ?? '';
+    final self = store.deviceId ?? '';
+    if (!GroupFileWire.isWire(wire) || messageId.isEmpty || path.isEmpty) {
+      return false;
+    }
+    if (!GroupFileWire.isFor(wire, self)) {
+      AppLogger.warning('GROUP_FILE_RX_REFUSED', detail: 'why=not_mine');
+      return true;
+    }
+    final fileId = GroupFileWire.fileIdOf(wire);
+    if (GroupFileWire.isPhotoMessage(messageId)) {
+      await _receivePhotoFile(messageId, fileId, path, sender);
+      return true;
+    }
+    final message = await store.groupMessageById(messageId);
+    if (message == null) {
+      // Kept in direct_files; picked up when the message comes.
+      AppLogger.info('GROUP_FILE_RX', detail: 'early=y');
+      return true;
+    }
+    if (message.senderId != sender) {
+      AppLogger.warning('GROUP_FILE_RX_REFUSED', detail: 'why=not_writer');
+      return true;
+    }
+    final has = message.attachments.any((a) => a.id == fileId);
+    if (has) {
+      await store.setGroupAttachmentLocalPath(messageId, fileId, path);
+    } else {
+      // A copy from an old phone had no file list: add the file.
+      final size = int.tryParse(file['size']?.toString() ?? '') ?? 0;
+      final type = file['content_type']?.toString() ?? 'application/octet-stream';
+      await store.saveGroupMessage(_messageMap(GroupMessage(
+          id: message.id,
+          groupId: message.groupId,
+          senderId: message.senderId,
+          body: message.body,
+          createdAt: message.createdAt,
+          serverSeq: message.serverSeq,
+          nearbySent: message.nearbySent,
+          attachments: [
+            ...message.attachments,
+            GroupNearbyFile(
+                    id: fileId,
+                    name: file['original_name']?.toString() ?? 'attachment',
+                    type: type.contains('/') ? type : 'application/octet-stream',
+                    size: size)
+                .toAttachment(localPath: path),
+          ])));
+    }
+    final updated = await store.groupMessageById(messageId);
+    if (updated != null) {
+      if (updated.attachments.every((a) => (a.localPath ?? '').isNotEmpty)) {
+        fileWatch.done(messageId);
+      } else {
+        fileWatch.moved(messageId);
+      }
+      _incoming.add(updated);
+    }
+    AppLogger.info('GROUP_FILE_RX', detail: 'msg=${_short(messageId)}');
+    return true;
+  }
+
+  static String _short(String id) =>
+      id.length <= 6 ? id : id.substring(id.length - 6);
+
+  /// Tap to download on a group file: ask the writer again (Nearby), or
+  /// false when this is not a group message.
+  Future<bool> requestFileAgain(String messageId, String attachmentId) async {
+    final m = await store.groupMessageById(messageId);
+    final near = nearby;
+    if (m == null || near == null) return false;
+    final self = store.deviceId ?? '';
+    if (m.senderId == self) return false;
+    try {
+      await allowIncomingFile?.call(GroupFileWire.wireId(attachmentId, self));
+    } catch (_) {}
+    final ok = await near.sendFileNeed(m.groupId, m.id, attachmentId, m.senderId);
+    if (ok) {
+      MediaTransferActions.instance.clearCancelled(messageId);
+      fileWatch.expect(messageId);
+    }
+    return ok;
+  }
+
+  /// X on a group file coming to me. False = not a group message.
+  Future<bool> cancelFile(String messageId, String attachmentId) async {
+    final m = await store.groupMessageById(messageId);
+    if (m == null) return false;
+    MediaTransferActions.instance.markCancelled(messageId);
+    try {
+      await cancelIncomingFile
+          ?.call(GroupFileWire.wireId(attachmentId, store.deviceId ?? ''));
+    } catch (_) {}
+    return true;
+  }
+
+  /// The sender's own copy of a file (for [GroupFileSender]).
+  Future<PickedFile?> fileSource(String msgId, String fileId) async {
+    if (GroupFileWire.isPhotoMessage(msgId)) {
+      final gid = GroupFileWire.photoGid(msgId);
+      final v = GroupFileWire.photoVersion(fileId);
+      final f = GroupPhotoBook.instance.fileFor(gid, v);
+      if (f == null || !await f.exists()) return null;
+      return PickedFile(
+          path: f.path, name: 'group.jpg', contentType: 'image/jpeg', size: await f.length());
+    }
+    final m = await store.groupMessageById(msgId);
+    String path = '';
+    Attachment? att;
+    for (final a in m?.attachments ?? const <Attachment>[]) {
+      if (a.id == fileId) {
+        att = a;
+        path = a.localPath ?? '';
+      }
+    }
+    if (path.isEmpty) {
+      for (final row in await store.pendingGroupAttachments(msgId)) {
+        if (row['id']?.toString() == fileId) {
+          path = row['local_path']?.toString() ?? '';
+        }
+      }
+    }
+    if (att == null || path.isEmpty) return null;
+    if (!await File(path).exists()) {
+      // A locked copy: open it for sending (like 1:1).
+      final locked = path.endsWith('.enc') ? path : '$path.enc';
+      if (!await File(locked).exists()) return null;
+      try {
+        final ext = att.originalName.contains('.')
+            ? '.${att.originalName.split('.').last}'
+            : '.bin';
+        path = await files.materializeForDisplay(locked, extension: ext);
+      } catch (_) {
+        return null;
+      }
+    }
+    return PickedFile(
+        path: path,
+        name: att.originalName,
+        contentType: att.contentType,
+        size: att.size);
+  }
+
+  /// Sends one of my files to one member (the 1:1 file road).
+  Future<void> sendFileTo({
+    required String memberId,
+    required String messageId,
+    required String wireId,
+    required PickedFile file,
+  }) =>
+      files.sendDirectFile(
+          recipientId: memberId, messageId: messageId, fileId: wireId, file: file);
+
+  /// A message of mine changed its file rows (ring / ticks).
+  Future<void> fileRowsChanged(String messageId) async {
+    if (GroupFileWire.isPhotoMessage(messageId)) return;
+    final m = await store.groupMessageById(messageId);
+    if (m != null) _incoming.add(m);
+  }
+
+  // ---------------------------------- Bundle G7: group photo, no internet
+
+  static String _photoExpectKey(String gid) => 'gphoto_expect_$gid';
+  static String _photoPendingKey(String gid) => 'gphoto_pending_$gid';
+
+  /// An admin's signed photo note came (checked by the Nearby service).
+  Future<bool> photoNote(String gid, int version, String hash, String by) async {
+    final g = await store.groupById(gid);
+    if (g == null || version <= g.photoVersion) return false;
+    if (hash.isEmpty) {
+      await store.saveGroup({'id': gid, 'photo_version': version});
+      GroupPhotoBook.instance.forget(gid);
+      GroupChangeHub.instance.changed(gid);
+      AppLogger.info('GROUP_PHOTO_NEARBY', detail: 'removed v=$version');
+      return true;
+    }
+    await store.writeSetting(_photoExpectKey(gid), '$version|$hash|$by');
+    return true;
+  }
+
+  Future<void> _receivePhotoFile(
+      String messageId, String fileId, String path, String sender) async {
+    final gid = GroupFileWire.photoGid(messageId);
+    final v = GroupFileWire.photoVersion(fileId);
+    final expect = (await store.readSetting(_photoExpectKey(gid)) ?? '').split('|');
+    String? view;
+    try {
+      if (expect.length != 3 || int.tryParse(expect[0]) != v || expect[2] != sender) {
+        AppLogger.warning('GROUP_PHOTO_REFUSED', detail: 'why=not_expected');
+        return;
+      }
+      List<int> bytes;
+      if (await File(path).exists() && !path.endsWith('.enc')) {
+        bytes = await File(path).readAsBytes();
+      } else {
+        view = await files.materializeForDisplay(path, extension: '.jpg');
+        bytes = await File(view).readAsBytes();
+      }
+      if (bytes.length > 256 * 1024 ||
+          hash.sha256.convert(bytes).toString() != expect[1]) {
+        AppLogger.warning('GROUP_FILE_BAD_HASH', detail: 'photo=y');
+        return;
+      }
+      final g = await store.groupById(gid);
+      if (g == null || v <= g.photoVersion) return;
+      await GroupPhotoBook.instance.put(gid, v, bytes);
+      await store.saveGroup({'id': gid, 'photo_version': v});
+      await store.writeSetting(_photoExpectKey(gid), '');
+      GroupChangeHub.instance.changed(gid);
+      AppLogger.info('GROUP_PHOTO_NEARBY', detail: 'got v=$v');
+    } catch (error) {
+      AppLogger.warning('GROUP_PHOTO_REFUSED', detail: 'why=$error');
+    } finally {
+      try {
+        await files.deleteLocalFile(path);
+        if (view != null) await files.deleteLocalFile(view);
+      } catch (_) {}
+    }
+  }
+
+  /// Bundle G7: set / remove the photo of a group made with no internet
+  /// (the server gets it after the bridge).
+  Future<void> setPhotoNearby(String gid, List<int>? jpeg) async {
+    final near = nearby;
+    final g = await store.groupById(gid);
+    if (near == null || g == null) throw StateError('GROUP_NOT_FOUND');
+    if (!await near.canSetPhoto(gid)) throw StateError('GROUP_NOT_ADMIN');
+    final version = g.photoVersion + 1;
+    if (jpeg == null) {
+      await store.saveGroup({'id': gid, 'photo_version': version});
+      GroupPhotoBook.instance.forget(gid);
+      await store.writeSetting(_photoPendingKey(gid), 'removed');
+      await near.sharePhoto(gid, version, '', 0);
+    } else {
+      await GroupPhotoBook.instance.put(gid, version, jpeg);
+      await store.saveGroup({'id': gid, 'photo_version': version});
+      await store.writeSetting(_photoPendingKey(gid), '$version');
+      await near.sharePhoto(
+          gid, version, hash.sha256.convert(jpeg).toString(), jpeg.length);
+    }
+    GroupChangeHub.instance.changed(gid);
+  }
+
+  /// After the bridge: the photo I set with no internet goes on the server.
+  Future<void> uploadPendingPhotos() async {
+    for (final g in await store.localGroups()) {
+      if (g.nearbyOnly) continue;
+      final pending = await store.readSetting(_photoPendingKey(g.id)) ?? '';
+      if (pending.isEmpty) continue;
+      try {
+        if (pending == 'removed') {
+          await api.removeGroupPhoto(g.id);
+        } else {
+          final f = GroupPhotoBook.instance.fileFor(g.id, int.tryParse(pending) ?? 0);
+          if (f != null && await f.exists()) {
+            final version = await api.setGroupPhoto(g.id, await f.readAsBytes());
+            if (version > g.photoVersion) {
+              await GroupPhotoBook.instance.put(g.id, version, await f.readAsBytes());
+              await store.saveGroup({'id': g.id, 'photo_version': version});
+            }
+          }
+        }
+        await store.writeSetting(_photoPendingKey(g.id), '');
+        AppLogger.info('GROUP_PHOTO_UPLOADED', detail: 'after=bridge');
+      } catch (error) {
+        AppLogger.warning('GROUP_PHOTO_UPLOAD_FAILED', detail: '$error');
+      }
     }
   }
 
@@ -123,6 +461,10 @@ class GroupMessagingService {
     } catch (error) {
       AppLogger.warning('GROUP_BRIDGE_FAILED', detail: '$error');
     }
+    // Bundle G7: a photo set with no internet goes on the server now.
+    try {
+      await uploadPendingPhotos();
+    } catch (_) {}
   }
 
   /// Bundle G3: a quiet note through the server only (a group card for a
@@ -357,9 +699,42 @@ class GroupMessagingService {
 
   /// "I am typing" (server road only; at most one per 3 s from the composer).
   void sendTyping(String gid, bool on) {
-    if (gid.isEmpty || !socket.isConnected) return;
-    socket.send({'type': 'group_typing', 'group_id': gid, 'enabled': on});
+    if (gid.isEmpty) return;
+    unawaited(_sendTyping(gid, on));
   }
+
+  /// Bundle G7: Nearby (live lock) when there is no server road.
+  Future<void> _sendTyping(String gid, bool on) async {
+    final group = await store.groupById(gid);
+    final onServer = group == null || !group.nearbyOnly;
+    if (socket.isConnected && onServer) {
+      socket.send({'type': 'group_typing', 'group_id': gid, 'enabled': on});
+      return;
+    }
+    final near = nearby;
+    if (near == null || group == null || !group.worksNearby || !group.isActive) {
+      return;
+    }
+    try {
+      final n = await near.sendTyping(gid, on);
+      if (on && n > 0 && _typingLogged.add(gid)) {
+        AppLogger.info('GROUP_TYPING_NEARBY', detail: 'members=$n');
+      }
+    } catch (_) {}
+  }
+
+  final Set<String> _typingLogged = <String>{};
+
+  /// Bundle G7: a member typing Nearby (same typing line as Online).
+  Future<void> typingNearby(String gid, String member, bool on) async {
+    if (member.isEmpty || member == (store.deviceId ?? '')) return;
+    if (await store.isBlockedPeer(member)) return;
+    typingBook.note(gid, member, on);
+  }
+
+  /// Bundle G7: set at start - pushes the pair file keys (so a file from a
+  /// member who is not a friend can be opened).
+  Future<void> Function()? refreshFileKeys;
 
   void start() {
     _socketSub ??= socket.messages.listen(_onMessage);
@@ -454,19 +829,33 @@ class GroupMessagingService {
     if (group == null) throw Exception('Group not found');
     final id = _newId();
     final now = DateTime.now().toUtc().toIso8601String();
-    await _queue({
-      'id': id,
-      'group_id': groupId,
-      'body': body,
-      'created_at': now,
-      'status': 'queued',
-    });
+    // Bundle G7: my own copy of each file in app storage (like 1:1), so my
+    // bubble shows it at once and it can go to members Nearby.
+    final mine = <Attachment>[];
     for (final file in attachments) {
       final pendingId = _newId();
-      await store.addPendingGroupAttachment(id: pendingId, messageId: id, file: file);
+      var staged = file;
+      try {
+        final path = await files.stageOutgoingFile(file: file, fileId: pendingId);
+        staged = PickedFile(
+            path: path,
+            name: file.name,
+            contentType: file.contentType,
+            size: file.size,
+            sourceUri: file.sourceUri);
+      } catch (_) {}
+      await store.addPendingGroupAttachment(id: pendingId, messageId: id, file: staged);
       // Bundle 197b: Gallery link + small picture (moved to the server's
       // file id when the group message is accepted).
-      MediaBook.instance.staged(pendingId, file.sourceUri, file.path, file.contentType, file.name);
+      MediaBook.instance.staged(pendingId, staged.sourceUri, staged.path, staged.contentType, staged.name);
+      mine.add(GroupNearbyFile(
+              id: pendingId,
+              name: staged.name,
+              type: staged.contentType.contains('/')
+                  ? staged.contentType
+                  : 'application/octet-stream',
+              size: staged.size)
+          .toAttachment(localPath: staged.path));
     }
     final local = GroupMessage(
       id: id,
@@ -475,8 +864,16 @@ class GroupMessagingService {
       body: body,
       createdAt: now,
       serverSeq: 0,
+      attachments: mine,
     );
     await store.saveGroupMessage(_messageMap(local));
+    await _queue({
+      'id': id,
+      'group_id': groupId,
+      'body': body,
+      'created_at': now,
+      'status': 'queued',
+    }, files: [for (final a in mine) GroupNearbyFile.fromAttachment(a)]);
     _incoming.add(local);
     await flush();
     return local;
@@ -504,7 +901,23 @@ class GroupMessagingService {
         final pending = await store.pendingGroupAttachments(id);
         final remoteIds = <String>[];
         var uploadFailed = false;
-        for (final attachment in pending) {
+        // Bundle G7 (P1): every member already got my files Nearby - no
+        // upload (same as 1:1). Words still go; a photo alone stays local.
+        var skipUpload = false;
+        if (pending.isNotEmpty &&
+            group != null &&
+            group.worksNearby &&
+            await _allHaveNearby(groupId, id, pending)) {
+          if (body.isEmpty) {
+            await store.removeGroupOutbox(id);
+            await store.removePendingGroupAttachments(id);
+            AppLogger.info('GROUP_FILE_UPLOAD_SKIPPED', detail: 'all_have=y words=n');
+            continue;
+          }
+          skipUpload = true;
+          AppLogger.info('GROUP_FILE_UPLOAD_SKIPPED', detail: 'all_have=y words=y');
+        }
+        for (final attachment in skipUpload ? const <Map<String, dynamic>>[] : pending) {
           final remote = attachment['remote_file_id']?.toString();
           if (remote != null && remote.isNotEmpty) {
             remoteIds.add(remote);
@@ -545,6 +958,25 @@ class GroupMessagingService {
       }
     } finally {
       _flushing = false;
+    }
+  }
+
+  Future<bool> _allHaveNearby(
+      String gid, String id, List<Map<String, dynamic>> pending) async {
+    final sender = nearby?.files;
+    if (sender == null) return false;
+    try {
+      final c = await nearby!.card(gid);
+      if (c == null) return false;
+      final self = store.deviceId ?? '';
+      return await sender.allDelivered(id, [
+        for (final m in c.members)
+          if (m.id != self) m.id
+      ], fileIds: [
+        for (final row in pending) row['id']?.toString() ?? ''
+      ]);
+    } catch (_) {
+      return false;
     }
   }
 
@@ -989,7 +1421,6 @@ class GroupMessagingService {
       final id = data['id']?.toString();
       if (id == null || id.isEmpty) return;
       final pending = await store.pendingGroupAttachments(id);
-      final localPaths = pending.map((row) => row['local_path']?.toString()).whereType<String>().where((path) => path.isNotEmpty).toList();
       final echoed = GroupMessage.fromJson(data);
       // Bundle G6: my key note / key ask reached the server.
       if (GroupSenderKeys.isKeys(echoed.body)) {
@@ -1029,7 +1460,8 @@ class GroupMessagingService {
       await store.saveGroupMessage(_messageMap(message));
       await store.removePendingGroupAttachments(id);
       await store.removeGroupOutbox(id);
-      for (final path in localPaths) { await files.deleteLocalFile(path); }
+      // Bundle G7: my own copies stay (shown in my bubble; Nearby sends to
+      // members may still be running) - same as 1:1.
       _incoming.add(message);
       return;
     }

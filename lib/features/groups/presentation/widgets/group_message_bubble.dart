@@ -218,7 +218,8 @@ class GroupMessageBubble extends StatelessWidget {
                   child: AccountAvatar(
                       key: const ValueKey('group_sender_photo'),
                       name: senderName,
-                      radius: 14),
+                      radius: 14,
+                      peerId: message.senderId),
                 )
               : null,
         ),

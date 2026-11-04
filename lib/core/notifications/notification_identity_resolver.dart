@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:locallink/core/services/local_store.dart';
+import 'package:locallink/features/directory/data/peer_photo_book.dart';
 
 final class NotificationIdentity {
   final String displayName;
@@ -34,7 +35,8 @@ final class NotificationIdentityResolver {
       return NotificationIdentity(
         displayName: name,
         initials: _initials(name),
-        localAvatarPath: _existingLocalFile(profile['local_avatar_path']?.toString()),
+        localAvatarPath: await _friendPicture(profile) ??
+            _existingLocalFile(profile['local_avatar_path']?.toString()),
       );
     }
 
@@ -57,13 +59,29 @@ final class NotificationIdentityResolver {
         final rowName = row['name']?.toString().trim() ?? '';
         final name = await store.peerDisplayName(senderId) ??
             (rowName.isNotEmpty ? rowName : 'Unknown user');
+        final profile = await store.directoryProfileByDeviceId(senderId);
         return NotificationIdentity(
           displayName: name,
           initials: _initials(name),
+          localAvatarPath: profile == null ? null : await _friendPicture(profile),
         );
       }
     }
     return resolvePeer(senderId);
+  }
+
+  /// Bundle 204 (mock 204 A8): a friend's picture for the notification
+  /// (null = no picture: the notification has no right-side picture).
+  Future<String?> _friendPicture(Map<String, dynamic> profile) async {
+    try {
+      final code = ProfilePhotoCode.parse(profile['avatar_url']?.toString());
+      final user = profile['user_id']?.toString() ?? '';
+      if (code == null || user.isEmpty) return null;
+      if (!await store.isContact(user) || await store.isBlocked(user)) return null;
+      return (await PeerPhotoBook.instance.freshFileForHash(code.hash))?.path;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String> groupName(String groupId) async {

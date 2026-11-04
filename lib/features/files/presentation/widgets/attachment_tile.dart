@@ -382,7 +382,10 @@ class _AttachmentTileState extends State<AttachmentTile> {
   /// Bundle 150: still coming over Wi-Fi — no local file yet and no server
   /// link, so a server download can only fail ("Something went wrong").
   bool get _arrivingDirect {
-    if (widget.uploading || widget.groupMessageId != null) return false;
+    if (widget.uploading) return false;
+    // Bundle G7: a member's group file coming Nearby (no server link yet)
+    // - same ring / Tap to download as 1:1. My own group files never.
+    if (widget.groupMessageId != null && widget.mine) return false;
     final local = _localPath;
     if (local != null && local.isNotEmpty) return false;
     final url = widget.attachment.downloadUrl;

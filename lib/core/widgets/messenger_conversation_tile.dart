@@ -82,6 +82,7 @@ class MessengerConversationTile extends StatelessWidget {
             name: title,
             localPath: avatarPath ?? '',
             radius: 24,
+            peerId: device?.id, // Bundle 204
           );
 
     if (blocked) return _blockedTile(context);

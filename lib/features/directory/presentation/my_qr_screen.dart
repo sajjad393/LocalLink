@@ -15,6 +15,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/directory/data/peer_photo_book.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 
@@ -60,8 +61,10 @@ class MyQrScreen extends StatelessWidget {
         ? profile.displayName
         : (profile.username.isNotEmpty ? profile.username : 'LinkUp user');
     final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
-    final hasAvatar =
-        profile.avatarUrl.isNotEmpty && File(profile.avatarUrl).existsSync();
+    // Bundle 204: my picture (avatar_url is now a picture code, not a path).
+    final ownPhoto = PeerPhotoBook.instance.fileFor(profile.userId) ??
+        PeerPhotoBook.instance.fileFor(profile.deviceId);
+    final hasAvatar = ownPhoto != null;
     return Scaffold(
       appBar: AppBar(
         title: const Text('My QR Code'),
@@ -111,7 +114,7 @@ class MyQrScreen extends StatelessWidget {
                 username: profile.username,
                 initial: initial,
                 hasAvatar: hasAvatar,
-                avatarPath: profile.avatarUrl,
+                avatarPath: ownPhoto?.path ?? '',
                 canScan: repository != null,
                 onScan: repository == null
                     ? null

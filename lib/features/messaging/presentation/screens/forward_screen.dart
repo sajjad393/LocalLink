@@ -279,7 +279,7 @@ class _ForwardScreenState extends State<ForwardScreen> {
       onTap: () => _toggle(t),
       leading: t.isGroup
           ? const GroupAvatar(radius: 21)
-          : AccountAvatar(name: t.name, radius: 21),
+          : AccountAvatar(name: t.name, radius: 21, peerId: t.id),
       title: Text(t.name,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,

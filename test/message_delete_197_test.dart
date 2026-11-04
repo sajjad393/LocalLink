@@ -347,7 +347,12 @@ void main() {
       final m32 = s.indexOf('Future<void> _upgradeTo32(');
       final up32 = s.substring(m32, s.indexOf('\n  }\n', m32));
       expect(up32, isNot(contains('TABLE messages')));
-      expect(s, isNot(contains('_upgradeTo33')));
+      // Bundle G7: v33 only adds group_file_sends + group_copies columns.
+      final m33 = s.indexOf('Future<void> _upgradeTo33(');
+      final up33 = s.substring(m33, s.indexOf('\n  }\n', m33));
+      expect(up33, isNot(contains('TABLE messages')));
+      expect(up33, isNot(contains("'messages'")));
+      expect(s, isNot(contains('_upgradeTo34')));
       expect(s, contains('CREATE TABLE IF NOT EXISTS media_state ('));
     });
   });

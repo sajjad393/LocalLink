@@ -1,5 +1,6 @@
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/services/local_store.dart';
+import 'package:locallink/features/groups/data/group_nearby_files.dart';
 
 /// Bundle G3: a friend's keys and name (for a group card).
 class GroupFriendKeys {
@@ -22,6 +23,8 @@ class GroupCopy {
     required this.body,
     required this.sig,
     required this.keptAt,
+    this.att = '',
+    this.sig2 = '',
   });
   final String id;
   final String gid;
@@ -31,6 +34,11 @@ class GroupCopy {
   final String sig;
   final int keptAt;
 
+  /// Bundle G7: the file list (JSON, '' = none) and the writer's signature
+  /// over text + files ('llgm2').
+  final String att;
+  final String sig2;
+
   Map<String, Object?> toRow() => {
         'id': id,
         'group_id': gid,
@@ -39,6 +47,8 @@ class GroupCopy {
         'body': body,
         'sig': sig,
         'kept_at': keptAt,
+        'att': att,
+        'sig2': sig2,
       };
 
   static GroupCopy fromRow(Map<String, dynamic> r) => GroupCopy(
@@ -49,6 +59,8 @@ class GroupCopy {
         body: r['body']?.toString() ?? '',
         sig: r['sig']?.toString() ?? '',
         keptAt: int.tryParse(r['kept_at']?.toString() ?? '') ?? 0,
+        att: r['att']?.toString() ?? '',
+        sig2: r['sig2']?.toString() ?? '',
       );
 }
 
@@ -257,4 +269,25 @@ class LocalGroupNearbyStore
       return const [];
     }
   }
+}
+
+/// Bundle G7: the sender's per-member file rows in the real database.
+class LocalGroupFileSendStore implements GroupFileSendStore {
+  LocalGroupFileSendStore(this.store);
+  final LocalStore store;
+
+  @override
+  Future<void> putSends(List<GroupFileSend> rows) =>
+      store.putGroupFileSends([for (final r in rows) r.toRow()]);
+  @override
+  Future<List<GroupFileSend>> sends({String? msgId, String? memberId}) async => [
+        for (final r in await store.groupFileSends(msgId: msgId, memberId: memberId))
+          GroupFileSend.fromRow(r)
+      ];
+  @override
+  Future<void> updateSend(GroupFileSend row) =>
+      store.updateGroupFileSend(row.toRow());
+  @override
+  Future<void> purgeSends(int olderThanMs) =>
+      store.purgeGroupFileSends(olderThanMs);
 }

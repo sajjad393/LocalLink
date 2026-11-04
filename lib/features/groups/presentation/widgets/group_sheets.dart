@@ -474,7 +474,7 @@ class _ReactionsSheetState extends State<_ReactionsSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
       child: Row(
         children: [
-          AccountAvatar(name: name, radius: 17),
+          AccountAvatar(name: name, radius: 17, peerId: r.reactorId),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

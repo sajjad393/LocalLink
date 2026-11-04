@@ -16,9 +16,13 @@ class IncomingVoiceCallBody extends StatelessWidget {
     required this.statusText,
     required this.onAnswer,
     required this.onDecline,
+    this.peerId,
   });
 
   final String peerName;
+
+  /// Bundle 204: the caller's phone id (their picture, big).
+  final String? peerId;
   final String statusText;
   final VoidCallback onAnswer;
   final VoidCallback onDecline;
@@ -55,7 +59,7 @@ class IncomingVoiceCallBody extends StatelessWidget {
             color: Colors.white.withValues(alpha: 0.06),
             shape: BoxShape.circle,
           ),
-          child: AccountAvatar(name: peerName, radius: radius, iconSize: radius * .72),
+          child: AccountAvatar(name: peerName, radius: radius, iconSize: radius * .72, peerId: peerId),
         ),
         const SizedBox(height: 28),
         Text(

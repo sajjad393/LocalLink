@@ -97,7 +97,7 @@ class CallHistoryTile extends StatelessWidget {
           ? MutedAvatar(name: title, radius: 21)
           : PresenceAvatar(
         // Bundle 137: presence badge overlay, same as the chat header avatar.
-        avatar: AccountAvatar(name: title, radius: 21),
+        avatar: AccountAvatar(name: title, radius: 21, peerId: call.peerId(selfId)),
         device: Device(
             id: call.peerId(selfId),
             name: title,

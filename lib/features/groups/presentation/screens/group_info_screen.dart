@@ -949,7 +949,7 @@ class _MemberRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
           children: [
-            AccountAvatar(name: name, radius: 21),
+            AccountAvatar(name: name, radius: 21, peerId: member.deviceId),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -1314,7 +1314,7 @@ class _GroupAddMembersScreenState extends State<GroupAddMembersScreen> {
                             width: 52,
                             child: Column(
                               children: [
-                                AccountAvatar(name: f.name, radius: 23),
+                                AccountAvatar(name: f.name, radius: 23, peerId: f.deviceId),
                                 const SizedBox(height: 4),
                                 Text(f.name,
                                     maxLines: 1,
@@ -1344,6 +1344,7 @@ class _GroupAddMembersScreenState extends State<GroupAddMembersScreen> {
                           FriendPickRow(
                             key: ValueKey('add_pick_${f.deviceId}'),
                             name: f.name,
+                            peerId: f.deviceId,
                             status: PresenceHub.instance.statusOf(f.deviceId),
                             picked: _isPicked(f),
                             enabled: !widget.memberIds.contains(f.deviceId),

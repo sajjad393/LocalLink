@@ -539,7 +539,10 @@ class SealingPeerTransport implements PeerTransportContract {
         recipientId: recipientId,
         mine: mine.first,
         theirPublic: theirs,
-        outerType: MessageSealService.sealedType,
+        // Bundle G7: "typing" is live only (never queued or kept).
+        outerType: payload['type'] == 'group_typing'
+            ? MessageSealService.sealedLiveType
+            : MessageSealService.sealedType,
       );
       sealed[strangerKeyField] =
           base64Url.encode(mine.first.publicKey).replaceAll('=', '');
@@ -940,6 +943,17 @@ class SealingPeerTransport implements PeerTransportContract {
       AppLogger.info('LINK_AUTH', detail: 'keys pushed contacts=${map.length}');
     } catch (error) {
       AppLogger.warning('LINK_AUTH', detail: 'keys push failed error=$error');
+    }
+  }
+
+  /// Bundle G7: file lock keys for group members who are not friends.
+  Future<bool> pushPeerFileKeys(Map<String, Map<String, String>> keys) async {
+    final base = inner;
+    if (base is! WifiDirectTransportService) return false;
+    try {
+      return await base.updatePeerFileKeys(keys);
+    } catch (_) {
+      return false;
     }
   }
 

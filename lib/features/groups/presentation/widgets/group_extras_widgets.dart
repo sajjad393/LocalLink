@@ -492,7 +492,9 @@ class GroupPollView extends StatelessWidget {
                                     Border.all(color: Colors.white, width: 1.5),
                               ),
                               child: AccountAvatar(
-                                  name: nameOf(faces[f]), radius: 9),
+                                  name: nameOf(faces[f]),
+                                  radius: 9,
+                                  peerId: faces[f]),
                             ),
                           ),
                       ]),
@@ -581,7 +583,8 @@ Future<void> showPollVotesSheet(
             key: ValueKey('poll_votes_row_${i}_$v'),
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
             child: Row(children: [
-              AccountAvatar(name: v == self ? nameOf(v) : name, radius: 16),
+              AccountAvatar(
+                  name: v == self ? nameOf(v) : name, radius: 16, peerId: v),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(name,

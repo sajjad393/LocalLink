@@ -222,6 +222,11 @@ class BackgroundChannels(
                 val json = call.argument<String>("link_keys").orEmpty()
                 background("link-keys", result) { LocalLinkTransportService.updateLinkKeys(json) }
             }
+            // Bundle G7: file lock keys for group members who are not friends.
+            "updatePeerFileKeys" -> {
+                val json = call.argument<String>("peer_file_keys").orEmpty()
+                background("peer-file-keys", result) { LocalLinkTransportService.updatePeerFileKeys(json) }
+            }
             "send" -> {
                 val target = call.argument<String>("recipient_id")?.trim().orEmpty()
                 val payload = mapToPayload(call.argument<Map<*, *>>("payload"))

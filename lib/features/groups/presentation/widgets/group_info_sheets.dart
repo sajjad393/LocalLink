@@ -205,7 +205,7 @@ Future<GroupMemberChoice?> showGroupMemberSheet(
           padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
           child: Row(
             children: [
-              AccountAvatar(name: name, radius: 23),
+              AccountAvatar(name: name, radius: 23, peerId: member.deviceId),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -293,7 +293,7 @@ Future<void> showGroupMemberProfile(BuildContext context,
     (c) {
       final colors = Theme.of(c).colorScheme;
       return [
-        Center(child: AccountAvatar(name: name, radius: 44)),
+        Center(child: AccountAvatar(name: name, radius: 44, peerId: member.deviceId)),
         const SizedBox(height: 12),
         Text(name,
             textAlign: TextAlign.center,

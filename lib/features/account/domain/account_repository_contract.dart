@@ -7,7 +7,7 @@ abstract interface class AccountRepositoryContract {
   Future<LocalProfile?> cachedProfile();
   Future<LocalProfile> fetchProfile({bool downloadAvatar = true});
   Future<AccountProfileLoadResult> loadProfile();
-  Future<AccountProfileSaveResult> saveProfile({required String displayName, required String username, File? avatarFile, String phoneNumber = '', String phoneVisibility = 'contacts', bool discoverableByPhone = true, bool discoverableByName = true, bool directorySyncEnabled = true});
+  Future<AccountProfileSaveResult> saveProfile({required String displayName, required String username, File? avatarFile, String phoneNumber = '', String phoneVisibility = 'contacts', bool discoverableByPhone = true, bool discoverableByName = true, bool directorySyncEnabled = true, bool removeAvatar = false});
   Future<bool> syncPendingProfile();
   Future<List<Device>> trustedDevices();
   Future<void> revokeDevice(String deviceId);

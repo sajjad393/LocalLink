@@ -41,6 +41,7 @@ final class AccountBloc extends Cubit<AccountState> {
     bool discoverableByPhone = true,
     bool discoverableByName = true,
     bool directorySyncEnabled = true,
+    bool removeAvatar = false,
   }) async {
     if (isClosed) return false;
     emit(state.copyWith(isSaving: true, clearError: true));
@@ -54,6 +55,7 @@ final class AccountBloc extends Cubit<AccountState> {
         discoverableByPhone: discoverableByPhone,
         discoverableByName: discoverableByName,
         directorySyncEnabled: directorySyncEnabled,
+        removeAvatar: removeAvatar,
       );
       if (isClosed) return result.synced;
       emit(state.copyWith(profile: result.profile, isSaving: false));

@@ -65,7 +65,7 @@ class GroupMessageInfoBody extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
           child: Row(
             children: [
-              AccountAvatar(name: p.name, radius: 16),
+              AccountAvatar(name: p.name, radius: 16, peerId: p.deviceId),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(p.name,

@@ -24,12 +24,17 @@ final class GroupRepository implements GroupRepositoryContract {
       required LocalStore store,
       Future<void> Function(String path)? deleteFile,
       GroupNearbyService? nearby,
-      void Function(List<String> memberIds)? searchRound})
+      void Function(List<String> memberIds)? searchRound,
+      Future<void> Function(String groupId, List<int>? jpeg)? photoNearby})
       : _api = api,
         _store = store,
         _deleteFile = deleteFile,
         _nearby = nearby,
-        _searchRound = searchRound;
+        _searchRound = searchRound,
+        _photoNearby = photoNearby;
+
+  /// Bundle G7: group photo for a group made with no internet.
+  final Future<void> Function(String groupId, List<int>? jpeg)? _photoNearby;
 
   /// Bundle G3: the group has a card (works Nearby).
   Future<LocalGroup?> _cardGroup(String groupId) async {
@@ -406,9 +411,23 @@ final class GroupRepository implements GroupRepositoryContract {
   Future<void> setPhoto(String groupId, List<int>? jpeg) async {
     final card = await _cardGroup(groupId);
     if (card != null && card.nearbyOnly) {
-      // Bundle G3: photos travel through the server only.
-      throw const GroupActionException(
-          'GROUP_NEEDS_ONLINE', 'The group photo can be set when Online.');
+      // Bundle G7: the photo goes to the members Nearby (the server gets it
+      // after the bridge).
+      final nearbyPhoto = _photoNearby;
+      if (nearbyPhoto == null) {
+        throw const GroupActionException(
+            'GROUP_NEEDS_ONLINE', 'The group photo can be set when Online.');
+      }
+      try {
+        await nearbyPhoto(groupId, jpeg);
+      } on StateError catch (e) {
+        if (e.message == 'GROUP_NOT_ADMIN') {
+          throw const GroupActionException(
+              'GROUP_NOT_ADMIN', 'Only admins can change the group photo.');
+        }
+        rethrow;
+      }
+      return;
     }
     if (jpeg == null) {
       final version = await _api.removeGroupPhoto(groupId);

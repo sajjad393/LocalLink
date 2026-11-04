@@ -153,8 +153,35 @@ class ReliableMessagingService {
     return true;
   }
 
+  /// Bundle G7: group files over Nearby (set by the app; null = off).
+  /// [onGroupFile] gets a saved + locked file whose id is a group wire id
+  /// (`<fileId>.g<8 hex>`); true = handled. The other two answer the
+  /// bubble's Tap to download / X for group messages.
+  Future<bool> Function(Map<String, dynamic> file)? onGroupFile;
+
+  /// Bundle 204: a friend's profile picture came Nearby (set by the app;
+  /// true = handled, it never becomes a chat file).
+  Future<bool> Function({
+    required String fileId,
+    required String messageId,
+    required String senderId,
+    required String path,
+  })? onProfilePhotoFile;
+  Future<bool> Function(String messageId, String attachmentId)? groupMediaResend;
+  Future<bool> Function(String messageId, String attachmentId)? groupMediaCancel;
+  static final RegExp _groupWire = RegExp(r'\.g[0-9a-f]{8}$');
+
   /// Receiver pressed X: stop receiving and tell the sender to stop.
   Future<bool> cancelIncomingMedia(String messageId, String attachmentId) async {
+    // Bundle G7: a group file (not a 1:1 message).
+    final groupCancel = groupMediaCancel;
+    if (groupCancel != null && await store.messageById(messageId) == null) {
+      if (await groupCancel(messageId, attachmentId)) {
+        MediaProgressHub.instance.clear(messageId);
+        AppLogger.info('MEDIA_RECEIVE_CANCELLED', detail: 'id=$messageId group=y');
+        return true;
+      }
+    }
     MediaTransferActions.instance.markCancelled(messageId);
     try {
       await files.cancelDirectFile(attachmentId);
@@ -170,6 +197,10 @@ class ReliableMessagingService {
   /// Receiver tapped "Tap to download" on a cancelled nearby file.
   Future<bool> requestMediaResend(String messageId, String attachmentId) async {
     final message = await store.messageById(messageId);
+    // Bundle G7: a group file - ask the group's writer.
+    if (message == null && groupMediaResend != null) {
+      return await groupMediaResend!(messageId, attachmentId);
+    }
     final peer = message?.senderId ?? '';
     if (peer.isEmpty || peer == store.deviceId) return false;
     try {
@@ -2148,6 +2179,22 @@ class ReliableMessagingService {
         return;
       }
 
+      // Bundle 204: a friend's profile picture (not a chat file).
+      final photo = onProfilePhotoFile;
+      if (photo != null &&
+          fileId!.startsWith('av') &&
+          messageId!.startsWith('avatar-')) {
+        try {
+          if (await photo(fileId: fileId, messageId: messageId,
+              senderId: senderId, path: path!)) {
+            return;
+          }
+        } catch (error) {
+          AppLogger.warning('PEER_PHOTO_RX_FAILED', detail: '$error');
+          return;
+        }
+      }
+
       final meta = <String, dynamic>{
         'file_id': fileId,
         'message_id': messageId,
@@ -2180,6 +2227,17 @@ class ReliableMessagingService {
         size: meta['size'] as int,
         sha256: meta['sha256'] as String,
       );
+
+      // Bundle G7: a group file goes to the group code (1:1 unchanged).
+      final groupFile = onGroupFile;
+      if (groupFile != null && _groupWire.hasMatch(fileId)) {
+        try {
+          if (await groupFile({...meta, 'path': protectedPath})) return;
+        } catch (error) {
+          AppLogger.warning('GROUP_FILE_RX_FAILED', detail: '$error');
+          return;
+        }
+      }
 
       final messages = await store.messagesFor(senderId);
 

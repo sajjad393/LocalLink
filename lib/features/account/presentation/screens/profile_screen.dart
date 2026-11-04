@@ -8,6 +8,8 @@ import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
+import 'package:locallink/features/directory/data/peer_photo_book.dart';
+import 'package:locallink/features/account/presentation/widgets/profile_photo_sheet.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
@@ -75,6 +77,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final phone = TextEditingController();
   final picker = ImagePicker();
   XFile? image;
+
+  /// Bundle 204: "Remove photo" was chosen (saved with Save).
+  bool _removePhoto = false;
   LocalProfile? profile;
   // Bundle 105: discovery toggles removed from the UI — they stay ON
   // permanently so friends can find you by phone/username and the profile
@@ -153,7 +158,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         discoverableByName: profile?.discoverableByName ?? true,
         directorySyncEnabled: true,
         avatarFile: image == null ? null : File(image!.path),
+        removeAvatar: _removePhoto && image == null, // Bundle 204
       );
+      _removePhoto = false;
       await widget.directoryRepository?.publishOwnProfile();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(synced ? 'Profile saved' : 'Saved on this phone; it will sync when available')));
@@ -165,9 +172,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String _cleanError(Object error) => cleanBlocError(error);
 
+  /// Bundle 204 (mock 204 B1): Camera / Gallery / Remove photo.
   Future<void> _pickImage() async {
-    final value = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1024, maxHeight: 1024, imageQuality: 82);
-    if (value != null && mounted) setState(() => image = value);
+    final value = bloc.profile ?? profile;
+    final hasPhoto = image != null ||
+        (!_removePhoto && (value?.localAvatarPath ?? '').isNotEmpty);
+    final choice = await showProfilePhotoSheet(context, hasPhoto: hasPhoto);
+    if (choice == null || !mounted) return;
+    if (choice == ProfilePhotoChoice.remove) {
+      setState(() {
+        image = null;
+        _removePhoto = true;
+      });
+      return;
+    }
+    try {
+      final picked = await picker.pickImage(
+          source: choice == ProfilePhotoChoice.camera
+              ? ImageSource.camera
+              : ImageSource.gallery,
+          maxWidth: ProfilePhotoCode.pickMaxSide.toDouble(),
+          maxHeight: ProfilePhotoCode.pickMaxSide.toDouble(),
+          imageQuality: ProfilePhotoCode.pickQuality);
+      if (picked != null && mounted) {
+        setState(() {
+          image = picked;
+          _removePhoto = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not open the camera or gallery.')));
+      }
+    }
   }
 
   Future<void> _showRecovery() async {
@@ -320,7 +358,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Stack(
                 alignment: Alignment.bottomRight,
                 children: [
-                  AccountAvatar(name: displayName, localPath: value?.localAvatarPath ?? '', radius: 52),
+                  AccountAvatar(
+                      name: displayName,
+                      // Bundle 204: the new picture shows at once; removed = letter.
+                      localPath: image?.path ?? (_removePhoto ? '' : value?.localAvatarPath ?? ''),
+                      radius: 52),
                   IconButton.filled(tooltip: 'Change profile photo', onPressed: _pickImage, icon: const Icon(Icons.camera_alt_outlined)),
                 ],
               ),

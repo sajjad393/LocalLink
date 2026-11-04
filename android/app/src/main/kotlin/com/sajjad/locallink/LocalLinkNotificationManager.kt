@@ -265,8 +265,10 @@ object LocalLinkNotificationManager {
             else -> builder.setVisibility(Notification.VISIBILITY_PUBLIC)
         }
 
-        // Bundle 141: no large icon on the right — the left logo glyph is the
-        // only icon (user request). avatarPath/initials stay in the channel API.
+        // Bundle 141: no initials disc; the left logo glyph stays the small icon.
+        // Bundle 204 (mock 204 A8, approved): a friend's picture on the right
+        // when the app gives one (friends only; no picture = nothing there).
+        circlePicture(avatarPath)?.let { builder.setLargeIcon(it) }
 
         val image = loadImage(imagePath)
         if (image != null && visibility == 1) {
@@ -690,6 +692,34 @@ object LocalLinkNotificationManager {
 
     private fun requestCode(notificationId: Int, action: Int): Int =
         22000 + (notificationId and 0x7fff) * 3 + action
+
+    // Bundle 204: a small round copy of a friend's picture (max 192 px).
+    private fun circlePicture(path: String?): Bitmap? {
+        if (path.isNullOrBlank()) return null
+        return try {
+            if (!java.io.File(path).exists()) return null
+            val src = BitmapFactory.decodeFile(path) ?: return null
+            val side = minOf(src.width, src.height)
+            if (side <= 0) return null
+            val out = minOf(side, 192)
+            val result = Bitmap.createBitmap(out, out, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(result)
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+            canvas.drawCircle(out / 2f, out / 2f, out / 2f, paint)
+            paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN)
+            val left = (src.width - side) / 2
+            val top = (src.height - side) / 2
+            canvas.drawBitmap(
+                src,
+                android.graphics.Rect(left, top, left + side, top + side),
+                android.graphics.Rect(0, 0, out, out),
+                paint,
+            )
+            result
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     private fun loadImage(path: String?): Bitmap? {
         if (path.isNullOrBlank()) return null

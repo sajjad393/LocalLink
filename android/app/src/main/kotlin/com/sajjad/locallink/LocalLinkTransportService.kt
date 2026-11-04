@@ -158,6 +158,8 @@ class LocalLinkTransportService : Service() {
         }
         /** Bundle 160: per-contact link keys (signed device id on the link hello). */
         fun updateLinkKeys(json:String):Boolean{val svc=instance?:return false;svc.updateLinkKeysInternal(json);return true}
+        /** Bundle G7: file lock keys for group members who are not friends. */
+        fun updatePeerFileKeys(json:String):Boolean{val svc=instance?:return false;svc.updatePeerFileKeysInternal(json);return true}
         /** Bundle 161: state changes of the linked group / hotspot link. */
         @Volatile var localNetListener: ((Map<String, Any?>) -> Unit)? = null
         /** Bundle 161: Android joined the other Wi-Fi network; dial the link. */
@@ -268,6 +270,9 @@ class LocalLinkTransportService : Service() {
     // Bundle 160: signed device id. Keys come from Dart (per contact); the
     // ids that passed once must always pass (kept in the encrypted state).
     private val linkKeys = ConcurrentHashMap<String, List<MeshLinkAuth.LinkKey>>()
+    /** Bundle G7: one file lock key per group member who is not a friend
+     *  (same key id on both phones). Used ONLY for files, never for links. */
+    private val peerFileKeys = ConcurrentHashMap<String, MeshLinkAuth.LinkKey>()
     private val linkVerified = ConcurrentHashMap.newKeySet<String>()
     private val routeStabilityPolicy = com.sajjad.locallink.mesh.MeshRouteStabilityPolicy()
     private val transportSendFailures = AtomicLong(0)
@@ -699,6 +704,46 @@ class LocalLinkTransportService : Service() {
         linkKeys.clear(); linkKeys.putAll(parsed)
         persistState()
         Log.i("LINK_AUTH", "keys peers=${parsed.size} verified=${linkVerified.size}")
+    }
+
+    /** Bundle G7: {peerId: {o: kid, p: kid, k: 64 hex}} from Dart. */
+    private fun updatePeerFileKeysInternal(json:String){
+        val parsed = parsePeerFileKeys(json) ?: return
+        peerFileKeys.clear(); peerFileKeys.putAll(parsed)
+        persistState()
+        Log.i("LINK_AUTH", "file keys peers=${parsed.size}")
+    }
+
+    private fun parsePeerFileKeys(json:String?): Map<String, MeshLinkAuth.LinkKey>? {
+        if (json.isNullOrBlank()) return null
+        return try {
+            val root = JSONObject(json)
+            val out = HashMap<String, MeshLinkAuth.LinkKey>()
+            val names = root.keys()
+            while (names.hasNext() && out.size < 256) {
+                val peer = names.next().trim()
+                if (!validTransportId(peer)) continue
+                val o = root.optJSONObject(peer) ?: continue
+                MeshLinkAuth.parse(o.optString("o"), o.optString("p"), o.optString("k"))?.let { out[peer] = it }
+            }
+            out
+        } catch (_: Exception) { null }
+    }
+
+    private fun peerFileKeysJson(): JSONObject {
+        val root = JSONObject()
+        for ((peer, k) in peerFileKeys) {
+            root.put(peer, JSONObject().put("o", k.ownKid).put("p", k.peerKid).put("k", k.key.joinToString("") { "%02x".format(it) }))
+        }
+        return root
+    }
+
+    /** Bundle G7: a friend's link key first, else the group file key. */
+    private fun fileKeysFor(peer:String): List<MeshLinkAuth.LinkKey> {
+        val link = linkKeys[peer].orEmpty()
+        if (link.isNotEmpty()) return link
+        if (blockedPeers.contains(peer)) return emptyList()
+        return listOfNotNull(peerFileKeys[peer])
     }
 
     private fun parseLinkKeys(json:String?): Map<String, List<MeshLinkAuth.LinkKey>>? {
@@ -2347,7 +2392,7 @@ class LocalLinkTransportService : Service() {
         val from = packet.sourceNodeId
         if (blockedPeers.contains(from)) return
         val p = packet.payload
-        val shared = MeshLinkAuth.match(linkKeys[from].orEmpty(), listOf(p.optString("k"))) ?: run {
+        val shared = MeshLinkAuth.match(linkKeys[from].orEmpty() + (if (blockedPeers.contains(from)) emptyList() else listOfNotNull(peerFileKeys[from])), listOf(p.optString("k"))) ?: run {
             if (fileLogDue("open>$from")) Log.w("RELAY", "RELAY file open failed from=$from reason=no_key")
             return
         }
@@ -2387,11 +2432,13 @@ class LocalLinkTransportService : Service() {
     /** Bundle 165: the locked form of a file packet, or null = send it plain. */
     private fun sealFilePayload(target: String, payload: JSONObject): JSONObject? {
         val self = transportDeviceId ?: return null
-        val shared = linkKeys[target].orEmpty().firstOrNull()
+        val shared = fileKeysFor(target).firstOrNull()
+        // Bundle G7: a group member who is not a friend - always locked.
+        val groupKeyOnly = shared != null && linkKeys[target].isNullOrEmpty()
         val nextHop = if (activePeerConnection(target) != null) target else routeTable[target]?.nextHopNodeId
         val nextHopIsRelay = nextHop != null && activePeerConnection(nextHop)?.trust == MeshRelayPolicy.TRUST_RELAY
         val replyLikeLast = if (payload.optString("type") in FileSealPolicy.REPLY_TYPES) fileLastLocked[target] else null
-        if (!FileSealPolicy.useSeal(shared != null, fileSealPeers.contains(target), nextHopIsRelay, fileSealTrial.contains(target), replyLikeLast)) return null
+        if (!groupKeyOnly && !FileSealPolicy.useSeal(shared != null, fileSealPeers.contains(target), nextHopIsRelay, fileSealTrial.contains(target), replyLikeLast)) return null
         shared ?: return null
         val inner = JSONObject(payload.toString()).put("recipient_id", target).put("sender_id", self)
         val (nonce, cipherText) = try {
@@ -4749,8 +4796,8 @@ class LocalLinkTransportService : Service() {
     private fun stopTransportExplicit(){stopCallMediaInternal("");transportRunning=false;meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();transportGroupOwner=false;transportGroupOwnerAddress=null;ownerConnectInFlight.set(false);routeTable.clear();routeRecovery.clear();persistState();transportEvent("state",mapOf("connected" to false,"transport_active" to false,"service" to "stopped"))}
 
     private fun createStateKey():javax.crypto.SecretKey{val ks=KeyStore.getInstance("AndroidKeyStore").apply{load(null)};if(!ks.containsAlias(STATE_KEY_ALIAS)){val g=javax.crypto.KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");g.init(KeyGenParameterSpec.Builder(STATE_KEY_ALIAS,KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).setUserAuthenticationRequired(false).build());g.generateKey()};return ks.getKey(STATE_KEY_ALIAS,null) as javax.crypto.SecretKey}
-    private fun persistState(){try{val j=JSONObject().put("active",transportRunning).put("device_id",transportDeviceId).put("group_owner",transportGroupOwner).put("group_owner_address",transportGroupOwnerAddress);val ids=JSONArray();knownPeers.forEach{ids.put(it)};j.put("known_peers",ids);val blocked=JSONArray();blockedPeers.forEach{blocked.put(it)};j.put("blocked_peers",blocked);val verified=JSONArray();linkVerified.forEach{verified.put(it)};j.put("link_verified",verified);j.put("link_keys",linkKeysJson());val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,createStateKey());val iv=c.iv;getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(STATE_BLOB,Base64.encodeToString(iv+c.doFinal(j.toString().toByteArray(Charsets.UTF_8)),Base64.NO_WRAP)).apply()}catch(_:Exception){}}
-    private fun loadPersistedState(){try{val b=getSharedPreferences(PREFS,MODE_PRIVATE).getString(STATE_BLOB,null)?:return;val a=Base64.decode(b,Base64.DEFAULT);if(a.size<28)return;val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,createStateKey(),GCMParameterSpec(128,a.copyOfRange(0,12)));val j=JSONObject(String(c.doFinal(a.copyOfRange(12,a.size)),Charsets.UTF_8));transportRunning=j.optBoolean("active",false);transportDeviceId=j.optString("device_id").takeIf{it.isNotBlank()};transportGroupOwner=j.optBoolean("group_owner",false);transportGroupOwnerAddress=j.optString("group_owner_address").takeIf{it.isNotBlank()};knownPeers.clear();j.optJSONArray("known_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))knownPeers.add(id)}};blockedPeers.clear();j.optJSONArray("blocked_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))blockedPeers.add(id)}};linkVerified.clear();j.optJSONArray("link_verified")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))linkVerified.add(id)}};parseLinkKeys(j.optJSONObject("link_keys")?.toString())?.let{linkKeys.clear();linkKeys.putAll(it)}}catch(_:Exception){}}
+    private fun persistState(){try{val j=JSONObject().put("active",transportRunning).put("device_id",transportDeviceId).put("group_owner",transportGroupOwner).put("group_owner_address",transportGroupOwnerAddress);val ids=JSONArray();knownPeers.forEach{ids.put(it)};j.put("known_peers",ids);val blocked=JSONArray();blockedPeers.forEach{blocked.put(it)};j.put("blocked_peers",blocked);val verified=JSONArray();linkVerified.forEach{verified.put(it)};j.put("link_verified",verified);j.put("link_keys",linkKeysJson());j.put("peer_file_keys",peerFileKeysJson());val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,createStateKey());val iv=c.iv;getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(STATE_BLOB,Base64.encodeToString(iv+c.doFinal(j.toString().toByteArray(Charsets.UTF_8)),Base64.NO_WRAP)).apply()}catch(_:Exception){}}
+    private fun loadPersistedState(){try{val b=getSharedPreferences(PREFS,MODE_PRIVATE).getString(STATE_BLOB,null)?:return;val a=Base64.decode(b,Base64.DEFAULT);if(a.size<28)return;val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,createStateKey(),GCMParameterSpec(128,a.copyOfRange(0,12)));val j=JSONObject(String(c.doFinal(a.copyOfRange(12,a.size)),Charsets.UTF_8));transportRunning=j.optBoolean("active",false);transportDeviceId=j.optString("device_id").takeIf{it.isNotBlank()};transportGroupOwner=j.optBoolean("group_owner",false);transportGroupOwnerAddress=j.optString("group_owner_address").takeIf{it.isNotBlank()};knownPeers.clear();j.optJSONArray("known_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))knownPeers.add(id)}};blockedPeers.clear();j.optJSONArray("blocked_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))blockedPeers.add(id)}};linkVerified.clear();j.optJSONArray("link_verified")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))linkVerified.add(id)}};parseLinkKeys(j.optJSONObject("link_keys")?.toString())?.let{linkKeys.clear();linkKeys.putAll(it)};parsePeerFileKeys(j.optJSONObject("peer_file_keys")?.toString())?.let{peerFileKeys.clear();peerFileKeys.putAll(it)}}catch(_:Exception){}}
     private fun restoreDurableState(){loadSeenMeshPackets();restoreIncomingTransfers();restoreOutgoingTransfers()}
     private fun seenFileFor(key:String)=File(seenMeshDir,Base64.encodeToString(key.toByteArray(),Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)+".seen")
     private fun loadSeenMeshPackets(){

@@ -63,6 +63,16 @@ class WifiDirectTransportService implements PeerTransportContract {
     return stored != false;
   }
 
+  /// Bundle G7: file lock keys for group members who are not friends
+  /// ({peerId: {o, p, k}}). False when the native service is not up yet.
+  Future<bool> updatePeerFileKeys(Map<String, Map<String, String>> keys) async {
+    final stored = await _channel.invokeMethod<Object?>(
+      'updatePeerFileKeys',
+      {'peer_file_keys': jsonEncode(keys)},
+    );
+    return stored != false;
+  }
+
   @override
   Future<void> ensureTransportReady({
     required String deviceId,

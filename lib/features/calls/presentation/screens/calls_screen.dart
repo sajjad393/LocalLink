@@ -282,7 +282,7 @@ class _CallsScreenState extends State<CallsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 ListTile(
-                  leading: AccountAvatar(name: name, radius: 21),
+                  leading: AccountAvatar(name: name, radius: 21, peerId: call.peerId(widget.selfId)),
                   title: Text(
                     name,
                     maxLines: 1,

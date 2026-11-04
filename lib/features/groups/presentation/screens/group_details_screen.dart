@@ -60,7 +60,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
             itemBuilder: (_, index) {
               final device = options[index];
               return ListTile(
-                leading: AccountAvatar(name: device.name, radius: 20),
+                leading: AccountAvatar(name: device.name, radius: 20, peerId: device.id),
                 title: Text(device.name),
                 subtitle: Text(device.platform),
                 onTap: () => Navigator.pop(context, device),

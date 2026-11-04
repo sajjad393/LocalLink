@@ -733,7 +733,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       blocked: iBlocked,
       showCall: widget.onStartCall != null && !blockedMe,
       avatar: PresenceAvatar(
-        avatar: AccountAvatar(name: device.name, radius: 23),
+        avatar: AccountAvatar(name: device.name, radius: 23, peerId: device.id),
         device: device,
       ),
       // Bundle 201 (F, mock ST S3): "Connected by …".
@@ -913,7 +913,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         MutedAvatar(name: device.name, radius: 20)
                       else
                         PresenceAvatar(
-                          avatar: AccountAvatar(name: device.name, radius: 20),
+                          avatar: AccountAvatar(name: device.name, radius: 20, peerId: device.id),
                           device: device,
                         ),
                       const SizedBox(width: LocalLinkSpacing.md),

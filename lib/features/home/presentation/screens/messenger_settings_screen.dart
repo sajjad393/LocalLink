@@ -128,7 +128,10 @@ class MessengerSettingsScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    AccountAvatar(name: displayName, radius: 28),
+                    AccountAvatar(
+                        name: displayName,
+                        radius: 28,
+                        peerId: store.deviceId), // Bundle 204: my picture
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(

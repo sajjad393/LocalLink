@@ -397,9 +397,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
           minVerticalPadding: LocalLinkSpacing.sm,
           // Bundle 148: same live status badge as Chats / Calls.
           leading: profile.deviceId.isEmpty
-              ? AccountAvatar(name: title, radius: 24)
+              ? AccountAvatar(name: title, radius: 24, peerId: profile.userId)
               : PresenceAvatar(
-                  avatar: AccountAvatar(name: title, radius: 24),
+                  avatar: AccountAvatar(name: title, radius: 24, peerId: profile.userId),
                   device: _device(profile),
                 ),
           title: Text(title, style: Theme.of(context).textTheme.titleSmall),

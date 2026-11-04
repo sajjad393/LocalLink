@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
 import 'package:locallink/core/models/device.dart';
@@ -18,6 +20,7 @@ import 'package:locallink/features/directory/data/friend_requests.dart';
 import 'package:locallink/features/directory/data/directory_search_merge.dart';
 import 'package:locallink/features/directory/data/friend_link_resend.dart';
 import 'package:locallink/features/directory/data/name_question_policy.dart';
+import 'package:locallink/features/directory/data/peer_photo_book.dart';
 import 'package:locallink/features/directory/data/own_profile_match.dart';
 import 'package:locallink/features/directory/data/shareable_profile_filter.dart';
 import 'package:locallink/features/directory/data/phone_number_normalizer.dart';
@@ -116,6 +119,233 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     unawaited(sync());
     unawaited(syncServerContacts());
     unawaited(_startFriendLinks());
+    unawaited(_loadPhotoCodes());
+  }
+
+  // ------------------------------------------- Bundle 204: profile photos
+
+  /// Friend asks the owner's phone: "send me your picture" (one step,
+  /// sealed, never queued).
+  static const String photoNeedType = 'DIRECTORY_PHOTO_NEED';
+
+  /// Friends' pictures on this phone (tests: one per test phone).
+  PeerPhotoBook photoBook = PeerPhotoBook.instance;
+
+  /// Tests: wait before the server try after a Nearby ask.
+  Duration photoServerDelay = const Duration(seconds: 20);
+  final ProfilePhotoLimiter _photoAsks = ProfilePhotoLimiter();
+  final ProfilePhotoLimiter _photoGives = ProfilePhotoLimiter();
+  ({String key, String code, String path})? _ownPhoto;
+
+  /// Tests: one transport event / the start-up picture load.
+  @visibleForTesting
+  Future<void> debugHandleEvent(Map<String, dynamic> event) =>
+      _handleTransportEvent(event);
+  @visibleForTesting
+  Future<void> debugLoadPhotoCodes() => _loadPhotoCodes();
+
+  /// The picture codes of the cards on this phone (after a restart).
+  Future<void> _loadPhotoCodes() async {
+    try {
+      await photoBook.init();
+      for (final row in await store.directoryProfiles()) {
+        final user = row['user_id']?.toString() ?? '';
+        if (user.isEmpty || user == store.accountId) continue;
+        final signed = (row['signature']?.toString() ?? '').isNotEmpty;
+        if (!signed) continue;
+        photoBook.remember(user, row['device_id']?.toString() ?? '',
+            row['avatar_url']?.toString() ?? '');
+      }
+      final own = await _ownPhotoFile();
+      photoBook
+          .sweep(keepHash: ProfilePhotoCode.parse(own?.code)?.hash);
+      for (final c in await store.rawContactUserIds()) {
+        if (photoBook.needs(c)) unawaited(ensurePhoto(c));
+      }
+    } catch (error) {
+      AppLogger.warning('PEER_PHOTO_LOAD_FAILED', detail: '$error');
+    }
+  }
+
+  /// My picture file + code (null = no picture).
+  Future<({String code, String path})?> _ownPhotoFile([LocalProfile? p]) async {
+    final profile = p ?? await store.profile();
+    final path = profile?.localAvatarPath ?? '';
+    final me = store.accountId ?? '';
+    if (path.isEmpty) {
+      if (_ownPhoto != null || p != null) {
+        _ownPhoto = null;
+        unawaited(photoBook.setOwn(me, store.deviceId ?? '', null));
+      }
+      return null;
+    }
+    try {
+      final file = File(path);
+      if (!await file.exists()) return null;
+      final stat = await file.stat();
+      final key = '$path|${stat.size}|${stat.modified.millisecondsSinceEpoch}';
+      final cached = _ownPhoto;
+      if (cached != null && cached.key == key) {
+        return (code: cached.code, path: cached.path);
+      }
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return null;
+      final code = ProfilePhotoCode.make(bytes);
+      _ownPhoto = (key: key, code: code, path: path);
+      await photoBook.setOwn(me, store.deviceId ?? '', bytes);
+      return (code: code, path: path);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// A checked card came: keep its picture code, get the picture of a friend.
+  void _photoFromCard(DirectoryProfile profile) {
+    final changed = photoBook
+        .remember(profile.userId, profile.deviceId, profile.avatarUrl);
+    if (photoBook.needs(profile.userId)) {
+      unawaited(ensurePhoto(profile.userId));
+    } else if (changed) {
+      AppLogger.info('PEER_PHOTO_CODE',
+          detail: 'user=${_tail6(profile.userId)} has=${profile.avatarUrl.isNotEmpty}');
+    }
+  }
+
+  /// Gets a friend's picture when the card has one and it is not here:
+  /// first the friend's phone (Nearby), then the server. True = saved.
+  Future<bool> ensurePhoto(String userId) async {
+    final book = photoBook;
+    final code = book.codeOf(userId);
+    if (code == null || !book.needs(userId)) return false;
+    try {
+      if (!await store.isContact(userId) || await store.isBlocked(userId)) {
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
+    if (!_photoAsks.allow(userId, DateTime.now().millisecondsSinceEpoch)) {
+      return false;
+    }
+    var asked = false;
+    if (code.nearbyOk && transport.isStarted) {
+      final device = (await store.directoryProfile(userId))?['device_id']
+              ?.toString() ??
+          '';
+      if (device.isNotEmpty) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        try {
+          await transport.send(recipientId: device, payload: {
+            'type': photoNeedType,
+            'user_id': store.accountId ?? '',
+            'code': code.code,
+            'created_at': now,
+            'expires_at': now + 60 * 1000,
+          });
+          asked = true;
+          AppLogger.info('PEER_PHOTO_ASK', detail: 'to=${_tail6(device)}');
+        } catch (_) {
+          // not near now: the server below
+        }
+      }
+    }
+    if (asked) await Future<void>.delayed(photoServerDelay);
+    if (!book.needs(userId) || book.codeOf(userId)?.code != code.code) {
+      return !book.needs(userId);
+    }
+    try {
+      final bytes = await api.friendAvatar(userId);
+      if (bytes != null && await book.put(code, bytes)) {
+        AppLogger.info('PEER_PHOTO_GOT',
+            detail: 'way=online bytes=${bytes.length}');
+        return true;
+      }
+    } catch (_) {
+      // no internet: the next card / restart tries again
+    }
+    return false;
+  }
+
+  /// Owner side: a friend asked for my picture -> send it (friends only).
+  Future<void> _handlePhotoNeed(Map<String, dynamic> message) async {
+    final from = message['_from']?.toString() ?? '';
+    if (from.isEmpty || from == store.deviceId || !transport.isStarted) return;
+    if (await store.isBlockedPeer(from)) return;
+    final row = await store.directoryProfileByDeviceId(from);
+    final user = row?['user_id']?.toString() ?? '';
+    if (user.isEmpty ||
+        !await store.isContact(user) ||
+        await store.isBlocked(user)) {
+      AppLogger.info('PEER_PHOTO_REFUSED', detail: 'why=not_friend');
+      return;
+    }
+    final own = await _ownPhotoFile();
+    final code = ProfilePhotoCode.parse(own?.code);
+    if (own == null || code == null || own.code != message['code']?.toString()) {
+      return; // an old card: they get the new one by the next sync
+    }
+    if (!code.nearbyOk) {
+      AppLogger.info('PEER_PHOTO_REFUSED', detail: 'why=too_big');
+      return;
+    }
+    if (!_photoGives.allow(from, DateTime.now().millisecondsSinceEpoch)) return;
+    final self = store.accountId ?? '';
+    if (self.isEmpty) return;
+    try {
+      await transport.sendFile(
+        recipientId: from,
+        filePath: own.path,
+        fileId: code.fileId,
+        messageId: ProfilePhotoCode.messageIdFor(self),
+        fileName: 'avatar.jpg',
+        contentType: 'image/jpeg',
+      );
+      AppLogger.info('PEER_PHOTO_SENT', detail: 'to=${_tail6(from)}');
+    } catch (error) {
+      AppLogger.warning('PEER_PHOTO_SEND_FAILED', detail: '$error');
+    }
+  }
+
+  /// A picture file came Nearby (from the messaging file code). True = it
+  /// was a profile picture (taken or refused).
+  Future<bool> receivePhotoFile({
+    required String fileId,
+    required String messageId,
+    required String senderId,
+    required String path,
+  }) async {
+    if (!ProfilePhotoCode.isFileId(fileId) ||
+        !ProfilePhotoCode.isMessageId(messageId)) {
+      return false;
+    }
+    try {
+      final user = ProfilePhotoCode.userOfMessageId(messageId);
+      final code = photoBook.codeOf(user);
+      final device = (await store.directoryProfile(user))?['device_id']
+              ?.toString() ??
+          '';
+      if (code == null || code.fileId != fileId || device != senderId) {
+        AppLogger.warning('PEER_PHOTO_REFUSED', detail: 'why=not_expected');
+        return true;
+      }
+      if (!await store.isContact(user)) {
+        AppLogger.warning('PEER_PHOTO_REFUSED', detail: 'why=not_friend');
+        return true;
+      }
+      final bytes = await File(path).readAsBytes();
+      if (await photoBook
+          .put(code, bytes, maxBytes: ProfilePhotoCode.maxNearbyBytes)) {
+        AppLogger.info('PEER_PHOTO_GOT',
+            detail: 'way=nearby bytes=${bytes.length}');
+      }
+    } catch (error) {
+      AppLogger.warning('PEER_PHOTO_REFUSED', detail: 'why=$error');
+    } finally {
+      try {
+        await File(path).delete();
+      } catch (_) {}
+    }
+    return true;
   }
 
   /// Bundle 195b: parked links back from settings, then the waiting resends.
@@ -229,7 +459,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       username: profile.username,
       displayName: profile.displayName,
       phoneNumber: phone,
-      avatarUrl: '',
+      // Bundle 204: my picture code (friends get the picture by it).
+      avatarUrl: (await _ownPhotoFile(profile))?.code ?? '',
       profileVersion: profile.profileVersion,
       updatedAt: profile.updatedAt.isEmpty
           ? DateTime.now().toUtc().toIso8601String()
@@ -283,6 +514,15 @@ class DirectoryRepository implements DirectoryRepositoryContract {
 
   Future<void> _handleTransportEvent(Map<String, dynamic> event) async {
     final eventType = event['type']?.toString() ?? '';
+    // Bundle 204: a friend came near - get the pictures still missing.
+    if (eventType == 'peer_connected') {
+      final peer = event['peer_id']?.toString() ?? '';
+      final user = photoBook.userOfDevice(peer);
+      if (user != null && photoBook.needs(user)) {
+        unawaited(ensurePhoto(user));
+      }
+      return;
+    }
     if (eventType == 'state' && event['connected'] == true) {
       _lastSyncAt = null;
       unawaited(sync());
@@ -312,7 +552,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final type = message['type']?.toString() ?? '';
     // Bundle 195c: who asked / answered (the link layer's sender, never a
     // field the other phone wrote itself).
-    if (NameQuestionPolicy.isNameType(type)) {
+    if (NameQuestionPolicy.isNameType(type) || type == photoNeedType) {
       message['_from'] = event['sender_id']?.toString() ?? '';
     }
     if (!type.startsWith('DIRECTORY_') &&
@@ -367,6 +607,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         return;
       case NameQuestionPolicy.answerType: // Bundle 195c
         await _handleNameAnswer(message);
+        return;
+      case photoNeedType: // Bundle 204
+        await _handlePhotoNeed(message);
         return;
       case 'DIRECTORY_PROFILE':
         final map = message['profile'];
@@ -593,6 +836,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     }
 
     await store.saveDirectoryProfile(profile.toMap());
+    _photoFromCard(profile); // Bundle 204
     return true;
   }
 
@@ -1049,6 +1293,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       }
       for (final id in confirmed.difference(remoteIds)) {
         await store.removeContact(id);
+        photoBook.dropPicture(id); // Bundle 204
       }
       await store.saveServerConfirmedContactIds(remoteIds);
       if (!announce) await store.writeSetting(firstContactsSyncKey, '1');
@@ -1760,6 +2005,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       unawaited(getProfile(edge.fromUserId).catchError((_) => null));
     } else {
       await store.removeContact(edge.fromUserId);
+      photoBook.dropPicture(edge.fromUserId); // Bundle 204
       // Leave the id in the confirmed-set: syncServerContacts' removal-push
       // compares it with local state and forwards the deletion to the server
       // on its next cycle (offline-safe).
@@ -1835,6 +2081,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   @override
   Future<void> removeContact(String userId) async {
     await store.removeContact(userId);
+    photoBook.dropPicture(userId); // Bundle 204
     final confirmed = await store.serverConfirmedContactIds();
     if (confirmed.contains(userId)) {
       try {
@@ -1875,6 +2122,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final id = userId.trim();
     if (id.isEmpty || id == store.accountId) return;
     await store.blockUser(id);
+    photoBook.dropPicture(id); // Bundle 204
     // Bundle 196: their waiting requests go; their phone is told (locked).
     unawaited(FriendRequestBook.instance.removeUser(id));
     await _publishBlockState(id, BlockState.blocked);

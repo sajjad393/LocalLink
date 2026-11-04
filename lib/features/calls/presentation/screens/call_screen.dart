@@ -221,6 +221,7 @@ class _CallScreenState extends State<CallScreen> {
         Expanded(
           child: IncomingVoiceCallBody(
             peerName: session.peerName,
+            peerId: session.peerId, // Bundle 204
             statusText: statusText,
             onAnswer: () => _runCall(widget.controller.acceptIncoming),
             onDecline: () => _runCall(widget.controller.rejectIncoming),

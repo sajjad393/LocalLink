@@ -73,7 +73,7 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
                 ...widget.devices.map(
                   (device) => CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    secondary: AccountAvatar(name: device.name, radius: 20),
+                    secondary: AccountAvatar(name: device.name, radius: 20, peerId: device.id),
                     value: _selected.contains(device.id),
                     title: Text(device.name),
                     subtitle: Text(device.platform),

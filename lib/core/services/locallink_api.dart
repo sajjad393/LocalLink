@@ -16,6 +16,7 @@ import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/models/account_restore.dart';
 import 'package:locallink/core/services/local_store.dart';
+import 'package:locallink/features/directory/data/peer_photo_book.dart';
 import 'package:locallink/core/services/websocket_service.dart';
 
 class AccountTransferStart {
@@ -417,7 +418,11 @@ class LocalLinkApi {
       } else {
         profile = await getProfile(downloadAvatar: false);
       }
-      if (pendingAvatar != null && pendingAvatar.isNotEmpty) {
+      if (pendingAvatar == removeAvatarMark) {
+        // Bundle 204: "Remove photo" made with no internet.
+        profile = await deleteProfileAvatar();
+        await store.clearPendingProfileAvatarPath();
+      } else if (pendingAvatar != null && pendingAvatar.isNotEmpty) {
         final file = File(pendingAvatar);
         if (await file.exists()) {
           profile = await uploadProfileAvatar(file);
@@ -499,23 +504,63 @@ class LocalLinkApi {
     final response = await http.Response.fromStream(streamed);
     if (response.statusCode != 200) throw Exception(_error(response));
     final profile = LocalProfile.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
-    final localPath = await store.profileAvatarPath();
-    final target = File('$localPath${_avatarExtension(file.path)}');
+    // Bundle 204: named by the picture (a new name when it changes).
+    final bytes = await file.readAsBytes();
+    final target = File(await store.profileAvatarFilePath(
+        ProfilePhotoCode.hashOf(bytes), _avatarExtension(file.path)));
     await target.parent.create(recursive: true);
-    await file.copy(target.path);
+    if (target.path != file.path) await file.copy(target.path);
     final result = profile.copyWith(localAvatarPath: target.path);
     await store.saveProfile(result);
+    await store.sweepProfileAvatars({target.path, file.path});
     return result;
+  }
+
+  /// Bundle 204: "Remove photo" -> the letter avatar again.
+  static const String removeAvatarMark = 'remove';
+
+  Future<LocalProfile> deleteProfileAvatar() async {
+    final response = await httpClient
+        .delete(Uri.parse('$baseUrl/api/v1/profile/avatar'), headers: _headers())
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) throw Exception(_error(response));
+    final profile = LocalProfile.fromJson(
+            Map<String, dynamic>.from(jsonDecode(response.body) as Map))
+        .copyWith(localAvatarPath: '');
+    await store.saveProfile(profile);
+    await store.sweepProfileAvatars(const <String>{});
+    return profile;
+  }
+
+  /// Bundle 204: a friend's picture from the server (friends only; null =
+  /// none / not a friend there).
+  Future<List<int>?> friendAvatar(String userId) async {
+    final response = await httpClient
+        .get(
+            Uri.parse(
+                '$baseUrl/api/v1/directory/user/${Uri.encodeComponent(userId)}/avatar'),
+            headers: _headers())
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) throw Exception(_error(response));
+    if (response.bodyBytes.length > ProfilePhotoCode.maxServerBytes) return null;
+    return response.bodyBytes;
   }
 
   Future<LocalProfile> _cacheProfileAvatar(LocalProfile profile) async {
     final response = await http.get(Uri.parse('$baseUrl/api/v1/profile/avatar'), headers: _headers()).timeout(const Duration(seconds: 12));
     if (response.statusCode != 200) throw Exception(_error(response));
-    final base = await store.profileAvatarPath();
-    final path = '$base${_avatarExtensionFromContentType(response.headers['content-type'])}';
+    // Bundle 204: named by the picture; the same picture is not written again.
+    final path = await store.profileAvatarFilePath(
+        ProfilePhotoCode.hashOf(response.bodyBytes),
+        _avatarExtensionFromContentType(response.headers['content-type']));
     final file = File(path);
     await file.parent.create(recursive: true);
-    await file.writeAsBytes(response.bodyBytes, flush: true);
+    if (!await file.exists() || await file.length() != response.bodyBytes.length) {
+      await file.writeAsBytes(response.bodyBytes, flush: true);
+    }
+    final pending = await store.pendingProfileAvatarPath() ?? '';
+    await store.sweepProfileAvatars({file.path, if (pending.isNotEmpty) pending});
     return profile.copyWith(localAvatarPath: file.path);
   }
 

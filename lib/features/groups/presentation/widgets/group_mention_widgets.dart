@@ -78,7 +78,7 @@ class GroupMentionList extends StatelessWidget {
                                 size: 20, color: Colors.white),
                           )
                         else
-                          AccountAvatar(name: c.name, radius: 17),
+                          AccountAvatar(name: c.name, radius: 17, peerId: c.id),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -146,7 +146,7 @@ class _GroupTypingBubbleState extends State<GroupTypingBubble>
             width: GroupMessageBubble.avatarSlot,
             child: Align(
                 alignment: Alignment.topLeft,
-                child: AccountAvatar(name: widget.name, radius: 14)),
+                child: AccountAvatar(name: widget.name, radius: 14, peerId: widget.deviceId)),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

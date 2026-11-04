@@ -12,6 +12,7 @@ import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/locallink_api.dart'
     show GroupActionException;
 import 'package:locallink/features/groups/data/group_change_hub.dart';
+import 'package:locallink/features/groups/data/group_nearby_files.dart';
 import 'package:locallink/features/groups/data/services/group_nearby_store.dart';
 
 /// Sends one locked group packet (SealingPeerTransport.sendGroupLocked).
@@ -97,6 +98,30 @@ class GroupNearbyService {
   /// Bundle G4: Join with QR (null = off).
   final GroupJoinStore? joins;
   final int Function() _nowMs;
+
+  /// Bundle G7: my files to each member (null = words only, old tests).
+  GroupFileSender? files;
+
+  /// Bundle G7: native file events that are not my own sends (files
+  /// coming to me).
+  void Function(Map<String, dynamic> event)? onFileEvent;
+
+  /// Bundle G7: a member is typing (Nearby, live lock).
+  void Function(String gid, String member, bool on)? onTyping;
+
+  /// Bundle G7: an admin's signed group photo note (gid, version, sha256,
+  /// by). True = I take it (the picture follows by the file pipe).
+  Future<bool> Function(String gid, int version, String hash, String by)?
+      onPhotoNote;
+
+  /// Bundle G7: Nearby packets of G7.
+  static const String typeFileNeed = 'group_file_need';
+  static const String typeTyping = 'group_typing';
+  static const String typePhoto = 'group_photo';
+
+  /// What an admin signs for a group photo made with no internet.
+  static String photoText(String gid, int v, String hash, String by, int at) =>
+      'llgp1\n$gid\n$v\n$hash\n$by\n$at';
 
   static const String typeCard = 'group_card';
   static const String typeMessage = 'group_msg';
@@ -450,16 +475,34 @@ class GroupNearbyService {
   // --------------------------------------------------------- messages
 
   /// My message (or reaction / delete note) to every member Nearby.
-  Future<void> fanOut(String gid, String id, String body, String createdAt) async {
+  Future<void> fanOut(String gid, String id, String body, String createdAt,
+      {List<GroupNearbyFile> files = const []}) async {
     final c = await card(gid);
     if (c == null || !c.has(_self)) return;
+    // Bundle G7: only files up to 50 MB go Nearby (like 1:1).
+    final att = [
+      for (final f in files.take(GroupFileWire.maxFiles))
+        if (f.size <= GroupFileWire.maxBytes) f
+    ];
+    if (body.isEmpty && att.isEmpty) return;
     // Bundle G4: signed by me (the writer) and kept for catch-up.
+    // Bundle G7: the old signature covers the words (old phones), the new
+    // one ('llgm2') the words + the file list.
     String sig = '';
+    String sig2 = '';
     try {
-      sig = await keys.sign(messageText(gid, id, _self, createdAt, body));
+      if (body.isNotEmpty) {
+        sig = await keys.sign(messageText(gid, id, _self, createdAt, body));
+      }
+      if (att.isNotEmpty) {
+        sig2 = await keys.sign(
+            GroupFileWire.messageText2(gid, id, _self, createdAt, body, att));
+      }
     } catch (_) {}
-    if (sig.isNotEmpty) {
-      await _keepCopy(gid, id, _self, createdAt, body, sig);
+    final signed = att.isEmpty ? sig.isNotEmpty : sig2.isNotEmpty;
+    if (signed) {
+      await _keepCopy(gid, id, _self, createdAt, body, sig,
+          att: GroupFileWire.encodeList(att), sig2: sig2);
     }
     final payload = {
       'type': typeMessage,
@@ -467,12 +510,22 @@ class GroupNearbyService {
       'id': id,
       'body': body,
       'created_at': createdAt,
-      if (sig.isNotEmpty) 'w': _self,
+      if (signed) 'w': _self,
       if (sig.isNotEmpty) 'sig': sig,
+      if (att.isNotEmpty) 'att': [for (final f in att) f.toJson()],
+      if (sig2.isNotEmpty) 'sig2': sig2,
     };
-    for (final m in c.members) {
-      if (m.id == _self) continue;
-      await _queue(m.id, gid, id, 'msg', payload);
+    final others = [
+      for (final m in c.members)
+        if (m.id != _self) m.id
+    ];
+    if (att.isNotEmpty) {
+      await this.files?.queue(gid, id, att, others);
+      AppLogger.info('GROUP_FILE_QUEUED',
+          detail: 'files=${att.length} members=${others.length}');
+    }
+    for (final m in others) {
+      await _queue(m, gid, id, 'msg', payload);
     }
     unawaited(flush());
   }
@@ -611,7 +664,13 @@ class GroupNearbyService {
     await send(
         recipientId: to,
         theirIdentityKey: k,
-        payload: {'type': typeAck, 'gid': gid, 'ref': ref});
+        payload: {
+          'type': typeAck,
+          'gid': gid,
+          'ref': ref,
+          // Bundle G7: this phone takes group files Nearby.
+          'fv': GroupFileWire.filesVersion,
+        });
   }
 
   // --------------------------------------------------------- receiving
@@ -622,12 +681,27 @@ class GroupNearbyService {
         type == 'relay_connected') {
       final peer = event['peer_id']?.toString();
       unawaited(flush(peerId: (peer == null || peer.isEmpty) ? null : peer));
+      // Bundle G7: its waiting files go now.
+      if (peer != null && peer.isNotEmpty) {
+        unawaited(files?.peerUp(peer).catchError((Object _) {}));
+      }
       // Bundle G4: a member came near - tell it what I have.
       if (peer != null && peer.isNotEmpty) {
         unawaited(catchUpWith(peer).catchError((Object e) {
           AppLogger.warning('GROUP_CATCHUP_FAILED', detail: '$e');
         }));
       }
+      return;
+    }
+    // Bundle G7: my file to a member finished / failed.
+    if (type == 'file_sent' || type == 'file_failed' || type == 'file_cancelled') {
+      final mine = await files?.handleEvent(event) ?? false;
+      if (!mine) onFileEvent?.call(event);
+      return;
+    }
+    // Bundle G7: a group file coming to me moved / expired.
+    if (type == 'file_progress' || type == 'file_expired') {
+      onFileEvent?.call(event);
       return;
     }
     if (type != 'message' || event['sealed'] != true) return;
@@ -655,7 +729,14 @@ class GroupNearbyService {
     final strangerKey = (p['_locked_spk']?.toString() ?? '').replaceAll('=', '');
     switch (type) {
       case typeAck:
-        await _onAck(from, gid, p['ref']?.toString() ?? '');
+        await _onAck(from, gid, p['ref']?.toString() ?? '',
+            fv: int.tryParse(p['fv']?.toString() ?? '') ?? 0);
+      case typeFileNeed:
+        await _onFileNeed(from, gid, p, strangerKey);
+      case typeTyping:
+        await _onTyping(from, gid, p, strangerKey);
+      case typePhoto:
+        await _onPhoto(from, gid, p, strangerKey);
       case typeRead:
         await _onRead(from, gid, p, strangerKey);
       case typeCard:
@@ -680,8 +761,17 @@ class GroupNearbyService {
   bool _keyOk(GroupCard c, String from, String strangerKey) =>
       strangerKey.isEmpty || c.member(from)?.seal == strangerKey;
 
-  Future<void> _onAck(String from, String gid, String ref) async {
+  Future<void> _onAck(String from, String gid, String ref, {int fv = 0}) async {
     if (ref.isEmpty) return;
+    // Bundle G7: the photo note reached the member: the picture can go.
+    if (ref.startsWith('photo:')) {
+      await store.removeOutbox(ref, from);
+      final parts = ref.split(':');
+      final v = parts.length == 3 ? parts[2] : '';
+      await files?.memberGot(from, GroupFileWire.photoMessageId(gid), fv: fv,
+          fileId: GroupFileWire.photoFileId(int.tryParse(v) ?? 0));
+      return;
+    }
     await store.removeOutbox(ref, from);
     if (ref.startsWith('card:')) {
       final invite =
@@ -695,6 +785,8 @@ class GroupNearbyService {
       return;
     }
     if (ref.startsWith('leave:')) return;
+    // Bundle G7: its files can go now (old phones: server only).
+    await files?.memberGot(from, ref, fv: fv);
     await store.markNearbySent(ref);
     await onSentNearby?.call(ref);
     // Bundle G5: this member got it.
@@ -829,9 +921,12 @@ class GroupNearbyService {
     final id = p['id']?.toString() ?? '';
     final body = p['body']?.toString() ?? '';
     final createdAt = p['created_at']?.toString() ?? '';
-    if (id.isEmpty || id.length > 128 || body.isEmpty || body.length > 16 * 1024) {
-      return;
-    }
+    // Bundle G7: a message with files may have no words.
+    final att = GroupFileWire.parseList(p['att']);
+    final sig2 = p['sig2']?.toString() ?? '';
+    if (id.isEmpty || id.length > 128 || body.length > 16 * 1024) return;
+    if (body.isEmpty && att.isEmpty) return;
+    if (att.isNotEmpty && sig2.isEmpty) return;
     if (DateTime.tryParse(createdAt) == null) return;
     final c = await card(gid);
     final local = await store.group(gid);
@@ -844,7 +939,16 @@ class GroupNearbyService {
     final writer = p['w']?.toString() ?? '';
     if (writer.isNotEmpty && writer != from) return;
     final sig = p['sig']?.toString() ?? '';
-    if (sig.isNotEmpty &&
+    if (att.isNotEmpty) {
+      // Bundle G7: the file list can't be changed on the way.
+      if (!await keys.verify(
+          GroupFileWire.messageText2(gid, id, from, createdAt, body, att),
+          sig2,
+          c.member(from)!.sign)) {
+        AppLogger.warning('GROUP_RX_BAD_SIG', detail: 'from=${_id6(from)} files=y');
+        return;
+      }
+    } else if (sig.isNotEmpty &&
         !await keys.verify(messageText(gid, id, from, createdAt, body), sig,
             c.member(from)!.sign)) {
       AppLogger.warning('GROUP_RX_BAD_SIG', detail: 'from=${_id6(from)}');
@@ -857,10 +961,16 @@ class GroupNearbyService {
     final announcement = c.sendMessages == 'admins' && !c.isAdmin(from);
     if (!announcement && !await store.messageExists(id)) {
       await onMessage(GroupMessage(
-          id: id, groupId: gid, senderId: from, body: body, createdAt: createdAt));
+          id: id,
+          groupId: gid,
+          senderId: from,
+          body: body,
+          createdAt: createdAt,
+          attachments: [for (final f in att) f.toAttachment()]));
     }
-    if (!announcement && sig.isNotEmpty) {
-      await _keepCopy(gid, id, from, createdAt, body, sig);
+    if (!announcement && (att.isNotEmpty ? sig2.isNotEmpty : sig.isNotEmpty)) {
+      await _keepCopy(gid, id, from, createdAt, body, sig,
+          att: GroupFileWire.encodeList(att), sig2: sig2);
     }
     await _ack(from, gid, id);
   }
@@ -901,6 +1011,177 @@ class GroupNearbyService {
       } catch (_) {}
     }
     GroupChangeHub.instance.changed(gid);
+  }
+
+  // ------------------------------------------- Bundle G7: files etc.
+
+  Future<String> _sealOf(GroupCard? c, String id) async =>
+      c?.member(id)?.seal ?? (await store.friend(id))?.seal ?? '';
+
+  /// Tap to download: ask the writer for its file again (not kept).
+  Future<bool> sendFileNeed(
+      String gid, String messageId, String fileId, String writer) async {
+    if (writer.isEmpty || writer == _self) return false;
+    final c = await card(gid);
+    final k = await _sealOf(c, writer);
+    if (k.isEmpty) return false;
+    AppLogger.info('GROUP_FILE_NEED', detail: 'to=${_id6(writer)}');
+    return send(recipientId: writer, theirIdentityKey: k, payload: {
+      'type': typeFileNeed,
+      'gid': gid,
+      'id': messageId,
+      'file': fileId,
+    });
+  }
+
+  Future<void> _onFileNeed(
+      String from, String gid, Map<String, dynamic> p, String strangerKey) async {
+    final c = await card(gid);
+    if (c == null || !c.has(_self) || !c.has(from)) return;
+    if (!_keyOk(c, from, strangerKey)) return;
+    final id = p['id']?.toString() ?? '';
+    final file = p['file']?.toString() ?? '';
+    if (id.isEmpty || id.length > 128 || file.length > 128) return;
+    await files?.need(from, id, file);
+  }
+
+  /// "I am typing" to every member Nearby (live lock: never kept).
+  Future<int> sendTyping(String gid, bool on) async {
+    final c = await card(gid);
+    if (c == null || !c.has(_self)) return 0;
+    var sent = 0;
+    for (final m in c.members) {
+      if (m.id == _self || m.seal.isEmpty) continue;
+      try {
+        if (await send(
+            recipientId: m.id,
+            theirIdentityKey: m.seal,
+            payload: {'type': typeTyping, 'gid': gid, 'on': on})) {
+          sent++;
+        }
+      } catch (_) {}
+    }
+    return sent;
+  }
+
+  Future<void> _onTyping(
+      String from, String gid, Map<String, dynamic> p, String strangerKey) async {
+    final c = await card(gid);
+    if (c == null || !c.has(_self) || !c.has(from)) return;
+    if (!_keyOk(c, from, strangerKey)) return;
+    final local = await store.group(gid);
+    if (local == null || !local.isActive) return;
+    onTyping?.call(gid, from, p['on'] != false);
+  }
+
+  /// Bundle G7: every member of my active Nearby groups -> seal key (32
+  /// bytes), for the pair file keys. Blocked people are left out.
+  Future<Map<String, List<int>>> memberSealKeys() async {
+    final out = <String, List<int>>{};
+    for (final g in await store.groups()) {
+      if (!g.isActive) continue;
+      final c = await card(g.id);
+      if (c == null || !c.has(_self)) continue;
+      for (final m in c.members) {
+        if (m.id == _self || m.seal.isEmpty || out.containsKey(m.id)) continue;
+        if (await store.isBlocked(m.id)) continue;
+        try {
+          final b = base64Url.decode(base64Url.normalize(m.seal));
+          if (b.length == 32) out[m.id] = b;
+        } catch (_) {}
+      }
+    }
+    return out;
+  }
+
+  /// May I change the group photo of this card group?
+  Future<bool> canSetPhoto(String gid) async {
+    final c = await card(gid);
+    if (c == null || !c.has(_self)) return false;
+    return c.editInfo == 'all' || c.isAdmin(_self);
+  }
+
+  /// Bundle G7: a group photo made with no internet: a signed note to every
+  /// member; the picture ([size] bytes, sha256 [hash]) follows by the file
+  /// pipe. [hash] '' = photo removed.
+  Future<void> sharePhoto(String gid, int version, String hash, int size) async {
+    final c = await card(gid);
+    if (c == null || !c.has(_self)) return;
+    final at = _nowMs();
+    final sig = await keys.sign(photoText(gid, version, hash, _self, at));
+    final payload = {
+      'type': typePhoto,
+      'gid': gid,
+      'v': version,
+      'h': hash,
+      'by': _self,
+      'at': at,
+      'sig': sig,
+    };
+    final others = [
+      for (final m in c.members)
+        if (m.id != _self) m.id
+    ];
+    final ref = 'photo:$gid:$version';
+    final rows = await store.outboxFor(gid);
+    for (final m in others) {
+      // Only the newest photo note waits for a member.
+      for (final row in rows) {
+        if (row['kind'] == 'photo' && row['member_id'] == m) {
+          await store.removeOutbox(row['id'].toString(), m);
+        }
+      }
+      await _queue(m, gid, ref, 'photo', payload);
+    }
+    if (hash.isNotEmpty) {
+      await files?.queue(
+          gid,
+          GroupFileWire.photoMessageId(gid),
+          [
+            GroupNearbyFile(
+                id: GroupFileWire.photoFileId(version),
+                name: 'group.jpg',
+                type: 'image/jpeg',
+                size: size)
+          ],
+          others);
+    }
+    AppLogger.info('GROUP_PHOTO_NEARBY',
+        detail: 'v=$version members=${others.length} removed=${hash.isEmpty}');
+    unawaited(flush());
+  }
+
+  static final RegExp _hex64 = RegExp(r'^[0-9a-f]{64}$');
+
+  Future<void> _onPhoto(
+      String from, String gid, Map<String, dynamic> p, String strangerKey) async {
+    final c = await card(gid);
+    final local = await store.group(gid);
+    if (c == null || local == null || !c.has(_self)) return;
+    final by = p['by']?.toString() ?? '';
+    final v = int.tryParse(p['v']?.toString() ?? '') ?? 0;
+    final at = int.tryParse(p['at']?.toString() ?? '') ?? 0;
+    final hash = p['h']?.toString() ?? '';
+    final sig = p['sig']?.toString() ?? '';
+    if (by != from || v <= 0 || at <= 0 || !_keyOk(c, from, strangerKey)) return;
+    if (hash.isNotEmpty && !_hex64.hasMatch(hash)) return;
+    final m = c.member(by);
+    if (m == null) return;
+    if (!(c.editInfo == 'all' || c.isAdmin(by))) {
+      AppLogger.warning('GROUP_PHOTO_REFUSED', detail: 'why=not_admin');
+      await _ack(from, gid, 'photo:$gid:$v', key: m.seal);
+      return;
+    }
+    if (!await keys.verify(photoText(gid, v, hash, by, at), sig, m.sign)) {
+      AppLogger.warning('GROUP_PHOTO_REFUSED', detail: 'why=bad_sig');
+      return;
+    }
+    if (local.isActive) {
+      try {
+        await onPhotoNote?.call(gid, v, hash, by);
+      } catch (_) {}
+    }
+    await _ack(from, gid, 'photo:$gid:$v', key: m.seal);
   }
 
   // ------------------------------------------ Bundle G4: Join with QR
@@ -1256,7 +1537,7 @@ class GroupNearbyService {
   // ---------------------------------------------- Bundle G4: catch-up
 
   Future<void> _keepCopy(String gid, String id, String writer, String createdAt,
-      String body, String sig) async {
+      String body, String sig, {String att = '', String sig2 = ''}) async {
     final c = copies;
     if (c == null) return;
     try {
@@ -1267,7 +1548,9 @@ class GroupNearbyService {
           createdAt: createdAt,
           body: body,
           sig: sig,
-          keptAt: _nowMs()));
+          keptAt: _nowMs(),
+          att: att,
+          sig2: sig2));
     } catch (_) {}
   }
 
@@ -1379,13 +1662,13 @@ class GroupNearbyService {
     if (missing.isEmpty) return;
     missing.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     final seal = c.member(from)!.seal;
-    var page = <Map<String, String>>[];
+    var page = <Map<String, Object>>[];
     var bytes = 0;
     var gave = 0;
     Future<void> sendPage() async {
       if (page.isEmpty) return;
       final items = page;
-      page = <Map<String, String>>[];
+      page = <Map<String, Object>>[];
       bytes = 0;
       await send(
           recipientId: from,
@@ -1394,14 +1677,19 @@ class GroupNearbyService {
     }
 
     for (final copy in missing) {
-      final item = {
+      final files = GroupFileWire.decodeList(copy.att);
+      final item = <String, Object>{
         'id': copy.id,
         'w': copy.writer,
         'c': copy.createdAt,
         'b': copy.body,
         's': copy.sig,
+        // Bundle G7: the file list + the writer's signature over it.
+        if (files.isNotEmpty) 'a': [for (final f in files) f.toJson()],
+        if (copy.sig2.isNotEmpty) 's2': copy.sig2,
       };
-      final size = copy.body.length + copy.id.length + copy.sig.length + 120;
+      final size = copy.body.length + copy.id.length + copy.sig.length +
+          copy.att.length + copy.sig2.length + 120;
       if (page.length >= pageItems || (page.isNotEmpty && bytes + size > pageBytes)) {
         await sendPage();
       }
@@ -1430,10 +1718,15 @@ class GroupNearbyService {
       final createdAt = e['c']?.toString() ?? '';
       final body = e['b']?.toString() ?? '';
       final sig = e['s']?.toString() ?? '';
-      if (id.isEmpty || id.length > 128 || body.isEmpty ||
-          body.length > 16 * 1024 || sig.isEmpty || writer == _self) {
+      // Bundle G7: files (+ 'llgm2' signature) - words may be empty.
+      final att = GroupFileWire.parseList(e['a']);
+      final sig2 = e['s2']?.toString() ?? '';
+      if (id.isEmpty || id.length > 128 || body.length > 16 * 1024 ||
+          writer == _self) {
         continue;
       }
+      if (att.isEmpty && (body.isEmpty || sig.isEmpty)) continue;
+      if (att.isNotEmpty && sig2.isEmpty) continue;
       final w = c.member(writer);
       if (w == null) continue;
       final at = DateTime.tryParse(createdAt);
@@ -1441,15 +1734,27 @@ class GroupNearbyService {
       if (myJoin != null && at.isBefore(myJoin)) continue;
       if (c.sendMessages == 'admins' && !c.isAdmin(writer)) continue;
       if (await store.messageExists(id)) continue;
-      if (!await keys.verify(
-          messageText(gid, id, writer, createdAt, body), sig, w.sign)) {
+      final ok = att.isNotEmpty
+          ? await keys.verify(
+              GroupFileWire.messageText2(gid, id, writer, createdAt, body, att),
+              sig2,
+              w.sign)
+          : await keys.verify(
+              messageText(gid, id, writer, createdAt, body), sig, w.sign);
+      if (!ok) {
         AppLogger.warning('GROUP_RX_BAD_SIG',
             detail: 'via=${_id6(from)} writer=${_id6(writer)}');
         continue;
       }
       await onMessage(GroupMessage(
-          id: id, groupId: gid, senderId: writer, body: body, createdAt: createdAt));
-      await _keepCopy(gid, id, writer, createdAt, body, sig);
+          id: id,
+          groupId: gid,
+          senderId: writer,
+          body: body,
+          createdAt: createdAt,
+          attachments: [for (final f in att) f.toAttachment()]));
+      await _keepCopy(gid, id, writer, createdAt, body, sig,
+          att: GroupFileWire.encodeList(att), sig2: sig2);
       got++;
       // The writer gets "got it" too (its ✓ for me).
       unawaited(_ack(writer, gid, id).catchError((Object _) {}));

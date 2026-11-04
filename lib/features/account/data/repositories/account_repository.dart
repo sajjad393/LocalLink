@@ -53,6 +53,7 @@ class AccountRepository implements AccountRepositoryContract {
     bool discoverableByPhone = true,
     bool discoverableByName = true,
     bool directorySyncEnabled = true,
+    bool removeAvatar = false,
   }) async {
     final normalizedName = displayName.trim();
     final normalizedUsername = username.trim().toLowerCase();
@@ -77,6 +78,13 @@ class AccountRepository implements AccountRepositoryContract {
       profileVersion: nextVersion,
       updatedAt: DateTime.now().toUtc().toIso8601String(),
     );
+
+    // Bundle 204: "Remove photo" (the server copy goes when online; the card
+    // has no picture code from now, so friends show the letter).
+    if (removeAvatar && avatarFile == null) {
+      await _store.setPendingProfileAvatarPath(LocalLinkApi.removeAvatarMark);
+      local = local.copyWith(localAvatarPath: '', avatarUrl: '');
+    }
 
     if (avatarFile != null) {
       if (!await avatarFile.exists()) {

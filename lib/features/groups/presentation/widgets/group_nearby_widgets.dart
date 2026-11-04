@@ -182,7 +182,7 @@ Future<void> showAddingPeopleSheet(
           ),
           child: Row(
             children: [
-              AccountAvatar(name: i.name, radius: 21),
+              AccountAvatar(name: i.name, radius: 21, peerId: i.memberId),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

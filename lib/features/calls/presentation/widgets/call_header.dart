@@ -29,7 +29,7 @@ class CallHeader extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AccountAvatar(name: session.peerName, radius: 78, iconSize: 56),
+        AccountAvatar(name: session.peerName, radius: 78, iconSize: 56, peerId: session.peerId),
         const SizedBox(height: 28),
         Text(
           session.peerName.isEmpty ? 'LinkUp user' : session.peerName,

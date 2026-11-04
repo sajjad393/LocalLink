@@ -434,10 +434,10 @@ final class LocalLinkNotificationService {
       ),
       publicTitle: _publicTitle(identity.displayName, isGroup: false),
       publicBody: _publicBody(),
-      // Bundle 137: notifications must not expose user icons — always the
-      // app icon (no contact photo, no initials disc).
+      // Bundle 137: no initials disc. Bundle 204 (mock 204 A8): a friend's
+      // picture on the right when there is one; the app icon stays left.
       initials: '',
-      avatarPath: null,
+      avatarPath: identity.localAvatarPath,
       imagePath: attachment?.path,
       attachmentId: attachment?.id,
       unreadCount: unread.length,
@@ -508,10 +508,10 @@ final class LocalLinkNotificationService {
         senderName: identity.displayName,
       ),
       publicBody: _publicBody(),
-      // Bundle 137: notifications must not expose user icons — always the
-      // app icon (no contact photo, no initials disc).
+      // Bundle 137: no initials disc. Bundle 204 (mock 204 A8): a friend's
+      // picture on the right when there is one; the app icon stays left.
       initials: '',
-      avatarPath: null,
+      avatarPath: identity.localAvatarPath,
       imagePath: attachment?.path,
       attachmentId: attachment?.id,
       unreadCount: unread.length,

@@ -54,6 +54,7 @@ import 'package:locallink/features/groups/presentation/widgets/group_info_sheets
 import 'package:locallink/features/groups/presentation/group_people_hub.dart';
 import 'package:locallink/features/groups/data/group_change_hub.dart';
 import 'package:locallink/features/groups/data/group_photo_book.dart';
+import 'package:locallink/features/directory/data/peer_photo_book.dart';
 import 'package:locallink/features/directory/presentation/add_contact_screen.dart' show showSaveContactDialog;
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart' show FriendHelloService, FriendAddedByMe;
 import 'package:locallink/core/widgets/error_toast.dart' show showErrorToast;
@@ -377,6 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Bundle G2: a group changed (added me, removed me, new name / photo):
     // read the list again (once per second at most).
     unawaited(GroupPhotoBook.instance.init());
+    unawaited(PeerPhotoBook.instance.init()); // Bundle 204
     _groupChangeSub = GroupChangeHub.instance.changes.listen((_) {
       _groupChangeTimer?.cancel();
       _groupChangeTimer = Timer(const Duration(seconds: 1), () {
@@ -893,7 +895,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       name: name,
       subtitle: username.isEmpty ? presence : '@$username · $presence',
-      avatar: AccountAvatar(name: name, radius: 22),
+      avatar: AccountAvatar(name: name, radius: 22, peerId: device.id),
     );
     if (!mounted || choice == null) return;
     final delete = choice == ChatRowChoice.delete;

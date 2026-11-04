@@ -1,6 +1,8 @@
 import 'package:locallink/features/groups/data/group_mention_book.dart';
 import 'package:locallink/core/services/message_seal_service.dart';
 import 'package:locallink/features/groups/data/group_sender_keys.dart';
+import 'package:locallink/features/groups/data/group_nearby_files.dart';
+import 'package:locallink/features/groups/data/group_change_hub.dart';
 import 'package:locallink/features/groups/data/group_invite_link.dart';
 import 'package:locallink/features/groups/data/group_mute_book.dart';
 import 'dart:async';
@@ -224,6 +226,43 @@ class AppDependencies {
       );
       groupMessagingService.nearby = groupNearby;
       GroupNearbyHub.bind(groupNearby);
+      // Bundle G7: group photos / videos / voice notes / files with no
+      // internet - the sender sends each file to each member (like 1:1).
+      final pairFileKeys = GroupPairFileKeys(
+        selfId: () => store.deviceId ?? '',
+        ownKey: () async {
+          final pairs = await crypto.sealKeyPairs();
+          return pairs.isEmpty ? null : await SealKeyPair.from(pairs.first);
+        },
+        members: () => groupNearby!.memberSealKeys(),
+        push: groupLink.pushPeerFileKeys,
+      );
+      final fileSender = GroupFileSender(
+        store: LocalGroupFileSendStore(store),
+        source: groupMessagingService.fileSource,
+        sendFile: groupMessagingService.sendFileTo,
+        beforeSend: pairFileKeys.refresh,
+        lowBattery: () {
+          final battery = wifiDirectFallback.batteryLevel;
+          return battery >= 0 && battery <= 10;
+        },
+        onChanged: (id) =>
+            unawaited(groupMessagingService.fileRowsChanged(id)),
+      );
+      final near = groupNearby!;
+      near.files = fileSender;
+      near.onFileEvent = groupMessagingService.fileWatch.handleEvent;
+      near.onTyping = (gid, member, on) =>
+          unawaited(groupMessagingService.typingNearby(gid, member, on));
+      near.onPhotoNote = groupMessagingService.photoNote;
+      groupMessagingService.refreshFileKeys = pairFileKeys.refresh;
+      groupMessagingService.cancelIncomingFile = files.cancelDirectFile;
+      _groupChangeSub ??= GroupChangeHub.instance.changes
+          .listen((_) => unawaited(pairFileKeys.refresh(force: true)));
+      Timer(const Duration(seconds: 8), () {
+        unawaited(pairFileKeys.refresh(force: true));
+        unawaited(fileSender.pump());
+      });
     }
     // Bundle G6: end-to-end sender keys for the server road.
     final memberKeys = GroupMemberKeys(
@@ -257,6 +296,8 @@ class AppDependencies {
       store: store,
       deleteFile: files.deleteLocalFile,
       nearby: groupNearby,
+      // Bundle G7: group photo with no internet.
+      photoNearby: groupMessagingService.setPhotoNearby,
       // Bundle G3 (9.17): one 8 s search round for a group made offline
       // (never at battery 10% or less).
       searchRound: (ids) {
@@ -334,6 +375,12 @@ class AppDependencies {
       // after the first frames are on screen (cold-start ANR guard).
       startupSettle: const Duration(seconds: 3),
     );
+    // Bundle G7: group files arriving Nearby + Tap to download / X.
+    messaging.onGroupFile = groupMessagingService.receiveNearbyFile;
+    messaging.groupMediaResend = groupMessagingService.requestFileAgain;
+    messaging.groupMediaCancel = groupMessagingService.cancelFile;
+    groupMessagingService.allowIncomingFile =
+        (id) => messaging.allowIncomingFile(id);
     messagingRepository = MessagingRepository(store: store, service: messaging);
     notifications = LocalLinkNotificationService(
       store: store,
@@ -358,6 +405,8 @@ class AppDependencies {
     networkPolicySync = NetworkPolicySyncService(store, api, socket, httpClient: this.httpClient, wifiRadio: WifiRadioControlService());
     final directory = DirectoryRepository(store: store, api: api, transport: directTransport, crypto: crypto);
     directoryRepository = directory;
+    // Bundle 204: friends' profile pictures that come Nearby.
+    messaging.onProfilePhotoFile = directory.receivePhotoFile;
     pairing = PairingService(
       store: store,
       crypto: crypto,
@@ -481,6 +530,7 @@ class AppDependencies {
   /// Bundle 194: sends the one automatic Hello after my own Add.
   late final FriendHelloService friendHello;
   StreamSubscription<FriendAddedByMe>? _addedByMeSub;
+  StreamSubscription<String>? _groupChangeSub; // Bundle G7: pair file keys
 
   final List<StreamSubscription<FriendAdded>> _friendSubs =
       <StreamSubscription<FriendAdded>>[];

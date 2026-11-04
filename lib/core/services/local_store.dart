@@ -187,6 +187,7 @@ class LocalStore {
         if (oldVersion < 30) await _upgradeTo30(db);
         if (oldVersion < 31) await _upgradeTo31(db);
         if (oldVersion < 32) await _upgradeTo32(db);
+        if (oldVersion < 33) await _upgradeTo33(db);
       },
     );
     _databaseOpened = true;
@@ -358,6 +359,7 @@ class LocalStore {
     await _upgradeTo30(db);
     await _upgradeTo31(db);
     await _upgradeTo32(db);
+    await _upgradeTo33(db);
   }
 
   Future<void> _upgradeTo2(Database db) async {
@@ -856,6 +858,73 @@ class LocalStore {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_group_receipts_group '
         'ON group_receipts(group_id)');
   }
+
+  /// Bundle G7: group files Nearby - the file list in catch-up copies
+  /// (+ the writer's signature over text + files) and one row per file
+  /// per member on the sender's phone.
+  Future<void> _upgradeTo33(Database db) async {
+    for (final column in const ['att', 'sig2']) {
+      try {
+        await db.execute(
+            "ALTER TABLE group_copies ADD COLUMN $column TEXT NOT NULL DEFAULT ''");
+      } catch (_) {}
+    }
+    await db.execute('CREATE TABLE IF NOT EXISTS group_file_sends ('
+        'msg_id TEXT NOT NULL, file_id TEXT NOT NULL, member_id TEXT NOT NULL, '
+        'group_id TEXT NOT NULL, status TEXT NOT NULL, '
+        'tries INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL DEFAULT 0, '
+        'created_at INTEGER NOT NULL DEFAULT 0, '
+        'PRIMARY KEY(msg_id, file_id, member_id))');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_group_file_sends_member '
+        'ON group_file_sends(member_id)');
+  }
+
+  // ---- Bundle G7: group files Nearby (sender rows) -------------------------
+
+  Future<void> putGroupFileSends(List<Map<String, Object?>> rows) async {
+    if (rows.isEmpty) return;
+    final batch = _db.batch();
+    for (final r in rows) {
+      batch.insert('group_file_sends', r,
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> groupFileSends(
+      {String? msgId, String? memberId}) async {
+    final where = <String>[];
+    final args = <Object?>[];
+    if (msgId != null) {
+      where.add('msg_id=?');
+      args.add(msgId);
+    }
+    if (memberId != null) {
+      where.add('member_id=?');
+      args.add(memberId);
+    }
+    final rows = await _db.query('group_file_sends',
+        where: where.isEmpty ? null : where.join(' AND '),
+        whereArgs: args.isEmpty ? null : args,
+        orderBy: 'created_at ASC');
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  Future<void> updateGroupFileSend(Map<String, Object?> row) async =>
+      _db.update(
+          'group_file_sends',
+          {
+            'status': row['status'],
+            'tries': row['tries'],
+            'next_at': row['next_at'],
+          },
+          where: 'msg_id=? AND file_id=? AND member_id=?',
+          whereArgs: [row['msg_id'], row['file_id'], row['member_id']]);
+
+  Future<void> purgeGroupFileSends(int olderThanMs) async => _db.delete(
+      'group_file_sends',
+      where: 'created_at<?',
+      whereArgs: [olderThanMs]);
 
   /// Keeps the first delivered / read time (read also means delivered).
   Future<void> putGroupReceipt(String messageId, String groupId,
@@ -1523,9 +1592,35 @@ class LocalStore {
   Future<void> clearPendingProfileAvatarPath() async => _db.delete('settings',
       where: 'key=?', whereArgs: ['pending_profile_avatar']);
 
+  /// Bundle 204: a new name each time (the old fixed name kept showing the
+  /// old picture from the image cache).
   Future<String> pendingProfileAvatarFilePath(String extension) async {
     final dir = await getDatabasesPath();
-    return p.join(dir, 'profile_avatar_pending$extension');
+    final ms = DateTime.now().millisecondsSinceEpoch;
+    return p.join(dir, 'profile_avatar_pending_$ms$extension');
+  }
+
+  /// Bundle 204: the stored own picture, named by its content
+  /// (`profile_avatar_<hash>.jpg`).
+  Future<String> profileAvatarFilePath(String hash, String extension) async {
+    final dir = await getDatabasesPath();
+    return p.join(dir, 'profile_avatar_$hash$extension');
+  }
+
+  /// Bundle 204: removes old own-picture files (all but [keep]).
+  Future<void> sweepProfileAvatars(Set<String> keep) async {
+    try {
+      final dir = Directory(await getDatabasesPath());
+      for (final f in dir.listSync()) {
+        if (f is! File) continue;
+        final name = p.basename(f.path);
+        if (!name.startsWith('profile_avatar')) continue;
+        if (keep.contains(f.path)) continue;
+        try {
+          f.deleteSync();
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   Future<LocalProfile?> profile() async {

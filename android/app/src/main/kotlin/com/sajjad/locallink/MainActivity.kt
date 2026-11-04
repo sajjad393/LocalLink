@@ -326,6 +326,14 @@ class MainActivity : FlutterActivity() {
                             runOnUiThread { result.success(stored) }
                         }, "locallink-link-keys").start()
                     }
+                    // Bundle G7: file lock keys for group members who are not friends.
+                    "updatePeerFileKeys" -> {
+                        val json = call.argument<String>("peer_file_keys").orEmpty()
+                        Thread({
+                            val stored = LocalLinkTransportService.updatePeerFileKeys(json)
+                            runOnUiThread { result.success(stored) }
+                        }, "locallink-peer-file-keys").start()
+                    }
                     "sendPairPayload" -> {
                         val target = call.argument<String>("target").orEmpty()
                         val pairKind = call.argument<String>("pair").orEmpty()
