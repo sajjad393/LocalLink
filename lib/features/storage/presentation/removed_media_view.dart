@@ -11,6 +11,7 @@ import 'package:locallink/features/files/presentation/widgets/chat_video_player.
 import 'package:locallink/features/files/presentation/widgets/media_frame.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/features/storage/domain/media_clean_policy.dart';
+import 'package:locallink/features/files/presentation/widgets/media_tile_look.dart';
 
 /// Bundle 197b: shown in the bubble when LinkUp's copy of a photo / video /
 /// document / voice note was removed to save space (auto or by hand).
@@ -23,6 +24,7 @@ class RemovedMediaView extends StatefulWidget {
     this.senderName,
     this.onRestored,
     this.service,
+    this.cell,
   });
 
   static const String label = 'Removed to save space';
@@ -32,6 +34,9 @@ class RemovedMediaView extends StatefulWidget {
   final String? senderName;
   final VoidCallback? onRestored;
   final MediaStorageService? service;
+
+  /// Bundle 202: square in a media grid (fixed size, no gap, no corners).
+  final Size? cell;
 
   /// V4: "This photo / video / file is no longer on your phone."
   static String goneMine(MediaKind kind) => switch (kind) {
@@ -133,7 +138,7 @@ class _RemovedMediaViewState extends State<RemovedMediaView> {
 
   Widget _visual() {
     final a = widget.attachment;
-    final frame = MediaFrame.fit(a.width, a.height);
+    final frame = widget.cell ?? MediaFrame.fit(a.width, a.height);
     final looksNormal = widget.mine && _alive == true;
     final thumb = _thumb;
     Widget picture = thumb == null
@@ -151,9 +156,9 @@ class _RemovedMediaViewState extends State<RemovedMediaView> {
     final booked = MediaBook.instance.of(a.id)?.mediaMs ?? 0;
     final ms = booked > 0 ? booked : (VideoInfoCache.peek(a.id)?.durationMs ?? 0);
     return Container(
-      margin: const EdgeInsets.only(top: 6),
+      margin: EdgeInsets.only(top: MediaTileLook.topOf(context, fallback: 6)),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: MediaTileLook.radiusOf(context),
         child: SizedBox(
           width: frame.width,
           height: frame.height,

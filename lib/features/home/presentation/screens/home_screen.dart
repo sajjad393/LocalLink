@@ -62,6 +62,7 @@ import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
 import 'package:locallink/features/authentication/data/services/offline_account_sync_service.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
+import 'package:locallink/features/account/presentation/widgets/private_profile_card.dart';
 
 class HomeScreen extends StatefulWidget {
   final LocalLinkApi api;
@@ -296,6 +297,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _registerForwardHub(); // Bundle 197a
+    // Bundle 202 (P4): one time - phone number follows the Private switch.
+    unawaited(PhoneVisibilityAlign.runOnce(
+        account: widget.accountRepository,
+        directory: widget.directoryRepository));
     _startMediaStorage(); // Bundle 197b
     // Dashboard entry: verify the real notification permission once per
     // install (and once per app start), explain WHY, and only then run the

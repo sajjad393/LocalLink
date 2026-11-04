@@ -610,7 +610,9 @@ class QuoteBox extends StatelessWidget {
       child: Container(
         key: const ValueKey('bubble_quote'),
         margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.fromLTRB(9, 5, 10, 5),
+        // Bundle 202 (mock C3): slimmer box, picture close to the right edge.
+        padding: EdgeInsets.fromLTRB(
+            7, 3, thumb != null && !notAvailable ? 3 : 6, 3),
         decoration: BoxDecoration(
           color: onBlue
               ? Colors.white.withValues(alpha: .18)

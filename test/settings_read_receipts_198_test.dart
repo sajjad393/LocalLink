@@ -8,15 +8,17 @@ import 'package:locallink/features/messaging/data/read_receipts/read_receipts_se
 void main() {
   tearDown(() => ReadReceiptsSetting.instance.debugSet(true));
 
-  test('row sits between Private profile and Blocked people', () {
+  test('row sits first in PRIVACY, above Blocked people (Bundle 202)', () {
     final src = File(
             'lib/features/home/presentation/screens/messenger_settings_screen.dart')
         .readAsStringSync();
-    final privateRow = src.indexOf('PrivateProfileRow(\n');
+    // Bundle 202: Private profile moved to Profile > Privacy.
+    expect(src.contains('PrivateProfileRow('), isFalse);
+    final label = src.indexOf("key: ValueKey('settings_privacy_label')");
     final row = src.indexOf('const ReadReceiptsRow(), // Bundle 198');
     final blocked = src.indexOf("key: const ValueKey('settings_blocked_people')");
-    expect(privateRow, isNonNegative);
-    expect(row > privateRow, isTrue);
+    expect(label, isNonNegative);
+    expect(row > label, isTrue);
     expect(blocked > row, isTrue);
   });
 

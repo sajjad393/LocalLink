@@ -25,6 +25,7 @@ class BubbleContent extends MultiChildRenderObjectWidget {
     this.inlineGap = 10,
     this.headerGap = 3,
     this.footerGap = 3,
+    this.bodyAfterMedia = false,
   }) : super(children: <Widget>[
           if (header != null) header,
           if (body != null) body,
@@ -42,6 +43,10 @@ class BubbleContent extends MultiChildRenderObjectWidget {
   final double headerGap;
   final double footerGap;
 
+  /// Bundle 202: picture bubbles put the caption UNDER the photos (WhatsApp)
+  /// and keep the caption / quote as wide as the photos.
+  final bool bodyAfterMedia;
+
   @override
   RenderBubbleContent createRenderObject(BuildContext context) =>
       RenderBubbleContent(
@@ -50,6 +55,7 @@ class BubbleContent extends MultiChildRenderObjectWidget {
         inlineGap: inlineGap,
         headerGap: headerGap,
         footerGap: footerGap,
+        bodyAfterMedia: bodyAfterMedia,
         textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
       );
 
@@ -62,6 +68,7 @@ class BubbleContent extends MultiChildRenderObjectWidget {
       ..inlineGap = inlineGap
       ..headerGap = headerGap
       ..footerGap = footerGap
+      ..bodyAfterMedia = bodyAfterMedia
       ..textDirection = Directionality.maybeOf(context) ?? TextDirection.ltr;
   }
 }
@@ -78,8 +85,10 @@ class RenderBubbleContent extends RenderBox
     required double inlineGap,
     required double headerGap,
     required double footerGap,
+    bool bodyAfterMedia = false,
     required TextDirection textDirection,
   })  : _hasHeader = hasHeader,
+        _bodyAfterMedia = bodyAfterMedia,
         _hasBody = hasBody,
         _inlineGap = inlineGap,
         _headerGap = headerGap,
@@ -118,6 +127,13 @@ class RenderBubbleContent extends RenderBox
   set footerGap(double v) {
     if (v == _footerGap) return;
     _footerGap = v;
+    markNeedsLayout();
+  }
+
+  bool _bodyAfterMedia;
+  set bodyAfterMedia(bool v) {
+    if (v == _bodyAfterMedia) return;
+    _bodyAfterMedia = v;
     markNeedsLayout();
   }
 
@@ -174,12 +190,18 @@ class RenderBubbleContent extends RenderBox
     footer.layout(loose, parentUsesSize: true);
     final fw = footer.size.width;
     var w = fw;
+    var mediaW = 0.0;
     for (final m in media) {
       m.layout(loose, parentUsesSize: true);
-      w = math.max(w, m.size.width);
+      mediaW = math.max(mediaW, m.size.width);
     }
+    w = math.max(w, mediaW);
+    // Bundle 202: caption + quote no wider than the photos.
+    final capped = _bodyAfterMedia && mediaW > 0;
+    final textLoose =
+        capped ? BoxConstraints(maxWidth: math.max(mediaW, fw)) : loose;
     if (header != null) {
-      header.layout(loose, parentUsesSize: true);
+      header.layout(textLoose, parentUsesSize: true);
       w = math.max(w, header.size.width);
     }
     var inline = false;
@@ -193,7 +215,7 @@ class RenderBubbleContent extends RenderBox
             parentUsesSize: true);
         w = math.max(w, body.size.width + _inlineGap + fw);
       } else {
-        body.layout(loose, parentUsesSize: true);
+        body.layout(textLoose, parentUsesSize: true);
         w = math.max(w, body.size.width);
       }
     }
@@ -223,13 +245,17 @@ class RenderBubbleContent extends RenderBox
       place(footer, _x(w, fw, end: true), y + rowH - footer.size.height);
       y += rowH;
     } else {
-      if (body != null) {
+      if (body != null && !_bodyAfterMedia) {
         place(body, _x(w, body.size.width, end: false), y);
         y += body.size.height;
       }
       for (final m in media) {
         place(m, _x(w, m.size.width, end: true), y);
         y += m.size.height;
+      }
+      if (body != null && _bodyAfterMedia) {
+        place(body, _x(w, body.size.width, end: false), y);
+        y += body.size.height;
       }
       y += _footerGap;
       place(footer, _x(w, fw, end: true), y);

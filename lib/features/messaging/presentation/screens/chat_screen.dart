@@ -1099,9 +1099,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                       senderName: _peerName(device),
                                       quoteThumb: reply == null
                                           ? null
-                                          : QuoteThumb.forAttachments(
+                                          : QuoteThumb.forMessage(
                                               byId[reply.id]?.attachments ??
                                                   const <Attachment>[]),
+                                      quoteLine: reply == null
+                                          ? null
+                                          : replyLineFor(reply,
+                                              byId[reply.id]?.attachments),
                                     ),
                                   );
                                   // Bundle 199: slide right to reply (same
@@ -1172,14 +1176,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 if (_replyTo != null)
                   ReplyBar(
                     name: _nameOf(_replyTo!),
-                    line: replyLine(_replyRefFor(_replyTo!)),
+                    line: replyLineFor(
+                        _replyRefFor(_replyTo!), _replyTo!.attachments),
                     isYou: _isMine(_replyTo!),
                     onClose: () => setState(() => _replyTo = null),
-                    thumb: QuoteThumb.forAttachments(_replyTo!.attachments),
+                    thumb: QuoteThumb.forMessage(_replyTo!.attachments),
                   ),
                 PendingAttachmentStrip(
                   attachments: state.pendingAttachments,
                   onRemove: widget.controller.removePendingAttachment,
+                  onAdd: state.isSending ? null : _pickFiles,
                 ),
                 ChatComposer(
                   controller: _textController,

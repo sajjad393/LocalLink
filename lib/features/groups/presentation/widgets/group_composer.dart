@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/features/messaging/presentation/widgets/pending_attachment_strip.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_button.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
@@ -36,24 +37,12 @@ class GroupComposer extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Bundle 202 (mock F1): same review strip as the 1-to-1 chat.
           if (pending.isNotEmpty)
-            SizedBox(
-              height: 50,
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.sm),
-                scrollDirection: Axis.horizontal,
-                itemCount: pending.length,
-                separatorBuilder: (_, __) => const SizedBox(width: LocalLinkSpacing.xs),
-                itemBuilder: (_, index) => Chip(
-                  backgroundColor: colors.surfaceContainerHighest,
-                  avatar: const Icon(Icons.attach_file, size: 16),
-                  label: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 150),
-                    child: Text(pending[index].name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
-                  onDeleted: () => onRemove(index),
-                ),
-              ),
+            PendingAttachmentStrip(
+              attachments: pending,
+              onRemove: onRemove,
+              onAdd: isSending ? null : onPick,
             ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,

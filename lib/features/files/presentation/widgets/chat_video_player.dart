@@ -9,6 +9,7 @@ import 'chat_video_controller.dart';
 import 'chat_video_hub.dart';
 import 'media_frame.dart';
 import 'media_playback_coordinator.dart';
+import 'media_tile_look.dart';
 
 /// Bundle 145: WhatsApp-like video inside the chat bubble.
 ///
@@ -347,9 +348,9 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
     final active = s != null && st != null && st.initialized && !inMini;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: EdgeInsets.only(top: MediaTileLook.topOf(context)),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: MediaTileLook.radiusOf(context),
         child: SizedBox(
           width: size.width,
           height: size.height,
@@ -516,7 +517,8 @@ class _ReadyOverlay extends StatelessWidget {
           ),
         Positioned(
           right: 8,
-          bottom: 8,
+          top: MediaTileLook.freeCornerOf(context) ? 8 : null,
+          bottom: MediaTileLook.freeCornerOf(context) ? null : 8,
           child: VideoChip(
             key: const Key('chat_video_size_chip'),
             label: formatVideoBytes(sizeBytes),

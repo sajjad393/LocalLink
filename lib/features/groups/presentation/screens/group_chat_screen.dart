@@ -548,10 +548,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             if (_replyTo != null)
               ReplyBar(
                 name: _nameFor(_replyTo!.senderId),
-                line: replyLine(_replyRefFor(_replyTo!)),
+                line: replyLineFor(_replyRefFor(_replyTo!), _replyTo!.attachments),
                 isYou: _controller.isMine(_replyTo!),
                 onClose: () => setState(() => _replyTo = null),
-                thumb: QuoteThumb.forAttachments(_replyTo!.attachments),
+                thumb: QuoteThumb.forMessage(_replyTo!.attachments),
               ),
             GroupComposer(
               controller: _messageController,
@@ -608,8 +608,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             reply == null || selecting ? null : () => _jumpTo(reply.id),
         quoteThumb: reply == null
             ? null
-            : QuoteThumb.forAttachments(
+            : QuoteThumb.forMessage(
                 byId[reply.id]?.attachments ?? const <Attachment>[]),
+        quoteLine: reply == null
+            ? null
+            : replyLineFor(reply, byId[reply.id]?.attachments),
       ),
     );
     // Bundle 199: slide right to reply.

@@ -16,6 +16,7 @@ import 'package:locallink/core/widgets/local_link_text_field.dart';
 import 'package:locallink/features/account/bloc/account_bloc.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
+import 'package:locallink/features/account/presentation/widgets/private_profile_card.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
@@ -78,7 +79,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Bundle 105: discovery toggles removed from the UI — they stay ON
   // permanently so friends can find you by phone/username and the profile
   // syncs whenever a trusted connection is available.
-  String visibility = 'public';
   bool _adminCapable = false;
 
   // Bundle 128: strict rules once the account exists. Registration always
@@ -104,9 +104,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         name.text = value.displayName;
         username.text = value.username;
         phone.text = value.phoneNumber;
-        visibility = value.phoneVisibility.isNotEmpty
-            ? value.phoneVisibility
-            : 'public';
       });
     });
   }
@@ -148,9 +145,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ? profile!.username
             : username.text,
         phoneNumber: phone.text,
-        phoneVisibility: visibility,
+        // Bundle 202: the Private profile switch decides who gets my number.
+        phoneVisibility: ProfilePrivacyRule.phoneVisibilityFor(
+            private: ProfilePrivacyRule.isPrivate(profile)),
         discoverableByPhone: true,
-        // Bundle 196: keep my Private profile choice (Settings › PRIVACY).
+        // Bundle 196: keep my Private profile choice (Profile › Privacy).
         discoverableByName: profile?.discoverableByName ?? true,
         directorySyncEnabled: true,
         avatarFile: image == null ? null : File(image!.path),
@@ -369,22 +368,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           if (!widget.onboarding) ...[
             const SizedBox(height: LocalLinkSpacing.section),
-            Text('Visibility', style: Theme.of(context).textTheme.titleMedium),
+            // Bundle 202 (mock P2): "Visibility" removed; the Private profile
+            // switch moved here from Settings and also decides the phone.
+            Text('Privacy', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: LocalLinkSpacing.sm),
-            // Bundle 105: find-by-phone / find-by-username / keep-synced are
-            // always on (switches removed); only the phone-visibility choice
-            // remains, defaulting to Public.
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.visibility_outlined),
-                title: const Text('Phone visibility'),
-                subtitle: Text(visibility == 'public' ? 'Anyone with your profile can see it.' : 'Only people who can access your contact can see it.'),
-                trailing: DropdownButton<String>(
-                  value: visibility,
-                  items: const [DropdownMenuItem(value: 'contacts', child: Text('Contacts')), DropdownMenuItem(value: 'public', child: Text('Public'))],
-                  onChanged: (value) => setState(() => visibility = value ?? visibility),
-                ),
-              ),
+            PrivateProfileCard(
+              accountRepository: widget.accountRepository,
+              directoryRepository: widget.directoryRepository,
+              onChanged: (saved) {
+                if (mounted) setState(() => profile = saved);
+              },
             ),
             const SizedBox(height: LocalLinkSpacing.section),
             Text('Share', style: Theme.of(context).textTheme.titleMedium),

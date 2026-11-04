@@ -215,9 +215,7 @@ class PresenceWayLine extends StatelessWidget {
                   child: Text(prefix,
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: base),
                 ),
-              PresenceWayIcon(
-                  way: info.way, size: ((base?.fontSize ?? 12.5) + 0.5)),
-              const SizedBox(width: 4),
+              // Bundle 202 (mock H1): words only, no icon.
               Flexible(
                 child: Text(
                   info.label,
@@ -264,8 +262,6 @@ class PresenceWayCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      PresenceWayIcon(way: info.way, size: 18),
-                      const SizedBox(width: 7),
                       Flexible(
                         child: Text(title,
                             style: const TextStyle(
@@ -293,14 +289,6 @@ class PresenceWayCallChip extends StatelessWidget {
   final String deviceId;
   const PresenceWayCallChip({super.key, required this.deviceId});
 
-  static const Map<PresenceWay, Color> _light = {
-    PresenceWay.wifi: Color(0xFF6EE7A0),
-    PresenceWay.nearby: Color(0xFF6EE7A0),
-    PresenceWay.wifiDirect: Color(0xFF5ED3DC),
-    PresenceWay.mesh: Color(0xFFB7A6F5),
-    PresenceWay.online: Color(0xFF8FB0FF),
-  };
-
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: PresenceHub.instance,
@@ -319,8 +307,6 @@ class PresenceWayCallChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                PresenceWayIcon(way: way, size: 15, color: _light[way]),
-                const SizedBox(width: 6),
                 Text(words,
                     style: const TextStyle(
                         color: Color(0xFFE9EDEF), fontSize: 13)),

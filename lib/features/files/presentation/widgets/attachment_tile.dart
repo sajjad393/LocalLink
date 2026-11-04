@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/services.dart';
 
 import 'package:flutter/material.dart';
@@ -23,6 +24,8 @@ import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/features/storage/presentation/removed_media_view.dart';
 import 'package:locallink/features/messaging/data/read_receipts/voice_played_hub.dart';
+import 'media_tile_look.dart';
+import 'media_grid.dart';
 
 class AttachmentTile extends StatefulWidget {
   final Attachment attachment;
@@ -53,6 +56,13 @@ class AttachmentTile extends StatefulWidget {
   /// yet), true = blue mic (played). Null = no mic (default).
   final bool? playedMark;
 
+  /// Bundle 202: square in a media grid (photo / video only). The picture
+  /// fills the square (cover); null = the normal tile.
+  final Size? cell;
+
+  /// Bundle 202: tap on a ready grid square (opens the swipe viewer).
+  final VoidCallback? onOpen;
+
   const AttachmentTile({
     super.key,
     required this.attachment,
@@ -66,6 +76,8 @@ class AttachmentTile extends StatefulWidget {
     this.mine = false,
     this.senderName,
     this.playedMark,
+    this.cell,
+    this.onOpen,
   });
 
   @override
@@ -227,9 +239,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
         Positioned(
           left: 0,
           right: 0,
-          top: 18,
+          top: widget.cell == null ? 18 : 8,
           child: Center(
-            child: GestureDetector(
+            child: _fitCell(GestureDetector(
               key: const Key('chat_media_not_sent'),
               behavior: HitTestBehavior.opaque,
               onTap: widget.onRetry,
@@ -255,10 +267,94 @@ class _AttachmentTileState extends State<AttachmentTile> {
                   ],
                 ),
               ),
-            ),
+            )),
           ),
         ),
       ],
+    );
+  }
+
+  /// Bundle 202: wide chips shrink to fit a grid square.
+  Widget _fitCell(Widget child) => widget.cell == null
+      ? child
+      : Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: FittedBox(fit: BoxFit.scaleDown, child: child),
+        );
+
+  /// Bundle 202 (mock A2-A6): a ready photo / video as a grid square -
+  /// cover crop, videos get a play button and their length. Tap = viewer.
+  Widget _compactReady(String path) {
+    final cell = widget.cell!;
+    final a = widget.attachment;
+    final video = !a.isImage;
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 2.0;
+    final info = video ? VideoInfoCache.peek(_videoCacheKey) : null;
+    const dark = ColoredBox(color: Color(0xFF2A2F3A));
+    final Widget picture;
+    if (!video) {
+      picture = Image.file(
+        File(path),
+        key: ValueKey<String>('grid_photo:${a.id}'),
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        cacheWidth: (cell.width * dpr).round().clamp(64, 1080),
+        errorBuilder: (_, __, ___) => dark,
+      );
+    } else if (info?.thumbnail != null) {
+      picture = Image.memory(info!.thumbnail!,
+          key: ValueKey<String>('grid_video:${a.id}'),
+          fit: BoxFit.cover,
+          gaplessPlayback: true);
+    } else {
+      picture = MediaThumbFill(
+          key: ValueKey<String>('grid_video:${a.id}'),
+          attachmentId: a.id,
+          fallback: dark);
+    }
+    final known = info?.durationMs ?? 0;
+    final ms = known > 0 ? known : (_media?.mediaMs ?? 0);
+    return SizedBox(
+      key: ValueKey<String>('grid_cell:${a.id}'),
+      width: cell.width,
+      height: cell.height,
+      child: Stack(fit: StackFit.expand, children: [
+        dark,
+        picture,
+        if (video && !widget.uploading)
+          const Center(
+            child: DecoratedBox(
+              decoration:
+                  BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+              child: Padding(
+                padding: EdgeInsets.all(6),
+                child: Icon(Icons.play_arrow_rounded,
+                    color: Colors.white, size: 28),
+              ),
+            ),
+          ),
+        if (video && ms > 0)
+          Positioned(
+            left: 6,
+            bottom: 6,
+            child: VideoChip(
+                icon: Icons.videocam_rounded,
+                label: formatVideoClock(Duration(milliseconds: ms))),
+          ),
+        Positioned.fill(
+          child: GestureDetector(
+            key: ValueKey<String>('grid_open:${a.id}'),
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.uploading
+                ? null
+                : () {
+                    _markOpened();
+                    widget.onOpen?.call();
+                  },
+          ),
+        ),
+        if (widget.uploading) _sendOverlay(),
+      ]),
     );
   }
 
@@ -555,6 +651,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
   void dispose() {
     // Bundle 147: give the view back to the cache instead of deleting it,
     // so scrolling back shows it at once (no second decrypt).
+    final shown = _displayPath;
+    if (shown != null) MediaGalleryRegistry.drop(widget.attachment.id, shown);
     _releaseView();
     MediaBook.instance.removeListener(_onMediaBook);
     MediaTransferActions.instance.cancelled.removeListener(_onCancelledChanged);
@@ -579,11 +677,21 @@ class _AttachmentTileState extends State<AttachmentTile> {
               attachment: widget.attachment,
               mine: widget.mine,
               senderName: widget.senderName,
+              cell: widget.cell,
             );
           }
           final displayPath = _displayPath;
           final saved = !widget.mine && (_media?.isSaved ?? false);
           if (displayPath != null) {
+            // Bundle 202: the swipe viewer opens what the chat already shows.
+            final key = _viewKey;
+            if (key != null && (widget.attachment.isImage || _isVideo)) {
+              MediaGalleryRegistry.put(widget.attachment.id, displayPath, key);
+            }
+            if (widget.cell != null &&
+                (widget.attachment.isImage || _isVideo)) {
+              return _withSaved(saved, _withFailed(_compactReady(displayPath)));
+            }
             if (widget.attachment.isImage) {
               return _withSaved(saved, _withFailed(ChatPhoto(
                 key: ValueKey<String>(displayPath),
@@ -842,7 +950,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
     final cached = VideoInfoCache.peek(_videoCacheKey);
     final a = widget.attachment;
     final hint = a.width > 0 && a.height > 0 ? a.width / a.height : null;
-    final size = ChatVideoPlayer.frameSize(cached?.aspectRatio ?? hint);
+    final size =
+        widget.cell ?? ChatVideoPlayer.frameSize(cached?.aspectRatio ?? hint);
     final hasLocal = _localPath != null && _localPath!.isNotEmpty;
     Widget circle(IconData icon, String tip, VoidCallback onTap, Key key) =>
         Material(
@@ -877,11 +986,14 @@ class _AttachmentTileState extends State<AttachmentTile> {
     }
     final thumb = cached?.thumbnail;
     // Bundle 150: the ring's own label shows "% · MB" while it runs.
-    final sizeChip = ring == null ? _sizeLabel(a.size) : null;
+    final sizeChip = ring == null &&
+            !(widget.cell != null && cached != null && cached.durationMs > 0)
+        ? _sizeLabel(a.size)
+        : null;
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: EdgeInsets.only(top: MediaTileLook.topOf(context)),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: MediaTileLook.radiusOf(context),
         child: SizedBox(
           width: size.width,
           height: size.height,
@@ -918,7 +1030,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
               if (sizeChip != null)
                 Positioned(
                   right: 8,
-                  bottom: 8,
+                  top: MediaTileLook.freeCornerOf(context) ? 8 : null,
+                  bottom: MediaTileLook.freeCornerOf(context) ? null : 8,
                   child: VideoChip(
                       key: const Key('chat_video_progress_chip'),
                       label: sizeChip),
@@ -1022,9 +1135,10 @@ class _AttachmentTileState extends State<AttachmentTile> {
   Widget _photoPlaceholder(TransferProgress? progress, bool running) {
     final a = widget.attachment;
     final known = MediaSizeCache.get(_videoCacheKey);
-    final frame = known != null
-        ? MediaFrame.fit(known.width, known.height)
-        : MediaFrame.fit(a.width, a.height);
+    final frame = widget.cell ??
+        (known != null
+            ? MediaFrame.fit(known.width, known.height)
+            : MediaFrame.fit(a.width, a.height));
     final hasLocal = _localPath != null && _localPath!.isNotEmpty;
     final ring = _ringCenter(progress, running);
     Widget button(IconData icon, String tip, VoidCallback onTap, Key key) =>
@@ -1062,9 +1176,9 @@ class _AttachmentTileState extends State<AttachmentTile> {
           const Key('chat_photo_download'));
     }
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: EdgeInsets.only(top: MediaTileLook.topOf(context)),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: MediaTileLook.radiusOf(context),
         child: SizedBox(
           key: const Key('chat_photo_placeholder'),
           width: frame.width,
@@ -1085,7 +1199,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
               if (ring == null)
                 Positioned(
                   right: 8,
-                  bottom: 8,
+                  top: MediaTileLook.freeCornerOf(context) ? 8 : null,
+                  bottom: MediaTileLook.freeCornerOf(context) ? null : 8,
                   child: VideoChip(label: _sizeLabel(a.size)),
                 ),
               if (!running && progress?.error != null)

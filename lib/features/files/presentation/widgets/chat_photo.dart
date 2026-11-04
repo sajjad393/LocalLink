@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'media_frame.dart';
+import 'media_tile_look.dart';
 
 /// Bundle 147: photo inside a chat bubble.
 ///
@@ -136,9 +137,9 @@ class _ChatPhotoState extends State<ChatPhoto> {
         : MediaFrame.fit(real.width, real.height);
     final provider = _provider ??= _buildProvider(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: EdgeInsets.only(top: MediaTileLook.topOf(context)),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: MediaTileLook.radiusOf(context),
         child: AnimatedContainer(
           key: const Key('chat_photo_frame'),
           duration: const Duration(milliseconds: 150),

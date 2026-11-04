@@ -89,7 +89,7 @@ void main() {
       expect(picked, 0);
     });
 
-    testWidgets('pending attachments render as removable chips', (tester) async {
+    testWidgets('pending attachments render in the review strip (Bundle 202)', (tester) async {
       final removed = <int>[];
       await tester.pumpWidget(_host(GroupComposer(
         controller: TextEditingController(),
@@ -103,15 +103,12 @@ void main() {
         onSend: () {},
       )));
 
-      expect(find.text('a.pdf'), findsOneWidget);
-      expect(find.text('b.png'), findsOneWidget);
+      // Bundle 202: document = icon + short name, photo = small picture.
+      expect(find.text('a'), findsOneWidget);
+      expect(find.byKey(const ValueKey('pending_file:0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pending_thumb:1')), findsOneWidget);
 
-      await tester.tap(
-        find.descendant(
-          of: find.byType(Chip).first,
-          matching: find.byTooltip('Delete'),
-        ),
-      );
+      await tester.tap(find.byKey(const ValueKey('pending_remove:0')));
       expect(removed, [0]);
     });
   });

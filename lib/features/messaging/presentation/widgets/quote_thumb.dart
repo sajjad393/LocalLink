@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
+import 'package:locallink/features/files/presentation/widgets/media_grid.dart';
 
 /// Bundle 199: the small square picture in a reply box (photo / video).
 ///
@@ -38,6 +39,21 @@ class QuoteThumb extends StatefulWidget {
         attachmentId: id,
         video: kind == 'video',
         size: size);
+  }
+
+  /// Bundle 202 (mock D1/D2): 2+ photos / videos = a small 2x2 (+N);
+  /// otherwise the single picture of [forAttachments].
+  static Widget? forMessage(List<Attachment> attachments,
+      {Key? key, double size = 40}) {
+    final visual = attachments.where(isGridMedia).toList(growable: false);
+    if (visual.length < 2) {
+      return forAttachments(attachments, key: key, size: size);
+    }
+    return Padding(
+      key: key ?? ValueKey<String>('quote_grid:${visual.first.id}'),
+      padding: const EdgeInsets.only(left: 8),
+      child: MediaMiniGrid(items: visual, size: size),
+    );
   }
 
   /// Found pictures for this run (id -> plain jpg), so a rebuilt list shows
@@ -137,4 +153,14 @@ class _QuoteThumbState extends State<QuoteThumb> {
       ),
     );
   }
+}
+
+/// Bundle 202 (mock D1/D2): the quote line, with "📷 5 photos" /
+/// "📷 3 photos, 1 video" when the quoted message had 2+ photos / videos
+/// ([original] = this phone's copy of it; null / not found = old words).
+String replyLineFor(ReplyRef reply, List<Attachment>? original) {
+  final count = original == null ? null : mediaCountLabel(original);
+  if (count == null) return replyLine(reply);
+  if (reply.snip.isEmpty) return count;
+  return '${count.split(' ').first} ${reply.snip}';
 }

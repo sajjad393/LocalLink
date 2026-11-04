@@ -5,13 +5,33 @@ import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
 import 'package:locallink/features/messaging/data/forward_hub.dart';
 import 'package:locallink/core/services/ui_sounds.dart';
+import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/features/files/presentation/widgets/media_grid.dart';
 
 /// Bundle 197a (mock 11): "Forward to" - pick any number of chats and
 /// groups. Returns the picks (null / empty = cancelled).
 class ForwardScreen extends StatefulWidget {
   final Future<List<ForwardTarget>> Function() loadTargets;
 
-  const ForwardScreen({super.key, required this.loadTargets});
+  /// Bundle 202 (mock E1): what is being forwarded (card on top).
+  final List<ForwardItem> items;
+
+  const ForwardScreen(
+      {super.key, required this.loadTargets, this.items = const []});
+
+  /// Card words: (title, lines). "7 items" / "5 photos, 1 video, 1 file" /
+  /// "Sent as one message"; several messages -> "3 messages".
+  static (String, String) cardText(List<ForwardItem> items) {
+    final files = <Attachment>[for (final i in items) ...i.attachments];
+    final summary = mediaSummary(files);
+    if (items.length > 1) return ('${items.length} messages', summary);
+    final text = items.isEmpty ? '' : items.first.text.trim();
+    if (files.length >= 2) {
+      return ('${files.length} items', '$summary\nSent as one message');
+    }
+    if (files.length == 1) return (summary, text);
+    return ('1 message', text);
+  }
 
   @override
   State<ForwardScreen> createState() => _ForwardScreenState();
@@ -56,6 +76,66 @@ class _ForwardScreenState extends State<ForwardScreen> {
     });
   }
 
+  /// Bundle 202 (mock E1): small grid + "7 items · 5 photos, 1 video...".
+  Widget _card(ColorScheme colors) {
+    final visual = <Attachment>[
+      for (final i in widget.items) ...i.attachments.where(isGridMedia)
+    ];
+    final (title, lines) = ForwardScreen.cardText(widget.items);
+    final hasFile = widget.items.any((i) => i.attachments.isNotEmpty);
+    return Container(
+      key: const ValueKey('forward_card'),
+      margin: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainer,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(children: [
+        if (visual.isNotEmpty)
+          MediaMiniGrid(items: visual, size: 52, radius: 8)
+        else
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+                hasFile ? Icons.description_outlined : Icons.chat_bubble_outline,
+                color: colors.onSurfaceVariant),
+          ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title,
+                  key: const ValueKey('forward_card_title'),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700)),
+              if (lines.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(lines,
+                      key: const ValueKey('forward_card_lines'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.35,
+                          color: colors.onSurfaceVariant)),
+                ),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -71,6 +151,7 @@ class _ForwardScreenState extends State<ForwardScreen> {
       ),
       body: Column(
         children: [
+          if (widget.items.isNotEmpty) _card(colors),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: TextField(
@@ -234,7 +315,7 @@ Future<ForwardTarget?> runForwardFlow(
   final picks = await Navigator.push<List<ForwardTarget>>(
     context,
     MaterialPageRoute(
-        builder: (_) => ForwardScreen(loadTargets: hub.targets)),
+        builder: (_) => ForwardScreen(loadTargets: hub.targets, items: items)),
   );
   if (picks == null || picks.isEmpty) return null;
   try {

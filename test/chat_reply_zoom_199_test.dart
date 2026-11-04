@@ -361,7 +361,8 @@ void main() {
         expect(s, contains("_startReply(message, from: 'swipe')"), reason: p);
         expect(s, contains("_startReply(message, from: 'hold')"), reason: p);
         expect(s, contains("_startReply(one, from: 'select')"), reason: p);
-        expect(s, contains('QuoteThumb.forAttachments(_replyTo!.attachments)'),
+        // Bundle 202: forMessage = forAttachments, or a 2x2 for 2+ pictures.
+        expect(s, contains('QuoteThumb.forMessage(_replyTo!.attachments)'),
             reason: p);
         expect(s, contains('byId[reply.id]?.attachments'), reason: p);
         expect(s, contains('flashed: _flashId == message.id'), reason: p);

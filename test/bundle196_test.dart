@@ -536,14 +536,16 @@ void main() {
       expect(people, isNot(contains('PopupMenuItem(value: \'block\'')));
     });
 
-    test('Settings: PRIVACY group with Private profile + Blocked people', () {
+    test('Settings: PRIVACY group with Blocked people (Bundle 202: Private profile moved to Profile)', () {
       final s = _src(
           'lib/features/home/presentation/screens/messenger_settings_screen.dart');
       expect(s, contains("MessengerGroupLabel('Privacy'"));
-      expect(s, contains("'Private profile'"));
-      expect(s, contains("'Nobody can find you by name search'"));
+      expect(s, isNot(contains("'Private profile'")));
       expect(s, contains("'Blocked people'"));
-      expect(s, contains('discoverableByName: !makePrivate'));
+      final card = _src(
+          'lib/features/account/presentation/widgets/private_profile_card.dart');
+      expect(card, contains("'Private profile'"));
+      expect(card, contains('discoverableByName: !makePrivate'));
       expect(s.indexOf("MessengerGroupLabel('This phone')"),
           lessThan(s.indexOf("MessengerGroupLabel('Privacy'")));
       expect(s.indexOf("MessengerGroupLabel('Privacy'"),

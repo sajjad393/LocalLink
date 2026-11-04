@@ -26,6 +26,7 @@ import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
 import 'package:locallink/features/account/presentation/screens/account_center_screen.dart';
+import 'package:locallink/features/account/presentation/widgets/private_profile_card.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart' hide CallState;
@@ -547,8 +548,9 @@ void main() {
       await tester.scrollUntilVisible(find.text('Blocked people'), 100,
           scrollable: find.byType(Scrollable).first);
       expect(find.text('PRIVACY'), findsOneWidget);
-      expect(find.text('Private profile'), findsOneWidget);
-      expect(find.text('Nobody can find you by name search'), findsOneWidget);
+      // Bundle 202: Private profile moved to Profile > Privacy.
+      expect(find.text('Private profile'), findsNothing);
+      expect(find.byKey(const ValueKey('settings_private_switch')), findsNothing);
       expect(find.text('See and unblock people you blocked'), findsOneWidget);
       final count = tester.widget<Text>(
           find.byKey(const ValueKey('settings_blocked_count')));
@@ -568,12 +570,17 @@ void main() {
 
     testWidgets('Private profile: ON asks first; Cancel keeps it OFF',
         (tester) async {
+      // Bundle 202: the switch lives in Profile > Privacy now (same rules).
       final account = _SavingAccount();
-      await _pushed(tester, _settings(account: account));
+      await _pushed(
+          tester,
+          Scaffold(
+              body: ListView(children: [
+            PrivateProfileCard(
+                accountRepository: account, directoryRepository: null),
+          ])));
       await _settle(tester);
-      final sw = find.byKey(const ValueKey('settings_private_switch'));
-      await tester.scrollUntilVisible(sw, 100,
-          scrollable: find.byType(Scrollable).first);
+      final sw = find.byKey(const ValueKey('profile_private_switch'));
       expect(tester.widget<Switch>(sw).value, isFalse);
       await tester.tap(sw);
       await tester.pumpAndSettle();

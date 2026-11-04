@@ -9,6 +9,7 @@ import 'package:locallink/features/files/presentation/widgets/attachment_tile.da
 import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
 
 import 'bubble_layout.dart';
+import 'bubble_media.dart';
 import 'message_options.dart';
 import 'pinch_text_zoom.dart';
 
@@ -50,6 +51,10 @@ class MessageBubble extends StatelessWidget {
   /// Bundle 199: small picture of the quoted photo / video (null = none).
   final Widget? quoteThumb;
 
+  /// Bundle 202: quote words from this phone's copy ("📷 5 photos").
+  /// Null = the words carried by the reply.
+  final String? quoteLine;
+
   const MessageBubble({
     super.key,
     required this.message,
@@ -69,6 +74,7 @@ class MessageBubble extends StatelessWidget {
     this.senderName = '',
     this.flashed = false,
     this.quoteThumb,
+    this.quoteLine,
   });
 
   bool get _canResend =>
@@ -88,6 +94,14 @@ class MessageBubble extends StatelessWidget {
       bottomLeft: Radius.circular(isMine ? LocalLinkRadius.chat : 6),
       bottomRight: Radius.circular(isMine ? 6 : LocalLinkRadius.chat),
     );
+    // Bundle 202: photos / videos -> grid, 3 px edge, caption under them.
+    final media = BubbleMedia.of(message.attachments,
+        hasCaption: message.text.isNotEmpty);
+    final tight = media.tight;
+    final header = _header(tight);
+    final body = message.text.isEmpty
+        ? null
+        : ChatBodyText(message.text, color: foreground);
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -111,12 +125,10 @@ class MessageBubble extends StatelessWidget {
                 child: Container(
                 key: bubbleKey,
                 constraints: BoxConstraints(maxWidth: maxWidth),
-                padding: EdgeInsets.fromLTRB(
-                  LocalLinkSpacing.md,
-                  LocalLinkSpacing.sm,
-                  LocalLinkSpacing.md,
-                  LocalLinkSpacing.xs +
-                      (reactions.isEmpty ? 0 : BubbleReactionEdge.bubblePad),
+                padding: BubbleMedia.padding(
+                  tight: tight,
+                  extraBottom:
+                      reactions.isEmpty ? 0 : BubbleReactionEdge.bubblePad,
                 ),
                 decoration: highlightBubble(
                   BoxDecoration(
@@ -129,14 +141,25 @@ class MessageBubble extends StatelessWidget {
                   on: highlighted,
                 ),
                 child: BubbleContent(
-                  header: _header(),
-                  body: message.text.isEmpty
+                  header: header,
+                  body: body == null
                       ? null
-                      : ChatBodyText(message.text, color: foreground),
-                  media: [
-                    for (final attachment in message.attachments)
+                      : (tight ? BubbleMedia.caption(body) : body),
+                  bodyAfterMedia: tight,
+                  footerGap: media.timeOnMedia ? 0 : 3,
+                  media: media.build(
+                    context,
+                    isMine: isMine,
+                    hasHeader: header != null,
+                    bubbleMaxWidth: maxWidth,
+                    viewerTitle: isMine ? 'You' : senderName,
+                    viewerSubtitle: _time(message.createdAt),
+                    timeOverlay: () => _footer(theme, foreground, onMedia: true),
+                    tile: (attachment, {cell, onOpen}) =>
                       AttachmentTile(
                         key: ValueKey<String>('att:${message.id}:${attachment.id}'),
+                        cell: cell,
+                        onOpen: onOpen,
                         attachment: attachment,
                         transfer: files,
                         messageId: message.id,
@@ -153,22 +176,12 @@ class MessageBubble extends StatelessWidget {
                         // Bundle 198: small mic on my own voice notes.
                         playedMark: _playedMark,
                       ),
-                  ],
-                  footer: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _time(message.createdAt),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: foreground.withValues(alpha: .62),
-                        ),
-                      ),
-                      if (isMine) ...[
-                        const SizedBox(width: LocalLinkSpacing.xs),
-                        _StatusIcon(status: message.status, channel: message.channel),
-                      ],
-                    ],
                   ),
+                  footer: media.timeOnMedia
+                      ? const SizedBox.shrink()
+                      : (tight
+                          ? BubbleMedia.footer(_footer(theme, foreground))
+                          : _footer(theme, foreground)),
                 ),
               ),
               ),
@@ -190,8 +203,29 @@ class MessageBubble extends StatelessWidget {
     };
   }
 
+  /// Time + ticks. [onMedia] = white, drawn on the picture (Bundle 202).
+  Widget _footer(ThemeData theme, Color foreground, {bool onMedia = false}) =>
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _time(message.createdAt),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: onMedia ? Colors.white : foreground.withValues(alpha: .62),
+            ),
+          ),
+          if (isMine) ...[
+            const SizedBox(width: LocalLinkSpacing.xs),
+            _StatusIcon(
+                status: message.status,
+                channel: message.channel,
+                onMedia: onMedia),
+          ],
+        ],
+      );
+
   /// Bundle 197a: "Forwarded" label and / or the quote box.
-  Widget? _header() {
+  Widget? _header(bool tight) {
     final reply = message.replyTo;
     final forwarded = message.forwarded;
     if (reply == null && !forwarded) return null;
@@ -199,11 +233,14 @@ class MessageBubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (forwarded) const ForwardedLabel(),
+        if (forwarded)
+          tight
+              ? BubbleMedia.headerLine(const ForwardedLabel())
+              : const ForwardedLabel(),
         if (reply != null)
           QuoteBox(
             name: quoteName,
-            line: replyLine(reply),
+            line: quoteLine ?? replyLine(reply),
             isYou: quoteIsYou,
             notAvailable: quoteMissing,
             onTap: onQuoteTap,
@@ -251,7 +288,10 @@ class _StatusIcon extends StatelessWidget {
   final String status;
   final String? channel;
 
-  const _StatusIcon({required this.status, this.channel});
+  /// Bundle 202: on a picture - white ticks, light blue when read.
+  final bool onMedia;
+
+  const _StatusIcon({required this.status, this.channel, this.onMedia = false});
 
   @override
   Widget build(BuildContext context) {
@@ -267,7 +307,13 @@ class _StatusIcon extends StatelessWidget {
   }
 
   Widget _build(BuildContext context, String s) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context).colorScheme;
+    final colors = onMedia
+        ? theme.copyWith(
+            onSurfaceVariant: Colors.white,
+            primary: const Color(0xFF8FD3FF),
+            error: const Color(0xFFFFB4AB))
+        : theme;
     final receiptsOn = ReadReceiptsSetting.instance.on;
     final glyph = switch (s) {
       'queued' || 'pending' || 'sending' => Icon(

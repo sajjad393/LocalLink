@@ -6,6 +6,7 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/files/presentation/widgets/attachment_tile.dart';
 import 'package:locallink/features/messaging/presentation/widgets/bubble_layout.dart';
+import 'package:locallink/features/messaging/presentation/widgets/bubble_media.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
 import 'package:locallink/features/messaging/presentation/widgets/pinch_text_zoom.dart';
 import 'package:locallink/core/models/message_envelope.dart';
@@ -31,6 +32,9 @@ class GroupMessageBubble extends StatelessWidget {
   /// Bundle 199: small picture of the quoted photo / video (null = none).
   final Widget? quoteThumb;
 
+  /// Bundle 202: quote words from this phone's copy ("📷 5 photos").
+  final String? quoteLine;
+
   const GroupMessageBubble({
     super.key,
     required this.message,
@@ -46,6 +50,7 @@ class GroupMessageBubble extends StatelessWidget {
     this.onQuoteTap,
     this.flashed = false,
     this.quoteThumb,
+    this.quoteLine,
   });
 
   @override
@@ -61,6 +66,14 @@ class GroupMessageBubble extends StatelessWidget {
       bottomLeft: Radius.circular(isMine ? LocalLinkRadius.chat : 6),
       bottomRight: Radius.circular(isMine ? 6 : LocalLinkRadius.chat),
     );
+    // Bundle 202: photos / videos -> grid, 3 px edge, caption under them.
+    final media =
+        BubbleMedia.of(message.attachments, hasCaption: message.text.isNotEmpty);
+    final tight = media.tight;
+    final header = _header(context, colors, foreground, tight);
+    final bubbleMax = maxWidth.clamp(220.0, 620.0);
+    final body =
+        message.text.isEmpty ? null : ChatBodyText(message.text, color: foreground);
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       // Bundle 182: bubble fits its content, emoji chips on the bottom edge.
@@ -74,13 +87,11 @@ class GroupMessageBubble extends StatelessWidget {
             onBlue: isMine,
             child: Container(
             key: bubbleKey,
-            constraints: BoxConstraints(maxWidth: maxWidth.clamp(220.0, 620.0)),
-            padding: EdgeInsets.fromLTRB(
-                LocalLinkSpacing.md,
-                LocalLinkSpacing.sm,
-                LocalLinkSpacing.md,
-                LocalLinkSpacing.xs +
-                    (reactions.isEmpty ? 0 : BubbleReactionEdge.bubblePad)),
+            constraints: BoxConstraints(maxWidth: bubbleMax),
+            padding: BubbleMedia.padding(
+                tight: tight,
+                extraBottom:
+                    reactions.isEmpty ? 0 : BubbleReactionEdge.bubblePad),
             decoration: highlightBubble(
               BoxDecoration(
                 gradient: isMine ? LocalLinkBrand.linearGradient : null,
@@ -93,14 +104,25 @@ class GroupMessageBubble extends StatelessWidget {
             ),
             child: BubbleContent(
               headerGap: 3,
-              header: _header(context, colors, foreground),
-              body: message.text.isEmpty
+              header: header,
+              body: body == null
                   ? null
-                  : ChatBodyText(message.text, color: foreground),
-              media: [
-                for (final attachment in message.attachments)
+                  : (tight ? BubbleMedia.caption(body) : body),
+              bodyAfterMedia: tight,
+              footerGap: media.timeOnMedia ? 0 : 3,
+              media: media.build(
+                context,
+                isMine: isMine,
+                hasHeader: header != null,
+                bubbleMaxWidth: bubbleMax,
+                viewerTitle: isMine ? 'You' : senderName,
+                viewerSubtitle: _time(message.createdAt),
+                timeOverlay: () => _timeText(context, foreground, onMedia: true),
+                tile: (attachment, {cell, onOpen}) =>
                   AttachmentTile(
                     key: ValueKey<String>('att:${message.id}:${attachment.id}'),
+                    cell: cell,
+                    onOpen: onOpen,
                     attachment: attachment,
                     transfer: files,
                     messageId: message.id,
@@ -108,12 +130,12 @@ class GroupMessageBubble extends StatelessWidget {
                     mine: isMine,
                     senderName: senderName,
                   ),
-              ],
-              footer: Text(_time(message.createdAt),
-                  style: Theme.of(context)
-                      .textTheme
-                      .labelSmall
-                      ?.copyWith(color: foreground.withValues(alpha: .62))),
+              ),
+              footer: media.timeOnMedia
+                  ? const SizedBox.shrink()
+                  : (tight
+                      ? BubbleMedia.footer(_timeText(context, foreground))
+                      : _timeText(context, foreground)),
             ),
           ),
           ),
@@ -122,15 +144,24 @@ class GroupMessageBubble extends StatelessWidget {
     );
   }
 
+  Widget _timeText(BuildContext context, Color foreground,
+          {bool onMedia = false}) =>
+      Text(_time(message.createdAt),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color:
+                  onMedia ? Colors.white : foreground.withValues(alpha: .62)));
+
   /// Sender name (others), Bundle 197a "Forwarded" label + quote box.
-  Widget? _header(BuildContext context, ColorScheme colors, Color foreground) {
+  Widget? _header(BuildContext context, ColorScheme colors, Color foreground,
+      bool tight) {
+    Widget line(Widget w) => tight ? BubbleMedia.headerLine(w) : w;
     final name = isMine
         ? null
-        : Text(senderName,
+        : line(Text(senderName,
             style: Theme.of(context)
                 .textTheme
                 .labelLarge
-                ?.copyWith(color: colors.primary));
+                ?.copyWith(color: colors.primary)));
     final reply = message.replyTo;
     final forwarded = message.forwarded;
     if (reply == null && !forwarded) return name;
@@ -140,11 +171,11 @@ class GroupMessageBubble extends StatelessWidget {
       children: [
         if (name != null) name,
         if (forwarded)
-          ForwardedLabel(color: isMine ? Colors.white70 : null),
+          line(ForwardedLabel(color: isMine ? Colors.white70 : null)),
         if (reply != null)
           QuoteBox(
             name: quoteName,
-            line: replyLine(reply),
+            line: quoteLine ?? replyLine(reply),
             isYou: quoteIsYou,
             notAvailable: quoteMissing,
             onTap: onQuoteTap,

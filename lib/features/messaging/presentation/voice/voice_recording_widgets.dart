@@ -495,7 +495,12 @@ class VoiceLockedPanel extends StatelessWidget {
           const SizedBox(width: 8),
           Text(voiceClock(voice.recorded), key: const ValueKey('voice_timer'), style: _timerStyle(context)),
           const SizedBox(width: 14),
-          Expanded(child: VoiceWave(levels: voice.levels, color: VoiceBarColors.red)),
+          // Bundle 202 (mock G2): blue live wave; dot / pause / bin stay red.
+          Expanded(
+              child: VoiceWave(
+                  key: const ValueKey('voice_live_wave'),
+                  levels: voice.levels,
+                  color: Theme.of(context).colorScheme.primary)),
         ],
       ),
       bottom: Row(
