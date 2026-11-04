@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 
 import 'package:locallink/core/widgets/brand_gradient_fab.dart';
+import 'package:locallink/core/widgets/movable_fab.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/models/call.dart';
@@ -167,16 +168,20 @@ class _CallsScreenState extends State<CallsScreen> {
         // icon and the refresh button are gone (the list updates by itself;
         // pull down still reloads).
         appBar: const TabTopBar(title: Text('Calls')),
-        floatingActionButton: BrandGradientFab(
-          heroTag: 'calls_fab',
-          tooltip: 'New call',
-          // Bundle 104: brand-gradient FAB (People tab look) + modern icon.
-          icon: Icons.add_ic_call_rounded,
-          onPressed: widget.onNewCall,
-        ),
         body: Column(children: [
           _CallInProgressBar(controller: widget.controller),
           Expanded(
+            // Bundle 206: the round button can be moved (one place for
+            // Chats, Calls and People); never over the call bar above.
+            child: MovableFabArea(
+        label: 'New call',
+            fab: BrandGradientFab(
+              heroTag: 'calls_fab',
+              tooltip: 'New call',
+              // Bundle 104: brand-gradient FAB (People tab look) + modern icon.
+              icon: Icons.add_ic_call_rounded,
+              onPressed: widget.onNewCall,
+            ),
             child: RefreshIndicator(
           onRefresh: widget.controller.refreshHistory,
           child: state.history.isEmpty
@@ -200,6 +205,7 @@ class _CallsScreenState extends State<CallsScreen> {
                   ],
                 )
               : _groupedList(state.history, colors),
+            ),
             ),
           ),
         ]),

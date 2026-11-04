@@ -15,6 +15,8 @@ import 'package:locallink/features/directory/data/friend_requests.dart';
 import 'package:locallink/features/directory/presentation/contact_sheets.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/core/widgets/tab_top_bar.dart';
+import 'package:locallink/core/widgets/brand_gradient_fab.dart';
+import 'package:locallink/core/widgets/movable_fab.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
@@ -164,25 +166,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
       // Bundle 183 (L/N1): the shared tab top bar, "People" like the tab,
       // no back arrow.
       appBar: const TabTopBar(title: Text('People')),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'add_contact_fab',
-        tooltip: 'Add contact',
-        onPressed: _addContact,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        child: Ink(
-          decoration: const BoxDecoration(
-            gradient: LocalLinkBrand.linearGradient,
-            shape: BoxShape.circle,
-          ),
-          child: const SizedBox(
-            width: 56,
-            height: 56,
-            child: Icon(Icons.add, color: Colors.white, size: 28),
-          ),
+      // Bundle 206: the round button can be moved (one place for Chats,
+      // Calls and People). Same look, now the shared BrandGradientFab.
+      body: MovableFabArea(
+        label: 'Add contact',
+        fab: BrandGradientFab(
+          heroTag: 'add_contact_fab',
+          tooltip: 'Add contact',
+          icon: Icons.add,
+          onPressed: _addContact,
         ),
-      ),
-      body: StreamBuilder<List<DirectoryProfile>>(
+        child: StreamBuilder<List<DirectoryProfile>>(
         stream: bloc.stream,
         initialData: bloc.state,
         builder: (context, snapshot) => ListenableBuilder(
@@ -294,6 +288,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           );
           },
         ),
+      ),
       ),
     );
   }

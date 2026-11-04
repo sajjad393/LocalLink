@@ -23,6 +23,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/widgets/brand_gradient_fab.dart';
+import 'package:locallink/core/widgets/movable_fab.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
@@ -1194,16 +1195,20 @@ class _HomeScreenState extends State<HomeScreen> {
           child: const Text('Chats'),
         ),
       ),
-      floatingActionButton: BrandGradientFab(
-        heroTag: 'home_fab',
-        tooltip: 'New conversation',
-        // Bundle 104: brand-gradient FAB (People tab look) + modern icon.
-        icon: Icons.chat_bubble_outline_rounded,
-        // Bundle G1 (mock 2): + opens the Start sheet.
-        onPressed: _openStartSheet,
-      ),
       bottomNavigationBar: _OngoingCallBar(calls: widget.calls, onOpen: _resumeCall),
-      body: LocalLinkBlocBuilder<HomeBloc, HomeState>(
+      // Bundle 206: the round button can be moved (hold, drag, let go);
+      // one place for Chats, Calls and People.
+      body: MovableFabArea(
+        label: 'New conversation',
+        fab: BrandGradientFab(
+          heroTag: 'home_fab',
+          tooltip: 'New conversation',
+          // Bundle 104: brand-gradient FAB (People tab look) + modern icon.
+          icon: Icons.chat_bubble_outline_rounded,
+          // Bundle G1 (mock 2): + opens the Start sheet.
+          onPressed: _openStartSheet,
+        ),
+        child: LocalLinkBlocBuilder<HomeBloc, HomeState>(
         bloc: _controller,
         builder: (context, state) {
           if (state.loading && state.devices.isEmpty && state.groups.isEmpty) {
@@ -1253,6 +1258,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           );
         },
+      ),
       ),
     );
   }

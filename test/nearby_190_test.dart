@@ -288,9 +288,9 @@ void main() {
   group('Bundle 192 version', () {
     test('pubspec and stamp', () {
       expect(File('pubspec.yaml').readAsStringSync(),
-          contains('version: 3.0.46+117'));
+          contains('version: 3.0.47+118'));
       expect(File('lib/app/local_link_app.dart').readAsStringSync(),
-          contains("'v3 · 3.0.46 · bundles 104-205 + groups G1-G7 (2026-11-04)'"));
+          contains("'v3 · 3.0.47 · bundles 104-206 + groups G1-G7 (2026-11-04)'"));
     });
   });
 }
