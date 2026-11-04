@@ -25,6 +25,7 @@ class GroupCopy {
     required this.keptAt,
     this.att = '',
     this.sig2 = '',
+    this.sig3 = '',
   });
   final String id;
   final String gid;
@@ -39,6 +40,10 @@ class GroupCopy {
   final String att;
   final String sig2;
 
+  /// Bundle 209: the writer's signature over text + files with their
+  /// fingerprints ('llgm3', '' = none).
+  final String sig3;
+
   Map<String, Object?> toRow() => {
         'id': id,
         'group_id': gid,
@@ -49,6 +54,7 @@ class GroupCopy {
         'kept_at': keptAt,
         'att': att,
         'sig2': sig2,
+        'sig3': sig3,
       };
 
   static GroupCopy fromRow(Map<String, dynamic> r) => GroupCopy(
@@ -61,6 +67,7 @@ class GroupCopy {
         keptAt: int.tryParse(r['kept_at']?.toString() ?? '') ?? 0,
         att: r['att']?.toString() ?? '',
         sig2: r['sig2']?.toString() ?? '',
+        sig3: r['sig3']?.toString() ?? '',
       );
 }
 

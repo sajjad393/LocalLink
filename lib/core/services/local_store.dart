@@ -189,6 +189,7 @@ class LocalStore {
         if (oldVersion < 31) await _upgradeTo31(db);
         if (oldVersion < 32) await _upgradeTo32(db);
         if (oldVersion < 33) await _upgradeTo33(db);
+        if (oldVersion < 34) await _upgradeTo34(db);
       },
     );
     _databaseOpened = true;
@@ -361,6 +362,7 @@ class LocalStore {
     await _upgradeTo31(db);
     await _upgradeTo32(db);
     await _upgradeTo33(db);
+    await _upgradeTo34(db);
   }
 
   Future<void> _upgradeTo2(Database db) async {
@@ -878,6 +880,15 @@ class LocalStore {
         'PRIMARY KEY(msg_id, file_id, member_id))');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_group_file_sends_member '
         'ON group_file_sends(member_id)');
+  }
+
+  /// Bundle 209: the writer's signature over text + files with their
+  /// fingerprints ('llgm3') in catch-up copies.
+  Future<void> _upgradeTo34(Database db) async {
+    try {
+      await db.execute(
+          "ALTER TABLE group_copies ADD COLUMN sig3 TEXT NOT NULL DEFAULT ''");
+    } catch (_) {}
   }
 
   // ---- Bundle G7: group files Nearby (sender rows) -------------------------
@@ -3672,7 +3683,7 @@ class LocalStore {
         '''INSERT INTO group_message_attachments(group_message_id,file_id,original_name,content_type,size,sha256,width,height,is_image,download_url,thumbnail_url,local_path,position)
            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(group_message_id,file_id) DO UPDATE SET
-           original_name=excluded.original_name,content_type=excluded.content_type,size=excluded.size,sha256=excluded.sha256,
+           original_name=excluded.original_name,content_type=excluded.content_type,size=excluded.size,sha256=CASE WHEN COALESCE(excluded.sha256,'')='' THEN group_message_attachments.sha256 ELSE excluded.sha256 END,
            width=excluded.width,height=excluded.height,is_image=excluded.is_image,download_url=excluded.download_url,
            thumbnail_url=excluded.thumbnail_url,local_path=COALESCE(excluded.local_path,group_message_attachments.local_path),position=excluded.position''',
         [

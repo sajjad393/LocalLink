@@ -88,6 +88,7 @@ class AutoFetch {
     required this.freeBytes,
     this.isNear,
     this.selfId,
+    this.askOther,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
@@ -112,6 +113,11 @@ class AutoFetch {
 
   /// The friend / member is Nearby right now.
   final bool Function(String deviceId)? isNear;
+
+  /// Bundle 209: a group file whose writer is away: ask another member
+  /// ([seen] = the one just seen). Returns the member asked, or null.
+  final Future<String?> Function(AutoFile f, String? seen)? askOther;
+  final Set<String> _askingOther = <String>{};
   final String Function()? selfId;
   final DateTime Function() _clock;
 
@@ -383,7 +389,10 @@ class AutoFetch {
       return;
     }
     final near = seen == f.senderId || (isNear?.call(f.senderId) ?? false);
-    if (!near) return;
+    if (!near) {
+      _askMember(f, now, seen);
+      return;
+    }
     final last = _lastAsk[f.key];
     if (last != null && now.difference(last) < askGap) return;
     _lastAsk[f.key] = now;
@@ -395,6 +404,23 @@ class AutoFetch {
     }).catchError((Object e) {
       AppLogger.warning('AUTO_DL_ASK_FAILED', detail: 'id=${_short(f.fileId)} $e');
     }));
+  }
+
+  /// Bundle 209: the writer is away: a member near may pass the file on.
+  void _askMember(AutoFile f, DateTime now, String? seen) {
+    final other = askOther;
+    if (!f.group || other == null || _askingOther.contains(f.key)) return;
+    final last = _lastAsk[f.key];
+    if (last != null && now.difference(last) < askGap) return;
+    _askingOther.add(f.key);
+    unawaited(other(f, seen).then((peer) {
+      if (peer == null) return;
+      _lastAsk[f.key] = now;
+      AppLogger.info('AUTO_DL_ASK',
+          detail: 'id=${_short(f.fileId)} to=${_short(peer)} way=group via=member');
+    }).catchError((Object e) {
+      AppLogger.warning('AUTO_DL_ASK_FAILED', detail: 'id=${_short(f.fileId)} $e');
+    }).whenComplete(() => _askingOther.remove(f.key)));
   }
 
   void _waitForCall() {

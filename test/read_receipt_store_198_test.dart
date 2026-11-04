@@ -15,7 +15,7 @@ void main() {
   }
 
   test('database version 28', () {
-    expect(DatabaseConfig.version, 33); // Bundle G7
+    expect(DatabaseConfig.version, 34); // Bundle 209
   });
 
   test('_upgradeTo28 only adds played_at, with a column check', () {

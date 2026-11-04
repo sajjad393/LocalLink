@@ -22,6 +22,7 @@ import 'package:locallink/features/messaging/data/read_receipts/read_receipts_se
 import 'package:locallink/core/models/group_extras.dart';
 import 'package:locallink/features/groups/data/group_extras_book.dart';
 import 'package:locallink/features/groups/data/group_sender_keys.dart';
+import 'package:locallink/features/groups/data/group_file_hash.dart';
 import 'package:locallink/features/groups/data/group_nearby_files.dart';
 import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
 import 'package:crypto/crypto.dart' as hash;
@@ -133,7 +134,12 @@ class GroupMessagingService {
       }
       final early = await store.directFile(GroupFileWire.wireId(a.id, self));
       final path = early?['local_path']?.toString() ?? '';
-      if (path.isNotEmpty) {
+      if (path.isNotEmpty && !earlyFileOk(early!, m.senderId, a.sha256)) {
+        // Bundle 209: an early file from another member must match the
+        // writer's signed fingerprint.
+        AppLogger.warning('GROUP_FILE_RX_REFUSED', detail: 'why=early_unchecked');
+        out.add(a);
+      } else if (path.isNotEmpty) {
         out.add(a.copyWith(localPath: path));
         changed = true;
       } else {
@@ -151,6 +157,20 @@ class GroupMessagingService {
         attachments: out,
         nearbySent: m.nearbySent);
   }
+
+  /// Bundle 209: an early file (came before its message) counts when the
+  /// writer sent it, or when its sha256 is the writer's signed one.
+  static bool earlyFileOk(
+      Map<String, dynamic> row, String writer, String signedSha) {
+    final from = row['sender_id']?.toString() ?? '';
+    if (from.isNotEmpty && from == writer) return true;
+    final sha = (row['sha256']?.toString() ?? '').toLowerCase();
+    return GroupNearbyFile.validSha(signedSha) && sha == signedSha;
+  }
+
+  /// Bundle 209: a group file a member passed on to me came here (the
+  /// writer may want to know: "I have it", no resend). Set at start.
+  void Function(GroupMessage message, String fileId)? onRelayedFile;
 
   /// A file for a group message came to me Nearby (after the 1:1 file code
   /// saved and locked it). [file]: file_id (wire id), message_id, path,
@@ -179,11 +199,30 @@ class GroupMessagingService {
       AppLogger.info('GROUP_FILE_RX', detail: 'early=y');
       return true;
     }
-    if (message.senderId != sender) {
-      AppLogger.warning('GROUP_FILE_RX_REFUSED', detail: 'why=not_writer');
-      return true;
+    // Bundle 209: any member may pass a file on; its sha256 (checked by the
+    // phone against the file) must be the one the writer signed.
+    final gotSha = (file['sha256']?.toString() ?? '').toLowerCase();
+    final listed = message.attachments.where((a) => a.id == fileId).firstOrNull;
+    final signedSha = listed?.sha256 ?? '';
+    final relayed = message.senderId != sender;
+    if (relayed) {
+      if (!GroupNearbyFile.validSha(signedSha)) {
+        AppLogger.warning('GROUP_FILE_RX_REFUSED', detail: 'why=not_writer');
+        return true;
+      }
+      if (gotSha != signedSha) {
+        AppLogger.warning('GROUP_FILE_BAD_HASH',
+            detail: 'from=${_short(sender)} msg=${_short(messageId)}');
+        await _dropRefused(path);
+        return true;
+      }
+    } else if (GroupNearbyFile.validSha(signedSha) &&
+        gotSha.isNotEmpty &&
+        gotSha != signedSha) {
+      // From the writer itself: kept as before (logs only).
+      AppLogger.warning('GROUP_FILE_SHA_DIFF', detail: 'msg=${_short(messageId)}');
     }
-    final has = message.attachments.any((a) => a.id == fileId);
+    final has = listed != null;
     if (has) {
       await store.setGroupAttachmentLocalPath(messageId, fileId, path);
     } else {
@@ -217,8 +256,22 @@ class GroupMessagingService {
       }
       _incoming.add(updated);
     }
-    AppLogger.info('GROUP_FILE_RX', detail: 'msg=${_short(messageId)}');
+    AppLogger.info('GROUP_FILE_RX',
+        detail: 'msg=${_short(messageId)}${relayed ? ' from=relay' : ''}');
+    if (relayed && updated != null) {
+      try {
+        onRelayedFile?.call(updated, fileId);
+      } catch (_) {}
+    }
     return true;
+  }
+
+  /// Bundle 209: a passed-on file that failed the check is thrown away.
+  Future<void> _dropRefused(String path) async {
+    try {
+      final f = File(path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
   }
 
   static String _short(String id) =>
@@ -240,7 +293,75 @@ class GroupMessagingService {
       MediaTransferActions.instance.clearCancelled(messageId);
       fileWatch.expect(messageId);
     }
+    // Bundle 209: the writer is not near - a member who is may have it.
+    if (!(isNear?.call(m.senderId) ?? true)) {
+      final peer = await askMemberFor(messageId, attachmentId);
+      if (peer != null) return true;
+    }
     return ok;
+  }
+
+  // ------------------------------- Bundle 209: members pass files on
+
+  /// True when that phone is Nearby right now (PresenceHub). Set at start.
+  bool Function(String deviceId)? isNear;
+
+  /// The clock for the 7-day rule (tests).
+  DateTime Function() clock = DateTime.now;
+
+  /// "message|file|member" -> when I asked that member (ms).
+  final Map<String, int> _askedVia = <String, int>{};
+
+  /// The same member is asked for the same file at most every 10 min.
+  static const Duration askViaGap = Duration(minutes: 10);
+
+  /// Bundle 209: a file members may pass on: the writer signed its
+  /// fingerprint, at most 50 MB, at most 7 days old.
+  bool passable(GroupMessage m, Attachment a) {
+    if (!GroupNearbyFile.validSha(a.sha256)) return false;
+    if (a.size < 0 || a.size > GroupFileWire.maxBytes) return false;
+    final at = DateTime.tryParse(m.createdAt);
+    if (at == null) return false;
+    return clock().toUtc().difference(at.toUtc()) <= GroupFileWire.passFor;
+  }
+
+  /// Bundle 209: the writer is away - ask one member who is near (or just
+  /// [seen]) and has not been asked for this file in the last 10 min.
+  /// Returns that member, or null when nobody was asked.
+  Future<String?> askMemberFor(String messageId, String fileId,
+      {String? seen}) async {
+    final m = await store.groupMessageById(messageId);
+    final near = nearby;
+    if (m == null || near == null) return null;
+    final self = store.deviceId ?? '';
+    if (self.isEmpty || m.senderId == self) return null;
+    final a = m.attachments.where((x) => x.id == fileId).firstOrNull;
+    if (a == null || (a.localPath ?? '').isNotEmpty) return null;
+    if (!passable(m, a)) return null;
+    final c = await near.card(m.groupId);
+    if (c == null || !c.has(self)) return null;
+    final now = clock().millisecondsSinceEpoch;
+    _askedVia.removeWhere((_, t) => now - t > askViaGap.inMilliseconds);
+    final options = <String>[
+      if (seen != null && seen.isNotEmpty) seen,
+      for (final x in c.members)
+        if (x.id != seen && (isNear?.call(x.id) ?? false)) x.id,
+    ];
+    for (final peer in options) {
+      if (peer == self || peer == m.senderId || !c.has(peer)) continue;
+      final key = '$messageId|$fileId|$peer';
+      if (_askedVia.containsKey(key)) continue;
+      _askedVia[key] = now;
+      try {
+        await allowIncomingFile?.call(GroupFileWire.wireId(fileId, self));
+      } catch (_) {}
+      final ok = await near.sendFileAsk(m.groupId, m.id, fileId, a.sha256, peer);
+      if (!ok) continue;
+      MediaTransferActions.instance.clearCancelled(messageId);
+      fileWatch.expect(messageId);
+      return peer;
+    }
+    return null;
   }
 
   /// X on a group file coming to me. False = not a group message.
@@ -865,13 +986,19 @@ class GroupMessagingService {
       // Bundle 197b: Gallery link + small picture (moved to the server's
       // file id when the group message is accepted).
       MediaBook.instance.staged(pendingId, staged.sourceUri, staged.path, staged.contentType, staged.name);
+      // Bundle 209: the file's fingerprint (signed with the message), so
+      // any member who has it can pass it on. Nearby groups only.
+      final sha = group.worksNearby
+          ? await GroupFileHash.ofFile(staged.path, size: staged.size)
+          : '';
       mine.add(GroupNearbyFile(
               id: pendingId,
               name: staged.name,
               type: staged.contentType.contains('/')
                   ? staged.contentType
                   : 'application/octet-stream',
-              size: staged.size)
+              size: staged.size,
+              sha: sha)
           .toAttachment(localPath: staged.path));
     }
     final local = GroupMessage(

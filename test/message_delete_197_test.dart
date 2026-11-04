@@ -352,7 +352,12 @@ void main() {
       final up33 = s.substring(m33, s.indexOf('\n  }\n', m33));
       expect(up33, isNot(contains('TABLE messages')));
       expect(up33, isNot(contains("'messages'")));
-      expect(s, isNot(contains('_upgradeTo34')));
+      // Bundle 209: v34 only adds group_copies.sig3.
+      final m34 = s.indexOf('Future<void> _upgradeTo34(');
+      final up34 = s.substring(m34, s.indexOf('\n  }\n', m34));
+      expect(up34, isNot(contains('TABLE messages')));
+      expect(up34, isNot(contains("'messages'")));
+      expect(s, isNot(contains('_upgradeTo35')));
       expect(s, contains('CREATE TABLE IF NOT EXISTS media_state ('));
     });
   });

@@ -858,7 +858,7 @@ void main() {
     });
 
     test('file before its message: picked up when the message comes', () async {
-      store.direct[GroupFileWire.wireId('f1', 'me')] = {'local_path': '/files/early.enc'};
+      store.direct[GroupFileWire.wireId('f1', 'me')] = {'local_path': '/files/early.enc', 'sender_id': 'ali'};
       await service.receiveNearbyFile({
         'file_id': GroupFileWire.wireId('f1', 'me'),
         'message_id': 'm1',

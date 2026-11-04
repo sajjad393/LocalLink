@@ -262,6 +262,27 @@ class AppDependencies {
       );
       final near = groupNearby!;
       near.files = fileSender;
+      // Bundle 209: members pass group files on (memory only, 2 at once,
+      // 2 tries, nothing at battery 10% or less).
+      bool lowForPass() {
+        final battery = wifiDirectFallback.batteryLevel;
+        return battery >= 0 && battery <= 10;
+      }
+      near.relayFiles = GroupFileSender(
+        store: MemoryGroupFileSendStore(),
+        source: groupMessagingService.fileSource,
+        sendFile: groupMessagingService.sendFileTo,
+        beforeSend: pairFileKeys.refresh,
+        lowBattery: lowForPass,
+        lowBatteryStopsAll: true,
+        activeLimit: 2,
+        triesLimit: 2,
+      );
+      near.passBlocked = lowForPass;
+      near.messageById = store.groupMessageById;
+      groupMessagingService.onRelayedFile = (m, _) => unawaited(near
+          .sendHave(m.groupId, m.id, m.senderId)
+          .catchError((Object _) {}));
       near.onFileEvent = groupMessagingService.fileWatch.handleEvent;
       near.onTyping = (gid, member, on) =>
           unawaited(groupMessagingService.typingNearby(gid, member, on));
@@ -421,7 +442,12 @@ class AppDependencies {
           (await MediaStorageService.instance.phoneStorage()).free,
       isNear: (id) => PresenceHub.instance.statusOf(id) == PresenceStatus.nearby,
       selfId: () => store.deviceId ?? '',
+      // Bundle 209: the writer is away - a member near may pass it on.
+      askOther: (f, seen) =>
+          groupMessagingService.askMemberFor(f.messageId, f.fileId, seen: seen),
     );
+    groupMessagingService.isNear =
+        (id) => PresenceHub.instance.statusOf(id) == PresenceStatus.nearby;
     groupMessagingService.allowIncomingFile =
         (id) => messaging.allowIncomingFile(id);
     messagingRepository = MessagingRepository(store: store, service: messaging);

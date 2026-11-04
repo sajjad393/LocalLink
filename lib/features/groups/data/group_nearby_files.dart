@@ -28,6 +28,7 @@ class GroupNearbyFile {
     required this.name,
     required this.type,
     required this.size,
+    this.sha = '',
   });
 
   final String id;
@@ -35,10 +36,23 @@ class GroupNearbyFile {
   final String type;
   final int size;
 
+  /// Bundle 209: sha256 of the plain file (64 hex, '' = unknown). Signed
+  /// by the writer ('llgm3'), so any member who has the file can pass it
+  /// on and the receiver can check it.
+  final String sha;
+
+  static final RegExp _shaPattern = RegExp(r'^[0-9a-f]{64}$');
+  static bool validSha(String v) => _shaPattern.hasMatch(v);
+
   static final RegExp _idPattern = RegExp(r'^[A-Za-z0-9_-][A-Za-z0-9_.-]{1,99}$');
 
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'name': name, 'type': type, 'size': size};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'type': type,
+        'size': size,
+        if (sha.isNotEmpty) 'sha': sha,
+      };
 
   static GroupNearbyFile? fromJson(Object? raw) {
     if (raw is! Map) return null;
@@ -50,18 +64,31 @@ class GroupNearbyFile {
     if (name.isEmpty || name.length > 200) return null;
     if (type.isEmpty || type.length > 100 || !type.contains('/')) return null;
     if (size < 0 || size > GroupFileWire.maxBytes) return null;
-    return GroupNearbyFile(id: id, name: name, type: type, size: size);
+    final sha = raw['sha']?.toString() ?? '';
+    return GroupNearbyFile(
+        id: id, name: name, type: type, size: size, sha: validSha(sha) ? sha : '');
   }
 
   static GroupNearbyFile fromAttachment(Attachment a) => GroupNearbyFile(
-      id: a.id, name: a.originalName, type: a.contentType, size: a.size);
+      id: a.id,
+      name: a.originalName,
+      type: a.contentType,
+      size: a.size,
+      sha: validSha(a.sha256) ? a.sha256 : '');
+
+  GroupNearbyFile withSha(String value) => GroupNearbyFile(
+      id: id, name: name, type: type, size: size, sha: validSha(value) ? value : '');
+
+  /// Same file without the fingerprint (an unchecked list).
+  GroupNearbyFile get withoutSha =>
+      sha.isEmpty ? this : GroupNearbyFile(id: id, name: name, type: type, size: size);
 
   Attachment toAttachment({String? localPath}) => Attachment(
         id: id,
         originalName: name,
         contentType: type,
         size: size,
-        sha256: '',
+        sha256: sha,
         isImage: type.toLowerCase().startsWith('image/'),
         localPath: localPath,
       );
@@ -129,6 +156,25 @@ class GroupFileWire {
   static String messageText2(String gid, String id, String writer,
           String createdAt, String body, List<GroupNearbyFile> files) =>
       'llgm2\n$gid\n$id\n$writer\n$createdAt\n$body\n${canonical(files)}';
+
+  /// Bundle 209: the file list with each file's sha256 (all must have one).
+  static String canonical3(List<GroupNearbyFile> files) => jsonEncode([
+        for (final f in files) [f.id, f.name, f.type, f.size, f.sha]
+      ]);
+
+  /// Bundle 209: true when every file has a fingerprint ('llgm3' can be
+  /// signed).
+  static bool allHaveSha(List<GroupNearbyFile> files) =>
+      files.isNotEmpty && files.every((f) => GroupNearbyFile.validSha(f.sha));
+
+  /// Bundle 209: what the writer signs for files with fingerprints (old
+  /// phones still check 'llgm2').
+  static String messageText3(String gid, String id, String writer,
+          String createdAt, String body, List<GroupNearbyFile> files) =>
+      'llgm3\n$gid\n$id\n$writer\n$createdAt\n$body\n${canonical3(files)}';
+
+  /// Bundle 209: files a member passes on: at most 50 MB, at most 7 days.
+  static const Duration passFor = Duration(days: 7);
 
   /// The group photo travels as a "message" of its own.
   static const String photoMessagePrefix = 'gphoto-';
@@ -257,8 +303,23 @@ class GroupFileSender {
     this.beforeSend,
     this.onChanged,
     this.lowBattery,
+    this.activeLimit = maxActive,
+    this.triesLimit,
+    this.lowBatteryStopsAll = false,
     int Function()? nowMs,
   }) : _nowMs = nowMs ?? (() => DateTime.now().millisecondsSinceEpoch);
+
+  /// Files on the way at once (the writer: [maxActive]; a member passing
+  /// files on: 2).
+  final int activeLimit;
+
+  /// Bundle 209: give up after this many tries (null = never; members
+  /// passing a file on: 2 - the receiver asks again later).
+  final int? triesLimit;
+
+  /// Bundle 209: at low battery nothing goes (members passing files on),
+  /// not even small files.
+  final bool lowBatteryStopsAll;
 
   final GroupFileSendStore store;
 
@@ -306,11 +367,30 @@ class GroupFileSender {
   }
 
   /// [member] said "got it" for [msgId]; `fv >= 2` = it takes files.
+  /// Bundle 209: [have] = files the member already has (a member passed
+  /// them on): done, never sent again.
   Future<void> memberGot(String member, String msgId,
-      {required int fv, String? fileId}) async {
+      {required int fv, String? fileId, Iterable<String> have = const []}) async {
     final rows = await store.sends(msgId: msgId, memberId: member);
     if (rows.isEmpty) return;
     var changed = false;
+    final has = have.toSet();
+    var already = 0;
+    for (final r in rows) {
+      if (has.contains(r.fileId) && r.status != 'done') {
+        r
+          ..status = 'done'
+          ..nextAt = 0;
+        await store.updateSend(r);
+        already++;
+        continue;
+      }
+    }
+    if (already > 0) {
+      AppLogger.info('GROUP_FILE_HAS',
+          detail: 'member=${_id6(member)} files=$already');
+      onChanged?.call(msgId);
+    }
     for (final r in rows) {
       if (r.status != 'wait') continue;
       if (fileId != null && r.fileId != fileId) continue;
@@ -366,6 +446,45 @@ class GroupFileSender {
     return any;
   }
 
+  void _giveUpIfTooMany(GroupFileSend r) {
+    final limit = triesLimit;
+    if (limit != null && r.tries >= limit) r.status = 'old';
+  }
+
+  /// Bundle 209: one file to one member (a member passing a file on). False
+  /// when [activeLimit] files are already on the way.
+  Future<bool> pass(String gid, String msgId, String fileId, String member) async {
+    final rows = await store.sends();
+    final mine = rows
+        .where((r) => r.msgId == msgId && r.fileId == fileId && r.memberId == member)
+        .firstOrNull;
+    if (mine != null && (mine.status == 'sending' || mine.status == 'ready')) {
+      return true;
+    }
+    final busyNow =
+        rows.where((r) => r.status == 'sending' || r.status == 'ready').length;
+    if (busyNow >= activeLimit) return false;
+    if (mine != null) {
+      mine
+        ..status = 'ready'
+        ..tries = 0
+        ..nextAt = 0;
+      await store.updateSend(mine);
+    } else {
+      await store.putSends([
+        GroupFileSend(
+            msgId: msgId,
+            fileId: fileId,
+            memberId: member,
+            gid: gid,
+            status: 'ready',
+            createdAt: _nowMs()),
+      ]);
+    }
+    await pump();
+    return true;
+  }
+
   /// P1: every one of [members] has every Nearby file of [msgId].
   /// [fileIds]: every one of these must be there (a file over 50 MB never
   /// has rows, so it still goes by the server).
@@ -407,6 +526,8 @@ class GroupFileSender {
         .cast<GroupFileSend?>()
         .firstWhere((_) => true, orElse: () => null);
     if (row == null) return false;
+    // Bundle 209: the member already has it (from another member).
+    if (row.status == 'done' && type != 'file_sent') return true;
     final now = _nowMs();
     switch (type) {
       case 'file_sent':
@@ -420,6 +541,7 @@ class GroupFileSender {
         row.tries++;
         row.status = 'ready';
         row.nextAt = now + _backoff(row.tries);
+        _giveUpIfTooMany(row);
         AppLogger.warning('GROUP_FILE_FAILED',
             detail: 'to=${_id6(row.memberId)} try=${row.tries} '
                 'why=${event['reason'] ?? ''}');
@@ -460,6 +582,7 @@ class GroupFileSender {
           ..status = 'ready'
           ..tries = r.tries + 1
           ..nextAt = now + _backoff(r.tries);
+        _giveUpIfTooMany(r);
         await store.updateSend(r);
         continue;
       }
@@ -469,14 +592,14 @@ class GroupFileSender {
         .where((r) => r.status == 'ready' && r.nextAt <= now)
         .toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    if (due.isEmpty || active >= maxActive) return;
+    if (due.isEmpty || active >= activeLimit) return;
     try {
       await beforeSend?.call();
     } catch (_) {}
     for (final r in due) {
-      if (active >= maxActive) break;
+      if (active >= activeLimit) break;
       final file = await source(r.msgId, r.fileId);
-      if (file != null && file.size > smallFileBytes && _low()) {
+      if (file != null && (lowBatteryStopsAll || file.size > smallFileBytes) && _low()) {
         r.nextAt = now + 300 * 1000;
         await store.updateSend(r);
         continue;
@@ -501,6 +624,7 @@ class GroupFileSender {
           ..status = 'ready'
           ..tries = r.tries + 1
           ..nextAt = now + _backoff(r.tries);
+        _giveUpIfTooMany(r);
         await store.updateSend(r);
         active--;
         AppLogger.info('GROUP_FILE_WAIT',
