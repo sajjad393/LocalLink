@@ -564,7 +564,7 @@ void main() {
       expect(marked, findsNothing);
     });
 
-    testWidgets('G1 mock 21: tap the emoji chip - who reacted, remove mine',
+    testWidgets('G1 mock 21 (207: hold) the emoji chip - who reacted, remove mine',
         (tester) async {
       final now = DateTime.now();
       final messaging = _FakeGroupMessaging(
@@ -581,7 +581,7 @@ void main() {
       await tester.pumpWidget(_host(messaging));
       await _settle(tester);
       expect(find.text('👍 2'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('group_reaction_chip_👍')));
+      await tester.longPress(find.byKey(const ValueKey('group_reaction_chip_👍')));
       await _anim(tester);
       expect(find.text('Reactions'), findsOneWidget);
       expect(find.text('All 2'), findsOneWidget);
@@ -590,6 +590,35 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('reaction_remove_mine')));
       await _anim(tester);
       expect(messaging.reacted, ['m1:']);
+    });
+
+    testWidgets('207: tap a chip adds mine (+1), tap my own again removes it',
+        (tester) async {
+      final now = DateTime.now();
+      final messaging = _FakeGroupMessaging(
+        historyResult: [
+          _message(id: 'm1', senderId: 'd2', body: 'Lunch?'),
+          _message(id: 'm2', senderId: 'd2', body: 'Tea?'),
+        ],
+        reactionMap: {
+          'm1': [
+            MessageReaction(
+                messageId: 'm1', reactorId: 'd2', emoji: '❤️', createdAt: now),
+          ],
+          'm2': [
+            MessageReaction(
+                messageId: 'm2', reactorId: 'me', emoji: '👍', createdAt: now),
+          ],
+        },
+      );
+      await tester.pumpWidget(_host(messaging));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('group_reaction_chip_❤️')));
+      await _anim(tester);
+      expect(find.text('Reactions'), findsNothing, reason: 'tap no longer opens the list');
+      await tester.tap(find.byKey(const ValueKey('group_reaction_chip_👍')));
+      await _anim(tester);
+      expect(messaging.reacted, ['m1:❤️', 'm2:']);
     });
     group('G2 group chat', () {
     testWidgets('mock 26: announcement group - a member sees no message box',

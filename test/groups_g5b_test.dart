@@ -240,6 +240,91 @@ void main() {
     GroupExtrasHub.debugReset();
   });
 
+  group('207 K one answer, 3-minute change', () {
+    final t0 = DateTime.utc(2026, 11, 5, 10);
+    String at(Duration d) => _iso(t0.add(d));
+
+    test('a change at 2:59 counts, at 3:01 is ignored (every phone)', () async {
+      final book = GroupExtrasBook();
+      expect(await book.applyVote(GroupVote(
+          pollId: 'p', choices: [0], at: at(Duration.zero), voter: 'ali', first: at(Duration.zero))), isTrue);
+      expect(await book.applyVote(GroupVote(
+          pollId: 'p', choices: [1], at: at(const Duration(minutes: 2, seconds: 59)),
+          voter: 'ali', first: at(Duration.zero))), isTrue);
+      expect(await book.applyVote(GroupVote(
+          pollId: 'p', choices: [0], at: at(const Duration(minutes: 3, seconds: 1)),
+          voter: 'ali', first: at(Duration.zero))), isFalse);
+      expect(book.votesOf('p')['ali']!.choices, [1]);
+      // a note that claims a later first time: the earliest seen is kept
+      expect(await book.applyVote(GroupVote(
+          pollId: 'p', choices: [0], at: at(const Duration(minutes: 5)),
+          voter: 'ali', first: at(const Duration(minutes: 4)))), isFalse);
+      expect(book.votesOf('p')['ali']!.first, at(Duration.zero));
+    });
+
+    test('an older app (no f) / a many-answers poll: no time rule', () async {
+      final book = GroupExtrasBook();
+      await book.applyVote(GroupVote(pollId: 'p', choices: [0], at: at(Duration.zero), voter: 'sara'));
+      expect(await book.applyVote(GroupVote(
+          pollId: 'p', choices: [0, 1], at: at(const Duration(hours: 2)), voter: 'sara')), isTrue);
+    });
+
+    test('f goes on the wire and back; old notes parse', () {
+      final v = GroupVote(pollId: 'p', choices: [1], at: at(Duration.zero), first: at(Duration.zero));
+      expect(v.encode(), contains('"f"'));
+      expect(GroupVote.parse(v.encode())!.first, at(Duration.zero));
+      final old = GroupVote(pollId: 'p', choices: [1], at: at(Duration.zero));
+      expect(old.encode(), isNot(contains('"f"')));
+      expect(GroupVote.parse(old.encode())!.first, '');
+    });
+
+    test('change time left (countdown) and final', () {
+      final poll = GroupPoll.build('Q', ['A', 'B'])!;
+      final t = GroupPollTally(poll, {
+        'me': GroupVote(pollId: 'p', choices: [0], at: at(Duration.zero), first: at(Duration.zero)),
+      });
+      expect(t.changeLeft('me', t0.add(const Duration(seconds: 19))), const Duration(minutes: 2, seconds: 41));
+      expect(t.changeLeft('me', t0.add(const Duration(minutes: 4)))! <= Duration.zero, isTrue);
+      expect(t.changeLeft('ali', t0), isNull);
+      final many = GroupPoll.build('Q', ['A', 'B'], multi: true)!;
+      expect(GroupPollTally(many, {
+        'me': GroupVote(pollId: 'p', choices: [0], at: at(Duration.zero), first: at(Duration.zero)),
+      }).changeLeft('me', t0), isNull);
+    });
+
+    testWidgets('poll card: countdown, then "Your vote is final"; radio; N of M voted', (tester) async {
+      final poll = GroupPoll.build('Tomorrow?', ['Office', 'Home'])!;
+      final t = GroupPollTally(poll, {
+        'me': GroupVote(pollId: 'p', choices: [0], at: at(Duration.zero), first: at(Duration.zero)),
+        'sara': GroupVote(pollId: 'p', choices: [1], at: at(Duration.zero)),
+      });
+      var now = t0.add(const Duration(seconds: 19));
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: GroupPollView(
+                  poll: poll, tally: t, self: 'me', nameOf: (id) => id, members: 3, now: () => now))));
+      expect(find.text('You can change your vote for 2:41'), findsOneWidget);
+      expect(find.text('2 of 3 voted'), findsOneWidget);
+      expect(find.byKey(const ValueKey('poll_opt_on_0')), findsOneWidget);
+      now = t0.add(const Duration(minutes: 3, seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Your vote is final'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('dark mode: counts and track are readable', (tester) async {
+      final poll = GroupPoll.build('Q', ['A', 'B'])!;
+      final t = GroupPollTally(poll, {});
+      await tester.pumpWidget(MaterialApp(
+          theme: ThemeData(brightness: Brightness.dark),
+          home: Scaffold(body: GroupPollView(poll: poll, tally: t, self: 'me', nameOf: (id) => id))));
+      final count = tester.widget<Text>(find.byKey(const ValueKey('poll_count_0')));
+      expect(count.style!.color, isNot(const Color(0xFF44454C)));
+      final track = tester.widget<Container>(find.byKey(const ValueKey('poll_track_0')));
+      expect(track.color, const Color(0xFF3A3D48));
+    });
+  });
+
   group('models', () {
     test('pin note: encode / parse / unpin / bad text', () {
       final at = DateTime.utc(2026, 11, 4, 16);
@@ -465,6 +550,9 @@ void main() {
       final sent = (await store.groupMessages('g1')).single;
       expect(GroupPoll.isPoll(sent['body'].toString()), isTrue);
       final pid = sent['id'].toString();
+      final oldDelay = GroupMessagingService.voteDelay;
+      GroupMessagingService.voteDelay = Duration.zero;
+      addTearDown(() => GroupMessagingService.voteDelay = oldDelay);
       expect(await GroupExtrasHub.vote!('g1', pid, [1]), isTrue);
       expect(store.groupOutboxItems.last['body'].toString(), startsWith('llvote:v1:'));
       socket.emitFrame(frame('v1', 'sara',
@@ -477,6 +565,40 @@ void main() {
       expect(t.picksOf('self-device'), [1]);
       expect(t.picksOf('sara'), [0]);
       expect((await store.groupMessages('g1')).length, 1, reason: 'votes are never bubbles');
+    });
+
+    test('207 K5: 10 fast taps -> 1 vote note (the last one)', () async {
+      final poll = GroupPoll.build('Lunch?', ['Biryani', 'Pizza'])!;
+      await GroupExtrasHub.sendPoll!('g1', poll);
+      final pid = (await store.groupMessages('g1')).single['id'].toString();
+      final before = store.groupOutboxItems.length;
+      final oldDelay = GroupMessagingService.voteDelay;
+      GroupMessagingService.voteDelay = const Duration(milliseconds: 60);
+      addTearDown(() => GroupMessagingService.voteDelay = oldDelay);
+      for (var i = 0; i < 10; i++) {
+        await service.vote('g1', pid, [i % 2]);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      final notes = store.groupOutboxItems.skip(before).toList();
+      expect(notes, hasLength(1));
+      final v = GroupVote.parse(notes.single['body'].toString())!;
+      expect(v.choices, [1]);
+      expect(v.first, isNotEmpty, reason: 'one-answer vote carries the first time');
+    });
+
+    test('207 K3: my vote is final 3 minutes after my first vote', () async {
+      final poll = GroupPoll.build('Lunch?', ['Biryani', 'Pizza'])!;
+      await GroupExtrasHub.sendPoll!('g1', poll);
+      final pid = (await store.groupMessages('g1')).single['id'].toString();
+      final old = DateTime.now().toUtc().subtract(const Duration(minutes: 4));
+      await GroupExtrasBook.instance.applyVote(GroupVote(
+          pollId: pid, choices: [0], at: _iso(old), voter: 'self-device', first: _iso(old)));
+      GroupMessagingService.voteDelay = Duration.zero;
+      addTearDown(() => GroupMessagingService.voteDelay = const Duration(milliseconds: 1500));
+      final before = store.groupOutboxItems.length;
+      expect(await service.vote('g1', pid, [1]), isFalse);
+      expect(store.groupOutboxItems.length, before);
+      expect(GroupExtrasBook.instance.tally(pid, poll).picksOf('self-device'), [0]);
     });
 
     test('Nearby notes are read the same way', () async {
@@ -558,14 +680,15 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('poll_add_option')));
       await tester.pump();
       await tester.enterText(find.byKey(const ValueKey('poll_option_2')), 'Chinese Corner');
-      await tester.tap(find.byKey(const ValueKey('poll_multi')));
       await tester.pump();
-      expect(find.text('Allow more than one answer'), findsOneWidget);
+      // Bundle 207 (K1): no "many answers" switch; the 3-minute rule note.
+      expect(find.byKey(const ValueKey('poll_multi')), findsNothing);
+      expect(find.byKey(const ValueKey('poll_rule_note')), findsOneWidget);
       expect(send().onPressed, isNotNull);
       await tester.tap(find.byKey(const ValueKey('poll_send')));
       await tester.pumpAndSettle();
       expect(got!.options, ['Biryani House', 'Pizza Point', 'Chinese Corner']);
-      expect(got!.multi, isTrue);
+      expect(got!.multi, isFalse);
     });
 
     testWidgets('Q3/Q4: poll view counts, my tick, tap + View votes', (tester) async {
@@ -586,9 +709,10 @@ void main() {
                         nameOf: (id) => id,
                         onTapOption: taps.add,
                         onViewVotes: () => showPollVotesSheet(c,
-                            poll: poll, tally: tally, members: 4, self: 'me', nameOf: (id) => id),
+                            poll: poll, tally: tally, members: 4, self: 'me', nameOf: (id) => id,
+                            memberIds: const ['me', 'ali', 'bilal', 'zara']),
                       )))));
-      expect(find.text('Poll · select one'), findsOneWidget);
+      expect(find.text('POLL · CHOOSE ONE'), findsOneWidget);
       expect(tester.widget<Text>(find.byKey(const ValueKey('poll_count_0'))).data, '2');
       expect(tester.widget<Text>(find.byKey(const ValueKey('poll_count_2'))).data, '0');
       expect(find.byKey(const ValueKey('poll_opt_on_0')), findsOneWidget);
@@ -598,9 +722,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('poll_view_votes')));
       await tester.pumpAndSettle();
       expect(find.text('Where? · 3 of 4 voted'), findsOneWidget);
-      expect(find.text('Biryani · 2'), findsOneWidget);
-      expect(find.text('Chinese · 0'), findsOneWidget);
+      expect(find.text('2 votes · 67%'), findsOneWidget);
+      expect(find.text('0 votes · 0%'), findsOneWidget);
       expect(find.byKey(const ValueKey('poll_votes_row_0_me')), findsOneWidget);
+      expect(find.byKey(const ValueKey('poll_votes_wait_zara')), findsOneWidget);
+      expect(find.text('Not voted yet'), findsOneWidget);
+      expect(find.textContaining('You · '), findsNothing);
     });
 
     testWidgets('chat: pinned bar on top (tap = jump), poll bubble, ⋮ New poll', (tester) async {

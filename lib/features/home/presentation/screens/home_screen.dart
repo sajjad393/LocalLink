@@ -29,6 +29,8 @@ import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/core/widgets/tab_top_bar.dart';
+import 'package:locallink/core/widgets/group_avatar.dart';
+import 'package:locallink/features/home/presentation/widgets/chats_search.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
@@ -191,6 +193,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // Bundle 163 (4.7): last message per chat for the Chats list.
   Map<String, ChatPreview> _directPreviews = const {};
   Map<String, ChatPreview> _groupPreviews = const {};
+
+  // Bundle 207 (L1): search on the Chats tab.
+  bool _chatsSearching = false;
+  final TextEditingController _chatsSearchText = TextEditingController();
 
   /// Bundle G1: last quiet reload for a new group (at most every 30 s).
   DateTime? _newGroupReloadAt;
@@ -698,6 +704,7 @@ class _HomeScreenState extends State<HomeScreen> {
       GroupPeopleHub.instance = null;
     }
     _controller.close();
+    _chatsSearchText.dispose();
     super.dispose();
   }
 
@@ -873,10 +880,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Route<void> _groupRoute(LocalGroup group, {bool search = false}) =>
+  Route<void> _groupRoute(LocalGroup group,
+          {bool search = false, String? jumpTo}) =>
       MaterialPageRoute(
         builder: (_) => GroupChatScreen(
           startSearch: search,
+          jumpToMessageId: jumpTo,
           group: group,
           localDeviceId: widget.store.deviceId ?? '',
           messaging: widget.groupMessaging,
@@ -1114,9 +1123,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return GroupCreateResult(group, skipped: skipped);
   }
 
-  Route<void> _chatRoute(Device device) {
+  Route<void> _chatRoute(Device device, {String? jumpTo}) {
     return MaterialPageRoute(
         builder: (_) => ChatScreen(
+          jumpToMessageId: jumpTo,
           controller:
               ChatBloc(repository: widget.messagingRepository, device: device),
           files: widget.files,
@@ -1183,17 +1193,129 @@ class _HomeScreenState extends State<HomeScreen> {
       // Bundle 201 (F): with the way (Wi-Fi / Wi-Fi Direct / Mesh).
       PresenceHub.instance.wayLabelOf(device.id);
 
+  void _openChatsSearch() {
+    AppLogger.info('CHATS_SEARCH_OPEN');
+    setState(() {
+      _chatsSearchText.clear();
+      _chatsSearching = true;
+    });
+  }
+
+  void _closeChatsSearch() => setState(() {
+        _chatsSearching = false;
+        _chatsSearchText.clear();
+      });
+
+  /// Bundle 207 (L1, mock 207 page 5): the search results page.
+  Widget _chatsSearchBody(HomeState state) {
+    final localId = widget.store.deviceId ?? '';
+    final groupsById = {for (final g in state.groups) g.id: g};
+    final chats = <ChatsSearchChat>[
+      for (final g in state.groups)
+        ChatsSearchChat(
+          id: g.id,
+          group: true,
+          title: g.name,
+          subtitle: _groupPreviews[g.id] == null
+              ? _emptyGroupLine(g, state)
+              : chatPreviewText(_groupPreviews[g.id]!,
+                  localDeviceId: localId,
+                  senderName:
+                      state.deviceLabels[_groupPreviews[g.id]!.senderId]),
+          time: _groupPreviews[g.id] == null
+              ? ''
+              : chatPreviewTime(_groupPreviews[g.id]!.createdAt),
+          avatar: GroupAvatar(
+              radius: 26, groupId: g.id, photoVersion: g.photoVersion),
+        ),
+      for (final d in _visibleDevices(state))
+        ChatsSearchChat(
+          id: d.id,
+          group: false,
+          title: state.deviceLabels[d.id] ?? 'Unknown user',
+          subtitle: _directPreviews[d.id] == null
+              ? _deviceSubtitle(d)
+              : chatPreviewText(_directPreviews[d.id]!, localDeviceId: localId),
+          time: _directPreviews[d.id] == null
+              ? ''
+              : chatPreviewTime(_directPreviews[d.id]!.createdAt),
+          avatar: AccountAvatar(
+              name: state.deviceLabels[d.id] ?? '', radius: 26, peerId: d.id),
+        ),
+    ];
+    return ChatsSearchView(
+      controller: _chatsSearchText,
+      chats: chats,
+      search: (q) => widget.store.searchMessages(q),
+      titleOf: (h) => h.group
+          ? (groupsById[h.chatId]?.name ?? 'Group')
+          : (state.deviceLabels[h.chatId] ?? 'Unknown user'),
+      avatarOf: (h) => h.group
+          ? GroupAvatar(
+              radius: 26,
+              groupId: h.chatId,
+              photoVersion: groupsById[h.chatId]?.photoVersion ?? 0)
+          : AccountAvatar(
+              name: state.deviceLabels[h.chatId] ?? '',
+              radius: 26,
+              peerId: h.chatId),
+      prefixOf: (h) => h.senderId == localId
+          ? 'You: '
+          : h.group
+              ? '${state.deviceLabels[h.senderId] ?? 'Someone'}: '
+              : '',
+      timeOf: chatPreviewTime,
+      onOpenChat: (c) => unawaited(_openSearchChat(state, c.id, c.group)),
+      onOpenHit: (h) =>
+          unawaited(_openSearchChat(state, h.chatId, h.group, h.messageId)),
+    );
+  }
+
+  /// Bundle 207 (L1): open a found chat (at the message, with the flash).
+  Future<void> _openSearchChat(HomeState state, String chatId, bool group,
+      [String? messageId]) async {
+    AppLogger.info('CHATS_SEARCH_OPEN_RESULT',
+        detail: 'kind=${group ? 'group' : 'direct'} '
+            'at=${messageId == null ? 'chat' : 'message'}');
+    if (group) {
+      final g = state.groups.where((g) => g.id == chatId).firstOrNull ??
+          await widget.store.groupById(chatId);
+      if (g == null || !mounted) return;
+      await Navigator.push<void>(context, _groupRoute(g, jumpTo: messageId))
+          .whenComplete(_refreshUnreadCounts);
+      return;
+    }
+    final d = state.devices.where((d) => d.id == chatId).firstOrNull ??
+        await widget.store.deviceById(chatId);
+    if (d == null || !mounted) return;
+    await Navigator.push<void>(context, _chatRoute(d, jumpTo: messageId))
+        .whenComplete(_refreshUnreadCounts);
+  }
+
   Widget _chatsTab() {
     return Scaffold(
       // Bundle 183 (L/P): the shared tab top bar - title only, the Wi-Fi
       // connection icon is gone. Bundle 180: 5 fast taps share the logs.
-      appBar: TabTopBar(
+      // Bundle 207 (L1): + the search icon.
+      appBar: _chatsSearching
+          ? ChatsSearchBar(
+              controller: _chatsSearchText,
+              onClose: _closeChatsSearch) as PreferredSizeWidget
+          : TabTopBar(
         title: GestureDetector(
           key: const ValueKey('chats_title_taps'),
           behavior: HitTestBehavior.opaque,
           onTap: _onChatsTitleTap,
           child: const Text('Chats'),
         ),
+        actions: [
+          IconButton(
+            key: const ValueKey('chats_search_open'),
+            tooltip: 'Search',
+            onPressed: _openChatsSearch,
+            icon: const Icon(Icons.search_rounded),
+          ),
+        ],
       ),
       bottomNavigationBar: _OngoingCallBar(calls: widget.calls, onOpen: _resumeCall),
       // Bundle 206: the round button can be moved (hold, drag, let go);
@@ -1211,6 +1333,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: LocalLinkBlocBuilder<HomeBloc, HomeState>(
         bloc: _controller,
         builder: (context, state) {
+          if (_chatsSearching) return _chatsSearchBody(state);
           if (state.loading && state.devices.isEmpty && state.groups.isEmpty) {
             return const LocalLinkLoadingView(
                 message: 'Loading your conversations…');
@@ -1449,6 +1572,11 @@ class _HomeScreenState extends State<HomeScreen> {
         // leave the app (or land on the login screen). Require a deliberate
         // double press within two seconds to exit.
         if (didPop) return;
+        // Bundle 207 (L1): back closes the Chats search first.
+        if (_index == 0 && _chatsSearching) {
+          _closeChatsSearch();
+          return;
+        }
         final now = DateTime.now();
         final last = _lastBackPressAt;
         _lastBackPressAt = now;

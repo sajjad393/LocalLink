@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/group_extras.dart';
@@ -8,7 +10,6 @@ import 'package:locallink/core/widgets/account_avatar.dart';
 
 const Color _blue = Color(0xFF1E5BFF);
 const Color _teal = Color(0xFF23E0D8);
-const Color _soft = Color(0xFF6A6B73);
 
 // =============================================================== P2
 
@@ -201,7 +202,6 @@ class _NewPollScreenState extends State<NewPollScreen> {
     TextEditingController(),
     TextEditingController(),
   ];
-  bool _multi = false;
 
   @override
   void initState() {
@@ -224,8 +224,8 @@ class _NewPollScreenState extends State<NewPollScreen> {
   void _changed() => setState(() {});
 
   GroupPoll? get _poll => GroupPoll.build(
-      _question.text, [for (final c in _options) c.text],
-      multi: _multi);
+      // Bundle 207 (K1): always one answer (the switch is gone).
+      _question.text, [for (final c in _options) c.text]);
 
   void _addOption() {
     if (_options.length >= GroupPoll.maxOptions) return;
@@ -338,16 +338,43 @@ class _NewPollScreenState extends State<NewPollScreen> {
                       ),
                     ),
                   const SizedBox(height: 10),
-                  SwitchListTile(
-                    key: const ValueKey('poll_multi'),
-                    value: _multi,
-                    onChanged: (v) => setState(() => _multi = v),
-                    secondary: Icon(Icons.done_all_rounded,
-                        color: colors.onSurfaceVariant),
-                    title: const Text('Allow more than one answer',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w500)),
-                    subtitle: const Text('People can pick several options'),
+                  // Bundle 207 (K1, mock 207 page 3 screen 7).
+                  Container(
+                    key: const ValueKey('poll_rule_note'),
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest
+                          .withValues(alpha: .6),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.schedule_rounded,
+                            size: 18, color: colors.onSurfaceVariant),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text.rich(
+                            const TextSpan(children: [
+                              TextSpan(text: 'Everyone picks '),
+                              TextSpan(
+                                  text: 'one',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w700)),
+                              TextSpan(
+                                  text: ' answer. They can change it for 3 '
+                                      "minutes after voting, then it's final."),
+                            ]),
+                            style: TextStyle(
+                                fontSize: 13.5,
+                                height: 1.4,
+                                color: colors.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -374,9 +401,11 @@ class _NewPollScreenState extends State<NewPollScreen> {
 
 // =============================================================== Q3
 
-/// Q3: the poll inside its bubble. Tap an option to vote; tap again to
-/// take the vote back.
-class GroupPollView extends StatelessWidget {
+/// Q3: the poll inside its bubble. Tap an option to vote.
+/// Bundle 207 (K/M, mock 207 page 3): radio circles for one answer, full
+/// faces, counts and track readable in dark, "You can change your vote for
+/// 2:41" then "Your vote is final", and "2 of 3 voted · View votes".
+class GroupPollView extends StatefulWidget {
   const GroupPollView({
     super.key,
     required this.poll,
@@ -385,6 +414,8 @@ class GroupPollView extends StatelessWidget {
     required this.nameOf,
     this.onTapOption,
     this.onViewVotes,
+    this.members = 0,
+    this.now,
   });
 
   final GroupPoll poll;
@@ -394,10 +425,74 @@ class GroupPollView extends StatelessWidget {
   final void Function(int index)? onTapOption;
   final VoidCallback? onViewVotes;
 
+  /// Group size for "2 of 3 voted" (0 = not shown).
+  final int members;
+
+  /// Tests: the clock.
+  final DateTime Function()? now;
+
+  /// "2:41".
+  static String clock(Duration d) {
+    final s = d.inSeconds.clamp(0, 59 * 60);
+    return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+  }
+
+  @override
+  State<GroupPollView> createState() => _GroupPollViewState();
+}
+
+class _GroupPollViewState extends State<GroupPollView> {
+  Timer? _tick;
+
+  DateTime _now() => (widget.now ?? DateTime.now)();
+
+  Duration? get _left => widget.tally.changeLeft(widget.self, _now());
+
+  @override
+  void initState() {
+    super.initState();
+    _syncTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant GroupPollView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncTimer();
+  }
+
+  void _syncTimer() {
+    final left = _left;
+    final running = left != null && left > Duration.zero;
+    if (running && _tick == null) {
+      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() {});
+        final l = _left;
+        if (l == null || l <= Duration.zero) {
+          _tick?.cancel();
+          _tick = null;
+        }
+      });
+    } else if (!running) {
+      _tick?.cancel();
+      _tick = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final mine = tally.picksOf(self);
+    final poll = widget.poll;
+    final tally = widget.tally;
+    final mine = tally.picksOf(widget.self);
+    final left = _left;
+    final soft = colors.onSurfaceVariant;
     // Fixed width like the mock (a narrow screen squeezes it).
     return SizedBox(
       width: 250,
@@ -406,12 +501,20 @@ class GroupPollView extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(children: [
-            const Icon(Icons.bar_chart_rounded, size: 14, color: _soft),
+            const Icon(Icons.bar_chart_rounded, size: 14, color: _blue),
             const SizedBox(width: 4),
-            Text(poll.multi ? 'Poll · select one or more' : 'Poll · select one',
-                style: const TextStyle(fontSize: 11.5, color: _soft)),
+            Text(
+                poll.multi
+                    ? 'POLL · CHOOSE ONE OR MORE'
+                    : 'POLL · CHOOSE ONE',
+                key: const ValueKey('poll_kind'),
+                style: TextStyle(
+                    fontSize: 11.5,
+                    letterSpacing: .3,
+                    fontWeight: FontWeight.w700,
+                    color: soft)),
           ]),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(poll.question,
               style: TextStyle(
                   fontWeight: FontWeight.w700,
@@ -420,20 +523,57 @@ class GroupPollView extends StatelessWidget {
           const SizedBox(height: 4),
           for (var i = 0; i < poll.options.length; i++)
             _option(context, i, mine.contains(i)),
+          if (left != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              child: Row(children: [
+                Icon(
+                    left > Duration.zero
+                        ? Icons.schedule_rounded
+                        : Icons.lock_rounded,
+                    size: 14,
+                    color: left > Duration.zero ? _blue : soft),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    left > Duration.zero
+                        ? 'You can change your vote for '
+                            '${GroupPollView.clock(left)}'
+                        : 'Your vote is final',
+                    key: const ValueKey('poll_change_line'),
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        color: left > Duration.zero ? _blue : soft),
+                  ),
+                ),
+              ]),
+            ),
           const SizedBox(height: 4),
           Divider(height: 1, color: colors.outlineVariant),
-          InkWell(
-            key: const ValueKey('poll_view_votes'),
-            onTap: onViewVotes,
-            child: const Padding(
-              padding: EdgeInsets.only(top: 8, bottom: 2),
-              child: Text('View votes',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: _blue,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.5)),
-            ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 2),
+            child: Row(children: [
+              if (widget.members > 0)
+                Text('${tally.voters} of ${widget.members} voted',
+                    key: const ValueKey('poll_voted_count'),
+                    style: TextStyle(fontSize: 12.5, color: soft)),
+              Expanded(
+                child: InkWell(
+                  key: const ValueKey('poll_view_votes'),
+                  onTap: widget.onViewVotes,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 4),
+                    child: Text('View votes',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: _blue,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5)),
+                  ),
+                ),
+              ),
+              if (widget.members > 0) const SizedBox(width: 40),
+            ]),
           ),
         ],
       ),
@@ -442,11 +582,49 @@ class GroupPollView extends StatelessWidget {
 
   Widget _option(BuildContext context, int i, bool on) {
     final colors = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final tally = widget.tally;
     final voters = tally.votersOf(i);
     final faces = voters.length > 3 ? voters.sublist(0, 3) : voters;
+    final ring = dark ? const Color(0xFF8E909A) : const Color(0xFF8A8B93);
+    final track = dark ? const Color(0xFF3A3D48) : const Color(0xFFDDDEE6);
+    final faceEdge = dark ? const Color(0xFF2A2D36) : Colors.white;
+    final Widget mark = widget.poll.multi
+        ? Container(
+            key: on ? ValueKey('poll_opt_on_$i') : null,
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: on ? _blue : null,
+              border: on ? null : Border.all(color: ring, width: 2),
+            ),
+            child: on
+                ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+                : null,
+          )
+        // Bundle 207 (K/M): one answer = a radio circle.
+        : Container(
+            key: on ? ValueKey('poll_opt_on_$i') : null,
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: on ? _blue : null,
+              border: on ? null : Border.all(color: ring, width: 2),
+            ),
+            alignment: Alignment.center,
+            child: on
+                ? Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                        color: Colors.white, shape: BoxShape.circle))
+                : null,
+          );
     return InkWell(
       key: ValueKey('poll_opt_$i'),
-      onTap: onTapOption == null ? null : () => onTapOption!(i),
+      onTap: widget.onTapOption == null ? null : () => widget.onTapOption!(i),
       child: Padding(
         padding: const EdgeInsets.only(top: 6, bottom: 4),
         child: Column(
@@ -454,46 +632,37 @@ class GroupPollView extends StatelessWidget {
           children: [
             Row(
               children: [
-                Container(
-                  key: on ? ValueKey('poll_opt_on_$i') : null,
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: on ? _blue : null,
-                    border: on
-                        ? null
-                        : Border.all(color: const Color(0xFF8A8B93), width: 2),
-                  ),
-                  child: on
-                      ? const Icon(Icons.check_rounded,
-                          size: 14, color: Colors.white)
-                      : null,
-                ),
+                mark,
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(poll.options[i],
-                      style: TextStyle(fontSize: 14, color: colors.onSurface)),
+                  child: Text(widget.poll.options[i],
+                      style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: on ? FontWeight.w700 : FontWeight.w400,
+                          color: colors.onSurface)),
                 ),
                 if (faces.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
+                    // Bundle 207 (M): room for the face + its edge (the
+                    // 18 px box cut the faces).
                     child: SizedBox(
-                      width: 18.0 + 12.0 * (faces.length - 1),
-                      height: 20,
-                      child: Stack(children: [
+                      key: ValueKey('poll_faces_$i'),
+                      width: 23.0 + 14.0 * (faces.length - 1),
+                      height: 23,
+                      child: Stack(clipBehavior: Clip.none, children: [
                         for (var f = 0; f < faces.length; f++)
                           Positioned(
-                            left: 12.0 * f,
+                            left: 14.0 * f,
+                            top: 0,
                             child: Container(
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                border:
-                                    Border.all(color: Colors.white, width: 1.5),
+                                border: Border.all(color: faceEdge, width: 1.5),
                               ),
                               child: AccountAvatar(
-                                  name: nameOf(faces[f]),
-                                  radius: 9,
+                                  name: widget.nameOf(faces[f]),
+                                  radius: 10,
                                   peerId: faces[f]),
                             ),
                           ),
@@ -502,20 +671,20 @@ class GroupPollView extends StatelessWidget {
                   ),
                 Text('${voters.length}',
                     key: ValueKey('poll_count_$i'),
-                    style: const TextStyle(
-                        fontSize: 12.5,
-                        color: Color(0xFF44454C),
-                        fontWeight: FontWeight.w600)),
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: colors.onSurface,
+                        fontWeight: FontWeight.w700)),
               ],
             ),
             Padding(
-              padding: const EdgeInsets.only(left: 28, top: 5),
+              padding: const EdgeInsets.only(left: 30, top: 6),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(3),
                 child: SizedBox(
                   height: 5,
                   child: Stack(children: [
-                    Container(color: const Color(0xFFDDDEE6)),
+                    Container(key: ValueKey('poll_track_$i'), color: track),
                     FractionallySizedBox(
                       widthFactor: tally.shareOf(i).clamp(0.0, 1.0),
                       child: Container(
@@ -539,6 +708,9 @@ class GroupPollView extends StatelessWidget {
 // =============================================================== Q4
 
 /// Q4: who voted for what.
+/// Bundle 207 (K6/M, mock 207 page 4 screen 10): each option with "1 vote ·
+/// 50%" and a bar, people with the time on the right (my name once),
+/// "Not voted yet" (with [memberIds]), theme colours (dark mode).
 Future<void> showPollVotesSheet(
   BuildContext context, {
   required GroupPoll poll,
@@ -546,58 +718,112 @@ Future<void> showPollVotesSheet(
   required int members,
   required String self,
   required String Function(String id) nameOf,
+  List<String> memberIds = const [],
 }) {
   return showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
     builder: (sheetContext) {
-      final colors = Theme.of(sheetContext).colorScheme;
+      final theme = Theme.of(sheetContext);
+      final colors = theme.colorScheme;
+      final dark = theme.brightness == Brightness.dark;
+      final track = dark ? const Color(0xFF3A3D48) : const Color(0xFFE3E5EE);
       String when(String voter) {
         final at = DateTime.tryParse(tally.atOf(voter));
-        if (at == null) return voter == self ? 'You' : '';
-        if (voter == self) {
-          final l = at.toLocal();
-          final h = l.hour % 12 == 0 ? 12 : l.hour % 12;
-          return 'You · $h:${l.minute.toString().padLeft(2, '0')} '
-              '${l.hour >= 12 ? 'PM' : 'AM'}';
-        }
+        if (at == null) return '';
+        // Bundle 207 (K6): just the time ("You · You" is gone).
         return messageInfoTime(at.toLocal());
       }
 
+      Widget person(String v, String key, {String time = ''}) {
+        final name = v == self ? 'You' : nameOf(v);
+        return Padding(
+          key: ValueKey(key),
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
+          child: Row(children: [
+            AccountAvatar(name: nameOf(v), radius: 18, peerId: v),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: colors.onSurface)),
+            ),
+            if (time.isNotEmpty)
+              Text(time,
+                  style:
+                      TextStyle(fontSize: 12.5, color: colors.onSurfaceVariant)),
+          ]),
+        );
+      }
+
       final rows = <Widget>[];
+      final voted = <String>{};
       for (var i = 0; i < poll.options.length; i++) {
         final voters = tally.votersOf(i);
+        voted.addAll(voters);
+        final pct = (tally.shareOf(i) * 100).round();
         rows.add(Padding(
           key: ValueKey('poll_votes_head_$i'),
-          padding: const EdgeInsets.only(top: 10, bottom: 2),
-          child: Text('${poll.options[i]} · ${voters.length}',
-              style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF33343A))),
+          padding: const EdgeInsets.only(top: 12, bottom: 6),
+          child: Row(children: [
+            Expanded(
+              child: Text(poll.options[i],
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: colors.onSurface)),
+            ),
+            Text(
+                '${voters.length} ${voters.length == 1 ? 'vote' : 'votes'}'
+                ' · $pct%',
+                key: ValueKey('poll_votes_share_$i'),
+                style:
+                    TextStyle(fontSize: 12.5, color: colors.onSurfaceVariant)),
+          ]),
         ));
-        for (final v in voters) {
-          final name = v == self ? 'You' : nameOf(v);
-          rows.add(Padding(
-            key: ValueKey('poll_votes_row_${i}_$v'),
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
-            child: Row(children: [
-              AccountAvatar(
-                  name: v == self ? nameOf(v) : name, radius: 16, peerId: v),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 14.5, fontWeight: FontWeight.w500)),
+        rows.add(ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: SizedBox(
+            height: 5,
+            child: Stack(children: [
+              Container(color: track),
+              FractionallySizedBox(
+                widthFactor: tally.shareOf(i).clamp(0.0, 1.0),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(colors: [_blue, _teal]),
+                  ),
+                ),
               ),
-              Text(when(v),
-                  style: const TextStyle(
-                      fontSize: 12.5, color: Color(0xFF5B5C64))),
             ]),
-          ));
+          ),
+        ));
+        rows.add(const SizedBox(height: 4));
+        for (final v in voters) {
+          rows.add(person(v, 'poll_votes_row_${i}_$v', time: when(v)));
+        }
+      }
+      final notYet = [
+        for (final m in memberIds)
+          if (!voted.contains(m)) m
+      ];
+      if (notYet.isNotEmpty) {
+        rows.add(Padding(
+          key: const ValueKey('poll_votes_not_yet'),
+          padding: const EdgeInsets.only(top: 14, bottom: 2),
+          child: Text('Not voted yet',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: colors.onSurfaceVariant)),
+        ));
+        for (final m in notYet) {
+          rows.add(person(m, 'poll_votes_wait_$m'));
         }
       }
       return SafeArea(
@@ -605,27 +831,28 @@ Future<void> showPollVotesSheet(
           constraints: BoxConstraints(
               maxHeight: MediaQuery.sizeOf(sheetContext).height * .8),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('Votes',
-                    style: Theme.of(sheetContext)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontSize: 18, fontWeight: FontWeight.w700)),
+                    style: theme.textTheme.titleLarge
+                        ?.copyWith(fontSize: 20, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(
                     '${poll.question} · ${tally.voters} of $members voted',
                     key: const ValueKey('poll_votes_hint'),
                     style: TextStyle(
-                        fontSize: 13, color: colors.onSurfaceVariant)),
+                        fontSize: 13.5, color: colors.onSurfaceVariant)),
                 ...rows,
-                const SizedBox(height: 6),
+                const SizedBox(height: 14),
                 Text(
-                    'Tap an option in the chat to vote; tap it again to take '
-                    'your vote back. Works Nearby and Online.',
+                    poll.multi
+                        ? 'Tap an option in the chat to vote; tap it again to '
+                            'take your vote back. Works Nearby and Online.'
+                        : 'One answer each. A vote can be changed for 3 '
+                            "minutes, then it's final.",
                     style: TextStyle(
                         fontSize: 13, color: colors.onSurfaceVariant)),
               ],

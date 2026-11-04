@@ -8,7 +8,11 @@ class TabTopBar extends StatelessWidget implements PreferredSizeWidget {
   /// Usually a `Text`; Chats wraps it for the hidden 5 taps (180).
   final Widget title;
 
-  const TabTopBar({super.key, required this.title});
+  /// Bundle 207 (L1): e.g. the Chats search icon. Empty = title only.
+  final List<Widget> actions;
+
+  const TabTopBar(
+      {super.key, required this.title, this.actions = const <Widget>[]});
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -22,7 +26,7 @@ class TabTopBar extends StatelessWidget implements PreferredSizeWidget {
       titleSpacing: NavigationToolbar.kMiddleSpacing,
       toolbarHeight: kToolbarHeight,
       title: title,
-      actions: const <Widget>[],
+      actions: actions,
     );
   }
 }

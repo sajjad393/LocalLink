@@ -63,6 +63,21 @@ class ChatVideoPip(private val activity: Activity) {
                     applyParams()
                     result.success(null)
                 }
+                "close" -> {
+                    // Bundle 207: the video ended in the floating window.
+                    ready = false
+                    playing = false
+                    applyParams()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                        activity.isInPictureInPictureMode
+                    ) {
+                        try {
+                            activity.moveTaskToBack(true)
+                        } catch (_: Exception) {
+                        }
+                    }
+                    result.success(null)
+                }
                 "isSupported" -> result.success(supported())
                 else -> result.notImplemented()
             }

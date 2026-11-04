@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:locallink/core/services/file_in_use.dart';
+
 import '../../../../core/security/sensitive_file_protection_service.dart';
 import '../../../../core/services/app_logger.dart';
 
@@ -62,7 +64,8 @@ class SendCopyBook {
     try {
       final part = '$target.part';
       if (await plain.exists() && !localPath.endsWith('.enc')) {
-        await plain.copy(part);
+        // Bundle 207 (G3): the plain file is not deleted while it is copied.
+        await FileInUse.hold(localPath, () => plain.copy(part));
       } else if (await File(locked).exists()) {
         final view = await open(locked, extFor(originalName));
         try {

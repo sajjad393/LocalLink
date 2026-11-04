@@ -38,7 +38,11 @@ class DiscoveryService {
       } catch (_) {
         // Ignore unrelated UDP broadcasts on the same port.
       }
-    });
+    }, onError: (Object _) {
+      // Bundle 207 (N1): "Network is unreachable" also comes through the
+      // socket stream (it was an uncaught error). Nothing found, quietly.
+      finish();
+    }, cancelOnError: true);
 
     try {
       try {

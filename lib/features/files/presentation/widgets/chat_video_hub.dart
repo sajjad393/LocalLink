@@ -43,6 +43,10 @@ class ChatVideoSession extends ChangeNotifier {
   bool _mini = false;
   bool closed = false;
 
+  /// Bundle 207: the full-screen page of this video (to close it at the end).
+  Route<FullscreenExit>? _fullRoute;
+  bool _endedClose = false;
+
   bool get inMini => _mini && !closed;
   bool get playing => !closed && controller.state.playing;
 
@@ -122,6 +126,10 @@ abstract class PipPlatform {
   /// `{type: pip, active: bool, dismissed: bool}` and
   /// `{type: action, action: play|pause|back10|fwd10}`.
   Stream<Map<Object?, Object?>> events();
+
+  /// Bundle 207: the video ended in the floating window: close the window
+  /// (the app stays in the background).
+  Future<void> close();
 }
 
 class MethodChannelPipPlatform implements PipPlatform {
@@ -141,6 +149,15 @@ class MethodChannelPipPlatform implements PipPlatform {
       });
     } catch (_) {
       // No PiP on this platform / Android < 8.
+    }
+  }
+
+  @override
+  Future<void> close() async {
+    try {
+      await _method.invokeMethod<void>('close');
+    } catch (_) {
+      // No PiP on this platform.
     }
   }
 
@@ -303,7 +320,7 @@ class ChatVideoHub extends ChangeNotifier with WidgetsBindingObserver {
       s._setMini(false);
       _notify();
     }
-    final exit = await nav.push<FullscreenExit>(PageRouteBuilder<FullscreenExit>(
+    final route = PageRouteBuilder<FullscreenExit>(
       opaque: true,
       transitionDuration: const Duration(milliseconds: 180),
       pageBuilder: (_, __, ___) => ChatVideoFullscreen(
@@ -314,9 +331,17 @@ class ChatVideoHub extends ChangeNotifier with WidgetsBindingObserver {
       ),
       transitionsBuilder: (_, a, __, child) =>
           FadeTransition(opacity: a, child: child),
-    ));
+    );
+    s._fullRoute = route;
+    s._endedClose = false;
+    final exit = await nav.push<FullscreenExit>(route);
     s.fullscreenOpen = false;
+    if (identical(s._fullRoute, route)) s._fullRoute = null;
     if (s.closed) return;
+    if (s._endedClose) {
+      s.close(); // Bundle 207: played to the end -> close
+      return;
+    }
     switch (exit ?? FullscreenExit.back) {
       case FullscreenExit.minimize:
         showMini(s);
@@ -363,6 +388,8 @@ class ChatVideoHub extends ChangeNotifier with WidgetsBindingObserver {
     if (!identical(old, s)) {
       old?.controller.removeListener(_onCurrentTick);
       _current = s;
+      _tickPlaying = false;
+      _endHandled = false;
       s.controller.addListener(_onCurrentTick);
       final m = mini;
       if (m != null && !identical(m, s)) {
@@ -390,7 +417,67 @@ class ChatVideoHub extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  // ------------------------------------------------- Bundle 207: video end
+
+  bool _tickPlaying = false;
+  bool _endHandled = false;
+
+  /// True when a video that was playing has just reached its end (not a
+  /// paused video dragged to the end).
+  @visibleForTesting
+  static bool playedToEnd(ChatVideoState st, {required bool wasPlaying}) =>
+      videoEnded(st) && (wasPlaying || st.playing);
+
+  void _watchEnd() {
+    final c = current;
+    if (c == null || c.closed) return;
+    final st = c.controller.state;
+    final was = _tickPlaying;
+    _tickPlaying = st.playing;
+    if (!videoEnded(st)) {
+      _endHandled = false;
+      return;
+    }
+    if (_endHandled || !playedToEnd(st, wasPlaying: was)) return;
+    _endHandled = true;
+    final where = _pipActive
+        ? 'pip'
+        : c.fullscreenOpen
+            ? 'full'
+            : c.inMini
+                ? 'mini'
+                : null;
+    if (where == null) return; // in the bubble: it resets by itself
+    // After this listener returns (the controller is still notifying).
+    scheduleMicrotask(() => _closeAtEnd(c, where));
+  }
+
+  /// Played to the end in the full player, the small floating player or the
+  /// Android floating window: close it. (In the bubble it already goes back
+  /// to its preview by itself.)
+  void _closeAtEnd(ChatVideoSession s, String where) {
+    AppLogger.info('VIDEO_END_CLOSE', detail: 'where=$where');
+    // The bubble (kept alive behind the floating window) may already have
+    // closed the video; the window must still go away.
+    if (where == 'pip') unawaited(pip.close());
+    if (s.closed) return;
+    final route = s._fullRoute;
+    if (s.fullscreenOpen && route != null && route.isActive) {
+      s._endedClose = true;
+      final nav = route.navigator;
+      if (route.isCurrent) {
+        nav?.pop(FullscreenExit.close);
+      } else {
+        nav?.removeRoute(route);
+      }
+      if (where == 'full') return; // closes when the page is gone
+    }
+    if (identical(_mini, s)) closeMini();
+    s.close();
+  }
+
   void _onCurrentTick() {
+    _watchEnd();
     final playing = current?.playing ?? false;
     if (playing != _lastPlaying) {
       _lastPlaying = playing;
@@ -500,7 +587,6 @@ class MiniVideoOverlay extends StatefulWidget {
 class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
   Offset? _drag; // top-left while dragging
   ChatVideoSession? _session;
-  Timer? _endTimer;
   // Bundle 174: pinch to resize + buttons hide after 3 s while playing.
   bool _pinching = false;
   double _pinchStart = 1;
@@ -519,7 +605,6 @@ class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
   void dispose() {
     widget.hub.removeListener(_onHub);
     _session?.controller.removeListener(_onController);
-    _endTimer?.cancel();
     _hideTimer?.cancel();
     super.dispose();
   }
@@ -560,7 +645,6 @@ class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
     final s = widget.hub.mini;
     if (identical(s, _session)) return;
     _session?.controller.removeListener(_onController);
-    _endTimer?.cancel();
     _session = s;
     _drag = null;
     _hideTimer?.cancel();
@@ -580,21 +664,8 @@ class _MiniVideoOverlayState extends State<MiniVideoOverlay> {
   void _onController() {
     final s = _session;
     if (s == null || s.closed) return;
-    final ended = _ended(s.controller.state);
-    if (ended && _endTimer == null) {
-      // Finished in the mini player: offer replay, then go away.
-      _endTimer = Timer(const Duration(seconds: 5), () {
-        _endTimer = null;
-        final now = _session;
-        if (now != null && identical(widget.hub.mini, now) &&
-            _ended(now.controller.state)) {
-          widget.hub.closeMini();
-        }
-      });
-    } else if (!ended) {
-      _endTimer?.cancel();
-      _endTimer = null;
-    }
+    // Bundle 207: played to the end -> the hub closes the mini player at
+    // once (was: replay button for 5 s). Paused at the end: it stays.
     final playing = s.controller.state.playing;
     if (playing != _wasPlaying) {
       _wasPlaying = playing;

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter/scheduler.dart';
@@ -42,6 +43,8 @@ class ChatVideoPlayer extends StatefulWidget {
     this.coordinator,
     this.hub,
     this.uploadOverlay,
+    this.page = false,
+    this.active = true,
   });
 
   final String path;
@@ -59,6 +62,15 @@ class ChatVideoPlayer extends StatefulWidget {
 
   /// Bundle 150: drawn while [uploading] (blue ring with %). Null = default.
   final Widget? uploadOverlay;
+
+  /// Bundle 207 (I): a page of the media viewer: fills the screen, plays by
+  /// itself while [active], pauses when swiped away, stays on the last
+  /// frame at the end (the viewer stays open), never goes to the mini
+  /// player.
+  final bool page;
+
+  /// Bundle 207 (I): this page is the one shown now.
+  final bool active;
 
   /// Bundle 147: the video's real shape, scaled to fit 250 x 360 (no crop).
   static Size frameSize(double? aspect) => MediaFrame.fitAspect(aspect);
@@ -88,17 +100,49 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
     // Scrolled back to a bubble whose video is in the mini player: show
     // "Playing in mini player" (tap brings it back here).
     final mini = _hub.mini;
-    if (mini != null && mini.path == widget.path && !mini.closed) {
+    if (!widget.page &&
+        mini != null &&
+        mini.path == widget.path &&
+        !mini.closed) {
       mini.inlineAlive = true;
       _session = mini;
       _bind(mini);
+    }
+    if (widget.page && widget.active) _autoStart();
+  }
+
+  /// Bundle 207 (I): the shown viewer page plays by itself.
+  void _autoStart() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.active || _session != null || _starting) return;
+      AppLogger.info('VIEWER_VIDEO_AUTOPLAY');
+      unawaited(_start());
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.page || oldWidget.active == widget.active) return;
+    final s = _session;
+    if (!widget.active) {
+      // Swiped away: pause.
+      if (s != null && !s.closed && s.controller.state.playing) {
+        unawaited(_pause());
+      }
+    } else if (s == null) {
+      _autoStart();
+    } else if (!s.closed && !s.controller.state.playing &&
+        !videoEnded(s.controller.state)) {
+      unawaited(_play());
     }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final p = Scrollable.maybeOf(context)?.position;
+    // Bundle 207 (I): a viewer page never moves to the mini player.
+    final p = widget.page ? null : Scrollable.maybeOf(context)?.position;
     if (!identical(p, _scroll)) {
       _scroll?.removeListener(_onScroll);
       _scroll = p;
@@ -122,7 +166,14 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
     if (s != null) {
       _unbind(s);
       s.inlineAlive = false;
-      if (!s.closed && !s.fullscreenOpen && !s.inMini && s.playing) {
+      if (widget.page) {
+        // Bundle 207 (I): leaving the viewer stops its video.
+        if (!s.closed && !s.fullscreenOpen && !s.inMini) {
+          s.close();
+        } else {
+          s.maybeClose();
+        }
+      } else if (!s.closed && !s.fullscreenOpen && !s.inMini && s.playing) {
         // Chat closed / bubble recycled while playing: keep playing in the
         // mini player instead of stopping.
         _hub.showMini(s);
@@ -204,7 +255,10 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
       _coordinator.release(s);
       _hideTimer?.cancel();
       _controlsVisible = true;
-      if (!s.inMini && !s.fullscreenOpen) {
+      if (widget.page) {
+        // Bundle 207 (I): the viewer page stays on the last frame with the
+        // play (replay) button; the viewer stays open.
+      } else if (!s.inMini && !s.fullscreenOpen) {
         // Bundle 174 (3b): finished in the bubble -> back to the preview
         // picture + play button + length (not stuck on the last frame).
         // After this listener returns (the controller is still notifying).
@@ -272,6 +326,10 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
   Future<void> _play() async {
     final s = _session;
     if (s == null) return;
+    // Bundle 207 (I): play at the end = from the start again.
+    if (widget.page && videoEnded(s.controller.state)) {
+      await s.controller.seekTo(Duration.zero);
+    }
     await s.play();
     _showControls(autoHide: true);
   }
@@ -335,6 +393,93 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
     await _hub.openFullscreen(s, context: context);
   }
 
+  /// Bundle 207 (I, mock 207 page 4 screen 11): the viewer page - the
+  /// video fills the screen; tap shows -10 / pause / +10, the seek bar and
+  /// sound (above the small pictures strip); they hide after 3 s.
+  Widget _pageView(VideoInfo? info, ChatVideoSession? s, ChatVideoState? st,
+      bool active) {
+    return SizedBox.expand(
+      key: const Key('chat_video_page'),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: Colors.black),
+          if (active)
+            Center(
+              child: AspectRatio(
+                aspectRatio: st!.aspectRatio,
+                child: s!.controller.buildView(),
+              ),
+            )
+          else
+            Center(
+              child: AspectRatio(
+                aspectRatio: info?.aspectRatio ?? (9 / 16),
+                child: _Thumbnail(bytes: info?.thumbnail),
+              ),
+            ),
+          Positioned.fill(
+            child: GestureDetector(
+              key: const Key('chat_video_surface'),
+              behavior: HitTestBehavior.opaque,
+              onTap: _onSurfaceTap,
+            ),
+          ),
+          if (!active)
+            Center(
+              child: _starting
+                  ? const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 3, color: Colors.white))
+                  : Material(
+                      color: Colors.black45,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        key: const Key('chat_video_page_play'),
+                        customBorder: const CircleBorder(),
+                        onTap: _start,
+                        child: const SizedBox(
+                          width: 64,
+                          height: 64,
+                          child: Icon(Icons.play_arrow_rounded,
+                              color: Colors.white, size: 40),
+                        ),
+                      ),
+                    ),
+            ),
+          if (active)
+            AnimatedOpacity(
+              opacity: _controlsVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: IgnorePointer(
+                ignoring: !_controlsVisible,
+                child: Padding(
+                  // above the small pictures strip of the viewer
+                  padding: const EdgeInsets.only(bottom: 76),
+                  child: _InlineControls(
+                    controller: s!.controller,
+                    durationHintMs: s.durationHintMs > 0
+                        ? s.durationHintMs
+                        : (info?.durationMs ?? 0),
+                    onTogglePlay: _togglePlay,
+                    onFullscreen: null,
+                    onSeekBy: (sec) {
+                      unawaited(s.seekBy(sec));
+                      _showControls(autoHide: s.controller.state.playing);
+                    },
+                    onInteract: () =>
+                        _showControls(autoHide: s.controller.state.playing),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final info = _info;
@@ -346,6 +491,8 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
     final st = s?.controller.state;
     final inMini = s != null && s.inMini;
     final active = s != null && st != null && st.initialized && !inMini;
+
+    if (widget.page) return _pageView(info, s, st, active);
 
     return Padding(
       padding: EdgeInsets.only(top: MediaTileLook.topOf(context)),
@@ -414,6 +561,7 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
 }
 
 /// Bundle 147: shown on the bubble while its video plays in the mini player.
+/// (Bundle 207 page view is in the state class above.)
 class _InMiniLabel extends StatelessWidget {
   const _InMiniLabel();
 
@@ -568,13 +716,40 @@ class _InlineControls extends StatelessWidget {
     required this.onFullscreen,
     required this.onInteract,
     this.durationHintMs = 0,
+    this.onSeekBy,
   });
 
   final ChatVideoController controller;
   final int durationHintMs;
   final VoidCallback onTogglePlay;
-  final VoidCallback onFullscreen;
+
+  /// Null = no full-screen button (Bundle 207: the viewer page).
+  final VoidCallback? onFullscreen;
   final VoidCallback onInteract;
+
+  /// Bundle 207 (I): -10 / +10 buttons beside the middle one.
+  final void Function(int seconds)? onSeekBy;
+
+  Widget _skip(String key, String label, int sec) => Material(
+        color: Colors.black38,
+        shape: const CircleBorder(),
+        child: InkWell(
+          key: Key(key),
+          customBorder: const CircleBorder(),
+          onTap: () => onSeekBy!(sec),
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Center(
+              child: Text(label,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -587,6 +762,17 @@ class _InlineControls extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
+            if (onSeekBy != null)
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _skip('chat_video_back10', '-10', -10),
+                    const SizedBox(width: 92),
+                    _skip('chat_video_fwd10', '+10', 10),
+                  ],
+                ),
+              ),
             Center(
               child: Material(
                 color: Colors.black45,
@@ -657,11 +843,12 @@ class _InlineControls extends StatelessWidget {
                               onInteract();
                             },
                           ),
-                          _IconBtn(
-                            key: const Key('chat_video_fullscreen'),
-                            icon: Icons.fullscreen_rounded,
-                            onTap: onFullscreen,
-                          ),
+                          if (onFullscreen != null)
+                            _IconBtn(
+                              key: const Key('chat_video_fullscreen'),
+                              icon: Icons.fullscreen_rounded,
+                              onTap: onFullscreen!,
+                            ),
                         ],
                       ),
                     ],

@@ -188,19 +188,44 @@ class GroupVote {
     required this.choices,
     required this.at,
     this.voter = '',
+    this.first = '',
   });
 
   static const prefix = 'llvote:v1:';
+
+  /// Bundle 207 (K3): a one-answer vote can be changed for 3 minutes after
+  /// the first vote; later notes are ignored on every phone.
+  static const Duration changeWindow = Duration(minutes: 3);
 
   final String pollId;
   final List<int> choices;
   final String at;
   final String voter;
 
+  /// Bundle 207 (K3): time of this voter's FIRST vote on the poll ('' =
+  /// an older app / a many-answers poll: no 3-minute rule).
+  final String first;
+
   static bool isVote(String body) => body.startsWith(prefix);
 
-  String encode() =>
-      prefix + jsonEncode({'p': pollId, 'c': choices, 'at': at});
+  /// Bundle 207 (K3): [at] is more than 3 minutes after [first].
+  static bool lateChange(String first, String at) {
+    final f = DateTime.tryParse(first);
+    final a = DateTime.tryParse(at);
+    if (f == null || a == null) return false;
+    return a.difference(f) > changeWindow;
+  }
+
+  GroupVote withFirst(String f) =>
+      GroupVote(pollId: pollId, choices: choices, at: at, voter: voter, first: f);
+
+  String encode() => prefix +
+      jsonEncode({
+        'p': pollId,
+        'c': choices,
+        'at': at,
+        if (first.isNotEmpty) 'f': first,
+      });
 
   static GroupVote? parse(String body, {String voter = ''}) {
     if (!isVote(body)) return null;
@@ -219,7 +244,13 @@ class GroupVote {
         if (i != null && i >= 0 && !choices.contains(i)) choices.add(i);
       }
       choices.sort();
-      return GroupVote(pollId: p, choices: choices, at: at, voter: voter);
+      final f = raw['f']?.toString() ?? '';
+      return GroupVote(
+          pollId: p,
+          choices: choices,
+          at: at,
+          voter: voter,
+          first: DateTime.tryParse(f) == null ? '' : f);
     } catch (_) {
       return null;
     }
@@ -236,6 +267,7 @@ class GroupPollTally {
       ];
       if (!poll.multi && picks.length > 1) picks = [picks.first];
       if (picks.isEmpty) continue;
+      if (entry.value.first.isNotEmpty) _first[entry.key] = entry.value.first;
       _byVoter[entry.key] = picks;
       _at[entry.key] = entry.value.at;
     }
@@ -244,6 +276,16 @@ class GroupPollTally {
   final GroupPoll poll;
   final Map<String, List<int>> _byVoter = {};
   final Map<String, String> _at = {};
+  final Map<String, String> _first = {};
+
+  /// Bundle 207 (K4): how long I can still change my vote (null = no rule:
+  /// not voted / many answers / an older vote; zero or less = final).
+  Duration? changeLeft(String self, DateTime now) {
+    if (poll.multi || picksOf(self).isEmpty) return null;
+    final f = DateTime.tryParse(_first[self] ?? '');
+    if (f == null) return null;
+    return f.add(GroupVote.changeWindow).difference(now.toUtc());
+  }
 
   /// People who voted (any option).
   int get voters => _byVoter.length;

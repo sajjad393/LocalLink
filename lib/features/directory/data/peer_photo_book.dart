@@ -218,6 +218,9 @@ class PeerPhotoBook extends ChangeNotifier {
   /// `avatars/<hash>.jpg` like a friend's; [sweep] keeps it.
   String? _ownUser;
   Future<void> setOwn(String userId, String deviceId, List<int>? bytes) async {
+    // Bundle 207 (H2): no account id yet (phone only) -> keyed by my phone
+    // id, so Settings / group "You" rows still change at once.
+    if (userId.isEmpty) userId = deviceId;
     if (userId.isEmpty) return;
     if (bytes == null || bytes.isEmpty) {
       _ownUser = userId;

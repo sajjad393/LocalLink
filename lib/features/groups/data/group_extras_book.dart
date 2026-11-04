@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/models/group_extras.dart';
 
 /// Bundle G5b: the pin of each group and the votes of each poll on this
@@ -95,6 +96,7 @@ class GroupExtrasBook extends ChangeNotifier {
               pollId: pollId,
               voter: voter.toString(),
               at: v['at']?.toString() ?? '',
+              first: v['f']?.toString() ?? '',
               choices: c is List
                   ? [for (final e in c) if (e is int) e]
                   : const <int>[],
@@ -117,20 +119,45 @@ class GroupExtrasBook extends ChangeNotifier {
     if (any) notifyListeners();
   }
 
-  /// One vote note. False = older than this voter's last vote.
+  /// Bundle 207 (K3): this voter's saved vote (null = none).
+  GroupVote? voteOf(String pollId, String voter) => _votes[pollId]?[voter];
+
+  /// One vote note. False = older than this voter's last vote, or (207 K3)
+  /// a one-answer change more than 3 minutes after the first vote.
   Future<bool> applyVote(GroupVote vote) async {
     if (vote.voter.isEmpty || vote.pollId.isEmpty) return false;
     await loadPoll(vote.pollId);
     final map = _votes[vote.pollId]!;
     final old = map[vote.voter];
     if (old != null && old.at.compareTo(vote.at) >= 0) return false;
-    map[vote.voter] = vote;
+    var next = vote;
+    if (vote.first.isNotEmpty && vote.choices.isNotEmpty) {
+      // Keep the earliest first-vote time seen for this voter, so every
+      // phone ends with the same result.
+      var f = vote.first;
+      if (old != null &&
+          old.choices.isNotEmpty &&
+          old.first.isNotEmpty &&
+          old.first.compareTo(f) < 0) {
+        f = old.first;
+      }
+      if (GroupVote.lateChange(f, vote.at)) {
+        AppLogger.info('GROUP_VOTE_LATE_IGNORED');
+        return false;
+      }
+      next = vote.withFirst(f);
+    }
+    map[vote.voter] = next;
     try {
       await write?.call(
           pollKey(vote.pollId),
           jsonEncode({
             for (final e in map.entries)
-              e.key: {'c': e.value.choices, 'at': e.value.at}
+              e.key: {
+                'c': e.value.choices,
+                'at': e.value.at,
+                if (e.value.first.isNotEmpty) 'f': e.value.first,
+              }
           }));
     } catch (_) {}
     notifyListeners();

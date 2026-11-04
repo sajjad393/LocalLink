@@ -1,3 +1,5 @@
+import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/features/files/presentation/widgets/media_gallery_viewer.dart';
 import 'package:locallink/features/groups/data/group_mention_book.dart';
 import 'package:locallink/core/services/message_seal_service.dart';
 import 'package:locallink/features/groups/data/group_sender_keys.dart';
@@ -198,6 +200,8 @@ class AppDependencies {
     identity = IdentityRepository(api: api, store: store, crypto: crypto);
     final fileTransferService = FileTransferService(store, connectivity: connectivityRepository);
     files = FileTransferRepository(service: fileTransferService);
+    // Bundle 207 (G4): the media viewer opens saved files by itself.
+    MediaGalleryViewer.files = files;
     groupMessagingService = GroupMessagingService(store, api, socket, files);
     // Bundle G3: Nearby groups - locked packets to each member, signed card.
     final groupLink = directTransport;
@@ -225,6 +229,9 @@ class AppDependencies {
         postToServer: groupMessagingService.postControl,
       );
       groupMessagingService.nearby = groupNearby;
+      // Bundle 207 (F): short waits between tries while a member is Nearby.
+      groupNearby!.nearNow = (id) =>
+          PresenceHub.instance.statusOf(id) == PresenceStatus.nearby;
       GroupNearbyHub.bind(groupNearby);
       // Bundle G7: group photos / videos / voice notes / files with no
       // internet - the sender sends each file to each member (like 1:1).

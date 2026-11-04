@@ -1,12 +1,19 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/files/domain/file_size_rule.dart';
+import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
+import 'package:locallink/features/messaging/data/forward_hub.dart';
+import 'package:locallink/features/messaging/presentation/screens/forward_screen.dart'
+    show runForwardFlow;
+import 'package:locallink/features/storage/presentation/media_message_actions.dart';
 
 import 'chat_video_player.dart';
 import 'media_grid.dart';
-import 'media_tile_look.dart';
 import 'media_view_cache.dart';
 
 /// Bundle 202: one page of the swipe viewer.
@@ -94,6 +101,47 @@ class MediaGalleryViewer extends StatefulWidget {
     ));
   }
 
+  /// Bundle 207 (G4): the files road, so a page can open a file that is on
+  /// this phone even when no chat tile opened it (set at app start).
+  static FileTransferRepositoryContract? files;
+
+  /// Bundle 207 (G4): opens [item]'s saved file for viewing (locks a plain
+  /// file first). Null = not on this phone.
+  static Future<GalleryItem?> prepare(GalleryItem item) async {
+    final a = item.attachment;
+    final f = files;
+    if (a == null || f == null) return null;
+    var local = a.localPath ?? '';
+    if (local.isEmpty) return null;
+    if (!await File(local).exists() &&
+        !(await File('$local.enc').exists())) {
+      return null;
+    }
+    if (!await f.isProtectedLocalFile(local)) {
+      local = await f.protectLegacyLocalFile(local);
+    }
+    final ext = a.originalName.contains('.')
+        ? '.${a.originalName.split('.').last}'
+        : '.bin';
+    final key = '$local|$ext';
+    final locked = local;
+    final view = await MediaViewCache.instance.acquire(
+      key,
+      () => f.materializeForDisplay(locked, extension: ext),
+      delete: f.deleteLocalFile,
+    );
+    return GalleryItem(
+        id: item.id,
+        video: item.video,
+        path: view,
+        viewKey: key,
+        attachment: a);
+  }
+
+  /// Can [item] be opened here (file saved on this phone)?
+  static bool canPrepare(GalleryItem item) =>
+      files != null && (item.attachment?.localPath ?? '').isNotEmpty;
+
   /// "2 of 7" (+ " · 4:12 PM").
   static String counter(int index, int count, String subtitle) =>
       '${index + 1} of $count${subtitle.isEmpty ? '' : ' · $subtitle'}';
@@ -108,6 +156,9 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
   late final List<int> _origin;
   late int _index;
   final List<String> _held = <String>[];
+  final Set<String> _preparing = <String>{};
+  final Set<String> _notHere = <String>{};
+  bool _gone = false;
   final ScrollController _strip = ScrollController();
 
   @override
@@ -128,8 +179,39 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
     }
   }
 
+  /// Bundle 207 (G4): open the page's file myself ("Preparing…").
+  void _prepareItem(GalleryItem item) {
+    if (_preparing.contains(item.id) || _notHere.contains(item.id)) return;
+    _preparing.add(item.id);
+    () async {
+      GalleryItem? ready;
+      try {
+        ready = await MediaGalleryViewer.prepare(item);
+      } catch (error) {
+        AppLogger.warning('MEDIA_VIEWER_PREPARE_FAILED', detail: '$error');
+      }
+      final key = ready?.viewKey;
+      if (_gone) {
+        if (key != null) MediaViewCache.instance.release(key);
+        return;
+      }
+      if (key != null) _held.add(key);
+      setState(() {
+        _preparing.remove(item.id);
+        final i = _items.indexWhere((x) => x.id == item.id);
+        if (ready == null || i < 0) {
+          _notHere.add(item.id);
+        } else {
+          _items[i] = ready;
+        }
+      });
+      AppLogger.info('MEDIA_VIEWER_PREPARED', detail: 'ok=${ready != null}');
+    }();
+  }
+
   @override
   void dispose() {
+    _gone = true;
     for (final key in _held) {
       MediaViewCache.instance.release(key);
     }
@@ -176,7 +258,7 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
                     setState(() => _index = i);
                     _keepStripInView(i);
                   },
-                  itemBuilder: (context, i) => _page(_items[i]),
+                  itemBuilder: (context, i) => _page(_items[i], active: i == _index),
                 ),
               ),
               Positioned(
@@ -231,6 +313,8 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
                 ],
               ),
             ),
+            // Bundle 207 (M2, mock 207 page 4): Forward / Save / ⋮.
+            if (!review && _current?.attachment != null) ..._actions(),
             if (review)
               TextButton.icon(
                 key: const Key('media_gallery_remove'),
@@ -244,9 +328,65 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
     );
   }
 
+  GalleryItem? get _current =>
+      _index >= 0 && _index < _items.length ? _items[_index] : null;
+
+  /// Bundle 207 (M2): Forward (when chats can be listed), Save (received
+  /// file on this phone, Android 10+), ⋮ = File info.
+  List<Widget> _actions() {
+    final a = _current!.attachment!;
+    final canSave = MediaMessageActions.savable([a], mine: false).isNotEmpty;
+    return [
+      if (ForwardHub.instance != null)
+        IconButton(
+          key: const Key('media_gallery_forward'),
+          tooltip: 'Forward',
+          icon: const Icon(Icons.shortcut_rounded, color: Colors.white),
+          onPressed: () {
+            MediaMessageActions.markOpened([a]);
+            unawaited(runForwardFlow(
+                context, [ForwardItem(text: '', attachments: [a])]));
+          },
+        ),
+      if (canSave)
+        IconButton(
+          key: const Key('media_gallery_save'),
+          tooltip: 'Save to phone',
+          icon: const Icon(Icons.download_rounded, color: Colors.white),
+          onPressed: () => unawaited(MediaMessageActions.save(context, [a])),
+        ),
+      PopupMenuButton<String>(
+        key: const Key('media_gallery_more'),
+        icon: const Icon(Icons.more_vert, color: Colors.white),
+        onSelected: (_) => _showInfo(a),
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'info', child: Text('File info')),
+        ],
+      ),
+    ];
+  }
+
+  void _showInfo(Attachment a) {
+    unawaited(showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('File info'),
+        content: Text(
+            '${a.originalName}\n${FileSizeRule.sizeLabel(a.size)}'
+            '${widget.subtitle.isEmpty ? '' : '\n${widget.subtitle}'}',
+            key: const Key('media_gallery_info')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c), child: const Text('OK')),
+        ],
+      ),
+    ));
+  }
+
   void _keepStripInView(int i) {
     if (!_strip.hasClients) return;
-    const step = 50.0;
+    // Bundle 207 (M2): bigger pictures in the strip.
+    const step = 58.0;
     final target = (i * step) - (_strip.position.viewportDimension - step) / 2;
     _strip.animateTo(
       target.clamp(0.0, _strip.position.maxScrollExtent),
@@ -267,7 +407,7 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 64,
+          height: 76,
           child: Center(
             child: ListView.builder(
               key: const Key('media_gallery_strip'),
@@ -300,11 +440,11 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
       key: ValueKey<String>('media_gallery_thumb:$i'),
       onTap: () => _go(i),
       child: Container(
-        width: 44,
-        height: 44,
+        width: 52,
+        height: 52,
         margin: const EdgeInsets.symmetric(horizontal: 3),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
               color: on ? Colors.white : Colors.transparent, width: 2),
         ),
@@ -326,8 +466,49 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
     );
   }
 
-  Widget _page(GalleryItem item) {
+  Widget _page(GalleryItem item, {bool active = true}) {
     final path = item.path;
+    if (path == null &&
+        !_notHere.contains(item.id) &&
+        MediaGalleryViewer.canPrepare(item)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_gone) _prepareItem(item);
+      });
+      return Stack(fit: StackFit.expand, children: [
+        Opacity(
+          opacity: .35,
+          child: MediaThumbFill(
+              attachmentId: item.attachment?.id ?? '',
+              fallback: const SizedBox.shrink()),
+        ),
+        Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(
+              width: 44,
+              height: 44,
+              child: CircularProgressIndicator(
+                  strokeWidth: 3, color: Colors.white),
+            ),
+            const SizedBox(height: 12),
+            const Text('Preparing…',
+                key: Key('media_gallery_preparing'),
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            // Bundle 207 (M2, mock 207 page 4 screen 12).
+            Text(
+                '${item.video ? 'Your video' : 'Your photo'}'
+                '${(item.attachment?.size ?? 0) > 0 ? ' · ${FileSizeRule.sizeLabel(item.attachment!.size)}' : ''}'
+                ' · ${item.video ? 'plays' : 'opens'} in a moment',
+                key: const Key('media_gallery_preparing_line'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 12.5)),
+          ]),
+        ),
+      ]);
+    }
     if (path == null) {
       return Stack(fit: StackFit.expand, children: [
         Opacity(
@@ -367,30 +548,23 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
     }
     final a = item.attachment;
     final key = item.viewKey;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 72),
-        child: FittedBox(
-          fit: BoxFit.contain,
-          child: MediaTileLook(
-            topGap: 0,
-            child: ChatVideoPlayer(
-              key: ValueKey<String>('media_gallery_video:${item.id}'),
-              path: path,
-              cacheKey: a?.id ?? path,
-              sizeBytes: a?.size ?? 0,
-              hintWidth: a?.width ?? 0,
-              hintHeight: a?.height ?? 0,
-              onRetainFile: key == null
-                  ? null
-                  : () => MediaViewCache.instance.retain(key),
-              onReleaseFile: key == null
-                  ? null
-                  : (_) => MediaViewCache.instance.release(key),
-            ),
-          ),
-        ),
-      ),
+    // Bundle 207 (I, mock 207 page 4): the video fills the screen and plays
+    // by itself; swiping away pauses it; it stays on the last frame.
+    return ChatVideoPlayer(
+      key: ValueKey<String>('media_gallery_video:${item.id}'),
+      path: path,
+      cacheKey: a?.id ?? path,
+      sizeBytes: a?.size ?? 0,
+      hintWidth: a?.width ?? 0,
+      hintHeight: a?.height ?? 0,
+      page: true,
+      active: active,
+      onRetainFile: key == null
+          ? null
+          : () => MediaViewCache.instance.retain(key),
+      onReleaseFile: key == null
+          ? null
+          : (_) => MediaViewCache.instance.release(key),
     );
   }
 }

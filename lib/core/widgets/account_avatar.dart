@@ -39,13 +39,29 @@ class AccountAvatar extends StatelessWidget {
     return value.substring(0, 1).toUpperCase();
   }
 
-  double get _ring => radius * 0.09 < 2.5 ? 2.5 : radius * 0.09;
-  double get _inner => locked ? radius - _ring - _ring * 0.8 : radius;
+  /// Bundle 207 (O, Option B): a thin blue ring (no white fill) with a
+  /// small see-through gap, and a small blue lock badge at the bottom-right
+  /// cut out with the page colour. Same outside size as before.
+  double get _ring => radius * 0.06 < 2 ? 2 : radius * 0.06;
+  double get _gap => radius * 0.05 < 1.5 ? 1.5 : radius * 0.05;
+  double get _inner => radius - _ring - _gap;
 
-  Widget _circle(ImageProvider? image) => locked ? _lockedCircle(image) : _plainCircle(image, radius);
+  /// The colour behind the avatar (the card it sits on, or the page), so
+  /// the badge cut-out never shows a fixed white in dark mode.
+  static Color pageColorOf(BuildContext context) {
+    final page = Theme.of(context).scaffoldBackgroundColor;
+    final m = Material.maybeOf(context)?.color;
+    if (m == null || m.a == 0) return page;
+    return m.a >= 1 ? m : Color.alphaBlend(m, page);
+  }
 
-  Widget _lockedCircle(ImageProvider? image) {
-    final badge = radius * 0.62 < 16 ? 16.0 : radius * 0.62;
+  Widget _circle(BuildContext context, ImageProvider? image) =>
+      locked ? _lockedCircle(context, image) : _plainCircle(image, radius);
+
+  Widget _lockedCircle(BuildContext context, ImageProvider? image) {
+    final badge = radius * 0.5 < 18 ? 18.0 : radius * 0.5;
+    final cut = badge * 0.12 < 2 ? 2.0 : badge * 0.12;
+    final page = pageColorOf(context);
     return SizedBox(
       key: const ValueKey('avatar_private_lock'),
       width: radius * 2,
@@ -55,41 +71,31 @@ class AccountAvatar extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           Container(
+            key: const ValueKey('avatar_private_ring'),
             width: radius * 2,
             height: radius * 2,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [ringStart, ringEnd],
-              ),
+              border: Border.all(color: ringStart, width: _ring),
             ),
-            padding: EdgeInsets.all(_ring),
-            child: Container(
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-              ),
-              alignment: Alignment.center,
-              child: _plainCircle(image, _inner),
-            ),
+            alignment: Alignment.center,
+            child: _plainCircle(image, _inner),
           ),
           Positioned(
-            top: radius * 0.02 - badge * 0.15,
-            right: radius * 0.02 - badge * 0.15,
+            right: -cut * 0.5,
+            bottom: -cut * 0.5,
             child: Container(
+              key: const ValueKey('avatar_private_badge'),
               width: badge,
               height: badge,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: ringStart,
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 3, offset: const Offset(0, 1)),
-                ],
+                border: Border.all(color: page, width: cut),
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.lock_rounded, size: badge * 0.62, color: ringStart),
+              child: Icon(Icons.lock_rounded,
+                  size: (badge - cut * 2) * 0.62, color: Colors.white),
             ),
           ),
         ],
@@ -108,13 +114,14 @@ class AccountAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final own = _imageFor(localPath);
     final id = peerId ?? '';
-    if (own != null || id.isEmpty) return _circle(own);
+    if (own != null || id.isEmpty) return _circle(context, own);
     // Bundle 204: the letter until the picture comes, then the picture
     // (no spinner).
     return ListenableBuilder(
       listenable: PeerPhotoBook.instance,
       builder: (context, _) =>
-          _circle(_imageFor(PeerPhotoBook.instance.fileFor(id)?.path ?? '')),
+          _circle(context,
+              _imageFor(PeerPhotoBook.instance.fileFor(id)?.path ?? '')),
     );
   }
 }

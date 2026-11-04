@@ -469,7 +469,7 @@ void main() {
       await t.pumpWidget(const SizedBox());
     });
 
-    testWidgets('finished in the mini player: replay button, then closes after 5 s', (t) async {
+    testWidgets('finished in the mini player: closes at once (bundle 207)', (t) async {
       final r = Rig();
       final show = ValueNotifier<bool>(true);
       await t.pumpWidget(MaterialApp(
@@ -488,13 +488,8 @@ void main() {
       show.value = false;
       await t.pump();
       await t.pump();
-      await c.seekTo(const Duration(seconds: 31));
-      await c.pause();
+      await c.finish();
       await t.pump();
-      expect(find.byKey(const Key('mini_video_replay')), findsOneWidget);
-      await t.pump(const Duration(seconds: 4));
-      expect(r.hub.mini, isNotNull);
-      await t.pump(const Duration(seconds: 2));
       await t.pump();
       expect(r.hub.mini, isNull);
       expect(c.closed, isTrue);

@@ -490,8 +490,12 @@ class ReliableMessagingService {
   Future<void> sendReaction(
       String recipientId, String messageId, String emoji) async {
     final normalized = emoji.trim();
-    if (normalized.isEmpty || messageId.trim().isEmpty)
+    if (messageId.trim().isEmpty)
       throw const FormatException('Reaction is required');
+    if (normalized.isEmpty) {
+      await _removeReaction(recipientId, messageId);
+      return;
+    }
     final id = _newId();
     final createdAt = DateTime.now().toUtc().toIso8601String();
     final payload = jsonEncode({
@@ -516,6 +520,33 @@ class ReliableMessagingService {
         messageId: messageId,
         reactorId: store.deviceId ?? '',
         emoji: normalized,
+        createdAt: DateTime.parse(createdAt).toLocal()));
+    await _safeFlush('reaction');
+  }
+
+  /// Bundle 207: my reaction tapped again = removed. Sent as the same llrx
+  /// note with an empty emoji (like groups, bundle G1); older apps ignore it.
+  Future<void> _removeReaction(String recipientId, String messageId) async {
+    final createdAt = DateTime.now().toUtc().toIso8601String();
+    final payload = jsonEncode({
+      'message_id': messageId,
+      'emoji': '',
+      'reactor_id': store.deviceId,
+      'created_at': createdAt
+    });
+    await store.addOutbox({
+      'id': _newId(),
+      'recipient_id': recipientId,
+      'body': '$_reactionPrefix$payload',
+      'created_at': createdAt,
+      'status': 'queued'
+    });
+    await store.deleteMessageReaction(
+        messageId: messageId, reactorId: store.deviceId ?? '');
+    _reactionIncoming.add(MessageReaction(
+        messageId: messageId,
+        reactorId: store.deviceId ?? '',
+        emoji: '',
         createdAt: DateTime.parse(createdAt).toLocal()));
     await _safeFlush('reaction');
   }
@@ -1721,8 +1752,19 @@ class ReliableMessagingService {
       final reactorId = payload['reactor_id']?.toString() ?? message.senderId;
       final createdAt = payload['created_at']?.toString() ??
           message.createdAt.toUtc().toIso8601String();
-      if (messageId.isEmpty || emoji.isEmpty || reactorId != message.senderId)
+      if (messageId.isEmpty || reactorId != message.senderId) return true;
+      if (emoji.isEmpty) {
+        // Bundle 207: the friend removed their reaction.
+        await store.deleteMessageReaction(
+            messageId: messageId, reactorId: reactorId);
+        _reactionIncoming.add(MessageReaction(
+            messageId: messageId,
+            reactorId: reactorId,
+            emoji: '',
+            createdAt:
+                DateTime.tryParse(createdAt)?.toLocal() ?? DateTime.now()));
         return true;
+      }
       await store.saveMessageReaction(
           messageId: messageId,
           reactorId: reactorId,

@@ -116,8 +116,10 @@ class ChatComposer extends StatelessWidget {
                                 controller: controller,
                                 focusNode: focusNode,
                                 enabled: !isSending,
-                                textInputAction: TextInputAction.send,
-                                onSubmitted: (_) => onSend(),
+                                // Bundle 207 (J): Enter = new line; send
+                                // only with the send button.
+                                textInputAction: TextInputAction.newline,
+                                keyboardType: TextInputType.multiline,
                                 hintText: 'Message',
                                 maxLines: 5,
                                 minLines: 1,

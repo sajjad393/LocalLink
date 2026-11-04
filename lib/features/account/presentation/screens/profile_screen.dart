@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:locallink/features/account/data/own_profile_signal.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:flutter/material.dart';
@@ -161,7 +162,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         removeAvatar: _removePhoto && image == null, // Bundle 204
       );
       _removePhoto = false;
+      // Bundle 207 (H1): Settings and other "me" places reload now.
+      OwnProfileSignal.bump();
       await widget.directoryRepository?.publishOwnProfile();
+      OwnProfileSignal.bump();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(synced ? 'Profile saved' : 'Saved on this phone; it will sync when available')));
       if (widget.onboarding) Navigator.pop(context);

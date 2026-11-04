@@ -24,6 +24,7 @@ class FakeVideoController extends ChangeNotifier implements ChatVideoController 
         position: _pos,
         duration: _init ? duration : Duration.zero,
         aspectRatio: 16 / 9,
+        completed: _completed,
       );
 
   @override
@@ -37,12 +38,24 @@ class FakeVideoController extends ChangeNotifier implements ChatVideoController 
 
   @override
   Future<void> play() async {
+    _completed = false;
     _playing = true;
     notifyListeners();
   }
 
   @override
   Future<void> pause() async {
+    _playing = false;
+    notifyListeners();
+  }
+
+  /// Bundle 207: plays to the end like video_player does (completed while
+  /// still "playing", then paused at the last frame).
+  bool _completed = false;
+  Future<void> finish() async {
+    _pos = duration;
+    _completed = true;
+    notifyListeners();
     _playing = false;
     notifyListeners();
   }
@@ -79,6 +92,9 @@ class FakePip implements PipPlatform {
 
   @override
   Stream<Map<Object?, Object?>> events() => events$.stream;
+
+  @override
+  Future<void> close() async => calls.add('close');
 }
 
 class Rig {
@@ -89,9 +105,13 @@ class Rig {
   final pip = FakePip();
   late final hub = ChatVideoHub(pip: pip);
 
-  ChatVideoPlayer player(String path, {bool uploading = false}) => ChatVideoPlayer(
+  ChatVideoPlayer player(String path,
+          {bool uploading = false, bool page = false, bool active = true}) =>
+      ChatVideoPlayer(
         key: ValueKey(path),
         path: path,
+        page: page,
+        active: active,
         cacheKey: 'k-$path',
         sizeBytes: 6920601, // 6.6 MB
         uploading: uploading,

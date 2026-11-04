@@ -135,6 +135,86 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   Duration photoServerDelay = const Duration(seconds: 20);
   final ProfilePhotoLimiter _photoAsks = ProfilePhotoLimiter();
   final ProfilePhotoLimiter _photoGives = ProfilePhotoLimiter();
+
+  /// Bundle 207 (H3): friends that still need my new card (picture code),
+  /// by phone id: sends so far + last send time. Sent again when seen.
+  final Map<String, ({int sends, int lastMs})> _cardOwed =
+      <String, ({int sends, int lastMs})>{};
+  static const int cardOwedMaxSends = 5;
+  static const Duration cardOwedGap = Duration(seconds: 60);
+
+  /// Bundle 207 (H3): my picture code at the last publish (null = not yet).
+  String? _publishedPhotoCode;
+
+  /// Bundle 207 (H4): an old-code ask gets my current card (at most once a
+  /// minute per phone).
+  final Map<String, int> _cardForOldAsk = <String, int>{};
+
+  /// Bundle 207 (H5).
+  void _photoSkipped(String why, String from) => AppLogger.info(
+      'PEER_PHOTO_SKIPPED', detail: 'why=$why to=${_tail6(from)}');
+
+  /// Bundle 207 (H3/H4): my signed card straight to one phone.
+  Future<bool> _sendCardTo(String device, {String why = 'photo'}) async {
+    if (device.isEmpty || !transport.isStarted) return false;
+    final signed = await _buildOwnProfile();
+    if (signed == null) return false;
+    try {
+      await transport.send(
+        recipientId: device,
+        payload: _gossipEnvelope(
+          type: signed.directorySyncEnabled
+              ? 'DIRECTORY_PROFILE'
+              : 'DIRECTORY_PROFILE_REVOKED',
+          syncId: 'dir-card-${DateTime.now().microsecondsSinceEpoch}',
+          profile: signed.toMap(),
+        ),
+      );
+      AppLogger.info('PEER_CARD_SENT',
+          detail: 'to=${_tail6(device)} why=$why');
+      return true;
+    } catch (error) {
+      AppLogger.info('PEER_CARD_WAIT',
+          detail: 'to=${_tail6(device)} why=$why');
+      return false;
+    }
+  }
+
+  /// Bundle 207 (H3): my picture changed -> my card to every friend now,
+  /// again when each one is next seen.
+  Future<void> _cardToFriends() async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    var n = 0;
+    for (final user in await store.rawContactUserIds()) {
+      if (user == store.accountId) continue;
+      try {
+        if (await store.isBlocked(user)) continue;
+      } catch (_) {}
+      final device =
+          (await store.directoryProfile(user))?['device_id']?.toString() ?? '';
+      if (device.isEmpty || device == store.deviceId) continue;
+      _cardOwed[device] = (sends: 1, lastMs: now);
+      n++;
+      unawaited(_sendCardTo(device));
+    }
+    AppLogger.info('PEER_CARD_TO_FRIENDS', detail: 'count=$n');
+  }
+
+  Future<void> _owedCardOnSeen(String device) async {
+    final owed = _cardOwed[device];
+    if (owed == null) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - owed.lastMs < cardOwedGap.inMilliseconds) return;
+    if (owed.sends >= cardOwedMaxSends) {
+      _cardOwed.remove(device);
+      return;
+    }
+    _cardOwed[device] = (sends: owed.sends + 1, lastMs: now);
+    await _sendCardTo(device, why: 'seen');
+  }
+
+  @visibleForTesting
+  Map<String, ({int sends, int lastMs})> get debugCardOwed => _cardOwed;
   ({String key, String code, String path})? _ownPhoto;
 
   /// Tests: one transport event / the start-up picture load.
@@ -269,8 +349,15 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   /// Owner side: a friend asked for my picture -> send it (friends only).
   Future<void> _handlePhotoNeed(Map<String, dynamic> message) async {
     final from = message['_from']?.toString() ?? '';
-    if (from.isEmpty || from == store.deviceId || !transport.isStarted) return;
-    if (await store.isBlockedPeer(from)) return;
+    if (from.isEmpty || from == store.deviceId) return;
+    if (!transport.isStarted) {
+      _photoSkipped('not_started', from);
+      return;
+    }
+    if (await store.isBlockedPeer(from)) {
+      _photoSkipped('blocked', from);
+      return;
+    }
     final row = await store.directoryProfileByDeviceId(from);
     final user = row?['user_id']?.toString() ?? '';
     if (user.isEmpty ||
@@ -282,15 +369,33 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final own = await _ownPhotoFile();
     final code = ProfilePhotoCode.parse(own?.code);
     if (own == null || code == null || own.code != message['code']?.toString()) {
-      return; // an old card: they get the new one by the next sync
+      // Bundle 207 (H4): an old code (or no picture now): send my current
+      // card, so the friend asks again with the new code (or shows the
+      // letter). It used to be dropped silently, 9 asks in a row.
+      _photoSkipped(own == null ? 'no_file' : 'old_code', from);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final last = _cardForOldAsk[from] ?? 0;
+      if (now - last >= 60000) {
+        _cardForOldAsk[from] = now;
+        await _sendCardTo(from, why: 'old_code');
+      }
+      return;
     }
+    // The friend asked with my current code: it has my new card.
+    _cardOwed.remove(from);
     if (!code.nearbyOk) {
       AppLogger.info('PEER_PHOTO_REFUSED', detail: 'why=too_big');
       return;
     }
-    if (!_photoGives.allow(from, DateTime.now().millisecondsSinceEpoch)) return;
+    if (!_photoGives.allow(from, DateTime.now().millisecondsSinceEpoch)) {
+      _photoSkipped('limit', from);
+      return;
+    }
     final self = store.accountId ?? '';
-    if (self.isEmpty) return;
+    if (self.isEmpty) {
+      _photoSkipped('no_account', from);
+      return;
+    }
     try {
       await transport.sendFile(
         recipientId: from,
@@ -377,8 +482,21 @@ class DirectoryRepository implements DirectoryRepositoryContract {
 
   @override
   Future<void> publishOwnProfile() async {
+    // Bundle 207 (H2): my picture book entry changes even when no card can
+    // be made yet (Settings, group "You" rows, poll faces).
+    final ownPhoto = await _ownPhotoFile(await store.profile());
     final signed = await _buildOwnProfile();
     if (signed == null) return;
+    // Bundle 207 (H3): a new picture (or Remove photo) goes to every friend
+    // directly, not only by the best-effort broadcast below.
+    final photoCode = ownPhoto?.code ?? '';
+    final before = _publishedPhotoCode;
+    _publishedPhotoCode = photoCode;
+    if (before != null && before != photoCode) {
+      unawaited(_cardToFriends().catchError((Object e) {
+        AppLogger.warning('PEER_CARD_TO_FRIENDS_FAILED', detail: '$e');
+      }));
+    }
 
     await store.saveDirectoryProfile(signed.toMap());
     _updates.add(signed);
@@ -515,6 +633,11 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   Future<void> _handleTransportEvent(Map<String, dynamic> event) async {
     final eventType = event['type']?.toString() ?? '';
     // Bundle 204: a friend came near - get the pictures still missing.
+    // Bundle 207 (H3): a friend still owed my new card is seen.
+    if (eventType == 'peer_discovered' || eventType == 'peer_connected') {
+      final peer = event['peer_id']?.toString() ?? '';
+      if (_cardOwed.containsKey(peer)) unawaited(_owedCardOnSeen(peer));
+    }
     if (eventType == 'peer_connected') {
       final peer = event['peer_id']?.toString() ?? '';
       final user = photoBook.userOfDevice(peer);

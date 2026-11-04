@@ -163,6 +163,49 @@ class GroupNearbyService {
   static const Duration keepFor = Duration(days: 7);
   static const List<int> _backoffSeconds = [15, 30, 60, 120, 300, 600, 900];
 
+  /// Bundle 207 (F): true while that member is Nearby now (PresenceHub).
+  /// Null = never (old tests). Nearby = short waits between tries.
+  bool Function(String peer)? nearNow;
+
+  /// Bundle 207 (F): longest wait between tries while the member is Nearby.
+  static const int nearCardWaitS = 20;
+  static const int nearMessageWaitS = 60;
+
+  /// Bundle 207 (F): a member seen on the same Wi-Fi (`peer_discovered`
+  /// comes every ~4 s) sends its waiting packets at most this often.
+  static const Duration seenFlushGap = Duration(seconds: 20);
+  final Map<String, int> _lastSeenFlush = <String, int>{};
+  final Map<String, int> _dropLogged = <String, int>{};
+
+  /// Bundle 207 (F): every quiet drop of a group packet says why (once a
+  /// minute per reason).
+  void _drop(String why) {
+    final now = _nowMs();
+    final last = _dropLogged[why] ?? 0;
+    if (now - last < 60000) return;
+    _dropLogged[why] = now;
+    AppLogger.info('GROUP_PACKET_DROPPED', detail: 'why=$why');
+  }
+
+  /// Bundle 207 (F): the retry wait for try [tries] ([near] = shorter).
+  static int retryWaitSeconds(int tries, {required String kind, bool near = false}) {
+    var wait = _backoffSeconds[min(tries - 1, _backoffSeconds.length - 1)];
+    if (near) wait = min(wait, kind == 'card' ? nearCardWaitS : nearMessageWaitS);
+    return wait;
+  }
+
+  /// Bundle 207 (F): a member was seen Nearby: its waiting packets go now.
+  Future<void> _onSeen(String peer) async {
+    final now = _nowMs();
+    final last = _lastSeenFlush[peer] ?? 0;
+    if (now - last < seenFlushGap.inMilliseconds) return;
+    _lastSeenFlush[peer] = now;
+    final rows = await store.dueOutbox(1 << 62);
+    if (!rows.any((r) => r['member_id'] == peer)) return;
+    AppLogger.info('GROUP_PEER_SEEN_FLUSH', detail: 'to=${_id6(peer)}');
+    await flush(peerId: peer);
+  }
+
   StreamSubscription<Map<String, dynamic>>? _sub;
   Timer? _timer;
   bool _flushing = false;
@@ -644,13 +687,16 @@ class GroupNearbyService {
         continue;
       }
       final tries = (int.tryParse(row['tries']?.toString() ?? '') ?? 0) + 1;
-      final wait = _backoffSeconds[min(tries - 1, _backoffSeconds.length - 1)];
+      // Bundle 207 (F): short waits while that member is Nearby.
+      final near = nearNow?.call(member) ?? false;
+      final wait = retryWaitSeconds(tries, kind: kind, near: near);
       await store.markTry(id, member, tries, now + wait * 1000);
       final ok = await send(
           recipientId: member, theirIdentityKey: key, payload: payload);
-      if (tries == 1 || !ok) {
+      if (tries == 1 || !ok || const {2, 3, 5, 10, 20}.contains(tries)) {
         AppLogger.info('GROUP_NEARBY_SEND',
-            detail: 'kind=$kind try=$tries ok=$ok to=${_id6(member)}');
+            detail: 'kind=$kind try=$tries ok=$ok to=${_id6(member)} '
+                'next_s=$wait near=${near ? 'y' : 'n'}');
       }
     }
   }
@@ -677,6 +723,17 @@ class GroupNearbyService {
 
   Future<void> handleEvent(Map<String, dynamic> event) async {
     final type = event['type']?.toString() ?? '';
+    // Bundle 207 (F): on the same Wi-Fi the friend shows up as
+    // `peer_discovered` (no `peer_connected`): send what waits for it.
+    if (type == 'peer_discovered') {
+      final peer = event['peer_id']?.toString() ?? '';
+      if (peer.isNotEmpty) {
+        unawaited(_onSeen(peer).catchError((Object e) {
+          AppLogger.warning('GROUP_PEER_SEEN_FAILED', detail: '$e');
+        }));
+      }
+      return;
+    }
     if (type == 'peer_connected' || type == 'route_recovered' ||
         type == 'relay_connected') {
       final peer = event['peer_id']?.toString();
@@ -704,14 +761,23 @@ class GroupNearbyService {
       onFileEvent?.call(event);
       return;
     }
-    if (type != 'message' || event['sealed'] != true) return;
-    if (event['mesh_final_recipient'] == false) return;
+    if (type != 'message') return;
     final raw = event['payload']?.toString() ?? '';
     if (!raw.contains('"group_')) return;
+    // Bundle 207 (F): say why a group packet is dropped.
+    if (event['sealed'] != true) {
+      _drop('not_sealed');
+      return;
+    }
+    if (event['mesh_final_recipient'] == false) {
+      _drop('not_final');
+      return;
+    }
     Map<String, dynamic> p;
     try {
       p = Map<String, dynamic>.from(jsonDecode(raw) as Map);
     } catch (_) {
+      _drop('bad_json');
       return;
     }
     await handlePacket(p);
@@ -723,8 +789,14 @@ class GroupNearbyService {
     final from = p['sender_id']?.toString() ?? '';
     final gid = p['gid']?.toString() ?? '';
     final self = _self;
-    if (from.isEmpty || gid.isEmpty || self.isEmpty || from == self) return;
-    if (await store.isBlocked(from)) return;
+    if (from.isEmpty || gid.isEmpty || self.isEmpty || from == self) {
+      if (from != self) _drop('no_ids');
+      return;
+    }
+    if (await store.isBlocked(from)) {
+      _drop('blocked');
+      return;
+    }
     // A not-friend opened with its own key: it must be that member's key.
     final strangerKey = (p['_locked_spk']?.toString() ?? '').replaceAll('=', '');
     switch (type) {
@@ -825,7 +897,10 @@ class GroupNearbyService {
   Future<void> _onCard(
       String from, String gid, Object? raw, String strangerKey) async {
     final next = GroupCard.fromJson(raw);
-    if (next == null || next.gid != gid) return;
+    if (next == null || next.gid != gid) {
+      _drop('bad_card');
+      return;
+    }
     await applyCard(next, from: from, strangerKey: strangerKey);
   }
 
@@ -853,11 +928,13 @@ class GroupNearbyService {
         return false;
       }
       if (from.isNotEmpty && strangerKey.isNotEmpty && !_keyOk(next, from, strangerKey)) {
+        _drop('card_bad_key');
         return false;
       }
     } else {
       if (from.isNotEmpty && !_keyOk(old, from, strangerKey) &&
           !_keyOk(next, from, strangerKey)) {
+        _drop('card_bad_key');
         return false;
       }
       if (next.version == old.version && next.signature == old.signature) {
@@ -886,6 +963,7 @@ class GroupNearbyService {
     } else if (old != null && old.has(self)) {
       state = next.left.contains(self) ? 'left' : 'removed';
     } else if (old == null) {
+      _drop('card_not_in_it');
       return false;
     }
     final origin = local?.origin ?? 'nearby';

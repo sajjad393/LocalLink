@@ -388,7 +388,8 @@ void main() {
           _src('lib/features/home/presentation/screens/home_screen.dart');
       final chats = src.substring(
           src.indexOf('Widget _chatsTab()'), src.indexOf('Widget _callsTab()'));
-      expect(chats.contains('appBar: TabTopBar('), isTrue);
+      // Bundle 207 (L1): the search bar replaces it while searching.
+      expect(chats.contains(': TabTopBar('), isTrue);
       expect(chats.contains("ValueKey('chats_title_taps')"), isTrue);
       expect(chats.contains('onTap: _onChatsTitleTap'), isTrue);
       expect(src.contains('ConnectionStatusIndicator'), isFalse);

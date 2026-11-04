@@ -1,3 +1,4 @@
+import 'package:locallink/features/account/data/own_profile_signal.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/presence/block_hub.dart';
@@ -352,10 +353,21 @@ class SettingsOwnAvatar extends StatefulWidget {
 }
 
 class _SettingsOwnAvatarState extends State<SettingsOwnAvatar> {
+  /// Bundle 207 (H1): my real profile picture file (like Profile and
+  /// Account); the picture book is only the fallback.
+  String _path = '';
+
   @override
   void initState() {
     super.initState();
-    if (ProfilePrivacyRule.ownPrivate.value == null) _load();
+    _load();
+    OwnProfileSignal.changed.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    OwnProfileSignal.changed.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -364,6 +376,8 @@ class _SettingsOwnAvatarState extends State<SettingsOwnAvatar> {
       if (p != null && ProfilePrivacyRule.ownPrivate.value == null) {
         ProfilePrivacyRule.ownPrivate.value = ProfilePrivacyRule.isPrivate(p);
       }
+      final path = p?.localAvatarPath ?? '';
+      if (mounted && path != _path) setState(() => _path = path);
     } catch (_) {}
   }
 
@@ -371,8 +385,10 @@ class _SettingsOwnAvatarState extends State<SettingsOwnAvatar> {
   Widget build(BuildContext context) => ValueListenableBuilder<bool?>(
         valueListenable: ProfilePrivacyRule.ownPrivate,
         builder: (context, own, _) => AccountAvatar(
+            key: ValueKey('settings_own_avatar:$_path'),
             name: widget.name,
             radius: 28,
+            localPath: _path,
             peerId: widget.peerId,
             locked: own == true),
       );

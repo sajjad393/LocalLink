@@ -27,6 +27,7 @@ import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/core/models/message_search_hit.dart';
 import 'package:locallink/core/services/message_delete_book.dart';
 import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/core/services/app_logger.dart';
@@ -2289,6 +2290,16 @@ class LocalStore {
         .toList();
   }
 
+  /// Bundle 207 (G2): a plain file was locked (`.enc`): every saved
+  /// attachment naming the old path names the locked one (1:1 + groups).
+  Future<void> replaceAttachmentLocalPath(String oldPath, String newPath) async {
+    if (oldPath.isEmpty || newPath.isEmpty || oldPath == newPath) return;
+    await _db.update('message_attachments', {'local_path': newPath},
+        where: 'local_path=?', whereArgs: [oldPath]);
+    await _db.update('group_message_attachments', {'local_path': newPath},
+        where: 'local_path=?', whereArgs: [oldPath]);
+  }
+
   Future<void> setGroupAttachmentLocalPath(
           String messageId, String fileId, String path) async =>
       _db.update('group_message_attachments', {'local_path': path},
@@ -3303,6 +3314,12 @@ class LocalStore {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// Bundle 207: my reaction tapped again = removed (1:1).
+  Future<void> deleteMessageReaction({required String messageId, required String reactorId}) async {
+    await _db.delete('message_reactions',
+        where: 'message_id=? AND reactor_id=?', whereArgs: [messageId, reactorId]);
+  }
+
   Future<List<Map<String, dynamic>>> messageReactions(String messageId) async =>
       _db.query('message_reactions', where: 'message_id=?', whereArgs: [messageId], orderBy: 'created_at ASC');
 
@@ -3643,6 +3660,57 @@ class LocalStore {
       out.add(copy);
     }
     return out;
+  }
+
+  /// Bundle 207 (L1): messages that contain [query] (words or a file
+  /// name), 1:1 and groups, newest first, at most [limit]. Read only.
+  /// System notes, locked group messages, polls and deleted messages are
+  /// left out.
+  Future<List<MessageSearchHit>> searchMessages(String query,
+      {int limit = 50}) async {
+    final self = _deviceId;
+    final q = query.trim();
+    if (self == null || q.isEmpty) return const [];
+    final like =
+        '%${q.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%';
+    final take = limit * 3;
+    final direct = await _db.rawQuery(
+      r'''SELECT m.*, (SELECT a.original_name FROM message_attachments a
+             WHERE a.message_id = m.id AND a.original_name LIKE ? ESCAPE '\'
+             LIMIT 1) AS file
+         FROM messages m
+         WHERE (m.sender_id = ? OR m.recipient_id = ?)
+           AND (m.body LIKE ? ESCAPE '\' OR EXISTS (SELECT 1 FROM
+             message_attachments a WHERE a.message_id = m.id
+             AND a.original_name LIKE ? ESCAPE '\'))
+         ORDER BY m.created_at DESC LIMIT ?''',
+      [like, self, self, like, like, take],
+    );
+    final groups = await _db.rawQuery(
+      r'''SELECT gm.*, (SELECT a.original_name FROM group_message_attachments a
+             WHERE a.group_message_id = gm.id
+             AND a.original_name LIKE ? ESCAPE '\' LIMIT 1) AS file
+         FROM group_messages gm
+         JOIN groups g ON g.id = gm.group_id
+         WHERE gm.body LIKE ? ESCAPE '\' OR EXISTS (SELECT 1 FROM
+             group_message_attachments a WHERE a.group_message_id = gm.id
+             AND a.original_name LIKE ? ESCAPE '\')
+         ORDER BY gm.created_at DESC LIMIT ?''',
+      [like, like, like, take],
+    );
+    final deleted = MessageDeleteBook.instance.isDeleted;
+    final hits = <MessageSearchHit>[
+      for (final r in direct)
+        if (MessageSearchHit.fromDirect(r,
+                self: self, query: q, deleted: deleted)
+            case final h?)
+          h,
+      for (final r in groups)
+        if (MessageSearchHit.fromGroup(r, query: q, deleted: deleted)
+            case final h?)
+          h,
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return hits.length > limit ? hits.sublist(0, limit) : hits;
   }
 
   Future<List<GroupMessage>> unreadGroupMessages(String groupId) async {

@@ -10,6 +10,7 @@ import 'package:sqflite_sqlcipher/sqflite.dart';
 
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/file_in_use.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/security/security_policy.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
@@ -413,7 +414,66 @@ class FileTransferService {
   Future<bool> isProtectedLocalFile(String path) =>
       sensitiveFiles.isProtected(path);
 
-  Future<String> protectLegacyLocalFile(String plaintextPath) async {
+  /// Bundle 207 (G1): one lock job per file. A second caller (chat tile,
+  /// grid, viewer) waits for the same job instead of writing the same
+  /// `.enc` at the same time and deleting the plain file under the first.
+  static final Map<String, Future<String>> _protectJobs =
+      <String, Future<String>>{};
+
+  /// Bundle 207 (G5): big files are locked one at a time (5 videos at once
+  /// froze the screen).
+  static Future<void> _protectChain = Future<void>.value();
+
+  /// Tests: how many real lock jobs ran.
+  static int debugProtectRuns = 0;
+
+  Future<String> protectLegacyLocalFile(String plaintextPath) {
+    final running = _protectJobs[plaintextPath];
+    if (running != null) return running;
+    final job = _protectQueued(plaintextPath);
+    _protectJobs[plaintextPath] = job;
+    () async {
+      try {
+        await job;
+      } catch (_) {
+      } finally {
+        _protectJobs.remove(plaintextPath);
+      }
+    }();
+    return job;
+  }
+
+  /// Files up to this size (small pictures, voice notes) do not wait
+  /// behind a big video.
+  static const int protectQueueMinBytes = 2 * 1024 * 1024;
+
+  Future<String> _protectQueued(String plaintextPath) async {
+    try {
+      final f = File(plaintextPath);
+      if (await f.exists() && await f.length() <= protectQueueMinBytes) {
+        return await _protectLegacyOnce(plaintextPath);
+      }
+    } on FileSystemException catch (_) {}
+    return _protectBig(plaintextPath);
+  }
+
+  Future<String> _protectBig(String plaintextPath) {
+    final done = Completer<String>();
+    final previous = _protectChain;
+    _protectChain = () async {
+      try {
+        await previous;
+      } catch (_) {}
+      try {
+        done.complete(await _protectLegacyOnce(plaintextPath));
+      } catch (error, stackTrace) {
+        done.completeError(error, stackTrace);
+      }
+    }();
+    return done.future;
+  }
+
+  Future<String> _protectLegacyOnce(String plaintextPath) async {
     final file = File(plaintextPath);
     if (!await file.exists()) {
       // Bundle 144: the plaintext was already protected on an earlier pass (send
@@ -422,15 +482,34 @@ class FileTransferService {
       final protectedPath = '$plaintextPath.enc';
       if (await File(protectedPath).exists() &&
           await sensitiveFiles.isProtected(protectedPath)) {
+        await _rememberProtected(plaintextPath, protectedPath);
         return protectedPath;
       }
       throw StateError('local file does not exist');
     }
     if (await sensitiveFiles.isProtected(plaintextPath)) return plaintextPath;
     final protectedPath = '$plaintextPath.enc';
+    debugProtectRuns++;
+    // protectFile writes `<enc>.part` and renames it at the end.
     await sensitiveFiles.protectFile(plaintextPath, protectedPath);
-    await file.delete();
+    // Bundle 207 (G3): never pull the plain file from under a send copy;
+    // gone already = fine.
+    await FileInUse.whenFree(plaintextPath, () async {
+      try {
+        if (await file.exists()) await file.delete();
+      } on FileSystemException catch (_) {}
+    });
+    await _rememberProtected(plaintextPath, protectedPath);
+    AppLogger.info('MEDIA_LOCKED_SAVED', detail: 'held=${FileInUse.isHeld(plaintextPath)}');
     return protectedPath;
+  }
+
+  /// Bundle 207 (G2): every row naming the plain file now names the `.enc`,
+  /// so every screen (tile, grid, viewer) opens the same locked file.
+  Future<void> _rememberProtected(String plain, String locked) async {
+    try {
+      await store.replaceAttachmentLocalPath(plain, locked);
+    } catch (_) {}
   }
 
   Future<void> cancel(String transferId) async {

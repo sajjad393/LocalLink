@@ -488,6 +488,72 @@ void main() {
       expect('photoBook.dropPicture('.allMatches(s).length, 4);
     });
 
+    test('207 H4: an ask with my OLD code gets my current card (not silence)', () async {
+      final (ali, sara) = await friends();
+      final b1 = jpeg(31);
+      own(ali, b1);
+      await _cardTo(ali, sara);
+      own(ali, jpeg(32), 'own2.jpg');
+      ali.store.version = 2;
+      await ali.repo.publishOwnProfile();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      ali.net.sent.clear();
+      await ali.repo.debugHandleEvent(_msg('d-sara', {
+        'type': DirectoryRepository.photoNeedType,
+        'code': ProfilePhotoCode.make(b1),
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+        'expires_at': DateTime.now().millisecondsSinceEpoch + 60000,
+      }));
+      expect(ali.net.files, isEmpty);
+      final cards = ali.net.sent.where((e) => e.$1 == 'd-sara').toList();
+      expect(cards, hasLength(1));
+      expect(cards.single.$2['type'], 'DIRECTORY_PROFILE');
+      expect((cards.single.$2['profile'] as Map)['avatar_url'], ProfilePhotoCode.make(jpeg(32)));
+      // Sara takes that card and asks again with the new code -> the picture
+      await sara.repo.debugHandleEvent(_msg('d-ali', cards.single.$2));
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await _askReaches(sara, ali);
+      expect(ali.net.files, hasLength(1));
+    });
+
+    test('207 H3: a new picture -> my card straight to each friend, again when seen', () async {
+      final (ali, sara) = await friends();
+      own(ali, jpeg(33));
+      await ali.repo.publishOwnProfile(); // first publish: nothing extra
+      ali.net.sent.clear();
+      expect(ali.repo.debugCardOwed, isEmpty);
+      own(ali, jpeg(34), 'own3.jpg');
+      ali.store.version = 2;
+      await ali.repo.publishOwnProfile();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      final direct = ali.net.sent.where((e) => e.$1 == 'd-sara').toList();
+      expect(direct, hasLength(1));
+      expect(direct.single.$2['type'], 'DIRECTORY_PROFILE');
+      expect(ali.repo.debugCardOwed.keys, ['d-sara']);
+      // seen again right away: the 60 s gap holds
+      await ali.repo.debugHandleEvent({'type': 'peer_discovered', 'peer_id': 'd-sara'});
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(ali.net.sent.where((e) => e.$1 == 'd-sara'), hasLength(1));
+      // Sara asks with the new code: she has the card, nothing owed
+      await ali.repo.debugHandleEvent(_msg('d-sara', {
+        'type': DirectoryRepository.photoNeedType,
+        'code': ProfilePhotoCode.make(jpeg(34)),
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+        'expires_at': DateTime.now().millisecondsSinceEpoch + 60000,
+      }));
+      expect(ali.repo.debugCardOwed, isEmpty);
+      expect(ali.net.files, hasLength(1));
+    });
+
+    test('207 H2: my picture book changes even with no account id (phone id)', () async {
+      final bookDir = Directory('${tmp.path}/own207')..createSync();
+      final b = PeerPhotoBook.forTest(bookDir.path);
+      await b.setOwn('', 'd-me', jpeg(35));
+      expect(b.fileFor('d-me'), isNotNull);
+      await b.setOwn('', 'd-me', null);
+      expect(b.fileFor('d-me'), isNull);
+    });
+
     test('a too-big picture is not sent Nearby', () async {
       final (ali, sara) = await friends();
       own(ali, jpeg(19, 210000));

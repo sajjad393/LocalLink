@@ -10,6 +10,7 @@ import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/groups/presentation/screens/group_info_screen.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_info_sheets.dart';
+import 'package:locallink/core/widgets/no_gray_press.dart';
 
 /// Bundle G1: making a group (mock 3, 3b and 4).
 ///
@@ -76,6 +77,12 @@ class NewGroupScreen extends StatefulWidget {
   final GroupCreateCallback onCreate;
   final VoidCallback onGoToPeople;
 
+  /// Bundle 207 (M2, mock 207 page 1): "2 selected · up to 32" (was
+  /// "Add people · 2 of 32", which read like page 2 of 32).
+  static String subtitleFor(int picked) => picked == 0
+      ? 'Add people · up to $kNewGroupMax'
+      : '$picked selected · up to $kNewGroupMax';
+
   @override
   State<NewGroupScreen> createState() => _NewGroupScreenState();
 }
@@ -83,7 +90,6 @@ class NewGroupScreen extends StatefulWidget {
 class _NewGroupScreenState extends State<NewGroupScreen> {
   List<GroupFriend>? _friends;
   final List<GroupFriend> _picked = <GroupFriend>[];
-  bool _searching = false;
   final _search = TextEditingController();
 
   @override
@@ -141,37 +147,35 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
         : friends
             .where((f) => q.isEmpty || f.name.toLowerCase().contains(q))
             .toList(growable: false);
+    final colors = Theme.of(context).colorScheme;
+    // Bundle 207 (M2, mock 207 page 1): Nearby friends first.
+    final nearby = [
+      for (final f in shown)
+        if (PresenceHub.instance.statusOf(f.deviceId) == PresenceStatus.nearby) f
+    ];
+    final rest = [
+      for (final f in shown)
+        if (!nearby.contains(f)) f
+    ];
+    Widget rows(List<GroupFriend> list) => MessengerListGroup(
+          children: [
+            for (final f in list)
+              FriendPickRow(
+                key: ValueKey('pick_${f.deviceId}'),
+                name: f.name,
+                peerId: f.deviceId,
+                status: PresenceHub.instance.statusOf(f.deviceId),
+                picked: _isPicked(f),
+                onTap: () => _toggle(f),
+              ),
+          ],
+        );
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: _searching
-            ? TextField(
-                key: const ValueKey('new_group_search'),
-                controller: _search,
-                autofocus: true,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  hintText: 'Search friends',
-                  filled: false,
-                  border: InputBorder.none,
-                ),
-              )
-            : NewGroupTitle(
-                title: 'New group',
-                subtitle: _picked.isEmpty
-                    ? 'Add people'
-                    : 'Add people · ${_picked.length} of $kNewGroupMax'),
-        actions: [
-          IconButton(
-            key: const ValueKey('new_group_search_button'),
-            tooltip: _searching ? 'Close search' : 'Search',
-            onPressed: () => setState(() {
-              _searching = !_searching;
-              _search.clear();
-            }),
-            icon: Icon(_searching ? Icons.close : Icons.search),
-          ),
-        ],
+        title: NewGroupTitle(
+            title: 'New group',
+            subtitle: NewGroupScreen.subtitleFor(_picked.length)),
       ),
       floatingActionButton: SquareGradientFab(
         key: const ValueKey('new_group_next'),
@@ -186,32 +190,62 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
               : ListView(
                   padding: const EdgeInsets.only(bottom: 96),
                   children: [
+                    // Bundle 207 (M2): the search box sits on top.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                      child: Container(
+                        height: 46,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.search,
+                                size: 20, color: colors.onSurfaceVariant),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                key: const ValueKey('new_group_search'),
+                                controller: _search,
+                                onChanged: (_) => setState(() {}),
+                                decoration: const InputDecoration(
+                                  hintText: 'Search friends',
+                                  filled: false,
+                                  isDense: true,
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     if (_picked.isNotEmpty) _chips(context),
-                    const MessengerGroupLabel('Your friends', top: 10),
-                    if (shown.isEmpty)
+                    if (shown.isEmpty) ...[
+                      const MessengerGroupLabel('Your friends', top: 10),
                       Padding(
                         padding: const EdgeInsets.all(24),
                         child: Text('No friend found',
                             textAlign: TextAlign.center,
-                            style: TextStyle(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant)),
-                      )
-                    else
+                            style: TextStyle(color: colors.onSurfaceVariant)),
+                      ),
+                    ] else
                       ListenableBuilder(
                         listenable: PresenceHub.instance,
-                        builder: (context, _) => MessengerListGroup(
+                        builder: (context, _) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            for (final f in shown)
-                              FriendPickRow(
-                                key: ValueKey('pick_${f.deviceId}'),
-                                name: f.name,
-                                peerId: f.deviceId,
-                                status: PresenceHub.instance.statusOf(f.deviceId),
-                                picked: _isPicked(f),
-                                onTap: () => _toggle(f),
-                              ),
+                            if (nearby.isNotEmpty) ...[
+                              const MessengerGroupLabel('Nearby now', top: 10),
+                              rows(nearby),
+                            ],
+                            if (rest.isNotEmpty) ...[
+                              const MessengerGroupLabel('Your friends', top: 10),
+                              rows(rest),
+                            ],
                           ],
                         ),
                       ),
@@ -220,60 +254,55 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
     );
   }
 
+  /// Bundle 207 (M2, mock 207 page 1): picked people as small pills
+  /// (picture + name + x); tap = take out.
   Widget _chips(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Container(
       key: const ValueKey('new_group_chips'),
-      height: 86,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       decoration: BoxDecoration(
         border: Border(
             bottom: BorderSide(color: colors.outlineVariant.withValues(alpha: .6))),
       ),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-        itemCount: _picked.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 14),
-        itemBuilder: (_, i) {
-          final f = _picked[i];
-          return GestureDetector(
-            key: ValueKey('chip_${f.deviceId}'),
-            onTap: () => _toggle(f),
-            child: SizedBox(
-              width: 52,
-              child: Column(
-                children: [
-                  Stack(
-                    clipBehavior: Clip.none,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final f in _picked)
+            Material(
+              color: colors.surfaceContainerHighest,
+              shape: const StadiumBorder(),
+              child: InkWell(
+                key: ValueKey('chip_${f.deviceId}'),
+                customBorder: const StadiumBorder(),
+                onTap: () => _toggle(f),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      AccountAvatar(name: f.name, radius: 23, peerId: f.deviceId),
-                      Positioned(
-                        right: -2,
-                        bottom: -2,
-                        child: Container(
-                          width: 18,
-                          height: 18,
-                          decoration: BoxDecoration(
-                            color: colors.onSurfaceVariant,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: colors.surface, width: 2),
-                          ),
-                          child: const Icon(Icons.close_rounded,
-                              size: 10, color: Colors.white),
-                        ),
+                      AccountAvatar(name: f.name, radius: 13, peerId: f.deviceId),
+                      const SizedBox(width: 6),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 120),
+                        child: Text(f.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                                color: colors.onSurface)),
                       ),
+                      const SizedBox(width: 6),
+                      Icon(Icons.close_rounded,
+                          size: 16, color: colors.onSurfaceVariant),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(f.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11.5, color: colors.onSurface)),
-                ],
+                ),
               ),
             ),
-          );
-        },
+        ],
       ),
     );
   }
@@ -481,12 +510,25 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
         title:
             const NewGroupTitle(title: 'New group', subtitle: 'Name and photo'),
       ),
-      floatingActionButton: SquareGradientFab(
-        key: const ValueKey('new_group_create'),
-        icon: Icons.check_rounded,
-        tooltip: 'Create group',
-        busy: _busy,
-        onPressed: ready ? _create : null,
+      // Bundle 207 (M2, mock 207 page 1): the grey button says why it is
+      // off.
+      floatingActionButton: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_name.text.trim().isEmpty && !_busy) ...[
+            Text('Type a name to continue',
+                key: const ValueKey('new_group_name_hint'),
+                style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
+            const SizedBox(width: 12),
+          ],
+          SquareGradientFab(
+            key: const ValueKey('new_group_create'),
+            icon: Icons.check_rounded,
+            tooltip: 'Create group',
+            busy: _busy,
+            onPressed: ready ? _create : null,
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.only(top: 18, bottom: 96),
@@ -509,25 +551,33 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
               onChanged: (_) => setState(() {}),
               onSubmitted: (_) => _create(),
               style: const TextStyle(fontSize: 16),
+              // Bundle 207 (M2): one clean box, the label INSIDE it, the
+              // counter on the right (was "0/80" above the line and "Group
+              // name" under it).
               decoration: InputDecoration(
-                filled: false,
-                isDense: true,
+                labelText: 'Group name',
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                labelStyle: TextStyle(
+                    color: colors.primary, fontWeight: FontWeight.w600),
+                floatingLabelStyle: TextStyle(
+                    color: colors.primary, fontWeight: FontWeight.w600),
+                filled: true,
+                fillColor: colors.brightness == Brightness.dark
+                    ? colors.surfaceContainerHighest
+                    : colors.surface,
                 counterText: '',
                 suffixText: '${_name.text.characters.length}/$maxName',
                 suffixStyle:
                     TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
-                contentPadding: const EdgeInsets.fromLTRB(2, 8, 2, 6),
-                enabledBorder: UnderlineInputBorder(
+                contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide(color: colors.primary, width: 2)),
-                focusedBorder: UnderlineInputBorder(
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide(color: colors.primary, width: 2)),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 6, 18, 0),
-            child: Text('Group name',
-                style: TextStyle(fontSize: 12.5, color: colors.onSurfaceVariant)),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -540,16 +590,19 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
               textCapitalization: TextCapitalization.sentences,
               style: const TextStyle(fontSize: 15),
               decoration: InputDecoration(
-                filled: false,
                 isDense: true,
                 counterText: '',
                 hintText: 'Description (optional)',
                 hintStyle: TextStyle(color: colors.onSurfaceVariant),
-                contentPadding: const EdgeInsets.fromLTRB(2, 8, 2, 6),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide:
-                        BorderSide(color: colors.outlineVariant, width: 1.5)),
-                focusedBorder: UnderlineInputBorder(
+                // Bundle 207 (M2): a soft filled box (mock 207 page 1).
+                filled: true,
+                fillColor: colors.surfaceContainerHighest,
+                contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide(color: colors.primary, width: 2)),
               ),
             ),
@@ -602,23 +655,37 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
               ),
             ],
           ),
-          MessengerGroupLabel(
-              '${widget.people.length} ${widget.people.length == 1 ? 'person' : 'people'} + you',
-              top: 16),
+          // Bundle 207 (M2): "3 MEMBERS" with You first (mock 207 page 1).
+          MessengerGroupLabel('${widget.people.length + 1} members', top: 16),
           SizedBox(
-            height: 72,
+            height: 84,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-              itemCount: widget.people.length,
+              itemCount: widget.people.length + 1,
               separatorBuilder: (_, __) => const SizedBox(width: 14),
               itemBuilder: (_, i) {
-                final f = widget.people[i];
+                if (i == 0) {
+                  return SizedBox(
+                    key: const ValueKey('new_group_member_you'),
+                    width: 56,
+                    child: Column(
+                      children: [
+                        const AccountAvatar(name: 'You', radius: 26),
+                        const SizedBox(height: 4),
+                        Text('You',
+                            style: TextStyle(
+                                fontSize: 12, color: colors.onSurfaceVariant)),
+                      ],
+                    ),
+                  );
+                }
+                final f = widget.people[i - 1];
                 return SizedBox(
-                  width: 52,
+                  width: 56,
                   child: Column(
                     children: [
-                      AccountAvatar(name: f.name, radius: 20, peerId: f.deviceId),
+                      AccountAvatar(name: f.name, radius: 26, peerId: f.deviceId),
                       const SizedBox(height: 4),
                       Text(f.name,
                           maxLines: 1,
@@ -793,7 +860,10 @@ class SquareGradientFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final on = onPressed != null || busy;
-    return Tooltip(
+    // Bundle 207: no gray overlay on press / hold; shrinks to 95 % instead.
+    return NoGrayPress(
+      enabled: onPressed != null && !busy,
+      child: Tooltip(
       message: tooltip,
       child: Material(
         color: Colors.transparent,
@@ -823,6 +893,7 @@ class SquareGradientFab extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }

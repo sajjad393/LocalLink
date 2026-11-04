@@ -379,6 +379,45 @@ void main() {
       expect(ali.got.last.body, 'Hi');
     });
 
+    test('207 F: seen on the same Wi-Fi (peer_discovered) -> card goes now, 20 s gap', () async {
+      air.away.add('ali');
+      await make();
+      expect(await ali.store.group('g-1'), isNull);
+      air.away.remove('ali');
+      final before = sajjad.sentTo.where((s) => s == 'ali:group_card').length;
+      await sajjad.service.handleEvent({'type': 'peer_discovered', 'peer_id': 'ali'});
+      for (var i = 0; i < 4; i++) {
+        await _settle(air);
+      }
+      expect((await ali.store.group('g-1'))!.isActive, isTrue);
+      final after = sajjad.sentTo.where((s) => s == 'ali:group_card').length;
+      expect(after, before + 1);
+      // seen again 4 s later: nothing waits and the gap holds
+      air.now += 4000;
+      await sajjad.service.handleEvent({'type': 'peer_discovered', 'peer_id': 'ali'});
+      await _settle(air);
+      expect(sajjad.sentTo.where((s) => s == 'ali:group_card').length, after);
+    });
+
+    test('207 F: Nearby member -> next try in <= 20 s (card) / 60 s (message)', () async {
+      expect(GroupNearbyService.retryWaitSeconds(1, kind: 'card'), 15);
+      expect(GroupNearbyService.retryWaitSeconds(3, kind: 'card'), 60);
+      expect(GroupNearbyService.retryWaitSeconds(3, kind: 'card', near: true), 20);
+      expect(GroupNearbyService.retryWaitSeconds(7, kind: 'msg', near: true), 60);
+      expect(GroupNearbyService.retryWaitSeconds(1, kind: 'card', near: true), 15);
+      sajjad.service.nearNow = (id) => id == 'ali';
+      air.away.add('ali');
+      await make();
+      for (var i = 0; i < 3; i++) {
+        air.now += 61000;
+        await sajjad.service.flush();
+        await _settle(air);
+      }
+      final row = sajjad.store.outbox.values.firstWhere((r) => r['member_id'] == 'ali');
+      expect((row['next_at'] as int) - air.now, lessThanOrEqualTo(20000));
+      expect(row['tries'] as int, greaterThanOrEqualTo(3));
+    });
+
     test('not reached in 7 days -> couldn\'t be added + Try again', () async {
       air.away.add('ali');
       await make();
@@ -594,16 +633,41 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Adding people'), findsOneWidget);
       expect(find.textContaining('Added · '), findsOneWidget);
-      expect(find.text('Waiting · added when Nearby or Online'), findsOneWidget);
-      expect(find.textContaining('Ali gets "Sajjad added you" first'), findsOneWidget);
-      await tester.tap(find.text('Close'));
+      expect(find.text('Waiting · not near or online yet'), findsOneWidget);
+      expect(find.textContaining('You can write now'), findsOneWidget);
+      expect(find.text('1 of 2 added'), findsOneWidget);
+      await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
       expect(find.text('Adding people'), findsNothing);
     });
 
+    testWidgets('207 F: Nearby member shows "Nearby now" + Adding now', (tester) async {
+      final old = groupMemberNearNow;
+      groupMemberNearNow = (id) => id == 'ali';
+      addTearDown(() => groupMemberNearNow = old);
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(body: GroupAddingBanner(invites: invites, onTap: () {}))));
+      expect(find.text('Nearby now · a few seconds'), findsOneWidget);
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showAddingPeopleSheet(context, invites: invites, myName: 'Sajjad'),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Adding now · Nearby'), findsOneWidget);
+      expect(find.byKey(const ValueKey('group_invite_adding_ali')), findsOneWidget);
+    });
+
     testWidgets('sealed chip text (mock 6)', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: Scaffold(body: GroupSealedChip())));
-      expect(find.text('🔒 Messages are sealed for group members only'), findsOneWidget);
+      expect(find.text('Messages are sealed for group members only'), findsOneWidget);
     });
   });
 }

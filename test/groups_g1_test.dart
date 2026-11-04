@@ -106,7 +106,7 @@ void main() {
       await t.pumpWidget(host());
       await _frames(t);
       expect(find.text('New group'), findsOneWidget);
-      expect(find.text('Add people'), findsOneWidget);
+      expect(find.text('Add people · up to 32'), findsOneWidget);
       expect(find.text('YOUR FRIENDS'), findsOneWidget);
       _expectOrder(t, ['Ali', 'Bilal', 'Sara']);
       expect(find.text('Offline'), findsNWidgets(3));
@@ -121,7 +121,7 @@ void main() {
       await t.tap(find.byKey(const ValueKey('pick_d-ali')));
       await t.tap(find.byKey(const ValueKey('pick_d-sara')));
       await t.pump();
-      expect(find.text('Add people · 2 of 32'), findsOneWidget);
+      expect(find.text('2 selected · up to 32'), findsOneWidget);
       expect(find.byKey(const ValueKey('new_group_chips')), findsOneWidget);
       expect(find.byKey(const ValueKey('chip_d-ali')), findsOneWidget);
       expect(find.byKey(const ValueKey('pick_on')), findsNWidgets(2));
@@ -134,14 +134,14 @@ void main() {
       // Tap a chip = take the person out.
       await t.tap(find.byKey(const ValueKey('chip_d-ali')));
       await t.pump();
-      expect(find.text('Add people · 1 of 32'), findsOneWidget);
+      expect(find.text('1 selected · up to 32'), findsOneWidget);
     });
 
     testWidgets('3: search filters the friends', (t) async {
       await t.pumpWidget(host());
       await _frames(t);
-      await t.tap(find.byKey(const ValueKey('new_group_search_button')));
-      await t.pump();
+      // Bundle 207 (M2): the search box is always on top.
+      expect(find.byKey(const ValueKey('new_group_search_button')), findsNothing);
       await t.enterText(find.byKey(const ValueKey('new_group_search')), 'sa');
       await t.pump();
       expect(find.byKey(const ValueKey('pick_d-sara')), findsOneWidget);
@@ -171,7 +171,7 @@ void main() {
       ));
       await t.tap(find.text('open'));
       await _frames(t);
-      expect(find.text('Add people'), findsOneWidget);
+      expect(find.text('Add people · up to 32'), findsOneWidget);
       expect(find.text('No friends yet'), findsOneWidget);
       expect(
           find.textContaining('Groups are made from your friends. Add friends in',
@@ -208,7 +208,9 @@ void main() {
       // G2: subtitle "Name and photo" + the "Group name" hint (mock 4).
       expect(find.text('Name and photo'), findsOneWidget);
       expect(find.text('Group name'), findsOneWidget);
-      expect(find.text('2 PEOPLE + YOU'), findsOneWidget);
+      expect(find.text('3 MEMBERS'), findsOneWidget);
+      expect(find.byKey(const ValueKey('new_group_member_you')), findsOneWidget);
+      expect(find.text('Type a name to continue'), findsOneWidget);
       expect(find.text('0/80'), findsOneWidget);
       expect(find.byIcon(Icons.check_rounded), findsOneWidget);
       expect(
@@ -439,7 +441,10 @@ void main() {
       expect(g, contains('voice: _voice'));
       expect(g, contains("VoiceDraftStore.put(key, draft)"));
       expect(g, isNot(contains('GroupComposer(')));
-      expect(g, contains("'\${at + 1} of \${matches.length}'"));
+      // Bundle 207 (L2): the bar moved to the shared ChatSearchBar.
+      expect(g, contains('ChatSearchBar('));
+      expect(File('lib/core/widgets/chat_search_bar.dart').readAsStringSync(),
+          contains("'\${at.clamp(0, count - 1) + 1} of \$count'"));
     });
   });
 }

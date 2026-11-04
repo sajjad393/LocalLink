@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/chat_search_bar.dart';
 import 'package:locallink/features/storage/presentation/media_message_actions.dart';
 import 'package:flutter/material.dart';
 
@@ -40,6 +41,7 @@ import 'package:locallink/features/messaging/presentation/widgets/pinch_text_zoo
 import 'package:locallink/features/messaging/presentation/widgets/quote_thumb.dart';
 import 'package:locallink/features/messaging/presentation/widgets/swipe_to_reply.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/widgets/reaction_chips.dart';
 import 'package:locallink/core/services/ui_sounds.dart';
 import 'package:locallink/features/groups/data/services/group_nearby_service.dart'
     show GroupInviteState;
@@ -71,6 +73,10 @@ class GroupChatScreen extends StatefulWidget {
   /// Bundle G2: Group info › Search opens the chat with search on.
   final bool startSearch;
 
+  /// Bundle 207 (L1): opened from the Chats search - jump to this message
+  /// and flash it.
+  final String? jumpToMessageId;
+
   const GroupChatScreen({
     super.key,
     required this.group,
@@ -82,6 +88,7 @@ class GroupChatScreen extends StatefulWidget {
     this.initialMessageId,
     this.initialAttachmentId,
     this.startSearch = false,
+    this.jumpToMessageId,
   });
 
   @override
@@ -305,9 +312,17 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                     .showSnackBar(SnackBar(content: Text(_cantSendText)));
                 return;
               }
+              // Bundle 207 (K4): after 3 minutes the vote is final.
+              final left = tally.changeLeft(widget.localDeviceId, DateTime.now());
+              if (left != null && left <= Duration.zero) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text("Votes can't be changed after 3 minutes")));
+                return;
+              }
               unawaited(GroupExtrasHub.vote?.call(widget.group.id, m.id,
                   tally.tap(widget.localDeviceId, i)));
             },
+      members: _members.length,
       onViewVotes: _selected.isNotEmpty
           ? null
           : () => showPollVotesSheet(context,
@@ -315,7 +330,8 @@ class _GroupChatScreenState extends State<GroupChatScreen>
               tally: GroupExtrasBook.instance.tally(m.id, poll),
               members: _members.isEmpty ? tally.voters : _members.length,
               self: widget.localDeviceId,
-              nameOf: _pollName),
+              nameOf: _pollName,
+              memberIds: _memberIdList()),
     );
   }
 
@@ -346,6 +362,9 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     GroupMentionBook.instance.clear(widget.group.id);
     unawaited(mark(widget.group.id).catchError((Object _) {}));
   }
+
+  /// Bundle 207 (K6): every member id (Votes sheet "Not voted yet").
+  List<String> _memberIdList() => [for (final m in _members) m.deviceId];
 
   /// Other members now (id -> name), for ticks and Message info.
   Map<String, String> get _otherMembers => {
@@ -509,6 +528,8 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       if (widget.initialMessageId == null) {
         _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       }
+      final jump = widget.jumpToMessageId;
+      if (jump != null && mounted) _jumpTo(jump);
     });
   }
 
@@ -1188,78 +1209,38 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     _jumpTo(matches[next]);
   }
 
-  PreferredSizeWidget _searchBar(BuildContext context, List<String> matches) {
-    final colors = Theme.of(context).colorScheme;
-    final at = matches.isEmpty ? 0 : _matchAt.clamp(0, matches.length - 1);
-    return AppBar(
-      key: const ValueKey('group_search_bar'),
-      leading: IconButton(
-        tooltip: 'Close search',
-        onPressed: _closeSearch,
-        icon: const Icon(Icons.arrow_back),
-      ),
-      titleSpacing: 0,
-      title: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.search, size: 18, color: colors.onSurfaceVariant),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                key: const ValueKey('group_search_field'),
-                controller: _searchController,
-                autofocus: true,
-                textInputAction: TextInputAction.search,
-                onChanged: (_) => setState(() => _matchAt = 0),
-                onSubmitted: (_) =>
-                    _goMatch(_matches(_controller.messages), _matchAt),
-                decoration: const InputDecoration(
-                  hintText: 'Search',
-                  filled: false,
-                  isDense: true,
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        if (_query.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(left: 8),
-            child: Center(
-              child: Text(
-                  matches.isEmpty ? '0 of 0' : '${at + 1} of ${matches.length}',
-                  key: const ValueKey('group_search_count'),
-                  style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
-            ),
-          ),
-        IconButton(
-          tooltip: 'Older',
-          onPressed: matches.isEmpty || at >= matches.length - 1
-              ? null
-              : () => _goMatch(matches, at + 1),
-          icon: const Icon(Icons.keyboard_arrow_up_rounded),
-        ),
-        IconButton(
-          tooltip: 'Newer',
-          onPressed:
-              matches.isEmpty || at == 0 ? null : () => _goMatch(matches, at - 1),
-          icon: const Icon(Icons.keyboard_arrow_down_rounded),
-        ),
-      ],
-    );
-  }
+  /// Bundle 207 (L2): the shared search bar (1:1 uses the same).
+  PreferredSizeWidget _searchBar(BuildContext context, List<String> matches) =>
+      ChatSearchBar(
+        controller: _searchController,
+        count: matches.length,
+        at: _matchAt,
+        onClose: _closeSearch,
+        onChanged: (_) => setState(() => _matchAt = 0),
+        onGo: (i) => _goMatch(_matches(_controller.messages), i),
+      );
 
   // ---- G1 (mock 21): who reacted --------------------------------------
+
+  /// Bundle 207: tap an emoji chip: add mine (+1), tap my own again to
+  /// remove it, or change mine to this one.
+  Future<void> _tapReaction(GroupMessage message, String emoji) async {
+    final kind = reactionTapKind(
+        _controller.state.reactions[message.id] ?? const [],
+        widget.localDeviceId,
+        emoji);
+    if (kind != ReactionTapKind.remove && !_rules.canSend) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(_cantSendText)));
+      return;
+    }
+    AppLogger.info('REACTION_TAP', detail: '${kind.name} chat=group');
+    if (kind == ReactionTapKind.remove) {
+      await _controller.removeReaction(message.id);
+    } else {
+      await _controller.react(message.id, emoji);
+    }
+  }
 
   void _showReactions(GroupMessage message) {
     final list = _controller.state.reactions[message.id] ?? const [];
@@ -1567,7 +1548,11 @@ class _GroupChatScreenState extends State<GroupChatScreen>
         firstOfRun: firstOfRun,
         role: _roleLabel(message.senderId),
         highlight: _query,
+        // Bundle 207: tap = add / remove mine; hold = who reacted.
         onReactionsTap: selecting ? null : () => _showReactions(message),
+        myId: widget.localDeviceId,
+        onReactionTap:
+            selecting ? null : (emoji) => _tapReaction(message, emoji),
         tick: _tickFor(message),
         content: _pollContent(message), // Bundle G5b
         highlighted: picked || _heldId == message.id,

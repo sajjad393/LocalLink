@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/models/attachment.dart';
@@ -49,7 +50,7 @@ void main() {
       expect(sent, 1);
     });
 
-    testWidgets('keyboard send action triggers onSend', (tester) async {
+    testWidgets('207 J: Enter is a new line, it never sends', (tester) async {
       var sent = 0;
       await tester.pumpWidget(_host(GroupComposer(
         controller: TextEditingController(),
@@ -60,9 +61,13 @@ void main() {
         onSend: () => sent++,
       )));
 
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.textInputAction, TextInputAction.newline);
+      expect(field.keyboardType, TextInputType.multiline);
+      expect(field.onSubmitted, isNull);
       await tester.tap(find.byType(TextField));
-      await tester.testTextInput.receiveAction(TextInputAction.send);
-      expect(sent, 1);
+      await tester.testTextInput.receiveAction(TextInputAction.newline);
+      expect(sent, 0);
     });
 
     testWidgets('while sending shows a white progress indicator and blocks taps',
@@ -111,5 +116,14 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('pending_remove:0')));
       expect(removed, [0]);
     });
+  });
+
+  test('207 J: the 1:1 box is the same (new line, no keyboard send)', () {
+    final src = File('lib/features/messaging/presentation/widgets/chat_composer.dart')
+        .readAsStringSync();
+    expect(src, contains('TextInputAction.newline'));
+    expect(src, contains('TextInputType.multiline'));
+    expect(src, isNot(contains('TextInputAction.send')));
+    expect(src, isNot(contains('onSubmitted: (_) => onSend()')));
   });
 }

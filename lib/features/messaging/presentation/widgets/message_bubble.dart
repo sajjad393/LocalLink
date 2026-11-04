@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/core/models/message_reaction.dart';
+import 'package:locallink/core/widgets/reaction_chips.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/files/presentation/widgets/attachment_tile.dart';
@@ -24,6 +25,11 @@ class MessageBubble extends StatelessWidget {
   final FileTransferRepositoryContract files;
   final VoidCallback? onLongPress;
   final List<MessageReaction> reactions;
+
+  /// Bundle 207: my id (my own emoji chip gets a blue border) and a tap on
+  /// a chip (add / remove my reaction). Null = chips can't be tapped.
+  final String myId;
+  final ValueChanged<String>? onReactionTap;
 
   /// Bundle 162 (4.6): tap on a failed (red !) message of mine.
   final VoidCallback? onFailedTap;
@@ -53,6 +59,9 @@ class MessageBubble extends StatelessWidget {
   /// Bundle 199: blue border for 2 s after a reply box jumped here.
   final bool flashed;
 
+  /// Bundle 207 (L2): search words marked yellow ('' = none).
+  final String highlight;
+
   /// Bundle 199: small picture of the quoted photo / video (null = none).
   final Widget? quoteThumb;
 
@@ -67,6 +76,8 @@ class MessageBubble extends StatelessWidget {
     required this.files,
     this.onLongPress,
     this.reactions = const [],
+    this.myId = '',
+    this.onReactionTap,
     this.onFailedTap,
     this.peerOffline = false,
     this.highlighted = false,
@@ -78,6 +89,7 @@ class MessageBubble extends StatelessWidget {
     this.onQuoteTap,
     this.senderName = '',
     this.flashed = false,
+    this.highlight = '',
     this.quoteThumb,
     this.quoteLine,
   });
@@ -106,7 +118,7 @@ class MessageBubble extends StatelessWidget {
     final header = _header(tight);
     final body = message.text.isEmpty
         ? null
-        : ChatBodyText(message.text, color: foreground);
+        : ChatBodyText(message.text, color: foreground, highlight: highlight);
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -268,19 +280,13 @@ class MessageBubble extends StatelessWidget {
           message.status == 'sending' ||
           message.status == 'pending');
 
-  List<Widget> _reactionCounts(BuildContext context) {
-    final counts = <String, int>{};
-    for (final reaction in reactions) { counts[reaction.emoji] = (counts[reaction.emoji] ?? 0) + 1; }
-    return counts.entries.map((entry) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Text('${entry.key} ${entry.value}', style: Theme.of(context).textTheme.labelSmall),
-    )).toList(growable: false);
-  }
+  List<Widget> _reactionCounts(BuildContext context) => reactionChips(
+        context,
+        reactions: reactions,
+        myId: myId,
+        keyPrefix: 'reaction_chip',
+        onTap: onReactionTap,
+      );
 
   String _time(DateTime raw) {
     // Bundle 174 (7): always the phone's own time. A message still being

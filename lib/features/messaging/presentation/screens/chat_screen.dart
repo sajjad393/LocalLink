@@ -4,6 +4,7 @@ import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/widgets/presence_way.dart';
 import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/widgets/reaction_chips.dart';
 import 'package:locallink/features/directory/presentation/contact_sheets.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/error_toast.dart';
+import 'package:locallink/core/widgets/chat_search_bar.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
@@ -44,6 +46,7 @@ import 'package:locallink/core/services/ui_sounds.dart';
 import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
 import 'package:locallink/features/files/domain/file_size_rule.dart';
 import 'package:locallink/features/files/presentation/widgets/file_too_big_dialog.dart';
+import 'package:locallink/core/widgets/no_gray_press.dart';
 
 class ChatScreen extends StatefulWidget {
   final ChatBloc controller;
@@ -56,6 +59,27 @@ class ChatScreen extends StatefulWidget {
   final CallBloc? calls;
   final LocalLinkNotificationService? notifications;
   final String? initialMessageId;
+
+  /// Bundle 207 (L1): opened from the Chats search - jump to this message
+  /// and flash it.
+  final String? jumpToMessageId;
+
+  /// Bundle 207 (L2): ids of the messages with [query] (words or a file
+  /// name), newest first.
+  @visibleForTesting
+  static List<String> searchMatches(List<Message> messages, String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+    return [
+      for (final m in messages.reversed)
+        if (!MessageDeleteBook.instance.isDeleted(m.id) &&
+            (m.text.toLowerCase().contains(q) ||
+                m.attachments
+                    .any((a) => a.originalName.toLowerCase().contains(q))))
+          m.id,
+    ];
+  }
+
   final String? initialAttachmentId;
 
   const ChatScreen({
@@ -66,6 +90,7 @@ class ChatScreen extends StatefulWidget {
     this.calls,
     this.notifications,
     this.initialMessageId,
+    this.jumpToMessageId,
     this.initialAttachmentId,
   });
 
@@ -194,6 +219,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _scrollToInitial() {
     if (!mounted || !_scrollController.hasClients) return;
+    final jump = widget.jumpToMessageId;
+    if (jump != null) {
+      _scrollToBottom(animated: false);
+      _jumpTo(jump, widget.controller.messages);
+      return;
+    }
     final messageId = widget.initialMessageId;
     if (messageId == null) {
       _scrollToBottom(animated: false);
@@ -358,6 +389,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   List<Message> get _selectedMessages => widget.controller.messages
       .where((m) => _selected.contains(m.id))
       .toList(growable: false);
+
+  /// Bundle 207: tap an emoji chip under a message: add mine (+1), tap my
+  /// own again to remove it, or change mine to this one.
+  Future<void> _tapReaction(Message message, String emoji) async {
+    final c = widget.controller;
+    final kind = reactionTapKind(
+        c.reactionsFor(message.id), c.state.localDeviceId, emoji);
+    AppLogger.info('REACTION_TAP', detail: '${kind.name} chat=1to1');
+    if (kind == ReactionTapKind.remove) {
+      await c.removeReaction(message.id);
+    } else {
+      await c.react(message.id, emoji);
+    }
+  }
 
   Future<void> _onHold(Message message) async {
     if (_selected.isNotEmpty) {
@@ -659,6 +704,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     setState(() {
       _searching = true;
       _searchController.clear();
+      _matchAt = 0;
     });
   }
 
@@ -666,7 +712,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     setState(() {
       _searching = false;
       _searchController.clear();
+      _matchAt = 0;
     });
+  }
+
+  /// Bundle 207 (L2): current match (0 = newest).
+  int _matchAt = 0;
+
+  List<String> _searchMatches(List<Message> messages, String query) =>
+      ChatScreen.searchMatches(messages, query);
+
+  void _goMatch(List<String> matches, int at, List<Message> visible) {
+    if (matches.isEmpty) return;
+    final next = at.clamp(0, matches.length - 1);
+    setState(() => _matchAt = next);
+    _jumpTo(matches[next], visible);
   }
 
   /// Bundle 182: my message with an attachment still in the outbox.
@@ -860,13 +920,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       bloc: widget.controller,
       builder: (context, state) {
         final device = state.device;
-        final searchQuery = _searchController.text.trim().toLowerCase();
-        final visibleMessages = searchQuery.isEmpty
-            ? state.messages
-            : state.messages.where((message) {
-                return message.text.toLowerCase().contains(searchQuery) ||
-                    message.attachments.any((attachment) => attachment.originalName.toLowerCase().contains(searchQuery));
-              }).toList();
+        final searchQuery = _searching
+            ? _searchController.text.trim().toLowerCase()
+            : '';
+        // Bundle 207 (L2): search hides nothing (like groups); matches are
+        // marked, "2 of 3", up / down jumps with the flash.
+        final visibleMessages = state.messages;
+        final matches = _searchMatches(state.messages, searchQuery);
         _maybeAutoScroll(
           visibleMessages.length,
           lastIsMine: visibleMessages.isNotEmpty &&
@@ -895,7 +955,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final scaffold = Scaffold(
           appBar: selecting
               ? _selectBar(context, iBlocked || blockedMe)
-              : AppBar(
+              : _searching
+                  ? ChatSearchBar(
+                      keyPrefix: 'chat',
+                      hint: 'Search messages',
+                      controller: _searchController,
+                      count: matches.length,
+                      at: _matchAt,
+                      onClose: _closeSearch,
+                      onChanged: (_) => setState(() => _matchAt = 0),
+                      onGo: (i) => _goMatch(matches, i, visibleMessages),
+                    )
+                  : AppBar(
             titleSpacing: 0,
             leading: _searching
                 ? IconButton(
@@ -1091,12 +1162,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                       isMine: message.senderId == state.localDeviceId,
                                       files: widget.files,
                                       reactions: state.reactions[message.id] ?? const [],
+                                      myId: state.localDeviceId,
+                                      onReactionTap: selecting
+                                          ? null
+                                          : (emoji) => _tapReaction(message, emoji),
                                       onLongPress: () => _onHold(message),
                                       onFailedTap: () => _showFailedActions(message.id),
                                       peerOffline: offline,
                                       highlighted: picked ||
                                           _heldId == message.id,
                                       flashed: _flashId == message.id,
+                                      highlight: searchQuery,
                                       bubbleKey: _heldId == message.id ? _heldKey : null,
                                       onTap: selecting ? () => _toggleSelect(message) : null,
                                       quoteName: reply == null
@@ -1171,11 +1247,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 Positioned(
                                   right: LocalLinkSpacing.md,
                                   bottom: LocalLinkSpacing.md,
-                                  child: FloatingActionButton.small(
-                                    heroTag: null,
-                                    tooltip: 'Jump to latest',
-                                    onPressed: () => _scrollToBottom(animated: true),
-                                    child: const Icon(Icons.keyboard_arrow_down_rounded),
+                                  // Bundle 207: no gray overlay on press.
+                                  child: NoGrayPress(
+                                    child: FloatingActionButton.small(
+                                      heroTag: null,
+                                      tooltip: 'Jump to latest',
+                                      onPressed: () => _scrollToBottom(animated: true),
+                                      child: const Icon(Icons.keyboard_arrow_down_rounded),
+                                    ),
                                   ),
                                 ),
                             ],

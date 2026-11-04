@@ -1296,27 +1296,74 @@ class GroupMessagingService {
     return true;
   }
 
+  /// Bundle 207 (K5): fast taps send only the last vote, this long after
+  /// the last tap (tests: zero = at once).
+  static Duration voteDelay = const Duration(milliseconds: 1500);
+  final Map<String, Timer> _voteTimers = <String, Timer>{};
+  final Map<String, ({String gid, GroupVote vote})> _voteWaiting =
+      <String, ({String gid, GroupVote vote})>{};
+
   /// Q3: my picks on a poll (empty = take my vote back).
+  /// Bundle 207 (K): one-answer polls can be changed for 3 minutes after my
+  /// first vote; false = the vote is final (nothing goes out).
   Future<bool> vote(String gid, String pollId, List<int> choices) async {
     final self = store.deviceId ?? '';
     final group = await store.groupById(gid);
     if (self.isEmpty || group == null || !group.isActive || pollId.isEmpty) {
       return false;
     }
+    var multi = false;
+    try {
+      final pm = await store.groupMessageById(pollId);
+      multi = pm == null ? false : (GroupPoll.parse(pm.body)?.multi ?? false);
+    } catch (_) {}
     final at = DateTime.now().toUtc().toIso8601String();
+    var first = '';
+    if (!multi) {
+      final old = GroupExtrasBook.instance.voteOf(pollId, self);
+      if (old != null && old.choices.isNotEmpty) {
+        first = old.first.isNotEmpty ? old.first : old.at;
+      } else if (choices.isNotEmpty) {
+        first = at;
+      }
+      if (first.isNotEmpty && GroupVote.lateChange(first, at)) {
+        AppLogger.info('GROUP_VOTE_FINAL');
+        return false;
+      }
+    }
     final v = GroupVote(
-        pollId: pollId, choices: List<int>.of(choices)..sort(), at: at, voter: self);
+        pollId: pollId,
+        choices: List<int>.of(choices)..sort(),
+        at: at,
+        voter: self,
+        // a take-back note carries no first time (a new vote starts again)
+        first: choices.isEmpty ? '' : first);
     await GroupExtrasBook.instance.applyVote(v);
+    AppLogger.info('GROUP_VOTE', detail: 'n=${choices.length}');
+    if (voteDelay <= Duration.zero) {
+      await _queueVote(gid, v);
+      return true;
+    }
+    _voteWaiting[pollId] = (gid: gid, vote: v);
+    _voteTimers.remove(pollId)?.cancel();
+    _voteTimers[pollId] = Timer(voteDelay, () {
+      _voteTimers.remove(pollId);
+      final w = _voteWaiting.remove(pollId);
+      if (w != null) unawaited(_queueVote(w.gid, w.vote));
+    });
+    return true;
+  }
+
+  Future<void> _queueVote(String gid, GroupVote v) async {
     await _queue({
       'id': _newId(),
       'group_id': gid,
       'body': v.encode(),
-      'created_at': at,
+      'created_at': v.at,
       'status': 'queued',
     });
-    AppLogger.info('GROUP_VOTE', detail: 'n=${choices.length}');
+    AppLogger.info('GROUP_VOTE_SENT', detail: 'n=${v.choices.length}');
     await flush();
-    return true;
   }
 
   /// "Ali pinned a message" (a grey system line, never unread).

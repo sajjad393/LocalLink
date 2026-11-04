@@ -196,6 +196,16 @@ final class ChatBloc extends Cubit<ChatState> {
     }
   }
 
+  /// Bundle 207: my emoji chip tapped again = remove my reaction.
+  Future<void> removeReaction(String messageId) async {
+    if (isClosed || messageId.isEmpty) return;
+    try {
+      await repository.react(state.device.id, messageId, '');
+    } catch (e) {
+      if (!isClosed) emit(state.copyWith(error: cleanBlocError(e)));
+    }
+  }
+
   /// Bundle 162 (4.6): Resend from the failed-message sheet.
   Future<bool> resendFailed(String messageId) async {
     if (isClosed || messageId.isEmpty) return false;
@@ -296,7 +306,13 @@ final class ChatBloc extends Cubit<ChatState> {
     if (isClosed) return;
     final current = [...(state.reactions[reaction.messageId] ?? const <MessageReaction>[])];
     final index = current.indexWhere((item) => item.reactorId == reaction.reactorId);
-    if (index >= 0) current[index] = reaction; else current.add(reaction);
+    if (reaction.emoji.isEmpty) {
+      if (index >= 0) current.removeAt(index); // Bundle 207: removed
+    } else if (index >= 0) {
+      current[index] = reaction;
+    } else {
+      current.add(reaction);
+    }
     final next = {...state.reactions, reaction.messageId: current};
     emit(state.copyWith(reactions: next));
   }

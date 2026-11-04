@@ -16,6 +16,7 @@ import 'package:locallink/features/groups/data/group_invite_link.dart'
     show GroupInviteLink;
 import 'package:locallink/features/groups/presentation/screens/group_link_screens.dart'
     show GroupInviteCard;
+import 'package:locallink/core/widgets/reaction_chips.dart';
 
 /// Bundle G1 (mock 13): the group bubble looks like the 1:1 bubble.
 ///
@@ -61,6 +62,11 @@ class GroupMessageBubble extends StatelessWidget {
   /// G1 (mock 21): tap the emoji chip = who reacted.
   final VoidCallback? onReactionsTap;
 
+  /// Bundle 207: tap a chip = add / remove my reaction; [onReactionsTap]
+  /// (who reacted) moved to holding the chip.
+  final String myId;
+  final ValueChanged<String>? onReactionTap;
+
   /// Bundle G5: ✓ / grey ✓✓ (all got it) / blue ✓✓ (all read). Null = ✓.
   final GroupTick? tick;
 
@@ -90,6 +96,8 @@ class GroupMessageBubble extends StatelessWidget {
     this.avatarColumn = true,
     this.highlight = '',
     this.onReactionsTap,
+    this.myId = '',
+    this.onReactionTap,
     this.tick,
     this.content,
     this.quoteLine,
@@ -320,30 +328,14 @@ class GroupMessageBubble extends StatelessWidget {
     );
   }
 
-  List<Widget> _reactionCounts(BuildContext context) {
-    final counts = <String, int>{};
-    for (final r in reactions) {
-      counts[r.emoji] = (counts[r.emoji] ?? 0) + 1;
-    }
-    final scheme = Theme.of(context).colorScheme;
-    return counts.entries.map((e) {
-      final chip = Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-          decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: scheme.outlineVariant)),
-          child: Text('${e.key} ${e.value}',
-              style: Theme.of(context).textTheme.labelSmall));
-      if (onReactionsTap == null) return chip;
-      return GestureDetector(
-        key: ValueKey('group_reaction_chip_${e.key}'),
-        behavior: HitTestBehavior.opaque,
-        onTap: onReactionsTap,
-        child: chip,
+  List<Widget> _reactionCounts(BuildContext context) => reactionChips(
+        context,
+        reactions: reactions,
+        myId: myId,
+        keyPrefix: 'group_reaction_chip',
+        onTap: onReactionTap,
+        onLongPress: onReactionsTap == null ? null : (_) => onReactionsTap!(),
       );
-    }).toList(growable: false);
-  }
 
   String _time(String value) {
     final parsed = DateTime.tryParse(value)?.toLocal();

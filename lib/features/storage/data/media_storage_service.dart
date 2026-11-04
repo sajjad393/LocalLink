@@ -384,7 +384,12 @@ class MediaStorageService extends ChangeNotifier {
     return done.future;
   }
 
-  Future<bool> _makeThumb(String fileId, String plainPath, {required bool video}) async {
+  /// Bundle 207 (N2): wait before the one retry of a small picture (the
+  /// file can still be being written / locked).
+  static Duration thumbRetryDelay = const Duration(seconds: 2);
+
+  Future<bool> _makeThumb(String fileId, String plainPath,
+      {required bool video, bool retry = true}) async {
     if (fileId.isEmpty || plainPath.isEmpty) return false;
     if (book.of(fileId)?.hasThumb ?? false) return true;
     if (inCall()) return false;
@@ -400,6 +405,13 @@ class MediaStorageService extends ChangeNotifier {
       await book.setThumb(fileId, enc, mediaMs: (info?['duration_ms'] as num?)?.toInt() ?? 0);
       return true;
     } catch (error) {
+      // Bundle 207 (N2): "invalid file" = still being written: once more
+      // after 2 s, then the grey box quietly.
+      if (retry) {
+        AppLogger.info('THUMB_RETRY', detail: 'file=${_short(fileId)}');
+        await Future<void>.delayed(thumbRetryDelay);
+        return _makeThumb(fileId, plainPath, video: video, retry: false);
+      }
       if (_thumbFailures++ < 5) {
         AppLogger.warning('THUMB_FAILED', detail: 'file=${_short(fileId)} error=$error');
       }

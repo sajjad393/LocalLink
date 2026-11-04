@@ -63,8 +63,10 @@ class GroupComposer extends StatelessWidget {
                     controller: controller,
                     focusNode: focusNode,
                     enabled: !isSending,
-                    onSubmitted: (_) => onSend(),
-                    textInputAction: TextInputAction.send,
+                    // Bundle 207 (J): Enter = new line; send only with
+                    // the send button.
+                    textInputAction: TextInputAction.newline,
+                    keyboardType: TextInputType.multiline,
                     maxLines: 5,
                     minLines: 1,
                     hintText: 'Message group',
