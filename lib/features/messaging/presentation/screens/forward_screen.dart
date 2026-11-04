@@ -7,6 +7,8 @@ import 'package:locallink/features/messaging/data/forward_hub.dart';
 import 'package:locallink/core/services/ui_sounds.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/features/files/presentation/widgets/media_grid.dart';
+import 'package:locallink/features/files/domain/file_size_rule.dart';
+import 'package:locallink/features/files/presentation/widgets/file_too_big_dialog.dart';
 
 /// Bundle 197a (mock 11): "Forward to" - pick any number of chats and
 /// groups. Returns the picks (null / empty = cancelled).
@@ -32,6 +34,18 @@ class ForwardScreen extends StatefulWidget {
     if (files.length == 1) return (summary, text);
     return ('1 message', text);
   }
+
+  /// Bundle 203 (5): the same items without files over 50 MB (an item
+  /// left with nothing is dropped).
+  static List<ForwardItem> withoutTooBig(List<ForwardItem> items) => [
+        for (final i in items)
+          ForwardItem(
+              text: i.text,
+              attachments: [
+                for (final a in i.attachments)
+                  if (!FileSizeRule.tooBig(a.size)) a
+              ]),
+      ].where((i) => !i.isEmpty).toList();
 
   @override
   State<ForwardScreen> createState() => _ForwardScreenState();
@@ -301,6 +315,22 @@ Future<ForwardTarget?> runForwardFlow(
   final hub = ForwardHub.instance;
   final messenger = ScaffoldMessenger.of(context);
   if (hub == null || items.every((i) => i.isEmpty)) return null;
+  // Bundle 203 (5): files over 50 MB are not forwarded (pop-up).
+  final tooBig = <TooBigFile>[
+    for (final i in items)
+      for (final a in i.attachments)
+        if (FileSizeRule.tooBig(a.size))
+          TooBigFile(a.originalName, a.size,
+              isVideo: a.contentType.startsWith('video/')),
+  ];
+  if (tooBig.isNotEmpty) {
+    items = ForwardScreen.withoutTooBig(items);
+    if (items.every((i) => i.isEmpty)) {
+      await showFileTooBigDialog(context, tooBig,
+          forward: true, othersSent: false);
+      return null;
+    }
+  }
   // Check the files first (snackbar instead of an empty pick).
   try {
     for (final item in items) {
@@ -325,6 +355,9 @@ Future<ForwardTarget?> runForwardFlow(
         content: Text(chats == 1
             ? 'Sent to ${picks.first.name}'
             : 'Sent to $chats chats')));
+    if (tooBig.isNotEmpty && context.mounted) {
+      await showFileTooBigDialog(context, tooBig, forward: true);
+    }
   } on ForwardFileMissing {
     messenger.showSnackBar(const SnackBar(
         content: Text('This file is no longer on your phone')));

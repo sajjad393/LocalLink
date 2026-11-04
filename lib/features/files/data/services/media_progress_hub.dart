@@ -45,9 +45,46 @@ class MediaProgressHub {
 
   MediaProgress? peek(String messageId) => _slots[messageId]?.value;
 
-  void update(String messageId, {required int done, required int total}) {
+  // ---- Bundle 203 (6): one ring per file -------------------------------
+
+  /// A group file travels as `<fileId>.g<8hex>`; the ring belongs to fileId.
+  static String baseFileId(String id) {
+    final m = RegExp(r'^(.+)\.g[0-9a-f]{8}$').firstMatch(id);
+    return m == null ? id : m.group(1)!;
+  }
+
+  static String fileKey(String messageId, String fileId) =>
+      '$messageId|${baseFileId(fileId)}';
+
+  /// Listenable for ONE file of [messageId].
+  ValueListenable<MediaProgress?> watchFile(String messageId, String fileId) {
+    final key = fileKey(messageId, fileId);
+    return _slots.putIfAbsent(key, () => _Slot(this, key));
+  }
+
+  MediaProgress? peekFile(String messageId, String fileId) =>
+      _slots[fileKey(messageId, fileId)]?.value;
+
+  /// True when some file of [messageId] has its own live number.
+  bool hasFileProgress(String messageId) {
+    final prefix = '$messageId|';
+    for (final e in _slots.entries) {
+      if (e.key.startsWith(prefix) && e.value.value != null) return true;
+    }
+    return false;
+  }
+
+  void update(String messageId,
+      {required int done, required int total, String? fileId}) {
     if (messageId.isEmpty || total <= 0) return;
-    final slot = _slots.putIfAbsent(messageId, () => _Slot(this, messageId));
+    if (fileId != null && fileId.isNotEmpty) {
+      _set(fileKey(messageId, fileId), done, total);
+    }
+    _set(messageId, done, total);
+  }
+
+  void _set(String key, int done, int total) {
+    final slot = _slots.putIfAbsent(key, () => _Slot(this, key));
     slot.value = MediaProgress(
         done: done.clamp(0, total),
         total: total,
@@ -55,9 +92,16 @@ class MediaProgressHub {
   }
 
   /// Bundle 179 (1.6): the file waits for a voice call to end (or goes again).
-  void setPaused(String messageId, bool paused) {
+  void setPaused(String messageId, bool paused, {String? fileId}) {
     if (messageId.isEmpty) return;
-    final slot = _slots.putIfAbsent(messageId, () => _Slot(this, messageId));
+    if (fileId != null && fileId.isNotEmpty) {
+      _pause(fileKey(messageId, fileId), paused);
+    }
+    _pause(messageId, paused);
+  }
+
+  void _pause(String key, bool paused) {
+    final slot = _slots.putIfAbsent(key, () => _Slot(this, key));
     final old = slot.value;
     if (old == null && !paused) return;
     if (!paused && old != null && old.total <= 0) {
@@ -68,11 +112,38 @@ class MediaProgressHub {
         done: old?.done ?? 0, total: old?.total ?? 0, paused: paused);
   }
 
-  void clear(String messageId) {
-    final slot = _slots[messageId];
+  /// No [fileId]: the whole message (all its files). With [fileId]: only
+  /// that file; the message ring follows another file still going.
+  void clear(String messageId, {String? fileId}) {
+    if (fileId != null && fileId.isNotEmpty) {
+      _clearKey(fileKey(messageId, fileId));
+      final prefix = '$messageId|';
+      MediaProgress? other;
+      for (final e in _slots.entries) {
+        if (e.key.startsWith(prefix) && e.value.value != null) {
+          other = e.value.value;
+          break;
+        }
+      }
+      if (other == null) {
+        _clearKey(messageId);
+      } else {
+        _slots[messageId]?.value = other;
+      }
+      return;
+    }
+    final prefix = '$messageId|';
+    for (final key in _slots.keys.where((k) => k.startsWith(prefix)).toList()) {
+      _clearKey(key);
+    }
+    _clearKey(messageId);
+  }
+
+  void _clearKey(String key) {
+    final slot = _slots[key];
     if (slot == null) return;
     slot.value = null;
-    if (slot.listeners == 0) _slots.remove(messageId);
+    if (slot.listeners == 0) _slots.remove(key);
   }
 
   void _maybeDrop(_Slot slot) {

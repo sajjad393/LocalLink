@@ -55,6 +55,8 @@ import 'package:locallink/core/models/group_extras.dart';
 import 'package:locallink/core/models/chat_preview.dart' show chatPreviewMediaWord;
 import 'package:locallink/features/groups/data/group_extras_book.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_extras_widgets.dart';
+import 'package:locallink/features/files/domain/file_size_rule.dart';
+import 'package:locallink/features/files/presentation/widgets/file_too_big_dialog.dart';
 
 class GroupChatScreen extends StatefulWidget {
   final LocalGroup group;
@@ -534,8 +536,18 @@ class _GroupChatScreenState extends State<GroupChatScreen>
 
   Future<void> _pickFiles() async {
     try {
-      final files = await _transferController.pickFiles(allowMultiple: true);
-      if (mounted && files.isNotEmpty) setState(() => _pending.addAll(files));
+      final all = await _transferController.pickFiles(allowMultiple: true);
+      if (!mounted || all.isEmpty) return;
+      // Bundle 203 (5): files over 50 MB are dropped with a pop-up.
+      final split = FileSizeRule.split(all);
+      final files = split.keep;
+      if (files.isNotEmpty) setState(() => _pending.addAll(files));
+      if (split.dropped.isNotEmpty) {
+        await showFileTooBigDialog(context, [
+          for (final f in split.dropped)
+            TooBigFile(f.name, f.size, isVideo: f.contentType.startsWith('video/')),
+        ]);
+      }
     } catch (error) {
       if (mounted) showErrorToast(context, error: error);
     }

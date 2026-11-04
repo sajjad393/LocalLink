@@ -22,6 +22,10 @@ abstract final class ProfilePrivacyRule {
 
   static bool isPrivate(LocalProfile? p) => p != null && !p.discoverableByName;
 
+  /// Bundle 203 (5b): my own Private switch, for the lock ring on my picture
+  /// (Profile + the Settings card). Null = not read yet.
+  static final ValueNotifier<bool?> ownPrivate = ValueNotifier<bool?>(null);
+
   /// True when the saved phone choice already follows the switch.
   static bool matches(LocalProfile p) =>
       p.phoneVisibility == phoneVisibilityFor(private: isPrivate(p));
@@ -112,6 +116,7 @@ class _PrivateProfileCardState extends State<PrivateProfileCard> {
       _loaded = p != null;
       _private = ProfilePrivacyRule.isPrivate(p);
     });
+    if (p != null) ProfilePrivacyRule.ownPrivate.value = _private;
   }
 
   @override
@@ -132,6 +137,7 @@ class _PrivateProfileCardState extends State<PrivateProfileCard> {
       _saving = true;
       _private = makePrivate;
     });
+    ProfilePrivacyRule.ownPrivate.value = makePrivate; // Bundle 203 (5b): at once
     try {
       final synced = await _bloc.saveProfile(
         displayName: p.displayName,
@@ -158,6 +164,7 @@ class _PrivateProfileCardState extends State<PrivateProfileCard> {
       ));
     } catch (e) {
       if (mounted) setState(() => _private = !makePrivate);
+      ProfilePrivacyRule.ownPrivate.value = !makePrivate;
       messenger.showSnackBar(SnackBar(content: Text(cleanBlocError(e))));
     } finally {
       if (mounted) setState(() => _saving = false);

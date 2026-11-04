@@ -20,6 +20,10 @@ class SensitiveFileProtectionService {
   static const plaintextPartSuffix = '.plain.part';
   static const viewPrefix = '.view-';
   static const Duration viewRetention = Duration(minutes: 5);
+  /// Bundle 203 (3): fixed open copies of files being sent ('.send-<id>');
+  /// the 5-minute view sweep skips them, they go after 7 days at the latest.
+  static const sendPrefix = '.send-';
+  static const Duration sendRetention = Duration(days: 7);
   static const Duration stalePlaintextRetention = Duration(minutes: 5);
   static const Duration staleProtectedTempRetention = Duration(hours: 1);
 
@@ -142,7 +146,12 @@ class SensitiveFileProtectionService {
           // player, picture-in-picture) are never swept from under them.
           if (pinnedViews.contains(entry.path)) continue;
           final modified = await entry.lastModified();
-          if (name.startsWith(viewPrefix) && modified.isBefore(cutoff)) {
+          if (name.startsWith(sendPrefix)) {
+            // Bundle 203 (3): a send copy lives up to 7 days.
+            if (modified.isBefore((now ?? DateTime.now()).subtract(sendRetention))) {
+              await entry.delete();
+            }
+          } else if (name.startsWith(viewPrefix) && modified.isBefore(cutoff)) {
             await entry.delete();
           } else if (name.endsWith(plaintextPartSuffix) && modified.isBefore(plainCutoff)) {
             await entry.delete();

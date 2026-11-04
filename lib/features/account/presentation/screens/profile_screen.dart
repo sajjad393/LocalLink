@@ -358,11 +358,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Stack(
                 alignment: Alignment.bottomRight,
                 children: [
-                  AccountAvatar(
-                      name: displayName,
-                      // Bundle 204: the new picture shows at once; removed = letter.
-                      localPath: image?.path ?? (_removePhoto ? '' : value?.localAvatarPath ?? ''),
-                      radius: 52),
+                  // Bundle 203 (5b): lock ring while my profile is Private.
+                  ValueListenableBuilder<bool?>(
+                    valueListenable: ProfilePrivacyRule.ownPrivate,
+                    builder: (context, own, _) => AccountAvatar(
+                        name: displayName,
+                        // Bundle 204: the new picture shows at once; removed = letter.
+                        localPath: image?.path ?? (_removePhoto ? '' : value?.localAvatarPath ?? ''),
+                        radius: 52,
+                        locked: own ?? ProfilePrivacyRule.isPrivate(value)),
+                  ),
                   IconButton.filled(tooltip: 'Change profile photo', onPressed: _pickImage, icon: const Icon(Icons.camera_alt_outlined)),
                 ],
               ),

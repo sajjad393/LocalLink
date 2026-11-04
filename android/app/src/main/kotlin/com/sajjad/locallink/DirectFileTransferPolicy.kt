@@ -34,6 +34,19 @@ internal object DirectFileTransferPolicy {
     fun onHashMismatch(restartsSoFar: Int): String =
         if (restartsSoFar < MAX_HASH_RESTARTS) "restart" else "give_up"
 
+    /** Bundle 203 (3): the same file to the same friend (same size + sha256)
+     *  CONTINUES even when its path changed - never back to 0. */
+    fun canContinue(sameRecipient: Boolean, sameSize: Boolean, sameSha: Boolean): Boolean =
+        sameRecipient && sameSize && sameSha
+
+    /** Bundle 203 (2): no free place (8 files or the byte budget) -> the file
+     *  WAITS in a line (not an error) and starts when a place is free. */
+    fun mustWait(active: Int, activeBytes: Long, size: Long): Boolean =
+        active >= MAX_ACTIVE_OUTGOING_TRANSFERS || activeBytes > MAX_ACTIVE_TRANSFER_BYTES - size
+
+    /** Bundle 203 (2): max files waiting in the line (older ones stay first). */
+    const val MAX_WAITING_OUTGOING = 200
+
     /** Sender side: every chunk must be sent again. */
     fun resetForRestart(acknowledged: BooleanArray, lastSentAt: LongArray) {
         acknowledged.fill(false)

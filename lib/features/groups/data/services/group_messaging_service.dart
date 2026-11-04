@@ -26,6 +26,7 @@ import 'package:locallink/features/groups/data/group_nearby_files.dart';
 import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
 import 'package:crypto/crypto.dart' as hash;
 import 'dart:io' show File;
+import 'package:locallink/features/messaging/data/services/send_copy_book.dart';
 
 class GroupMessagingService {
   final LocalStore store;
@@ -281,6 +282,22 @@ class GroupMessagingService {
       }
     }
     if (att == null || path.isEmpty) return null;
+    // Bundle 203 (3): one fixed open copy per group file (shared by all
+    // members), so a retry continues instead of starting from 0. It is kept
+    // for the other members and goes after 7 days (or with the message).
+    final fixed = await SendCopyBook.instance.pathFor(
+      localPath: path,
+      fileId: att.id,
+      originalName: att.originalName,
+      open: (locked, ext) => files.materializeForDisplay(locked, extension: ext),
+    );
+    if (fixed != path && await File(fixed).exists()) {
+      return PickedFile(
+          path: fixed,
+          name: att.originalName,
+          contentType: att.contentType,
+          size: att.size);
+    }
     if (!await File(path).exists()) {
       // A locked copy: open it for sending (like 1:1).
       final locked = path.endsWith('.enc') ? path : '$path.enc';

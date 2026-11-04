@@ -513,6 +513,9 @@ class LocalLinkTransportService : Service() {
     private val incomingFiles = ConcurrentHashMap<String, IncomingFileTransfer>()
     private val outgoingTransfers = ConcurrentHashMap<String, OutgoingFileTransfer>()
     private val outgoingReservations = ConcurrentHashMap<String, Long>()
+    /** Bundle 203 (2): files waiting for a free place (in order). */
+    private data class WaitingFile(val target:String,val path:String,val fileId:String,val messageId:String,val fileName:String,val contentType:String)
+    private val outgoingWaitLine = java.util.LinkedHashMap<String, WaitingFile>()
     private val cancelledDirectTransfers = ConcurrentHashMap.newKeySet<String>()
     private val cancelledIncomingTransfers = ConcurrentHashMap<String, Long>()
     private val outgoingSendInFlight = ConcurrentHashMap.newKeySet<String>()
@@ -838,19 +841,49 @@ class LocalLinkTransportService : Service() {
             val existing=outgoingTransfers[fileId]
             if(existing==null){
                 if(outgoingReservations.containsKey(fileId)){cb(false,"file transfer is already being prepared");return}
-                if(outgoingTransfers.size + outgoingReservations.size>=DirectFileTransferPolicy.MAX_ACTIVE_OUTGOING_TRANSFERS){cb(false,"too many active outgoing file transfers");return}
                 val activeBytes=DirectFileTransferPolicy.activeBytes(outgoingTransfers.values.map{it.size}) + DirectFileTransferPolicy.activeBytes(outgoingReservations.values)
-                if(activeBytes > DirectFileTransferPolicy.MAX_ACTIVE_TRANSFER_BYTES-f.length()){cb(false,"active outgoing file byte budget exceeded");return}
+                // Bundle 203 (2): no free place -> wait in the line (not an error).
+                if(DirectFileTransferPolicy.mustWait(outgoingTransfers.size + outgoingReservations.size, activeBytes, f.length())){
+                    synchronized(outgoingWaitLine){
+                        if(!outgoingWaitLine.containsKey(fileId) && outgoingWaitLine.size>=DirectFileTransferPolicy.MAX_WAITING_OUTGOING){cb(false,"too many waiting outgoing file transfers");return}
+                        outgoingWaitLine[fileId]=WaitingFile(target,path,fileId,messageId,fileName,contentType)
+                        Log.i("LOCAL_LINK_TRANSPORT","FILE_SEND_WAITING transfer=${fileId.take(12)} line=${outgoingWaitLine.size}")
+                    }
+                    cb(true,null);return
+                }
                 outgoingReservations[fileId]=f.length()
             }
         }
-        Thread{try{val before=outgoingTransfers[fileId];val busyBefore=outgoingSendInFlight.contains(fileId);val t=prepareOutgoingTransfer(target,f,fileId,messageId,fileName,contentType)
+        Thread{var answered=false;try{val before=outgoingTransfers[fileId];val busyBefore=outgoingSendInFlight.contains(fileId);val t=prepareOutgoingTransfer(target,f,fileId,messageId,fileName,contentType)
             // Bundle 193 (logs only): which copy goes out, and did this continue or start again.
             try{
-                if(before!=null&&before!==t)Log.w("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.sendReplaced(t.transferId,before.size,before.sha256,before.acknowledged.count{it},before.filePath,t.size,t.sha256,t.filePath))
+                if(before!=null&&before!==t&&before.sha256!=t.sha256)Log.w("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.sendReplaced(t.transferId,before.size,before.sha256,before.acknowledged.count{it},before.filePath,t.size,t.sha256,t.filePath))
                 Log.i("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.sendStart(t.transferId,fileId,t.size,t.sha256,t.totalChunks,t.acknowledged.count{it},before===t,busyBefore,t.filePath))
             }catch(_:Exception){}
-            persistOutgoingTransfer(t);sendMissingChunks(t,true);transportEvent("file_queued",mapOf("transfer_id" to t.transferId,"message_id" to messageId,"size" to t.size,"total_chunks" to t.totalChunks));cb(true,null)}catch(e:Exception){cb(false,e.message)}finally{outgoingReservations.remove(fileId)}}.start()
+            // Bundle 203 (2): answer as soon as the file is accepted; the parts go
+            // on this thread afterwards, so the message is not stuck behind the bytes.
+            persistOutgoingTransfer(t);outgoingReservations.remove(fileId);transportEvent("file_queued",mapOf("transfer_id" to t.transferId,"message_id" to messageId,"size" to t.size,"total_chunks" to t.totalChunks))
+            answered=true;cb(true,null)
+            sendMissingChunks(t,true)}catch(e:Exception){if(!answered)cb(false,e.message) else Log.w("LOCAL_LINK_TRANSPORT","FILE_SEND_PARTS_FAILED transfer=${fileId.take(12)} why=${e.javaClass.simpleName}")}finally{outgoingReservations.remove(fileId)}}.start()
+    }
+
+    /** Bundle 203 (2): a place became free -> the next waiting file starts. */
+    private fun startWaitingFile(){
+        val next=synchronized(outgoingWaitLine){
+            if(outgoingWaitLine.isEmpty())return
+            val active=outgoingTransfers.size+outgoingReservations.size
+            if(active>=DirectFileTransferPolicy.MAX_ACTIVE_OUTGOING_TRANSFERS)return
+            val first=outgoingWaitLine.entries.first().value
+            outgoingWaitLine.remove(first.fileId)
+            first
+        }
+        Log.i("LOCAL_LINK_TRANSPORT","FILE_SEND_FROM_LINE transfer=${next.fileId.take(12)}")
+        sendFileTransportInternal(next.target,next.path,next.fileId,next.messageId,next.fileName,next.contentType){ok,err->
+            if(!ok){
+                Log.w("LOCAL_LINK_TRANSPORT","FILE_SEND_FROM_LINE_FAILED transfer=${next.fileId.take(12)} why=${err ?: "unknown"}")
+                transportEvent("file_failed",mapOf("transfer_id" to next.fileId,"message_id" to next.messageId,"file_id" to next.fileId,"reason" to (err ?: "start_failed")))
+            }
+        }
     }
 
     /** Bundle 113: idempotent transport bootstrap used by pairing before any
@@ -4579,6 +4612,10 @@ class LocalLinkTransportService : Service() {
 
     private fun transportEvent(type: String, data: Map<String, Any?> = emptyMap()) {
         if (type.startsWith("file_")) noteFileState(type) // Bundle 188 (B3)
+        // Bundle 203 (2): a file ended -> a waiting file may start now.
+        if (type == "file_sent" || type == "file_failed" || type == "file_cancelled" || type == "file_expired") {
+            try { Thread { try { startWaitingFile() } catch (_: Exception) {} }.start() } catch (_: Throwable) {}
+        }
         val full = mapOf("type" to type, *data.entries.map { it.key to it.value }.toTypedArray())
         // Bundle 175 (2, 3): nobody listens (app closed) -> keep it and wake the no-screen engine.
         if (deliverEvent(type, full) && !destroying) requestNoScreenEngine("event")
@@ -4939,9 +4976,16 @@ class LocalLinkTransportService : Service() {
 
     private fun prepareOutgoingTransfer(target:String,file:File,fileId:String,messageId:String,fileName:String,contentType:String):OutgoingFileTransfer{
         val existing=outgoingTransfers[fileId]
-        if(existing!=null&&existing.recipientId==target&&existing.filePath==file.absolutePath&&existing.sha256==sha256File(file))return existing
         val sha=sha256File(file)
         val size=file.length()
+        if(existing!=null&&existing.recipientId==target&&existing.filePath==file.absolutePath&&existing.sha256==sha)return existing
+        // Bundle 203 (3): the same file under a new path CONTINUES (never back to 0).
+        if(existing!=null&&DirectFileTransferPolicy.canContinue(existing.recipientId==target,existing.size==size,existing.sha256==sha)){
+            val moved=existing.copy(filePath=file.absolutePath,messageId=messageId,updatedAt=System.currentTimeMillis())
+            outgoingTransfers[fileId]=moved
+            Log.i("LOCAL_LINK_TRANSPORT","FILE_SEND_CONTINUE transfer=${fileId.take(12)} done=${moved.acknowledged.count{it}}/${moved.totalChunks}")
+            return moved
+        }
         val total=DirectFileTransferPolicy.expectedChunks(size)
         val t=OutgoingFileTransfer(fileId,fileId,messageId,transportDeviceId!!,target,file.absolutePath,safeFileName(fileName),contentType,size,sha,total,BooleanArray(total),System.currentTimeMillis())
         outgoingTransfers[fileId]=t
@@ -5014,6 +5058,9 @@ class LocalLinkTransportService : Service() {
     private fun cancelFileTransportInternal(fileId:String){
         val id=fileId.trim()
         if(!validFileTransferId(id)) return
+        // Bundle 203 (2): a waiting file just leaves the line.
+        val waited=synchronized(outgoingWaitLine){outgoingWaitLine.remove(id)}
+        if(waited!=null&&!outgoingTransfers.containsKey(id)){transportEvent("file_cancelled",mapOf("transfer_id" to id,"message_id" to waited.messageId,"file_id" to id));return}
         cancelledDirectTransfers.add(id)
         val outgoing=outgoingTransfers.remove(id)
         if(outgoing!=null){

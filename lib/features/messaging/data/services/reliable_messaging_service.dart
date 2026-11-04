@@ -22,6 +22,8 @@ import 'package:locallink/features/connectivity/domain/peer_transport_contract.d
 import 'package:locallink/features/connectivity/domain/local_route.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/features/files/data/services/media_progress_hub.dart';
+import 'package:locallink/features/files/domain/file_size_rule.dart';
+import 'package:locallink/features/messaging/data/services/send_copy_book.dart';
 import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_transport_service.dart';
 
@@ -222,7 +224,9 @@ class ReliableMessagingService {
         // Tell the receiver first so its phone lets this file in again.
         await _sendMediaControl(
             message.recipientId, 'media_resend_start', message.id, a.id);
-        final path = await _sendablePath(local, a.originalName);
+        // Bundle 203 (4): asked again -> send it fresh (forget "done").
+        await directFilesDone.clear(a.id);
+        final path = await _sendablePath(local, a.originalName, fileId: a.id);
         await files.sendDirectFile(
           recipientId: message.recipientId,
           messageId: message.id,
@@ -940,8 +944,21 @@ class ReliableMessagingService {
     }
   }
 
-  static const _flushWatchdog = Duration(seconds: 60);
+  /// Bundle 203 (1): a flush that did nothing for 90 s is taken as stuck.
+  static const _flushWatchdog = Duration(seconds: 90);
   DateTime? _flushStartedAt;
+
+  /// Bundle 203 (1): one flush at a time. A stuck flush is retired by
+  /// bumping [_flushGen]; it stops at its next item ([_flushAlive] = last
+  /// sign of life). A flush asked for while one runs runs again at the end.
+  int _flushGen = 0;
+  DateTime? _flushAlive;
+  bool _flushAgain = false;
+
+  /// Bundle 203 (4): sent / still-sending files (no double sends).
+  late final DirectFilesDoneBook directFilesDone = DirectFilesDoneBook(
+      read: (k) => store.readSetting(k),
+      write: (k, v) => store.writeSetting(k, v));
 
   /// Bundle 128: every call site routes through here. A thrown transport
   /// error (e.g. PlatformException PEER_UNAVAILABLE while the mesh only has
@@ -1008,6 +1025,10 @@ class ReliableMessagingService {
         } catch (_) {}
       }
     }
+    // Bundle 203 (3): its open send copies go too.
+    for (final a in message.attachments) {
+      await SendCopyBook.instance.drop(a.id);
+    }
     final command = DeleteCommand(messageId: id, by: self, at: now);
     await store.addOutbox({
       'id': _newId(),
@@ -1029,6 +1050,12 @@ class ReliableMessagingService {
 
   /// Bundle 162 (4.6): user tapped Delete on a failed message.
   Future<void> deleteFailed(String id) async {
+    // Bundle 203 (3): its open send copies go too.
+    try {
+      for (final a in await store.pendingAttachments(id)) {
+        await SendCopyBook.instance.drop(a['id'].toString());
+      }
+    } catch (_) {}
     // Bundle 197b (L1): its files (+ small picture) go too.
     final paths = await store.deleteFailedOutbox(id);
     final files = await deletes.deleteFiles(paths);
@@ -1037,17 +1064,20 @@ class ReliableMessagingService {
 
   Future<void> flush() async {
     if (_flushing) {
-      // Watchdog: a hung upload/send must not block the queue forever —
-      // when the previous flush clearly timed out, force-reset the guard.
-      final started = _flushStartedAt;
-      if (started != null &&
-          DateTime.now().difference(started) > _flushWatchdog) {
-        AppLogger.warning('MESSAGE_FLUSH_WATCHDOG_RESET');
+      // Watchdog: a hung upload/send must not block the queue forever.
+      // Bundle 203 (1): only after 90 s with no sign of life, and the old
+      // flush is retired (it stops at its next item) - never two at once.
+      final alive = _flushAlive ?? _flushStartedAt;
+      final idle = alive == null ? Duration.zero : DateTime.now().difference(alive);
+      if (alive != null && idle > _flushWatchdog) {
+        AppLogger.warning('MESSAGE_FLUSH_WATCHDOG_RESET',
+            detail: 'idle=${idle.inSeconds}s');
+        _flushGen++;
         _flushing = false;
       } else {
-        AppLogger.info(
-          'MESSAGE_FLUSH_SKIPPED_ALREADY_RUNNING',
-        );
+        // Bundle 203 (1): run once more when this one ends.
+        _flushAgain = true;
+        AppLogger.info('MESSAGE_FLUSH_AGAIN');
         return;
       }
     }
@@ -1061,6 +1091,8 @@ class ReliableMessagingService {
 
     _flushing = true;
     _flushStartedAt = DateTime.now();
+    _flushAlive = _flushStartedAt;
+    final gen = ++_flushGen;
     final messageCooldown = _messageRateLimitedUntil;
     if (messageCooldown != null &&
         DateTime.now().toUtc().isBefore(messageCooldown)) {
@@ -1086,10 +1118,29 @@ class ReliableMessagingService {
         detail: 'count=${items.length}',
       );
 
-      for (final item in items) {
-        final id = item['id'].toString();
+      for (final listed in items) {
+        // Bundle 203 (1): a retired (stuck) flush stops here.
+        if (gen != _flushGen) {
+          AppLogger.warning('MESSAGE_FLUSH_STALE_STOP',
+              detail: 'gen=$gen now=$_flushGen');
+          break;
+        }
+        _flushAlive = DateTime.now();
+        final id = listed['id'].toString();
+        // Bundle 203 (1): read the row again - another flush (or the
+        // friend's "got it") may have finished it meanwhile.
+        var item = listed;
+        try {
+          final fresh = await store.outboxItem(id);
+          if (fresh == null) {
+            AppLogger.info('MESSAGE_FLUSH_ITEM_GONE', detail: 'id=$id');
+            continue;
+          }
+          item = fresh;
+        } catch (_) {}
 
         final status = item['status']?.toString() ?? 'queued';
+        if (status == 'failed') continue;
         if (!store.isOutboxRetryEligible(item)) {
           AppLogger.info('MESSAGE_RETRY_BACKOFF_SKIP',
               detail: 'id=$id attempt=${item['attempt_count'] ?? 0}');
@@ -1120,7 +1171,10 @@ class ReliableMessagingService {
 
         final recipientId = item['recipient_id'].toString();
 
-        final pending = await store.pendingAttachments(id);
+        // Bundle 203 (1): small files first, so they are not stuck behind a big one.
+        final pending = [...await store.pendingAttachments(id)]
+          ..sort((a, b) => (int.tryParse('${a['size']}') ?? 0)
+              .compareTo(int.tryParse('${b['size']}') ?? 0));
 
         final localRoute = await _localRouteFor(recipientId);
         final canUseDirect =
@@ -1146,42 +1200,74 @@ class ReliableMessagingService {
             final attachments = <Map<String, dynamic>>[];
 
             for (final attachment in pending) {
-              // Bundle 142: the sender's own chat bubble encrypts the staged
-              // file at rest (protectLegacyLocalFile -> '<path>.enc') and
-              // deletes the plaintext, so every retry failed with "Selected
-              // file is no longer available". Push a decrypted view instead.
-              final sendPath = await _sendablePath(
-                attachment['local_path'].toString(),
-                attachment['original_name'].toString(),
-              );
-              final file = PickedFile(
-                path: sendPath,
+              _flushAlive = DateTime.now();
+              final fileId = attachment['id'].toString();
+              final declared = int.tryParse(attachment['size'].toString()) ?? 0;
+              final meta = PickedFile(
+                path: attachment['local_path'].toString(),
                 name: attachment['original_name'].toString(),
                 contentType: attachment['content_type'].toString(),
-                size: int.tryParse(
-                      attachment['size'].toString(),
-                    ) ??
-                    0,
+                size: declared,
               );
+              // Bundle 203 (5): safety net - a file over 50 MB is never sent.
+              if (FileSizeRule.tooBig(declared)) {
+                AppLogger.warning('DIRECT_FILE_TOO_BIG_DROPPED',
+                    detail: 'message=$id file=$fileId size=$declared');
+                continue;
+              }
+              // Bundle 203 (4): the friend already has it / it is on its way.
+              var skipBytes = false;
+              if (await directFilesDone.isDone(fileId)) {
+                AppLogger.info('DIRECT_FILE_ALREADY_DONE',
+                    detail: 'message=$id file=$fileId');
+                skipBytes = true;
+              } else if (directFilesDone.isSending(fileId)) {
+                AppLogger.info('DIRECT_FILE_STILL_SENDING',
+                    detail: 'message=$id file=$fileId');
+                skipBytes = true;
+              }
+              final PickedFile file;
+              if (skipBytes) {
+                file = meta;
+              } else {
+                // Bundle 142: the sender's own chat bubble encrypts the staged
+                // file at rest (protectLegacyLocalFile -> '<path>.enc') and
+                // deletes the plaintext. Bundle 203 (3): send ONE fixed open
+                // copy, so a retry continues instead of starting from 0.
+                final sendPath = await _sendablePath(
+                  meta.path,
+                  meta.name,
+                  fileId: fileId,
+                );
+                file = PickedFile(
+                  path: sendPath,
+                  name: meta.name,
+                  contentType: meta.contentType,
+                  size: declared,
+                );
+              }
 
               // Bundle 106: a missing local copy or a Wi-Fi Direct hiccup
               // must not swallow the message — push the bytes best-effort,
               // still send the direct_message, and let the outbox retry the
               // file on the next flush.
-              try {
-                await files.sendDirectFile(
-                  recipientId: recipientId,
-                  messageId: id,
-                  fileId: attachment['id'].toString(),
-                  file: file,
-                );
-              } catch (error, stackTrace) {
-                AppLogger.error(
-                  'DIRECT_FILE_PUSH_FAILED',
-                  error: error,
-                  stackTrace: stackTrace,
-                  detail: 'message=$id file=${attachment['id']}',
-                );
+              if (!skipBytes) {
+                try {
+                  await files.sendDirectFile(
+                    recipientId: recipientId,
+                    messageId: id,
+                    fileId: fileId,
+                    file: file,
+                  );
+                  directFilesDone.markSending(fileId);
+                } catch (error, stackTrace) {
+                  AppLogger.error(
+                    'DIRECT_FILE_PUSH_FAILED',
+                    error: error,
+                    stackTrace: stackTrace,
+                    detail: 'message=$id file=${attachment['id']}',
+                  );
+                }
               }
 
               attachments.add({
@@ -1377,11 +1463,20 @@ class ReliableMessagingService {
         stackTrace: stackTrace,
       );
     } finally {
-      _flushing = false;
-
-      AppLogger.info(
-        'MESSAGE_FLUSH_FINISH',
-      );
+      // Bundle 203 (1): only the current flush frees the guard.
+      if (gen == _flushGen) {
+        _flushing = false;
+        _flushAlive = null;
+        AppLogger.info(
+          'MESSAGE_FLUSH_FINISH',
+        );
+        if (_flushAgain) {
+          _flushAgain = false;
+          unawaited(Future<void>(() => _safeFlush('again')));
+        }
+      } else {
+        AppLogger.info('MESSAGE_FLUSH_FINISH', detail: 'stale gen=$gen');
+      }
     }
   }
 
@@ -1444,7 +1539,18 @@ class ReliableMessagingService {
   /// Bundle 142: plaintext staged path if it still exists, else a decrypted
   /// view of its `.enc` twin (kept until the view dir is swept — native
   /// resume/retransmit may re-read the path after this call returns).
-  Future<String> _sendablePath(String path, String originalName) async {
+  Future<String> _sendablePath(String path, String originalName,
+      {String? fileId}) async {
+    // Bundle 203 (3): one fixed copy per file (same path on every retry).
+    if (fileId != null && fileId.isNotEmpty && path.isNotEmpty) {
+      return SendCopyBook.instance.pathFor(
+        localPath: path,
+        fileId: fileId,
+        originalName: originalName,
+        open: (locked, ext) =>
+            files.materializeForDisplay(locked, extension: ext),
+      );
+    }
     if (path.isEmpty || await File(path).exists()) return path;
     final protectedPath = path.endsWith('.enc') ? path : '$path.enc';
     if (!await File(protectedPath).exists()) return path;
@@ -2108,24 +2214,28 @@ class ReliableMessagingService {
     // ------------------------------------------------------------------------
     if (eventType == 'file_progress') {
       final messageId = event['message_id']?.toString() ?? '';
+      // Bundle 203 (6): each file its own ring.
+      final progFile = (event['file_id'] ?? event['transfer_id'])?.toString();
       final total = int.tryParse(event['total']?.toString() ?? '');
       final bytes = int.tryParse(event['bytes']?.toString() ?? '');
       if (total != null && bytes != null) {
-        MediaProgressHub.instance.update(messageId, done: bytes, total: total);
+        MediaProgressHub.instance
+            .update(messageId, done: bytes, total: total, fileId: progFile);
       } else {
         final chunks =
             int.tryParse(event['total_chunks']?.toString() ?? '') ?? 0;
         final acked =
             int.tryParse(event['acked_chunks']?.toString() ?? '') ?? 0;
-        MediaProgressHub.instance.update(messageId, done: acked, total: chunks);
+        MediaProgressHub.instance
+            .update(messageId, done: acked, total: chunks, fileId: progFile);
       }
       return;
     }
     // Bundle 179 (1.6): a file waits while a voice call is on.
     if (eventType == 'file_paused' || eventType == 'file_resumed') {
       final messageId = event['message_id']?.toString() ?? '';
-      MediaProgressHub.instance
-          .setPaused(messageId, eventType == 'file_paused');
+      MediaProgressHub.instance.setPaused(messageId, eventType == 'file_paused',
+          fileId: (event['file_id'] ?? event['transfer_id'])?.toString());
       return;
     }
     if (eventType == 'file_sent' ||
@@ -2133,7 +2243,23 @@ class ReliableMessagingService {
         eventType == 'file_cancelled' ||
         eventType == 'file_expired') {
       final messageId = event['message_id']?.toString() ?? '';
-      if (messageId.isNotEmpty) MediaProgressHub.instance.clear(messageId);
+      // Bundle 203 (3, 4): my file ended - remember "done", drop its copy.
+      final endedId = (event['file_id'] ?? event['transfer_id'])?.toString() ?? '';
+      // Bundle 203 (6): only this file's ring ends.
+      if (messageId.isNotEmpty) {
+        MediaProgressHub.instance
+            .clear(messageId, fileId: endedId.isEmpty ? null : endedId);
+      }
+      if (endedId.isNotEmpty) {
+        if (eventType == 'file_sent') {
+          await directFilesDone.markDone(endedId);
+        } else {
+          directFilesDone.sendingEnded(endedId);
+        }
+        if (eventType == 'file_sent' || eventType == 'file_cancelled') {
+          await SendCopyBook.instance.drop(endedId);
+        }
+      }
       // Bundle 174 (6): the sender stopped a file coming to me -> the bubble
       // shows "Tap to download".
       if (eventType == 'file_cancelled' &&
@@ -2149,7 +2275,10 @@ class ReliableMessagingService {
     // ------------------------------------------------------------------------
     if (eventType == 'file_received') {
       final doneId = event['message_id']?.toString() ?? '';
-      if (doneId.isNotEmpty) MediaProgressHub.instance.clear(doneId);
+      if (doneId.isNotEmpty) {
+        MediaProgressHub.instance
+            .clear(doneId, fileId: event['file_id']?.toString()); // Bundle 203 (6)
+      }
       final fileId = event['file_id']?.toString();
       final messageId = event['message_id']?.toString();
       final path = event['path']?.toString();

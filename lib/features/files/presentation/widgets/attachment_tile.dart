@@ -169,7 +169,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
         await widget.transfer.cancelDirectFile(id);
       }
     } catch (_) {}
-    MediaProgressHub.instance.clear(widget.messageId);
+    MediaProgressHub.instance.clear(widget.messageId, fileId: id); // Bundle 203 (6)
     if (mounted) setState(() {});
   }
 
@@ -186,7 +186,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
         await widget.transfer.cancelDirectFile(id);
       }
     } catch (_) {}
-    MediaProgressHub.instance.clear(widget.messageId);
+    MediaProgressHub.instance.clear(widget.messageId, fileId: id); // Bundle 203 (6)
   }
 
   /// Bundle 174 (6): "Tap to download" after a cancel - ask the sender's
@@ -1084,6 +1084,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
       return _LiveRing(
         key: const Key('chat_media_receiving'),
         messageId: widget.messageId,
+        fileId: widget.attachment.id, // Bundle 203 (6)
         sizeBytes: size,
         isVideo: _isVideo,
         onCancel: _cancelReceive,
@@ -1093,6 +1094,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
       return _LiveRing(
         key: const Key('chat_media_sending'),
         messageId: widget.messageId,
+        fileId: widget.attachment.id, // Bundle 203 (6)
         sizeBytes: size,
         isVideo: _isVideo,
         onCancel: _cancelSend,
@@ -1116,6 +1118,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                 : _LiveRing(
                     key: const Key('chat_media_sending'),
                     messageId: widget.messageId,
+                    fileId: widget.attachment.id, // Bundle 203 (6)
                     sizeBytes: widget.attachment.size,
                     isVideo: _isVideo,
                     onCancel: _cancelSend,
@@ -1242,18 +1245,41 @@ class _LiveRing extends StatelessWidget {
     required this.sizeBytes,
     required this.isVideo,
     this.onCancel,
+    this.fileId,
   });
 
   final String messageId;
+
+  /// Bundle 203 (6): this file's own ring (null = the message ring).
+  final String? fileId;
   final int sizeBytes;
   final bool isVideo;
   final Future<void> Function()? onCancel;
 
   @override
   Widget build(BuildContext context) {
+    final hub = MediaProgressHub.instance;
+    final file = fileId;
+    if (file == null || file.isEmpty) {
+      return ValueListenableBuilder<MediaProgress?>(
+          valueListenable: hub.watch(messageId),
+          builder: (context, p, _) => _ringFor(p));
+    }
+    // Bundle 203 (6): the file's own number; the message number only while
+    // no file of this message has its own (older phones).
     return ValueListenableBuilder<MediaProgress?>(
-      valueListenable: MediaProgressHub.instance.watch(messageId),
-      builder: (context, p, _) {
+      valueListenable: hub.watch(messageId),
+      builder: (context, m, _) => ValueListenableBuilder<MediaProgress?>(
+        valueListenable: hub.watchFile(messageId, file),
+        builder: (context, f, _) =>
+            _ringFor(f ?? (hub.hasFileProgress(messageId) ? null : m)),
+      ),
+    );
+  }
+
+  Widget _ringFor(MediaProgress? p) {
+    return Builder(
+      builder: (context) {
         final ring = TransferPercentRing(
           fraction: p?.fraction,
           isVideo: isVideo,

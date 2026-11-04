@@ -42,6 +42,8 @@ import 'package:locallink/features/messaging/presentation/widgets/quote_thumb.da
 import 'package:locallink/features/messaging/presentation/widgets/swipe_to_reply.dart';
 import 'package:locallink/core/services/ui_sounds.dart';
 import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
+import 'package:locallink/features/files/domain/file_size_rule.dart';
+import 'package:locallink/features/files/presentation/widgets/file_too_big_dialog.dart';
 
 class ChatScreen extends StatefulWidget {
   final ChatBloc controller;
@@ -241,9 +243,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _pickFiles() async {
     try {
-      final picked = await _transferController.pickFiles(allowMultiple: true);
-      if (!mounted || picked.isEmpty) return;
-      widget.controller.addPendingAttachments(picked);
+      final all = await _transferController.pickFiles(allowMultiple: true);
+      if (!mounted || all.isEmpty) return;
+      // Bundle 203 (5): files over 50 MB are dropped with a pop-up.
+      final split = FileSizeRule.split(all);
+      final picked = split.keep;
+      if (picked.isNotEmpty) widget.controller.addPendingAttachments(picked);
+      if (split.dropped.isNotEmpty) {
+        await showFileTooBigDialog(context, [
+          for (final f in split.dropped)
+            TooBigFile(f.name, f.size, isVideo: f.contentType.startsWith('video/')),
+        ]);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));

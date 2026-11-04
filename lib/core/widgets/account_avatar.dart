@@ -16,7 +16,15 @@ class AccountAvatar extends StatelessWidget {
   /// letter. Not friends never have a picture there.
   final String? peerId;
 
-  const AccountAvatar({super.key, required this.name, this.localPath = '', this.radius = 28, this.iconSize, this.peerId});
+  /// Bundle 203 (5b): MY picture while my profile is Private - blue ring on
+  /// the edge + a small white circle with a blue lock at the top right.
+  /// Owner only (Profile + the Settings card). Same outside size.
+  final bool locked;
+
+  const AccountAvatar({super.key, required this.name, this.localPath = '', this.radius = 28, this.iconSize, this.peerId, this.locked = false});
+
+  static const Color ringStart = Color(0xFF1E5BFF);
+  static const Color ringEnd = Color(0xFF23E0D8);
 
   ImageProvider? _imageFor(String path) {
     if (path.isEmpty) return null;
@@ -31,7 +39,65 @@ class AccountAvatar extends StatelessWidget {
     return value.substring(0, 1).toUpperCase();
   }
 
-  Widget _circle(ImageProvider? image) => CircleAvatar(
+  double get _ring => radius * 0.09 < 2.5 ? 2.5 : radius * 0.09;
+  double get _inner => locked ? radius - _ring - _ring * 0.8 : radius;
+
+  Widget _circle(ImageProvider? image) => locked ? _lockedCircle(image) : _plainCircle(image, radius);
+
+  Widget _lockedCircle(ImageProvider? image) {
+    final badge = radius * 0.62 < 16 ? 16.0 : radius * 0.62;
+    return SizedBox(
+      key: const ValueKey('avatar_private_lock'),
+      width: radius * 2,
+      height: radius * 2,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: radius * 2,
+            height: radius * 2,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [ringStart, ringEnd],
+              ),
+            ),
+            padding: EdgeInsets.all(_ring),
+            child: Container(
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+              ),
+              alignment: Alignment.center,
+              child: _plainCircle(image, _inner),
+            ),
+          ),
+          Positioned(
+            top: radius * 0.02 - badge * 0.15,
+            right: radius * 0.02 - badge * 0.15,
+            child: Container(
+              width: badge,
+              height: badge,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 3, offset: const Offset(0, 1)),
+                ],
+              ),
+              alignment: Alignment.center,
+              child: Icon(Icons.lock_rounded, size: badge * 0.62, color: ringStart),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _plainCircle(ImageProvider? image, double radius) => CircleAvatar(
         radius: radius,
         backgroundImage: image,
         backgroundColor: LocalLinkAvatarColor.forName(name),

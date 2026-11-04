@@ -8,6 +8,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/features/account/presentation/widgets/private_profile_card.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
@@ -128,10 +129,11 @@ class MessengerSettingsScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    AccountAvatar(
+                    // Bundle 203 (5b): lock ring while my profile is Private.
+                    SettingsOwnAvatar(
                         name: displayName,
-                        radius: 28,
-                        peerId: store.deviceId), // Bundle 204: my picture
+                        peerId: store.deviceId, // Bundle 204: my picture
+                        account: accountRepository),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
@@ -332,4 +334,46 @@ class ReadReceiptsRow extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Bundle 203 (5b): my picture on the Settings card, with the lock ring
+/// while my profile is Private (changes at once with the switch).
+class SettingsOwnAvatar extends StatefulWidget {
+  const SettingsOwnAvatar(
+      {super.key, required this.name, required this.peerId, required this.account});
+
+  final String name;
+  final String? peerId;
+  final AccountRepositoryContract account;
+
+  @override
+  State<SettingsOwnAvatar> createState() => _SettingsOwnAvatarState();
+}
+
+class _SettingsOwnAvatarState extends State<SettingsOwnAvatar> {
+  @override
+  void initState() {
+    super.initState();
+    if (ProfilePrivacyRule.ownPrivate.value == null) _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await widget.account.cachedProfile();
+      if (p != null && ProfilePrivacyRule.ownPrivate.value == null) {
+        ProfilePrivacyRule.ownPrivate.value = ProfilePrivacyRule.isPrivate(p);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool?>(
+        valueListenable: ProfilePrivacyRule.ownPrivate,
+        builder: (context, own, _) => AccountAvatar(
+            name: widget.name,
+            radius: 28,
+            peerId: widget.peerId,
+            locked: own == true),
+      );
 }
