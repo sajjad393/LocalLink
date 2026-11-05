@@ -299,8 +299,9 @@ object NearbyRadio {
                 call.argument<String>("kind").orEmpty(), call.argument<String>("ssid").orEmpty(),
                 call.argument<String>("key").orEmpty(), call.argument<String>("v6")))
             "leaveLocalNet" -> { localNet?.leave(call.argument<String>("reason") ?: "app"); result.success(null) }
-            "startLocalHotspot" -> result.success(if (hasPermission(a)) localNet?.startHotspot() else "permission")
-            "stopLocalHotspot" -> { localNet?.stopHotspot(call.argument<String>("reason") ?: "app"); result.success(null) }
+            // Bundle 210: the mesh test switch is one hotspot owner; Share LinkUp is the other.
+            "startLocalHotspot" -> result.success(if (hasPermission(a)) localNet?.startHotspot(AppSharePolicy.OWNER_MESH, null) else "permission")
+            "stopLocalHotspot" -> { localNet?.stopHotspot(AppSharePolicy.OWNER_MESH, call.argument<String>("reason") ?: "app"); result.success(null) }
             "setNearbyLinkTarget" -> { tags?.setLinkTarget(call.argument<String>("id")); result.success(null) }
             "localNetStatus" -> result.success(localNet?.status() ?: emptyMap<String, Any?>())
             "createNearbyGroup" -> createNearbyGroup(result)

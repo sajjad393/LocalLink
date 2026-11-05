@@ -1,3 +1,4 @@
+import 'package:locallink/features/share_app/presentation/share_app_entry.dart';
 import 'package:locallink/features/account/data/own_profile_signal.dart';
 import 'package:flutter/material.dart';
 
@@ -212,6 +213,8 @@ class MessengerSettingsScreen extends StatelessWidget {
             ),
             // Bundle 197b (U1): Storage, between Keep running and Reset.
             StorageSettingsRow(store: store),
+            // Bundle 210: give LinkUp to a nearby phone (hotspot + QR).
+            ShareAppSettingsRow(ownerName: nickname),
             MessengerSettingsRow(
               icon: Icons.restart_alt,
               title: 'Reset setup',

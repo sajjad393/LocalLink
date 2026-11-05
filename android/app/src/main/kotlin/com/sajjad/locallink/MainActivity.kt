@@ -256,6 +256,10 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
+        // Bundle 210: Share LinkUp (hotspot + APK info, its own channel).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AppShareNative.CHANNEL).setMethodCallHandler { call, result ->
+            AppShareNative.handle(this, call, result)
+        }
         // Bundle 177 (2): Nearby lives in NearbyRadio (application context), so
         // closing this screen no longer stops it. Same channel, same answers.
         NearbyRadio.ensure(this)

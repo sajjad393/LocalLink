@@ -1541,6 +1541,8 @@ class _HomeScreenState extends State<HomeScreen> {
         crypto: widget.crypto,
         notifications: widget.notifications,
         selfUserId: widget.store.accountId ?? '',
+        // Bundle 210: "Shared by {name}" on the Share LinkUp page.
+        shareOwnerName: widget.store.username?.trim() ?? '',
       );
 
   void _changeThemeMode(ThemeMode mode) {

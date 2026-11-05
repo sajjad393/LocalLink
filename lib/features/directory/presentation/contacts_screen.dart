@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:locallink/features/share_app/presentation/share_app_entry.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart' show PresenceAvatar;
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
@@ -52,6 +53,9 @@ class ContactsScreen extends StatefulWidget {
   /// your own phones hidden from Nearby).
   final String selfUserId;
 
+  /// Bundle 210: my name for the Share LinkUp page ("Shared by …").
+  final String shareOwnerName;
+
   const ContactsScreen({
     required this.pairing,
     super.key,
@@ -64,6 +68,7 @@ class ContactsScreen extends StatefulWidget {
     required this.crypto,
     required this.notifications,
     this.selfUserId = '',
+    this.shareOwnerName = '',
   });
 
   @override
@@ -238,6 +243,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       child: _filterChip(colors),
                     ),
                   ),
+                // Bundle 210: give LinkUp to a nearby phone (hidden while
+                // searching).
+                if (query.isEmpty)
+                  InviteNearbyCard(ownerName: widget.shareOwnerName),
                 if (requests.isNotEmpty) ...[
                   MessengerGroupLabel('Requests',
                       key: const ValueKey('people_requests_label'),

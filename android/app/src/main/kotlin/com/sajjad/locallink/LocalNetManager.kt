@@ -159,10 +159,38 @@ class LocalNetManager private constructor(
     }
 
     // ---------------------------------------------------------- hotspot
+    // Bundle 210: the hotspot has owners. "mesh" = the nearby test switch
+    // (old behaviour, name + password go in the nearby tag); "share" = Share
+    // LinkUp (never in the tag). It closes only when nobody wants it. Every
+    // hotspot event says who it is `for`, so the mesh code ignores share-only
+    // events (otherwise it would switch the share hotspot off at once).
 
+    private val owners = HotspotOwners()
+    private var hsSsid: String? = null
+    private var hsKey: String? = null
+    private var hsQrType: String = "WPA"
+    private val shareWaiters = mutableListOf<(Map<String, Any?>) -> Unit>()
+
+    /** Old call (mesh). */
+    fun startHotspot(): String? = startHotspot(AppSharePolicy.OWNER_MESH, null)
+
+    /**
+     * Ask for the hotspot for [owner]. Null = started / starting / already on,
+     * else a reason. [onResult] (share) gets the name, password and QR type
+     * once it is on, or `ok=false` + reason.
+     */
     @Suppress("DEPRECATION")
-    fun startHotspot(): String? {
-        if (hotspot != null || hotspotStarting) return null
+    fun startHotspot(owner: String, onResult: ((Map<String, Any?>) -> Unit)?): String? {
+        val isNew = owners.add(owner)
+        val r = hotspot
+        if (r != null) {
+            if (owner == AppSharePolicy.OWNER_MESH && isNew && hsSsid != null) tags()?.setHotspot(hsSsid, hsKey)
+            if (isNew) sendHotspot("on", null, listOf(owner))
+            onResult?.invoke(shareInfo(reused = true))
+            return null
+        }
+        if (onResult != null) shareWaiters.add(onResult)
+        if (hotspotStarting) return null
         hotspotStarting = true
         return try {
             wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
@@ -171,63 +199,145 @@ class LocalNetManager private constructor(
                     hotspot = reservation
                     var ssid: String? = null
                     var key: String? = null
+                    var sec: Int? = null
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         val cfg = reservation.softApConfiguration
                         ssid = LocalNetPolicy.unquote(cfg.ssid)
                         key = cfg.passphrase
+                        sec = try { cfg.securityType } catch (_: Exception) { null }
                     } else {
                         val cfg = reservation.wifiConfiguration
                         ssid = LocalNetPolicy.unquote(cfg?.SSID)
                         key = LocalNetPolicy.unquote(cfg?.preSharedKey)
                     }
                     val usable = LocalNetPolicy.validSsid(ssid) && LocalNetPolicy.validKey(key)
-                    Log.i(TAG, "hotspot on usable=$usable")
-                    if (usable) tags()?.setHotspot(ssid, key)
-                    sendHotspot(if (usable) "on" else "failed", if (usable) null else "no_name")
-                    if (!usable) stopHotspot("no_name")
+                    Log.i(TAG, "hotspot on usable=$usable owners=${owners.list()}")
+                    if (owners.isEmpty()) {
+                        // Everybody left while Android was starting it.
+                        flushShare(mapOf("ok" to false, "reason" to "stopped"))
+                        closeAll("nobody", notify = false)
+                        return
+                    }
+                    if (usable) {
+                        hsSsid = ssid
+                        hsKey = key
+                        hsQrType = AppSharePolicy.qrType(sec)
+                        if (owners.has(AppSharePolicy.OWNER_MESH)) tags()?.setHotspot(ssid, key)
+                        sendHotspot("on", null, owners.list())
+                        flushShare(shareInfo(reused = false))
+                    } else {
+                        val was = owners.list()
+                        sendHotspot("failed", "no_name", was)
+                        flushShare(mapOf("ok" to false, "reason" to "no_name"))
+                        closeAll("no_name", notify = true, was = was)
+                    }
                 }
 
                 override fun onStopped() {
                     hotspotStarting = false
                     hotspot = null
+                    clearSaved()
+                    val was = owners.clear()
                     tags()?.setHotspot(null, null)
-                    Log.i(TAG, "hotspot stopped by Android")
-                    sendHotspot("off", "stopped")
+                    Log.i(TAG, "hotspot stopped by Android owners=$was")
+                    sendHotspot("off", "stopped", was)
+                    flushShare(mapOf("ok" to false, "reason" to "stopped"))
                 }
 
                 override fun onFailed(reason: Int) {
                     hotspotStarting = false
                     hotspot = null
+                    clearSaved()
+                    val was = owners.clear()
                     val why = LocalNetPolicy.hotspotFailure(reason)
-                    Log.i(TAG, "hotspot failed reason=$why")
-                    sendHotspot("failed", why)
+                    Log.i(TAG, "hotspot failed reason=$why owners=$was")
+                    sendHotspot("failed", why, was)
+                    flushShare(mapOf("ok" to false, "reason" to why))
                 }
             }, main)
-            Log.i(TAG, "hotspot start requested")
+            Log.i(TAG, "hotspot start requested owner=$owner")
             null
         } catch (e: SecurityException) {
             hotspotStarting = false
+            val was = owners.clear()
             Log.w(TAG, "hotspot denied: ${e.message}")
-            sendHotspot("failed", "permission")
+            sendHotspot("failed", "permission", was)
+            flushShare(mapOf("ok" to false, "reason" to "permission"))
             "permission"
         } catch (e: Exception) {
             hotspotStarting = false
+            val was = owners.clear()
             Log.w(TAG, "hotspot error: ${e.message}")
-            sendHotspot("failed", "error")
+            sendHotspot("failed", "error", was)
+            flushShare(mapOf("ok" to false, "reason" to "error"))
             "error"
         }
     }
 
-    fun stopHotspot(reason: String) {
-        val r = hotspot ?: return
+    /** Old call (mesh). */
+    fun stopHotspot(reason: String) = stopHotspot(AppSharePolicy.OWNER_MESH, reason)
+
+    /** [owner] no longer wants it; closes only when nobody else does. */
+    fun stopHotspot(owner: String, reason: String) {
+        owners.remove(owner)
+        if (owner == AppSharePolicy.OWNER_SHARE) shareWaiters.clear()
+        if (!owners.isEmpty()) {
+            // Someone else still uses it: keep it on.
+            if (owner == AppSharePolicy.OWNER_MESH) {
+                tags()?.setHotspot(null, null)
+                Log.i(TAG, "hotspot kept for ${owners.list()} (mesh left, reason=$reason)")
+                sendHotspot("off", reason, listOf(owner))
+            } else {
+                Log.i(TAG, "hotspot kept for ${owners.list()} ($owner left, reason=$reason)")
+            }
+            return
+        }
+        if (hotspot == null) return
+        closeAll(reason, notify = true, was = listOf(owner))
+    }
+
+    private fun closeAll(reason: String, notify: Boolean, was: List<String> = owners.list()) {
+        val r = hotspot
         hotspot = null
-        try { r.close() } catch (_: Exception) {}
+        owners.clear()
+        clearSaved()
+        try { r?.close() } catch (_: Exception) {}
         tags()?.setHotspot(null, null)
         Log.i(TAG, "hotspot off reason=$reason")
-        sendHotspot("off", reason)
+        if (notify) sendHotspot("off", reason, was)
+    }
+
+    private fun clearSaved() {
+        hsSsid = null
+        hsKey = null
+        hsQrType = "WPA"
+    }
+
+    private fun shareInfo(reused: Boolean): Map<String, Any?> = mapOf(
+        "ok" to (hsSsid != null),
+        "reason" to (if (hsSsid != null) null else "no_name"),
+        "ssid" to hsSsid,
+        "key" to hsKey,
+        "qr_type" to hsQrType,
+        "reused" to reused,
+    )
+
+    private fun flushShare(info: Map<String, Any?>) {
+        if (shareWaiters.isEmpty()) return
+        val list = shareWaiters.toList()
+        shareWaiters.clear()
+        for (w in list) try { w(info) } catch (_: Exception) {}
     }
 
     fun hotspotOn(): Boolean = hotspot != null
+
+    /** Bundle 210: is the hotspot on, and is Share one of its owners. */
+    fun shareStatus(): Map<String, Any?> = mapOf(
+        "on" to (hotspot != null),
+        "starting" to hotspotStarting,
+        "share" to owners.has(AppSharePolicy.OWNER_SHARE),
+        "mesh" to owners.has(AppSharePolicy.OWNER_MESH),
+    )
 
     fun status(): Map<String, Any?> = mapOf(
         "supported" to supported(),
@@ -237,7 +347,8 @@ class LocalNetManager private constructor(
 
     fun dispose() {
         leave("app_closed")
-        stopHotspot("app_closed")
+        if (hotspot != null) closeAll("app_closed", notify = true)
+        else { owners.clear(); shareWaiters.clear() }
         LocalLinkTransportService.localNetListener = null
         if (shared === this) shared = null
     }
@@ -246,8 +357,8 @@ class LocalNetManager private constructor(
         emit(mapOf("type" to "local_net", "state" to state, "kind" to kind) + extra)
     }
 
-    private fun sendHotspot(state: String, reason: String?) {
-        emit(mapOf("type" to "hotspot", "state" to state, "reason" to reason))
+    private fun sendHotspot(state: String, reason: String?, forOwners: List<String>) {
+        emit(mapOf("type" to "hotspot", "state" to state, "reason" to reason, "for" to forOwners))
     }
 
     companion object {

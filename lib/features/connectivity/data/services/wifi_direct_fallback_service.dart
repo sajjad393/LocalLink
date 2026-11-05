@@ -1734,6 +1734,10 @@ final class WifiDirectFallbackService {
   }
 
   void _applyHotspotEvent(Map<dynamic, dynamic> event) {
+    // Bundle 210: the hotspot can belong to Share LinkUp too. Only events
+    // for the mesh owner count here (old events with no `for` = mesh), or
+    // this code would switch the share hotspot off at once.
+    if (!hotspotEventIsForMesh(event)) return;
     final state = event['state']?.toString();
     final reason = event['reason']?.toString();
     final now = _clock();
@@ -1781,4 +1785,12 @@ final class WifiDirectFallbackService {
       },
     );
   }
+}
+
+/// Bundle 210: true when a native `hotspot` event concerns the mesh owner.
+/// Events without `for` come from older code and count as mesh.
+bool hotspotEventIsForMesh(Map<dynamic, dynamic> event) {
+  final owners = event['for'];
+  if (owners is! List) return true;
+  return owners.map((e) => e.toString()).contains('mesh');
 }
