@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 
@@ -154,8 +155,11 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
       await repository.completeOfflineLogin();
       return const AuthOutcome.offline();
     }
-    if (repository.verifyOfflineLogin(user, password) ||
-        repository.verifyOfflineRecovery(user, password)) {
+    final byPassword = repository.verifyOfflineLogin(user, password);
+    if (byPassword || repository.verifyOfflineRecovery(user, password)) {
+      // Bundle 214 (G6): log line only (no behaviour change).
+      AppLogger.info('AUTH_OFFLINE_LOGIN',
+          detail: 'ok via=${byPassword ? 'password' : 'recovery'}');
       await repository.completeOfflineLogin();
       // Bundle 123: self-heal accounts created before offline registration
       // seeded a profile — pairing read LocalStore.profile() and found null.
@@ -164,6 +168,7 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
     }
     // Known receiver: the credential simply did not match — say so plainly,
     // with a single fixed message and no connectivity chatter.
+    AppLogger.info('AUTH_OFFLINE_LOGIN', detail: 'bad');
     emit(state.copyWith(error: 'That username and password do not match.'));
     throw Exception('That username and password do not match.');
   }

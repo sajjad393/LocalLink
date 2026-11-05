@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:locallink/core/models/group.dart';
@@ -302,6 +303,7 @@ Future<void> showGroupMemberProfile(BuildContext context,
           Text('@$username',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant)),
+        AdminRoleLine(id: member.deviceId), // Bundle 214 (D7)
         const SizedBox(height: 4),
         Text(PresenceHub.instance.statusOf(member.deviceId).label,
             textAlign: TextAlign.center,
@@ -591,7 +593,7 @@ Future<bool?> showJoinRequestSheet(BuildContext context, GroupJoinRequest r) {
           padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
           child: Row(
             children: [
-              AccountAvatar(name: name, radius: 23),
+              AccountAvatar(name: name, radius: 23, userId: r.memberId), // 214: crown
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

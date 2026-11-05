@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:http/io_client.dart' as http_io;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:locallink/core/network/build_http.dart' show BuildHeaderClient;
 import 'package:sqflite_sqlcipher/sqflite.dart';
 
 import 'package:locallink/core/models/attachment.dart';
@@ -28,7 +29,7 @@ class FileTransferService {
   /// 8 s connects fail fast; transfer throughput is unaffected.
  http.Client _newHttpClient() {
   final inner = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-  return http_io.IOClient(inner);
+  return BuildHeaderClient(http_io.IOClient(inner)); // Bundle 213: build header
 }
   final ConnectivityRepositoryContract? connectivity;
   final Map<String, http.Client> _activeClients = {};

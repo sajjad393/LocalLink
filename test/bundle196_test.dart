@@ -548,8 +548,8 @@ void main() {
       expect(card, contains('discoverableByName: !makePrivate'));
       expect(s.indexOf("MessengerGroupLabel('This phone')"),
           lessThan(s.indexOf("MessengerGroupLabel('Privacy'")));
-      expect(s.indexOf("MessengerGroupLabel('Privacy'"),
-          lessThan(s.indexOf("MessengerGroupLabel('Admin')")));
+      // Bundle 214: the Admin section is removed.
+      expect(s, isNot(contains("MessengerGroupLabel('Admin')")));
     });
 
     test('profile save keeps my Private choice', () {

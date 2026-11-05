@@ -4,6 +4,8 @@ import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 
+import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/call_quality.dart';
 import 'package:locallink/core/models/device.dart';
@@ -331,6 +333,20 @@ final class CallSessionManager implements CallGateway {
   }
 
   Future<void> startCall(Device device) async {
+    // Bundle 212: my own account is blocked by admin (read only).
+    if (AdminBlockBook.instance.selfBlocked) {
+      throw const CallPreflightException(
+        CallPreflightCode.peerBlocked,
+        'Blocked by admin',
+      );
+    }
+    // Bundle 213: this app version is stopped by admin (read only).
+    if (VersionGuard.instance.stopped) {
+      throw const CallPreflightException(
+        CallPreflightCode.peerBlocked,
+        'Old version. Update to call.',
+      );
+    }
     if (await store.isBlockedPeer(device.id)) {
       throw const CallPreflightException(
         CallPreflightCode.peerBlocked,

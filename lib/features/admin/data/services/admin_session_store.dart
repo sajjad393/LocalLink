@@ -8,6 +8,14 @@ final class AdminSessionStore {
   static const _usernameKey = 'locallink_admin_session_username';
   static const _roleKey = 'locallink_admin_session_role';
 
+  /// Bundle 211 (B6): a token signed out while offline; sent to the server
+  /// (POST /admin/logout) on the next connect, then deleted.
+  static const _pendingRevokeKey = 'locallink_admin_pending_revoke';
+
+  /// Bundle 214 (G2): the account the saved admin session belongs to. A
+  /// session never moves to another account on the same phone.
+  static const _accountKey = 'locallink_admin_session_account';
+
   final SecureStorageService storage;
   AdminSessionStore({SecureStorageService? storage}) : storage = storage ?? const SecureStorageService();
 
@@ -35,12 +43,28 @@ final class AdminSessionStore {
       username: username!,
       role: role!,
     );
-    if (session.expired) {
-      await clear();
-      return null;
-    }
-    return session;
+    // Bundle 211 (B2): no longer thrown away after 30 minutes or by the
+    // phone clock. Only Sign out, or a 401 from the server, clears it.
+    return session.usable ? session : null;
   }
+
+  Future<void> saveAccount(String accountId) =>
+      storage.write(key: _accountKey, value: accountId);
+
+  Future<String?> readAccount() async {
+    final v = await storage.read(key: _accountKey);
+    return (v == null || v.isEmpty) ? null : v;
+  }
+
+  Future<void> savePendingRevoke(String token) =>
+      storage.write(key: _pendingRevokeKey, value: token);
+
+  Future<String?> pendingRevoke() async {
+    final v = await storage.read(key: _pendingRevokeKey);
+    return (v == null || v.isEmpty) ? null : v;
+  }
+
+  Future<void> clearPendingRevoke() => storage.delete(key: _pendingRevokeKey);
 
   Future<void> clear() async {
     await Future.wait([
@@ -49,6 +73,7 @@ final class AdminSessionStore {
       storage.delete(key: _adminIdKey),
       storage.delete(key: _usernameKey),
       storage.delete(key: _roleKey),
+      storage.delete(key: _accountKey),
     ]);
   }
 }

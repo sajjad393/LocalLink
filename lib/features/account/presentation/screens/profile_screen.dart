@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:locallink/features/account/data/own_profile_signal.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 
@@ -11,6 +12,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/directory/data/peer_photo_book.dart';
 import 'package:locallink/features/account/presentation/widgets/profile_photo_sheet.dart';
+import 'package:locallink/features/account/presentation/widgets/photo_tap_overlay.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
@@ -81,6 +83,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// Bundle 204: "Remove photo" was chosen (saved with Save).
   bool _removePhoto = false;
+
+  /// Bundle 211 (A3): the camera circle is showing on my photo.
+  bool _cameraShowing = false;
   LocalProfile? profile;
   // Bundle 105: discovery toggles removed from the UI — they stay ON
   // permanently so friends can find you by phone/username and the profile
@@ -117,7 +122,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _refreshAdminCapability() async {
     final session = await (widget.adminCapability ?? AdminCapabilityService()).readValidSession();
     if (!mounted) return;
-    setState(() => _adminCapable = session != null && !session.expired);
+    // Bundle 211 (B3): a saved admin sign-in stays until Sign out (the
+    // server decides), so the phone clock is not checked here.
+    setState(() => _adminCapable = session != null);
     widget.viewMode?.setAdminCapability(_adminCapable);
   }
 
@@ -176,6 +183,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String _cleanError(Object error) => cleanBlocError(error);
 
+  /// Bundle 211 (A4): "Tap photo to change" / "Tap photo to add one" /
+  /// "Tap the camera to choose a photo" (while the camera shows).
+  String _photoHint(LocalProfile? value) {
+    if (_cameraShowing) return 'Tap the camera to choose a photo';
+    final hasPhoto = image != null ||
+        (!_removePhoto && (value?.localAvatarPath ?? '').isNotEmpty);
+    return hasPhoto ? 'Tap photo to change' : 'Tap photo to add one';
+  }
+
+  /// Bundle 211 (A5): a new or removed photo is saved at once (the Save
+  /// button is still there for name and phone). First-time setup keeps the
+  /// old way (Save) so the screen does not close by itself.
+  bool get _photoSavesAtOnce => _usernameLocked && !widget.onboarding;
+
   /// Bundle 204 (mock 204 B1): Camera / Gallery / Remove photo.
   Future<void> _pickImage() async {
     final value = bloc.profile ?? profile;
@@ -188,6 +209,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         image = null;
         _removePhoto = true;
       });
+      if (_photoSavesAtOnce) await save();
       return;
     }
     try {
@@ -203,6 +225,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           image = picked;
           _removePhoto = false;
         });
+        if (_photoSavesAtOnce) await save();
       }
     } catch (_) {
       if (mounted) {
@@ -359,21 +382,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Center(
             child: Semantics(
               label: 'Profile photo',
-              child: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  // Bundle 203 (5b): lock ring while my profile is Private.
-                  ValueListenableBuilder<bool?>(
-                    valueListenable: ProfilePrivacyRule.ownPrivate,
-                    builder: (context, own, _) => AccountAvatar(
+              // Bundle 211 (A2-A3): no camera button (it covered the lock).
+              // Tap the photo → camera in the middle for 3 s → tap it.
+              child: ValueListenableBuilder<bool?>(
+                valueListenable: ProfilePrivacyRule.ownPrivate,
+                builder: (context, own, _) {
+                  final locked = own ?? ProfilePrivacyRule.isPrivate(value);
+                  return PhotoTapOverlay(
+                    radius: 52,
+                    innerRadius: PhotoTapOverlay.innerFor(52, locked: locked),
+                    onCamera: _pickImage,
+                    onShowingChanged: (on) => setState(() => _cameraShowing = on),
+                    // Bundle 203 (5b): lock ring while my profile is Private.
+                    child: AccountAvatar(
                         name: displayName,
+                        // Bundle 214: my crown when I am admin.
+                        userId: AdminBadgeBook.instance.selfUserId,
                         // Bundle 204: the new picture shows at once; removed = letter.
                         localPath: image?.path ?? (_removePhoto ? '' : value?.localAvatarPath ?? ''),
                         radius: 52,
                         locked: own ?? ProfilePrivacyRule.isPrivate(value)),
-                  ),
-                  IconButton.filled(tooltip: 'Change profile photo', onPressed: _pickImage, icon: const Icon(Icons.camera_alt_outlined)),
-                ],
+                  );
+                },
               ),
             ),
           ),
@@ -381,6 +411,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Center(child: Text(displayName, style: Theme.of(context).textTheme.titleLarge)),
           if (value?.username.isNotEmpty == true)
             Center(child: Text('@${value!.username}', style: Theme.of(context).textTheme.bodyMedium)),
+          // Bundle 211 (A4): the hint under my name.
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Center(
+              child: Text(
+                _photoHint(value),
+                key: const ValueKey('profile_photo_hint'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary),
+              ),
+            ),
+          ),
           const SizedBox(height: LocalLinkSpacing.section),
           Text('Profile information', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: LocalLinkSpacing.sm),

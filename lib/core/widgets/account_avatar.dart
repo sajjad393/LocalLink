@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/directory/data/peer_photo_book.dart';
 
 class AccountAvatar extends StatelessWidget {
@@ -21,7 +22,15 @@ class AccountAvatar extends StatelessWidget {
   /// Owner only (Profile + the Settings card). Same outside size.
   final bool locked;
 
-  const AccountAvatar({super.key, required this.name, this.localPath = '', this.radius = 28, this.iconSize, this.peerId, this.locked = false});
+  /// Bundle 214: the account id when [peerId] is a phone id (or for my own
+  /// photo), so the admin crown can show.
+  final String? userId;
+
+  /// Bundle 214: show the admin crown 👑 (top centre) when this person is
+  /// an admin. Off for places that must not show it.
+  final bool crown;
+
+  const AccountAvatar({super.key, required this.name, this.localPath = '', this.radius = 28, this.iconSize, this.peerId, this.locked = false, this.userId, this.crown = true});
 
   static const Color ringStart = Color(0xFF1E5BFF);
   static const Color ringEnd = Color(0xFF23E0D8);
@@ -112,6 +121,12 @@ class AccountAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final photo = _photo(context);
+    if (!crown) return photo;
+    return AdminCrown(id: peerId, otherId: userId, radius: radius, child: photo);
+  }
+
+  Widget _photo(BuildContext context) {
     final own = _imageFor(localPath);
     final id = peerId ?? '';
     if (own != null || id.isEmpty) return _circle(context, own);

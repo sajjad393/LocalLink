@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
+import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/core/services/app_logger.dart';
 
 /// Single entry point for regular HTTP requests made by LocalLink.
@@ -39,7 +40,7 @@ class ApiHttpClient {
     return _send(
       method: 'GET',
       uri: uri,
-      operation: () => _client.get(uri, headers: headers),
+      operation: () => _client.get(uri, headers: AppBuild.withHeader(headers)),
     );
   }
 
@@ -54,7 +55,7 @@ class ApiHttpClient {
       uri: uri,
       operation: () => _client.post(
         uri,
-        headers: headers,
+        headers: AppBuild.withHeader(headers),
         body: body,
         encoding: encoding,
       ),
@@ -72,7 +73,7 @@ class ApiHttpClient {
       uri: uri,
       operation: () => _client.put(
         uri,
-        headers: headers,
+        headers: AppBuild.withHeader(headers),
         body: body,
         encoding: encoding,
       ),
@@ -90,7 +91,7 @@ class ApiHttpClient {
       uri: uri,
       operation: () => _client.delete(
         uri,
-        headers: headers,
+        headers: AppBuild.withHeader(headers),
         body: body,
         encoding: encoding,
       ),
@@ -122,6 +123,12 @@ class ApiHttpClient {
             '${response.bodyBytes.length} bytes)',
       );
 
+      // Bundle 213: this app version is stopped by admin (server gate).
+      if (response.statusCode == 426) {
+        try {
+          AppBuild.onUpgradeRequired?.call(response.body);
+        } catch (_) {}
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         AppLogger.warning(
           'HTTP_ERROR_RESPONSE',

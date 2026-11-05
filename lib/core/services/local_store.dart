@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/core/models/group_event.dart';
 import 'package:locallink/core/crypto/recovery_code.dart';
 import 'dart:io';
@@ -1934,11 +1936,66 @@ class LocalStore {
     return {
       for (final row in rows)
         if ((row['id']?.toString() ?? '').isNotEmpty) row['id'].toString(),
+      // Bundle 212: plus everyone blocked by admin (and their phones).
+      ...await _adminBlockedIds(),
+      // Bundle 213: phones with an app version stopped by admin.
+      ...VersionGuard.instance.droppedPeers,
     };
   }
 
+  /// Bundle 212: admin-blocked account ids, their phones from the record
+  /// and their phones from saved profiles.
+  Future<Set<String>> _adminBlockedIds() async {
+    final book = AdminBlockBook.instance;
+    if (book.blockedIds.isEmpty) return const <String>{};
+    final users = book.blockedUserIds.toList();
+    final out = <String>{...book.blockedIds};
+    try {
+      final marks = List.filled(users.length, '?').join(',');
+      final rows = await _db.rawQuery(
+          'SELECT device_id FROM directory_profiles WHERE user_id IN ($marks)',
+          users);
+      for (final r in rows) {
+        final d = r['device_id']?.toString() ?? '';
+        if (d.isNotEmpty) out.add(d);
+      }
+    } catch (_) {}
+    return out;
+  }
+
+  /// Bundle 214: phone id → account id for these accounts (saved
+  /// profiles), so a photo that knows only the phone shows the crown.
+  Future<Map<String, String>> devicesOfUsers(Set<String> userIds) async {
+    if (userIds.isEmpty) return const <String, String>{};
+    final users = userIds.take(500).toList();
+    final out = <String, String>{};
+    try {
+      final marks = List.filled(users.length, '?').join(',');
+      final rows = await _db.rawQuery(
+          'SELECT device_id, user_id FROM directory_profiles WHERE user_id IN ($marks)',
+          users);
+      for (final r in rows) {
+        final d = r['device_id']?.toString() ?? '';
+        final u = r['user_id']?.toString() ?? '';
+        if (d.isNotEmpty && u.isNotEmpty) out[d] = u;
+      }
+    } catch (_) {}
+    return out;
+  }
+
+  /// Bundle 212: an admin block / unblock reached this phone - the link
+  /// layer reloads the blocked list (same stream as a personal block).
+  static void notifyBlockedChanged() => _blockedChanges.add(null);
+
   Future<bool> isBlockedPeer(String peerId) async {
     if (peerId.isEmpty) return false;
+    // Bundle 213: app version stopped by admin.
+    if (VersionGuard.instance.isPeerDropped(peerId)) return true;
+    // Bundle 212: blocked by admin.
+    if (AdminBlockBook.instance.blockedIds.isNotEmpty &&
+        (await _adminBlockedIds()).contains(peerId)) {
+      return true;
+    }
     if (await isBlocked(peerId)) return true;
     final rows = await _db.rawQuery(
         'SELECT 1 FROM blocked_users b JOIN directory_profiles p ON p.user_id=b.user_id WHERE p.device_id=? LIMIT 1',

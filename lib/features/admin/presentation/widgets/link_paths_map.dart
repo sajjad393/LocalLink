@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:locallink/core/widgets/admin_crown.dart';
+import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:flutter/material.dart';
 
 /// Which link one map edge represents. Drives colour + placement sector.
@@ -11,12 +13,21 @@ class LinkNode {
   final String label;
   final LinkTag tag;
 
+  /// Bundle 212: blocked by admin - grey node, red ring, red badge, grey
+  /// dashed line (it relays others' sealed messages only).
+  final bool blocked;
+
   const LinkNode({
     required this.id,
     required this.label,
     required this.tag,
+    this.blocked = false,
   });
 }
+
+/// Bundle 212: blocked node colours.
+const Color kLinkBlockedGrey = Color(0xFF9CA3AF);
+const Color kLinkBlockedRed = Color(0xFFD92D20);
 
 /// Tints matching the app’s transport language (chips / dividers).
 const kLinkTagColors = <LinkTag, Color>{
@@ -42,7 +53,11 @@ class LinkPathsMap extends StatelessWidget {
   final List<LinkNode> nodes;
   final bool serverOnline;
 
-  const LinkPathsMap({super.key, required this.nodes, required this.serverOnline});
+  /// Bundle 212 (E6): the expand button (full-screen map); none when null.
+  final VoidCallback? onExpand;
+
+  const LinkPathsMap(
+      {super.key, required this.nodes, required this.serverOnline, this.onExpand});
 
   @override
   Widget build(BuildContext context) {
@@ -56,13 +71,23 @@ class LinkPathsMap extends StatelessWidget {
           child: Container(
             height: 300,
             color: scheme.surfaceContainerHigh.withValues(alpha: 0.55),
-            child: CustomPaint(
-              painter: _LinkPathsPainter(
-                nodes: nodes,
-                serverOnline: serverOnline,
-                labelColor: scheme.onSurface,
+            child: Stack(children: [
+              Positioned.fill(
+                child: LinkPathsCanvas(nodes: nodes, serverOnline: serverOnline),
               ),
-            ),
+              if (onExpand != null)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: IconButton.filledTonal(
+                    key: const ValueKey('link_paths_expand'),
+                    tooltip: 'Full screen',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                    onPressed: onExpand,
+                  ),
+                ),
+            ]),
           ),
         ),
         const SizedBox(height: 10),
@@ -83,6 +108,7 @@ class LinkPathsMap extends StatelessWidget {
                         fontSize: 11,
                         color: scheme.onSurface.withValues(alpha: 0.72))),
               ]),
+            if (nodes.any((n) => n.blocked)) const LinkBlockedLegend(),
           ],
         ),
       ],
@@ -90,16 +116,92 @@ class LinkPathsMap extends StatelessWidget {
   }
 }
 
+/// Bundle 212: "Blocked · relays only" in the legend.
+class LinkBlockedLegend extends StatelessWidget {
+  const LinkBlockedLegend({super.key});
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                  color: kLinkBlockedGrey,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: kLinkBlockedRed, width: 1.5))),
+          const SizedBox(width: 5),
+          Text('Blocked · relays only',
+              style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.72))),
+        ],
+      );
+}
+
+/// Bundle 212: the map drawing alone (the small card and the full screen).
+class LinkPathsCanvas extends StatelessWidget {
+  final List<LinkNode> nodes;
+  final bool serverOnline;
+  final String? selectedId;
+  final double spread;
+
+  const LinkPathsCanvas(
+      {super.key,
+      required this.nodes,
+      required this.serverOnline,
+      this.selectedId,
+      this.spread = 1.0});
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        painter: _LinkPathsPainter(
+          nodes: nodes,
+          serverOnline: serverOnline,
+          labelColor: Theme.of(context).colorScheme.onSurface,
+          selectedId: selectedId,
+          spread: spread,
+        ),
+      );
+
+  /// Where each node sits on a canvas of [size] (tap test on full screen).
+  static Map<String, Offset> placements(List<LinkNode> nodes, Size size,
+          {double spread = 1.0}) =>
+      _LinkPathsPainter(
+              nodes: nodes,
+              serverOnline: true,
+              labelColor: Colors.black,
+              spread: spread)
+          ._placements(size);
+}
+
 class _LinkPathsPainter extends CustomPainter {
   final List<LinkNode> nodes;
   final bool serverOnline;
   final Color labelColor;
+  final String? selectedId;
 
   _LinkPathsPainter({
     required this.nodes,
     required this.serverOnline,
     required this.labelColor,
-  });
+    this.selectedId,
+    this.spread = 1.0,
+  }) : crownKey = [
+          for (final n in nodes)
+            if (!n.blocked && AdminCrown.showFor(n.id)) n.id,
+          if (AdminBadgeBook.instance.selfAdmin) 'self',
+        ].join(',');
+
+  /// Bundle 214 (D6): who gets a crown 👑 above the node (snapshot).
+  final String crownKey;
+
+  /// Bundle 212: 1 on the card; bigger on the full-screen map.
+  final double spread;
 
   static const _selfRadius = 24.0;
   static const _nodeRadius = 11.0;
@@ -136,7 +238,7 @@ class _LinkPathsPainter extends CustomPainter {
           final angle = (-55 + (88 / math.max(1, list.length - 1)) * i) *
               math.pi /
               180;
-          final ring = 62 + 18 * (i % 3);
+          final ring = (62 + 18 * (i % 3)) * spread;
           result[list[i].id] =
               Offset(sv.dx + math.cos(angle) * ring, sv.dy + math.sin(angle) * ring * 0.75 + 4);
           continue;
@@ -146,9 +248,11 @@ class _LinkPathsPainter extends CustomPainter {
         final jitter = ((list[i].id.hashCode % 21) - 10) / 10.0;
         final angleDeg = startDeg + span * i + jitter * 4;
         final angle = angleDeg * math.pi / 180;
-        final rings = tag == LinkTag.mesh ? 3 : 2;
-        final ringBase = tag == LinkTag.mesh ? 74.0 : 92.0;
-        final ringStep = tag == LinkTag.mesh ? 30.0 : 44.0;
+        // Bundle 212: more rings and wider ones on the big map ([spread]).
+        final rings = (tag == LinkTag.mesh ? 3 : 2) +
+            (spread > 1 ? (list.length ~/ 6) : 0);
+        final ringBase = (tag == LinkTag.mesh ? 74.0 : 92.0) * spread;
+        final ringStep = (tag == LinkTag.mesh ? 30.0 : 44.0) * spread;
         final r = ringBase + ringStep * (i % rings) + jitter * 6;
         final x = s.dx + math.cos(angle) * r;
         final y = s.dy + math.sin(angle) * r * 0.82;
@@ -197,6 +301,17 @@ class _LinkPathsPainter extends CustomPainter {
             red ? const Color(0xFFD6453B) : const Color(0xFF9AA7B8), 2.6);
         d = end + 5.5;
         red = !red;
+      }
+    }
+  }
+
+  void _dashed(Canvas canvas, Path path, Color color) {
+    for (final metric in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        final end = math.min(metric.length, d + 7.0);
+        _stroke(canvas, metric.extractPath(d, end), color, 1.8);
+        d = end + 5.0;
       }
     }
   }
@@ -258,6 +373,11 @@ class _LinkPathsPainter extends CustomPainter {
     // Yellow / teal arcs straight: self → device.
     for (final n in nodes) {
       if (n.tag == LinkTag.mesh || n.tag == LinkTag.server) continue;
+      if (n.blocked) {
+        // Bundle 212: grey dashed = relays others' messages only.
+        _dashed(canvas, _arc(s, place[n.id]!, bend: 0.20), kLinkBlockedGrey);
+        continue;
+      }
       final color = kLinkTagColors[n.tag]!;
       _stroke(canvas, _arc(s, place[n.id]!, bend: 0.20),
           color.withValues(alpha: 0.80), 1.9);
@@ -276,12 +396,33 @@ class _LinkPathsPainter extends CustomPainter {
     // ---- device nodes + labels ----------------------------------------
     for (final n in nodes) {
       final pos = place[n.id]!;
+      if (n.id == selectedId) {
+        canvas.drawCircle(pos, _nodeRadius + 7,
+            Paint()..color = const Color(0xFF2F6BFF).withValues(alpha: 0.22));
+      }
+      if (n.blocked) {
+        // Bundle 212: grey node, red ring, small red badge, red label.
+        _glassyCircle(canvas, pos, _nodeRadius,
+            kLinkBlockedGrey.withValues(alpha: 0.35), kLinkBlockedRed);
+        _text(canvas, Icons.person, pos, size: 12, color: const Color(0xFF6B7280));
+        final badge = pos + const Offset(_nodeRadius - 1, -_nodeRadius + 1);
+        canvas.drawCircle(badge, 6, Paint()..color = Colors.white);
+        canvas.drawCircle(badge, 5, Paint()..color = kLinkBlockedRed);
+        _text(canvas, Icons.block, badge, size: 8, color: Colors.white);
+        _label(canvas, pos + const Offset(0, _nodeRadius + 11),
+            '${n.label} · Blocked',
+            color: kLinkBlockedRed);
+        continue;
+      }
       final color = kLinkTagColors[n.tag]!;
       _glassyCircle(canvas, pos, _nodeRadius, color.withValues(alpha: 0.25),
           color.withValues(alpha: 0.9));
       _text(canvas, Icons.person, pos,
           size: 12, color: Color.lerp(color, Colors.black, 0.25)!);
       _label(canvas, pos + const Offset(0, _nodeRadius + 11), n.label);
+      if (crownKey.split(',').contains(n.id)) {
+        _crown(canvas, pos - const Offset(0, _nodeRadius + 7), 12);
+      }
     }
 
     // ---- self hub ------------------------------------------------------
@@ -291,6 +432,20 @@ class _LinkPathsPainter extends CustomPainter {
     _text(canvas, Icons.person, s, size: 26, color: Colors.white);
     _label(canvas, s + const Offset(0, _selfRadius + 14), 'This phone',
         strong: true);
+    if (crownKey.split(',').contains('self')) {
+      _crown(canvas, s - const Offset(0, _selfRadius + 9), 18);
+    }
+  }
+
+  /// Bundle 214 (D6): the admin crown above a node.
+  void _crown(Canvas canvas, Offset center, double size) {
+    final tp = TextPainter(
+      text: TextSpan(
+          text: '\u{1F451}',
+          style: TextStyle(inherit: false, fontSize: size, height: 1)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
   }
 
   void _glassyCircle(Canvas canvas, Offset c, double r, Color fill, Color ring) {
@@ -317,7 +472,7 @@ class _LinkPathsPainter extends CustomPainter {
   }
 
   void _label(Canvas canvas, Offset center, String text,
-      {bool strong = false, bool tiny = false}) {
+      {bool strong = false, bool tiny = false, Color? color}) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
@@ -325,7 +480,7 @@ class _LinkPathsPainter extends CustomPainter {
             inherit: false,
             fontSize: tiny ? 8.5 : (strong ? 11.5 : 9.5),
             fontWeight: strong ? FontWeight.w700 : FontWeight.w500,
-            color: labelColor.withValues(alpha: strong ? 0.9 : 0.75)),
+            color: color ?? labelColor.withValues(alpha: strong ? 0.9 : 0.75)),
       ),
       textDirection: TextDirection.ltr,
     )..layout(maxWidth: 92);
@@ -336,7 +491,10 @@ class _LinkPathsPainter extends CustomPainter {
         height: tp.height + pad.vertical);
     canvas.drawRRect(
         RRect.fromRectAndRadius(pill, const Radius.circular(6)),
-        Paint()..color = Colors.white.withValues(alpha: 0.85));
+        Paint()
+          ..color = color == null
+              ? Colors.white.withValues(alpha: 0.85)
+              : const Color(0xFFFDEBE9));
     tp.paint(
         canvas,
         center - Offset(tp.width / 2, tp.height / 2));
@@ -346,5 +504,11 @@ class _LinkPathsPainter extends CustomPainter {
   bool shouldRepaint(_LinkPathsPainter old) =>
       old.nodes.length != nodes.length ||
       old.serverOnline != serverOnline ||
-      old.nodes.map((e) => e.tag).join(',') != nodes.map((e) => e.tag).join(',');
+      old.nodes.map((e) => e.tag).join(',') != nodes.map((e) => e.tag).join(',') ||
+      // Bundle 212
+      old.selectedId != selectedId ||
+      old.spread != spread ||
+      old.crownKey != crownKey || // Bundle 214
+      old.nodes.map((e) => '${e.id}${e.blocked}').join(',') !=
+          nodes.map((e) => '${e.id}${e.blocked}').join(',');
 }

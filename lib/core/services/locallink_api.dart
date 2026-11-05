@@ -3,7 +3,8 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:locallink/core/widgets/error_toast.dart' show FriendlyError;
-import 'package:http/http.dart' as http;
+import 'package:locallink/core/config/app_build.dart';
+import 'package:locallink/core/network/build_http.dart' as http; // Bundle 213: build header
 import 'package:locallink/core/network/api_http_client.dart';
 import 'package:locallink/core/security/security_policy.dart';
 
@@ -498,6 +499,7 @@ class LocalLinkApi {
   Future<LocalProfile> uploadProfileAvatar(File file) async {
     if (!await file.exists()) throw Exception('Selected image no longer exists');
     final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/profile/avatar'));
+    request.headers.addAll(AppBuild.withHeader(null)); // Bundle 213
     request.headers.addAll(_headers());
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
     final streamed = await request.send().timeout(const Duration(seconds: 30));

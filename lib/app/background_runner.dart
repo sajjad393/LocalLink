@@ -118,6 +118,15 @@ class BackgroundRunner {
       (name: 'groups', run: () async {
         deps.groupMessagingService.start();
       }),
+      // Bundle 212 (BG1): admin blocks / unblocks arrive, are checked,
+      // saved and passed on with the app closed; server sync when online.
+      (name: 'admin_blocks', run: deps.adminBlocks.start),
+      // Bundle 214 (B2): my admin role is checked with the app closed
+      // (notification when it changes); crown cards arrive and pass on.
+      (name: 'admin_role', run: deps.adminRoles.start),
+      (name: 'admin_badges', run: deps.adminBadges.start),
+      // Bundle 213: the minimum app version arrives and is passed on.
+      (name: 'version_rule', run: deps.versionRules.start),
       (name: 'notifications', run: deps.notifications.start),
       (
         name: 'calls',

@@ -1,3 +1,5 @@
+import 'package:locallink/core/widgets/admin_blocked_banner.dart';
+import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/groups/data/group_mention_book.dart';
 import 'package:locallink/features/groups/data/group_receipts.dart';
 import 'dart:async';
@@ -1363,6 +1365,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           'on the server now.'),
                 if (widget.store.isOfflinePending && _offlineBannerVisible)
                   _offlineAccountBanner(),
+                // Bundle 212 (F2): my account blocked by admin (red, no close).
+                const AdminBlockedBanner(),
+                // Bundle 213: old app version (yellow / red) + nearby update.
+                const VersionBanner(),
                 // Bundle 159.1: "Allow nearby devices" / "Turn on Wi-Fi",
                 // only when nearby chat can't work.
                 const NearbyReadyCard(),
@@ -1608,8 +1614,8 @@ class _HomeScreenState extends State<HomeScreen> {
           index: _index,
           children: [
             _chatsTab(),
-            _callsTab(),
-            _contactsTab(),
+            AdminBlockedTop(child: _callsTab()), // Bundle 212
+            AdminBlockedTop(child: _contactsTab()),
             _settingsTab(),
           ],
         ),

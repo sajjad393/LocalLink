@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/core/services/media_book.dart';
 import 'dart:math';
 import 'dart:convert';
@@ -962,6 +964,10 @@ class GroupMessagingService {
     if (body.isEmpty && attachments.isEmpty) {
       throw Exception('Message or attachment required');
     }
+    // Bundle 212: my own account is blocked by admin (read only).
+    if (AdminBlockBook.instance.selfBlocked) throw Exception('Blocked by admin');
+    // Bundle 213: this app version is stopped by admin (read only).
+    if (VersionGuard.instance.stopped) throw Exception('Old version. Update to send.');
     if (body.length > 16 * 1024) throw Exception('Message body is too large');
     final group = await store.groupById(groupId);
     if (group == null) throw Exception('Group not found');

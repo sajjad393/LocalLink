@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:locallink/core/widgets/admin_blocked_banner.dart';
+import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/storage/presentation/media_message_actions.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/widgets/presence_way.dart';
@@ -934,12 +936,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         );
         // Bundle 196: block / unblock switches the chat at once.
         return ListenableBuilder(
-          listenable: BlockHub.instance,
+          // Bundle 212: admin blocks switch the chat at once too.
+          listenable:
+              Listenable.merge([BlockHub.instance, AdminBlockBook.instance]),
           builder: (context, _) {
         final hub = BlockHub.instance;
         final iBlocked = hub.isBlockedDevice(device.id);
         // My own block wins over theirs (13.2).
         final blockedMe = !iBlocked && hub.hasBlockedMe(device.id);
+        // Bundle 212 (F1/F2): blocked by admin (them, or my own account).
+        final adminBar = adminBlockBarText(_peerName(device),
+            peerId: device.id, peerUserId: _peerUserId);
         if ((iBlocked || blockedMe) && !_blockLogged) {
           _blockLogged = true;
           AppLogger.info('CHAT_BLOCKED_VIEW',
@@ -1057,7 +1064,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     // Bundle 130: the hollow/presence circle moved onto the
                     // title avatar as a badge — nothing else changed here.
                     // Bundle 196: no call icon when either side blocked.
-                    if (widget.onStartCall != null && !iBlocked && !blockedMe)
+                    if (widget.onStartCall != null && !iBlocked && !blockedMe && adminBar == null)
                       IconButton(tooltip: 'Call', onPressed: _startCall, icon: const Icon(Icons.call_outlined)),
                     // Bundle 197a (mock 15A): tidy pop-up under the ⋮, an
                     // icon on every row, a divider above Clear chat.
@@ -1205,7 +1212,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     enabled: !selecting &&
                                         _heldId == null &&
                                         !iBlocked &&
-                                        !blockedMe,
+                                        !blockedMe &&
+                                        adminBar == null,
                                     onReply: () =>
                                         _startReply(message, from: 'swipe'),
                                     child: bubble,
@@ -1262,7 +1270,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ),
               // Bundle 196 (10.3 / 12.6): the message box is replaced on
               // both phones; the draft stays in the controllers.
-              if (iBlocked)
+              if (adminBar != null)
+                AdminBlockedBar(text: adminBar)
+              else if (iBlocked)
                 _blockedBar(context, device, mine: true)
               else if (blockedMe)
                 _blockedBar(context, device, mine: false)

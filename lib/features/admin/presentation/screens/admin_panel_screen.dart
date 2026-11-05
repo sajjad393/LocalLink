@@ -10,6 +10,10 @@ import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/features/connectivity/presentation/widgets/nearby_test_switches.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/models/admin_session.dart';
+import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
+import 'package:locallink/features/admin/data/services/admin_role_service.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/admin/presentation/widgets/account_switch_sheet.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_audit_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_calls_screen.dart';
@@ -27,6 +31,13 @@ import 'package:locallink/features/admin/presentation/screens/admin_users_screen
 import 'package:locallink/features/admin/presentation/theme/admin_theme.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_list_page.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
+import 'package:locallink/features/admin/data/services/admin_block_book.dart';
+import 'package:locallink/features/admin/data/services/admin_block_service.dart';
+import 'package:locallink/features/admin/presentation/screens/admin_block_users_screen.dart';
+import 'package:locallink/features/admin/presentation/screens/admin_blocked_list_screen.dart';
+import 'package:locallink/features/admin/presentation/screens/link_paths_full_screen.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_block_confirm.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_version_card.dart';
 
 /// Bundle 134: the mobile admin area is ONE merged panel (approved mock):
 /// link-paths map + devices on the link + local moderation on top; the
@@ -39,6 +50,9 @@ class AdminPanelScreen extends StatefulWidget {
   final AdminSession session;
   final AppViewModeCubit viewMode;
 
+  /// Bundle 211 (B5/C4): the saved sign-in (switch sheet, Sign out, 401).
+  final AdminCapabilityService? adminCapability;
+
   const AdminPanelScreen({
     super.key,
     required this.api,
@@ -46,6 +60,7 @@ class AdminPanelScreen extends StatefulWidget {
     required this.repositoryFactory,
     required this.session,
     required this.viewMode,
+    this.adminCapability,
   });
 
   @override
@@ -89,11 +104,80 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     } catch (_) {/* offline: modules stay locked; bloc emError harmless */}
     unawaited(_refresh());
     _tick = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
+    _expiredSub = _bloc.stream.listen(_onBlocState);
+  }
+
+  StreamSubscription<AdminState>? _expiredSub;
+  bool _endedShown = false;
+
+  AdminCapabilityService get _capability =>
+      widget.adminCapability ?? AdminCapabilityService();
+
+  AccountSwitchDeps get _switchDeps => AccountSwitchDeps(
+        api: widget.api,
+        store: widget.store,
+        viewMode: widget.viewMode,
+        adminCapability: _capability,
+        repositoryFactory: widget.repositoryFactory,
+      );
+
+  /// Bundle 211 (B5) / 214 (B4): the server says this admin session is
+  /// gone. Only while the server is connected - offline never ends it.
+  /// The phone asks for a new session by itself (no sign-in any more):
+  /// - new session → the panel opens again with it;
+  /// - not admin any more → cleared, panel closes, "You are no longer an
+  ///   admin";
+  /// - no answer → the session is kept, panel closes, "Admin tools are
+  ///   not available right now".
+  void _onBlocState(AdminState state) {
+    if (!state.sessionExpired || _endedShown) return;
+    if (!widget.viewMode.state.serverConnected) return;
+    _endedShown = true;
+    unawaited(_renewSession());
+  }
+
+  Future<void> _renewSession() async {
+    final roles = AdminRoleService.instance;
+    final result = roles == null
+        ? AdminRoleResult.keep
+        : await roles.refresh(reason: 'panel_401');
+    final fresh = roles?.current.value;
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final nav = Navigator.of(context);
+    if (result == AdminRoleResult.admin &&
+        fresh != null &&
+        fresh.token != widget.session.token) {
+      AppLogger.info('ADMIN_PANEL_SESSION_RENEWED');
+      unawaited(nav.pushReplacement(MaterialPageRoute<void>(
+        builder: (_) => AdminPanelScreen(
+          api: widget.api,
+          store: widget.store,
+          repositoryFactory: widget.repositoryFactory,
+          session: fresh,
+          viewMode: widget.viewMode,
+          adminCapability: widget.adminCapability,
+        ),
+      )));
+      return;
+    }
+    if (result == AdminRoleResult.notAdmin) {
+      widget.viewMode.setAdminCapability(false);
+      messenger?.showSnackBar(const SnackBar(
+          key: ValueKey('admin_no_longer'),
+          content: Text('You are no longer an admin')));
+    } else {
+      messenger?.showSnackBar(const SnackBar(
+          key: ValueKey('admin_not_available'),
+          content: Text('Admin tools are not available right now')));
+    }
+    if (nav.canPop()) nav.pop();
   }
 
   @override
   void dispose() {
     _tick?.cancel();
+    unawaited(_expiredSub?.cancel());
     unawaited(_bloc.close());
     super.dispose();
   }
@@ -108,6 +192,98 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         _blocked = blocked;
       });
     } catch (_) {/* storage race during boot: retried on next tick */}
+    unawaited(_refreshBlocks());
+  }
+
+  // ---------------------------------------------------------- Bundle 212
+  AdminBlockService? get _blocks => AdminBlockService.instance;
+  AdminBlockReadiness? _readiness;
+  DateTime _blocksAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _certAsked = false;
+  Map<String, ({String userId, String username, String name})> _profiles =
+      const {};
+
+  /// Status line + device → account lookup, every 10 s (not every tick).
+  Future<void> _refreshBlocks() async {
+    final service = _blocks;
+    if (service == null) return;
+    final now = DateTime.now();
+    if (now.difference(_blocksAt) < const Duration(seconds: 10)) return;
+    _blocksAt = now;
+    try {
+      if (!_certAsked && widget.viewMode.state.serverConnected) {
+        _certAsked = true;
+        await service.pinTrust();
+        await service.ensureCert();
+      }
+      final ready = await service.readiness();
+      final profiles = <String, ({String userId, String username, String name})>{};
+      for (final p in await widget.store.directoryProfiles()) {
+        final device = p['device_id']?.toString() ?? '';
+        if (device.isEmpty) continue;
+        final display = p['display_name']?.toString().trim() ?? '';
+        final username = p['username']?.toString().trim() ?? '';
+        profiles[device] = (
+          userId: p['user_id']?.toString() ?? '',
+          username: username,
+          name: display.isNotEmpty ? display : username,
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _readiness = ready;
+        _profiles = profiles;
+      });
+    } catch (_) {}
+  }
+
+  BlockTarget _targetForDevice(String id, String name) {
+    final p = _profiles[id];
+    final userId = (p?.userId ?? '').isNotEmpty ? p!.userId : id;
+    return BlockTarget(
+      userId: userId,
+      deviceIds: [id],
+      name: (p?.name ?? '').isNotEmpty ? p!.name : (name.trim().isEmpty ? id : name),
+      username: p?.username ?? '',
+      seen: 'nearby now',
+    );
+  }
+
+  bool _adminBlocked(Device d) {
+    final book = AdminBlockBook.instance;
+    final userId = _profiles[d.id]?.userId ?? '';
+    return book.isBlocked(d.id) || book.isBlocked(userId);
+  }
+
+  /// E5: the Block button by a nearby phone = a block for everyone. Until
+  /// offline blocking is set up it stays the old block on this phone.
+  Future<void> _networkBlock(Device d, {required bool block}) async {
+    final service = _blocks;
+    if (service == null || _readiness != AdminBlockReadiness.ready) {
+      if (block) return _confirmBlock(d);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+          content: Text('Connect to the server once to turn on offline blocking.')));
+      return;
+    }
+    await runAdminBlock(context,
+        service: service, target: _targetForDevice(d.id, d.name), block: block);
+    if (mounted) setState(() {});
+  }
+
+  void _openFullMap(List<Device> devices, bool online) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => LinkPathsFullScreen(
+        nodes: [
+          for (final d in devices)
+            LinkNode(id: d.id, label: d.name, tag: _tagFor(d), blocked: _adminBlocked(d)),
+        ],
+        serverOnline: online,
+        service: _blocks,
+        targetFor: (n) => _targetForDevice(n.id, n.label),
+        readHint: widget.store.readSetting,
+        writeHint: widget.store.writeSetting,
+      ),
+    ));
   }
 
   bool _recent(Device d) {
@@ -311,7 +487,24 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           appBar: AppBar(
             title: const Text('Admin'),
             centerTitle: false,
-            actions: [_statusChip(online), const SizedBox(width: 12)],
+            actions: [
+              _statusChip(online),
+              const SizedBox(width: 4),
+              // Bundle 214: switch back to my chats (no admin sign out).
+              IconButton(
+                key: const ValueKey('admin_switch_button'),
+                tooltip: 'Switch account',
+                icon: CircleAvatar(
+                  radius: 15,
+                  backgroundColor: scheme.primaryContainer,
+                  child: Icon(Icons.admin_panel_settings_outlined,
+                      size: 18, color: scheme.onPrimaryContainer),
+                ),
+                onPressed: () => showAccountSwitchSheet(context,
+                    deps: _switchDeps, current: AccountSwitchPlace.admin),
+              ),
+              const SizedBox(width: 8),
+            ],
           ),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
@@ -320,6 +513,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               _mapCard(scheme, onLink, online),
               _onThisLinkCard(scheme, onLink),
               _moderationCard(scheme),
+              // Bundle 213: minimum app version for everyone.
+              const AdminVersionCard(),
               const SizedBox(height: 20),
               // Bundle 173: the 2 nearby tests, testers only (still OFF).
               const Text(
@@ -332,6 +527,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               ),
               const SizedBox(height: 8),
               const NearbyTestSwitches(),
+              // Bundle 213: testers try the version rule on one version.
+              const SizedBox(height: 8),
+              const PretendOldBuildSwitch(),
               // Bundle 197b (Q4): one clean-up run as if every file were
               // 11 days old and the phone 80% full.
               const SizedBox(height: 8),
@@ -407,7 +605,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         LinkNode(
             id: d.id,
             label: d.name.length > 14 ? '${d.name.substring(0, 13)}…' : d.name,
-            tag: _tagFor(d)),
+            tag: _tagFor(d),
+            blocked: _adminBlocked(d)), // Bundle 212 (E6)
     ];
     return Card(
       elevation: 0,
@@ -425,7 +624,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               style: TextStyle(
                   fontSize: 13, color: scheme.onSurface.withValues(alpha: 0.6))),
           const SizedBox(height: 14),
-          LinkPathsMap(nodes: nodes, serverOnline: online),
+          LinkPathsMap(
+              nodes: nodes,
+              serverOnline: online,
+              onExpand: () => _openFullMap(devices, online)), // Bundle 212 (E7)
         ]),
       ),
     );
@@ -444,7 +646,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           const Text('On this link right now',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(height: 3),
-          Text('${devices.length} device(s) reachable via Wi-Fi Direct / mesh',
+          Text('${devices.length} device(s) reachable via Wi-Fi Direct / mesh'
+              '${devices.where(_adminBlocked).isEmpty ? '' : ' · ${devices.where(_adminBlocked).length} blocked'}',
               style: TextStyle(
                   fontSize: 13, color: scheme.onSurface.withValues(alpha: 0.6))),
           const SizedBox(height: 10),
@@ -470,7 +673,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               .visible
               .map((d) {
             final tag = _tagFor(d);
-            final tint = kLinkTagColors[tag]!;
+            final blockedByAdmin = _adminBlocked(d); // Bundle 212 (E6)
+            final tint = blockedByAdmin ? kLinkBlockedGrey : kLinkTagColors[tag]!;
             final initials = d.name.trim().isEmpty
                 ? '?'
                 : d.name
@@ -493,8 +697,25 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                     child: Text(d.name,
-                        style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w600))),
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: blockedByAdmin ? kLinkBlockedGrey : null))),
+                if (blockedByAdmin) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                        color: kBlockRedTint, borderRadius: BorderRadius.circular(8)),
+                    child: const Text('Blocked',
+                        style: TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w600, color: kBlockRed)),
+                  ),
+                  TextButton(
+                    key: ValueKey('admin_link_unblock_${d.id}'),
+                    onPressed: () => _networkBlock(d, block: false),
+                    child: const Text('Unblock'),
+                  ),
+                ] else ...[
                 _transportChip(tag, tint),
                 const SizedBox(width: 4),
                 IconButton(
@@ -505,8 +726,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                       foregroundColor: scheme.error,
                       padding: const EdgeInsets.all(8)),
                   icon: const Icon(Icons.shield_outlined, size: 18),
-                  onPressed: () => _confirmBlock(d),
+                  onPressed: () => _networkBlock(d, block: true),
                 ),
+                ],
               ]),
               const SizedBox(height: 8),
               Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.4)),
@@ -539,31 +761,103 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                 color: Color.lerp(tint, Colors.black, 0.25))),
       );
 
-  Widget _moderationCard(ColorScheme scheme) => Card(
-        elevation: 0,
-        margin: const EdgeInsets.only(bottom: 6),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 14, 16, 0),
-            child: Text('Local moderation',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+  /// Bundle 212 (E1, mock page 1): "Block users (all phones)" replaces
+  /// "Local moderation"; the old list stays as "Blocked on this phone".
+  Widget _moderationCard(ColorScheme scheme) {
+    final ready = _readiness;
+    final (statusText, statusColor, statusBg) = switch (ready) {
+      AdminBlockReadiness.ready => (
+          'Offline blocking is ready',
+          const Color(0xFF15803D),
+          const Color(0xFFE3F6EA)
+        ),
+      AdminBlockReadiness.notOwner => (
+          'Only the owner admin can block users',
+          const Color(0xFF9A5B06),
+          const Color(0xFFFDF1DD)
+        ),
+      _ => (
+          'Connect to the server once to turn on offline blocking',
+          const Color(0xFF9A5B06),
+          const Color(0xFFFDF1DD)
+        ),
+    };
+    final adminBlocked = AdminBlockBook.instance.blockedUserIds.length;
+    return Card(
+      key: const ValueKey('admin_block_card'),
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 6),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: Text('Block users (all phones)',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Container(
+            key: const ValueKey('admin_block_status'),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+                color: statusBg, borderRadius: BorderRadius.circular(10)),
+            child: Row(children: [
+              Icon(ready == AdminBlockReadiness.ready
+                      ? Icons.check_circle
+                      : Icons.info_outline,
+                  size: 16, color: statusColor),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(statusText,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: statusColor)),
+              ),
+            ]),
           ),
-          ListTile(
-            leading: CircleAvatar(
-                backgroundColor: scheme.primary.withValues(alpha: 0.12),
-                child: Icon(Icons.shield_outlined, color: scheme.primary)),
-            title: const Text('Blocked devices',
-                style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle:
-                Text('${_blocked.length} device(s)'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _showBlocked,
-          ),
-        ]),
-      );
+        ),
+        ListTile(
+          key: const ValueKey('admin_block_pick'),
+          leading: const CircleAvatar(
+              backgroundColor: kBlockRedTint,
+              child: Icon(Icons.block, color: kBlockRed)),
+          title: const Text('Block or unblock a user',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: const Text('Anyone this phone has seen, or nearby'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => AdminBlockUsersScreen(
+                  load: () => loadBlockCandidates(widget.store),
+                  service: _blocks))),
+        ),
+        ListTile(
+          key: const ValueKey('admin_block_list'),
+          leading: CircleAvatar(
+              backgroundColor: scheme.primary.withValues(alpha: 0.12),
+              child: Icon(Icons.groups_outlined, color: scheme.primary)),
+          title: const Text('Blocked by admin',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text('$adminBlocked user(s)'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => AdminBlockedListScreen(service: _blocks))),
+        ),
+        ListTile(
+          leading: CircleAvatar(
+              backgroundColor: scheme.primary.withValues(alpha: 0.12),
+              child: Icon(Icons.shield_outlined, color: scheme.primary)),
+          title: const Text('Blocked on this phone',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text('${_blocked.length} device(s)'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _showBlocked,
+        ),
+      ]),
+    );
+  }
 
   Widget _moduleTile(ColorScheme scheme, _PanelModule module, bool online) {
     final locked = !online;

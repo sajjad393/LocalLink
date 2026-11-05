@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/services/identity_crypto_service.dart';
@@ -19,6 +20,7 @@ import 'package:locallink/features/account/domain/identity_repository_contract.d
 import 'package:locallink/features/account/presentation/screens/crypto_migration_screen.dart';
 import 'package:locallink/features/account/presentation/screens/devices_screen.dart';
 import 'package:locallink/features/account/presentation/screens/profile_screen.dart';
+import 'package:locallink/features/account/presentation/widgets/private_profile_card.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
@@ -186,10 +188,20 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                                 horizontal: 16, vertical: 24),
                             child: Row(
                               children: [
-                                AccountAvatar(
-                                    name: displayName,
-                                    localPath: profile?.localAvatarPath ?? '',
-                                    radius: 28),
+                                // Bundle 211 (A1): ring + lock while my
+                                // profile is Private (same as Settings).
+                                ValueListenableBuilder<bool?>(
+                                  valueListenable: ProfilePrivacyRule.ownPrivate,
+                                  builder: (context, own, _) => AccountAvatar(
+                                      key: const ValueKey('account_own_avatar'),
+                                      // Bundle 214: my crown when I am admin.
+                                      userId: AdminBadgeBook.instance.selfUserId,
+                                      name: displayName,
+                                      localPath: profile?.localAvatarPath ?? '',
+                                      radius: 28,
+                                      locked: own ??
+                                          ProfilePrivacyRule.isPrivate(profile)),
+                                ),
                                 const SizedBox(width: 14),
                                 Expanded(
                                   child: Column(

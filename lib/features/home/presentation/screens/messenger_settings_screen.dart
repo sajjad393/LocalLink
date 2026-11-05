@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:locallink/features/share_app/presentation/share_app_entry.dart';
 import 'package:locallink/features/account/data/own_profile_signal.dart';
 import 'package:flutter/material.dart';
+import 'package:locallink/features/admin/presentation/widgets/account_switch_sheet.dart';
 
 import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/features/directory/presentation/blocked_people_screen.dart';
@@ -19,7 +22,7 @@ import 'package:locallink/features/account/domain/identity_repository_contract.d
 import 'package:locallink/features/account/presentation/screens/account_center_screen.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
-import 'package:locallink/features/admin/presentation/screens/admin_login_screen.dart';
+import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:locallink/features/home/presentation/screens/background_run_screen.dart';
 import 'package:locallink/features/storage/presentation/storage_screen.dart';
 import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
@@ -72,6 +75,26 @@ class MessengerSettingsScreen extends StatelessWidget {
     required this.themeMode,
     required this.onThemeModeChanged,
   });
+
+  /// Bundle 214 (E2): admin → switch sheet (me / Admin); not admin → the
+  /// same Account screen as the rest of the card.
+  Future<void> _photoTap(BuildContext ctx) async {
+    final session = await adminCapability.readValidSession();
+    if (!ctx.mounted) return;
+    if (session == null) {
+      await _openAccount(ctx);
+      return;
+    }
+    await showAccountSwitchSheet(ctx,
+        deps: AccountSwitchDeps(
+          api: api,
+          store: store,
+          viewMode: viewMode,
+          adminCapability: adminCapability,
+          repositoryFactory: adminRepositoryFactory,
+        ),
+        current: AccountSwitchPlace.user);
+  }
 
   Future<void> _openAccount(BuildContext context) async {
     await Navigator.push<void>(
@@ -131,11 +154,18 @@ class MessengerSettingsScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    // Bundle 203 (5b): lock ring while my profile is Private.
-                    SettingsOwnAvatar(
-                        name: displayName,
-                        peerId: store.deviceId, // Bundle 204: my picture
-                        account: accountRepository),
+                    // Bundle 211 (C3) / 214 (E2): an admin taps the picture
+                    // → switch sheet (me / Admin). Not admin → Account.
+                    GestureDetector(
+                      key: const ValueKey('settings_avatar_switch'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _photoTap(context),
+                      // Bundle 203 (5b): lock ring while my profile is Private.
+                      child: SettingsOwnAvatar(
+                          name: displayName,
+                          peerId: store.deviceId, // Bundle 204: my picture
+                          account: accountRepository),
+                    ),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
@@ -159,6 +189,8 @@ class MessengerSettingsScreen extends StatelessWidget {
                                     color: colors.onSurfaceVariant,
                                     letterSpacing: 0),
                           ),
+                          // Bundle 214 (mock 1): "Admin · Owner" tag.
+                          const SettingsAdminTag(),
                         ],
                       ),
                     ),
@@ -280,28 +312,8 @@ class MessengerSettingsScreen extends StatelessWidget {
               ),
             ),
           ]),
-          const MessengerGroupLabel('Admin'),
-          MessengerListGroup(dividerIndent: 66, children: [
-            MessengerSettingsRow(
-              icon: Icons.admin_panel_settings_outlined,
-              title: 'Admin panel',
-              // Bundle 134: works offline too — the panel itself locks its
-              // server-only modules when the server is unreachable.
-              subtitle: 'Tools for testing',
-              onTap: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AdminLoginScreen(
-                    api: api,
-                    viewMode: viewMode,
-                    adminCapability: adminCapability,
-                    repositoryFactory: adminRepositoryFactory,
-                    store: store,
-                  ),
-                ),
-              ),
-            ),
-          ]),
+          // Bundle 214 (E4): no Admin section any more. The web makes a
+          // user admin; an admin switches with the photo (Gmail style).
         ],
       ),
     );
@@ -395,4 +407,98 @@ class _SettingsOwnAvatarState extends State<SettingsOwnAvatar> {
             peerId: widget.peerId,
             locked: own == true),
       );
+}
+
+
+/// Bundle 211 (D1): shows [child] while the server is connected. When the
+/// server drops it stays [hideAfter] (no flicker on a short drop), then
+/// hides. Hidden from the start when offline.
+/// Bundle 214 (mock 1): a small "👑 Admin · Owner" tag under my name while
+/// my account has the admin card. Nothing for a normal user.
+class SettingsAdminTag extends StatelessWidget {
+  const SettingsAdminTag({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final book = AdminBadgeBook.instance;
+    return ListenableBuilder(
+      listenable: book,
+      builder: (context, _) {
+        final card = book.adminOf(book.selfUserId);
+        if (card == null) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              key: const ValueKey('settings_admin_tag'),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF4D6),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFF5B301)),
+              ),
+              child: Text('\u{1F451} Admin · ${card.roleLabel}',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6B4A00))),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class ServerOnlySection extends StatefulWidget {
+  const ServerOnlySection({
+    super.key,
+    required this.viewMode,
+    required this.child,
+    this.hideAfter = const Duration(seconds: 5),
+  });
+
+  final AppViewModeCubit viewMode;
+  final Widget child;
+  final Duration hideAfter;
+
+  @override
+  State<ServerOnlySection> createState() => _ServerOnlySectionState();
+}
+
+class _ServerOnlySectionState extends State<ServerOnlySection> {
+  late bool _show = widget.viewMode.state.serverConnected;
+  StreamSubscription<AppViewModeState>? _sub;
+  Timer? _hide;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = widget.viewMode.stream.listen((s) {
+      if (s.serverConnected) {
+        _hide?.cancel();
+        _hide = null;
+        if (!_show && mounted) setState(() => _show = true);
+      } else if (_show && _hide == null) {
+        _hide = Timer(widget.hideAfter, () {
+          _hide = null;
+          if (mounted && !widget.viewMode.state.serverConnected) {
+            setState(() => _show = false);
+          }
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _hide?.cancel();
+    unawaited(_sub?.cancel());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _show ? widget.child : const SizedBox.shrink();
 }

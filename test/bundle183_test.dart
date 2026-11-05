@@ -543,6 +543,9 @@ void main() {
 
     testWidgets('PRIVACY sits between THIS PHONE and ADMIN, count shown',
         (tester) async {
+      // Bundle 211 (D1): the Admin section shows only with the server.
+      _viewMode.setServerConnected(true);
+      addTearDown(() => _viewMode.setServerConnected(false));
       BlockHub.instance.setForTest(
           people: const [BlockedPerson(userId: 'u-ali', name: 'Ali')]);
       await _pushed(tester, _settings());
@@ -567,7 +570,8 @@ void main() {
       final y = (String t) =>
           tester.getTopLeft(find.text(t, skipOffstage: false)).dy;
       expect(y('THIS PHONE'), lessThan(y('PRIVACY')));
-      expect(y('PRIVACY'), lessThan(y('ADMIN')));
+      // Bundle 214: no ADMIN section any more.
+      expect(find.text('ADMIN', skipOffstage: false), findsNothing);
     });
 
     testWidgets('Private profile: ON asks first; Cancel keeps it OFF',
@@ -690,6 +694,9 @@ void main() {
   group('F Settings', () {
     testWidgets('one way into Account, plain card line, sections in order',
         (tester) async {
+      // Bundle 211 (D1): the Admin section shows only with the server.
+      _viewMode.setServerConnected(true);
+      addTearDown(() => _viewMode.setServerConnected(false));
       await _pushed(tester, _settings());
       expect(find.text('Account & profile'), findsNothing);
       expect(find.text('Privacy & security'), findsNothing);
@@ -703,8 +710,7 @@ void main() {
         'THIS PHONE',
         'Keep LinkUp running',
         'Reset setup',
-        'ADMIN',
-        'Admin panel',
+        // Bundle 214: no Admin section any more.
       ];
       for (final t in order) {
         await tester.scrollUntilVisible(find.text(t), 100,
@@ -725,8 +731,9 @@ void main() {
       expect(find.text('Messages, groups and calls'), findsOneWidget);
       expect(find.text('Get messages and calls when closed'), findsOneWidget);
       expect(find.text('Start again on this phone'), findsOneWidget);
+      // Bundle 214: the Admin row ("Tools for testing") is removed.
       expect(find.text('Tools for testing', skipOffstage: false),
-          findsOneWidget);
+          findsNothing);
     });
 
     testWidgets('sizes: card 16 from the edge, title 6 inside, row 72',

@@ -1,3 +1,4 @@
+import 'package:locallink/core/config/app_build.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -93,7 +94,8 @@ class WebSocketService {
 
     _manualDisconnect = false;
     _url = url;
-    _headers = Map<String, String>.from(headers);
+    // Bundle 213: the build goes on the socket too (server version gate).
+    _headers = AppBuild.withHeader(Map<String, String>.from(headers));
 
     _reconnectTimer?.cancel();
     _reconnectTimer = null;

@@ -1,3 +1,8 @@
+import 'package:locallink/core/widgets/version_banner.dart';
+import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/features/share_app/domain/update_request_service.dart';
+import 'package:locallink/features/share_app/presentation/share_app_entry.dart';
+import 'package:locallink/features/share_app/presentation/update_sheet.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -101,6 +106,19 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     FriendChatOpener.toast = _showAppSnackBar;
     // Bundle G6: Join by invite link opens the group chat.
     GroupInviteService.openGroup = _openGroupChat;
+    // Bundle 213: Update (get the new app from a nearby phone) and the
+    // "X wants the new LinkUp" question on the phone that has it.
+    VersionGuard.openUpdate = openUpdateSheet;
+    UpdateRequestService.confirm = (ask, apk, battery) async {
+      final ctx = _navigatorKey.currentState?.overlay?.context;
+      if (!mounted || ctx == null) return null;
+      return showUpdateAskDialog(ctx, ask, apk, battery);
+    };
+    UpdateRequestService.openShareScreen = (ownerName) {
+      final ctx = _navigatorKey.currentState?.overlay?.context;
+      if (!mounted || ctx == null) return;
+      openShareApp(ctx, ownerName: ownerName);
+    };
     // Bundle 126: pairing diagnostics are demoted to logcat-only (the
     // service still prints every PAIR_DIAG line). While bring-up was broken,
     // toasting every stage line was worth it; now each packet produced 1–3
@@ -532,12 +550,20 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     }
     _listenForIncomingCalls();
     _listenForNotificationOpens();
+    // Bundle 214 (G3/G4): right after a sign-in - the saved admin session
+    // of THIS account is back at once (offline too), then the server is
+    // asked. Another account's session is cleared.
+    _deps.adminBadges.selfChanged();
+    unawaited(_deps.adminRoles
+        .afterSignIn(online: true)
+        .catchError((Object _) {}));
     await _configuredNow();
   }
 
   /// Bundle 110: soft sign-out finished in the profile — flip the boot gate
   /// back to the login screen. Nothing is wiped; offline login reopens the
-  /// account with its password or recovery code.
+  /// account with its password or recovery code. Bundle 214 (G1): the
+  /// admin session and the crown cards stay too (Reset clears them).
   Future<void> _signedOut() async {
     await _configuredNow();
   }
@@ -563,6 +589,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     await _deps.directTransport.clearStorage();
     await _deps.store.clearConfiguration();
     await _deps.adminCapability.clear();
+    _deps.adminRoles.current.value = null; // Bundle 214
     _deps.viewMode.reset();
     await _deps.crypto.clearIdentity();
     await _deps.presence.stop();

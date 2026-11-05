@@ -1,3 +1,11 @@
+import 'package:locallink/features/admin/data/services/version_rule_service.dart';
+import 'package:locallink/features/admin/data/services/admin_badge_service.dart';
+import 'package:locallink/features/admin/data/services/admin_role_server.dart';
+import 'package:locallink/features/admin/data/services/admin_role_service.dart';
+import 'package:locallink/features/admin/data/services/version_rule_server.dart';
+import 'package:locallink/features/share_app/domain/update_request_service.dart';
+import 'package:locallink/features/admin/data/services/admin_block_server.dart';
+import 'package:locallink/features/admin/data/services/admin_block_service.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/features/files/data/services/auto_fetch_service.dart';
 import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
@@ -84,6 +92,7 @@ import 'package:locallink/features/directory/domain/directory_repository_contrac
 import 'package:locallink/features/home/domain/home_repository_contract.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
+import 'package:locallink/features/admin/data/services/admin_service.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/data/services/admin_session_store.dart';
 import 'package:locallink/features/admin/data/repositories/admin_repository_factory.dart';
@@ -157,8 +166,25 @@ class AppDependencies {
         // (history sync + outbox flush + presence repaint + deferred profile
         // sync + fully automatic offline-account publish), debounced.
         if (connected) unawaited(_fireSilentResyncBurst());
+        // Bundle 211 (B6): an Admin sign-out made offline reaches the server.
+        if (connected) {
+          unawaited(adminCapability.sendPendingRevoke(
+              (token) => AdminService(api, token).logout()));
+          // Bundle 212 (G4): admin blocks to / from the server.
+          unawaited(adminBlocks.syncWithServer().catchError((Object _) {}));
+          // Bundle 213: the minimum app version to / from the server.
+          unawaited(versionRules.syncWithServer().catchError((Object _) {}));
+          // Bundle 214 (B2/C4): my admin role + everyone's crown cards.
+          unawaited(adminRoles.refresh(reason: 'connect')
+              .catchError((Object _) => AdminRoleResult.keep));
+          unawaited(adminBadges.syncWithServer().catchError((Object _) {}));
+        }
       },
     );
+    _buildAdminBlocks(); // Bundle 212
+    _buildAdminRoles(); // Bundle 214
+    _buildVersionRules(); // Bundle 213
+    _buildUpdateRequests(); // Bundle 213
     meshRepository = MeshRepository(transport: directTransport);
     mesh = MeshBloc(repository: meshRepository);
     wifiDirectFallback = WifiDirectFallbackService(connectivityRepository);
@@ -667,6 +693,207 @@ class AppDependencies {
   late final AdminCapabilityService adminCapability;
   StreamSubscription<bool>? _serverConnectionSubscription;
 
+  /// Bundle 212: admin block / unblock of any user with no internet.
+  late final AdminBlockService adminBlocks;
+
+  /// Bundle 213: the admin's minimum app version (works with no internet).
+  late final VersionRuleService versionRules;
+
+  /// Bundle 214: everyone's admin crown cards (offline too).
+  late final AdminBadgeService adminBadges;
+
+  /// Bundle 214: my own admin role, automatic (no admin login).
+  late final AdminRoleService adminRoles;
+
+  void _buildAdminRoles() {
+    final link = directTransport;
+    final plain = link is SealingPeerTransport ? link.inner : link;
+    final http = HttpAdminRoleServer(
+      baseUrl: () => api.baseUrl,
+      deviceId: () => store.deviceId ?? '',
+      deviceToken: () => store.deviceToken ?? '',
+    );
+    adminBadges = AdminBadgeService(
+      read: store.readSetting,
+      write: store.writeSetting,
+      selfDeviceId: () => store.deviceId ?? '',
+      selfUserId: () => store.accountId ?? '',
+      send: (peer, payload) => plain.send(recipientId: peer, payload: payload),
+      events: link.events,
+      linkedPeers: () async {
+        final topology =
+            await link.topology().timeout(const Duration(seconds: 3));
+        final peers = topology['peers'];
+        return <String>[
+          if (peers is List)
+            for (final p in peers.whereType<Map>())
+              if (((p['peer_id'] ?? p['node_id'])?.toString() ?? '')
+                  .isNotEmpty)
+                (p['peer_id'] ?? p['node_id']).toString(),
+        ];
+      },
+      serverKey: () => adminBlocks.serverKey,
+      server: http,
+      deviceOwners: store.devicesOfUsers,
+    );
+    adminRoles = AdminRoleService(
+      capability: adminCapability,
+      read: store.readSetting,
+      write: store.writeSetting,
+      accountId: () => store.accountId ?? '',
+      signedOut: store.isSignedOut,
+      server: http,
+      setCapable: viewMode.setAdminCapability,
+      offerCard: (card) => adminBadges.offer(card, from: 'server'),
+      // 212 trust key + "key ended" notes, then the offline key.
+      afterAdmin: () async {
+        await adminBlocks.syncWithServer();
+        await adminBlocks.ensureCert();
+      },
+      notify: (title, body) => unawaited(notifications
+          .showSystemNotification(id: 'admin_role', title: title, body: body)
+          .catchError((Object _) {})),
+      messages: socket.messages,
+      onBadgeChanged: () =>
+          unawaited(adminBadges.syncWithServer().catchError((Object _) {})),
+    );
+  }
+
+  /// Bundle 213 (E): "Update" gets the new app from a nearby phone.
+  late final UpdateRequestService updateRequests;
+
+  void _buildVersionRules() {
+    final link = directTransport;
+    // Plain one-step frames, like the 212 admin block frames.
+    final plain = link is SealingPeerTransport ? link.inner : link;
+    versionRules = VersionRuleService(
+      read: store.readSetting,
+      write: store.writeSetting,
+      selfDeviceId: () => store.deviceId ?? '',
+      send: (peer, payload) => plain.send(recipientId: peer, payload: payload),
+      events: link.events,
+      linkedPeers: () async {
+        final topology =
+            await link.topology().timeout(const Duration(seconds: 3));
+        final peers = topology['peers'];
+        return <String>[
+          if (peers is List)
+            for (final p in peers.whereType<Map>())
+              if (((p['peer_id'] ?? p['node_id'])?.toString() ?? '')
+                  .isNotEmpty)
+                (p['peer_id'] ?? p['node_id']).toString(),
+        ];
+      },
+      serverKey: () => adminBlocks.serverKey,
+      endedCerts: () => adminBlocks.endedCertIds,
+      usableCert: adminBlocks.usableCert,
+      sign: crypto.signPayload,
+      adminSignIn: () async {
+        final s = await adminCapability.readValidSession();
+        if (s == null || !s.usable) return null;
+        return (token: s.token, role: s.role, username: s.username);
+      },
+      server: HttpVersionRuleServer(
+        baseUrl: () => api.baseUrl,
+        deviceId: () => store.deviceId ?? '',
+        deviceToken: () => store.deviceToken ?? '',
+      ),
+      onDroppedChanged: LocalStore.notifyBlockedChanged,
+      // Once per rule: this version is now read-only (app closed too).
+      onSelfStopped: (rule) => unawaited(notifications
+          .showSystemNotification(
+            id: 'version_stopped',
+            title: 'This LinkUp version is stopped by admin',
+            body: 'You can read old chats. Update to send and call'
+                '${rule.minVersion.isEmpty ? '' : ' (${rule.minVersion} or newer)'}.',
+          )
+          .catchError((Object _) {})),
+    );
+  }
+
+  void _buildUpdateRequests() {
+    final link = directTransport;
+    final plain = link is SealingPeerTransport ? link.inner : link;
+    updateRequests = UpdateRequestService(
+      send: (peer, payload) => plain.send(recipientId: peer, payload: payload),
+      events: link.events,
+      selfDeviceId: () => store.deviceId ?? '',
+      myName: () {
+        final n = store.username?.trim() ?? '';
+        if (n.isNotEmpty) return n;
+        final d = store.deviceName?.trim() ?? '';
+        return d.isEmpty ? 'LinkUp user' : d;
+      },
+      peerName: (id) async => await store.peerDisplayName(id) ?? '',
+      peerBuilds: () => {
+        for (final e in versionRules.peerBuilds.entries)
+          e.key: (build: e.value.build, version: e.value.version, at: e.value.at),
+      },
+    );
+  }
+
+  void _buildAdminBlocks() {
+    final link = directTransport;
+    // Plain one-step frames (signed, not secret): never sealed, so they go
+    // only to the phone on the link, on any link (Kotlin MeshOneStep).
+    final plain = link is SealingPeerTransport ? link.inner : link;
+    adminBlocks = AdminBlockService(
+      read: store.readSetting,
+      write: store.writeSetting,
+      selfDeviceId: () => store.deviceId ?? '',
+      selfUserId: () => store.accountId ?? '',
+      signingKey: crypto.signingPublicKey,
+      sign: crypto.signPayload,
+      send: (peer, payload) =>
+          plain.send(recipientId: peer, payload: payload),
+      events: link.events,
+      linkedPeers: () async {
+        final topology =
+            await link.topology().timeout(const Duration(seconds: 3));
+        final peers = topology['peers'];
+        return <String>[
+          if (peers is List)
+            for (final p in peers.whereType<Map>())
+              if (((p['peer_id'] ?? p['node_id'])?.toString() ?? '')
+                  .isNotEmpty)
+                (p['peer_id'] ?? p['node_id']).toString(),
+        ];
+      },
+      server: HttpAdminBlockServer(
+        baseUrl: () => api.baseUrl,
+        deviceId: () => store.deviceId ?? '',
+        deviceToken: () => store.deviceToken ?? '',
+      ),
+      adminSignIn: () async {
+        final s = await adminCapability.readValidSession();
+        if (s == null || !s.usable) return null;
+        return (token: s.token, role: s.role, username: s.username);
+      },
+      onBlockedChanged: LocalStore.notifyBlockedChanged,
+      // BG2: my own account blocked / active again (also with the app closed).
+      onSelfChanged: (blocked, _) => unawaited(notifications
+          .showSystemNotification(
+            id: 'admin_block_self',
+            title: blocked
+                ? 'Your account is blocked by admin'
+                : 'Your account is active again',
+            body: blocked
+                ? "You can read old chats but can't send or call."
+                : 'You can send messages and call again.',
+          )
+          .catchError((Object _) {})),
+      // BG3: one silent note when the server has a block I made.
+      onServerSaved: (name) => unawaited(notifications
+          .showSystemNotification(
+            id: 'admin_block_saved',
+            title: 'Block saved on the server',
+            body: '${name.isEmpty ? 'The user' : name} block saved on the server',
+            silent: true,
+          )
+          .catchError((Object _) {})),
+    );
+  }
+
   /// Local-only boot (Bundle 102): account was created while the server was
   /// unreachable. Starts the mesh/transport stack; server-bound services
   /// self-guard on the missing token (presence) or are skipped. Publishing
@@ -697,6 +924,11 @@ class AppDependencies {
     } catch (_) {}
     messaging.start();
     groupMessagingService.start();
+    unawaited(adminBlocks.start().catchError((Object _) {})); // Bundle 212
+    unawaited(versionRules.start().catchError((Object _) {})); // Bundle 213
+    unawaited(adminBadges.start().catchError((Object _) {})); // Bundle 214
+    unawaited(adminRoles.start().catchError((Object _) {})); // Bundle 214
+    updateRequests.start(); // Bundle 213
     _startAutoFetch(); // Bundle 208 (E)
     calls.start();
     await _loadReadReceiptsSetting();
@@ -764,6 +996,11 @@ class AppDependencies {
     await directoryRepository.start();
     messaging.start();
     groupMessagingService.start();
+    unawaited(adminBlocks.start().catchError((Object _) {})); // Bundle 212
+    unawaited(versionRules.start().catchError((Object _) {})); // Bundle 213
+    unawaited(adminBadges.start().catchError((Object _) {})); // Bundle 214
+    unawaited(adminRoles.start().catchError((Object _) {})); // Bundle 214
+    updateRequests.start(); // Bundle 213
     _startAutoFetch(); // Bundle 208 (E)
     calls.start();
     await _loadReadReceiptsSetting();
@@ -863,6 +1100,11 @@ class AppDependencies {
     if (identical(FriendHelloService.instance, friendHello)) {
       FriendHelloService.instance = null;
     }
+    await adminBlocks.dispose(); // Bundle 212
+    await versionRules.dispose(); // Bundle 213
+    await adminBadges.dispose(); // Bundle 214
+    await adminRoles.dispose(); // Bundle 214
+    await updateRequests.stop(); // Bundle 213
     await directoryRepository.dispose();
     await messaging.dispose();
     await groupMessagingService.dispose();

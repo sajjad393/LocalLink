@@ -175,7 +175,10 @@ object MediaStorageNative {
     /** Open a Gallery / saved copy in the phone's own viewer. */
     fun openUri(context: Context, value: String, mime: String): Boolean = try {
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(Uri.parse(value), mime.ifEmpty { "*/*" })
+            // Bundle 213: a nearby phone's download page opens in the browser
+            // (no type, or browsers may not match an http link).
+            if (mime.isEmpty() && value.startsWith("http")) data = Uri.parse(value)
+            else setDataAndType(Uri.parse(value), mime.ifEmpty { "*/*" })
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)

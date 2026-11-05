@@ -1,3 +1,5 @@
+import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/groups/data/group_photo_book.dart';
 import 'package:locallink/features/groups/data/group_change_hub.dart';
 import 'dart:io';
@@ -684,6 +686,16 @@ class ReliableMessagingService {
           'attachments=${attachments.length}',
     );
 
+    // Bundle 212: my own account is blocked by admin (read only).
+    if (AdminBlockBook.instance.selfBlocked) {
+      AppLogger.warning('MESSAGE_SEND_BLOCKED_PEER', detail: 'reason=admin_self');
+      throw Exception('Blocked by admin');
+    }
+    // Bundle 213: this app version is stopped by admin (read only).
+    if (VersionGuard.instance.stopped) {
+      AppLogger.warning('MESSAGE_SEND_BLOCKED_PEER', detail: 'reason=old_version');
+      throw Exception('Old version. Update to send.');
+    }
     if (await store.isBlockedPeer(recipientId)) {
       AppLogger.warning(
         'MESSAGE_SEND_BLOCKED_PEER',

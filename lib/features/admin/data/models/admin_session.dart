@@ -26,6 +26,15 @@ class AdminSession extends Equatable {
     );
   }
 
+  /// Bundle 211 (B1): a saved sign-in is usable while it has its token and
+  /// ids. It stays until Sign out / revoke / password reset (the server
+  /// decides with 401). [expired] is kept for the old checks and tests.
+  bool get usable =>
+      token.isNotEmpty &&
+      adminId.isNotEmpty &&
+      username.isNotEmpty &&
+      role.isNotEmpty;
+
   bool get expired {
     final value = DateTime.tryParse(expiresAt);
     return token.isEmpty || value == null || !value.isAfter(DateTime.now().toUtc());

@@ -542,7 +542,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AccountAvatar(name: r.name, radius: 24),
+              AccountAvatar(name: r.name, radius: 24, userId: r.deviceId), // 214: crown
               const SizedBox(width: 16),
               Expanded(
                 child: Column(

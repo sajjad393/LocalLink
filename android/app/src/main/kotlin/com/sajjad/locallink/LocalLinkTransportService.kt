@@ -311,7 +311,8 @@ class LocalLinkTransportService : Service() {
     // (up to the soft limit), so Wi-Fi Direct has its own relay budget; LAN
     // relay neighbours stay at 3.
     private fun trustForPeer(peerId: String, offersRelay: Boolean, transportName: String): String? {
-        val trust = MeshRelayPolicy.trustFor(
+        // Bundle 212 (D2): a blocked peer is a relay-only node, not refused.
+        val trust = MeshBlockPolicy.trust(
             peerId = peerId,
             isContact = knownPeers.contains(peerId),
             isBlocked = blockedPeers.contains(peerId),
@@ -803,13 +804,25 @@ class LocalLinkTransportService : Service() {
         }
     }
 
+    /** Bundle 212 (D2): rate-limited BLOCK_DROP log (once per origin per minute). */
+    private val blockDropLogAt = ConcurrentHashMap<String, Long>()
+    private fun noteBlockDrop(origin: String, hop: String) {
+        val now = System.currentTimeMillis()
+        val last = blockDropLogAt[origin] ?: 0L
+        if (now - last < 60_000L) return
+        if (blockDropLogAt.size > 200) blockDropLogAt.clear()
+        blockDropLogAt[origin] = now
+        Log.i("RELAY", "BLOCK_DROP origin=${origin.take(8)} from=${hop.take(8)} hop=first")
+    }
+
     private fun updateBlockedInternal(peerIds:List<String>){
         blockedPeers.clear();peerIds.forEach{if(validTransportId(it))blockedPeers.add(it.trim())};persistState()
         for(link in allPhysicalPeerLinks()){
-            // Bundle 164 (5.7): a blocked contact is cut too, not only relays.
-            if(blockedPeers.contains(link.peerId)){
-                if(link.trust==MeshRelayPolicy.TRUST_RELAY)Log.i("RELAY","relay link closed peer=${link.peerId} reason=blocked")
-                else Log.i("LINK_AUTH","contact link closed peer=${link.peerId.take(8)} reason=blocked")
+            // Bundle 164 (5.7): a blocked contact is cut.
+            // Bundle 212 (D2): only contact links; it comes back as a relay
+            // link (carries others' sealed packets) and relay links stay.
+            if(MeshBlockPolicy.closeLink(link.trust,blockedPeers.contains(link.peerId))){
+                Log.i("LINK_AUTH","contact link closed peer=${link.peerId.take(8)} reason=blocked")
                 try{link.socket.close()}catch(_:Exception){}
             }
         }
@@ -834,7 +847,8 @@ class LocalLinkTransportService : Service() {
     // every media direct_message crashed the receiver's Message.fromJson.
     private fun sendTransportInternal(target:String,map:Map<String,Any?>):Boolean{if(!transportRunning||!validTransportId(target))return false;val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,JSONObject.wrap(v))}
         // Bundle 195c: the name question / answer only to a phone linked right now (one step, not routed).
-        if(MeshRelayPolicy.isNameQuestion(p.optString("type"))){val peer=activePeerConnection(target)?:return false;return sendToPeer(peer,p)}
+        // Bundle 212: + the admin block frames (MeshOneStep).
+        if(MeshOneStep.isOneStep(p.optString("type"))){val peer=activePeerConnection(target)?:return false;return sendToPeer(peer,p)}
         return sendRoutedPayload(target,p)}
     private fun broadcastTransportInternal(map:Map<String,Any?>):Boolean{val self=transportDeviceId?:return false;var ok=false;for((id,peer) in transportPeers){if(peer.trust!=MeshRelayPolicy.TRUST_CONTACT)continue;val p=JSONObject();map.forEach{(k,v)->if(k!=null&&v!=null)p.put(k,JSONObject.wrap(v))};p.put("sender_id",self).put("recipient_id",id);if(sendToPeer(peer,p))ok=true};return ok||transportPeers.isEmpty()}
     private fun sendFileTransportInternal(target:String,path:String,fileId:String,messageId:String,fileName:String,contentType:String,cb:(Boolean,String?)->Unit){
@@ -1396,7 +1410,8 @@ class LocalLinkTransportService : Service() {
     }
 
     private fun shouldDialRelay(self: String, nodeId: String, now: Long): Boolean {
-        if (!MeshRelayPolicy.RELAY_ENABLED || blockedPeers.contains(nodeId) || relayLimiter.isPaused(nodeId, now)) return false
+        // Bundle 212 (D2): a blocked node may be dialled as a relay.
+        if (!MeshBlockPolicy.mayDialRelay(relayLimiter.isPaused(nodeId, now))) return false
         if (!MeshRelayPolicy.shouldDialRelay(self, nodeId)) return false
         if (relayLinkCount(transportName = MeshTransportPolicy.LAN) >= MeshRelayPolicy.MAX_RELAY_LINKS) return false
         val last = relayDialAt[nodeId] ?: 0L
@@ -1927,8 +1942,8 @@ class LocalLinkTransportService : Service() {
                         if (receiver != transportDeviceId) break
                         val isRelayLink = connection.trust == MeshRelayPolicy.TRUST_RELAY
                         if (isRelayLink) {
-                            // Bundle 156: relay link — never a blocked user.
-                            if (blockedPeers.contains(from)) { exitCause = "relay_blocked"; break }
+                            // Bundle 156: relay link. Bundle 212 (D2): a blocked
+                            // phone's relay link stays (sealed only + first-hop drop).
                         } else if (!knownPeers.contains(from)) break
                         // Bundle 164 (5.7): a contact blocked while linked.
                         else if (blockedPeers.contains(from)) { exitCause = "contact_blocked"; break }
@@ -1978,8 +1993,9 @@ class LocalLinkTransportService : Service() {
                         }
                         // Bundle 195c: the name question / answer goes one step
                         // only (on any link): never passed on, never routed.
-                        if (MeshRelayPolicy.isNameQuestion(packet.type)) {
-                            if (!MeshRelayPolicy.isOneStepName(packet.type, packet.sourceNodeId, packet.destinationNodeId, from, transportDeviceId ?: "")) {
+                        // Bundle 212: + the admin block frames (MeshOneStep).
+                        if (MeshOneStep.isOneStep(packet.type)) {
+                            if (!MeshOneStep.isOneStepIn(packet.type, packet.sourceNodeId, packet.destinationNodeId, from, transportDeviceId ?: "")) {
                                 transportEvent("mesh_dropped", mapOf("packet_id" to packet.packetId, "peer_id" to from, "reason" to "name_not_one_step"))
                                 continue
                             }
@@ -1989,6 +2005,11 @@ class LocalLinkTransportService : Service() {
                             continue
                         }
                         if (packet.nextHopNodeId != null && packet.nextHopNodeId != transportDeviceId) continue
+                        // Bundle 212 (D2): first-hop drop - from or to a blocked person.
+                        if (MeshBlockPolicy.dropAtFirstHop(packet.type, packet.sourceNodeId, packet.destinationNodeId, blockedPeers)) {
+                            noteBlockDrop(packet.sourceNodeId, from)
+                            continue
+                        }
                         transportPacketsReceived.incrementAndGet()
                         transportBytesReceived.addAndGet(payloadText.toByteArray(Charsets.UTF_8).size.toLong())
                         routeDirectPacket(from, packet)
@@ -3995,8 +4016,10 @@ class LocalLinkTransportService : Service() {
         if (peer.trust == MeshRelayPolicy.TRUST_RELAY) {
             // Bundle 156: only sealed packets may use a relay as next hop.
             // Bundle 195c: plus the one-step name question / answer.
-            val oneStepName = MeshRelayPolicy.canSendOneStepName(packet.type, packet.sourceNodeId, packet.destinationNodeId, peer.peerId, self)
-            if (!(MeshRelayPolicy.canCarry(peer.trust, packet.type) || oneStepName) || blockedPeers.contains(peer.peerId)) return false
+            // Bundle 212: + the admin block frames; a blocked next hop is a
+            // relay link and carries sealed packets only (D2).
+            val oneStepName = MeshOneStep.canSendOneStep(packet.type, packet.sourceNodeId, packet.destinationNodeId, peer.peerId, self)
+            if (!MeshBlockPolicy.canUseNextHop(peer.trust, packet.type, oneStepName)) return false
         } else if (!knownPeers.contains(peer.peerId)) return false
         return try {
             if (packet.nextHopNodeId != peer.peerId) return false
