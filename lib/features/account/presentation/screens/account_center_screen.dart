@@ -178,7 +178,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                     padding: const EdgeInsets.fromLTRB(0, 12, 0, 32),
                     children: [
                       // Bundle 183 (B2/B3): the profile card is the ONE way to
-                      // edit name and photo (tap the card or the pencil).
+                      // edit name and photo (tap the card).
                       MessengerListGroup(children: [
                         InkWell(
                           key: const ValueKey('account_profile_card'),
@@ -230,7 +230,9 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                                     ],
                                   ),
                                 ),
-                                Icon(Icons.edit_outlined,
+                                // Bundle 215 (D1): the same arrow as the
+                                // other rows (was a pencil).
+                                Icon(Icons.chevron_right,
                                     key: const ValueKey('account_profile_edit'),
                                     color: colors.onSurfaceVariant),
                               ],

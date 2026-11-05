@@ -15,7 +15,7 @@ import 'package:locallink/features/groups/data/group_mute_book.dart';
 import 'package:locallink/features/groups/domain/group_repository_contract.dart';
 import 'package:locallink/features/groups/presentation/group_people_hub.dart';
 import 'package:locallink/features/groups/data/services/group_nearby_service.dart'
-    show GroupJoinRequest;
+    show GroupInviteState, GroupJoinRequest;
 import 'package:locallink/features/groups/presentation/screens/group_qr_screens.dart';
 import 'package:locallink/features/groups/presentation/screens/new_group_screen.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_info_sheets.dart';
@@ -84,6 +84,10 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   bool _busy = false;
   List<GroupJoinRequest> _requests = const [];
 
+  /// Bundle 215 (B1): people this phone added who have not got the group
+  /// yet (member id → invite). Only phone-made groups have them.
+  Map<String, GroupInviteState> _pending = const {};
+
   /// Bundle G4: QR join works for groups made on phones (Nearby).
   bool get _qrGroup =>
       _group.worksNearby && GroupNearbyHub.inviteCode != null;
@@ -132,7 +136,25 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       if (mounted) setState(() => _members = members);
     } catch (_) {}
     await _loadRequests();
+    await _loadPending();
   }
+
+  /// Bundle 215 (B1): who is still "Pending" (waiting or not reached).
+  Future<void> _loadPending() async {
+    final load = GroupNearbyHub.loadInvites;
+    if (load == null || !_group.worksNearby) return;
+    try {
+      final rows = await load(_group.id);
+      final next = {
+        for (final i in rows)
+          if (groupInvitePending(i)) i.memberId: i,
+      };
+      if (mounted) setState(() => _pending = next);
+    } catch (_) {}
+  }
+
+  int get _pendingCount =>
+      _members.where((m) => _pending.containsKey(m.deviceId)).length;
 
   Future<void> _loadRequests() async {
     final load = GroupNearbyHub.loadRequests;
@@ -380,9 +402,14 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final hub = GroupPeopleHub.instance;
     final friend = _friends.contains(m.deviceId);
     final rules = _rules;
+    final pending = _pending[m.deviceId];
+    final retry = GroupNearbyHub.retry;
     final choice = await showGroupMemberSheet(
       context,
       member: m,
+      // Bundle 215 (C): Pending text + Try again.
+      pending: pending,
+      canRetry: pending != null && retry != null && rules.active,
       friend: friend,
       canMessage: hub?.chatRoute(m.deviceId) != null,
       canAddFriend: hub != null && m.userId.isNotEmpty,
@@ -408,6 +435,15 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       case GroupMemberChoice.dismissAdmin:
         await _run('unadmin',
             () => widget.groups.setAdmin(_group.id, m.deviceId, admin: false));
+      case GroupMemberChoice.retry:
+        if (retry == null) return;
+        final name = _nameOf(m.deviceId);
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        final ok = await _run('retry', () => retry(_group.id, m.deviceId));
+        if (ok) {
+          messenger?.showSnackBar(
+              SnackBar(content: Text('Sending the group to $name again')));
+        }
       case GroupMemberChoice.remove:
         final name = _nameOf(m.deviceId);
         final ok = await showRemoveMemberSheet(context,
@@ -551,7 +587,10 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           ),
           if (rules.active && rules.isAdmin && _requests.isNotEmpty)
             _requestCard(context),
-          MessengerGroupLabel('$count ${count == 1 ? 'member' : 'members'}',
+          // Bundle 215 (B2): "3 members · 1 pending".
+          MessengerGroupLabel(
+              '$count ${count == 1 ? 'member' : 'members'}'
+              '${_pendingCount > 0 ? ' · $_pendingCount pending' : ''}',
               top: 16),
           ListenableBuilder(
             listenable: PresenceHub.instance,
@@ -588,6 +627,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     key: ValueKey('member_${m.deviceId}'),
                     member: m,
                     you: m.deviceId == widget.localDeviceId,
+                    pending: _pending[m.deviceId],
                     onTap: () => _member(m),
                   ),
               ],
@@ -918,10 +958,17 @@ class _InfoRow extends StatelessWidget {
 /// Mock mrow: photo, name ("You"), status dot, Owner / Admin label.
 class _MemberRow extends StatelessWidget {
   const _MemberRow(
-      {super.key, required this.member, required this.you, required this.onTap});
+      {super.key,
+      required this.member,
+      required this.you,
+      required this.onTap,
+      this.pending});
   final GroupMember member;
   final bool you;
   final VoidCallback onTap;
+
+  /// Bundle 215 (B3): set while this member has not got the group yet.
+  final GroupInviteState? pending;
 
   static const Color nearbyGreen = Color(0xFF1FB57A);
   static const Color offlineGrey = Color(0xFFB9BAC2);
@@ -943,6 +990,10 @@ class _MemberRow extends StatelessWidget {
       'admin' => 'Admin',
       _ => '',
     };
+    final wait = you ? null : pending;
+    final near = wait != null &&
+        wait.state == 'waiting' &&
+        groupMemberNearNow(member.deviceId);
     return InkWell(
       onTap: you ? null : onTap,
       child: Padding(
@@ -955,12 +1006,47 @@ class _MemberRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(you ? 'You' : name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w700)),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(you ? 'You' : name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w700)),
+                      ),
+                      // Bundle 215 (B3): "Pending" right after the name.
+                      if (wait != null) ...[
+                        const SizedBox(width: 6),
+                        GroupPendingTag(
+                            key: ValueKey('member_pending_${member.deviceId}')),
+                      ],
+                    ],
+                  ),
                   const SizedBox(height: 2),
+                  if (wait != null)
+                    Row(
+                      children: [
+                        if (near)
+                          Container(
+                            width: 8,
+                            height: 8,
+                            margin: const EdgeInsets.only(right: 5),
+                            decoration: const BoxDecoration(
+                                color: nearbyGreen, shape: BoxShape.circle),
+                          ),
+                        Flexible(
+                          child: Text(groupPendingLine(wait, near: near),
+                              key: ValueKey('member_pending_line_${member.deviceId}'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: colors.onSurfaceVariant)),
+                        ),
+                      ],
+                    )
+                  else
                   Row(
                     children: [
                       Container(

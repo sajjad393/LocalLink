@@ -7,7 +7,9 @@ import 'package:locallink/features/groups/data/services/group_nearby_service.dar
 
 /// Bundle G3: Nearby group parts of the approved mock (G0 screens 6 / 7).
 ///
-/// * [GroupAddingBanner]      mock 6 - "Adding Ali, Sara…" under the top bar.
+/// * [GroupAddingBanner]      mock 6 - "Adding Ali, Sara…" (bundle 215: no
+///   longer shown on the chat page; kept for its old tests).
+/// * [GroupPendingTag]        bundle 215 - "Pending" in Group info.
 /// * [showAddingPeopleSheet]  mock 7 - who is added / waiting.
 /// * [GroupSealedChip]        mock 6 - "🔒 Messages are sealed for group
 ///   members only" after the first system lines.
@@ -60,6 +62,51 @@ String addingNames(List<GroupInviteState> invites) {
 /// tests can swap it.)
 bool Function(String memberId) groupMemberNearNow =
     (id) => PresenceHub.instance.statusOf(id) == PresenceStatus.nearby;
+
+/// Bundle 215 (B): is this member still waiting for the group (not yet
+/// on her phone)? `waiting` and `failed` are pending; `added` is not.
+bool groupInvitePending(GroupInviteState? invite) =>
+    invite != null && invite.state != 'added';
+
+/// Bundle 215 (B3): the line under a pending member's name.
+String groupPendingLine(GroupInviteState invite, {required bool near}) {
+  if (invite.state == 'failed') return 'Not reached in 7 days · tap to try again';
+  if (near) return 'Nearby now · adding…';
+  return 'Gets the group when Nearby or Online';
+}
+
+/// Bundle 215 (B3, mock 215 page 3): small orange "Pending" pill.
+class GroupPendingTag extends StatelessWidget {
+  const GroupPendingTag({super.key});
+
+  static const Color text = Color(0xFFC26A00);
+  static const Color bg = Color(0xFFFFF1DC);
+  static const Color darkText = Color(0xFFFFB547);
+  static const Color darkBg = Color(0xFF3A2A12);
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final fg = dark ? darkText : text;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 2, 8, 2),
+      decoration: BoxDecoration(
+        color: dark ? darkBg : bg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.schedule_rounded, size: 12, color: fg),
+          const SizedBox(width: 3),
+          Text('Pending',
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w700, color: fg)),
+        ],
+      ),
+    );
+  }
+}
 
 /// Bundle 207 (M, mock 207 page 2): strip colours that work in light and
 /// dark.

@@ -7,7 +7,9 @@ import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/groups/data/services/group_nearby_service.dart'
-    show GroupJoinRequest;
+    show GroupInviteState, GroupJoinRequest;
+import 'package:locallink/features/groups/presentation/widgets/group_nearby_widgets.dart'
+    show GroupPendingTag;
 import 'package:locallink/features/groups/presentation/widgets/group_sheets.dart';
 
 /// Bundle G2: the Group info bottom sheets of the approved mock (G0).
@@ -177,7 +179,21 @@ Future<GroupPhotoPick?> showGroupPhotoSheet(BuildContext context,
 
 // ------------------------------------------------------------ mock 29/29b
 
-enum GroupMemberChoice { message, profile, addFriend, makeAdmin, dismissAdmin, remove }
+enum GroupMemberChoice { message, profile, addFriend, makeAdmin, dismissAdmin, remove, retry }
+
+/// Bundle 215 (C2): "Added by you · today 10:42" / "· 3 Nov".
+String groupPendingSince(int atMs, {DateTime? now}) {
+  if (atMs <= 0) return 'Added by you';
+  final t = DateTime.fromMillisecondsSinceEpoch(atMs);
+  final n = now ?? DateTime.now();
+  final hh = t.hour.toString().padLeft(2, '0');
+  final mm = t.minute.toString().padLeft(2, '0');
+  if (t.year == n.year && t.month == n.month && t.day == n.day) {
+    return 'Added by you · today $hh:$mm';
+  }
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return 'Added by you · ${t.day} ${months[t.month - 1]}';
+}
 
 /// Mock 29 (friend) / 29b (not a friend): tap a member in Group info.
 Future<GroupMemberChoice?> showGroupMemberSheet(
@@ -190,9 +206,12 @@ Future<GroupMemberChoice?> showGroupMemberSheet(
   required bool canDismissAdmin,
   required bool canRemove,
   String username = '',
+  GroupInviteState? pending,
+  bool canRetry = false,
 }) {
   final name = member.name.trim().isEmpty ? 'Group member' : member.name.trim();
   final status = PresenceHub.instance.statusOf(member.deviceId).label;
+  final wait = pending != null && pending.state != 'added' ? pending : null;
   final line = friend
       ? (username.isEmpty ? status : '@$username · $status')
       : 'Not your friend · in this group';
@@ -217,6 +236,12 @@ Future<GroupMemberChoice?> showGroupMemberSheet(
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontSize: 15.5, fontWeight: FontWeight.w700)),
+                    if (wait != null)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 3),
+                        child: GroupPendingTag(key: ValueKey('member_sheet_pending')),
+                      )
+                    else
                     Text(line,
                         key: const ValueKey('group_member_line'),
                         style: TextStyle(
@@ -227,6 +252,31 @@ Future<GroupMemberChoice?> showGroupMemberSheet(
             ],
           ),
         ),
+        // Bundle 215 (C2/C3, mock 215 page 4): why pending + Try again.
+        if (wait != null) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 2, 2, 4),
+            child: Text(
+                wait.state == 'failed'
+                    ? "Not reached in 7 days. Tap Try again to send the group to $name again."
+                    : "$name's phone has not got the group yet. It is added by itself when $name is Nearby (Wi-Fi Direct or mesh) or Online.",
+                key: const ValueKey('member_pending_text'),
+                style: TextStyle(fontSize: 13.5, color: colors.onSurface, height: 1.35)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 0, 2, 10),
+            child: Text(groupPendingSince(wait.atMs),
+                key: const ValueKey('member_pending_since'),
+                style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
+          ),
+          if (canRetry)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: _big(c, _Big.blue, 'Try again',
+                  () => Navigator.pop(c, GroupMemberChoice.retry),
+                  key: const ValueKey('member_retry')),
+            ),
+        ],
         if (friend && canMessage)
           GroupSheetAction(
             key: const ValueKey('member_message'),

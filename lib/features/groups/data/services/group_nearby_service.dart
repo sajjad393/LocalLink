@@ -1108,6 +1108,9 @@ class GroupNearbyService {
       AppLogger.warning('GROUP_RX_BAD_SIG', detail: 'from=${_id6(from)}');
       return;
     }
+    // Bundle 215 (§8.2): a signed group message from her = she has the
+    // group (maybe from another member) - she is no longer "Pending".
+    await _inviteDoneBy(gid, from);
     if (!local.isActive) {
       await _ack(from, gid, id);
       return;
@@ -1128,6 +1131,20 @@ class GroupNearbyService {
     }
     await _ack(from, gid, id,
         have: att.isEmpty ? const [] : await _filesIHave(id));
+  }
+
+  /// Bundle 215: mark [member]'s invite "added" (once) when she clearly has
+  /// the group.
+  Future<void> _inviteDoneBy(String gid, String member) async {
+    try {
+      final invite = (await store.invites(gid))
+          .where((r) => r['member_id'] == member)
+          .firstOrNull;
+      if (invite == null || invite['state'] == 'added') return;
+      await store.setInvite(gid, member, 'added', _nowMs());
+      AppLogger.info('GROUP_INVITE_DONE', detail: 'by=message who=${_id6(member)}');
+      GroupChangeHub.instance.changed(gid);
+    } catch (_) {}
   }
 
   /// Bundle 209: the files with their fingerprints when the writer's

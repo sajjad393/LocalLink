@@ -46,8 +46,6 @@ import 'package:locallink/features/messaging/presentation/widgets/swipe_to_reply
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/reaction_chips.dart';
 import 'package:locallink/core/services/ui_sounds.dart';
-import 'package:locallink/features/groups/data/services/group_nearby_service.dart'
-    show GroupInviteState;
 import 'package:locallink/features/groups/presentation/widgets/group_nearby_widgets.dart';
 import 'package:locallink/features/groups/data/group_receipts.dart';
 import 'package:locallink/features/groups/data/group_mention_book.dart';
@@ -117,8 +115,6 @@ class _GroupChatScreenState extends State<GroupChatScreen>
   /// and its members (who may send).
   late LocalGroup _group = widget.group;
 
-  /// Bundle G3 (mock 6/7): people this phone is still adding Nearby.
-  List<GroupInviteState> _invites = const [];
   List<GroupMember> _members = const [];
   StreamSubscription<String>? _groupChanges;
 
@@ -449,35 +445,8 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       if (g != null && mounted) setState(() => _group = g);
     } catch (_) {}
     if (!network) await _loadMemberNames();
-    await _loadInvites();
-  }
-
-  /// Bundle G3: the "Adding…" banner rows (mock 6/7).
-  Future<void> _loadInvites() async {
-    final load = GroupNearbyHub.loadInvites;
-    if (load == null || !_group.worksNearby) return;
-    try {
-      final rows = await load(widget.group.id);
-      if (mounted) setState(() => _invites = rows);
-    } catch (_) {}
-  }
-
-  bool get _adding =>
-      _group.isActive && _invites.any((i) => i.state != 'added');
-
-  Future<void> _openAdding() async {
-    final retry = GroupNearbyHub.retry;
-    await showAddingPeopleSheet(
-      context,
-      invites: _invites,
-      myName: _memberNames[widget.localDeviceId] ?? 'Your friend',
-      onRetry: retry == null
-          ? null
-          : (id) async {
-              await retry(widget.group.id, id);
-              await _loadInvites();
-            },
-    );
+    // Bundle 215 (A): no "Adding…" strip on the chat page any more; people
+    // still waiting show "Pending" in Group info.
   }
 
   String get _draftKey => 'group:${widget.group.id}';
@@ -1403,9 +1372,6 @@ class _GroupChatScreenState extends State<GroupChatScreen>
           children: [
             if (state.error != null)
               LocalLinkInlineError(message: friendlyErrorMessage(state.error), onRetry: _controller.load),
-            // Bundle G3 (mock 6): "Adding Ali, Sara…".
-            if (_adding)
-              GroupAddingBanner(invites: _invites, onTap: _openAdding),
             // Bundle G5b (mock P3).
             if (pinBar != null) pinBar,
             Expanded(
