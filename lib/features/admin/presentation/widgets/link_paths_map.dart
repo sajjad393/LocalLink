@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Which link one map edge represents. Drives colour + placement sector.
 enum LinkTag { server, wifiDirect, mesh, localWifi }
@@ -17,25 +23,113 @@ class LinkNode {
   /// dashed line (it relays others' sealed messages only).
   final bool blocked;
 
+  /// Bundle 216 (C): the account behind the phone ('' = unknown). Used for
+  /// the photo, the crown and one-node-per-person.
+  final String userId;
+
+  /// Bundle 216: admin known from the data itself (UI check data, link map).
+  final bool admin;
+
   const LinkNode({
     required this.id,
     required this.label,
     required this.tag,
     this.blocked = false,
+    this.userId = '',
+    this.admin = false,
   });
+
+  LinkNode copyWith({bool? blocked}) => LinkNode(
+      id: id,
+      label: label,
+      tag: tag,
+      blocked: blocked ?? this.blocked,
+      userId: userId,
+      admin: admin);
 }
+
+/// Bundle 216 (C): one map node per phone / person. Rules:
+/// 1. removed (revoked) phones are dropped;
+/// 2. two records of the same account → only the newest one stays;
+/// 3. same phone name, one live (< 4 min) and one stale → the stale one
+///    goes (an old account on the same phone);
+/// 4. this phone's own ids ([ownIds]) never show as another phone.
+({List<T> kept, int hidden}) dedupeNodes<T>(
+  List<T> items, {
+  required String Function(T) deviceId,
+  required String Function(T) userId,
+  required String Function(T) phoneName,
+  required DateTime? Function(T) seenAt,
+  bool Function(T)? revoked,
+  Set<String> ownIds = const {},
+  DateTime? now,
+}) {
+  final at = (now ?? DateTime.now()).toUtc();
+  bool live(T x) {
+    final t = seenAt(x);
+    return t != null && at.difference(t.toUtc()).inMinutes < 4;
+  }
+
+  var list = [
+    for (final x in items)
+      if (!(revoked?.call(x) ?? false) && !ownIds.contains(deviceId(x))) x,
+  ];
+  // Rule 2: newest per account.
+  final byUser = <String, T>{};
+  for (final x in list) {
+    final u = userId(x).trim();
+    if (u.isEmpty) continue;
+    final old = byUser[u];
+    if (old == null) {
+      byUser[u] = x;
+      continue;
+    }
+    final a = seenAt(x)?.millisecondsSinceEpoch ?? 0;
+    final b = seenAt(old)?.millisecondsSinceEpoch ?? 0;
+    if (a > b) byUser[u] = x;
+  }
+  list = [
+    for (final x in list)
+      if (userId(x).trim().isEmpty || identical(byUser[userId(x).trim()], x)) x,
+  ];
+  // Rule 3: same phone name, live beats stale.
+  final liveNames = <String>{
+    for (final x in list)
+      if (live(x) && phoneName(x).trim().isNotEmpty) phoneName(x).trim().toLowerCase(),
+  };
+  list = [
+    for (final x in list)
+      if (live(x) ||
+          phoneName(x).trim().isEmpty ||
+          !liveNames.contains(phoneName(x).trim().toLowerCase()))
+        x,
+  ];
+  return (kept: list, hidden: items.length - list.length);
+}
+
+/// Bundle 216: `MAP_NODES shown= hidden_dupes=` once per map open.
+void logMapNodes216(int shown, int hidden) =>
+    AppLogger.info('MAP_NODES', detail: 'shown=$shown hidden_dupes=$hidden');
 
 /// Bundle 212: blocked node colours.
 const Color kLinkBlockedGrey = Color(0xFF9CA3AF);
 const Color kLinkBlockedRed = Color(0xFFD92D20);
 
 /// Tints matching the app’s transport language (chips / dividers).
+/// Bundle 216: the UI_SPEC_216 link colours.
 const kLinkTagColors = <LinkTag, Color>{
-  LinkTag.server: Color(0xFF2E9B5B),
+  LinkTag.server: Color(0xFF12A150),
   LinkTag.wifiDirect: Color(0xFFE8A317),
   LinkTag.mesh: Color(0xFF7C5CDB),
-  LinkTag.localWifi: Color(0xFF2AA9A0),
+  LinkTag.localWifi: Color(0xFF14A3A0),
 };
+
+A216Link linkOfTag216(LinkTag t) => switch (t) {
+      LinkTag.server => A216Link.server,
+      LinkTag.wifiDirect => A216Link.wifiDirect,
+      LinkTag.mesh => A216Link.mesh,
+      LinkTag.localWifi => A216Link.lan,
+    };
 
 String linkTagLabel(LinkTag tag) => switch (tag) {
       LinkTag.server => 'Server',
@@ -44,11 +138,10 @@ String linkTagLabel(LinkTag tag) => switch (tag) {
       LinkTag.localWifi => 'Local Wi-Fi',
     };
 
-/// Bundle 134: “Link paths” — the offline admin link map. Shows one blue hub
-/// (this phone), the server cloud, and every known device as a labelled node
-/// with a colour-coded arc by transport. Pure painting, no dependencies, and
-/// deterministic placement (sorted by id) so the map doesn’t reshuffle on
-/// each poll tick.
+/// Bundle 134 / 216: “Link paths” — the offline admin link map. This phone
+/// in the middle, the server cloud, and every known phone as its round
+/// profile photo with the name under it (216 C), joined by coloured lines
+/// by link. Deterministic placement (sorted by id) so it never reshuffles.
 class LinkPathsMap extends StatelessWidget {
   final List<LinkNode> nodes;
   final bool serverOnline;
@@ -56,58 +149,111 @@ class LinkPathsMap extends StatelessWidget {
   /// Bundle 212 (E6): the expand button (full-screen map); none when null.
   final VoidCallback? onExpand;
 
-  const LinkPathsMap(
-      {super.key, required this.nodes, required this.serverOnline, this.onExpand});
+  /// Bundle 216: canvas height (the admin home card uses 104).
+  final double height;
+
+  /// Bundle 216: this phone ("You") photo.
+  final String selfName;
+  final String? selfId;
+  final String? selfUserId;
+  final ValueChanged<LinkNode>? onNodeTap;
+
+  /// Bundle 216: card head ('Link paths' / 'Who is linked to whom, live').
+  final String? title;
+  final String? subtitle;
+
+  const LinkPathsMap({
+    this.title,
+    this.subtitle,
+    super.key,
+    required this.nodes,
+    required this.serverOnline,
+    this.onExpand,
+    this.height = 300,
+    this.selfName = 'You',
+    this.selfId,
+    this.selfUserId,
+    this.onNodeTap,
+  });
+
+  static Set<A216Link> linksOf(List<LinkNode> nodes, bool serverOnline) => {
+        if (serverOnline) A216Link.server,
+        for (final n in nodes)
+          if (!n.blocked) linkOfTag216(n.tag),
+      };
 
   @override
   Widget build(BuildContext context) {
-    const tags = LinkTag.values;
-    final scheme = Theme.of(context).colorScheme;
+    final c = A216.colors(context);
+    final links = linksOf(nodes, serverOnline);
+    final t = A216Text(c);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            height: 300,
-            color: scheme.surfaceContainerHigh.withValues(alpha: 0.55),
-            child: Stack(children: [
-              Positioned.fill(
-                child: LinkPathsCanvas(nodes: nodes, serverOnline: serverOnline),
+        if (title != null || onExpand != null)
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (title != null) Text(title!, style: t.cardTitle),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(subtitle!, style: t.cardSub),
+                  ],
+                ],
               ),
-              if (onExpand != null)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: IconButton.filledTonal(
-                    key: const ValueKey('link_paths_expand'),
-                    tooltip: 'Full screen',
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.open_in_full_rounded, size: 18),
-                    onPressed: onExpand,
+            ),
+            if (onExpand != null)
+              Material(
+                color: c.div,
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  key: const ValueKey('link_paths_expand'),
+                  onTap: onExpand,
+                  child: Tooltip(
+                    message: 'Full screen',
+                    child: SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: Icon(Icons.open_in_full_rounded,
+                            size: 15, color: c.ink2)),
                   ),
                 ),
-            ]),
-          ),
+              ),
+          ]),
+        // Bundle 216 (page 3): room for the crowns under the subtitle.
+        // Bundle 217: 16 so the bigger crowns stay under the subtitle.
+        if (title != null) const SizedBox(height: 16),
+        SizedBox(
+          height: height,
+          child: Stack(clipBehavior: Clip.none, children: [
+            Positioned.fill(
+              child: nodes.isEmpty
+                  ? Center(
+                      child: Text('No phones linked right now',
+                          key: const ValueKey('link_paths_empty'),
+                          style: A216Text(c).note))
+                  : LinkPathsCanvas(
+                      nodes: nodes,
+                      serverOnline: serverOnline,
+                      nodeRadius: 14,
+                      small: true,
+                      selfName: selfName,
+                      selfId: selfId,
+                      selfUserId: selfUserId,
+                      onNodeTap: onNodeTap,
+                    ),
+            ),
+          ]),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
         Wrap(
-          spacing: 12,
+          spacing: 14,
           runSpacing: 4,
           children: [
-            for (final tag in tags)
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(
-                        color: kLinkTagColors[tag], shape: BoxShape.circle)),
-                const SizedBox(width: 5),
-                Text(linkTagLabel(tag),
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: scheme.onSurface.withValues(alpha: 0.72))),
-              ]),
+            LinkLegend216(links: links),
             if (nodes.any((n) => n.blocked)) const LinkBlockedLegend(),
           ],
         ),
@@ -125,48 +271,244 @@ class LinkBlockedLegend extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-              width: 9,
-              height: 9,
+              width: 8,
+              height: 8,
               decoration: BoxDecoration(
                   color: kLinkBlockedGrey,
                   shape: BoxShape.circle,
-                  border: Border.all(color: kLinkBlockedRed, width: 1.5))),
+                  border: Border.all(color: kLinkBlockedRed, width: 1.4))),
           const SizedBox(width: 5),
-          Text('Blocked · relays only',
-              style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.72))),
+          Text('Blocked · relays only', style: A216Text.of(context).legend),
         ],
       );
 }
 
-/// Bundle 212: the map drawing alone (the small card and the full screen).
-class LinkPathsCanvas extends StatelessWidget {
+/// Bundle 217: when the map lines may move (TODO_217 §2.2). Off with
+/// Android "Remove animations", battery saver, or the app paused.
+class LinkMotion217 {
+  static final ValueNotifier<bool> powerSave = ValueNotifier(false);
+
+  /// Tests: true / false forces motion on / off; null = the real rules.
+  static bool? debugForce;
+
+  /// UI check only: draw the dots frozen at this phase (0..1); null = live.
+  @visibleForTesting
+  static double? debugPhase;
+
+  /// Tests: under `flutter test` motion stays off (old tests use
+  /// pumpAndSettle) unless this is true.
+  @visibleForTesting
+  static bool motionInTests = false;
+
+  static final bool _underTest =
+      !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
+  static const _ch = MethodChannel('locallink/device');
+  static String? _lastLog;
+
+  static Future<void> refresh() async {
+    if (_underTest) return;
+    try {
+      powerSave.value = (await _ch
+              .invokeMethod<bool>('powerSave')
+              .timeout(const Duration(milliseconds: 300))) ??
+          false;
+    } catch (_) {
+      powerSave.value = false;
+    }
+  }
+
+  /// Null = motion allowed, else why not (anim / saver / test).
+  static String? whyOff(BuildContext c) {
+    if (debugForce != null) return debugForce! ? null : 'test';
+    if (_underTest && !motionInTests) return 'test';
+    if (MediaQuery.maybeOf(c)?.disableAnimations ?? false) return 'anim';
+    if (powerSave.value) return 'saver';
+    return null;
+  }
+
+  static bool allowed(BuildContext c) => whyOff(c) == null;
+
+  static void log(bool on, String? why) {
+    final line = on ? 'on' : 'off why=${why ?? 'paused'}';
+    if (line == _lastLog) return;
+    _lastLog = line;
+    AppLogger.info('LINK_MOTION', detail: line);
+  }
+
+  @visibleForTesting
+  static void resetForTest() {
+    debugForce = null;
+    debugPhase = null;
+    motionInTests = false;
+    powerSave.value = false;
+    _lastLog = null;
+  }
+}
+
+/// Bundle 212 / 216 / 217: the map drawing (the small card and the full
+/// screen): aerial moving lines + server painted, people as photo widgets
+/// on top.
+class LinkPathsCanvas extends StatefulWidget {
   final List<LinkNode> nodes;
   final bool serverOnline;
   final String? selectedId;
   final double spread;
+  final double nodeRadius;
+  final bool small;
+  final String selfName;
+  final String? selfId;
+  final String? selfUserId;
+  final ValueChanged<LinkNode>? onNodeTap;
 
   const LinkPathsCanvas(
       {super.key,
       required this.nodes,
       required this.serverOnline,
       this.selectedId,
-      this.spread = 1.0});
+      this.spread = 1.0,
+      this.nodeRadius = 24,
+      this.small = false,
+      this.selfName = 'You',
+      this.selfId,
+      this.selfUserId,
+      this.onNodeTap});
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
-        painter: _LinkPathsPainter(
-          nodes: nodes,
-          serverOnline: serverOnline,
-          labelColor: Theme.of(context).colorScheme.onSurface,
-          selectedId: selectedId,
-          spread: spread,
-        ),
+  State<LinkPathsCanvas> createState() => LinkPathsCanvasState();
+
+  /// Bundle 217 (§2.1): control point of the aerial line p → q, bowing away
+  /// from [centre]; k = 0.60 (full map) or 0.36 ([small] card).
+  @visibleForTesting
+  static Offset aerialControl(Offset p, Offset q, Offset centre, {bool small = false}) {
+    final k = small ? 0.36 : 0.60;
+    final d = q - p;
+    final len = math.max(1.0, d.distance);
+    final mid = Offset((p.dx + q.dx) / 2, (p.dy + q.dy) / 2);
+    var n = Offset(-d.dy / len, d.dx / len);
+    final o = mid - centre;
+    if (o.distance < 1) {
+      if (n.dy > 0) n = -n;
+    } else if (o.dx * n.dx + o.dy * n.dy < 0) {
+      n = -n;
+    }
+    return mid + n * (k * len);
+  }
+
+  Widget _buildWith(BuildContext context, Animation<double> flow, bool motion) {
+    final c = A216.colors(context);
+    final t = A216Text(c);
+    return LayoutBuilder(builder: (context, box) {
+      final size = Size(box.maxWidth, box.maxHeight);
+      final painter = _LinkPathsPainter(
+        nodes: nodes,
+        serverOnline: serverOnline,
+        labelColor: c.ink2,
+        selectedId: selectedId,
+        spread: spread,
+        drawNodes: false,
+        nodeR: nodeRadius,
+        dotColor: c.mapDot,
+        grid: !small,
+        flow: flow,
+        motion: motion,
+        dark: c.dark,
+        small: small,
       );
+      final place = painter._placements(size);
+      final self = painter._self(size);
+      final bg = small ? c.surface : c.bgMap;
+      Widget person(Offset at, {required String id, String userId = '', required String name,
+          bool blocked = false, bool admin = false, bool me = false, LinkNode? node}) {
+        final r = nodeRadius;
+        final avatar = AdminPersonAvatar216(
+          name: name,
+          deviceId: id.isEmpty ? null : id,
+          userId: userId.isEmpty ? null : userId,
+          radius: r,
+          admin: admin,
+          blocked: blocked,
+          background: bg,
+        );
+        final label = small
+            ? Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t.miniMapName)
+            : Container(
+                height: 20,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: c.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: c.dark ? null : const [A216.pillShadow],
+                ),
+                // Bundle 217 (mock A-2): pill as wide as the name.
+                child: Center(
+                  widthFactor: 1,
+                  child: Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.mapName),
+                ),
+              );
+        final w = small ? 76.0 : 110.0;
+        return Positioned(
+          key: ValueKey('link_node_${me ? 'self' : id}'),
+          left: at.dx - w / 2,
+          top: at.dy - r,
+          width: w,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: node == null || onNodeTap == null ? null : () => onNodeTap!(node),
+            child: IgnorePointer(
+              ignoring: onNodeTap == null || node == null,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+                  if (node != null && node.id == selectedId)
+                    Positioned(
+                      left: -5,
+                      top: -5,
+                      right: -5,
+                      bottom: -5,
+                      child: Container(
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: c.blue.withValues(alpha: 0.16))),
+                    ),
+                  avatar,
+                ]),
+                SizedBox(height: small ? 3 : 6),
+                label,
+                if (blocked && !small) ...[
+                  const SizedBox(height: 4),
+                  const AdminTag216('Blocked', A216Tone.red),
+                ],
+              ]),
+            ),
+          ),
+        );
+      }
+
+      return Stack(clipBehavior: Clip.none, children: [
+        Positioned.fill(child: CustomPaint(painter: painter)),
+        for (final n in nodes)
+          if (place[n.id] != null)
+            person(place[n.id]!,
+                id: n.id,
+                userId: n.userId,
+                name: n.label,
+                blocked: n.blocked,
+                admin: n.admin,
+                node: n),
+        person(self,
+            id: selfId ?? '',
+            userId: selfUserId ?? '',
+            name: 'You',
+            me: true,
+            admin: AdminBadgeBook.instance.selfAdmin),
+      ]);
+    });
+  }
 
   /// Where each node sits on a canvas of [size] (tap test on full screen).
   static Map<String, Offset> placements(List<LinkNode> nodes, Size size,
@@ -177,6 +519,80 @@ class LinkPathsCanvas extends StatelessWidget {
               labelColor: Colors.black,
               spread: spread)
           ._placements(size);
+}
+
+/// Bundle 217: runs the line motion (one 6 s cycle = 3 dash loops + 2 dot
+/// trips) and stops it per [LinkMotion217].
+class LinkPathsCanvasState extends State<LinkPathsCanvas>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  late final AnimationController _flow =
+      AnimationController(vsync: this, duration: const Duration(seconds: 6));
+  bool _paused = false;
+  static bool _refreshed = false;
+
+  @visibleForTesting
+  bool get debugAnimating => _flow.isAnimating;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    LinkMotion217.powerSave.addListener(_onSaver);
+    if (!_refreshed) {
+      _refreshed = true;
+      unawaited(LinkMotion217.refresh());
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMotion(rebuild: false);
+  }
+
+  void _onSaver() {
+    if (mounted) _syncMotion();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _paused = true;
+      _syncMotion();
+    } else if (state == AppLifecycleState.resumed) {
+      _paused = false;
+      _syncMotion();
+      unawaited(LinkMotion217.refresh());
+    }
+  }
+
+  void _syncMotion({bool rebuild = true}) {
+    final why = _paused ? 'paused' : LinkMotion217.whyOff(context);
+    final on = why == null;
+    var changed = false;
+    if (on && !_flow.isAnimating) {
+      _flow.repeat();
+      changed = true;
+    } else if (!on && _flow.isAnimating) {
+      _flow.stop();
+      _flow.value = 0;
+      changed = true;
+    }
+    LinkMotion217.log(on, why);
+    if (changed && rebuild && mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    LinkMotion217.powerSave.removeListener(_onSaver);
+    _flow.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      widget._buildWith(context, _flow, _flow.isAnimating);
 }
 
 class _LinkPathsPainter extends CustomPainter {
@@ -191,17 +607,43 @@ class _LinkPathsPainter extends CustomPainter {
     required this.labelColor,
     this.selectedId,
     this.spread = 1.0,
-  }) : crownKey = [
+    this.drawNodes = true,
+    this.nodeR = 11,
+    this.dotColor,
+    this.grid = true,
+    this.flow,
+    this.motion = false,
+    this.dark = false,
+    this.small = false,
+  })  : crownKey = [
           for (final n in nodes)
             if (!n.blocked && AdminCrown.showFor(n.id)) n.id,
           if (AdminBadgeBook.instance.selfAdmin) 'self',
-        ].join(',');
+        ].join(','),
+        super(repaint: flow);
+
+  /// Bundle 217: the motion clock (repaints only the canvas), whether it
+  /// runs, the theme and the small card (k 0.36 instead of 0.60).
+  final Animation<double>? flow;
+  final bool motion;
+  final bool dark;
+  final bool small;
 
   /// Bundle 214 (D6): who gets a crown 👑 above the node (snapshot).
   final String crownKey;
 
   /// Bundle 212: 1 on the card; bigger on the full-screen map.
   final double spread;
+
+  /// Bundle 216: people are photo widgets on top; the painter draws only
+  /// the grid, the lines and the server.
+  final bool drawNodes;
+  final double nodeR;
+  final Color? dotColor;
+  final bool grid;
+
+  /// Bundle 216: line width (2.2 small map, 2.4 full map).
+  double get _lw => drawNodes ? 1.8 : (nodeR < 20 ? 2.2 : 2.4);
 
   static const _selfRadius = 24.0;
   static const _nodeRadius = 11.0;
@@ -263,17 +705,76 @@ class _LinkPathsPainter extends CustomPainter {
     return result;
   }
 
-  Path _arc(Offset from, Offset to, {double bend = 0.22}) {
-    final mid = Offset((from.dx + to.dx) / 2, (from.dy + to.dy) / 2);
-    final dx = to.dx - from.dx;
-    final dy = to.dy - from.dy;
-    final len = math.max(1.0, math.sqrt(dx * dx + dy * dy));
-    final nx = -dy / len;
-    final ny = dx / len;
-    final control = Offset(mid.dx + nx * len * bend, mid.dy + ny * len * bend);
+  /// Bundle 217 (§2.1): quadratic aerial path p → q bowing away from [centre].
+  Path _aerial(Offset p, Offset q, Offset centre) {
+    final ctrl = LinkPathsCanvas.aerialControl(p, q, centre, small: small);
     return Path()
-      ..moveTo(from.dx, from.dy)
-      ..quadraticBezierTo(control.dx, control.dy, to.dx, to.dy);
+      ..moveTo(p.dx, p.dy)
+      ..quadraticBezierTo(ctrl.dx, ctrl.dy, q.dx, q.dy);
+  }
+
+  /// Bundle 217: centre of everything on the map (self, server, nodes).
+  Offset _centre(Offset s, Offset sv, Map<String, Offset> place) {
+    var x = s.dx + sv.dx, y = s.dy + sv.dy;
+    for (final o in place.values) {
+      x += o.dx;
+      y += o.dy;
+    }
+    final n = place.length + 2;
+    return Offset(x / n, y / n);
+  }
+
+  /// Bundle 217 (§2.1 layers 1-4): glow, base, moving dashes, glow dot.
+  void _flowLine(Canvas canvas, Path path, Color color, int index) {
+    final lw = _lw;
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = color.withValues(alpha: dark ? 0.45 : 0.18)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = lw + 6
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+    _stroke(canvas, path, color.withValues(alpha: 0.55), lw);
+    final dash = dark
+        ? Color.lerp(color, Colors.white, 0.5)!
+        : Color.lerp(color, Colors.black, 0.12)!;
+    final phase = LinkMotion217.debugPhase;
+    final moving = motion || phase != null;
+    final v = phase ?? (motion ? (flow?.value ?? 0.0) : 0.0);
+    final offset = ((v * 3) % 1) * 20;
+    for (final m in path.computeMetrics()) {
+      final len = m.length;
+      for (var d = offset - 20; d < len; d += 20) {
+        final a = math.max(0.0, d), b = math.min(len, d + 6);
+        if (b > a) _stroke(canvas, m.extractPath(a, b), dash, lw);
+      }
+      if (!moving || len < 1) continue;
+      final at = (((v * 2) + index * 0.23) % 1) * len;
+      const parts = 6;
+      final tail = len * 0.14;
+      final tailColor = dark ? Colors.white : color;
+      for (var j = 0; j < parts; j++) {
+        final b = at - tail * j / parts;
+        final a = at - tail * (j + 1) / parts;
+        if (b <= 0) break;
+        _stroke(canvas, m.extractPath(math.max(0.0, a), b),
+            tailColor.withValues(alpha: 0.9 * (1 - j / parts)), lw);
+      }
+      final tan = m.getTangentForOffset(at);
+      if (tan == null) continue;
+      canvas.drawCircle(tan.position, 5.5, Paint()..color = color.withValues(alpha: 0.35));
+      canvas.drawCircle(tan.position, 2.6, Paint()..color = Colors.white);
+      if (!dark) {
+        canvas.drawCircle(
+            tan.position,
+            2.6,
+            Paint()
+              ..color = color
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.4);
+      }
+    }
   }
 
   void _stroke(Canvas canvas, Path path, Color color, double width) {
@@ -286,9 +787,10 @@ class _LinkPathsPainter extends CustomPainter {
           ..strokeCap = StrokeCap.round);
   }
 
-  void _dashedServerLink(Canvas canvas, Offset from, Offset to) {
-    // Offline server: alternating grey / red dashes, unmistakable.
-    final path = _arc(from, to, bend: 0.10);
+  void _dashedServerLink(Canvas canvas, Offset from, Offset to, Offset centre) {
+    // Offline server: alternating grey / red dashes, unmistakable (217: on
+    // the aerial path, no motion).
+    final path = _aerial(from, to, centre);
     final metrics = path.computeMetrics();
     for (final metric in metrics) {
       final total = metric.length;
@@ -317,11 +819,14 @@ class _LinkPathsPainter extends CustomPainter {
   }
 
   void _grid(Canvas canvas, Size size) {
-    final paint = Paint()..color = labelColor.withValues(alpha: 0.06);
-    const gap = 22.0;
+    if (!grid) return;
+    // Bundle 216: map dots r 0.7 every 20.
+    final paint = Paint()
+      ..color = dotColor ?? labelColor.withValues(alpha: 0.06);
+    const gap = 20.0;
     for (var y = gap; y < size.height; y += gap) {
       for (var x = gap; x < size.width; x += gap) {
-        canvas.drawCircle(Offset(x, y), 1.0, paint);
+        canvas.drawCircle(Offset(x, y), 0.7, paint);
       }
     }
   }
@@ -334,24 +839,26 @@ class _LinkPathsPainter extends CustomPainter {
     final sv = _server(size);
     final place = _placements(size);
 
-    // ---- edges ---------------------------------------------------------
+    // ---- edges (Bundle 217: aerial moving lines) -------------------------
+    final centre = _centre(s, sv, place);
+    var index = 0;
     // Server link from self (dashed red/grey when down, green when up).
-    final serverEdge = _arc(s, sv, bend: 0.10);
     if (serverOnline) {
-      _stroke(canvas, serverEdge, kLinkTagColors[LinkTag.server]!, 2.6);
+      _flowLine(canvas, _aerial(s, sv, centre), kLinkTagColors[LinkTag.server]!, index++);
     } else {
-      _dashedServerLink(canvas, s, sv);
+      _dashedServerLink(canvas, s, sv, centre);
+      index++;
     }
 
     // Green arcs: server → the devices it reaches.
     for (final n in nodes) {
       if (n.tag != LinkTag.server) continue;
       final pos = place[n.id]!;
-      _stroke(
-          canvas,
-          _arc(sv, pos, bend: 0.16),
-          kLinkTagColors[LinkTag.server]!.withValues(alpha: 0.85),
-          1.6);
+      if (n.blocked) {
+        _dashed(canvas, _aerial(sv, pos, centre), kLinkBlockedGrey);
+        continue;
+      }
+      _flowLine(canvas, _aerial(sv, pos, centre), kLinkTagColors[LinkTag.server]!, index++);
     }
 
     // Purple mesh CHAINS: sorted links node→node marching inward to self.
@@ -362,28 +869,42 @@ class _LinkPathsPainter extends CustomPainter {
       meshNodes.sort((a, b) => (b - s).distance.compareTo((a - s).distance));
       var from = meshNodes.first;
       for (var i = 1; i < meshNodes.length; i++) {
-        _stroke(canvas, _arc(from, meshNodes[i], bend: 0.10),
-            kLinkTagColors[LinkTag.mesh]!.withValues(alpha: 0.75), 1.8);
+        _flowLine(canvas, _aerial(from, meshNodes[i], centre),
+            kLinkTagColors[LinkTag.mesh]!, index++);
         from = meshNodes[i];
       }
-      _stroke(canvas, _arc(from, s, bend: 0.12),
-          kLinkTagColors[LinkTag.mesh]!.withValues(alpha: 0.75), 1.8);
+      _flowLine(canvas, _aerial(from, s, centre), kLinkTagColors[LinkTag.mesh]!, index++);
     }
 
-    // Yellow / teal arcs straight: self → device.
+    // Yellow / teal: self → device.
     for (final n in nodes) {
       if (n.tag == LinkTag.mesh || n.tag == LinkTag.server) continue;
       if (n.blocked) {
-        // Bundle 212: grey dashed = relays others' messages only.
-        _dashed(canvas, _arc(s, place[n.id]!, bend: 0.20), kLinkBlockedGrey);
+        // Bundle 212: grey dashed = relays others' messages only (no motion).
+        _dashed(canvas, _aerial(s, place[n.id]!, centre), kLinkBlockedGrey);
         continue;
       }
-      final color = kLinkTagColors[n.tag]!;
-      _stroke(canvas, _arc(s, place[n.id]!, bend: 0.20),
-          color.withValues(alpha: 0.80), 1.9);
+      _flowLine(canvas, _aerial(s, place[n.id]!, centre), kLinkTagColors[n.tag]!, index++);
     }
 
     // ---- server cloud --------------------------------------------------
+    if (!drawNodes) {
+      // Bundle 216: white circle, light blue border, blue cloud, "Server".
+      final r = nodeR;
+      // Bundle 217: dark map = dark circle with a blue border.
+      canvas.drawCircle(sv, r, Paint()..color = dark ? const Color(0xFF161B22) : Colors.white);
+      canvas.drawCircle(
+          sv,
+          r,
+          Paint()
+            ..color = dark ? const Color(0xFF2F6BFF) : const Color(0xFFB2CCFF)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2);
+      _text(canvas, Icons.cloud_outlined, sv,
+          size: r, color: const Color(0xFF1E5BFF));
+      _plainLabel(canvas, sv + Offset(0, r + 10), 'Server', r < 20 ? 10.5 : 11.5);
+      return;
+    }
     _glassyCircle(canvas, sv, 26, const Color(0xFFE6F1FF),
         const Color(0xFF3B82C4));
     _text(canvas, Icons.cloud_outlined, sv,
@@ -437,15 +958,9 @@ class _LinkPathsPainter extends CustomPainter {
     }
   }
 
-  /// Bundle 214 (D6): the admin crown above a node.
+  /// Bundle 214 (D6) / 217: the admin crown above a node (the painted crown).
   void _crown(Canvas canvas, Offset center, double size) {
-    final tp = TextPainter(
-      text: TextSpan(
-          text: '\u{1F451}',
-          style: TextStyle(inherit: false, fontSize: size, height: 1)),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
+    paintCrown217(canvas, center - Offset(0, CrownPainter216.heightFor(size) / 2), size);
   }
 
   void _glassyCircle(Canvas canvas, Offset c, double r, Color fill, Color ring) {
@@ -471,6 +986,24 @@ class _LinkPathsPainter extends CustomPainter {
     tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
   }
 
+  void _plainLabel(Canvas canvas, Offset center, String text, double size) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+            inherit: false,
+            fontFamily: 'Roboto216',
+            fontSize: size,
+            fontWeight: FontWeight.w600,
+            color: labelColor),
+      ),
+      textDirection: TextDirection.ltr,
+      // Bundle 217: pill as wide as the name (not the 92 px limit).
+      textWidthBasis: TextWidthBasis.longestLine,
+    )..layout(maxWidth: 92);
+    tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
+  }
+
   void _label(Canvas canvas, Offset center, String text,
       {bool strong = false, bool tiny = false, Color? color}) {
     final tp = TextPainter(
@@ -483,8 +1016,10 @@ class _LinkPathsPainter extends CustomPainter {
             color: color ?? labelColor.withValues(alpha: strong ? 0.9 : 0.75)),
       ),
       textDirection: TextDirection.ltr,
+      // Bundle 217: pill as wide as the name (not the 92 px limit).
+      textWidthBasis: TextWidthBasis.longestLine,
     )..layout(maxWidth: 92);
-    final pad = const EdgeInsets.symmetric(horizontal: 6, vertical: 2);
+    const pad = const EdgeInsets.symmetric(horizontal: 6, vertical: 2);
     final pill = Rect.fromCenter(
         center: center,
         width: tp.width + pad.horizontal,
@@ -508,7 +1043,10 @@ class _LinkPathsPainter extends CustomPainter {
       // Bundle 212
       old.selectedId != selectedId ||
       old.spread != spread ||
+      old.drawNodes != drawNodes ||
+      old.nodeR != nodeR ||
       old.crownKey != crownKey || // Bundle 214
+      old.motion != motion || old.dark != dark || old.small != small || // Bundle 217
       old.nodes.map((e) => '${e.id}${e.blocked}').join(',') !=
           nodes.map((e) => '${e.id}${e.blocked}').join(',');
 }

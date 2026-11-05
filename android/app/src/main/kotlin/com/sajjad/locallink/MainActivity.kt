@@ -252,6 +252,9 @@ class MainActivity : FlutterActivity() {
             } else if (call.method == "stallOverlap") {
                 // Bundle 187 (A2): was the screen frozen while a slow storage step ran?
                 result.success(AppHealth.stallOverlap((call.argument<Number>("window_ms") ?: 0).toLong()))
+            } else if (call.method == "powerSave") {
+                // Bundle 217: the map lines stop moving while battery saver is on.
+                result.success(try { (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isPowerSaveMode } catch (e: Exception) { false })
             } else {
                 result.notImplemented()
             }

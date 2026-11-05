@@ -13,6 +13,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/account/presentation/widgets/private_profile_card.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/core/widgets/tab_top_bar.dart';
@@ -79,12 +80,19 @@ class MessengerSettingsScreen extends StatelessWidget {
   /// Bundle 214 (E2): admin → switch sheet (me / Admin); not admin → the
   /// same Account screen as the rest of the card.
   Future<void> _photoTap(BuildContext ctx) async {
-    final session = await adminCapability.readValidSession();
-    if (!ctx.mounted) return;
-    if (session == null) {
-      await _openAccount(ctx);
+    // Bundle 216 (B): if the admin card can't be read, act as a normal user.
+    try {
+      final session = await adminCapability.readValidSession();
+      if (!ctx.mounted) return;
+      if (session == null) {
+        await _openAccount(ctx);
+        return;
+      }
+    } catch (_) {
+      if (ctx.mounted) await _openAccount(ctx);
       return;
     }
+    if (!ctx.mounted) return;
     await showAccountSwitchSheet(ctx,
         deps: AccountSwitchDeps(
           api: api,
@@ -145,11 +153,13 @@ class MessengerSettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(0, 12, 0, 28),
         children: [
-          // Bundle 183 (A1): the profile card is the ONLY way into Account.
+          // Bundle 183 (A1) / 216 (B): admin → the card opens the switch
+          // sheet and only the round arrow opens Account; not admin → the
+          // whole card opens Account (inside _photoTap).
           MessengerListGroup(children: [
             InkWell(
               key: const ValueKey('settings_profile_card'),
-              onTap: () => _openAccount(context),
+              onTap: () => _photoTap(context),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -194,8 +204,28 @@ class MessengerSettingsScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right,
-                        color: colors.onSurfaceVariant),
+                    // Bundle 216 (B): round arrow = Account, for everyone.
+                    Material(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? colors.surfaceContainerHighest
+                          : const Color(0xFFF2F4F7),
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        key: const ValueKey('settings_account_arrow'),
+                        onTap: () => _openAccount(context),
+                        child: SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: Icon(Icons.chevron_right_rounded,
+                              size: 20,
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? colors.onSurface
+                                  : const Color(0xFF344054)),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -413,7 +443,7 @@ class _SettingsOwnAvatarState extends State<SettingsOwnAvatar> {
 /// Bundle 211 (D1): shows [child] while the server is connected. When the
 /// server drops it stays [hideAfter] (no flicker on a short drop), then
 /// hides. Hidden from the start when offline.
-/// Bundle 214 (mock 1): a small "👑 Admin · Owner" tag under my name while
+/// Bundle 214 (mock 1) / 216 (A): a small "Admin · Owner" tag under my name while
 /// my account has the admin card. Nothing for a normal user.
 class SettingsAdminTag extends StatelessWidget {
   const SettingsAdminTag({super.key});
@@ -426,23 +456,14 @@ class SettingsAdminTag extends StatelessWidget {
       builder: (context, _) {
         final card = book.adminOf(book.selfUserId);
         if (card == null) return const SizedBox.shrink();
+        // Bundle 216 (A): painted crown + "Admin · Owner" (no emoji).
         return Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Container(
+            child: KeyedSubtree(
               key: const ValueKey('settings_admin_tag'),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF4D6),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: const Color(0xFFF5B301)),
-              ),
-              child: Text('\u{1F451} Admin · ${card.roleLabel}',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF6B4A00))),
+              child: AdminRoleTag216(level: card.roleLabel, small: true),
             ),
           ),
         );

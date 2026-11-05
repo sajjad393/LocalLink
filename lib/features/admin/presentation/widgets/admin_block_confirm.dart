@@ -77,7 +77,7 @@ class AdminBlockConfirmDialog extends StatelessWidget {
     return Dialog(
       key: const ValueKey('admin_block_confirm'),
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)), // 216
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),

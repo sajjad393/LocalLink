@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:locallink/core/network/build_http.dart' as http; // Bundle 213: build header
 import 'package:locallink/core/network/api_http_client.dart';
@@ -145,6 +146,24 @@ class AdminService {
       _paged('/api/v1/admin/transfers', 'transfers');
   Future<List<Map<String, dynamic>>> recoveryRequests() =>
       _paged('/api/v1/admin/recovery-requests', 'recovery_requests');
+
+  /// Bundle 216: who is linked to whom (phones report neighbours).
+  Future<Map<String, dynamic>> linkMap() async =>
+      _map(await _get('/api/v1/admin/link-map'));
+
+  /// Bundle 216: a person's photo for admin lists; null when none (404).
+  Future<Uint8List?> userAvatar(String userId) async {
+    final uri = Uri.parse(
+        '${api.baseUrl}/api/v1/admin/users/${Uri.encodeComponent(userId)}/avatar');
+    final response = await httpClient
+        .get(uri, headers: {'Authorization': 'Bearer $token'})
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode == 404) return null;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AdminRequestException(response.statusCode, _error(response));
+    }
+    return response.bodyBytes;
+  }
 
   Future<void> rename(String id, String name) => _post(
           '/api/v1/admin/device/rename?id=${Uri.encodeQueryComponent(id)}&name=${Uri.encodeQueryComponent(name)}')

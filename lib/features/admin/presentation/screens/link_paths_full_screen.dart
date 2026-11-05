@@ -1,11 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_blocked_list_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_block_confirm.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
 
 /// Map filter chips (E7).
@@ -47,7 +48,15 @@ class LinkPathsFullScreen extends StatefulWidget {
     this.service,
     this.readHint,
     this.writeHint,
+    this.selfName = 'You',
+    this.selfId,
+    this.selfUserId,
   });
+
+  /// Bundle 216 (C): me in the middle (photo + 'You').
+  final String selfName;
+  final String? selfId;
+  final String? selfUserId;
 
   final List<LinkNode> nodes;
   final bool serverOnline;
@@ -67,6 +76,8 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   LinkMapFilter _filter = LinkMapFilter.all;
   String? _selected;
   bool _hint = false;
+  // Bundle 217 (mock A-2): the first view shows the group, not the corner.
+  bool _framed = false;
   Offset? _doubleTapAt;
   Size _view = Size.zero;
 
@@ -98,11 +109,8 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     final book = AdminBlockBook.instance;
     return [
       for (final n in widget.nodes)
-        LinkNode(
-            id: n.id,
-            label: n.label,
-            tag: n.tag,
-            blocked: n.blocked || book.isBlocked(n.id)),
+        n.copyWith(
+            blocked: n.blocked || book.isBlocked(n.id) || book.isBlocked(n.userId)),
     ];
   }
 
@@ -129,6 +137,35 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
       ..translateByDouble(
           _view.width / 2 - p.dx * scale, _view.height / 2 - p.dy * scale, 0, 1)
       ..scaleByDouble(scale, scale, 1, 1);
+  }
+
+  /// Centre the first view on everyone shown (and "You"), kept inside the map.
+  void _frameGroup(List<LinkNode> shown, Size canvas) {
+    final place = LinkPathsCanvas.placements(shown, canvas, spread: _spread);
+    final points = [
+      ...place.values,
+      Offset(canvas.width * 0.47, canvas.height * 0.66), // You
+      Offset(canvas.width * 0.15, canvas.height * 0.18), // Server
+    ];
+    var minX = points.first.dx, maxX = minX, minY = points.first.dy, maxY = minY;
+    for (final p in points) {
+      minX = math.min(minX, p.dx);
+      maxX = math.max(maxX, p.dx);
+      minY = math.min(minY, p.dy);
+      maxY = math.max(maxY, p.dy);
+    }
+    // Centre when the group fits (node + name margin); else keep the left /
+    // top side (Server) in view.
+    const margin = 44.0;
+    double axis(double lo, double hi, double view) =>
+        hi - lo + 2 * margin <= view ? view / 2 - (lo + hi) / 2 : margin - lo;
+    final dx = axis(minX, maxX, _view.width)
+        .clamp(math.min(0.0, _view.width - canvas.width), 0.0)
+        .toDouble();
+    final dy = axis(minY, maxY, _view.height)
+        .clamp(math.min(0.0, _view.height - canvas.height), 0.0)
+        .toDouble();
+    _zoom.value = Matrix4.identity()..translateByDouble(dx, dy, 0, 1);
   }
 
   void _centre() {
@@ -177,125 +214,156 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   }
 
   Future<void> _sheet(LinkNode node) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
+    await showAdminSheet216<void>(
+      context,
       builder: (sheet) => ListenableBuilder(
         listenable: AdminBlockBook.instance,
         builder: (sheet, _) {
+          final c = A216.colors(sheet);
+          final t = A216Text(c);
           final target = widget.targetFor(node);
           final blocked = AdminBlockBook.instance.isBlocked(node.id) ||
               AdminBlockBook.instance.isBlocked(target.userId) ||
               node.blocked;
           final entry = widget.service?.entryFor(target.userId) ??
               widget.service?.entryFor(node.id);
-          return SafeArea(
-            child: Padding(
-              key: const ValueKey('link_map_sheet'),
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    // Bundle 214 (D6): crown in the node sheet title.
-                    AdminCrown(
-                      id: node.id,
-                      otherId: target.userId,
-                      radius: 24,
-                      child: CircleAvatar(
-                        radius: 24,
-                        backgroundColor: const Color(0xFFE5E7EB),
-                        child: Text(target.initials,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF6B7280))),
-                      ),
+          return Column(
+            key: const ValueKey('link_map_sheet'),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [
+                // Bundle 214 (D6) / 216: photo + crown A in the sheet title.
+                if (node.admin || blocked)
+                  AdminPersonAvatar216(
+                    name: target.name,
+                    userId: target.userId,
+                    deviceId: node.id,
+                    radius: 28,
+                    admin: node.admin,
+                    blocked: blocked,
+                  )
+                else
+                  // Live crown: shows / goes when the admin card changes.
+                  AdminCrown(
+                    id: node.id,
+                    otherId: target.userId,
+                    radius: 28,
+                    child: AdminPersonAvatar216(
+                      name: target.name,
+                      userId: target.userId,
+                      deviceId: node.id,
+                      radius: 28,
+                      crown: false,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(target.name,
-                                style: const TextStyle(
-                                    fontSize: 18, fontWeight: FontWeight.w800)),
-                            Text(
-                                [
-                                  if (target.username.isNotEmpty) '@${target.username}',
-                                  linkTagLabel(node.tag),
-                                  if (blocked) 'relays for others',
-                                ].join(' · '),
-                                style: const TextStyle(
-                                    fontSize: 12.5, color: Color(0xFF5B6472))),
-                          ]),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                          color: blocked ? kBlockRedTint : kUnblockGreenTint,
-                          borderRadius: BorderRadius.circular(8)),
-                      child: Text(blocked ? 'Blocked' : 'Active',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: blocked ? kBlockRed : kUnblockGreen)),
-                    ),
-                  ]),
-                  if (blocked && entry != null) ...[
-                    const SizedBox(height: 12),
+                  ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(target.name, style: t.sheetTitle),
+                    const SizedBox(height: 3),
                     Text(
-                        'Blocked by ${entry.record.signer == 'server' ? 'web panel' : (entry.record.by.isEmpty ? 'admin' : entry.record.by)}'
-                        ' · ${blockWhen(entry.record.at)}'
-                        '${entry.source == 'me' ? ' · reached ${entry.reached} phones' : ''}',
-                        style: const TextStyle(fontSize: 13.5)),
-                    Text('Server: ${entry.serverDone ? 'done' : 'waiting'}',
-                        style: const TextStyle(
-                            fontSize: 12.5, color: Color(0xFF5B6472))),
-                  ],
-                  const SizedBox(height: 16),
-                  Row(children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        key: const ValueKey('link_map_sheet_action'),
-                        style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(46),
-                            shape: const StadiumBorder()),
-                        onPressed: () => runAdminBlock(sheet,
-                            service: widget.service,
-                            target: target,
-                            block: !blocked),
-                        child: Text(blocked ? 'Unblock' : 'Block',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: blocked ? const Color(0xFF1E5BFF) : kBlockRed)),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.tonal(
-                        style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(46),
-                            shape: const StadiumBorder()),
-                        onPressed: () {
-                          Navigator.of(sheet).push(MaterialPageRoute<void>(
-                              builder: (_) => AdminBlockedListScreen(
-                                  service: widget.service)));
-                        },
-                        child: const Text('Blocked list',
-                            style: TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                    ),
+                        [
+                          if (target.username.isNotEmpty) '@${target.username}',
+                          linkTagLabel(node.tag),
+                          if (blocked) 'relays for others',
+                        ].join(' · '),
+                        style: t.cardSub),
                   ]),
-                ],
-              ),
-            ),
+                ),
+                AdminTag216(blocked ? 'Blocked' : 'Active',
+                    blocked ? A216Tone.red : A216Tone.green),
+              ]),
+              if (blocked && entry != null) ...[
+                const SizedBox(height: 14),
+                Text(
+                    'Blocked by ${entry.record.signer == 'server' ? 'web panel' : (entry.record.by.isEmpty ? 'admin' : entry.record.by)}'
+                    ' · ${blockWhen(entry.record.at)}'
+                    '${entry.source == 'me' ? ' · reached ${entry.reached} phones' : ''}',
+                    style: t.rowSub.copyWith(color: c.ink)),
+                const SizedBox(height: 2),
+                Text('Server: ${entry.serverDone ? 'done' : 'waiting'}', style: t.cardSub),
+              ],
+              const SizedBox(height: 18),
+              Row(children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 44,
+                    child: FilledButton(
+                      key: const ValueKey('link_map_sheet_action'),
+                      style: FilledButton.styleFrom(
+                          backgroundColor: blocked ? c.div : c.red,
+                          foregroundColor: blocked ? c.ink : Colors.white,
+                          shape: const StadiumBorder(),
+                          textStyle: t.custom(14, FontWeight.w600, c.ink)),
+                      onPressed: () => runAdminBlock(sheet,
+                          service: widget.service, target: target, block: !blocked),
+                      child: Text(blocked ? 'Unblock' : 'Block'),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 44,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: c.ink,
+                          side: BorderSide(color: c.ctrlBorder),
+                          shape: const StadiumBorder(),
+                          textStyle: t.custom(14, FontWeight.w600, c.ink)),
+                      onPressed: () {
+                        Navigator.of(sheet).push(MaterialPageRoute<void>(
+                            builder: (_) => AdminBlockedListScreen(service: widget.service)));
+                      },
+                      child: const Text('Blocked list'),
+                    ),
+                  ),
+                ),
+              ]),
+            ],
           );
         },
       ),
     );
   }
+
+  Widget _chip(LinkMapFilter f, List<LinkNode> all) {
+    final c = A216.colors(context);
+    final t = A216Text(c);
+    final on = _filter == f;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        key: ValueKey('link_map_filter_${f.name}'),
+        label: Text(
+            '${linkMapFilterLabel(f)} ${all.where((n) => linkMapFilterMatches(f, n)).length}'),
+        labelStyle: t.custom(12.5, on ? FontWeight.w600 : FontWeight.w500, on ? c.blue : c.ink2),
+        selected: on,
+        showCheckmark: false,
+        backgroundColor: c.surface,
+        selectedColor: c.blueSel,
+        side: BorderSide(color: on ? c.blueSelBorder : c.ctrlBorder),
+        shape: const StadiumBorder(),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        onSelected: (_) => setState(() => _filter = f),
+      ),
+    );
+  }
+
+  Widget _zoomButton(Key key, String tip, IconData icon, VoidCallback onTap) => SizedBox(
+        width: 44,
+        height: 40,
+        child: IconButton(
+            key: key,
+            tooltip: tip,
+            padding: EdgeInsets.zero,
+            iconSize: 20,
+            color: A216.colors(context).ink2,
+            icon: Icon(icon),
+            onPressed: onTap),
+      );
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -304,151 +372,128 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
           final all = _nodes;
           final shown = [for (final n in all) if (linkMapFilterMatches(_filter, n)) n];
           final blockedCount = all.where((n) => n.blocked).length;
-          return Scaffold(
-            backgroundColor: const Color(0xFFF5F6F8),
-            appBar: AppBar(
-              backgroundColor: Colors.white,
-              surfaceTintColor: Colors.white,
-              titleSpacing: 0,
-              title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Link paths',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
-                Text(
-                    '${all.length} users · $blockedCount blocked · server ${widget.serverOnline ? 'online' : 'offline'}',
-                    key: const ValueKey('link_map_counts'),
-                    style: const TextStyle(fontSize: 12.5, color: Color(0xFF5B6472))),
-              ]),
-              actions: [
-                IconButton.filledTonal(
-                  tooltip: 'Small map',
-                  icon: const Icon(Icons.close_fullscreen_rounded),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                ),
-                const SizedBox(width: 8),
-              ],
+          return AdminPage216(
+            title: 'Link paths',
+            subtitle:
+                '${all.length} users · $blockedCount blocked · server ${widget.serverOnline ? 'online' : 'offline'}',
+            right: AdminBarAction216(
+              tooltip: 'Small map',
+              fill: const Color(0xFFEEF3FF),
+              onTap: () => Navigator.of(context).maybePop(),
+              child: Icon(Icons.close_fullscreen_rounded,
+                  size: 18, color: A216.colors(context).blue),
             ),
-            body: Column(children: [
-              Container(
-                color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Column(children: [
-                  TextField(
-                    key: const ValueKey('link_map_search'),
-                    textInputAction: TextInputAction.search,
+            body: Builder(builder: (context) {
+              final c = A216.colors(context);
+              final t = A216Text(c);
+              return Column(children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: AdminSearch216(
+                    hint: 'Find a person',
+                    fieldKey: const ValueKey('link_map_search'),
                     onSubmitted: _find,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                      hintText: 'Find a user on the map',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
-                    ),
                   ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 34,
-                    child: ListView(scrollDirection: Axis.horizontal, children: [
-                      for (final f in LinkMapFilter.values)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: ChoiceChip(
-                            key: ValueKey('link_map_filter_${f.name}'),
-                            label: Text(
-                                '${linkMapFilterLabel(f)} ${all.where((n) => linkMapFilterMatches(f, n)).length}'),
-                            selected: _filter == f,
-                            onSelected: (_) => setState(() => _filter = f),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
-                    ]),
+                ),
+                SizedBox(
+                  height: 34,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    children: [for (final f in LinkMapFilter.values) _chip(f, all)],
                   ),
-                ]),
-              ),
-              Expanded(
-                child: LayoutBuilder(builder: (context, box) {
-                  _view = Size(box.maxWidth, box.maxHeight);
-                  final canvas = linkMapCanvasSize(_view, widget.nodes.length);
-                  return Stack(children: [
-                    Positioned.fill(
-                      child: GestureDetector(
-                        onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
-                        onDoubleTap: () {
-                          if (_zoom.value.getMaxScaleOnAxis() > 1.05) {
-                            _zoom.value = Matrix4.identity();
-                          } else {
-                            _setScale(2, focus: _doubleTapAt);
-                          }
-                        },
-                        child: InteractiveViewer(
-                          key: const ValueKey('link_map_viewer'),
-                          transformationController: _zoom,
-                          constrained: false,
-                          boundaryMargin: const EdgeInsets.all(80),
-                          minScale: 1,
-                          maxScale: 4,
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: LayoutBuilder(builder: (context, box) {
+                    _view = Size(box.maxWidth, box.maxHeight);
+                    final canvas = linkMapCanvasSize(_view, widget.nodes.length);
+                    if (!_framed && _view.width > 0 && _view.height > 0) {
+                      _framed = true;
+                      _frameGroup(shown, canvas);
+                    }
+                    return Stack(children: [
+                      Positioned.fill(
+                        child: ColoredBox(
+                          color: c.bgMap,
                           child: GestureDetector(
-                            onTapUp: (d) => _tapAt(d.localPosition, shown, canvas),
-                            child: SizedBox(
-                              width: canvas.width,
-                              height: canvas.height,
-                              child: LinkPathsCanvas(
-                                nodes: shown,
-                                serverOnline: widget.serverOnline,
-                                selectedId: _selected,
-                                spread: _spread,
+                            onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
+                            onDoubleTap: () {
+                              if (_zoom.value.getMaxScaleOnAxis() > 1.05) {
+                                _zoom.value = Matrix4.identity();
+                              } else {
+                                _setScale(2, focus: _doubleTapAt);
+                              }
+                            },
+                            child: InteractiveViewer(
+                              key: const ValueKey('link_map_viewer'),
+                              transformationController: _zoom,
+                              constrained: false,
+                              boundaryMargin: const EdgeInsets.all(80),
+                              minScale: 1,
+                              maxScale: 4,
+                              child: GestureDetector(
+                                onTapUp: (d) => _tapAt(d.localPosition, shown, canvas),
+                                child: SizedBox(
+                                  width: canvas.width,
+                                  height: canvas.height,
+                                  child: LinkPathsCanvas(
+                                    nodes: shown,
+                                    serverOnline: widget.serverOnline,
+                                    selectedId: _selected,
+                                    spread: _spread,
+                                    nodeRadius: 24,
+                                    selfName: widget.selfName,
+                                    selfId: widget.selfId,
+                                    selfUserId: widget.selfUserId,
+                                    onNodeTap: (n) {
+                                      setState(() => _selected = n.id);
+                                      _sheet(n);
+                                    },
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    if (_hint)
+                      if (_hint)
+                        Positioned(
+                          left: 76,
+                          right: 12,
+                          bottom: 22,
+                          child: Center(
+                            child: Text('Drag to scroll · pinch to zoom',
+                                key: const ValueKey('link_map_hint'),
+                                style: t.custom(11, FontWeight.w400, c.grey)),
+                          ),
+                        ),
                       Positioned(
-                        top: 8,
-                        right: 12,
+                        left: 14,
+                        bottom: 16,
                         child: Container(
-                          key: const ValueKey('link_map_hint'),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          width: 44,
                           decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFE2E6EC))),
-                          child: const Text('Drag to scroll · pinch to zoom',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF5B6472))),
+                            color: c.surface,
+                            borderRadius: BorderRadius.circular(22),
+                            boxShadow: const [A216.pillShadow],
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 0),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            _zoomButton(const ValueKey('link_map_zoom_in'), 'Zoom in',
+                                Icons.add_rounded, () => _setScale(1.5)),
+                            _zoomButton(const ValueKey('link_map_zoom_out'), 'Zoom out',
+                                Icons.remove_rounded, () => _setScale(1 / 1.5)),
+                            _zoomButton(const ValueKey('link_map_centre'), 'This phone',
+                                Icons.my_location_rounded, _centre),
+                          ]),
                         ),
                       ),
-                    Positioned(
-                      left: 12,
-                      bottom: 16,
-                      child: Material(
-                        color: Colors.white,
-                        elevation: 1,
-                        borderRadius: BorderRadius.circular(12),
-                        child: Column(children: [
-                          IconButton(
-                              key: const ValueKey('link_map_zoom_in'),
-                              tooltip: 'Zoom in',
-                              icon: const Icon(Icons.add),
-                              onPressed: () => _setScale(1.5)),
-                          IconButton(
-                              key: const ValueKey('link_map_zoom_out'),
-                              tooltip: 'Zoom out',
-                              icon: const Icon(Icons.remove),
-                              onPressed: () => _setScale(1 / 1.5)),
-                          IconButton(
-                              key: const ValueKey('link_map_centre'),
-                              tooltip: 'This phone',
-                              icon: const Icon(Icons.my_location),
-                              onPressed: _centre),
-                        ]),
-                      ),
-                    ),
-                  ]);
-                }),
-              ),
-            ]),
+                    ]);
+                  }),
+                ),
+              ]);
+            }),
           );
         },
       );

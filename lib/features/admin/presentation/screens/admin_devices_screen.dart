@@ -1,110 +1,257 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/admin_permissions.dart';
-import 'admin_network_policy_dialog.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_people216.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
 
-class AdminDevicesScreen extends StatelessWidget {
+/// Bundle 216 (page 14): Devices + the phone sheet.
+class AdminDevicesScreen extends StatefulWidget {
   const AdminDevicesScreen({super.key});
-  Future<void> _rename(
-      BuildContext context, Map<String, dynamic> device) async {
-    final c = TextEditingController(text: device['name']?.toString());
-    final value = await showDialog<String>(
-        context: context,
-        builder: (_) => AlertDialog(
-                title: const Text('Rename device'),
-                content: TextField(controller: c, maxLength: 64),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(context, c.text.trim()),
-                      child: const Text('Save'))
-                ]));
-    c.dispose();
-    if (value != null && value.isNotEmpty && context.mounted)
-      await context.read<AdminBloc>().rename(device['id'].toString(), value);
-  }
 
-  Future<void> _revoke(
-      BuildContext context, Map<String, dynamic> device) async {
-    final ok = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-                title: const Text('Revoke device?'),
-                content: Text(
-                    'This signs out ${device['name'] ?? 'the device'} and blocks future authentication.'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancel')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Revoke'))
-                ]));
-    if (ok == true && context.mounted)
-      await context.read<AdminBloc>().revoke(device['id'].toString());
-  }
+  @override
+  State<AdminDevicesScreen> createState() => _AdminDevicesScreenState();
+}
 
-  Future<void> _policy(
-      BuildContext context, Map<String, dynamic> device) async {
-    final bloc = context.read<AdminBloc>();
-    final policy = await bloc.deviceNetworkPolicy(device['id'].toString());
-    if (policy == null || !context.mounted) return;
-    await AdminNetworkPolicyDialog.show(
-        context: context,
-        title: '${device['name'] ?? 'Device'} network policy',
-        policy: policy,
-        readOnly: !AdminPermissions.canManageNetworkPolicy(bloc.adminRole),
-        onSave: !AdminPermissions.canManageNetworkPolicy(bloc.adminRole)
-            ? null
-            : (w) => bloc.updateDeviceNetworkPolicy(device['id'].toString(),
-                wifiRadioPolicy: w));
+class _AdminDevicesScreenState extends State<AdminDevicesScreen> {
+  String _q = '';
+
+  static String owner(Map<String, dynamic> d) =>
+      personName216({'display_name': d['display_name'], 'username': d['username']},
+          fallback: 'No owner');
+
+  static bool online(Map<String, dynamic> d) => d['online'] == true;
+
+  bool _match(Map<String, dynamic> d) {
+    final q = _q.trim().toLowerCase().replaceFirst('@', '');
+    if (q.isEmpty) return true;
+    return '${d['name'] ?? ''} ${d['display_name'] ?? ''} ${d['username'] ?? ''}'
+        .toLowerCase()
+        .contains(q);
   }
 
   @override
   Widget build(BuildContext context) {
-    final role = context.read<AdminBloc>().adminRole;
-    final canManage = AdminPermissions.canManageDevices(role);
-    final canPolicy = AdminPermissions.canRead(role);
-    return BlocBuilder<AdminBloc, AdminState>(
-        builder: (context, state) => RefreshIndicator(
-            onRefresh: () => context.read<AdminBloc>().load(),
-            child: ListView(padding: const EdgeInsets.all(16), children: [
-              ...state.devices.map((d) => Card(
-                  child: ListTile(
-                      leading: CircleAvatar(
-                          child: Icon(d['online'] == true
-                              ? Icons.wifi
-                              : Icons.wifi_off)),
-                      title: Text(d['name']?.toString() ?? ''),
-                      subtitle: Text(
-                          '@${d['username'] ?? ''} • ${d['platform'] ?? 'android'} • ${d['status'] ?? ''}\n${d['id'] ?? ''}\nWi-Fi control: ${d['wifi_control_capable'] == true ? 'managed-capable' : 'user-controlled / unavailable'}'),
-                      isThreeLine: true,
-                      trailing: (canManage || canPolicy)
-                          ? PopupMenuButton<String>(
-                              onSelected: (v) {
-                                if (v == 'rename') _rename(context, d);
-                                if (v == 'revoke' && d['status'] != 'revoked')
-                                  _revoke(context, d);
-                                if (v == 'policy') _policy(context, d);
-                              },
-                              itemBuilder: (_) => [
-                                    if (canManage)
-                                      const PopupMenuItem(
-                                          value: 'rename',
-                                          child: Text('Rename')),
-                                    if (canManage && d['status'] != 'revoked')
-                                      const PopupMenuItem(
-                                          value: 'revoke',
-                                          child: Text('Revoke')),
-                                    if (canPolicy)
-                                      const PopupMenuItem(
-                                          value: 'policy',
-                                          child: Text('Network policy'))
-                                  ])
-                          : null)))
-            ])));
+    return AdminToolPage216(
+      title: 'Devices',
+      module: 'Devices',
+      subtitle: (s) =>
+          '${plural216(s.devices.length, 'phone')} · ${s.devices.where(online).length} online',
+      builder: (context, state) {
+        final rows = state.devices.where(_match).toList();
+        return [
+          AdminSearch216(
+            hint: 'Search phone or owner',
+            fieldKey: const ValueKey('a216_devices_search'),
+            onChanged: (v) => setState(() => _q = v),
+          ),
+          const SizedBox(height: 12),
+          if (state.loading && state.devices.isEmpty)
+            const AdminLoading216()
+          else if (rows.isEmpty)
+            const AdminEmptyState216(
+                icon: Icons.smartphone_rounded,
+                tone: A216Tone.grey,
+                title: 'No phones found',
+                body: 'Try another name.')
+          else
+            AdminListCard216([
+              for (final d in rows)
+                () {
+                  final link = deviceLink216(d);
+                  final removed = link.text == 'Removed';
+                  return AdminRow216(
+                    key: ValueKey('a216_device_${d['id']}'),
+                    height: 64,
+                    leading: ServerPersonAvatar216(
+                      name: owner(d),
+                      userId: '${d['user_id'] ?? ''}',
+                      deviceId: '${d['id']}',
+                      hasAvatar: d['has_avatar'] == true,
+                      grey: removed,
+                    ),
+                    title: '${d['name'] ?? 'Phone'}',
+                    subtitle:
+                        '${owner(d)} · ${online(d) ? 'online' : age216(d['last_seen_at'])}',
+                    titleColor: removed ? A216.colors(context).grey2 : null,
+                    trailing: Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: AdminTag216(link.text, link.tone),
+                    ),
+                    onTap: () => showDeviceSheet216(context, d),
+                  );
+                }(),
+            ]),
+        ];
+      },
+    );
+  }
+}
+
+Future<void> showDeviceSheet216(BuildContext context, Map<String, dynamic> device) {
+  final bloc = context.read<AdminBloc>();
+  return showAdminSheet216<void>(context,
+      builder: (_) => BlocProvider.value(value: bloc, child: _DeviceSheet(device: device)));
+}
+
+class _DeviceSheet extends StatefulWidget {
+  const _DeviceSheet({required this.device});
+  final Map<String, dynamic> device;
+
+  @override
+  State<_DeviceSheet> createState() => _DeviceSheetState();
+}
+
+class _DeviceSheetState extends State<_DeviceSheet> {
+  String? _wifi;
+  bool _loaded = false;
+  late String _name = '${widget.device['name'] ?? 'Phone'}';
+
+  String get _id => '${widget.device['id']}';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final p = await context.read<AdminBloc>().deviceNetworkPolicy(_id);
+    if (!mounted) return;
+    setState(() {
+      _wifi = wifiRuleOf216(p, device: true);
+      _loaded = true;
+    });
+  }
+
+  Future<void> _setWifi(String? v) async {
+    final saved =
+        await context.read<AdminBloc>().updateDeviceNetworkPolicy(_id, wifiRadioPolicy: v);
+    if (saved != null && mounted) setState(() => _wifi = v);
+  }
+
+  Future<void> _rename() async {
+    final ctrl = TextEditingController(text: _name);
+    final name = await showAdminSheet216<String>(context, builder: (sheet) {
+      final t = A216Text.of(sheet);
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Rename phone', style: t.sheetTitle),
+        const SizedBox(height: 14),
+        TextField(
+          key: const ValueKey('a216_rename_field'),
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 64,
+          decoration: InputDecoration(
+            isDense: true,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        const SizedBox(height: 8),
+        AdminButton216('Save',
+            key: const ValueKey('a216_rename_save'),
+            onTap: () => Navigator.of(sheet).pop(ctrl.text.trim())),
+      ]);
+    });
+    ctrl.dispose();
+    if (name == null || name.isEmpty || name == _name || !mounted) return;
+    await context.read<AdminBloc>().rename(_id, name);
+    if (mounted) setState(() => _name = name);
+  }
+
+  Future<void> _remove() async {
+    final ok = await confirmAdmin216(context,
+        title: 'Remove this phone?',
+        body: 'It is signed out and must sign in again.',
+        yes: 'Remove phone',
+        danger: true);
+    if (!ok || !mounted) return;
+    final nav = Navigator.of(context);
+    await context.read<AdminBloc>().revoke(_id);
+    if (nav.canPop()) nav.pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = A216.colors(context);
+    final t = A216Text(c);
+    final bloc = context.read<AdminBloc>();
+    final d = widget.device;
+    final canManage = AdminPermissions.canManageDevices(bloc.adminRole);
+    final canWifi = AdminPermissions.canManageNetworkPolicy(bloc.adminRole);
+    final owner = _AdminDevicesScreenState.owner(d);
+    final build = d['app_build'];
+    final link = deviceLink216(d);
+    final edge = edgeOf216(bloc.state.linkMapData, _id);
+    final linkNow = edge.link.isEmpty
+        ? link.text
+        : (edge.other.isEmpty
+            ? linkWord216(edge.link)
+            : '${linkWord216(edge.link)}, through ${edge.other}');
+    final online = d['online'] == true;
+    const picks = wifiRuleValues216;
+    return Column(
+      key: const ValueKey('a216_device_sheet'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(_name, style: t.sheetTitle),
+        const SizedBox(height: 3),
+        Text(
+            [
+              owner,
+              'Android',
+              if (build is num && build > 0) 'build $build',
+            ].join(' · '),
+            style: t.cardSub),
+        const AdminSection216('Wi-Fi rule'),
+        Opacity(
+          opacity: canWifi && _loaded ? 1 : 0.5,
+          child: IgnorePointer(
+            ignoring: !canWifi || !_loaded,
+            child: AdminChips216(
+              wrap: true,
+              items: [for (final v in picks) wifiRuleLabel216(v)],
+              selected: picks.indexOf(_wifi),
+              keys: [
+                for (final v in picks)
+                  ValueKey('a216_device_wifi_${(v ?? 'default')}')
+              ],
+              onSelected: (i) => _setWifi(picks[i]),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text('Default = same as $owner’s account', style: t.note),
+        const SizedBox(height: 10),
+        AdminKeyValue216('Owner',
+            '$owner${(d['username'] ?? '').toString().isEmpty ? '' : ' (@${d['username']})'}'),
+        AdminKeyValue216('Link now', linkNow),
+        AdminKeyValue216('Last seen', online ? 'now' : age216(d['last_seen_at'])),
+        if (canManage) ...[
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(
+              child: AdminButton216('Rename',
+                  key: const ValueKey('a216_rename'),
+                  icon: Icons.edit_outlined,
+                  kind: A216ButtonKind.outline,
+                  height: 42,
+                  onTap: _rename),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: AdminButton216('Remove phone',
+                  key: const ValueKey('a216_remove'),
+                  kind: A216ButtonKind.danger,
+                  height: 42,
+                  onTap: link.text == 'Removed' ? null : _remove),
+            ),
+          ]),
+        ],
+      ],
+    );
   }
 }

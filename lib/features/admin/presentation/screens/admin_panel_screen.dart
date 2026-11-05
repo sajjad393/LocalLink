@@ -17,7 +17,8 @@ import 'package:locallink/features/admin/presentation/widgets/account_switch_she
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_audit_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_calls_screen.dart';
-import 'package:locallink/features/admin/presentation/screens/admin_dashboard_screen.dart';
+import 'package:locallink/features/admin/presentation/screens/admin_dashboard216_screen.dart';
+import 'package:locallink/features/admin/presentation/screens/admin_local_blocked_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_devices_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_diagnostics_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_network_screen.dart';
@@ -28,8 +29,12 @@ import 'package:locallink/features/admin/presentation/screens/admin_sessions_scr
 import 'package:locallink/features/admin/presentation/screens/admin_settings_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_transfers_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_users_screen.dart';
-import 'package:locallink/features/admin/presentation/theme/admin_theme.dart';
-import 'package:locallink/features/admin/presentation/widgets/admin_list_page.dart';
+import 'package:locallink/features/admin/data/models/admin_badge.dart';
+import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/features/admin/presentation/ui_check/admin_ui_check216.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
+import 'package:locallink/core/widgets/admin_crown.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart';
@@ -39,10 +44,11 @@ import 'package:locallink/features/admin/presentation/screens/link_paths_full_sc
 import 'package:locallink/features/admin/presentation/widgets/admin_block_confirm.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_version_card.dart';
 
-/// Bundle 134: the mobile admin area is ONE merged panel (approved mock):
-/// link-paths map + devices on the link + local moderation on top; the
-/// server modules below unlock when the server connects and lock offline.
-/// The desktop-style shell is untouched for wide screens.
+/// Bundle 134: the mobile admin area is ONE merged panel. Bundle 216 (D,
+/// mock pages 3-6, 26): hero, link map, block card, app version, then
+/// the tool menus (People / Network / Safety / System). Offline the menus
+/// become locked rows and open again by themselves when the server is
+/// back. The desktop-style shell is untouched for wide screens.
 class AdminPanelScreen extends StatefulWidget {
   final LocalLinkApi api;
   final LocalStore store;
@@ -68,43 +74,84 @@ class AdminPanelScreen extends StatefulWidget {
 }
 
 class _AdminPanelScreenState extends State<AdminPanelScreen> {
-  late final AdminBloc _bloc;
+  late final AdminBloc _realBloc;
+  AdminBloc? _checkBloc;
   Timer? _tick;
   List<Device> _devices = const [];
   List<Map<String, Object?>> _blocked = const [];
-  // Bundle 163 (4.9): device list search + paging.
-  String _linkQuery = '';
-  int _linkShown = kAdminListPage;
 
+  /// Bundle 216 (J): while "UI check data" is on, tool pages read the
+  /// mock people (no network).
+  AdminBloc get _bloc {
+    if (!AdminUiCheck216.on.value) return _realBloc;
+    final b = _checkBloc ??= AdminBloc(const UiCheckRepository216(), adminRole: 'owner');
+    unawaited(b.load());
+    return b;
+  }
+
+  // Bundle 216 (D): shown names come from WORDS_216; the first value is the
+  // module key `_screenFor` knows (unchanged).
   static const _modules = <_PanelModule>[
-    _PanelModule('Dashboard', Icons.dashboard_outlined, 'Overview'),
-    _PanelModule('Users', Icons.people_outline, 'Accounts and profiles'),
-    _PanelModule('Devices', Icons.devices_other_outlined, 'Registered hardware'),
-    _PanelModule('Sessions', Icons.vpn_key_outlined, 'Authenticated sessions'),
-    _PanelModule('Network & Mesh', Icons.hub_outlined, 'Topology and transports'),
-    _PanelModule('Calls', Icons.call_outlined, 'Call sessions'),
-    _PanelModule('File Transfers', Icons.swap_horiz_outlined, 'Transfers and quota'),
-    _PanelModule('Security Center', Icons.security_outlined, 'Alerts and policy'),
-    _PanelModule('Audit Log', Icons.fact_check_outlined, 'Admin actions'),
-    _PanelModule('Recovery', Icons.restore_outlined, 'Account recovery queue'),
-    _PanelModule('Diagnostics', Icons.monitor_heart_outlined, 'Live subsystem health'),
-    _PanelModule('Admin Settings', Icons.settings_outlined,
-        'Server configuration',
+    _PanelModule('Users', 'Users', Icons.group_outlined, 'People with an account', 'People', A216Tone.blue),
+    _PanelModule('Devices', 'Devices', Icons.smartphone_rounded, 'Every phone and who owns it', 'People', A216Tone.blue),
+    _PanelModule('Sessions', 'Sessions', Icons.vpn_key_outlined, 'Who is signed in, on which phone', 'People', A216Tone.blue),
+    _PanelModule('Network & Mesh', 'Network & mesh', Icons.hub_outlined, 'How phones are linked', 'Network', A216Tone.teal),
+    _PanelModule('Calls', 'Calls', Icons.call_outlined, 'Who called whom', 'Network', A216Tone.teal),
+    _PanelModule('File Transfers', 'File transfers', Icons.swap_horiz_rounded, 'Files sent and space used', 'Network', A216Tone.teal),
+    _PanelModule('Recovery', 'Recovery', Icons.restore_rounded, 'People moving to a new phone', 'Safety', A216Tone.orange),
+    _PanelModule('Security Center', 'Security', Icons.shield_outlined, 'Warnings like wrong passwords', 'Safety', A216Tone.orange),
+    _PanelModule('Dashboard', 'Dashboard', Icons.bar_chart_rounded, 'Today at a glance', 'System', A216Tone.grey),
+    _PanelModule('Audit Log', 'Audit log', Icons.list_alt_rounded, 'What admins did', 'System', A216Tone.grey),
+    _PanelModule('Diagnostics', 'Diagnostics', Icons.monitor_heart_outlined, 'Is the server healthy', 'System', A216Tone.grey),
+    _PanelModule('Privacy & Access', 'Privacy & access', Icons.verified_user_outlined, 'What admins can never see', 'System', A216Tone.grey),
+    _PanelModule('Admin Settings', 'Admin settings', Icons.storage_rounded, 'Refresh time, alerts, backup', 'System', A216Tone.grey,
         ownerOnly: true),
-    _PanelModule('Privacy & Access', Icons.privacy_tip_outlined, 'Data boundaries'),
   ];
+
+  // Bundle 216 (D, page 6): "Server is back" banner for 3 s.
+  bool _backBanner = false;
+  bool _backFading = false;
+  Timer? _backTimer;
+  StreamSubscription<AppViewModeState>? _viewSub;
+  late bool _wasOnline = widget.viewMode.state.serverConnected;
+
+  void _onView(AppViewModeState s) {
+    final online = s.serverConnected;
+    if (online == _wasOnline || !mounted) return;
+    _wasOnline = online;
+    AppLogger.info('ADMIN_LOCK',
+        detail: '${online ? 'off' : 'on'} way=${online ? 'server' : _offlineWay(_onLink).toLowerCase().replaceAll(' ', '_')} page=home');
+    _backTimer?.cancel();
+    if (!online) {
+      setState(() => _backBanner = false);
+      return;
+    }
+    unawaited(_realBloc.load().catchError((_) {}));
+    setState(() {
+      _backBanner = true;
+      _backFading = false;
+    });
+    _backTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() => _backFading = true);
+      _backTimer = Timer(const Duration(milliseconds: 300), () {
+        if (mounted) setState(() => _backBanner = false);
+      });
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    _bloc = AdminBloc(widget.repositoryFactory.create(widget.session.token),
+    _realBloc = AdminBloc(widget.repositoryFactory.create(widget.session.token),
         adminRole: widget.session.role);
     try {
-      unawaited(_bloc.load());
+      unawaited(_realBloc.load());
     } catch (_) {/* offline: modules stay locked; bloc emError harmless */}
     unawaited(_refresh());
     _tick = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
-    _expiredSub = _bloc.stream.listen(_onBlocState);
+    _expiredSub = _realBloc.stream.listen(_onBlocState);
+    _viewSub = widget.viewMode.stream.listen(_onView);
   }
 
   StreamSubscription<AdminState>? _expiredSub;
@@ -177,8 +224,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   @override
   void dispose() {
     _tick?.cancel();
+    _backTimer?.cancel();
+    unawaited(_viewSub?.cancel());
     unawaited(_expiredSub?.cancel());
-    unawaited(_bloc.close());
+    unawaited(_realBloc.close());
+    unawaited(_checkBloc?.close());
     super.dispose();
   }
 
@@ -270,18 +320,39 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     if (mounted) setState(() {});
   }
 
+  String _nodeName(Device d) {
+    final p = _profiles[d.id];
+    if ((p?.name ?? '').isNotEmpty) return p!.name;
+    return d.name.trim().isEmpty ? d.id : d.name;
+  }
+
+  /// Bundle 216 (C): one node per person (photo + name), with the account
+  /// id so the photo, crown and blocked look match the person.
+  List<LinkNode> _nodesFor(List<Device> devices) => [
+        for (final d in devices)
+          LinkNode(
+            id: d.id,
+            label: _nodeName(d),
+            tag: _tagFor(d),
+            blocked: _adminBlocked(d), // Bundle 212 (E6)
+            userId: _profiles[d.id]?.userId ?? '',
+          ),
+      ];
+
   void _openFullMap(List<Device> devices, bool online) {
+    final nodes = AdminUiCheck216.on.value ? _checkNodes : _nodesFor(devices);
+    logMapNodes216(nodes.length, _hiddenDupes);
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => LinkPathsFullScreen(
-        nodes: [
-          for (final d in devices)
-            LinkNode(id: d.id, label: d.name, tag: _tagFor(d), blocked: _adminBlocked(d)),
-        ],
+        nodes: nodes,
         serverOnline: online,
         service: _blocks,
         targetFor: (n) => _targetForDevice(n.id, n.label),
         readHint: widget.store.readSetting,
         writeHint: widget.store.writeSetting,
+        selfName: _myName,
+        selfId: widget.store.deviceId,
+        selfUserId: widget.store.accountId,
       ),
     ));
   }
@@ -305,18 +376,58 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   Set<String> get _blockedIds =>
       {for (final r in _blocked) r['user_id']?.toString() ?? ''};
 
-  // Bundle 135: banned devices leave the live view entirely.
-  List<Device> get _onLink => [
-        for (final d in _devices)
-          if (!d.current &&
-              !_blockedIds.contains(d.id) &&
-              (d.wifiDirectConnected ||
-                  d.meshAvailable ||
-                  d.lanAvailable ||
-                  _recent(d)))
-            d,
-      ];
+  int _hiddenDupes = 0;
+  bool _mapLogged = false;
 
+  // Bundle 135: banned devices leave the live view entirely.
+  // Bundle 216 (C): the same phone / person shows once (dedupeNodes).
+  List<Device> get _onLink {
+    final raw = [
+      for (final d in _devices)
+        if (!d.current &&
+            !_blockedIds.contains(d.id) &&
+            (d.wifiDirectConnected ||
+                d.meshAvailable ||
+                d.lanAvailable ||
+                _recent(d)))
+          d,
+    ];
+    final own = widget.store.deviceId;
+    final r = dedupeNodes<Device>(
+      raw,
+      deviceId: (d) => d.id,
+      userId: (d) => _profiles[d.id]?.userId ?? '',
+      phoneName: (d) => d.name,
+      seenAt: (d) => DateTime.tryParse(d.presenceLocalAt),
+      revoked: (d) => d.status == 'revoked' || d.revokedAt.isNotEmpty,
+      ownIds: {if (own != null && own.isNotEmpty) own},
+    );
+    _hiddenDupes = r.hidden;
+    if (!_mapLogged && raw.isNotEmpty) {
+      _mapLogged = true;
+      logMapNodes216(r.kept.length, r.hidden);
+    }
+    return r.kept;
+  }
+
+  // ------------------------------------------------------- Bundle 216 (J)
+  /// "UI check data" (testers): the mock people instead of real data.
+  static const _checkNodes = <LinkNode>[
+    LinkNode(id: 'd-zte', label: 'Sumaira', tag: LinkTag.wifiDirect, userId: 'u-sumaira', admin: true),
+    LinkNode(id: 'd-samsung', label: 'Ali', tag: LinkTag.localWifi, userId: 'u-ali'),
+    LinkNode(id: 'd-zeeshan', label: 'Zeeshan', tag: LinkTag.mesh, userId: 'u-zeeshan'),
+    LinkNode(id: 'd-hamza', label: 'Hamza', tag: LinkTag.wifiDirect, userId: 'u-hamza', blocked: true),
+  ];
+
+  bool get _check => AdminUiCheck216.on.value;
+
+  String get _myName {
+    if (_check) return 'Sajjad';
+    final u = widget.store.username?.trim() ?? '';
+    return u.isEmpty ? 'Admin' : u;
+  }
+
+  // ------------------------------------------------- module pages (216e)
   Widget _screenFor(String title) {
     switch (title) {
       case 'Users':
@@ -324,7 +435,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       case 'Devices':
         return const AdminDevicesScreen();
       case 'Sessions':
-        return const AdminSessionsScreen();
+        return AdminSessionsScreen(thisDeviceId: widget.store.deviceId);
       case 'Network & Mesh':
         return const AdminNetworkScreen();
       case 'Calls':
@@ -344,7 +455,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       case 'Privacy & Access':
         return const AdminPrivacyScreen();
       default:
-        return AdminDashboardScreen(
+        return AdminDashboard216Screen(
           onNavigate: (module) {
             Navigator.of(context).pop();
             _openModule(module);
@@ -353,569 +464,466 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     }
   }
 
+  /// Bundle 216 (E): every tool page builds its own [AdminPage216] (app
+  /// bar, lock gate); this only hands it the bloc and the view mode.
   void _openModule(String title) {
+    final bloc = _bloc;
     Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (context) => Theme(
-        data: AdminTheme.build(Theme.of(context).brightness),
+      builder: (context) => AdminTheme216Scope(
         child: MultiBlocProvider(
           providers: [
-            BlocProvider.value(value: _bloc),
+            BlocProvider.value(value: bloc),
             BlocProvider.value(value: widget.viewMode),
           ],
-          child: Scaffold(
-            appBar: AppBar(title: Text(title)),
-            body: SafeArea(child: _screenFor(title)),
-          ),
+          child: _screenFor(title),
         ),
       ),
     ));
   }
 
   /// Bundle 135: offline-capable ban — dual-key (device + user), instant on
-  /// this phone; appears under Local moderation with Unblock.
+  /// this phone; appears under "Blocked on this phone" with Unblock.
   Future<void> _confirmBlock(Device d) async {
-    final name = d.name.trim().isEmpty ? d.id : d.name;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Block $name?'),
-        content: const Text(
-            'They can no longer message or pair with this phone — online or '
-            'offline. This applies right away on this phone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-                foregroundColor: Theme.of(context).colorScheme.onError),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Block'),
-          ),
-        ],
-      ),
+    final name = _nodeName(d);
+    final ok = await confirmAdmin216(
+      context,
+      title: 'Block $name?',
+      body: 'They can no longer message or pair with this phone — online or '
+          'offline. This applies right away on this phone.',
+      yes: 'Block',
+      danger: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!ok || !mounted) return;
     try {
       await widget.store.blockDeviceAndUser(d.id);
       await _refresh();
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$name blocked on this phone.')));
-      }
+      if (mounted) adminSnack216(context, '$name blocked on this phone.');
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Block failed: $error')));
-      }
+      if (mounted) adminSnack216(context, 'Block failed: $error');
     }
   }
 
   Future<void> _showBlocked() async {
-    final scheme = Theme.of(context).colorScheme;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, refresh) => SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => AdminLocalBlockedScreen(
+        load: widget.store.blockedUsersOverview,
+        unblock: widget.store.unblockUser,
+        onBlockUser: _openBlockPicker,
+      ),
+    ));
+    await _refresh();
+  }
+
+  void _openBlockPicker() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => AdminBlockUsersScreen(
+            load: () => loadBlockCandidates(widget.store), service: _blocks)));
+  }
+
+  /// Tap a person on the small map → their sheet with Block / Unblock.
+  /// The sheet stays open and updates when the block lands.
+  Future<void> _nodeSheet(LinkNode n) async {
+    final d = _devices.where((x) => x.id == n.id).firstOrNull;
+    final link = linkTagLabel(n.tag);
+    await showAdminSheet216<void>(
+      context,
+      builder: (sheet) => ListenableBuilder(
+        listenable: AdminBlockBook.instance,
+        builder: (sheet, _) {
+          final c = A216.colors(sheet);
+          final t = A216Text(c);
+          final blocked = d == null ? n.blocked : _adminBlocked(d);
+          return Column(
+            key: const ValueKey('admin_node_sheet'),
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Blocked devices',
-                  style: Theme.of(sheetContext).textTheme.titleLarge),
-              const SizedBox(height: 4),
-              Text(
-                'Local blocklist — applies on this phone immediately, online or offline.',
-                style: TextStyle(
-                    fontSize: 12, color: scheme.onSurface.withValues(alpha: 0.65)),
-              ),
-              const SizedBox(height: 12),
-              if (_blocked.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: Center(
-                      child: Text('No blocked devices',
-                          style: TextStyle(
-                              color: scheme.onSurface.withValues(alpha: 0.6)))),
+              AdminPersonAvatar216(
+                  name: n.label,
+                  userId: n.userId,
+                  deviceId: n.id,
+                  radius: 28,
+                  admin: n.admin,
+                  blocked: blocked),
+              const SizedBox(height: 10),
+              Text(n.label, style: t.sheetTitle),
+              const SizedBox(height: 3),
+              Text(d == null ? link : '${d.name} · $link', style: t.cardSub),
+              if (blocked) ...[
+                const SizedBox(height: 10),
+                const AdminTag216('Blocked', A216Tone.red),
+              ],
+              const SizedBox(height: 18),
+              if (d != null && !_check)
+                SizedBox(
+                  height: 44,
+                  width: double.infinity,
+                  child: blocked
+                      ? FilledButton(
+                          key: const ValueKey('admin_node_unblock'),
+                          style: FilledButton.styleFrom(
+                              backgroundColor: c.div,
+                              foregroundColor: c.ink,
+                              shape: const StadiumBorder()),
+                          onPressed: () => _networkBlock(d, block: false),
+                          child: const Text('Unblock'))
+                      : FilledButton(
+                          key: const ValueKey('admin_node_block'),
+                          style: FilledButton.styleFrom(
+                              backgroundColor: c.red,
+                              foregroundColor: Colors.white,
+                              shape: const StadiumBorder()),
+                          // 212 rule: Block by a nearby phone = for everyone.
+                          onPressed: () => _networkBlock(d, block: true),
+                          child: const Text('Block')),
                 ),
-              ..._blocked.map((row) {
-                final label =
-                    (row['display_name']?.toString().trim().isNotEmpty == true
-                            ? row['display_name']
-                            : row['username'])?.toString() ??
-                        row['user_id']?.toString() ??
-                        '?';
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.block, color: scheme.error),
-                  title: Text(label),
-                  subtitle: Text(row['user_id']?.toString() ?? '',
-                      style: const TextStyle(fontSize: 11)),
-                  trailing: TextButton(
-                    child: const Text('Unblock'),
-                    onPressed: () async {
-                      final id = row['user_id']?.toString() ?? '';
-                      if (id.isEmpty) return;
-                      await widget.store.unblockUser(id);
-                      await _refresh();
-                      refresh(() {});
-                    },
-                  ),
-                );
-              }),
             ],
+          );
+        },
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------- testers
+  /// Bundle 216 (page 26): Testers rows. The Nearby tests page keeps
+  /// `const NearbyTestSwitches()` (bundle 173 source scan).
+  void _openNearbyTests() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const AdminPage216(
+        title: 'Nearby tests (testers only)',
+        subtitle: 'Router echo, Wi-Fi Direct and mesh checks',
+        children: [
+          SizedBox(height: 4),
+          NearbyTestSwitches(),
+        ],
+      ),
+    ));
+  }
+
+  Widget _testersCard() {
+    final t = A216Text.of(context);
+    return AdminCard216(
+      key: const ValueKey('a216_testers'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            key: const Key('admin_nearby_tests'),
+            onTap: _openNearbyTests,
+            child: SizedBox(
+              height: 56,
+              child: Row(children: [
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Nearby tests (testers only)', style: t.rowTitle),
+                      const SizedBox(height: 3),
+                      Text('Router echo, Wi-Fi Direct and mesh checks', style: t.rowSub),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, size: 16, color: A216.colors(context).grey2),
+                const SizedBox(width: 18),
+              ]),
+            ),
           ),
+        ),
+        _divider(),
+        // Bundle 213: testers try the version rule on one version.
+        // Order kept for the 213f scan: NearbyTestSwitches → this.
+        const PretendOldBuildSwitch(),
+        _divider(),
+        // Bundle 197b (Q4): one clean-up run as if every file were
+        // 11 days old and the phone 80% full.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Test clean-up now', style: t.rowTitle),
+            const SizedBox(height: 3),
+            Text('One run as if files were 11 days old', style: t.rowSub),
+            const SizedBox(height: 6),
+            const StorageTestButton(),
+          ]),
+        ),
+        _divider(),
+        // Bundle 216 (J): "UI check data".
+        const AdminUiCheckSwitch216(),
+      ]),
+    );
+  }
+
+  Widget _divider() => Container(
+      height: 1, margin: const EdgeInsets.only(left: 16), color: A216.colors(context).div);
+
+  // ---------------------------------------------------------------- build
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AdminUiCheck216.on,
+      builder: (context, check, _) => BlocBuilder<AppViewModeCubit, AppViewModeState>(
+        bloc: widget.viewMode,
+        builder: (context, view) => AdminTheme216Scope(
+          child: Builder(builder: (context) => _home(context, view.serverConnected)),
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _home(BuildContext context, bool online) {
     final scheme = Theme.of(context).colorScheme;
-    return BlocBuilder<AppViewModeCubit, AppViewModeState>(
-      bloc: widget.viewMode,
-      builder: (context, view) {
-        final online = view.serverConnected;
-        final onLink = _onLink;
-        final visible = _modules
-            .where((m) => !m.ownerOnly || widget.session.role == 'owner')
-            .toList(growable: false);
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Admin'),
-            centerTitle: false,
-            actions: [
-              _statusChip(online),
-              const SizedBox(width: 4),
-              // Bundle 214: switch back to my chats (no admin sign out).
-              IconButton(
-                key: const ValueKey('admin_switch_button'),
-                tooltip: 'Switch account',
-                icon: CircleAvatar(
-                  radius: 15,
-                  backgroundColor: scheme.primaryContainer,
-                  child: Icon(Icons.admin_panel_settings_outlined,
-                      size: 18, color: scheme.onPrimaryContainer),
+    final c = A216.colors(context);
+    final onLink = _onLink;
+    final devices = onLink;
+    return Scaffold(
+      backgroundColor: c.bg,
+      body: SafeArea(
+        bottom: false,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          AdminAppBar216(
+            title: 'Admin',
+            back: Navigator.of(context).canPop(),
+            right: Padding(
+              padding: const EdgeInsets.only(right: 2),
+              child: Tooltip(
+                message: 'Switch account',
+                child: Material(
+                  color: c.surface,
+                  shape: CircleBorder(side: BorderSide(color: c.line)),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    // Bundle 214: switch back to my chats (no admin sign out).
+                    key: const ValueKey('admin_switch_button'),
+                    onTap: () => showAccountSwitchSheet(context,
+                        deps: _switchDeps, current: AccountSwitchPlace.admin),
+                    child: SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Center(child: AdminCrown.mark(18, halo: null))),
+                  ),
                 ),
-                onPressed: () => showAccountSwitchSheet(context,
-                    deps: _switchDeps, current: AccountSwitchPlace.admin),
               ),
-              const SizedBox(width: 8),
-            ],
+            ),
           ),
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-            children: [
-              if (!online) _offlineBanner(scheme),
-              _mapCard(scheme, onLink, online),
-              _onThisLinkCard(scheme, onLink),
-              _moderationCard(scheme),
-              // Bundle 213: minimum app version for everyone.
-              const AdminVersionCard(),
-              const SizedBox(height: 20),
-              // Bundle 173: the 2 nearby tests, testers only (still OFF).
-              const Text(
-                'Nearby tests (testers only)',
-                key: Key('admin_nearby_tests'),
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2),
-              ),
-              const SizedBox(height: 8),
-              const NearbyTestSwitches(),
-              // Bundle 213: testers try the version rule on one version.
-              const SizedBox(height: 8),
-              const PretendOldBuildSwitch(),
-              // Bundle 197b (Q4): one clean-up run as if every file were
-              // 11 days old and the phone 80% full.
-              const SizedBox(height: 8),
-              const StorageTestButton(),
-              const SizedBox(height: 20),
-              Text(
-                online
-                    ? 'Server modules'
-                    : 'Server modules — locked while offline',
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2),
-              ),
-              const SizedBox(height: 12),
-              GridView.count(
-                crossAxisCount: 2,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.72,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  for (final m in visible) _moduleTile(scheme, m, online),
+          const AdminUiCheckBanner216(),
+          Expanded(
+            child: ListView(
+              key: const ValueKey('admin_home_list'),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+              children: [
+                _hero(online, onLink),
+                if (_backBanner) ...[
+                  const SizedBox(height: 14),
+                  AnimatedOpacity(
+                    opacity: _backFading ? 0 : 1,
+                    duration: const Duration(milliseconds: 300),
+                    child: const AdminBanner216(A216BannerKind.success,
+                        'Server is back. Tools unlocked.',
+                        key: ValueKey('a216_back_banner'),
+                        icon: Icons.check_circle_outline_rounded),
+                  ),
                 ],
-              ),
-            ],
+                if (!online) ...[
+                  const SizedBox(height: 14),
+                  const AdminBanner216(A216BannerKind.warning, 'No server right now',
+                      key: ValueKey('a216_offline_banner'),
+                      body: 'Offline tools still work. Locked ones open by themselves.'),
+                ],
+                const SizedBox(height: 14),
+                _mapCard(online, devices),
+                _moderationCard(scheme),
+                // Bundle 213: minimum app version for everyone.
+                const AdminVersionCard(),
+                if (online || _check)
+                  ..._menus()
+                else ...[
+                  const AdminSection216('Needs the server'),
+                  AdminLockedRows216([
+                    for (final m in _modules) AdminLockedItem216(m.key, m.title, m.icon),
+                  ]),
+                ],
+                const AdminSection216('Testers'),
+                _testersCard(),
+              ],
+            ),
           ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _hero(bool online, List<Device> onLink) {
+    final level = AdminBadges.roleLabel(widget.session.role);
+    return ListenableBuilder(
+      listenable: Listenable.merge([VersionGuard.instance, AdminBlockBook.instance]),
+      builder: (context, _) {
+        final rule = VersionGuard.instance.rule;
+        final min = _check || rule == null || rule.isRemove
+            ? 'None'
+            : (rule.minVersion.isEmpty ? 'b${rule.minBuild}' : rule.minVersion);
+        return AdminHeroCard216(
+          avatar: AdminPersonAvatar216(
+            name: _myName,
+            userId: _check ? UiCheckPeople216.me : widget.store.accountId,
+            deviceId: _check ? null : widget.store.deviceId,
+            radius: 22,
+            admin: true,
+            background: Colors.white,
+          ),
+          name: _myName,
+          sub: '${_check ? 'Owner' : level} · ${levelRights216(_check ? 'Owner' : level)}',
+          online: online,
+          wayText: online ? 'Server' : _offlineWay(onLink),
+          near: '${_check ? 3 : onLink.length}',
+          blocked: '${_check ? 1 : AdminBlockBook.instance.blockedUserIds.length}',
+          minVersion: min,
         );
       },
     );
   }
 
-  Widget _statusChip(bool online) {
-    final fg = online ? const Color(0xFF166534) : const Color(0xFF8A5A00);
-    final bg = online ? const Color(0xFFDFF7E8) : const Color(0xFFFFF2CC);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(online ? Icons.check_circle : Icons.warning_amber_rounded,
-            size: 15, color: fg),
-        const SizedBox(width: 6),
-        Text(online ? 'Online · Server' : 'Offline · Wi-Fi Direct',
-            style:
-                TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: fg)),
-      ]),
-    );
+  static String _offlineWay(List<Device> onLink) {
+    if (onLink.any((d) => d.wifiDirectConnected)) return 'Wi-Fi Direct';
+    if (onLink.any((d) => d.meshAvailable)) return 'Mesh';
+    if (onLink.any((d) => d.lanAvailable)) return 'Local Wi-Fi';
+    return 'No link';
   }
 
-  Widget _offlineBanner(ColorScheme scheme) => Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFFEEF3FA),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(Icons.info_outline, color: scheme.primary, size: 20),
-          const SizedBox(width: 10),
-          const Expanded(
-            child: Text(
-              'Because the server is unreachable, you’re managing this local link only. Server actions unlock when it reconnects.',
-              style: TextStyle(fontSize: 13, height: 1.35),
-            ),
-          ),
-        ]),
-      );
-
-  Widget _mapCard(ColorScheme scheme, List<Device> devices, bool online) {
-    final nodes = [
-      for (final d in devices)
-        LinkNode(
-            id: d.id,
-            label: d.name.length > 14 ? '${d.name.substring(0, 13)}…' : d.name,
-            tag: _tagFor(d),
-            blocked: _adminBlocked(d)), // Bundle 212 (E6)
-    ];
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 14),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Link paths',
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 2),
-          Text('Live view of where traffic can go',
-              style: TextStyle(
-                  fontSize: 13, color: scheme.onSurface.withValues(alpha: 0.6))),
-          const SizedBox(height: 14),
-          LinkPathsMap(
-              nodes: nodes,
-              serverOnline: online,
-              onExpand: () => _openFullMap(devices, online)), // Bundle 212 (E7)
-        ]),
+  Widget _mapCard(bool online, List<Device> devices) {
+    final nodes = _check ? _checkNodes : _nodesFor(devices);
+    return AdminCard216(
+      key: const ValueKey('a216_map_card'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      child: LinkPathsMap(
+        title: 'Link paths',
+        subtitle: 'Who is linked to whom, live',
+        height: 104,
+        nodes: nodes,
+        serverOnline: online,
+        selfName: _myName,
+        selfId: widget.store.deviceId,
+        selfUserId: _check ? UiCheckPeople216.me : widget.store.accountId,
+        onNodeTap: _nodeSheet,
+        onExpand: () => _openFullMap(devices, online), // Bundle 212 (E7)
       ),
     );
   }
 
-  Widget _onThisLinkCard(ColorScheme scheme, List<Device> devices) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 14),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('On this link right now',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 3),
-          Text('${devices.length} device(s) reachable via Wi-Fi Direct / mesh'
-              '${devices.where(_adminBlocked).isEmpty ? '' : ' · ${devices.where(_adminBlocked).length} blocked'}',
-              style: TextStyle(
-                  fontSize: 13, color: scheme.onSurface.withValues(alpha: 0.6))),
-          const SizedBox(height: 10),
-          if (devices.length > kAdminListSearchFrom)
-            AdminListSearch(
-              onChanged: (q) => setState(() {
-                _linkQuery = q;
-                _linkShown = kAdminListPage;
-              }),
-            ),
-          if (devices.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Center(
-                  child: Text('No other device seen yet',
-                      style: TextStyle(
-                          color: scheme.onSurface.withValues(alpha: 0.6)))),
-            ),
-          ...adminListPage<Device>(devices,
-                  query: _linkQuery,
-                  shown: _linkShown,
-                  keys: (d) => [d.name, d.id])
-              .visible
-              .map((d) {
-            final tag = _tagFor(d);
-            final blockedByAdmin = _adminBlocked(d); // Bundle 212 (E6)
-            final tint = blockedByAdmin ? kLinkBlockedGrey : kLinkTagColors[tag]!;
-            final initials = d.name.trim().isEmpty
-                ? '?'
-                : d.name
-                    .trim()
-                    .split(RegExp(r'[\s\-_]+'))
-                    .map((w) => w[0])
-                    .take(2)
-                    .join()
-                    .toUpperCase();
-            return Column(children: [
-              Row(children: [
-                CircleAvatar(
-                    radius: 20,
-                    backgroundColor: tint.withValues(alpha: 0.16),
-                    child: Text(initials,
-                        style: TextStyle(
-                            color: Color.lerp(tint, Colors.black, 0.2),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13))),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: Text(d.name,
-                        style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: blockedByAdmin ? kLinkBlockedGrey : null))),
-                if (blockedByAdmin) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                        color: kBlockRedTint, borderRadius: BorderRadius.circular(8)),
-                    child: const Text('Blocked',
-                        style: TextStyle(
-                            fontSize: 11, fontWeight: FontWeight.w600, color: kBlockRed)),
-                  ),
-                  TextButton(
-                    key: ValueKey('admin_link_unblock_${d.id}'),
-                    onPressed: () => _networkBlock(d, block: false),
-                    child: const Text('Unblock'),
-                  ),
-                ] else ...[
-                _transportChip(tag, tint),
-                const SizedBox(width: 4),
-                IconButton(
-                  tooltip: 'Block',
-                  visualDensity: VisualDensity.compact,
-                  style: IconButton.styleFrom(
-                      backgroundColor: scheme.error.withValues(alpha: 0.08),
-                      foregroundColor: scheme.error,
-                      padding: const EdgeInsets.all(8)),
-                  icon: const Icon(Icons.shield_outlined, size: 18),
-                  onPressed: () => _networkBlock(d, block: true),
-                ),
-                ],
-              ]),
-              const SizedBox(height: 8),
-              Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.4)),
-              const SizedBox(height: 8),
-            ]);
-          }),
-          AdminListMoreButton(
-            shown: _linkShown,
-            matched: adminListPage<Device>(devices,
-                    query: _linkQuery, shown: 0, keys: (d) => [d.name, d.id])
-                .matched,
-            onPressed: () =>
-                setState(() => _linkShown += kAdminListPage),
-          ),
-          const SizedBox(height: 6),
-        ]),
-      ),
-    );
-  }
-
-  Widget _transportChip(LinkTag tag, Color tint) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-            color: tint.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(8)),
-        child: Text(linkTagLabel(tag),
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color.lerp(tint, Colors.black, 0.25))),
-      );
-
-  /// Bundle 212 (E1, mock page 1): "Block users (all phones)" replaces
-  /// "Local moderation"; the old list stays as "Blocked on this phone".
+  /// Bundle 212 (E1) / 216 (page 3): "Block users (all phones)" with the
+  /// status line and 3 rows.
   Widget _moderationCard(ColorScheme scheme) {
-    final ready = _readiness;
-    final (statusText, statusColor, statusBg) = switch (ready) {
-      AdminBlockReadiness.ready => (
-          'Offline blocking is ready',
-          const Color(0xFF15803D),
-          const Color(0xFFE3F6EA)
-        ),
-      AdminBlockReadiness.notOwner => (
-          'Only the owner admin can block users',
-          const Color(0xFF9A5B06),
-          const Color(0xFFFDF1DD)
-        ),
-      _ => (
-          'Connect to the server once to turn on offline blocking',
-          const Color(0xFF9A5B06),
-          const Color(0xFFFDF1DD)
-        ),
+    final c = A216.colors(context);
+    final t = A216Text(c);
+    final ready = _check ? AdminBlockReadiness.ready : _readiness;
+    final adminBlocked = _check ? 1 : AdminBlockBook.instance.blockedUserIds.length;
+    final local = _check ? 0 : _blocked.length;
+    final status = switch (ready) {
+      AdminBlockReadiness.ready => null,
+      AdminBlockReadiness.notOwner => 'Only the owner admin can block users',
+      _ => 'Connect to the server once to turn on offline blocking',
     };
-    final adminBlocked = AdminBlockBook.instance.blockedUserIds.length;
-    return Card(
+    return Column(
       key: const ValueKey('admin_block_card'),
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 6),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 14, 16, 0),
-          child: Text('Block users (all phones)',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-        ),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: Container(
-            key: const ValueKey('admin_block_status'),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-                color: statusBg, borderRadius: BorderRadius.circular(10)),
-            child: Row(children: [
-              Icon(ready == AdminBlockReadiness.ready
-                      ? Icons.check_circle
-                      : Icons.info_outline,
-                  size: 16, color: statusColor),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(statusText,
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: statusColor)),
-              ),
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text('Block users (all phones)', style: t.section)),
+              if (status == null)
+                Row(
+                  key: const ValueKey('admin_block_status'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.check_rounded, size: 14, color: Color(0xFF079455)),
+                    const SizedBox(width: 3),
+                    Text('Offline blocking is ready',
+                        style: t.custom(12, FontWeight.w600, const Color(0xFF079455))),
+                  ],
+                ),
             ]),
+            if (status != null) ...[
+              const SizedBox(height: 4),
+              Text(status,
+                  key: const ValueKey('admin_block_status'),
+                  style: t.custom(12, FontWeight.w500, const Color(0xFFB54708), 1.35)),
+            ],
+          ]),
+        ),
+        AdminListCard216([
+          AdminRow216(
+            key: const ValueKey('admin_block_pick'),
+            leading: const AdminToneIcon216(Icons.block_rounded, A216Tone.red),
+            title: 'Block or unblock a user',
+            subtitle: 'Anyone this phone has seen, or nearby',
+            onTap: _openBlockPicker,
           ),
-        ),
-        ListTile(
-          key: const ValueKey('admin_block_pick'),
-          leading: const CircleAvatar(
-              backgroundColor: kBlockRedTint,
-              child: Icon(Icons.block, color: kBlockRed)),
-          title: const Text('Block or unblock a user',
-              style: TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: const Text('Anyone this phone has seen, or nearby'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-              builder: (_) => AdminBlockUsersScreen(
-                  load: () => loadBlockCandidates(widget.store),
-                  service: _blocks))),
-        ),
-        ListTile(
-          key: const ValueKey('admin_block_list'),
-          leading: CircleAvatar(
-              backgroundColor: scheme.primary.withValues(alpha: 0.12),
-              child: Icon(Icons.groups_outlined, color: scheme.primary)),
-          title: const Text('Blocked by admin',
-              style: TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text('$adminBlocked user(s)'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-              builder: (_) => AdminBlockedListScreen(service: _blocks))),
-        ),
-        ListTile(
-          leading: CircleAvatar(
-              backgroundColor: scheme.primary.withValues(alpha: 0.12),
-              child: Icon(Icons.shield_outlined, color: scheme.primary)),
-          title: const Text('Blocked on this phone',
-              style: TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text('${_blocked.length} device(s)'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: _showBlocked,
-        ),
-      ]),
+          AdminRow216(
+            key: const ValueKey('admin_block_list'),
+            leading: const AdminToneIcon216(Icons.groups_outlined, A216Tone.red),
+            title: 'Blocked by admin',
+            subtitle: '${people216(adminBlocked)} · on every phone',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => AdminBlockedListScreen(service: _blocks))),
+          ),
+          AdminRow216(
+            key: const ValueKey('admin_local_blocked'),
+            leading: const AdminToneIcon216(Icons.phone_android_rounded, A216Tone.grey),
+            title: 'Blocked on this phone',
+            subtitle: local == 0 ? 'Nobody' : people216(local),
+            onTap: _showBlocked,
+          ),
+        ]),
+      ],
     );
   }
 
-  Widget _moduleTile(ColorScheme scheme, _PanelModule module, bool online) {
-    final locked = !online;
-    final content = Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        CircleAvatar(
-            radius: 15,
-            backgroundColor:
-                locked ? scheme.surfaceContainerHighest : scheme.primary.withValues(alpha: 0.12),
-            child: Icon(locked ? Icons.lock_outline : module.icon,
-                size: 16,
-                color: locked
-                    ? scheme.onSurface.withValues(alpha: 0.45)
-                    : scheme.primary)),
-        const Spacer(),
-        Text(module.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                color: locked
-                    ? scheme.onSurface.withValues(alpha: 0.5)
-                    : scheme.onSurface)),
-        const SizedBox(height: 2),
-        Text(locked ? 'Requires server connection' : module.subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                fontSize: 10.5, color: scheme.onSurface.withValues(alpha: 0.55))),
-      ]),
-    );
-    return Opacity(
-      opacity: locked ? 0.85 : 1,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: locked
-            ? () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(
-                    '${module.title} needs the server — it unlocks the moment the server is reachable.')))
-            : () => _openModule(module.title),
-        child: content,
-      ),
-    );
+  List<Widget> _menus() {
+    final owner = widget.session.role == 'owner' || _check;
+    Widget group(String label, List<_PanelModule> mods) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AdminSection216(label),
+            AdminListCard216([
+              for (final m in mods)
+                AdminRow216(
+                  key: ValueKey('a216_module_${m.key}'),
+                  leading: AdminToneIcon216(m.icon, m.tone),
+                  title: m.title,
+                  subtitle: m.subtitle,
+                  trailing: m.ownerOnly && !owner
+                      ? const Padding(
+                          padding: EdgeInsets.only(right: 8),
+                          child: AdminTag216('Owner only', A216Tone.gold))
+                      : null,
+                  onTap: m.ownerOnly && !owner
+                      ? () => adminSnack216(context, 'Only the Owner can change this.')
+                      : () => _openModule(m.key),
+                ),
+            ]),
+          ],
+        );
+    List<_PanelModule> of(String g) => [for (final m in _modules) if (m.group == g) m];
+    return [
+      group('People', of('People')),
+      group('Network', of('Network')),
+      group('Safety', of('Safety')),
+      group('System', of('System')),
+    ];
   }
 }
 
 class _PanelModule {
+  /// The module key passed to `_screenFor` (old names, unchanged).
+  final String key;
   final String title;
   final IconData icon;
   final String subtitle;
+  final String group;
+  final A216Tone tone;
   final bool ownerOnly;
-  const _PanelModule(this.title, this.icon, this.subtitle,
+  const _PanelModule(this.key, this.title, this.icon, this.subtitle, this.group, this.tone,
       {this.ownerOnly = false});
 }

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:locallink/app/app_dependencies.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/authentication/data/services/offline_account_sync_service.dart';
 
 /// Bundle 169 (4.3): what the phone does after a reboot, before the app is
 /// opened. The native side starts this engine with no screen
@@ -92,6 +93,17 @@ class BackgroundRunner {
         run: () async {
           if (!configured) await deps.store.ensureDeviceIdentity();
           await deps.crypto.init(deps.store.deviceId!);
+        },
+      ),
+      // Bundle 216f: an account made with no server is uploaded with the
+      // app closed too (logged; one at a time with the app; 2 min gap).
+      (
+        name: 'offline_account',
+        run: () async {
+          if (!deps.store.isOfflinePending) return;
+          unawaited(OfflineAccountSyncService(
+                  store: deps.store, auth: deps.authentication)
+              .backgroundStep());
         },
       ),
       (name: 'routes', run: deps.routePolicy.start),

@@ -134,8 +134,14 @@ class AccountSwitchSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
+    // Bundle 216 (B): selected = blue circle r 11 with a white check.
+    // Icons.check_circle keeps the 211c test (filled circle + white check).
     Widget tick(bool on) => on
-        ? Icon(Icons.check_circle, color: colors.primary)
+        ? Icon(Icons.check_circle,
+            size: 24,
+            color: colors.brightness == Brightness.dark
+                ? const Color(0xFF4C8DFF)
+                : const Color(0xFF1E5BFF))
         : const SizedBox(width: 24);
     final s = session;
     final level = s == null ? '' : AdminBadges.roleLabel(s.role);
@@ -149,10 +155,13 @@ class AccountSwitchSheet extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text('Switch account', style: text.titleMedium),
+              child: Text('Switch account',
+                  style: text.titleMedium?.copyWith(
+                      fontSize: 17, fontWeight: FontWeight.w600)),
             ),
             ListTile(
               key: const ValueKey('switch_user'),
+              minTileHeight: 68,
               leading: ValueListenableBuilder<bool?>(
                 valueListenable: ProfilePrivacyRule.ownPrivate,
                 builder: (_, own, __) => AccountAvatar(
@@ -161,7 +170,8 @@ class AccountSwitchSheet extends StatelessWidget {
                     peerId: userPeerId,
                     locked: own == true),
               ),
-              title: Text(userName),
+              title: Text(userName,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
               subtitle: const Text('Chats, calls, people'),
               trailing: tick(current == AccountSwitchPlace.user),
               onTap: () => onPick(AccountSwitchChoice.user),
@@ -169,13 +179,16 @@ class AccountSwitchSheet extends StatelessWidget {
             if (s != null)
               ListTile(
                 key: const ValueKey('switch_admin'),
+                minTileHeight: 68,
                 enabled: !blocked || current == AccountSwitchPlace.admin,
+                // Bundle 216 (A): gold circle with the painted crown.
                 leading: CircleAvatar(
                   radius: 22,
-                  backgroundColor: const Color(0xFFFFF4D6),
-                  child: AdminCrown.mark(20),
+                  backgroundColor: const Color(0xFFFFF6DB),
+                  child: AdminCrown.mark(24, halo: null),
                 ),
-                title: const Text('Admin'),
+                title: const Text('Admin',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
                 subtitle: Text(blocked
                     ? 'Your account is blocked by admin'
                     : online

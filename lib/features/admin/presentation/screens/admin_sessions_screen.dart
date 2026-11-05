@@ -1,79 +1,122 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/admin_permissions.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_people216.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
 
+/// Bundle 216 (page 15): who is signed in, on which phone.
 class AdminSessionsScreen extends StatelessWidget {
-  const AdminSessionsScreen({super.key});
-  Future<void> _revoke(BuildContext context, String id,
-      {required bool admin}) async {
-    final ok = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-                title: const Text('Revoke session?'),
-                content: const Text('The session will no longer authenticate.'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancel')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Revoke'))
-                ]));
-    if (ok == true && context.mounted) {
-      if (admin) {
-        await context.read<AdminBloc>().revokeAdminSession(id);
-      } else {
-        await context.read<AdminBloc>().revokeSession(id);
-      }
-    }
+  const AdminSessionsScreen({super.key, this.thisDeviceId});
+
+  /// This phone's device id ('This phone' tag).
+  final String? thisDeviceId;
+
+  static String since(Object? v) {
+    final t = parseAdminTime216(v);
+    if (t == null) return '';
+    final n = adminNow216();
+    if (t.year == n.year && t.month == n.month && t.day == n.day) return 'today';
+    return dMMM216(t);
+  }
+
+  Future<void> _signOut(BuildContext context, String id, {required bool admin}) async {
+    final ok = await confirmAdmin216(context,
+        title: admin ? 'Sign out this admin?' : 'Sign out this phone?',
+        body: admin ? 'This admin session ends now.' : 'It must sign in again.',
+        yes: 'Sign out',
+        danger: true);
+    if (!ok || !context.mounted) return;
+    final bloc = context.read<AdminBloc>();
+    await (admin ? bloc.revokeAdminSession(id) : bloc.revokeSession(id));
   }
 
   @override
-  Widget build(BuildContext context) => BlocBuilder<AdminBloc, AdminState>(
-      builder: (context, state) => RefreshIndicator(
-          onRefresh: () => context.read<AdminBloc>().load(),
-          child: ListView(padding: const EdgeInsets.all(16), children: [
-            const Text('User sessions',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ...state.sessions.map((s) => Card(
-                child: ListTile(
-                    leading:
-                        Icon(s['active'] == true ? Icons.login : Icons.history),
-                    title: Text(
-                        '@${s['username'] ?? ''} • ${s['device_name'] ?? ''}'),
-                    subtitle: Text(
-                        '${s['platform'] ?? ''} • created ${s['created_at'] ?? ''}\nExpires ${s['expires_at'] ?? ''}'),
-                    isThreeLine: true,
-                    trailing: AdminPermissions.canManageSessions(
-                                context.read<AdminBloc>().adminRole) &&
-                            s['active'] == true
-                        ? IconButton(
-                            onPressed: () => _revoke(
-                                context, s['id'].toString(),
-                                admin: false),
-                            icon: const Icon(Icons.block))
-                        : null))),
-            const SizedBox(height: 20),
-            const Text('Admin sessions',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ...state.adminSessions.map((s) => Card(
-                child: ListTile(
-                    leading: Icon(s['active'] == true
-                        ? Icons.admin_panel_settings_outlined
-                        : Icons.history),
-                    title: Text('${s['username'] ?? ''} • ${s['role'] ?? ''}'),
-                    subtitle: Text(
-                        '${s['current'] == true ? 'Current session • ' : ''}created ${s['created_at'] ?? ''}\nExpires ${s['expires_at'] ?? ''}'),
-                    isThreeLine: true,
-                    trailing: AdminPermissions.canManageSessions(
-                                context.read<AdminBloc>().adminRole) &&
-                            s['active'] == true
-                        ? IconButton(
-                            onPressed: () => _revoke(
-                                context, s['id'].toString(),
-                                admin: true),
-                            icon: const Icon(Icons.block))
-                        : null)))
-          ])));
+  Widget build(BuildContext context) {
+    return AdminToolPage216(
+      title: 'Sessions',
+      module: 'Sessions',
+      subtitle: (_) => 'Who is signed in, on which phone',
+      builder: (context, state) {
+        final c = A216.colors(context);
+        final t = A216Text(c);
+        final canManage = AdminPermissions.canManageSessions(context.read<AdminBloc>().adminRole);
+        final people = [for (final s in state.sessions) if (s['active'] != false) s];
+        final admins = [for (final s in state.adminSessions) if (s['active'] != false) s];
+        final usersByName = {
+          for (final u in state.users) '${u['username']}': u,
+        };
+        Widget nobody() => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Text('Nobody signed in', textAlign: TextAlign.center, style: t.note),
+            );
+        Widget signOut(String id, {required bool admin}) => AdminPillButton216(
+              'Sign out',
+              A216Tone.red,
+              canManage ? () => _signOut(context, id, admin: admin) : null,
+              key: ValueKey('a216_signout_$id'),
+            );
+        return [
+          if (state.loading && people.isEmpty && admins.isEmpty) const AdminLoading216(),
+          AdminSection216('People signed in',
+              right: '${people.length}', rightColor: c.blue, top: 4),
+          if (people.isEmpty)
+            nobody()
+          else
+            AdminListCard216([
+              for (final s in people)
+                AdminRow216(
+                  key: ValueKey('a216_session_${s['id']}'),
+                  height: 64,
+                  leading: ServerPersonAvatar216(
+                    name: personName216(s, fallback: '?'),
+                    userId: '${s['user_id'] ?? ''}',
+                    deviceId: '${s['device_id'] ?? ''}',
+                    hasAvatar: usersByName['${s['username']}']?['has_avatar'] == true,
+                  ),
+                  title: personName216(s, fallback: '${s['user_id'] ?? ''}'),
+                  subtitle: '${s['device_name'] ?? 'Phone'} · since ${since(s['created_at'])}',
+                  trailing: thisDeviceId != null && '${s['device_id']}' == thisDeviceId
+                      ? const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: AdminTag216('This phone', A216Tone.blue))
+                      : signOut('${s['id']}', admin: false),
+                ),
+            ]),
+          const AdminSection216('Admins signed in'),
+          if (admins.isEmpty)
+            nobody()
+          else
+            AdminListCard216([
+              for (final s in admins)
+                () {
+                  final known = usersByName['${s['username']}'];
+                  return AdminRow216(
+                    key: ValueKey('a216_admin_session_${s['id']}'),
+                    height: 64,
+                    leading: known != null
+                        ? ServerPersonAvatar216(
+                            name: personName216(known, fallback: '${s['username']}'),
+                            userId: '${known['id']}',
+                            hasAvatar: known['has_avatar'] == true,
+                          )
+                        : const AdminToneIcon216(Icons.vpn_key_outlined, A216Tone.grey),
+                    title: '${s['username'] ?? 'admin'} · ${level216(s['role'])}',
+                    subtitle:
+                        'Since ${whenSub216(s['created_at'])} · ends ${parseAdminTime216(s['expires_at']) == null ? '—' : dMMM216(parseAdminTime216(s['expires_at'])!)}',
+                    trailing: s['current'] == true
+                        ? const Padding(
+                            padding: EdgeInsets.only(right: 4),
+                            child: AdminTag216('This one', A216Tone.blue))
+                        : signOut('${s['id']}', admin: true),
+                  );
+                }(),
+            ]),
+        ];
+      },
+    );
+  }
 }

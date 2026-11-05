@@ -4,6 +4,8 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_block_confirm.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_list_page.dart';
 
 /// One person the admin can pick (E2).
@@ -128,20 +130,16 @@ class _AdminBlockUsersScreenState extends State<AdminBlockUsersScreen> {
         keys: (c) => [c.target.name, c.target.username, '@${c.target.username}']);
     final nearby = [for (final c in page.visible) if (c.nearby) c];
     final seen = [for (final c in page.visible) if (!c.nearby) c];
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6F8),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        title: const Text('Block or unblock a user',
-            style: TextStyle(fontWeight: FontWeight.w800)),
-      ),
+    // Bundle 216 (page 8): 216 look; keys, texts and the confirm kept.
+    return AdminPage216(
+      title: 'Block or unblock a user',
+      subtitle: 'Anyone this phone has seen, or nearby',
       body: ListenableBuilder(
         listenable: AdminBlockBook.instance,
         builder: (context, _) => ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
           children: [
-            AdminListSearch(
+            AdminSearch216(
               key: const ValueKey('admin_block_search'),
               hint: 'Search name or @username',
               onChanged: (q) => setState(() {
@@ -152,62 +150,44 @@ class _AdminBlockUsersScreenState extends State<AdminBlockUsersScreen> {
             if (_loading)
               const Padding(
                 padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
               )
-            else if (page.matched == 0)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: Text('No one found')),
-              ),
+            else if (page.matched == 0) ...[
+              const SizedBox(height: 14),
+              const AdminEmptyState216(
+                  icon: Icons.search_rounded,
+                  tone: A216Tone.grey,
+                  title: 'No one found',
+                  body: 'Try another name.'),
+            ],
             if (nearby.isNotEmpty) ...[
-              _label('NEARBY NOW'),
+              const AdminSection216('Nearby now'),
               _card(nearby),
             ],
             if (seen.isNotEmpty) ...[
-              _label('SEEN BEFORE'),
+              const AdminSection216('Seen before'),
               _card(seen),
             ],
+            const SizedBox(height: 6),
             AdminListMoreButton(
               shown: _shown,
               matched: page.matched,
               onPressed: () => setState(() => _shown += kAdminListPage),
             ),
             const SizedBox(height: 10),
-            const Text(
-              'Only people this phone has seen are listed. Others can be blocked from the web panel.',
-              style: TextStyle(fontSize: 12, color: Color(0xFF5B6472)),
-            ),
+            const AdminNote216(
+                'Only people this phone has seen are listed. Others can be blocked from the web panel.',
+                card: false,
+                align: TextAlign.center),
           ],
         ),
       ),
     );
   }
 
-  Widget _label(String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
-        child: Text(text,
-            style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.4,
-                color: Color(0xFF5B6472))),
-      );
+  Widget _card(List<BlockCandidate> list) => AdminListCard216([for (final c in list) _row(c)]);
 
-  Widget _card(List<BlockCandidate> list) => Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE2E6EC)),
-        ),
-        child: Column(children: [
-          for (var i = 0; i < list.length; i++) ...[
-            if (i > 0) const Divider(height: 1, color: Color(0xFFE2E6EC)),
-            _row(list[i]),
-          ],
-        ]),
-      );
-
-  Widget _row(BlockCandidate c) {
+  AdminRow216 _row(BlockCandidate c) {
     final t = c.target;
     final entry = widget.service?.entryFor(t.userId) ??
         (t.deviceIds.isEmpty ? null : widget.service?.entryFor(t.deviceIds.first));
@@ -215,61 +195,35 @@ class _AdminBlockUsersScreenState extends State<AdminBlockUsersScreen> {
         AdminBlockBook.instance.isBlocked(t.userId) ||
         t.deviceIds.any(AdminBlockBook.instance.isBlocked);
     final waiting = blocked && entry != null && !entry.serverDone;
-    final chip = blocked
-        ? (waiting ? 'Blocked · server later' : 'Blocked by admin')
-        : 'Active';
-    final chipFg = blocked ? kBlockRed : const Color(0xFF15803D);
-    final chipBg = blocked ? kBlockRedTint : const Color(0xFFE3F6EA);
-    return InkWell(
+    Future<void> go() async {
+      final done = await runAdminBlock(context,
+          service: widget.service, target: t, block: !blocked);
+      if (done && mounted) setState(() {});
+    }
+
+    final at = entry == null ? null : parseAdminTime216(entry.record.at);
+    final when = at == null ? '' : dMMM216(at);
+    return AdminRow216(
       key: ValueKey('admin_block_row_${t.userId}'),
-      onTap: () async {
-        final done = await runAdminBlock(context,
-            service: widget.service, target: t, block: !blocked);
-        if (done && mounted) setState(() {});
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: blocked
-                ? const Color(0xFFE5E7EB)
-                : const Color(0xFF7C5CDB).withValues(alpha: 0.14),
-            child: Text(t.initials,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: blocked
-                        ? const Color(0xFF6B7280)
-                        : const Color(0xFF5B3FB8))),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(t.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              Text(
-                  [
-                    if (t.username.isNotEmpty) '@${t.username}',
-                    if (t.seen.isNotEmpty) t.seen,
-                  ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF5B6472))),
-            ]),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-                color: chipBg, borderRadius: BorderRadius.circular(8)),
-            child: Text(chip,
-                style: TextStyle(
-                    fontSize: 11, fontWeight: FontWeight.w600, color: chipFg)),
-          ),
-        ]),
+      height: 62,
+      leading: AdminPersonAvatar216(
+        name: t.name,
+        userId: t.userId,
+        deviceId: t.deviceIds.isEmpty ? null : t.deviceIds.first,
+        blocked: blocked,
+        online: c.nearby && !blocked,
       ),
+      title: t.name,
+      subtitle: [
+        if (t.username.isNotEmpty) '@${t.username}',
+        if (blocked)
+          waiting ? 'Blocked · server later' : (when.isEmpty ? 'blocked' : 'blocked $when')
+        else if (t.seen.isNotEmpty)
+          t.seen,
+      ].join(' · '),
+      trailing: AdminPillButton216(
+          blocked ? 'Unblock' : 'Block', blocked ? A216Tone.grey : A216Tone.red, go),
+      onTap: go,
     );
   }
 }

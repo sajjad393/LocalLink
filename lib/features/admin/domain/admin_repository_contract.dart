@@ -1,3 +1,13 @@
+import 'dart:typed_data';
+
+/// Bundle 216: extra reads for the redesigned admin pages. Separate from
+/// [AdminRepositoryContract] so older fakes keep compiling; screens check
+/// `repository is AdminExtraReads216`.
+abstract interface class AdminExtraReads216 {
+  Future<Map<String, dynamic>> linkMap();
+  Future<Uint8List?> userAvatar(String userId);
+}
+
 abstract interface class AdminRepositoryContract {
   Future<void> logout();
   Future<Map<String, dynamic>> summary();

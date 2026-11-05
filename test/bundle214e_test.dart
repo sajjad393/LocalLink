@@ -71,7 +71,7 @@ void main() {
       ..setSelf(userId: 'u-me', deviceId: 'dev-me')
       ..put(AdminBadge.fromBlob(on)!);
     await tester.pump();
-    expect(find.text('\u{1F451} Admin · Owner'), findsOneWidget);
+    expect(find.text('Admin · Owner'), findsOneWidget);
   });
 
   test('Settings: no Admin section, photo → sheet for admins, Account for others', () {

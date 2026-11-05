@@ -20,6 +20,8 @@ final class AdminState extends Equatable {
   final List<Map<String, dynamic>> adminSessions;
   final List<Map<String, dynamic>> transfers;
   final List<Map<String, dynamic>> recoveries;
+  /// Bundle 216: link map (nodes + edges) when the server has it.
+  final Map<String, dynamic>? linkMapData;
   final Map<String, dynamic>? analyticsData;
   final String analyticsRange;
   final Map<String, dynamic>? healthData;
@@ -47,6 +49,7 @@ final class AdminState extends Equatable {
     this.adminSessions = const [],
     this.transfers = const [],
     this.recoveries = const [],
+    this.linkMapData,
     this.analyticsData,
     this.analyticsRange = '24h',
     this.healthData,
@@ -75,6 +78,7 @@ final class AdminState extends Equatable {
     List<Map<String, dynamic>>? adminSessions,
     List<Map<String, dynamic>>? transfers,
     List<Map<String, dynamic>>? recoveries,
+    Map<String, dynamic>? linkMapData,
     Map<String, dynamic>? analyticsData,
     String? analyticsRange,
     Map<String, dynamic>? healthData,
@@ -104,6 +108,7 @@ final class AdminState extends Equatable {
       adminSessions: adminSessions ?? this.adminSessions,
       transfers: transfers ?? this.transfers,
       recoveries: recoveries ?? this.recoveries,
+      linkMapData: linkMapData ?? this.linkMapData,
       analyticsData: analyticsData ?? this.analyticsData,
       analyticsRange: analyticsRange ?? this.analyticsRange,
       healthData: healthData ?? this.healthData,
@@ -135,6 +140,7 @@ final class AdminState extends Equatable {
         adminSessions,
         transfers,
         recoveries,
+        linkMapData,
         analyticsData,
         analyticsRange,
         healthData,
@@ -172,13 +178,19 @@ final class AdminBloc extends Cubit<AdminState> {
         _safe(repository.adminSessions()),
         _safe(repository.transfers()),
         _safe(repository.recoveryRequests()),
+        // Bundle 216: link map (older servers 404 → ignored).
+        if (repository is AdminExtraReads216)
+          _safe((repository as AdminExtraReads216).linkMap())
+        else
+          Future<dynamic>.value(null),
       ]);
       final unauthorised = results.whereType<_AdminFailure>().firstWhereOrNull((x) => x.unauthorized);
       if (unauthorised != null) {
         emit(state.copyWith(loading: false, sessionExpired: true, error: unauthorised.message));
         return;
       }
-      final failures = results.whereType<_AdminFailure>().toList();
+      // Bundle 216: a missing link map (old server) is not an error.
+      final failures = results.take(15).whereType<_AdminFailure>().toList();
       emit(state.copyWith(
         summaryData: _mapOrNull(results[0]),
         runtimeDiagnosticsData: _mapOrNull(results[1]),
@@ -195,6 +207,7 @@ final class AdminBloc extends Cubit<AdminState> {
         adminSessions: _listOrEmpty(results[12]),
         transfers: _listOrEmpty(results[13]),
         recoveries: _listOrEmpty(results[14]),
+        linkMapData: _mapOrNull(results[15]),
         loading: false,
         error: failures.isEmpty ? null : failures.first.message,
         clearError: failures.isEmpty,

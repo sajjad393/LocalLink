@@ -6,6 +6,7 @@ import 'package:locallink/core/network/api_http_client.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/websocket_service.dart';
+import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_service.dart';
 import 'wifi_radio_control_service.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
@@ -102,10 +103,16 @@ class PresenceService {
     final serverConnected = socket.isConnected;
     var lanAvailable = directTransport.isStarted;
     var meshAvailable = directTransport.isStarted;
+    var neighbors = const <Map<String, String>>[];
     try {
       final topology = await directTransport.topology();
       lanAvailable = topology['lan_active'] == true;
       meshAvailable = topology['transport_active'] == true;
+      // Bundle 216g: who this phone reaches right now (web map lines).
+      neighbors = presenceNeighbors216(topology,
+          selfId: store.deviceId ?? '',
+          isBlocked: AdminBlockBook.instance.isBlocked,
+          nowMs: now.millisecondsSinceEpoch);
     } catch (_) {}
     final signingKey = crypto == null ? '' : await crypto!.signingPublicKey();
     final signature = jsonEncode(<String, Object>{
@@ -117,6 +124,7 @@ class PresenceService {
       'managed_device': _wifiRadioStatus?.managedDevice ?? false,
       'wifi_enabled': _wifiRadioStatus?.enabled ?? false,
       'signing_public_key': signingKey,
+      'neighbors': [for (final n in neighbors) '${n['device_id']}:${n['link']}'],
     });
     final last = _lastPublishAt;
     // Bundle 148: 25 s (not 30 s) so the 30 s timer never skips a beat by a
@@ -166,6 +174,8 @@ class PresenceService {
           'wifi_enabled': _wifiRadioStatus?.enabled ?? false,
           'signing_public_key': signingKey,
           'status_updated_at': statusUpdatedAt,
+          // Bundle 216g: old servers ignore this field.
+          'neighbors': neighbors,
         });
       }
       if (directTransport.isStarted) {
@@ -197,3 +207,36 @@ class PresenceService {
 
   Future<void> dispose() => stop();
 }
+
+/// Bundle 216g: phones this phone reaches directly, for the server's link
+/// map. Max 32, only links seen in the last 4 minutes, never blocked phones,
+/// never itself. link = wifi_direct | lan | mesh.
+List<Map<String, String>> presenceNeighbors216(
+  Map<String, dynamic> topology, {
+  required String selfId,
+  required bool Function(String id) isBlocked,
+  required int nowMs,
+}) {
+  final raw = topology['peers'];
+  if (raw is! List) return const [];
+  final out = <String, String>{};
+  const fourMin = 4 * 60 * 1000;
+  for (final p in raw) {
+    if (p is! Map) continue;
+    final id = '${p['node_id'] ?? p['peer_id'] ?? ''}'.trim();
+    if (id.isEmpty || id == selfId || out.containsKey(id) || isBlocked(id)) continue;
+    if (p['direct'] == false) continue;
+    final seen = p['last_seen_at'];
+    if (seen is num && seen > 0 && nowMs - seen > fourMin) continue;
+    final kind = '${p['path_kind'] ?? p['transport'] ?? ''}'.toLowerCase();
+    out[id] = switch (kind) {
+      'wifi_direct' || 'local_net' => 'wifi_direct',
+      'lan' => 'lan',
+      _ => 'mesh',
+    };
+    if (out.length >= 32) break;
+  }
+  final ids = out.keys.toList()..sort();
+  return [for (final id in ids) {'device_id': id, 'link': out[id]!}];
+}
+

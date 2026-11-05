@@ -1,7 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:locallink/features/admin/data/services/admin_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_contract.dart';
 
-final class AdminRepository implements AdminRepositoryContract {
+final class AdminRepository implements AdminRepositoryContract, AdminExtraReads216 {
   final AdminService service;
   const AdminRepository(this.service);
 
@@ -29,6 +31,8 @@ final class AdminRepository implements AdminRepositoryContract {
   @override Future<List<Map<String, dynamic>>> adminSessions() => service.adminSessions();
   @override Future<List<Map<String, dynamic>>> transfers() => service.transfers();
   @override Future<List<Map<String, dynamic>>> recoveryRequests() => service.recoveryRequests();
+  @override Future<Map<String, dynamic>> linkMap() => service.linkMap(); // Bundle 216
+  @override Future<Uint8List?> userAvatar(String userId) => service.userAvatar(userId); // Bundle 216
   @override Future<void> rename(String id, String name) => service.rename(id, name);
   @override Future<void> revoke(String id) => service.revoke(id);
   @override Future<void> setUserStatus(String id, String status) => service.setUserStatus(id, status);

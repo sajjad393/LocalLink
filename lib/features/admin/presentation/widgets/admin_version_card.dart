@@ -6,6 +6,7 @@ import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/features/admin/data/models/version_rule.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/admin/data/services/version_rule_service.dart';
+import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 
 String _modeLine(VersionRule? r) {
   if (r == null || r.isRemove) return 'No minimum';
@@ -17,60 +18,88 @@ String _modeLine(VersionRule? r) {
   return '$v · stop in $days day${days == 1 ? '' : 's'}';
 }
 
-/// Admin panel card under "Block users".
+/// Admin panel card under "Block users". Bundle 216 (page 4): section
+/// 'App version' + one card: Minimum version row, then this phone and the
+/// versions seen nearby.
 class AdminVersionCard extends StatelessWidget {
   const AdminVersionCard({super.key, this.service});
 
   final VersionRuleService? service;
 
+  static String seenLine(VersionRuleService? svc) {
+    final counts = svc?.buildCounts() ?? const <int, ({String version, int phones})>{};
+    final builds = counts.keys.toList()..sort((a, b) => b.compareTo(a));
+    return builds.isEmpty
+        ? 'Seen nearby: none yet'
+        : 'Seen nearby: ${builds.map((b) => '${counts[b]!.version.isEmpty ? 'build $b' : counts[b]!.version} (${counts[b]!.phones})').join(', ')}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return ListenableBuilder(
       listenable: VersionGuard.instance,
       builder: (context, _) {
         final svc = service ?? VersionRuleService.instance;
-        final counts = svc?.buildCounts() ?? const <int, ({String version, int phones})>{};
-        final builds = counts.keys.toList()..sort((a, b) => b.compareTo(a));
-        return Card(
+        final c = A216.colors(context);
+        final t = A216Text(c);
+        return Column(
           key: const ValueKey('admin_version_card'),
-          elevation: 0,
-          margin: const EdgeInsets.only(top: 6, bottom: 6),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-              side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: Text('App version', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const AdminSection216('App version'),
+            AdminCard216(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Material(
+                  type: MaterialType.transparency,
+                  child: InkWell(
+                    key: const ValueKey('admin_version_min'),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => AdminMinVersionScreen(service: svc))),
+                    child: SizedBox(
+                      height: 60,
+                      child: Row(children: [
+                        const SizedBox(width: 12),
+                        const SizedBox(
+                            width: 40,
+                            child: Center(
+                                child: AdminToneIcon216(
+                                    Icons.system_update_outlined, A216Tone.purple))),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Minimum version', style: t.rowTitle),
+                              const SizedBox(height: 3),
+                              Text(_modeLine(VersionGuard.instance.rule),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: t.rowSub),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right_rounded, size: 16, color: c.grey2),
+                        const SizedBox(width: 18),
+                      ]),
+                    ),
+                  ),
+                ),
+                Container(height: 1, color: c.div),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('This phone: LinkUp $kAppVersion (build $kAppBuild)'
+                        '${AppBuild.pretendOld ? ' · pretending ${AppBuild.sent}' : ''}',
+                        style: t.cardSub),
+                    const SizedBox(height: 4),
+                    Text(seenLine(svc),
+                        key: const ValueKey('admin_version_seen'), style: t.cardSub),
+                  ]),
+                ),
+              ]),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-              child: Text('This phone: LinkUp $kAppVersion (build $kAppBuild)'
-                  '${AppBuild.pretendOld ? ' · pretending ${AppBuild.sent}' : ''}'),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-              child: Text(
-                builds.isEmpty
-                    ? 'Seen nearby: none yet'
-                    : 'Seen nearby: ${builds.map((b) => '${counts[b]!.version.isEmpty ? 'build $b' : counts[b]!.version} (${counts[b]!.phones})').join(', ')}',
-                key: const ValueKey('admin_version_seen'),
-                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
-              ),
-            ),
-            ListTile(
-              key: const ValueKey('admin_version_min'),
-              leading: CircleAvatar(
-                  backgroundColor: scheme.primary.withValues(alpha: 0.12),
-                  child: Icon(Icons.system_update_alt, color: scheme.primary)),
-              title: const Text('Minimum version', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(_modeLine(VersionGuard.instance.rule)),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (_) => AdminMinVersionScreen(service: svc))),
-            ),
-          ]),
+          ],
         );
       },
     );
@@ -142,6 +171,7 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
       context: context,
       builder: (context) => AlertDialog(
         key: const ValueKey('version_confirm'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         title: Text(_mode == _Mode.warn ? 'Warn versions below $v?' : 'Stop versions below $v?'),
         content: Text([
           switch (_mode) {
@@ -201,94 +231,119 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
     final rule = VersionGuard.instance.rule;
     final svc = _svc;
     final affects = svc?.affects(_build) ?? 0;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Minimum version')),
-      body: ListView(
-        key: const ValueKey('admin_min_version'),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-        children: [
-          Text('Now: ${_modeLine(rule)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          const Text('Lowest version allowed', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          RadioGroup<int>(
-            groupValue: _build,
-            onChanged: (v) => setState(() => _build = v ?? _build),
-            child: Column(children: [
-              for (final c in _choices())
-                RadioListTile<int>(
-                  key: ValueKey('version_pick_${c.build}'),
-                  value: c.build,
-                  title: Text(_label(c)),
-                  subtitle: c.build == kAppBuild ? const Text('This phone') : null,
+    final choices = _choices();
+    return AdminPage216(
+      title: 'Minimum version',
+      body: Builder(builder: (context) {
+        final c = A216.colors(context);
+        final t = A216Text(c);
+        return ListView(
+          key: const ValueKey('admin_min_version'),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+          children: [
+            // Bundle 216 (page 11): purple head card.
+            AdminCard216(
+              fill: const Color(0xFFF4F0FF),
+              border: const Color(0xFFE3D8FF),
+              shadow: false,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const AdminToneIcon216(Icons.system_update_outlined, A216Tone.purple,
+                    radius: 15, size: 16),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Now: ${rule == null || rule.isRemove ? 'no minimum' : _modeLine(rule)}',
+                        style: t.custom(14, FontWeight.w600, c.ink)),
+                    const SizedBox(height: 4),
+                    Text('This phone: LinkUp $kAppVersion (build $kAppBuild)', style: t.cardSub),
+                    const SizedBox(height: 2),
+                    Text(AdminVersionCard.seenLine(svc), style: t.cardSub),
+                  ]),
                 ),
-            ]),
-          ),
-          const SizedBox(height: 8),
-          const Text('Older apps', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          RadioGroup<_Mode>(
-            groupValue: _mode,
-            onChanged: (v) => setState(() => _mode = v ?? _mode),
-            child: Column(children: [
-          const RadioListTile<_Mode>(
-            key: ValueKey('version_mode_warn'),
-            value: _Mode.warn,
-            title: Text('Warn only'),
-            subtitle: Text('Yellow banner, keeps working'),
-          ),
-          const RadioListTile<_Mode>(
-            key: ValueKey('version_mode_now'),
-            value: _Mode.stopNow,
-            title: Text('Stop now'),
-            subtitle: Text('Read only at once'),
-          ),
-          RadioListTile<_Mode>(
-            key: const ValueKey('version_mode_later'),
-            value: _Mode.stopLater,
-            title: Text('Stop after $_days day${_days == 1 ? '' : 's'}'),
-            subtitle: const Text('Warning first, then read only'),
-            secondary: _mode == _Mode.stopLater
-                ? Row(mainAxisSize: MainAxisSize.min, children: [
-                    IconButton(
-                      key: const ValueKey('version_days_minus'),
-                      onPressed: _days > 1 ? () => setState(() => _days--) : null,
-                      icon: const Icon(Icons.remove_circle_outline),
-                    ),
-                    IconButton(
-                      key: const ValueKey('version_days_plus'),
-                      onPressed: _days < 30 ? () => setState(() => _days++) : null,
-                      icon: const Icon(Icons.add_circle_outline),
-                    ),
-                  ])
-                : null,
-          ),
-            ]),
-          ),
-          SwitchListTile(
-            key: const ValueKey('version_very_old'),
-            value: _veryOld,
-            onChanged: (v) => setState(() => _veryOld = v),
-            title: const Text('Also stop very old apps'),
-            subtitle: const Text(
-                "Apps before 3.0.54 can't read this rule. The server refuses them and updated phones don't link with them."),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text('Affects $affects phone${affects == 1 ? '' : 's'} seen nearby',
-                key: const ValueKey('version_affects')),
-          ),
-          FilledButton(
-            key: const ValueKey('version_save'),
-            onPressed: _busy || svc == null ? null : _save,
-            child: const Text('Save rule'),
-          ),
-          if (rule != null && !rule.isRemove)
-            TextButton(
-              key: const ValueKey('version_remove'),
-              onPressed: _busy || svc == null ? null : _remove,
-              child: const Text('Remove rule'),
+              ]),
             ),
-        ],
-      ),
+            const AdminSection216('Lowest version allowed'),
+            AdminChips216(
+              wrap: true,
+              items: [for (final ch in choices) _label(ch)],
+              selected: choices.indexWhere((ch) => ch.build == _build),
+              keys: [for (final ch in choices) ValueKey('version_pick_${ch.build}')],
+              onSelected: (i) => setState(() => _build = choices[i].build),
+            ),
+            const AdminSection216('Older apps'),
+            AdminRadioCard216(
+              key: const ValueKey('version_mode_warn'),
+              title: 'Warn only',
+              subtitle: 'Yellow banner, keeps working',
+              selected: _mode == _Mode.warn,
+              onTap: () => setState(() => _mode = _Mode.warn),
+            ),
+            const SizedBox(height: 10),
+            AdminRadioCard216(
+              key: const ValueKey('version_mode_now'),
+              title: 'Stop now',
+              subtitle: 'Read only at once',
+              selected: _mode == _Mode.stopNow,
+              onTap: () => setState(() => _mode = _Mode.stopNow),
+            ),
+            const SizedBox(height: 10),
+            AdminRadioCard216(
+              key: const ValueKey('version_mode_days'),
+              title: 'Stop after $_days day${_days == 1 ? '' : 's'}',
+              subtitle: 'Warning first, then read only',
+              selected: _mode == _Mode.stopLater,
+              onTap: () => setState(() => _mode = _Mode.stopLater),
+              trailing: _mode == _Mode.stopLater
+                  ? AdminStepper216(
+                      value: '$_days day${_days == 1 ? '' : 's'}',
+                      minusKey: const ValueKey('version_days_minus'),
+                      plusKey: const ValueKey('version_days_plus'),
+                      onMinus: _days > 1 ? () => setState(() => _days--) : null,
+                      onPlus: _days < 30 ? () => setState(() => _days++) : null,
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 10),
+            AdminCard216(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Also stop very old apps', style: t.radioTitle),
+                    const SizedBox(height: 3),
+                    Text("Apps before 3.0.54 can't read this rule. The server refuses them.",
+                        style: t.radioSub),
+                  ]),
+                ),
+                const SizedBox(width: 12),
+                A216Switch(
+                  key: const ValueKey('version_very_old'),
+                  value: _veryOld,
+                  onChanged: (v) => setState(() => _veryOld = v),
+                ),
+              ]),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Text('Affects $affects phone${affects == 1 ? '' : 's'} seen nearby',
+                  key: const ValueKey('version_affects'),
+                  textAlign: TextAlign.center,
+                  style: t.note),
+            ),
+            AdminButton216('Save rule',
+                key: const ValueKey('version_save'),
+                onTap: _busy || svc == null ? null : _save),
+            if (rule != null && !rule.isRemove) ...[
+              const SizedBox(height: 10),
+              AdminButton216('Remove rule',
+                  key: const ValueKey('version_remove'),
+                  kind: A216ButtonKind.outline,
+                  onTap: _busy || svc == null ? null : _remove),
+            ],
+          ],
+        );
+      }),
     );
   }
 }
@@ -308,21 +363,35 @@ class _PretendOldBuildSwitchState extends State<PretendOldBuildSwitch> {
   @override
   Widget build(BuildContext context) {
     final svc = widget.service ?? VersionRuleService.instance;
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      child: SwitchListTile(
-        key: const ValueKey('pretend_old_build'),
-        value: AppBuild.pretendOld,
-        onChanged: svc == null
-            ? null
-            : (v) async {
-                await svc.setPretendOld(v);
-                if (mounted) setState(() {});
-              },
-        title: const Text('Pretend old build'),
-        subtitle: const Text('This phone says build ${kAppBuild - 1} instead of $kAppBuild'),
-      ),
+    final t = A216Text.of(context);
+    // Bundle 216 (page 26): a Testers row with the 216 switch.
+    return SizedBox(
+      height: 56,
+      child: Row(children: [
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Pretend old build', style: t.rowTitle),
+              const SizedBox(height: 3),
+              Text('This phone reports one build lower', style: t.rowSub),
+            ],
+          ),
+        ),
+        A216Switch(
+          key: const ValueKey('pretend_old_build'),
+          value: AppBuild.pretendOld,
+          onChanged: svc == null
+              ? null
+              : (v) async {
+                  await svc.setPretendOld(v);
+                  if (mounted) setState(() {});
+                },
+        ),
+        const SizedBox(width: 14),
+      ]),
     );
   }
 }

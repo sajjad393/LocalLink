@@ -57,8 +57,8 @@ void main() {
     expect((c.center.dx - photo.center.dx).abs(), lessThan(1.0));
     expect(c.top, lessThan(photo.top)); // sits above the top edge
     expect(c.bottom, greaterThan(photo.top)); // and touches the photo
-    expect(AdminCrown.sizeFor(28), 21);
-    expect(AdminCrown.sizeFor(10), 12); // never smaller than 12
+    expect(AdminCrown.sizeFor(28), closeTo(30.8, 0.01)); // 217: 1.1 x radius
+    expect(AdminCrown.sizeFor(10), 13); // 217: never smaller than 13
   });
 
   testWidgets('not admin: no crown; shows and hides live', (tester) async {
@@ -119,7 +119,7 @@ void main() {
   testWidgets('role line on a profile: "Admin · Security"', (tester) async {
     AdminBadgeBook.instance.put(sajOn);
     await pump(tester, const AdminRoleLine(id: 'u-saj'));
-    expect(find.text('\u{1F451} Admin · Security'), findsOneWidget);
+    expect(find.text('Admin · Security'), findsOneWidget);
     AdminBadgeBook.instance.put(sajOff);
     await tester.pump();
     expect(find.byKey(const ValueKey('admin_role_line')), findsNothing);

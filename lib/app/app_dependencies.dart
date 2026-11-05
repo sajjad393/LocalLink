@@ -1063,7 +1063,7 @@ class AppDependencies {
       if (store.isOfflinePending) {
         final offlineSync =
             OfflineAccountSyncService(store: store, auth: authentication);
-        final renamed = await offlineSync.autoPublish();
+        final renamed = await offlineSync.autoPublish(from: 'reconnect');
         if (renamed != null) {
           AppLogger.info(
             'OFFLINE_ACCOUNT_AUTO_PUBLISHED_RENAMED',
