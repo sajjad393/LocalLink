@@ -241,7 +241,9 @@ void main() {
     }
     final kt = File('android/app/src/main/kotlin/com/sajjad/locallink/mesh/MeshBlockPolicy.kt').readAsStringSync();
     expect(kt, contains('"admin_act_parts"'));
-    expect(File('lib/core/config/app_build.dart').readAsStringSync(), contains('132'));
+    // Bundle 222: at least build 132 (was the exact 132; it broke on every new version).
+    final build = int.parse(RegExp(r'kAppBuild = (\d+)').firstMatch(File('lib/core/config/app_build.dart').readAsStringSync())!.group(1)!);
+    expect(build, greaterThanOrEqualTo(132));
     final store = File('lib/core/services/local_store.dart').readAsStringSync();
     expect(store, contains('hide221'));
     final hidden = File('lib/core/services/hidden_store_221.dart').readAsStringSync();

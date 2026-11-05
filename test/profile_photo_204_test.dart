@@ -593,6 +593,8 @@ void main() {
       sara.api.server['ali'] = b;
       await _cardTo(ali, sara);
       expect(sara.api.asked, ['ali']);
+      // Bundle 222: wait for the file (a Windows PC needs more than 150 ms), as 208 A2.
+      await _waitFor(() => sara.repo.photoBook.fileFor('ali') != null);
       expect(sara.repo.photoBook.fileFor('ali')!.readAsBytesSync(), b);
     });
 

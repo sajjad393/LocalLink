@@ -95,7 +95,9 @@ class AccountRecoveryResult {
   final String token;
   final String expiresAt;
   final String revokedDeviceIds;
-  const AccountRecoveryResult({required this.account, required this.device, required this.profile, required this.token, required this.expiresAt, required this.revokedDeviceIds});
+  /// Bundle 222: a no-code reset returns a new recovery code (shown once).
+  final String recoveryCode;
+  const AccountRecoveryResult({required this.account, required this.device, required this.profile, required this.token, required this.expiresAt, required this.revokedDeviceIds, this.recoveryCode = ''});
 
   factory AccountRecoveryResult.fromJson(Map<String, dynamic> json) => AccountRecoveryResult(
     account: LocalAccount.fromJson(Map<String, dynamic>.from(json['account'] as Map)),
@@ -104,6 +106,7 @@ class AccountRecoveryResult {
     token: json['token']?.toString() ?? '',
     expiresAt: json['expires_at']?.toString() ?? '',
     revokedDeviceIds: json['source_device_id']?.toString() ?? '',
+    recoveryCode: json['recovery_code']?.toString() ?? '',
   );
 }
 
@@ -859,14 +862,15 @@ class LocalLinkApi {
   }
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
-  Future<AccountRecoveryStart> createAccountRecovery({required String username, String password = '', String recoveryCode = '', required String deviceId, required String deviceName, required String identityPublicKey, String? idempotencyKey}) async {
+  Future<AccountRecoveryStart> createAccountRecovery({required String username, String password = '', String recoveryCode = '', required String deviceId, required String deviceName, required String identityPublicKey, String? idempotencyKey, bool noCode = false}) async {
     final server = normalizeServerAddress(store.serverAddress ?? '');
     final response = await http.post(
       Uri.parse('$server/api/v1/account/recovery/request'),
       headers: {'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
-      body: jsonEncode({'username': username.trim().toLowerCase(), if (password.isNotEmpty) 'password': password, if (recoveryCode.isNotEmpty) 'recovery_code': recoveryCode.trim(), 'device_id': deviceId, 'device_name': deviceName.trim(), 'platform': 'android', 'identity_public_key': identityPublicKey}),
+      body: jsonEncode({'username': username.trim().toLowerCase(), if (password.isNotEmpty) 'password': password, if (recoveryCode.isNotEmpty) 'recovery_code': recoveryCode.trim(), 'device_id': deviceId, 'device_name': deviceName.trim(), 'platform': 'android', 'identity_public_key': identityPublicKey, if (noCode) 'no_code': true}),
     ).timeout(const Duration(seconds: 10));
-    if (response.statusCode != 202) throw Exception(_error(response));
+    // Bundle 222: no-code requests keep the error code (NO_ACCOUNT, RATE_LIMIT).
+    if (response.statusCode != 202) throw noCode ? _fail218(response) : Exception(_error(response));
     return AccountRecoveryStart.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
   }
 
@@ -882,15 +886,68 @@ class LocalLinkApi {
   }
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
-  Future<AccountRecoveryResult> completeAccountRecovery({required String server, required String requestId, required String requestSecret, required String recoveryCredential, required String deviceId, required String deviceName, required String identityPublicKey, String? idempotencyKey}) async {
+  Future<AccountRecoveryResult> completeAccountRecovery({required String server, required String requestId, required String requestSecret, required String recoveryCredential, required String deviceId, required String deviceName, required String identityPublicKey, String? idempotencyKey, String newPassword = ''}) async {
     final base = normalizeServerAddress(server);
     final response = await http.post(
       Uri.parse('$base/api/v1/account/recovery/complete'),
       headers: {'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey ?? _newIdempotencyKey()},
-      body: jsonEncode({'request_id': requestId, 'request_secret': requestSecret, 'recovery_credential': recoveryCredential.trim(), 'device_id': deviceId, 'device_name': deviceName.trim(), 'platform': 'android', 'identity_public_key': identityPublicKey}),
+      body: jsonEncode({'request_id': requestId, 'request_secret': requestSecret, 'recovery_credential': recoveryCredential.trim(), 'device_id': deviceId, 'device_name': deviceName.trim(), 'platform': 'android', 'identity_public_key': identityPublicKey, if (newPassword.isNotEmpty) 'new_password': newPassword}),
     ).timeout(const Duration(seconds: 12));
-    if (response.statusCode != 200) throw Exception(_error(response));
+    if (response.statusCode != 200) throw newPassword.isNotEmpty ? _fail218(response) : Exception(_error(response));
     return AccountRecoveryResult.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
+  }
+
+  /// Bundle 222: "Forgot password" with the user's own recovery code. Sends
+  /// either [newPassword] (online) or the hash made on this phone while the
+  /// server was away (never the plain password then). Signs this phone in
+  /// like a normal login; the account's other phones stay signed in. The
+  /// server answers with a NEW recovery code (shown once).
+  Future<AuthResult> resetPasswordWithCode222({
+    required String username,
+    required String recoveryCode,
+    String newPassword = '',
+    String newPasswordHash = '',
+    String newPasswordSalt = '',
+    int iterations = 0,
+    required String deviceName,
+    String identityPublicKey = '',
+    String? pairingCode,
+  }) async {
+    final server = normalizeServerAddress(store.serverAddress ?? '');
+    final id = store.deviceId ?? store.generateDeviceId();
+    final response = await http.post(
+      Uri.parse('$server/api/v1/account/recovery/reset'),
+      headers: {'Content-Type': 'application/json', 'Idempotency-Key': _newIdempotencyKey()},
+      body: jsonEncode({
+        'username': username.trim().toLowerCase(),
+        'recovery_code': recoveryCode.trim(),
+        if (newPassword.isNotEmpty) 'new_password': newPassword,
+        if (newPasswordHash.isNotEmpty) 'new_password_hash': newPasswordHash,
+        if (newPasswordSalt.isNotEmpty) 'new_password_salt': newPasswordSalt,
+        if (iterations > 0) 'iterations': iterations,
+        'device_id': id,
+        'device_name': deviceName.trim(),
+        'platform': 'android',
+        'hardware_fp': store.hardwareFp,
+        if (identityPublicKey.isNotEmpty) 'identity_public_key': identityPublicKey,
+        if (pairingCode != null && pairingCode.trim().isNotEmpty) 'pairing_code': pairingCode.trim(),
+      }),
+    ).timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) throw _fail218(response);
+    final payload = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    final account = LocalAccount.fromJson(Map<String, dynamic>.from(payload['account'] as Map));
+    final device = Device.fromJson(Map<String, dynamic>.from(payload['device'] as Map));
+    final token = payload['token']?.toString();
+    if (token == null || token.isEmpty) throw Exception('Server returned no session token');
+    await store.saveConfiguration(
+      server: server,
+      id: device.id,
+      name: device.name,
+      token: token,
+      accountId: account.id,
+      username: account.username,
+    );
+    return AuthResult(account: account, device: device, expiresAt: payload['expires_at']?.toString() ?? '', recoveryCode: payload['recovery_code']?.toString() ?? '');
   }
 
   Future<RecoveryCodeStatus> recoveryCodeStatus() async {

@@ -5,7 +5,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_offline.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/admin_permissions.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_service.dart';
+import 'package:locallink/features/admin/data/services/admin_offline_users_222.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
+import 'package:locallink/core/widgets/admin_crown.dart' show AdminCrownRoom;
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_people216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
@@ -22,16 +25,21 @@ const _filters = ['All', 'Admins', 'Active', 'Stopped'];
 
 class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String _q = '';
-  int _filter = 0;
+  String _filter = 'All'; // Bundle 222: by name (the "Not on server" chip comes and goes)
+
+  /// Bundle 222: extra row height (and photo shift) for the crown on a
+  /// 20 px photo whose row already leaves 12 px above it, plus 2 px air.
+  static final double _crownExtra222 = AdminCrownRoom.extraFor(20, already: 12) + 2;
 
   static bool _isAdmin(Map<String, dynamic> u) => (u['admin_role'] ?? '').toString().isNotEmpty;
 
   bool _match(Map<String, dynamic> u) {
     final status = '${u['status'] ?? 'active'}';
     final ok = switch (_filter) {
-      1 => _isAdmin(u),
-      2 => status == 'active',
-      3 => status == 'suspended' || status == 'disabled',
+      'Admins' => _isAdmin(u),
+      'Active' => status == 'active',
+      'Stopped' => status == 'suspended' || status == 'disabled',
+      'Not on server' => false,
       _ => true,
     };
     if (!ok) return false;
@@ -48,14 +56,43 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    unawaited(AdminOfflineUsers222.refresh()); // Bundle 222
+  }
+
+  /// Bundle 222 (U-1): offline accounts seen nearby, on All / Not on server.
+  List<OfflineUser222> _localRows(List<OfflineUser222> all) {
+    if (_filter != 'All' && _filter != 'Not on server') return const [];
+    final q = _q.trim().toLowerCase().replaceFirst('@', '');
+    if (q.isEmpty) return all;
+    return all.where((u) => '${u.name} ${u.username}'.toLowerCase().contains(q)).toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<OfflineUser222>>(
+      valueListenable: AdminOfflineUsers222.rows,
+      builder: (context, local, _) => _build(context, local),
+    );
+  }
+
+  Widget _build(BuildContext context, List<OfflineUser222> local) {
+    // Mock U-1: All, Admins, Active, Not on server, (Stopped).
+    final filters = [..._filters.take(3), if (local.isNotEmpty) 'Not on server', ..._filters.skip(3)];
+    if (!filters.contains(_filter)) _filter = 'All';
     return AdminToolPage216(
       title: 'Users',
       module: 'Users',
-      subtitle: (s) =>
-          '${people216(s.users.length)} · ${plural216(s.users.where(_isAdmin).length, 'admin')}',
+      worksOffline: true,
+      subtitle: (s) => [
+        people216(s.users.length + local.length),
+        plural216(s.users.where(_isAdmin).length, 'admin'),
+        if (local.isNotEmpty) '${local.length} not on server',
+      ].join(' · '),
       builder: (context, state) {
         final rows = state.users.where(_match).toList();
+        final mine = _localRows(local);
         return [
           AdminSearch216(
             hint: 'Search name or @username',
@@ -64,15 +101,15 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           ),
           const SizedBox(height: 10),
           AdminChips216(
-            items: _filters,
-            selected: _filter,
-            keys: [for (final f in _filters) ValueKey('a216_users_filter_${f.toLowerCase()}')],
-            onSelected: (i) => setState(() => _filter = i),
+            items: filters,
+            selected: filters.indexOf(_filter),
+            keys: [for (final f in filters) ValueKey('a216_users_filter_${f.toLowerCase().replaceAll(' ', '_')}')],
+            onSelected: (i) => setState(() => _filter = filters[i]),
           ),
           const SizedBox(height: 12),
-          if (state.loading && state.users.isEmpty)
+          if (state.loading && state.users.isEmpty && mine.isEmpty)
             const AdminLoading216()
-          else if (rows.isEmpty)
+          else if (rows.isEmpty && mine.isEmpty)
             const AdminEmptyState216(
                 icon: Icons.search_rounded,
                 tone: A216Tone.grey,
@@ -83,17 +120,22 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               for (final u in rows)
                 AdminRow216(
                   key: ValueKey('a216_user_${u['id']}'),
-                  height: 64,
-                  leading: ServerPersonAvatar216(
-                    name: personName216(u, fallback: '?'),
-                    userId: '${u['id']}',
-                    hasAvatar: u['has_avatar'] == true,
-                    admin: _isAdmin(u),
-                    grey: '${u['status'] ?? 'active'}' != 'active',
-                    online: ((u['online_devices'] as num?) ?? 0) > 0,
+                  // Bundle 222 (C-1): an admin row is taller and its photo
+                  // sits lower, so the crown stays inside the row and card.
+                  height: _isAdmin(u) ? 64 + _crownExtra222 : 64,
+                  leading: Padding(
+                    padding: EdgeInsets.only(top: _isAdmin(u) ? _crownExtra222 : 0),
+                    child: ServerPersonAvatar216(
+                      name: personName216(u, fallback: '?'),
+                      userId: '${u['id']}',
+                      hasAvatar: u['has_avatar'] == true,
+                      admin: _isAdmin(u),
+                      grey: '${u['status'] ?? 'active'}' != 'active',
+                      online: ((u['online_devices'] as num?) ?? 0) > 0,
+                    ),
                   ),
                   title: personName216(u, fallback: '${u['id']}'),
-                  subtitle: sub(u),
+                  subtitle: joinedRecently222(u) ? '${sub(u)} · Joined from offline' : sub(u),
                   trailing: Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: AdminTag216(userStatus216(u['status']).text,
@@ -102,9 +144,143 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                   ),
                   onTap: () => showUserSheet216(context, u),
                 ),
+              // Bundle 222 (U-1): offline accounts seen nearby.
+              for (final u in mine)
+                AdminRow216(
+                  key: ValueKey('a222_offline_user_${u.userId}'),
+                  height: 64,
+                  leading: ServerPersonAvatar216(name: u.name, userId: u.userId, hasAvatar: false),
+                  title: u.name,
+                  subtitle: offlineSub222(u),
+                  trailing: const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: AdminTag216('Offline account', A216Tone.grey),
+                  ),
+                  onTap: () => showOfflineUserSheet222(context, u),
+                ),
             ]),
         ];
       },
+    );
+  }
+}
+
+/// `2 h`, `5 min`, `1 day` (mock U-1).
+String offlineShort222(String at, {DateTime? now}) {
+  final t = DateTime.tryParse(at);
+  if (t == null) return '';
+  final d = (now ?? DateTime.now()).toUtc().difference(t.toUtc());
+  if (d.inMinutes < 1) return 'now';
+  if (d.inMinutes < 60) return '${d.inMinutes} min';
+  if (d.inHours < 24) return '${d.inHours} h';
+  return plural216(d.inDays, 'day');
+}
+
+String offlineSub222(OfflineUser222 u) =>
+    ['Not on server yet', u.link, offlineShort222(u.seenAt)].where((x) => x.isNotEmpty).join(' · ');
+
+/// Bundle 222: a server row that came from an offline account shows a
+/// small note for 7 days (server field `joined_offline_at`, 218e).
+bool joinedRecently222(Map<String, dynamic> u, {DateTime? now}) {
+  final t = DateTime.tryParse('${u['joined_offline_at'] ?? ''}');
+  if (t == null) return false;
+  return (now ?? DateTime.now()).toUtc().difference(t.toUtc()) <= AdminOfflineUsers222.joinedNote;
+}
+
+/// Bundle 222 (U-2): an offline account's sheet. Block and Sign out go as
+/// 220 admin action cards (Pending until done, no server needed). More
+/// actions after she joins the server.
+Future<void> showOfflineUserSheet222(BuildContext context, OfflineUser222 u, {AdminActionService? service}) =>
+    showAdminSheet216<void>(context, builder: (sheet) => _OfflineSheet222(user: u, service: service));
+
+class _OfflineSheet222 extends StatelessWidget {
+  const _OfflineSheet222({required this.user, this.service});
+  final OfflineUser222 user;
+  final AdminActionService? service;
+
+  Future<void> _act(BuildContext context, String action) async {
+    final verb = action == 'block' ? 'Block' : 'Sign out';
+    final ok = await confirmAdmin216(
+      context,
+      title: '$verb ${user.name}?',
+      body: 'It goes to her phone by card, over any link. Pending until it is done.',
+      yes: verb,
+      danger: action == 'block',
+    );
+    if (!ok || !context.mounted) return;
+    final s = service ?? AdminActionService.instance;
+    var note = 'Admin actions are not ready on this phone';
+    if (s != null) {
+      try {
+        await s.make(
+          action: action,
+          targetUserId: user.userId,
+          label: user.name,
+          targetDevices: [if (user.deviceId.isNotEmpty) user.deviceId],
+        );
+        note = 'Sent to all phones · Pending until it is done';
+      } on StateError catch (e) {
+        note = e.message;
+      } catch (_) {
+        note = 'Could not send. Try again';
+      }
+    }
+    if (context.mounted) adminSnack216(context, note);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = A216.colors(context);
+    final t = A216Text(c);
+    final seen = [user.link, offlineShort222(user.seenAt)].where((x) => x.isNotEmpty).join(' · ');
+    Widget kv(String k, String v, String key) => Padding(
+          key: ValueKey(key),
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          child: Row(children: [
+            Text(k, style: t.custom(14, FontWeight.w400, c.ink2)),
+            const SizedBox(width: 12),
+            Expanded(
+                child: Text(v,
+                    textAlign: TextAlign.right,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.custom(14, FontWeight.w500, c.ink))),
+          ]),
+        );
+    return Column(
+      key: const ValueKey('a222_offline_sheet'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(child: ServerPersonAvatar216(name: user.name, userId: user.userId, hasAvatar: false, radius: 28)),
+        const SizedBox(height: 10),
+        Text(user.name, textAlign: TextAlign.center, style: t.custom(18, FontWeight.w600, c.ink)),
+        if (user.username.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text('@${user.username} (may change if taken)', textAlign: TextAlign.center, style: t.cardSub),
+          ),
+        const SizedBox(height: 12),
+        kv('Status', 'Offline account · not on server yet', 'a222_os_status'),
+        if (user.phoneModel.isNotEmpty) kv('Phone', user.phoneModel, 'a222_os_phone'),
+        if (seen.isNotEmpty) kv('Seen', seen, 'a222_os_seen'),
+        kv('Server', user.carried ? 'Waiting · carried by this phone' : 'Waiting to join the server', 'a222_os_server'),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(
+              child: AdminButton216('Block',
+                  key: const ValueKey('a222_os_block'),
+                  kind: A216ButtonKind.tonal,
+                  onTap: () => _act(context, 'block'))),
+          const SizedBox(width: 10),
+          Expanded(
+              child: AdminButton216('Sign out',
+                  key: const ValueKey('a222_os_signout'),
+                  kind: A216ButtonKind.tonal,
+                  onTap: () => _act(context, 'sign_out'))),
+        ]),
+        const SizedBox(height: 12),
+        Text('Actions go to her phone by card (Pending until done). More actions after she joins the server.',
+            style: t.cardSub),
+      ],
     );
   }
 }

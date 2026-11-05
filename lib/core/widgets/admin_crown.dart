@@ -167,6 +167,13 @@ class AdminCrown extends StatelessWidget {
   /// Crown width on a photo of [radius]: 1.1·R, never under 13 (217).
   static double sizeFor(double radius) => math.max(13.0, radius * 1.1);
 
+  /// Bundle 222 (mock C-1): the height the crown needs ABOVE a photo of
+  /// [radius] (crown + halo + pearls), so a card or list edge never cuts it.
+  static double room(double radius) {
+    final w = sizeFor(radius);
+    return (CrownPainter216.heightFor(w) + w * 0.10).ceilToDouble();
+  }
+
   /// The crown on its own (map nodes, titles, tags). [halo] null = none.
   static Widget mark(double size, {Color? halo = Colors.white}) => SizedBox(
         key: const ValueKey('admin_crown'),
@@ -298,4 +305,42 @@ class AdminRoleLine extends StatelessWidget {
           );
         },
       );
+}
+
+/// Bundle 222 (mock C-1): top space for the crown, only while it shows (an
+/// account that is not admin sees no change). [already] = space that is
+/// already there above the photo (card padding), so only the rest is added.
+class AdminCrownRoom extends StatelessWidget {
+  final String? id;
+  final String? otherId;
+  final double radius;
+  final double already;
+  final Widget child;
+
+  const AdminCrownRoom({
+    super.key,
+    required this.id,
+    this.otherId,
+    required this.radius,
+    this.already = 0,
+    required this.child,
+  });
+
+  /// Extra top space for a photo of [radius] with [already] space above it.
+  static double extraFor(double radius, {double already = 0}) =>
+      math.max(0.0, AdminCrown.room(radius) - already);
+
+  @override
+  Widget build(BuildContext context) {
+    if ((id ?? '').isEmpty && (otherId ?? '').isEmpty) return child;
+    return ListenableBuilder(
+      listenable: Listenable.merge([AdminBadgeBook.instance, AdminBlockBook.instance]),
+      builder: (context, _) => Padding(
+        key: const ValueKey('admin_crown_room'),
+        padding: EdgeInsets.only(
+            top: AdminCrown.showFor(id, otherId) ? extraFor(radius, already: already) : 0),
+        child: child,
+      ),
+    );
+  }
 }

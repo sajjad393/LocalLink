@@ -229,13 +229,10 @@ class LinkPathsMap extends StatelessWidget {
         SizedBox(
           height: height,
           child: Stack(clipBehavior: Clip.none, children: [
+            // Bundle 222 (mock M-1): always You + Server, like the full map;
+            // with nobody else a small grey note sits on the right.
             Positioned.fill(
-              child: nodes.isEmpty
-                  ? Center(
-                      child: Text('No phones linked right now',
-                          key: const ValueKey('link_paths_empty'),
-                          style: A216Text(c).note))
-                  : LinkPathsCanvas(
+              child: LinkPathsCanvas(
                       nodes: nodes,
                       serverOnline: serverOnline,
                       nodeRadius: 14,
@@ -246,6 +243,17 @@ class LinkPathsMap extends StatelessWidget {
                       onNodeTap: onNodeTap,
                     ),
             ),
+            if (linkMapUserCount(nodes) == 0)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Text('No other phones linked',
+                      key: const ValueKey('link_paths_empty'),
+                      style: A216Text(c).note),
+                ),
+              ),
           ]),
         ),
         const SizedBox(height: 6),
@@ -261,6 +269,10 @@ class LinkPathsMap extends StatelessWidget {
     );
   }
 }
+
+/// Bundle 222: the one count both maps use (other phones on the map; You
+/// and the Server are not counted), so they can never differ.
+int linkMapUserCount(List<LinkNode> nodes) => nodes.length;
 
 /// Bundle 212: "Blocked · relays only" in the legend.
 class LinkBlockedLegend extends StatelessWidget {

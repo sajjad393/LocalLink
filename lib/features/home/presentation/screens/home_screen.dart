@@ -35,6 +35,7 @@ import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
 import 'package:locallink/features/account/presentation/screens/profile_screen.dart';
 import 'package:locallink/features/home/presentation/widgets/join_cards218.dart';
+import 'package:locallink/features/authentication/data/services/join_carrier_222.dart' show JoinCarrier222, JoinStatus222;
 import 'package:locallink/features/home/presentation/widgets/chats_search.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
@@ -385,6 +386,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }());
     // Bundle 218e: the join can finish while Home is open.
     JoinNotice218.changed.addListener(_onJoinChanged218);
+    JoinCarrier222.changes.addListener(_onCarry222); // Bundle 222
+    unawaited(_readCarry222());
     // First contact from a new peer arrives live: the Chats tab picks them up.
     _incomingSub = widget.messagingRepository.incoming
         .listen((_) {
@@ -428,6 +431,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (code.isNotEmpty) recovery = code;
       block = await widget.store.readSetting(OfflineAccountSyncService.blockKey) ?? '';
     } catch (_) {}
+    var pwdOnlyHere = false;
+    try {
+      pwdOnlyHere = (await widget.store.readSetting(OfflineAccountSyncService.pwdResetBannerKey222) ?? '') == '1';
+    } catch (_) {}
     final renamed = _renamedAccountNotice;
     if (join == null && renamed != null && renamed.isNotEmpty) {
       join = {'kind': 'renamed', 'name': renamed, 'was': ''};
@@ -437,6 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _join218 = join;
       _recovery218 = recovery;
       _block218 = block;
+      _pwdOnlyHere222 = pwdOnlyHere;
     });
   }
 
@@ -489,7 +497,54 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() {});
   }
 
+  bool _pwdOnlyHere222 = false;
+
+  /// Bundle 222 (U-3): her account is being carried by nearby phones.
+  JoinStatus222 _carry222 = const JoinStatus222();
+
+  void _onCarry222() => unawaited(_readCarry222());
+
+  Future<void> _readCarry222() async {
+    final c = JoinCarrier222.instance;
+    if (c == null) return;
+    try {
+      final st = await c.status();
+      if (mounted) setState(() => _carry222 = st);
+    } catch (_) {}
+  }
+
+  static String _ago222(String at) {
+    final t = DateTime.tryParse(at);
+    if (t == null) return '';
+    final d = DateTime.now().toUtc().difference(t.toUtc());
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inMinutes < 60) return '${d.inMinutes} min ago';
+    if (d.inHours < 24) return '${d.inHours} h ago';
+    return d.inDays == 1 ? '1 day ago' : '${d.inDays} days ago';
+  }
+
   List<Widget> _joinCards218() => [
+        if (_pwdOnlyHere222)
+          JoinCard218(
+            key: const ValueKey('pwd_reset_only_here_222'),
+            icon: JoinIcon218.warn,
+            title: 'Your new password is only on this phone',
+            body: 'The server did not take it (your recovery code was changed). Use Forgot password again when online.',
+            buttons: [
+              JoinButton218(const ValueKey('pwd_reset_only_here_ok_222'), 'OK', () {
+                setState(() => _pwdOnlyHere222 = false);
+                unawaited(widget.store
+                    .writeSetting(OfflineAccountSyncService.pwdResetBannerKey222, '')
+                    .catchError((Object _) {}));
+              }),
+            ],
+          ),
+        if (_join218 == null && _carry222.waiting && _carry222.carriers > 0)
+          JoinCard218.carried222(
+            firstCarrier: _carry222.firstCarrier,
+            carriers: _carry222.carriers,
+            sentAgo: _ago222(_carry222.sentAt),
+          ),
         if (_join218 != null)
           JoinCard218.done(
             kind: _join218!['kind']?.toString() ?? 'plain',
@@ -799,6 +854,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _groupChangeSub?.cancel();
     _groupChangeTimer?.cancel();
     JoinNotice218.changed.removeListener(_onJoinChanged218);
+    JoinCarrier222.changes.removeListener(_onCarry222);
     if (identical(GroupPeopleHub.instance, _peopleHub)) {
       GroupPeopleHub.instance = null;
     }

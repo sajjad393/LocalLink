@@ -20,7 +20,12 @@ class AdminToolPage216 extends StatefulWidget {
     this.subtitle,
     this.right,
     this.withDashboard = false,
+    this.worksOffline = false,
   });
+
+  /// Bundle 222: the page also works with no server (Users shows people
+  /// seen nearby): no "needs the server" page, an orange bar instead.
+  final bool worksOffline;
 
   /// Also load the dashboard reads (health, analytics) once on open.
   final bool withDashboard;
@@ -62,8 +67,18 @@ class _AdminToolPage216State extends State<AdminToolPage216> {
 
   @override
   Widget build(BuildContext context) {
-    final bloc = context.read<AdminBloc>();
     final view = _viewOf(context);
+    if (widget.worksOffline && view != null) {
+      return BlocBuilder<AppViewModeCubit, AppViewModeState>(
+        bloc: view,
+        builder: (context, v) => _page(context, null, offline: !v.serverConnected),
+      );
+    }
+    return _page(context, view);
+  }
+
+  Widget _page(BuildContext context, AppViewModeCubit? view, {bool offline = false}) {
+    final bloc = context.read<AdminBloc>();
     return BlocBuilder<AdminBloc, AdminState>(
       builder: (context, state) => AdminPage216(
         title: widget.title,
@@ -76,7 +91,13 @@ class _AdminToolPage216State extends State<AdminToolPage216> {
         onRefresh: () => _reload(bloc),
         children: [
           const SizedBox(height: 2),
-          if (state.error != null && !state.loading)
+          if (offline)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: AdminBanner216(A216BannerKind.warning, 'No server · showing people seen nearby',
+                  key: ValueKey('a222_no_server_bar')),
+            ),
+          if (state.error != null && !state.loading && !offline)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: AdminBanner216(A216BannerKind.warning, 'Some data could not load',

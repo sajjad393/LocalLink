@@ -162,7 +162,13 @@ class MessengerSettingsScreen extends StatelessWidget {
               onTap: () => _photoTap(context),
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Row(
+                // Bundle 222 (C-1): the crown stays inside the card.
+                child: AdminCrownRoom(
+                 id: store.deviceId,
+                 otherId: AdminBadgeBook.instance.selfUserId,
+                 radius: 28,
+                 already: 16,
+                 child: Row(
                   children: [
                     // Bundle 211 (C3) / 214 (E2): an admin taps the picture
                     // → switch sheet (me / Admin). Not admin → Account.
@@ -227,6 +233,7 @@ class MessengerSettingsScreen extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
                 ),
               ),
             ),

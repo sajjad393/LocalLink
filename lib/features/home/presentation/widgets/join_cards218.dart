@@ -4,7 +4,7 @@ import 'package:locallink/core/widgets/local_link_text_field.dart';
 
 /// Bundle 218e: the cards on Chats after an offline account joined the
 /// server (or could not). Matches mock_218_app01..03.
-enum JoinIcon218 { ok, phone, warn, key }
+enum JoinIcon218 { ok, phone, warn, key, clock }
 
 class JoinCard218 extends StatefulWidget {
   final Key? cardKey;
@@ -13,6 +13,8 @@ class JoinCard218 extends StatefulWidget {
   final String body;
   final String orangeLine;
   final Key? orangeKey;
+  /// Bundle 222 (U-3): a blue line (sent / carried by N phones).
+  final String blueLine;
 
   /// 'pairing' = an editable code field, 'recovery' = the code, read only.
   final String field;
@@ -27,6 +29,7 @@ class JoinCard218 extends StatefulWidget {
     required this.body,
     this.orangeLine = '',
     this.orangeKey,
+    this.blueLine = '',
     this.field = '',
     this.fieldValue = '',
     this.buttons = const [],
@@ -99,6 +102,20 @@ class JoinCard218 extends StatefulWidget {
       buttons: [
         JoinButton218.busy(const ValueKey('join218_try'), 'Try again', onTry),
       ],
+    );
+  }
+
+  /// Bundle 222 (U-3): her account went with nearby phones; never red,
+  /// no time limit.
+  static Widget carried222({required String firstCarrier, required int carriers, String sentAgo = ''}) {
+    final via = firstCarrier.isEmpty ? 'a nearby phone' : 'a nearby phone ($firstCarrier)';
+    final n = carriers == 1 ? '1 phone' : '$carriers phones';
+    return JoinCard218(
+      key: const ValueKey('join222_carried'),
+      icon: JoinIcon218.clock,
+      title: 'Waiting for the server',
+      body: 'Your account was sent with $via. You join the server when a phone with internet passes it on.',
+      blueLine: [if (sentAgo.isNotEmpty) 'Sent $sentAgo', 'carried by $n'].join(' · '),
     );
   }
 
@@ -203,9 +220,13 @@ class _JoinCard218State extends State<JoinCard218> {
         iconData = Icons.key_outlined;
         iconColor = colors.primary;
         iconBg = const Color(0xFFEEF3FF);
+      case JoinIcon218.clock:
+        iconData = Icons.schedule_rounded;
+        iconColor = colors.primary;
+        iconBg = const Color(0xFFEEF3FF);
     }
     if (dark) {
-      if (widget.icon != JoinIcon218.key) iconColor = orange;
+      if (widget.icon != JoinIcon218.key && widget.icon != JoinIcon218.clock) iconColor = orange;
       if (widget.icon == JoinIcon218.ok) iconColor = const Color(0xFF47CD89);
       iconBg = iconColor.withValues(alpha: .16);
     }
@@ -306,6 +327,14 @@ class _JoinCard218State extends State<JoinCard218> {
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(widget.orangeLine,
                         style: TextStyle(fontSize: 12.5, letterSpacing: 0, color: orange)),
+                  ),
+                if (widget.blueLine.isNotEmpty)
+                  Padding(
+                    key: const ValueKey('join222_blue_line'),
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(widget.blueLine,
+                        style: TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w500, letterSpacing: 0, color: colors.primary)),
                   ),
                 if (widget.field.isNotEmpty)
                   Padding(

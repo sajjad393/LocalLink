@@ -272,13 +272,18 @@ class _SetupScreenState extends State<SetupScreen> {
     }
   }
 
+  /// Bundle 222: "Forgot password?" (R-1) opens code + new password, or the
+  /// no-code request to the admin. It replaces the old "Account recovery"
+  /// button: that screen only ever sent a username (now the "I don't have
+  /// it" tab), and a normal login already moves an account to a new phone.
   void _openRecovery() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => AccountRecoveryScreen(
+        builder: (_) => ForgotPasswordScreen222(
           repository: widget.recoveryRepository,
           onCompleted: widget.onSaved,
+          initialUsername: _username.text.trim(),
         ),
       ),
     );
@@ -376,6 +381,15 @@ class _SetupScreenState extends State<SetupScreen> {
                   onSubmitted: (_) => _submit(),
                   onChanged: (_) => _controller.clearError(),
                 ),
+                if (!register)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      key: const ValueKey('forgot-password-222'),
+                      onPressed: state.busy ? null : _openRecovery,
+                      child: const Text('Forgot password?'),
+                    ),
+                  ),
                 if (state.error != null) ...[
                   const SizedBox(height: LocalLinkSpacing.md),
                   Text(
@@ -396,13 +410,6 @@ class _SetupScreenState extends State<SetupScreen> {
                         )
                       : Text(register ? 'Register' : 'Log in'),
                 ),
-                if (!register) ...[
-                  const SizedBox(height: LocalLinkSpacing.sm),
-                  TextButton(
-                    onPressed: state.busy ? null : _openRecovery,
-                    child: const Text('Account recovery'),
-                  ),
-                ],
                 const SizedBox(height: LocalLinkSpacing.md),
                 TextButton(
                   onPressed: state.busy ? null : _switchMode,

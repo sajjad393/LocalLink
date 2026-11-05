@@ -86,7 +86,8 @@ void main() {
   testWidgets('full map: zoom buttons and centre', (tester) async {
     await openFull(tester);
     final viewer = tester.widget<InteractiveViewer>(find.byKey(const ValueKey('link_map_viewer')));
-    expect(viewer.minScale, 1);
+    // Bundle 222 (M-2): "-" and pinch go down to the whole map (below 1x).
+    expect(viewer.minScale, lessThan(1));
     expect(viewer.maxScale, 4);
     final ctrl = viewer.transformationController!;
     await tester.tap(find.byKey(const ValueKey('link_map_zoom_in')));
@@ -96,7 +97,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('link_map_zoom_out')));
     await tester.pump();
-    expect(ctrl.value.getMaxScaleOnAxis(), closeTo(1, 0.01));
+    expect(ctrl.value.getMaxScaleOnAxis(), closeTo(viewer.minScale, 0.01)); // Bundle 222: whole map
     await tester.tap(find.byKey(const ValueKey('link_map_centre')));
     await tester.pump();
   });

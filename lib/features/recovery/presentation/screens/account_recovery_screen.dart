@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_button.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
@@ -180,6 +182,428 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- Bundle 222
+
+/// Bundle 222: "Forgot password?" from the login screen (mocks R-2 … R-5).
+/// Tab 1: recovery code + new password (online at once; with no server only
+/// on this phone for its last account). Tab 2: no code → ask the admin.
+class ForgotPasswordScreen222 extends StatefulWidget {
+  final RecoveryRepositoryContract repository;
+  final Future<void> Function() onCompleted;
+  final String initialUsername;
+
+  const ForgotPasswordScreen222({
+    super.key,
+    required this.repository,
+    required this.onCompleted,
+    this.initialUsername = '',
+  });
+
+  @override
+  State<ForgotPasswordScreen222> createState() => _ForgotPasswordScreen222State();
+}
+
+class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
+  late final ForgotPasswordBloc222 _bloc = ForgotPasswordBloc222(widget.repository);
+  late final _username = TextEditingController(text: widget.initialUsername);
+  final _code = TextEditingController();
+  final _oneTime = TextEditingController();
+  final _password = TextEditingController();
+  final _again = TextEditingController();
+  bool _hide = true;
+
+  static const _green = Color(0xFF1B8A4B);
+  static const _greenBg = Color(0xFFE7F6EC);
+  static const _orange = Color(0xFFB4530A);
+  static const _orangeBg = Color(0xFFFFF4E2);
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_bloc.start());
+    for (final c in [_password, _again]) {
+      c.addListener(() => setState(() {}));
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_username, _code, _oneTime, _password, _again]) {
+      c.dispose();
+    }
+    _bloc.close();
+    super.dispose();
+  }
+
+  Future<void> _send(ForgotPasswordState222 state) async {
+    FocusScope.of(context).unfocus();
+    if (state.tab == ForgotTab222.haveCode) {
+      await _bloc.resetWithCode(
+        username: _username.text,
+        recoveryCode: _code.text,
+        newPassword: _password.text,
+        again: _again.text,
+      );
+    } else if (state.hasRequest) {
+      await _bloc.completeNoCode(
+        oneTimeCode: _oneTime.text,
+        newPassword: _password.text,
+        again: _again.text,
+      );
+    } else {
+      await _bloc.askAdmin(username: _username.text);
+    }
+  }
+
+  Future<void> _finish() async {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    await widget.onCompleted();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LocalLinkBlocBuilder<ForgotPasswordBloc222, ForgotPasswordState222>(
+      bloc: _bloc,
+      builder: (context, state) {
+        if (state.doneCode != null) return _done(context, state);
+        return Scaffold(
+          appBar: AppBar(title: const Text('Forgot password')),
+          body: SafeArea(
+            child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              children: [
+                _chip(state.online),
+                const SizedBox(height: 14),
+                _tabs(context, state),
+                const SizedBox(height: 18),
+                if (state.tab == ForgotTab222.haveCode) ..._haveCode(context, state) else ..._noCode(context, state),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _chip(bool? online) {
+    final (text, fg, bg) = switch (online) {
+      true => ('Server connected', _green, _greenBg),
+      false => ('No server \u00b7 works on this phone only', _orange, _orangeBg),
+      null => ('Checking the server\u2026', Colors.grey.shade700, Colors.grey.shade200),
+    };
+    return Container(
+      key: const ValueKey('forgot222-chip'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+      child: Row(children: [
+        Container(width: 9, height: 9, decoration: BoxDecoration(color: fg, shape: BoxShape.circle)),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: TextStyle(color: fg, fontWeight: FontWeight.w600, fontSize: 13))),
+      ]),
+    );
+  }
+
+  Widget _tabs(BuildContext context, ForgotPasswordState222 state) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget tab(String text, ForgotTab222 value) {
+      final on = state.tab == value;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => _bloc.selectTab(value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: on ? scheme.surface : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: on ? const [BoxShadow(color: Color(0x14000000), blurRadius: 4, offset: Offset(0, 1))] : null,
+            ),
+            alignment: Alignment.center,
+            child: Text(text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, fontWeight: on ? FontWeight.w700 : FontWeight.w500, color: on ? scheme.onSurface : scheme.onSurfaceVariant)),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(999)),
+      child: Row(children: [
+        tab('I have my recovery code', ForgotTab222.haveCode),
+        tab("I don't have it", ForgotTab222.noCode),
+      ]),
+    );
+  }
+
+  Widget _passwordFields(ForgotPasswordState222 state) {
+    final same = _again.text.isNotEmpty && _again.text == _password.text && _password.text.length >= 8;
+    return Column(children: [
+      LocalLinkTextField(
+        controller: _password,
+        obscureText: _hide,
+        textInputAction: TextInputAction.next,
+        labelText: 'New password',
+        hintText: 'At least 8 characters',
+        prefixIcon: const Icon(Icons.lock_outline),
+        suffixIcon: IconButton(
+          tooltip: _hide ? 'Show password' : 'Hide password',
+          onPressed: () => setState(() => _hide = !_hide),
+          icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+        ),
+        onChanged: (_) => _bloc.clearError(),
+      ),
+      const SizedBox(height: 8),
+      LocalLinkTextField(
+        controller: _again,
+        obscureText: _hide,
+        textInputAction: TextInputAction.done,
+        labelText: 'New password again',
+        prefixIcon: const Icon(Icons.lock_outline),
+        suffixIcon: same
+            ? const Padding(
+                padding: EdgeInsets.only(right: 14),
+                child: Center(widthFactor: 1, child: Text('OK', key: ValueKey('forgot222-same'), style: TextStyle(color: _green, fontWeight: FontWeight.w700))),
+              )
+            : null,
+        onChanged: (_) => _bloc.clearError(),
+        onSubmitted: (_) => _send(state),
+      ),
+    ]);
+  }
+
+  Widget _error(BuildContext context, ForgotPasswordState222 state) => state.error == null
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Text(state.error!, key: const ValueKey('forgot222-error'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        );
+
+  Widget _button(ForgotPasswordState222 state, String label) => Padding(
+        padding: const EdgeInsets.only(top: 18),
+        child: SizedBox(
+          height: 52,
+          child: FilledButton(
+            style: FilledButton.styleFrom(shape: const StadiumBorder()),
+            onPressed: state.busy ? null : () => _send(state),
+            child: state.busy
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ),
+      );
+
+  Widget _note(BuildContext context, String text) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 14, 4, 0),
+        child: Text(text, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13, height: 1.4)),
+      );
+
+  List<Widget> _haveCode(BuildContext context, ForgotPasswordState222 state) => [
+        LocalLinkTextField(
+          controller: _username,
+          autocorrect: false,
+          maxLength: 32,
+          textInputAction: TextInputAction.next,
+          labelText: 'Username',
+          prefixIcon: const Icon(Icons.alternate_email),
+          onChanged: (_) => _bloc.clearError(),
+        ),
+        const SizedBox(height: 8),
+        LocalLinkTextField(
+          controller: _code,
+          autocorrect: false,
+          textInputAction: TextInputAction.next,
+          labelText: 'Recovery code',
+          hintText: 'XXXXX-XXXXX-XXXXX-XXXXX',
+          prefixIcon: const Icon(Icons.tag),
+          onChanged: (_) => _bloc.clearError(),
+        ),
+        const SizedBox(height: 8),
+        _passwordFields(state),
+        _error(context, state),
+        _button(state, 'Set new password'),
+        _note(
+          context,
+          state.online == false
+              ? 'Uses the code saved on this phone. The new password goes to the server when it is back.'
+              : 'Your other phones stay signed in. You get a new recovery code after this.',
+        ),
+      ];
+
+  List<Widget> _noCode(BuildContext context, ForgotPasswordState222 state) {
+    if (!state.hasRequest) {
+      return [
+        LocalLinkTextField(
+          controller: _username,
+          autocorrect: false,
+          maxLength: 32,
+          textInputAction: TextInputAction.done,
+          labelText: 'Username',
+          prefixIcon: const Icon(Icons.alternate_email),
+          onChanged: (_) => _bloc.clearError(),
+          onSubmitted: (_) => _send(state),
+        ),
+        _error(context, state),
+        _button(state, 'Ask the admin'),
+        _note(context, 'The admin gets your request on the web and in the app (Admin \u203a Recovery), then gives you a one-time code in person. Needs the server.'),
+      ];
+    }
+    final scheme = Theme.of(context).colorScheme;
+    final (pill, fg, bg) = switch (state.requestStatus) {
+      'approved' => ('Approved', _green, _greenBg),
+      'rejected' => ('Not approved', scheme.error, scheme.errorContainer),
+      'completed' => ('Done', _green, _greenBg),
+      _ => ('Waiting', _orange, _orangeBg),
+    };
+    final name = state.requestUsername.isEmpty ? _username.text.trim().toLowerCase() : state.requestUsername;
+    return [
+      Container(
+        key: const ValueKey('forgot222-request'),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text('@$name', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+              child: Text(pill, style: TextStyle(color: fg, fontWeight: FontWeight.w600, fontSize: 12)),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Text(
+            state.requestStatus == 'rejected'
+                ? 'The admin did not approve it.${state.rejectedReason.isEmpty ? '' : ' Reason: ${state.rejectedReason}'}'
+                : 'Request sent to the admin. Ask the admin for a one-time code.',
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13, height: 1.4),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 14),
+      if (state.requestStatus != 'rejected') ...[
+        LocalLinkTextField(
+          controller: _oneTime,
+          autocorrect: false,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.next,
+          labelText: 'One-time code from the admin',
+          hintText: 'Enter the code',
+          prefixIcon: const Icon(Icons.tag),
+          onChanged: (_) => _bloc.clearError(),
+        ),
+        const SizedBox(height: 8),
+        _passwordFields(state),
+        _error(context, state),
+        _button(state, 'Set new password'),
+      ] else
+        _error(context, state),
+      const SizedBox(height: 8),
+      Center(
+        child: TextButton(
+          onPressed: state.busy ? null : _bloc.cancelRequest,
+          child: Text(state.requestStatus == 'rejected' ? 'Start again' : 'Cancel request'),
+        ),
+      ),
+    ];
+  }
+
+  Widget _done(BuildContext context, ForgotPasswordState222 state) {
+    final scheme = Theme.of(context).colorScheme;
+    final code = state.doneCode ?? '';
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Password changed'), automaticallyImplyLeading: false),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            children: [
+              Center(
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(color: _greenBg, shape: BoxShape.circle),
+                  alignment: Alignment.center,
+                  child: const Text('OK', style: TextStyle(color: _green, fontWeight: FontWeight.w800, fontSize: 18)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text("You're signed in", textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              if (code.isNotEmpty) ...[
+                Text('Your new recovery code', textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
+                const SizedBox(height: 14),
+                Container(
+                  key: const ValueKey('forgot222-new-code'),
+                  padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: scheme.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: scheme.outlineVariant),
+                  ),
+                  child: SelectableText(code,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800, fontSize: 20, letterSpacing: 0.5)),
+                ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: FilledButton.tonal(
+                      style: FilledButton.styleFrom(shape: const StadiumBorder(), minimumSize: const Size.fromHeight(46)),
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: code));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Code copied')));
+                        }
+                      },
+                      child: const Text('Copy'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.tonal(
+                      style: FilledButton.styleFrom(shape: const StadiumBorder(), minimumSize: const Size.fromHeight(46)),
+                      onPressed: () => Share.share(code),
+                      child: const Text('Share'),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 14),
+                Text('The old code no longer works. Keep this one private: it lets you set a new password.',
+                    style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4)),
+              ] else ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Your new password works on this phone now. It goes to the server when the server is back, then you get a new recovery code.',
+                  key: const ValueKey('forgot222-offline-done'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4),
+                ),
+              ],
+              const SizedBox(height: 22),
+              SizedBox(
+                height: 52,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(shape: const StadiumBorder()),
+                  onPressed: _finish,
+                  child: Text(code.isNotEmpty ? 'I saved it' : 'OK', style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

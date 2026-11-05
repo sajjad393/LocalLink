@@ -955,6 +955,55 @@ class LocalStore {
     }
   }
 
+  // ---- Bundle 222: join boxes carried for offline accounts ----------------
+  // New table only (CREATE IF NOT EXISTS on first use); DB version stays 34.
+
+  bool _joinBoxTable222 = false;
+
+  Future<void> ensureJoinBoxTable222() async {
+    if (_joinBoxTable222) return;
+    await _db.execute('''CREATE TABLE IF NOT EXISTS join_boxes_222 (
+      box_id TEXT PRIMARY KEY, from_device TEXT NOT NULL DEFAULT '', box TEXT NOT NULL DEFAULT '',
+      made_at TEXT NOT NULL DEFAULT '', got_at TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'carry',
+      answer TEXT NOT NULL DEFAULT '', extra TEXT NOT NULL DEFAULT ''
+    )''');
+    _joinBoxTable222 = true;
+  }
+
+  Future<List<Map<String, Object?>>> joinBoxRows222() async {
+    await ensureJoinBoxTable222();
+    return _db.query('join_boxes_222');
+  }
+
+  Future<void> putJoinBoxRow222(Map<String, Object?> row) async {
+    await ensureJoinBoxTable222();
+    await _db.insert('join_boxes_222', row, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteJoinBoxRows222(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await ensureJoinBoxTable222();
+    for (var i = 0; i < ids.length; i += 200) {
+      final part = ids.sublist(i, i + 200 > ids.length ? ids.length : i + 200);
+      await _db.delete('join_boxes_222',
+          where: 'box_id IN (${List.filled(part.length, '?').join(',')})', whereArgs: part);
+    }
+  }
+
+  /// Bundle 222 (section 8): people learned phone to phone whose account
+  /// was made offline and has not reached the server yet (their id still
+  /// starts with `offline_`; a join moves it to the real id, 218).
+  Future<List<Map<String, Object?>>> offlineDirectoryAccounts222() async {
+    try {
+      return await _db.rawQuery(
+          "SELECT user_id, device_id, username, display_name, phone_number, synced_at, updated_at "
+          "FROM directory_profiles WHERE user_id LIKE 'offline\\_%' ESCAPE '\\' "
+          'ORDER BY synced_at DESC LIMIT 500');
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Bundle 220: the saved keys of a phone (from its signed profile):
   /// signing key (checks its "done") and identity key (locks its box).
   Future<({String userId, String signingKey, String identityKey})> directoryKeysForDevice(
@@ -1533,6 +1582,43 @@ class LocalStore {
   Future<void> updateLocalRecoveryCode(String recoveryCode) async {
     _localRecoveryCode = recoveryCode;
     await _secureStorage.write(key: _localRecoveryKey, value: recoveryCode);
+  }
+
+  // ---------------------------------------------------------------- Bundle 222
+  // "Forgot password" done with no server on this phone: the NEW password's
+  // salt + hash wait here (never the plain password) until the server is
+  // back; code_hash ties it to the recovery code saved on this phone.
+  static const pwdResetPendingKey222 = 'pwd_reset_pending_222';
+
+  Future<Map<String, dynamic>?> pwdResetPending222() async {
+    try {
+      final raw = await _secureStorage.read(key: pwdResetPendingKey222);
+      if (raw == null || raw.isEmpty) return null;
+      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> savePwdResetPending222(Map<String, dynamic> value) =>
+      _secureStorage.write(key: pwdResetPendingKey222, value: jsonEncode(value));
+
+  Future<void> clearPwdResetPending222() =>
+      _secureStorage.delete(key: pwdResetPendingKey222);
+
+  /// Bundle 222: a phone-only account (never on the server) changed its
+  /// password with its recovery code: the waiting registration gets the new
+  /// salt + hash.
+  Future<void> updateOfflinePendingPassword222({
+    required String pwdHash,
+    required String pwdSalt,
+  }) async {
+    final pending = offlinePending;
+    if (pending == null) return;
+    pending['pwd_hash'] = pwdHash;
+    pending['pwd_salt'] = pwdSalt;
+    _offlinePendingJson = jsonEncode(pending);
+    await _secureStorage.write(key: _offlinePendingKey, value: _offlinePendingJson!);
   }
 
   Future<void> setSignedOut(bool signedOut) =>

@@ -5,6 +5,7 @@ import 'package:locallink/features/account/data/own_profile_signal.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:locallink/core/models/profile.dart';
@@ -293,7 +294,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// the new code is stored on this phone only and syncs with the account.
   Future<String?> _rotateRecovery() async {
     try {
-      return await widget.accountRepository.rotateRecoveryCode();
+      final code = await widget.accountRepository.rotateRecoveryCode();
+      // Bundle 222: the phone keeps the same code as the server, so
+      // "Forgot password" with no server (and its later sync) uses it.
+      try {
+        await widget.store.updateLocalRecoveryCode(code);
+      } catch (_) {}
+      return code;
     } catch (_) {} // offline or server hiccup — rotate locally instead
     try {
       final code = await widget.store.rotateLocalRecoveryCode();
@@ -394,7 +401,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, LocalLinkSpacing.md, LocalLinkSpacing.lg, LocalLinkSpacing.xxxl),
         children: [
-          Center(
+          // Bundle 222 (C-1): room for my crown under the list's top edge.
+          AdminCrownRoom(
+           id: AdminBadgeBook.instance.selfUserId,
+           radius: 52,
+           already: LocalLinkSpacing.md,
+           child: Center(
             child: Semantics(
               label: 'Profile photo',
               // Bundle 211 (A2-A3): no camera button (it covered the lock).
@@ -421,6 +433,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 },
               ),
             ),
+           ),
           ),
           const SizedBox(height: LocalLinkSpacing.lg),
           Center(child: Text(displayName, style: Theme.of(context).textTheme.titleLarge)),

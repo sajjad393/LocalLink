@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -35,6 +36,13 @@ Size linkMapCanvasSize(Size view, int users) => Size(
       math.max(view.width * 1.4, 420.0 + 26.0 * users),
       math.max(view.height * 1.3, 600.0 + 26.0 * users),
     );
+
+/// Bundle 222 (mock M-2): the zoom that shows the whole map on the screen
+/// (never above 1x). "−" and pinch go down to it.
+double linkMapFitScale(Size view, Size canvas) {
+  if (view.width <= 0 || view.height <= 0 || canvas.width <= 0 || canvas.height <= 0) return 1.0;
+  return math.min(1.0, math.min(view.width / canvas.width, view.height / canvas.height)).clamp(0.05, 1.0).toDouble();
+}
 
 /// Bundle 212 (E7, mock page 5): full-screen Link paths. Every device on
 /// the link (full names), drag to scroll any way, pinch zoom 1x-4x, double
@@ -80,6 +88,27 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   bool _framed = false;
   Offset? _doubleTapAt;
   Size _view = Size.zero;
+  // Bundle 222: "Whole map" tag for 1.5 s when the zoom reaches the fit.
+  bool _wholeTag = false;
+  Timer? _wholeTimer;
+
+  double get _fit => linkMapFitScale(_view, linkMapCanvasSize(_view, widget.nodes.length));
+
+  bool get _atFit => _zoom.value.getMaxScaleOnAxis() <= _fit + 0.005;
+
+  /// Whole map, centred on the screen.
+  void _showWhole() {
+    final canvas = linkMapCanvasSize(_view, widget.nodes.length);
+    final f = _fit;
+    _zoom.value = Matrix4.identity()
+      ..translateByDouble((_view.width - canvas.width * f) / 2, (_view.height - canvas.height * f) / 2, 0, 1)
+      ..scaleByDouble(f, f, f, 1); // uniform, like InteractiveViewer
+    _wholeTimer?.cancel();
+    setState(() => _wholeTag = true);
+    _wholeTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) setState(() => _wholeTag = false);
+    });
+  }
 
   @override
   void initState() {
@@ -101,6 +130,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
 
   @override
   void dispose() {
+    _wholeTimer?.cancel();
     _zoom.dispose();
     super.dispose();
   }
@@ -122,12 +152,17 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   void _setScale(double factor, {Offset? focus}) {
     final m = _zoom.value.clone();
     final current = m.getMaxScaleOnAxis();
-    final next = (current * factor).clamp(1.0, 4.0);
+    final fit = _fit;
+    final next = (current * factor).clamp(fit, 4.0).toDouble();
+    if (factor < 1 && next <= fit + 0.005) {
+      _showWhole();
+      return;
+    }
     final f = next / current;
     final at = focus ?? Offset(_view.width / 2, _view.height / 2);
     _zoom.value = Matrix4.identity()
       ..translateByDouble(at.dx, at.dy, 0, 1)
-      ..scaleByDouble(f, f, 1, 1)
+      ..scaleByDouble(f, f, f, 1) // Bundle 222: uniform (scale < 1 reads right)
       ..translateByDouble(-at.dx, -at.dy, 0, 1)
       ..multiply(m);
   }
@@ -136,7 +171,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     _zoom.value = Matrix4.identity()
       ..translateByDouble(
           _view.width / 2 - p.dx * scale, _view.height / 2 - p.dy * scale, 0, 1)
-      ..scaleByDouble(scale, scale, 1, 1);
+      ..scaleByDouble(scale, scale, scale, 1);
   }
 
   /// Centre the first view on everyone shown (and "You"), kept inside the map.
@@ -352,7 +387,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     );
   }
 
-  Widget _zoomButton(Key key, String tip, IconData icon, VoidCallback onTap) => SizedBox(
+  Widget _zoomButton(Key key, String tip, IconData icon, VoidCallback? onTap) => SizedBox(
         width: 44,
         height: 40,
         child: IconButton(
@@ -361,6 +396,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
             padding: EdgeInsets.zero,
             iconSize: 20,
             color: A216.colors(context).ink2,
+            disabledColor: A216.colors(context).grey.withValues(alpha: 0.45),
             icon: Icon(icon),
             onPressed: onTap),
       );
@@ -375,7 +411,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
           return AdminPage216(
             title: 'Link paths',
             subtitle:
-                '${all.length} users · $blockedCount blocked · server ${widget.serverOnline ? 'online' : 'offline'}',
+                '${linkMapUserCount(all)} users · $blockedCount blocked · server ${widget.serverOnline ? 'online' : 'offline'}',
             right: AdminBarAction216(
               tooltip: 'Small map',
               fill: const Color(0xFFEEF3FF),
@@ -418,11 +454,12 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                           color: c.bgMap,
                           child: GestureDetector(
                             onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
+                            // Bundle 222: double tap = whole map <-> 2x.
                             onDoubleTap: () {
-                              if (_zoom.value.getMaxScaleOnAxis() > 1.05) {
-                                _zoom.value = Matrix4.identity();
+                              if (_atFit) {
+                                _setScale(2 / _zoom.value.getMaxScaleOnAxis(), focus: _doubleTapAt);
                               } else {
-                                _setScale(2, focus: _doubleTapAt);
+                                _showWhole();
                               }
                             },
                             child: InteractiveViewer(
@@ -430,7 +467,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                               transformationController: _zoom,
                               constrained: false,
                               boundaryMargin: const EdgeInsets.all(80),
-                              minScale: 1,
+                              minScale: linkMapFitScale(_view, canvas),
                               maxScale: 4,
                               child: GestureDetector(
                                 onTapUp: (d) => _tapAt(d.localPosition, shown, canvas),
@@ -457,7 +494,24 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                           ),
                         ),
                       ),
-                      if (_hint)
+                      if (_wholeTag)
+                        Positioned(
+                          left: 76,
+                          right: 12,
+                          bottom: 18,
+                          child: Center(
+                            child: Container(
+                              key: const ValueKey('link_map_whole_tag'),
+                              padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1F2733),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text('Whole map', style: t.custom(13, FontWeight.w600, Colors.white)),
+                            ),
+                          ),
+                        ),
+                      if (_hint && !_wholeTag)
                         Positioned(
                           left: 76,
                           right: 12,
@@ -482,8 +536,14 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                           child: Column(mainAxisSize: MainAxisSize.min, children: [
                             _zoomButton(const ValueKey('link_map_zoom_in'), 'Zoom in',
                                 Icons.add_rounded, () => _setScale(1.5)),
-                            _zoomButton(const ValueKey('link_map_zoom_out'), 'Zoom out',
-                                Icons.remove_rounded, () => _setScale(1 / 1.5)),
+                            ListenableBuilder(
+                              listenable: _zoom,
+                              builder: (context, _) => _zoomButton(
+                                  const ValueKey('link_map_zoom_out'),
+                                  _atFit ? 'Whole map' : 'Zoom out',
+                                  Icons.remove_rounded,
+                                  _atFit ? null : () => _setScale(1 / 1.5)),
+                            ),
                             _zoomButton(const ValueKey('link_map_centre'), 'This phone',
                                 Icons.my_location_rounded, _centre),
                           ]),

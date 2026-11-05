@@ -36,6 +36,7 @@ import 'package:locallink/features/connectivity/data/services/nearby_admin_statu
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
 import 'package:locallink/core/services/session_key_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/crypto/password_kdf.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:locallink/features/messaging/data/services/not_on_server_218.dart';
@@ -49,6 +50,9 @@ import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/services/websocket_service.dart';
 import 'package:locallink/features/authentication/data/repositories/authentication_repository.dart';
 import 'package:locallink/features/authentication/data/services/offline_account_sync_service.dart';
+import 'package:locallink/features/authentication/data/services/join_carrier_222.dart';
+import 'package:locallink/features/admin/data/services/admin_offline_users_222.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_box.dart' show AdminActionBoxLock;
 import 'package:locallink/features/account/data/repositories/account_repository.dart';
 import 'package:locallink/features/account/data/repositories/identity_repository.dart';
 import 'package:locallink/features/calls/data/platform/call_audio_platform_service.dart';
@@ -731,6 +735,9 @@ class AppDependencies {
   /// Bundle 221: answer parts over every link + Delete completely.
   late final ChatAnswerCarrier chatCarrier221;
   late final DeleteCompletelyDoer purge221;
+
+  /// Bundle 222: nearby phones carry an offline account's join box.
+  late final JoinCarrier222 joinCarrier222;
   Timer? _sweep221;
   final List<StreamSubscription<Object?>> _late221 = <StreamSubscription<Object?>>[];
 
@@ -738,6 +745,34 @@ class AppDependencies {
     if (device.isEmpty) return '';
     if (device == store.deviceId) return store.username ?? '';
     return await store.peerDisplayName(device).catchError((Object _) => null) ?? '';
+  }
+
+  /// Bundle 222: this phone's own offline account (never on the server),
+  /// from what it already keeps for offline sign-in. Null = nothing to carry.
+  Future<JoinMine222?> _joinMine222() async {
+    if (!store.isOfflinePending) return null;
+    final p = store.offlinePending;
+    final salt = p?['pwd_salt']?.toString() ?? '';
+    final hash = p?['pwd_hash']?.toString() ?? '';
+    final user = p?['username']?.toString() ?? '';
+    final code = store.localRecoveryCode ?? '';
+    final device = store.deviceId ?? '';
+    if (salt.isEmpty || hash.isEmpty || user.isEmpty || code.isEmpty || device.isEmpty) return null;
+    final me = await store.profile().catchError((Object _) => null);
+    final id = me?.userId ?? '';
+    return JoinMine222(
+      username: user,
+      displayName: (me?.displayName ?? '').isNotEmpty ? me!.displayName : user,
+      offlineUserId: id.startsWith('offline_') ? id : '',
+      deviceId: device,
+      deviceName: (store.deviceName ?? '').trim().isEmpty ? 'Phone' : store.deviceName!.trim(),
+      hardwareFp: store.hardwareFp,
+      pwdSalt: salt,
+      pwdHash: hash,
+      iterations: PasswordKdf.iterations,
+      recoveryCode: code,
+      pairingCode: p?['pairing_code']?.toString() ?? '',
+    );
   }
 
   void _buildAdminActions() {
@@ -785,6 +820,42 @@ class AppDependencies {
       isAdminPhone: () async => await adminBlocks.usableCert() != null,
     );
     ChatAnswerCarrier.instance = chatCarrier221;
+    // Bundle 222 (section 9): join boxes for offline accounts, same links.
+    joinCarrier222 = JoinCarrier222(
+      store: SqlJoinBoxStore222(store),
+      selfDeviceId: () => store.deviceId ?? '',
+      send: (peer, payload) => plain.send(recipientId: peer, payload: payload),
+      events: link.events,
+      linkedPeers: linked221,
+      verify: ed25519Verify,
+      sign: crypto.signPayload,
+      signingKey: crypto.signingPublicKey,
+      identityKey: crypto.publicKey,
+      openBox: (box) async => AdminActionBoxLock.open(await crypto.sealKeyPairs(), box),
+      lockBox: (key, plainBytes) => AdminActionBoxLock.lock(key, plainBytes),
+      mine: _joinMine222,
+      onTaken: (t) => OfflineAccountSyncService(store: store, auth: authentication).takeCarriedJoin222(
+          status: t.status,
+          username: t.username,
+          userId: t.userId,
+          deviceId: t.deviceId,
+          token: t.token,
+          expiresAt: t.expiresAt,
+          server: t.server),
+      server: HttpJoinServer222(
+        baseUrl: () => api.baseUrl,
+        deviceId: () => store.deviceId ?? '',
+        deviceToken: () => store.deviceToken ?? '',
+      ),
+      serverOnline: () => socket.isConnected,
+      serverUrl: () => store.serverAddress ?? '',
+      pinnedServerKey: () => adminBlocks.serverKey,
+      peerName: _name221,
+    );
+    JoinCarrier222.instance = joinCarrier222;
+    // Bundle 222 (section 8): offline accounts in Admin -> Users.
+    AdminOfflineUsers222.init(store, carries: joinCarrier222.carriesFrom);
+    PresenceService.offlineSeen222 = AdminOfflineUsers222.reportList;
     purge221 = DeleteCompletelyDoer(SqlPurgeTarget221(
       hidden: hide,
       source: chatRows,
@@ -963,6 +1034,7 @@ class AppDependencies {
   /// listener (a message deleted completely that still arrives).
   void _start221() {
     chatCarrier221.start();
+    joinCarrier222.start(); // Bundle 222
     unawaited(chatCarrier221.refreshProgress().catchError((Object _) {}));
     Future<void> sweep() async {
       await store.hide221.sweep(deleteFile: files.deleteLocalFile).catchError((Object _) => 0);
@@ -1340,6 +1412,11 @@ class AppDependencies {
       await messaging.flush();
       unawaited(presence.publish());
       unawaited(account.syncPendingProfile());
+      // Bundle 222: a password changed with no server goes up now.
+      unawaited(OfflineAccountSyncService.syncPwdReset222(store: store, api: api)
+          .catchError((Object _) => 'later'));
+      // Bundle 222: carried join boxes go up; the join key is refreshed.
+      unawaited(joinCarrier222.tick().catchError((Object _) {}));
       if (store.isOfflinePending) {
         final offlineSync =
             OfflineAccountSyncService(store: store, auth: authentication);
@@ -1415,6 +1492,7 @@ class AppDependencies {
     await adminRoles.dispose(); // Bundle 214
     await adminActions.dispose(); // Bundle 220
     await chatCarrier221.dispose(); // Bundle 221
+    await joinCarrier222.dispose(); // Bundle 222
     _sweep221?.cancel();
     _sweep221 = null;
     for (final sub in _late221) {

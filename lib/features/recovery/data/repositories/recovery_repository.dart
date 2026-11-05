@@ -1,3 +1,10 @@
+import 'dart:convert';
+import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
+import 'package:locallink/core/crypto/password_kdf.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/models/account_restore.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/profile.dart';
@@ -138,4 +145,192 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
 
   @override
   Future<AccountRestoreManifest> loadRestoreManifest() => _api.accountRestoreManifest();
+
+  // ------------------------------------------------------------- Bundle 222
+
+  String get _deviceName222 {
+    final name = (_store.deviceName ?? '').trim();
+    return name.isEmpty ? 'My Android Phone' : name;
+  }
+
+  /// Same letters/digits compare as the login's offline recovery check.
+  static String normalizeCode222(String value) =>
+      value.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+
+  /// The code as the server stores it (XXXXX-XXXXX-XXXXX-XXXXX).
+  static String formatCode222(String value) {
+    final raw = normalizeCode222(value);
+    if (raw.length != 20) return value.trim().toUpperCase();
+    return '${raw.substring(0, 5)}-${raw.substring(5, 10)}-${raw.substring(10, 15)}-${raw.substring(15, 20)}';
+  }
+
+  static String codeHash222(String code) =>
+      sha256.convert(utf8.encode(formatCode222(code))).toString();
+
+  @override
+  Future<bool> serverOnline222() async {
+    final saved = _store.serverAddress?.trim() ?? '';
+    if (saved.isEmpty) return false;
+    try {
+      final info = await verifyServer(saved).timeout(const Duration(seconds: 4));
+      final pinned = _store.serverFingerprint ?? '';
+      return pinned.isEmpty || pinned.toUpperCase() == info.fingerprint.toUpperCase();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<AuthResult> resetWithCode222({required String username, required String recoveryCode, required String newPassword}) async {
+    AppLogger.info('RESET_CODE_SENT');
+    await prepareForRecovery(deviceName: _deviceName222);
+    final id = _store.deviceId ?? _store.generateDeviceId();
+    var key = '';
+    try {
+      await _crypto.init(id);
+      key = await _crypto.publicKey();
+    } catch (_) {}
+    final result = await _api.resetPasswordWithCode222(
+      username: username,
+      recoveryCode: formatCode222(recoveryCode),
+      newPassword: newPassword,
+      deviceName: _deviceName222,
+      identityPublicKey: key,
+    );
+    AppLogger.info('RESET_CODE_OK');
+    await afterReset222(username: result.account.username, newPassword: newPassword, newRecoveryCode: result.recoveryCode);
+    try {
+      await _api.getProfile(downloadAvatar: false);
+    } catch (_) {}
+    return result;
+  }
+
+  String _lastUsername222() {
+    final pending = _store.offlinePending?['username']?.toString() ?? '';
+    final mirror = _store.offlineLoginAccount?['username']?.toString() ?? '';
+    final last = (_store.username ?? '').trim();
+    return (last.isNotEmpty ? last : (pending.isNotEmpty ? pending : mirror)).trim().toLowerCase();
+  }
+
+  @override
+  String? offlineResetProblem222({required String username, required String recoveryCode}) {
+    final user = username.trim().toLowerCase();
+    final last = _lastUsername222();
+    final pending = _store.offlinePending?['username']?.toString().trim().toLowerCase() ?? '';
+    final mirror = _store.offlineLoginAccount?['username']?.toString().trim().toLowerCase() ?? '';
+    if (user.isEmpty || user != last || (user != pending && user != mirror)) return 'not_last';
+    final local = normalizeCode222(_store.localRecoveryCode ?? '');
+    if (local.isEmpty || normalizeCode222(recoveryCode) != local) return 'bad_code';
+    return null;
+  }
+
+  @override
+  Future<void> resetOffline222({required String username, required String recoveryCode, required String newPassword}) async {
+    final problem = offlineResetProblem222(username: username, recoveryCode: recoveryCode);
+    if (problem != null) throw ResetProblem222(problem);
+    final user = username.trim().toLowerCase();
+    final rng = Random.secure();
+    final salt = Uint8List.fromList(List<int>.generate(PasswordKdf.saltLength, (_) => rng.nextInt(256)));
+    final hash = PasswordKdf.derive(newPassword, salt);
+    final pending = _store.offlinePending;
+    if (pending != null && pending['username']?.toString().trim().toLowerCase() == user) {
+      // Never on the server: the waiting registration simply gets the new
+      // password (its one-time publish secret too, if it still has one).
+      await _store.updateOfflinePendingPassword222(pwdHash: PasswordKdf.b64(hash), pwdSalt: PasswordKdf.b64(salt));
+      try {
+        final secret = await _store.readOfflinePublishSecret();
+        if (secret != null && secret.isNotEmpty) await _store.writeOfflinePublishSecret(newPassword);
+      } catch (_) {}
+    } else {
+      await _store.saveOfflineLoginAccount(
+        username: user,
+        pwdHash: PasswordKdf.b64(hash),
+        pwdSalt: PasswordKdf.b64(salt),
+        recoveryCode: _store.localRecoveryCode ?? '',
+      );
+      await _store.savePwdResetPending222({
+        'username': user,
+        'salt': PasswordKdf.b64(salt),
+        'hash': PasswordKdf.b64(hash),
+        'iterations': PasswordKdf.iterations,
+        'made_at': DateTime.now().toUtc().toIso8601String(),
+        'code_hash': codeHash222(_store.localRecoveryCode ?? ''),
+      });
+    }
+    await _store.setSignedOut(false);
+    AppLogger.info('RESET_OFFLINE_OK', detail: pending != null ? 'phone_only' : 'waits_for_server');
+  }
+
+  @override
+  Future<({AccountRecoveryStart start, String server})> createNoCodeRequest222({required String username}) async {
+    final server = await prepareForRecovery(deviceName: _deviceName222);
+    final id = _store.deviceId ?? _store.generateDeviceId();
+    await _crypto.init(id);
+    final key = await _crypto.publicKey();
+    final start = await _api.createAccountRecovery(
+      username: username,
+      deviceId: id,
+      deviceName: _deviceName222,
+      identityPublicKey: key,
+      noCode: true,
+    );
+    await savePendingRequest(requestId: start.requestId, requestSecret: start.requestSecret, deviceId: start.targetDeviceId.isEmpty ? id : start.targetDeviceId);
+    AppLogger.info('RECOVERY_NOCODE_SENT', detail: 'id=${start.requestId.length > 8 ? start.requestId.substring(0, 8) : start.requestId}');
+    return (start: start, server: server);
+  }
+
+  @override
+  Future<String> completeNoCode222({required String server, required String requestId, required String requestSecret, required String oneTimeCode, required String newPassword}) async {
+    final id = _store.deviceId ?? _store.generateDeviceId();
+    await _crypto.init(id);
+    final key = await _crypto.publicKey();
+    final result = await _api.completeAccountRecovery(
+      server: server,
+      requestId: requestId,
+      requestSecret: requestSecret,
+      recoveryCredential: oneTimeCode.replaceAll(RegExp(r'[^0-9]'), ''),
+      deviceId: id,
+      deviceName: _deviceName222,
+      identityPublicKey: key,
+      newPassword: newPassword,
+    );
+    await saveConfiguration(
+      server: server,
+      id: result.device.id,
+      name: result.device.name,
+      token: result.token,
+      accountId: result.account.id,
+      username: result.account.username,
+    );
+    try {
+      await saveProfile(result.profile);
+    } catch (_) {}
+    await clearPendingRequest();
+    await afterReset222(username: result.account.username, newPassword: newPassword, newRecoveryCode: result.recoveryCode);
+    AppLogger.info('RECOVERY_NOCODE_DONE');
+    return result.recoveryCode;
+  }
+
+  @override
+  Future<void> afterReset222({required String username, required String newPassword, required String newRecoveryCode}) async {
+    try {
+      final rng = Random.secure();
+      final salt = Uint8List.fromList(List<int>.generate(PasswordKdf.saltLength, (_) => rng.nextInt(256)));
+      final hash = PasswordKdf.derive(newPassword, salt);
+      await _store.saveOfflineLoginAccount(
+        username: username,
+        pwdHash: PasswordKdf.b64(hash),
+        pwdSalt: PasswordKdf.b64(salt),
+        recoveryCode: newRecoveryCode,
+      );
+    } catch (_) {}
+    if (newRecoveryCode.isNotEmpty) {
+      // The old code no longer works on the server: the phone keeps the new one.
+      await _store.updateLocalRecoveryCode(newRecoveryCode);
+    }
+    try {
+      await _store.clearPwdResetPending222();
+    } catch (_) {}
+    await _store.setSignedOut(false);
+  }
 }

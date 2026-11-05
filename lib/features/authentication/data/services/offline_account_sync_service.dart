@@ -7,9 +7,13 @@ import 'package:flutter/foundation.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
 
+import 'package:locallink/core/models/account.dart';
+import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/core/services/local_store.dart';
-import 'package:locallink/core/services/locallink_api.dart' show ApiError218;
+import 'package:locallink/core/crypto/password_kdf.dart';
+import 'package:locallink/core/services/locallink_api.dart' show ApiError218, LocalLinkApi;
+import 'package:locallink/features/recovery/data/repositories/recovery_repository.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 
@@ -105,6 +109,49 @@ class OfflineAccountSyncService {
     return result;
   }
 
+  /// Bundle 222 (section 9): a nearby phone carried her join box to the
+  /// server and the server-signed answer came back (token already opened
+  /// and checked by JoinCarrier222). Saves the session like a normal
+  /// register, then runs the same 218 steps (no new join code).
+  Future<void> takeCarriedJoin222({
+    required String status,
+    required String username,
+    required String userId,
+    required String deviceId,
+    required String token,
+    required String expiresAt,
+    required String server,
+  }) async {
+    if (!_store.isOfflinePending) return;
+    final address = (_store.serverAddress ?? '').trim().isNotEmpty ? _store.serverAddress!.trim() : server.trim();
+    if (address.isEmpty || token.isEmpty || userId.isEmpty) return;
+    final wanted = pendingUsername;
+    final secret = await _store.readOfflinePublishSecret() ?? '';
+    final name = _deviceName();
+    await _store.saveConfiguration(
+      server: address,
+      id: deviceId,
+      name: name,
+      token: token,
+      accountId: userId,
+      username: username,
+    );
+    await _store.markAccountSynced();
+    final kind = switch (status) {
+      'renamed' => JoinKind218.renamed,
+      'linked' || 'already' => JoinKind218.linked,
+      _ => JoinKind218.plain,
+    };
+    final result = AuthResult(
+      account: LocalAccount(id: userId, username: username, createdAt: ''),
+      device: Device.fromJson({'id': deviceId, 'name': name, 'platform': 'android'}),
+      expiresAt: expiresAt,
+    );
+    await _afterJoin218(result,
+        kind: kind, finalName: username.trim().toLowerCase(), wasName: wanted, secret: secret);
+    AppLogger.info('JOIN_RELAY_JOINED', detail: 'status=$status user=@$username');
+  }
+
   // ------------------------------------------------------------- Bundle 218
 
   /// Set by AppDependencies: refresh the profile, push the pending profile,
@@ -116,6 +163,65 @@ class OfflineAccountSyncService {
   static const blockKey = 'offline_publish_block_218';
   static const idMovesKey = 'id_moves_218';
   static const linkedPhoneKey = 'linked_phone_218';
+
+  // ------------------------------------------------------------- Bundle 222
+
+  /// Home shows "Your new password is only on this phone" while this is '1'.
+  static const pwdResetBannerKey222 = 'pwd_reset_banner_222';
+
+  /// A password changed with no server (Forgot password, same phone) goes to
+  /// the server once it is back: the saved recovery code + the new salt and
+  /// hash (never the plain password). OK → the new code shows on Home once.
+  /// Refused (the code was changed meanwhile) → a note, no loop. Returns
+  /// 'none' | 'ok' | 'refused' | 'later'.
+  static Future<String> syncPwdReset222({required LocalStore store, required LocalLinkApi api}) async {
+    final pending = await store.pwdResetPending222();
+    if (pending == null) return 'none';
+    final code = store.localRecoveryCode ?? '';
+    Future<String> refuse(String why) async {
+      try {
+        await store.clearPwdResetPending222();
+        await store.writeSetting(pwdResetBannerKey222, '1');
+      } catch (_) {}
+      AppLogger.info('RESET_SYNC_FAIL', detail: 'reason=$why');
+      JoinNotice218.bump();
+      return 'refused';
+    }
+
+    if (code.isEmpty || RecoveryRepository.codeHash222(code) != pending['code_hash']?.toString()) {
+      return refuse('code_changed_here');
+    }
+    AppLogger.info('RESET_SYNC_SENT');
+    try {
+      final deviceName = (store.deviceName ?? '').trim();
+      final result = await api.resetPasswordWithCode222(
+        username: pending['username']?.toString() ?? (store.username ?? ''),
+        recoveryCode: RecoveryRepository.formatCode222(code),
+        newPasswordHash: pending['hash']?.toString() ?? '',
+        newPasswordSalt: pending['salt']?.toString() ?? '',
+        iterations: (pending['iterations'] as num?)?.toInt() ?? PasswordKdf.iterations,
+        deviceName: deviceName.isEmpty ? 'My Android Phone' : deviceName,
+      );
+      await store.clearPwdResetPending222();
+      if (result.recoveryCode.isNotEmpty) {
+        await store.updateLocalRecoveryCode(result.recoveryCode);
+        try {
+          await store.writeSetting(joinRecoveryKey, result.recoveryCode);
+        } catch (_) {}
+      }
+      AppLogger.info('RESET_SYNC_OK');
+      JoinNotice218.bump();
+      return 'ok';
+    } catch (error) {
+      final code = codeOf218(error);
+      final status = error is ApiError218 ? error.status : 0;
+      if (code == 'BAD_RECOVERY_CODE' || code == 'NOT_ACTIVE' || code == 'BAD_RESET_DATA' || status == 401) {
+        return refuse(code.isEmpty ? '$status' : code);
+      }
+      AppLogger.info('RESET_SYNC_FAIL', detail: 'reason=${status == 0 ? 'net' : '$status'} later=1');
+      return 'later';
+    }
+  }
 
   /// The server's error code (ApiError218), or `[code=X]` in a text.
   static String codeOf218(Object error) {

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/features/admin/data/services/admin_offline_users_222.dart';
 import 'package:locallink/features/admin/data/services/admin_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_contract.dart';
 
@@ -191,6 +194,10 @@ final class AdminBloc extends Cubit<AdminState> {
       }
       // Bundle 216: a missing link map (old server) is not an error.
       final failures = results.take(15).whereType<_AdminFailure>().toList();
+      // Bundle 222: remember the server Users list (offline rows rule).
+      if (results[5] is! _AdminFailure) {
+        unawaited(AdminOfflineUsers222.serverUsersLoaded(_listOrEmpty(results[5])));
+      }
       emit(state.copyWith(
         summaryData: _mapOrNull(results[0]),
         runtimeDiagnosticsData: _mapOrNull(results[1]),

@@ -47,8 +47,12 @@ object MeshOneStep {
     private val actionTypes = setOf(ADMIN_ACT_DIGEST, ADMIN_ACT_CARDS, ADMIN_ACT_DONE, ADMIN_ACT_PARTS)
 
     fun isAdminAction(type: String?): Boolean = type != null && type in actionTypes
+    // Bundle 222: an offline account's sealed join box, the server's join
+    // key note and the server-signed answers (each phone passes them on).
+    const val ACCOUNT_JOIN: String = "account_join"
+    fun isAccountJoin(type: String?): Boolean = type == ACCOUNT_JOIN
 
-    fun isOneStep(type: String?): Boolean = MeshRelayPolicy.isNameQuestion(type) || isAdminBlock(type) || isVersion(type) || isAdminBadge(type) || isAdminAction(type)
+    fun isOneStep(type: String?): Boolean = MeshRelayPolicy.isNameQuestion(type) || isAdminBlock(type) || isVersion(type) || isAdminBadge(type) || isAdminAction(type) || isAccountJoin(type)
 
     /** Came straight from the phone on this link and is for this phone. */
     fun isOneStepIn(type: String?, sourceId: String, destinationId: String, linkPeerId: String, selfId: String): Boolean =

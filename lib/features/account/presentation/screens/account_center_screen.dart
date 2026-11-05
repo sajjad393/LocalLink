@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/admin_crown.dart';
 
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/local_store.dart';
@@ -186,7 +187,12 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 24),
-                            child: Row(
+                            // Bundle 222 (C-1): the crown stays inside the card.
+                            child: AdminCrownRoom(
+                             id: AdminBadgeBook.instance.selfUserId,
+                             radius: 28,
+                             already: 24,
+                             child: Row(
                               children: [
                                 // Bundle 211 (A1): ring + lock while my
                                 // profile is Private (same as Settings).
@@ -236,6 +242,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                                     key: const ValueKey('account_profile_edit'),
                                     color: colors.onSurfaceVariant),
                               ],
+                            ),
                             ),
                           ),
                         ),

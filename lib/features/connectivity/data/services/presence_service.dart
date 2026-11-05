@@ -12,6 +12,10 @@ import 'wifi_radio_control_service.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
 
 class PresenceService {
+  /// Bundle 222: set by AppDependencies (offline accounts seen nearby,
+  /// sent as `offline_seen` with presence_update).
+  static Future<List<Map<String, Object>>> Function()? offlineSeen222;
+
   final LocalStore store;
   final WebSocketService socket;
   final WifiDirectService wifiDirect;
@@ -161,6 +165,11 @@ class PresenceService {
         'status_updated_at': statusUpdatedAt,
       };
       if (serverConnected && store.deviceToken != null) {
+        // Bundle 222: offline accounts seen nearby (old servers ignore it).
+        var seen222 = const <Map<String, Object>>[];
+        try {
+          seen222 = await (offlineSeen222?.call() ?? Future.value(const <Map<String, Object>>[]));
+        } catch (_) {}
         socket.send({
           'type': 'presence_update',
           'device_id': store.deviceId,
@@ -176,6 +185,7 @@ class PresenceService {
           'status_updated_at': statusUpdatedAt,
           // Bundle 216g: old servers ignore this field.
           'neighbors': neighbors,
+          if (seen222.isNotEmpty) 'offline_seen': seen222,
         });
       }
       if (directTransport.isStarted) {
