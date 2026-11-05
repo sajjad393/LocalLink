@@ -138,7 +138,7 @@ final class PairingService {
   void start() {
     if (_started) return;
     _started = true;
-    AppLogger.warning('PAIR_STAGE', detail: 'pairing service started');
+    AppLogger.info('PAIR_STAGE', detail: 'pairing service started');
     _events = _transport.events.listen(_handleTransportEvent);
     // Bundle 113: the receiver side must already have identity+sockets when a
     // packet lands; configure lazily here (idempotent, safe, never restarts
@@ -153,7 +153,7 @@ final class PairingService {
   /// on cold-start ordering.
   Future<void> _ensureTransportReady() async {
     final deviceId = _store.deviceId ?? '';
-    AppLogger.warning('PAIR_STAGE', detail: 'ensureTransportReady deviceId=${deviceId.isEmpty ? '<empty>' : deviceId.substring(0, deviceId.length > 12 ? 12 : deviceId.length)}…');
+    AppLogger.info('PAIR_STAGE', detail: 'ensureTransportReady deviceId=${deviceId.isEmpty ? '<empty>' : deviceId.substring(0, deviceId.length > 12 ? 12 : deviceId.length)}…');
     if (deviceId.isEmpty) return; // nothing to identify with yet
     final devices = await _store.localDevices();
     final ids = devices
@@ -186,18 +186,18 @@ final class PairingService {
   /// Ask the locally visible peer [nodeId] to pair. Throws when the peer
   /// is not currently visible on the local network (native error).
   Future<void> requestPair(String nodeId) async {
-    AppLogger.warning('PAIR_STAGE', detail: 'requestPair entered node=$nodeId');
+    AppLogger.info('PAIR_STAGE', detail: 'requestPair entered node=$nodeId');
     // Bundle 194: remember the tap (the answer = "my Add worked").
     if (_ownRequestAt.length > 50) _ownRequestAt.clear();
     _ownRequestAt[nodeId] = DateTime.now();
     final body = await _payload();
-    AppLogger.warning('PAIR_STAGE', detail: 'payload built');
+    AppLogger.info('PAIR_STAGE', detail: 'payload built');
     await _ensureTransportReady();
-    AppLogger.warning('PAIR_STAGE', detail: 'transport ensured, sending');
+    AppLogger.info('PAIR_STAGE', detail: 'transport ensured, sending');
     try {
       await _transport.sendPairPayload(
           nodeId: nodeId, kind: 'request', body: body);
-      AppLogger.warning('PAIR_STAGE', detail: 'native send returned OK');
+      AppLogger.info('PAIR_STAGE', detail: 'native send returned OK');
       _diag('Pair request sent to native transport.');
     } catch (first) {
       AppLogger.warning('PAIR_SEND_THROW', detail: '$first');
@@ -216,26 +216,26 @@ final class PairingService {
     // Bundle 117: the accept packet goes out FIRST so the requester's UI
     // unblocks immediately; local adoption (import, contact write, roster
     // push — including its server mirror) runs after, best effort.
-    AppLogger.warning('PAIR_ACCEPT',
+    AppLogger.info('PAIR_ACCEPT',
         detail: 'stage=entered node=${request.nodeId} from=${request.displayName}');
     await _ensureTransportReady();
-    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=transport_ready');
+    AppLogger.info('PAIR_ACCEPT', detail: 'stage=transport_ready');
     var answerSent = false;
     Object? sendError;
     try {
       final body = await _payload();
-      AppLogger.warning('PAIR_ACCEPT', detail: 'stage=payload_built');
+      AppLogger.info('PAIR_ACCEPT', detail: 'stage=payload_built');
       await _transport.sendPairPayload(
           nodeId: request.nodeId, kind: 'accept', body: body);
       answerSent = true;
-      AppLogger.warning('PAIR_ACCEPT', detail: 'stage=accept_packet_sent');
+      AppLogger.info('PAIR_ACCEPT', detail: 'stage=accept_packet_sent');
     } catch (error) {
       sendError = error;
       // Best effort: the requester can re-ask; the roster is already right
       // on this side and their next request auto-answers (trusted fast path).
       AppLogger.warning('PAIR_ACCEPT_SEND_FAILED', detail: '$error');
     }
-    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopting');
+    AppLogger.info('PAIR_ACCEPT', detail: 'stage=adopting');
     try {
       await _adopt(request.raw, request.profile, request.nodeId,
           customName: customName, signalPaired: false);
@@ -247,7 +247,7 @@ final class PairingService {
           detail: 'stage=adopt_failed error=$error');
       rethrow;
     }
-    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=done');
+    AppLogger.info('PAIR_ACCEPT', detail: 'stage=done');
     // Bundle 122: honest completion — only claim "connected" when our accept
     // packet actually left the device AND the peer was adopted. When the
     // answer failed (e.g. local profile not set up yet), adoption has still
@@ -423,7 +423,7 @@ final class PairingService {
       final body = await _payload();
       await _transport.sendPairPayload(
           nodeId: nodeId, kind: 'accept', body: body);
-      AppLogger.warning('PAIR_ACCEPT', detail: 'stage=auto_accept_sent');
+      AppLogger.info('PAIR_ACCEPT', detail: 'stage=auto_accept_sent');
     } catch (error) {
       // The sender re-asks; we already trust them then (fast path answers).
       AppLogger.warning('PAIR_ACCEPT_SEND_FAILED', detail: '$error');
@@ -573,9 +573,9 @@ final class PairingService {
     // Bundle 117: stage logs — if adoption ever stalls (server mirror with no
     // internet, encrypted store contention) the log names the exact step.
     await _directory.importQrProfile(raw);
-    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_import_done');
+    AppLogger.info('PAIR_ACCEPT', detail: 'stage=adopt_import_done');
     await _directory.addContact(profile.userId, customName: customName);
-    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_contact_saved');
+    AppLogger.info('PAIR_ACCEPT', detail: 'stage=adopt_contact_saved');
     // Bundle 125: register the peer's device in known_devices. _isTrusted
     // reads that table — without this row the trusted fast path was
     // structurally unreachable: the peer's later pair retries fell off the
@@ -590,9 +590,9 @@ final class PairingService {
       createdAt: DateTime.now().toUtc().toIso8601String(),
       lastSeenAt: DateTime.now().toUtc().toIso8601String(),
     ));
-    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_device_registered');
+    AppLogger.info('PAIR_ACCEPT', detail: 'stage=adopt_device_registered');
     await _pushRoster();
-    AppLogger.warning('PAIR_ACCEPT', detail: 'stage=adopt_roster_pushed');
+    AppLogger.info('PAIR_ACCEPT', detail: 'stage=adopt_roster_pushed');
     // signalPaired=false is used by accept(): the dialog path only announces
     // completion after the accept packet has actually been sent (Bundle 122).
     if (signalPaired && !_paired.isClosed) _paired.add(profile.displayName);

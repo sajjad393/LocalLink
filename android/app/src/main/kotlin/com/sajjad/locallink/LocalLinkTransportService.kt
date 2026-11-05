@@ -574,6 +574,8 @@ class LocalLinkTransportService : Service() {
     @Volatile private var lastEngineAskAt = 0L
     private var networkWatcher: ServiceNetworkWatcher? = null
     @Volatile private var lanBeaconNow = false
+    // Bundle 223 (K): 15 s pause + one report after "Network unreachable".
+    private val lanBackoff = MeshTransportPolicy.LanBeaconBackoff()
 
     /**
      * Bundle 175 (1, 7): the only place that calls startForeground. Android
@@ -625,7 +627,11 @@ class LocalLinkTransportService : Service() {
         Log.i(BG_TAG, "NET_CHANGE wifi=${snap.wifi} internet=${snap.internet} wifi_up=${action.wifiUp} wifi_down=${action.wifiDown}")
         if (action.wifiUp && transportRunning) {
             Thread({
-                try { startLanTransport(); lanBeaconNow = true } catch (e: Exception) { Log.w(BG_TAG, "NET_CHANGE lan_restart_failed reason=${e.javaClass.simpleName}") }
+                try {
+                    // Bundle 223 (K): the network changed - normal beacon tier now.
+                    if (lanBackoff.onOk()) Log.i("NEARBY", "LAN_BEACON resumed why=net_change")
+                    startLanTransport(); lanBeaconNow = true
+                } catch (e: Exception) { Log.w(BG_TAG, "NET_CHANGE lan_restart_failed reason=${e.javaClass.simpleName}") }
             }, "locallink-net-change").start()
         }
         if (action.wifiDown && transportRunning) {
@@ -1273,7 +1279,8 @@ class LocalLinkTransportService : Service() {
                         lanBeaconTier = tier
                         Log.i("NEARBY", "lan beacon every=${tier / 1000}s phones=$phones")
                     }
-                    nextBeaconAt = now + MeshTransportPolicy.jitteredBeaconMs(phones, Math.random())
+                    // Bundle 223 (K): 15 s while the network is unreachable.
+                    nextBeaconAt = now + lanBackoff.nextDelayMs(MeshTransportPolicy.jitteredBeaconMs(phones, Math.random()))
                 }
                 try {
                     val datagram = DatagramPacket(receiveBuffer, receiveBuffer.size)
@@ -1310,7 +1317,12 @@ class LocalLinkTransportService : Service() {
             addresses.forEach { destination ->
                 socket.send(DatagramPacket(bytes, bytes.size, destination, lanDiscoveryPort))
             }
+            if (lanBackoff.onOk()) Log.i("NEARBY", "LAN_BEACON resumed why=sent") // Bundle 223 (K)
         } catch (e: Exception) {
+            // Bundle 223 (K): "Network unreachable" is reported ONCE, then a 15 s pause.
+            val unreachable = MeshTransportPolicy.isUnreachable(e.message)
+            if (!lanBackoff.onError(unreachable)) return
+            if (unreachable) Log.i("NEARBY", "LAN_BEACON paused why=no_network wait_ms=${MeshTransportPolicy.LAN_BEACON_BACKOFF_MS}")
             transportEvent("error", mapOf(
                 "transport" to MeshTransportPolicy.LAN,
                 "operation" to "discovery_broadcast",

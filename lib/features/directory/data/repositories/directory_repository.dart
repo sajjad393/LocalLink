@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
+import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/core/services/app_logger.dart';
@@ -1464,6 +1465,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     if (!_started || _serverContactsSyncInFlight) return;
     final accountId = store.accountId;
     if (accountId == null || accountId.isEmpty) return;
+    // Bundle 223 (L): no network / server just failed -> skip quietly.
+    if (ServerReach.instance.shouldSkip('contacts_sync')) return;
     _serverContactsSyncInFlight = true;
     try {
       // Bundle 218c: friends who joined the server get their real id first.
@@ -1553,6 +1556,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     } catch (e) {
       // Never silently discard sync failures: log and leave local state
       // untouched; the next cycle retries both directions.
+      ServerReach.instance.noteFailure(e); // Bundle 223 (L)
       AppLogger.warning('CONTACTS_SYNC_FAILED', detail: e.toString());
     } finally {
       _serverContactsSyncInFlight = false;

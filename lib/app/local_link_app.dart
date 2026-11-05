@@ -1,3 +1,4 @@
+import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminActionSignOut;
 import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
@@ -239,8 +240,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // exactly which bundle set is installed on this device. The stamp
     // silently stayed at 118 through bundles 119–125, which misled a whole
     // debugging round ("is 125 even running?"). Bump with every bundle.
-    AppLogger.warning('APP_BUILD_STAMP',
-        detail: 'v3 · 3.0.50 · bundles 104-209 + groups G1-G7 (2026-11-05)');
+    // Bundle 223 (O, Q18): made from kAppVersion + kAppBuild, INFO.
+    AppLogger.info('APP_BUILD_STAMP', detail: AppBuild.stamp);
     if (mounted) {
       setState(() {
         _ready = false;

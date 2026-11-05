@@ -11,6 +11,8 @@ object AppSharePolicy {
     /** How long Android may take to start the hotspot. */
     const val START_TIMEOUT_MS = 15_000L
     /** After the hotspot is on, how long we look for its new address. */
+    // Bundle 223 (E, Q11): stays 3 s so step 1 is not slower; the app then
+    // keeps looking up to 10 s by itself (app_share_controller).
     const val ADDRESS_WAIT_MS = 3_000L
     const val ADDRESS_STEP_MS = 250L
 
@@ -57,14 +59,33 @@ object AppSharePolicy {
      * start, (2) a private address on a hotspot-looking interface, else null.
      * Wi-Fi Direct group addresses (`p2p*`, 192.168.49.x) never count.
      */
-    fun pickHotspotIp(before: Map<String, String>, after: Map<String, String>): String? {
+    fun pickHotspotIp(before: Map<String, String>, after: Map<String, String>, routerIp: String? = null): String? {
         fun ok(iface: String, ip: String) = isPrivateV4(ip) && !iface.lowercase().startsWith("p2p") &&
-            !ip.startsWith("192.168.49.") && iface.lowercase() != "wlan0"
+            !ip.startsWith("192.168.49.") && (iface.lowercase() != "wlan0" || wlan0Ok(ip, before[iface], routerIp))
         val fresh = after.filter { (iface, ip) -> ok(iface, ip) && before[iface] != ip }
         fresh.entries.firstOrNull { looksLikeHotspot(it.key) }?.let { return it.value }
         fresh.entries.firstOrNull()?.let { return it.value }
-        return after.entries.firstOrNull { ok(it.key, it.value) && looksLikeHotspot(it.key) }?.value
+        after.entries.firstOrNull { ok(it.key, it.value) && looksLikeHotspot(it.key) }?.let { return it.value }
+        // Bundle 223 (E): single-radio phones (ZTE Blade A35) run the hotspot
+        // on wlan0 itself; with no router a hotspot owns x.x.x.1.
+        return after.entries.firstOrNull { it.key.lowercase() == "wlan0" && ok(it.key, it.value) }?.value
     }
+
+    /**
+     * Bundle 223 (E): wlan0 was always skipped (taken as the home Wi-Fi), so a
+     * single-radio phone had no address at all. wlan0 counts when it got a
+     * NEW address since the start, or when the phone is not on a router and
+     * it holds x.x.x.1. The router's own address (same as [routerIp]) never
+     * counts (Q: a router joined during the wait is not the hotspot).
+     */
+    fun wlan0Ok(ip: String, beforeIp: String?, routerIp: String?): Boolean {
+        if (routerIp != null && ip == routerIp) return false
+        return beforeIp != ip || (routerIp == null && ip.endsWith(".1"))
+    }
+
+    /** Bundle 223 (E): `iface=ip,iface=ip` for the SHARE_APP lines. */
+    fun listForLog(all: Map<String, String>): String =
+        if (all.isEmpty()) "none" else all.entries.joinToString(",") { "${it.key}=${it.value}" }
 }
 
 /**

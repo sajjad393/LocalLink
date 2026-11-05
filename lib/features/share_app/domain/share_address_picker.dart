@@ -36,17 +36,26 @@ bool isPrivateV4(String ip) {
       (p[0] == 172 && p[1]! >= 16 && p[1]! <= 31);
 }
 
-/// Wi-Fi Direct group (`p2p*`, 192.168.49.x) and the normal Wi-Fi (`wlan0`)
-/// are never the hotspot.
-bool _hotspotCandidate(ShareAddress a) {
+/// Wi-Fi Direct group (`p2p*`, 192.168.49.x) is never the hotspot.
+///
+/// Bundle 223 (E): `wlan0` was always skipped (taken as the home Wi-Fi), but
+/// single-radio phones (ZTE Blade A35) run LinkUp's Wi-Fi on wlan0 itself,
+/// so the list was empty. wlan0 counts when the phone is NOT on a router
+/// ([noRouter]) and it holds `x.x.x.1` (a hotspot owns .1). The "new
+/// address" case is decided on the Android side (it knows the address from
+/// before the start) and arrives as `nativeIp`.
+bool _hotspotCandidate(ShareAddress a, {bool noRouter = false}) {
   final n = a.iface.toLowerCase();
-  if (!isPrivateV4(a.ip)) return false;
-  if (n.startsWith('p2p') || a.ip.startsWith('192.168.49.')) return false;
-  if (n == 'wlan0' || n.startsWith('rmnet') || n.startsWith('lo')) {
-    return false;
-  }
+  if (!_notDirect(a)) return false;
+  if (n == 'wlan0') return noRouter && a.ip.endsWith('.1');
+  if (n.startsWith('rmnet') || n.startsWith('lo')) return false;
   return true;
 }
+
+bool _notDirect(ShareAddress a) =>
+    isPrivateV4(a.ip) &&
+    !a.iface.toLowerCase().startsWith('p2p') &&
+    !a.ip.startsWith('192.168.49.');
 
 /// The hotspot address, or null when unsure (the screen then lets the user
 /// pick from [list]).
@@ -54,16 +63,24 @@ bool _hotspotCandidate(ShareAddress a) {
 /// 1. The address Android-side found (new since the start).
 /// 2. A private address on a hotspot-looking interface.
 /// 3. The only private address that is not Wi-Fi / Wi-Fi Direct.
-String? pickShareIp({String? nativeIp, required List<ShareAddress> list}) {
+/// 4. (223) No router and wlan0 holds x.x.x.1: that one.
+String? pickShareIp(
+    {String? nativeIp,
+    required List<ShareAddress> list,
+    bool noRouter = false}) {
   if (nativeIp != null &&
       isPrivateV4(nativeIp) &&
       !nativeIp.startsWith('192.168.49.')) {
     return nativeIp;
   }
-  final candidates = list.where(_hotspotCandidate).toList();
+  final candidates =
+      list.where((a) => _hotspotCandidate(a, noRouter: noRouter)).toList();
   final hinted = candidates.where((a) => a.hotspot).toList();
   if (hinted.isNotEmpty) return hinted.first.ip;
   if (candidates.length == 1) return candidates.first.ip;
+  for (final a in candidates) {
+    if (a.iface.toLowerCase() == 'wlan0') return a.ip;
+  }
   return null;
 }
 
@@ -87,5 +104,22 @@ String? pickTetherIp(List<ShareAddress> list) {
 }
 
 /// Addresses the user may pick by hand (rare).
-List<ShareAddress> shareIpChoices(List<ShareAddress> list) =>
-    list.where(_hotspotCandidate).toList();
+List<ShareAddress> shareIpChoices(List<ShareAddress> list,
+        {bool noRouter = false}) =>
+    list.where((a) => _hotspotCandidate(a, noRouter: noRouter)).toList();
+
+/// Bundle 223 (E): after 10 s with nothing found - EVERY private address
+/// (also wlan0) with its interface name, so there is always something to
+/// tap. Only Wi-Fi Direct (never reachable from the hotspot) is left out.
+List<ShareAddress> shareIpAll(List<ShareAddress> list) {
+  final seen = <String>{};
+  return [
+    for (final a in list)
+      if (_notDirect(a) && seen.add(a.ip)) a
+  ];
+}
+
+/// Bundle 223 (E): `iface=ip,iface=ip` for the `SHARE_APP ip_none` line.
+String shareIpListForLog(List<ShareAddress> list) => list.isEmpty
+    ? 'none'
+    : list.map((a) => '${a.iface}=${a.ip}').join(',');

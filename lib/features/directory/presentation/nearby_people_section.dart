@@ -246,7 +246,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
   /// beacon-visible on the LAN (the common case on shared Wi-Fi), the pair
   /// request fires immediately. Users never see a separate Connect step.
   Future<void> _pairWithWifiPeer(WifiDirectPeer peer) async {
-    AppLogger.warning('PAIR_UI', detail: 'stage=pair_button peer=${peer.name}');
+    AppLogger.info('PAIR_UI', detail: 'stage=pair_button peer=${peer.name}');
     final c = widget.connectivity;
     if (!await c.isWifiDirectSupported()) {
       _snack('This phone does not support Wi-Fi Direct.');
@@ -348,7 +348,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     // Bundle 115: every stage of the tap chain is loud. Anything that throws
     // before this print line-by-line scaffold runs means the tap never left
     // the sheet — it lands in the console as PAIR_TAP lines either way.
-    AppLogger.warning('PAIR_TAP', detail: 'stage=handler node=${peer.nodeId}');
+    AppLogger.info('PAIR_TAP', detail: 'stage=handler node=${peer.nodeId}');
     Object? lastError;
     for (var attempt = 0; attempt < 4; attempt++) {
       if (attempt > 0) {
@@ -356,9 +356,9 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         if (!mounted) return;
       }
       try {
-        AppLogger.warning('PAIR_TAP', detail: 'stage=calling_requestPair attempt=${attempt + 1}');
+        AppLogger.info('PAIR_TAP', detail: 'stage=calling_requestPair attempt=${attempt + 1}');
         await widget.pairing.requestPair(peer.nodeId);
-        AppLogger.warning('PAIR_TAP', detail: 'stage=requestPair_returned_ok');
+        AppLogger.info('PAIR_TAP', detail: 'stage=requestPair_returned_ok');
         // Bundle 177 (7.3): no accept box any more; "<name> added" follows.
         _snack('Adding ${_personName(peer.nodeId) ?? 'this phone'}…');
         return;
@@ -479,7 +479,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
       ),
     );
     if (send == true && mounted) {
-      AppLogger.warning('PAIR_SHEET', detail: 'confirmed node=${peer.nodeId}');
+      AppLogger.info('PAIR_SHEET', detail: 'confirmed node=${peer.nodeId}');
       await _requestPair(peer);
     }
   }

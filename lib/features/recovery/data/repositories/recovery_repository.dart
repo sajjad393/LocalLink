@@ -231,7 +231,7 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
     final user = username.trim().toLowerCase();
     final rng = Random.secure();
     final salt = Uint8List.fromList(List<int>.generate(PasswordKdf.saltLength, (_) => rng.nextInt(256)));
-    final hash = PasswordKdf.derive(newPassword, salt);
+    final hash = await PasswordKdf.deriveAsync(newPassword, salt); // Bundle 223 (J)
     final pending = _store.offlinePending;
     if (pending != null && pending['username']?.toString().trim().toLowerCase() == user) {
       // Never on the server: the waiting registration simply gets the new
@@ -316,7 +316,7 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
     try {
       final rng = Random.secure();
       final salt = Uint8List.fromList(List<int>.generate(PasswordKdf.saltLength, (_) => rng.nextInt(256)));
-      final hash = PasswordKdf.derive(newPassword, salt);
+      final hash = await PasswordKdf.deriveAsync(newPassword, salt); // Bundle 223 (J)
       await _store.saveOfflineLoginAccount(
         username: username,
         pwdHash: PasswordKdf.b64(hash),

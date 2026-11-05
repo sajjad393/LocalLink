@@ -142,7 +142,7 @@ class ApiHttpClient {
     } catch (error, stackTrace) {
       stopwatch.stop();
 
-      AppLogger.error(
+      AppLogger.failure( // Bundle 223 (Q19): offline = WARN
         'HTTP_REQUEST_FAILED',
         error: error,
         stackTrace: stackTrace,

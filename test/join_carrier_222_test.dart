@@ -171,7 +171,8 @@ void main() {
     await her.carrier.tick();
     expect((await her.carrier.status()).noKey, isTrue);
     await _linkFn('her', 'ali');
-    expect(await her.carrier.joinKey(), isNull, reason: 'one phone only');
+    // Bundle 223 (B): one phone is now enough when the note checks.
+    expect(await her.carrier.joinKey(), isNotNull, reason: 'one phone, signed note');
     expect((await her.store.rows()), isEmpty);
     await _linkFn('her', 'bilal');
     expect(await her.carrier.joinKey(), isNotNull, reason: 'second phone, same signed note');

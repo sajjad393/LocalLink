@@ -78,6 +78,11 @@ class NearbyTagManager(
     private var requestStartedSeq = 0
     private var rawPtrLogged = false
     private var rawTxtLogged = false
+    // Bundle 223 (F): phones whose TXT came / was asked for in this window,
+    // and name tags heard (the TXT never came on the Realme / ZTE).
+    private val txtFrom = HashSet<String>()
+    private val txtAsked = HashSet<String>()
+    private var windowNames = 0
 
     /** Bundle 159: (charging, level 0-100 or -1). Never throws. */
     private fun batteryState(): Pair<Boolean, Int> = try {
@@ -243,11 +248,14 @@ class NearbyTagManager(
         val wifi = try { onWifi() } catch (_: Exception) { false }
         val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge, charging, wifi,
             v6 = groupV6(), hotspotSsid = hotspotSsid, hotspotKey = hotspotKey, linkTarget = linkTarget, inCall = inCall)
-        val signature = txt.toString()
+        val signature = txt.toString() + "|" + NearbyTagPolicy.encodeName(id, host, member, wanted.isNotEmpty())
         if (!force && signature == lastPublished) { then?.invoke(); return }
         lastPublished = signature
+        // Bundle 223 (F): a short tag in the name itself (LinkUp-<id8>-<flags>);
+        // the service type stays, old phones never read the name.
+        val name = NearbyTagPolicy.encodeName(id, host, member, wanted.isNotEmpty())
         val info = WifiP2pDnsSdServiceInfo.newInstance(
-            NearbyTagPolicy.INSTANCE_NAME, NearbyTagPolicy.SERVICE_TYPE, txt)
+            name, NearbyTagPolicy.SERVICE_TYPE, txt)
         try {
             manager.clearLocalServices(channel, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() = addService(info, txt, then)
@@ -323,7 +331,7 @@ class NearbyTagManager(
         try {
             if (!listenersSet) {
                 manager.setDnsSdResponseListeners(channel,
-                    { instanceName, _, device -> onPtr(instanceName, device?.deviceAddress) },
+                    { instanceName, registrationType, device -> onPtr(instanceName, registrationType, device?.deviceAddress) },
                     { fullDomainName, txt, device -> onTxt(fullDomainName, txt, device?.deviceAddress) })
                 listenersSet = true
             }
@@ -355,6 +363,9 @@ class NearbyTagManager(
         windowFixed = false
         rawPtrLogged = false
         rawTxtLogged = false
+        txtFrom.clear()
+        txtAsked.clear()
+        windowNames = 0
         val seq = windowSeq
         // Bundle 201 (A4): a fresh peer list now and 10 s later, so a phone
         // that just became a host is seen as one.
@@ -364,7 +375,7 @@ class NearbyTagManager(
         main.postDelayed({
             if (seq == windowSeq) {
                 val peersNow = safePeerCount()
-                Log.i(TAG, "WD_SEARCH end why=$windowWhy heard=$windowHeard linkup=$windowLinkUp peers=$peersNow")
+                Log.i(TAG, "WD_SEARCH end why=$windowWhy heard=$windowHeard linkup=$windowLinkUp names=$windowNames peers=$peersNow")
                 // Bundle 201 (A2): Dart counts windows that heard nothing.
                 try { emit(mapOf("type" to "tag_window", "heard" to windowHeard, "peers" to peersNow)) } catch (_: Exception) {}
             }
@@ -438,16 +449,60 @@ class NearbyTagManager(
         }
     }
 
-    /** Bundle 201 (A2): first raw service answer of a window (diagnosis). */
-    private fun onPtr(instanceName: String?, address: String?) {
-        if (rawPtrLogged) return
-        rawPtrLogged = true
-        Log.i(TAG, "WD_TAG raw kind=ptr name=${instanceName ?: "-"} from=${address ?: "-"}")
+    /** Bundle 201 (A2): first raw service answer of a window (diagnosis).
+     *  Bundle 223 (F): a name tag is used at once; no TXT 2 s later -> one
+     *  exact TXT request for that phone. */
+    private fun onPtr(instanceName: String?, registrationType: String?, address: String?) {
+        if (!rawPtrLogged) {
+            rawPtrLogged = true
+            Log.i(TAG, "WD_TAG raw kind=ptr name=${instanceName ?: "-"} from=${address ?: "-"}")
+        }
+        if (address.isNullOrBlank() || !NearbyTagPolicy.isLinkUpName(instanceName)) return
+        if (registrationType != null && !registrationType.lowercase().contains(NearbyTagPolicy.SERVICE_TYPE)) return
+        val addr = address.trim().lowercase()
+        val now = System.currentTimeMillis()
+        val named = NearbyTagPolicy.decodeName(instanceName, addr, now)
+        if (named != null) {
+            windowNames += 1
+            dropStale(now)
+            if (NearbyTagPolicy.nameShouldEmit(tags[addr], named, now)) {
+                tags[addr] = named
+                Log.i(TAG, "WD_TAG from_name id=${named["id"]} addr=$addr host=${named["host"]} m=${named["member"]} w=${named["wants_link"]}")
+                emit(mapOf("type" to "services", "peers" to tags.values.toList()))
+            }
+        }
+        val seq = windowSeq
+        val name = instanceName!!.trim()
+        main.postDelayed({ askTxt(seq, name, addr) }, NearbyTagPolicy.TXT_ASK_AFTER_MS)
+    }
+
+    /** Bundle 223 (F): at most once per phone per window. */
+    private fun askTxt(seq: Int, instanceName: String, address: String) {
+        if (seq != windowSeq || !searchWindowOpen()) return
+        if (address in txtFrom || !txtAsked.add(address)) return
+        Log.i(TAG, "WD_TAG txt_ask from=$address name=$instanceName")
+        try {
+            val exact = WifiP2pDnsSdServiceRequest.newInstance(instanceName, NearbyTagPolicy.SERVICE_TYPE)
+            manager.addServiceRequest(channel, exact, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() = discoverServices(seq)
+                override fun onFailure(reason: Int) { Log.w(TAG, "WD_TAG_FAIL step=txt_ask reason=$reason") }
+            })
+        } catch (e: SecurityException) {
+            Log.w(TAG, "tag request denied: ${e.message}")
+        } catch (e: Exception) {
+            Log.w(TAG, "WD_TAG_FAIL step=txt_ask error=${e.javaClass.simpleName}")
+        }
+    }
+
+    /** Q16: full and name tags get the same 5-min stale cleanup. */
+    private fun dropStale(now: Long) {
+        tags.entries.removeIf { NearbyTagPolicy.tagIsStale(it.value, now) }
     }
 
     private fun onTxt(fullDomainName: String?, txt: Map<String, String>?, address: String?) {
         val now = System.currentTimeMillis()
         windowHeard += 1
+        address?.trim()?.lowercase()?.let { txtFrom.add(it) } // Bundle 223 (F)
         if (!rawTxtLogged) {
             rawTxtLogged = true
             Log.i(TAG, "WD_TAG raw kind=txt keys=${txt?.size ?: 0} from=${address ?: "-"}")
@@ -455,7 +510,7 @@ class NearbyTagManager(
         val tag = NearbyTagPolicy.decode(fullDomainName, txt, address, now) ?: return
         windowLinkUp += 1
         tags[tag["address"] as String] = tag
-        tags.entries.removeIf { now - ((it.value["seen_at"] as? Long) ?: 0L) > NearbyTagPolicy.TAG_MAX_AGE_MS }
+        dropStale(now)
         Log.i(TAG, "tag found id=${tag["id"]} addr=${tag["address"]} host=${tag["host"]} m=${tag["member"]} n=${tag["members"]} grp=${tag["group"] ?: "-"} key=${if (tag.containsKey("key")) 1 else 0}")
         emit(mapOf("type" to "services", "peers" to tags.values.toList()))
     }

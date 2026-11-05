@@ -1,3 +1,4 @@
+import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/groups/data/group_photo_book.dart';
@@ -573,7 +574,7 @@ class ReliableMessagingService {
         unawaited(
           api.connectRealtime().catchError(
             (Object error, StackTrace stackTrace) {
-              AppLogger.error(
+              AppLogger.failure( // Bundle 223 (Q19): offline = WARN
                 'MESSAGE_REALTIME_CONNECT_FAILED',
                 error: error,
                 stackTrace: stackTrace,
@@ -906,19 +907,21 @@ class ReliableMessagingService {
     // roster FIRST, then let the server sync run when online.
     await refreshKnownPeers();
 
+    // Bundle 223 (O, Q17): a phone-only account wrote these as a WARNING
+    // on every sync tick; now once per state, INFO.
     if (store.deviceToken == null) {
-      AppLogger.warning(
-        'MESSAGE_SYNC_SKIPPED_NO_TOKEN',
-      );
+      _logOnce.info('MESSAGE_SYNC_SKIPPED', 'no_token');
       return;
     }
 
     if (store.serverAddress == null) {
-      AppLogger.warning(
-        'MESSAGE_SYNC_SKIPPED_NO_SERVER',
-      );
+      _logOnce.info('MESSAGE_SYNC_SKIPPED', 'no_server');
       return;
     }
+    _logOnce.clear('MESSAGE_SYNC_SKIPPED');
+
+    // Bundle 223 (L): no network / server just failed -> no 10 s wait.
+    if (ServerReach.instance.shouldSkip('message_sync')) return;
 
     _syncing = true;
 
@@ -1141,8 +1144,10 @@ class ReliableMessagingService {
       AppLogger.info(
         'MESSAGE_SYNC_SUCCESS',
       );
+      ServerReach.instance.noteOk(); // Bundle 223 (L)
     } catch (error, stackTrace) {
-      AppLogger.error(
+      ServerReach.instance.noteFailure(error); // Bundle 223 (L)
+      AppLogger.failure( // Bundle 223 (Q19): offline = WARN
         'MESSAGE_SYNC_FAILED',
         error: error,
         stackTrace: stackTrace,
@@ -1155,6 +1160,9 @@ class ReliableMessagingService {
       );
     }
   }
+
+  /// Bundle 223 (O): lines written once per state.
+  final LogOnce _logOnce = LogOnce();
 
   /// Bundle 203 (1): a flush that did nothing for 90 s is taken as stuck.
   static const _flushWatchdog = Duration(seconds: 90);
@@ -2313,12 +2321,11 @@ class ReliableMessagingService {
         );
       }
 
-      AppLogger.info(
-        'DIRECT_TRANSPORT_INFO',
-        detail: 'connected=$connected '
-            'groupOwner=$groupOwner '
-            'wifiPermission=$wifiPermissionGranted',
-      );
+      // Bundle 223 (O): only when a value changes.
+      final info = 'connected=$connected '
+          'groupOwner=$groupOwner '
+          'wifiPermission=$wifiPermissionGranted';
+      _logOnce.info('DIRECT_TRANSPORT_INFO', info);
 
       final peers = await store.localDevices();
       final peerIds = peers
@@ -2350,12 +2357,13 @@ class ReliableMessagingService {
 
   Future<void> refreshKnownPeers() async {
     if (store.deviceToken == null || store.serverAddress == null) {
-      AppLogger.warning(
-        'KNOWN_PEERS_REFRESH_SKIPPED',
-      );
+      // Bundle 223 (O, Q17): once per state, INFO (was a WARNING every sync).
+      _logOnce.info('KNOWN_PEERS_REFRESH_SKIPPED',
+          store.deviceToken == null ? 'no_token' : 'no_server');
 
       return;
     }
+    _logOnce.clear('KNOWN_PEERS_REFRESH_SKIPPED');
 
     try {
       AppLogger.info(
@@ -2458,6 +2466,13 @@ class ReliableMessagingService {
     // Bundle 175 (4): Wi-Fi / internet changed (native watcher, debounced).
     // Queued messages try again now instead of waiting for the retry tick.
     if (eventType == 'network_changed') {
+      // Bundle 223 (L): the gate learns the network state.
+      ServerReach.instance.networkChanged(
+          wifi: event['wifi'] as bool?, internet: event['internet'] as bool?);
+      // Bundle 223 (H): network up -> a hanging socket try is redialled now.
+      if (event['wifi'] == true || event['internet'] == true) {
+        socket.networkBack();
+      }
       unawaited(_safeFlush('network_changed'));
       return;
     }
@@ -3205,6 +3220,19 @@ class ReliableMessagingService {
 
     final local = await store.messagesFor(otherId);
 
+    // Bundle 223 (M): with the server down the chat waited ~13 s
+    // (synchronize 10 s + api.messages). The socket is not ready -> the
+    // saved messages at once; the sync runs behind and new rows arrive
+    // through the normal message stream.
+    if (!socket.isConnected) {
+      AppLogger.info(
+        'MESSAGE_HISTORY_LOCAL_ONLY',
+        detail: 'peer=${_shortId(otherId)} reason=socket_not_ready',
+      );
+      unawaited(synchronize().catchError((Object _) {}));
+      return local;
+    }
+
     await synchronize();
 
     // Bundle 128: with no server configured (fully offline account) the
@@ -3254,7 +3282,7 @@ class ReliableMessagingService {
 
       return result;
     } catch (error, stackTrace) {
-      AppLogger.error(
+      AppLogger.failure( // Bundle 223 (Q19): offline = WARN
         'MESSAGE_HISTORY_REMOTE_FAILED',
         error: error,
         stackTrace: stackTrace,

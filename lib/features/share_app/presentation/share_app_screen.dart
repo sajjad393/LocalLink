@@ -486,31 +486,131 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
         ?.showSnackBar(SnackBar(content: Text(done)));
   }
 
+  /// Bundle 223 (E): no address yet. Never "Tap the one..." with nothing to
+  /// tap: a spinner while looking (up to 10 s, the QR then shows by
+  /// itself), after that every address + Try again + the Gateway tip.
+  Widget _noAddressCard(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final box = BoxDecoration(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: colors.outlineVariant),
+    );
+    if (!_c.ipGaveUp) {
+      return Container(
+        key: const ValueKey('share_ip_looking'),
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 32, 16, 28),
+        decoration: box,
+        child: Column(children: [
+          SizedBox(
+              width: 44,
+              height: 44,
+              child: CircularProgressIndicator(
+                  strokeWidth: 4, color: colors.primary)),
+          const SizedBox(height: 18),
+          const Text('Getting the download address...',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text('The QR shows here by itself.\n(up to 10 seconds)',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
+        ]),
+      );
+    }
+    final choices = _c.ipChoices;
+    return Container(
+      key: const ValueKey('share_ip_none'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: box,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text("Couldn't get the address by itself",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        if (choices.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text('Tap the one your friend can open:',
+              style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
+          const SizedBox(height: 8),
+          for (final a in choices)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: colors.primaryContainer.withValues(alpha: 0.35),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(
+                        color: colors.primary.withValues(alpha: 0.35))),
+                child: InkWell(
+                  key: ValueKey('share_ip_${a.ip}'),
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => _c.chooseIp(a.ip),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    child: Row(children: [
+                      Expanded(
+                        child: Text(a.ip,
+                            style: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: colors.primary)),
+                      ),
+                      Text(a.iface,
+                          style: TextStyle(
+                              fontSize: 13, color: colors.onSurfaceVariant)),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+        ],
+        const SizedBox(height: 4),
+        OutlinedButton.icon(
+          key: const ValueKey('share_ip_retry'),
+          style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              side: BorderSide(color: colors.primary)),
+          onPressed: _c.retryIp,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Try again'),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'No address at all? Your friend joins the Wi-Fi (step 1), opens its '
+          'Wi-Fi details, and types the "Gateway" address in Chrome with :8080',
+          key: const ValueKey('share_gateway_tip'),
+          style: TextStyle(fontSize: 12.5, color: colors.onSurfaceVariant),
+        ),
+      ]),
+    );
+  }
+
   List<Widget> _downloadQr(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final url = _c.downloadUrl;
-    if (url == null) {
-      // Rare: we couldn't tell which address is the Wi-Fi one.
-      return [
-        _note(context,
-            "Couldn't find this Wi-Fi's address. Tap the one that starts with "
-            '192.168 (not 192.168.49).'),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final a in _c.ipChoices)
-            ActionChip(
-              key: ValueKey('share_ip_${a.ip}'),
-              label: Text('${a.ip}  (${a.iface})'),
-              onPressed: () => _c.chooseIp(a.ip),
-            ),
-        ]),
-      ];
-    }
+    if (url == null) return [_noAddressCard(context)];
     return [
       _qrCard(context, data: url, key: 'share_qr_download', size: 190, below: [
         const SizedBox(height: 10),
-        const Text('Scan with the camera, open in Chrome',
-            style: TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
+        // Bundle 223 (D): the Wi-Fi QR scanner in Settings reads only Wi-Fi
+        // passwords, so this web-link QR did nothing there.
+        Container(
+          key: const ValueKey('share_scan_note'),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF4CC),
+            border: Border.all(color: const Color(0xFFE6C34A)),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Text('Scan with the camera app,\nnot the Wi-Fi scanner',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, color: Color(0xFF5C4600))),
+        ),
+        const SizedBox(height: 6),
         Text('or type:',
             style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
         SelectableText(_c.downloadLabel ?? '',

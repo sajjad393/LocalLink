@@ -114,6 +114,84 @@ object NearbyTagPolicy {
         return txt
     }
 
+    // ---------------------------------------------------------------- 223 (F)
+    // Android sends a service in 2 parts: the name (PTR) and the details
+    // (TXT). On the Realme C71 / ZTE A35 the TXT never arrived (`heard=0` in
+    // every window), and the name was always the plain INSTANCE_NAME, which says nothing.
+    // Now the published name carries a short tag: `LinkUp-<id 8>-<flags>`
+    // (flags: h = host, m = member, w = wants a link; n = none). The service
+    // type `_locallink._tcp` stays (older phones search for it and never read
+    // the name). A name tag has NO group name / password, so it only fills
+    // the nearby list (never a silent group join).
+
+    const val NAME_PREFIX = "LinkUp-"
+    /** No TXT this long after a PTR -> one exact TXT request for that phone. */
+    const val TXT_ASK_AFTER_MS = 2_000L
+    /** An unchanged name tag goes to Dart again after this long (Q16). */
+    const val NAME_REEMIT_MS = 30_000L
+    private val namePattern = Regex("^LinkUp-([0-9a-f]{8})-([hmwn]{1,3})$")
+
+    fun encodeName(id: String, host: Boolean, member: Boolean, wantsLink: Boolean): String {
+        val short = id.trim().lowercase().take(WANTED_ID_LENGTH)
+        val flags = buildString {
+            if (host) append('h')
+            if (member && !host) append('m')
+            if (wantsLink) append('w')
+        }.ifEmpty { "n" }
+        return "$NAME_PREFIX$short-$flags"
+    }
+
+    /** True for an old phone's plain name (222 and before). */
+    fun isOldName(name: String?): Boolean = name?.trim() == INSTANCE_NAME
+
+    /** A LinkUp service name: the new name tag or the old plain name. */
+    fun isLinkUpName(name: String?): Boolean = isOldName(name) || decodeNameParts(name) != null
+
+    private fun decodeNameParts(name: String?): Pair<String, String>? {
+        val m = namePattern.matchEntire(name?.trim() ?: return null) ?: return null
+        val id = m.groupValues[1]
+        val flags = m.groupValues[2]
+        if (flags.contains('n') && flags.length > 1) return null
+        if (flags.toSet().size != flags.length) return null
+        if (flags.contains('h') && flags.contains('m')) return null
+        return id to flags
+    }
+
+    /** A name tag -> a small tag map (`from_name`=true, no group / key), else null. */
+    fun decodeName(instanceName: String?, address: String?, now: Long): Map<String, Any>? {
+        if (address.isNullOrBlank()) return null
+        val (id, flags) = decodeNameParts(instanceName) ?: return null
+        val host = flags.contains('h')
+        return linkedMapOf(
+            "address" to address.trim().lowercase(),
+            "id" to id,
+            "host" to host,
+            "member" to (flags.contains('m') && !host),
+            "members" to 0,
+            "full" to false,
+            "seen_at" to now,
+            "gv" to true,
+            "from_name" to true,
+            "wants_link" to flags.contains('w'),
+        )
+    }
+
+    fun tagIsStale(tag: Map<String, Any>?, now: Long): Boolean =
+        tag == null || now - ((tag["seen_at"] as? Long) ?: 0L) > TAG_MAX_AGE_MS
+
+    /**
+     * Q16: should this name tag replace [prev] and go to Dart? A fresh full
+     * (TXT) tag always wins; a changed name tag goes at once; an unchanged
+     * one again after [NAME_REEMIT_MS] (so Dart's "seen" time stays fresh).
+     */
+    fun nameShouldEmit(prev: Map<String, Any>?, next: Map<String, Any>, now: Long): Boolean {
+        if (prev == null || tagIsStale(prev, now)) return true
+        if (prev["from_name"] != true) return false
+        if (prev["id"] != next["id"] || prev["host"] != next["host"] ||
+            prev["member"] != next["member"] || prev["wants_link"] != next["wants_link"]) return true
+        return now - ((prev["seen_at"] as? Long) ?: 0L) >= NAME_REEMIT_MS
+    }
+
     fun cleanWanted(wanted: List<String>?): List<String> = (wanted ?: emptyList())
         .map { it.trim().lowercase().take(WANTED_ID_LENGTH) }
         .filter { wantedPattern.matches(it) }

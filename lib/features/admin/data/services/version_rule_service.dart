@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/admin/data/models/admin_block_record.dart';
@@ -494,6 +495,9 @@ class VersionRuleService {
   Future<void> syncWithServer() async {
     final s = server;
     if (s == null || _syncBusy) return;
+    // Bundle 223 (L, N, Q8): no server address / no network -> skip quietly.
+    // (The old baseUrl().isEmpty check never worked: baseUrl throws.)
+    if (ServerReach.instance.shouldSkip('version_rule')) return;
     _syncBusy = true;
     try {
       await load();
@@ -516,6 +520,7 @@ class VersionRuleService {
       }
       await recompute(checkLinks: false);
     } catch (e) {
+      ServerReach.instance.noteFailure(e); // Bundle 223 (L)
       AppLogger.warning('VERSION_RULE_SERVER_FAIL', detail: '$e');
     } finally {
       _syncBusy = false;

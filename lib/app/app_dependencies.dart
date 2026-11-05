@@ -1,3 +1,4 @@
+import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/features/admin/data/services/version_rule_service.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_service.dart';
 import 'package:locallink/features/admin/data/services/admin_role_server.dart';
@@ -1248,6 +1249,10 @@ class AppDependencies {
   /// The rest ([initializeLocalOnlyServices] / [initializeConfiguredServices]
   /// with `coreDone: true`) runs right after the first frame.
   Future<void> initializeCore({required bool localOnly}) async {
+    // Bundle 223 (L, N): background server calls skip quietly with no
+    // server address / no network; a fresh gate for every sign-in.
+    ServerReach.instance.bind(
+        address: () => store.serverAddress, socketUp: () => socket.isConnected);
     if (localOnly) await store.ensureDeviceIdentity();
     await crypto.init(store.deviceId!);
   }

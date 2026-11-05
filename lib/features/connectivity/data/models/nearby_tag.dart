@@ -53,6 +53,15 @@ class NearbyTag {
   /// Bundle 161: the short id of the group this phone links to (`lt`).
   final String? linkTarget;
 
+  /// Bundle 223 (F): learned only from the service NAME (`LinkUp-<id8>-..`)
+  /// because the TXT details never came. [idHash] is then the first 8 hex
+  /// chars, and there is no group name / password: such a tag only fills
+  /// the nearby list; it never drives a silent group join (Q13).
+  final bool fromName;
+
+  /// Bundle 223 (F): name flag `w` (this phone wants a link).
+  final bool wantsLink;
+
   const NearbyTag({
     required this.address,
     required this.idHash,
@@ -73,6 +82,8 @@ class NearbyTag {
     this.hotspotSsid,
     this.hotspotKey,
     this.linkTarget,
+    this.fromName = false,
+    this.wantsLink = false,
   });
 
   /// Bundle 161: a LocalLink hotspot others can join.
@@ -128,6 +139,8 @@ class NearbyTag {
       hotspotSsid: _text(map['hotspot_ssid']),
       hotspotKey: _text(map['hotspot_key']),
       linkTarget: _text(map['link_target']),
+      fromName: map['from_name'] == true,
+      wantsLink: map['wants_link'] == true,
     );
   }
 
@@ -176,7 +189,7 @@ class NearbyTagRegistry extends ChangeNotifier {
   static Map<String, String> _simplify(Map<String, NearbyTag> tags) => {
         for (final e in tags.entries)
           e.key:
-              '${e.value.idHash}|${e.value.host}|${e.value.member}|${e.value.members}|${e.value.full}|${e.value.group}',
+              '${e.value.idHash}|${e.value.host}|${e.value.member}|${e.value.members}|${e.value.full}|${e.value.group}|${e.value.fromName}',
       };
 
   @visibleForTesting

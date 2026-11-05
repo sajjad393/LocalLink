@@ -55,12 +55,19 @@ class AppShareController extends ChangeNotifier {
   final Duration statusEvery;
   final Duration notifyGap;
 
+  /// Bundle 223 (E): look for the download address up to [addressWait],
+  /// checking every [addressEvery]; the QR then appears by itself.
+  final Duration addressWait;
+  final Duration addressEvery;
+
   AppShareController({
     required this.native,
     required this.ownerName,
     ApkShareServerFactory? serverFactory,
     this.statusEvery = const Duration(seconds: 5),
     this.notifyGap = const Duration(milliseconds: 300),
+    this.addressWait = const Duration(seconds: 10),
+    this.addressEvery = const Duration(seconds: 2),
   }) : serverFactory = serverFactory ??
             ((apk, name) => ApkShareServer(
                   apkPath: apk.path,
@@ -83,6 +90,12 @@ class AppShareController extends ChangeNotifier {
   Timer? _statusTimer;
   Timer? _notifyTimer;
   int _run = 0;
+  // Bundle 223 (E): looking for the address in the background.
+  Timer? _ipTimer;
+  bool _lookingIp = false;
+  bool _ipGaveUp = false;
+  bool _ipChecking = false;
+  int _ipTicks = 0;
 
   ShareStage get stage => _stage;
   String? get reason => _reason;
@@ -93,6 +106,12 @@ class AppShareController extends ChangeNotifier {
   String? get ip => _ip;
   int? get port => _server?.port;
   List<ShareAddress> get ipChoices => _choices;
+
+  /// Bundle 223 (E): "Getting the download address..." (spinner).
+  bool get lookingForIp => _ip == null && _lookingIp;
+
+  /// Bundle 223 (E): 10 s and nothing: every address + Try again + Gateway tip.
+  bool get ipGaveUp => _ip == null && _ipGaveUp;
   List<SharePhone> get phones => _server?.phones ?? const <SharePhone>[];
   bool get sharing =>
       _server?.running == true &&
@@ -205,14 +224,21 @@ class AppShareController extends ChangeNotifier {
         // Look once more (Android may add the address a bit later).
         final more = await native.addresses();
         if (_stale(run)) return;
-        _ip = pickShareIp(list: more.list);
-        _choices = _ip == null ? shareIpChoices(more.list) : const [];
+        final noRouter = more.wifiIp == null;
+        _ip = pickShareIp(list: more.list, noRouter: noRouter);
+        _choices = _ip == null
+            ? shareIpChoices(more.list, noRouter: noRouter)
+            : const [];
       }
       AppLogger.info('SHARE_APP',
           detail: 'ready reused=${hs.reused} ip_found=${_ip != null} '
               'port=${server.port}');
+      if (_ip != null) _logPicked(_ip!, hs.addresses);
       await native.keepScreenOn(true);
       _startStatusChecks();
+      // Bundle 223 (E): still no address -> keep looking (step 2 shows a
+      // spinner, then every address + Try again; never an empty list).
+      if (_ip == null) _startIpLook(run);
       _set(ShareStage.step1);
       return;
     }
@@ -248,6 +274,80 @@ class AppShareController extends ChangeNotifier {
     _notifySoon();
   }
 
+  /// Bundle 223 (E): check every [addressEvery] up to [addressWait].
+  void _startIpLook(int run) {
+    _ipTimer?.cancel();
+    _lookingIp = true;
+    _ipGaveUp = false;
+    _ipTicks = 0;
+    _ipTimer = Timer.periodic(addressEvery, (_) => unawaited(_ipCheck(run)));
+  }
+
+  void _stopIpLook() {
+    _ipTimer?.cancel();
+    _ipTimer = null;
+    _lookingIp = false;
+  }
+
+  Future<void> _ipCheck(int run) async {
+    if (_stale(run) || !_lookingIp || _ipChecking) return;
+    _ipChecking = true;
+    try {
+      _ipTicks++;
+      // Tick count, not a stopwatch (also right under fake time in tests).
+      final ms = _ipTicks * addressEvery.inMilliseconds;
+      ShareAddresses a;
+      try {
+        a = await native.addresses();
+      } catch (_) {
+        a = const ShareAddresses();
+      }
+      if (_stale(run) || !_lookingIp) return;
+      final ip = pickShareIp(list: a.list, noRouter: a.wifiIp == null);
+      if (ip != null) {
+        _stopIpLook();
+        _ip = ip;
+        _choices = const [];
+        final iface = a.list
+            .firstWhere((x) => x.ip == ip,
+                orElse: () => const ShareAddress(iface: '?', ip: ''))
+            .iface;
+        AppLogger.info('SHARE_APP',
+            detail: 'ip_wait found=$ip ms=$ms iface=$iface');
+        _logPicked(ip, a.list);
+        _notifyNow();
+        return;
+      }
+      if (ms >= addressWait.inMilliseconds) {
+        _stopIpLook();
+        _ipGaveUp = true;
+        _choices = shareIpAll(a.list);
+        AppLogger.info('SHARE_APP',
+            detail: 'ip_none ms=$ms list=${shareIpListForLog(a.list)}');
+        _notifyNow();
+      }
+    } finally {
+      _ipChecking = false;
+    }
+  }
+
+  /// Bundle 223 (E, Q12): which address went into the QR.
+  void _logPicked(String ip, List<ShareAddress> list) {
+    final iface = list
+        .firstWhere((x) => x.ip == ip,
+            orElse: () => const ShareAddress(iface: '?', ip: ''))
+        .iface;
+    AppLogger.info('SHARE_APP', detail: 'ip_picked ip=$ip iface=$iface');
+  }
+
+  /// Bundle 223 (E): "Try again" on step 2.
+  void retryIp() {
+    if (_disposed || !sharing || _ip != null) return;
+    _startIpLook(_run);
+    _notifyNow();
+    unawaited(_ipCheck(_run));
+  }
+
   void _startStatusChecks() {
     _statusTimer?.cancel();
     _statusTimer = Timer.periodic(statusEvery, (_) async {
@@ -273,8 +373,11 @@ class AppShareController extends ChangeNotifier {
 
   /// The user picked the address by hand (rare).
   void chooseIp(String ip) {
+    _stopIpLook(); // Bundle 223 (E)
+    _ipGaveUp = false;
     _ip = ip;
     _choices = const [];
+    AppLogger.info('SHARE_APP', detail: 'ip_picked ip=$ip iface=by_hand');
     _notifyNow();
   }
 
@@ -295,6 +398,8 @@ class AppShareController extends ChangeNotifier {
     _busy = false;
     _statusTimer?.cancel();
     _statusTimer = null;
+    _stopIpLook(); // Bundle 223 (E)
+    _ipGaveUp = false;
     final hadServer = _server != null;
     final hadHotspot = _weStartedHotspot;
     _weStartedHotspot = false;
@@ -317,6 +422,7 @@ class AppShareController extends ChangeNotifier {
     _disposed = true;
     _notifyTimer?.cancel();
     _notifyTimer = null;
+    _stopIpLook();
     super.dispose();
   }
 }

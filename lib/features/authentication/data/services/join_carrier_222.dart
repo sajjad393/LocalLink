@@ -293,7 +293,14 @@ class JoinCarrier222 {
     }
   }
 
-  Future<bool> _saveKey(String body, String sig, String server) async {
+  /// Bundle 223 (B): which join key made a box (short hash of the key).
+  static String keyIdOf(Map<String, dynamic>? key) {
+    final k = '${key?['join_key'] ?? ''}';
+    if (k.isEmpty) return '';
+    return hash.sha256.convert(utf8.encode(k)).toString().substring(0, 16);
+  }
+
+  Future<bool> _saveKey(String body, String sig, String server, {String source = 'server'}) async {
     final b = _noteBody(body);
     if (b == null) return false;
     final old = await joinKey();
@@ -306,6 +313,7 @@ class JoinCarrier222 {
           'server_key': b['server_key'],
           'join_key': b['join_key'],
           'server': server.isNotEmpty ? server : (old?['server'] ?? ''),
+          'from': source, // Bundle 223 (B): 'server' or 'phone'
         }));
     AppLogger.info('JOIN_KEY_SAVED');
     return true;
@@ -326,12 +334,20 @@ class JoinCarrier222 {
     final pinned = pinnedServerKey?.call() ?? '';
     if (pinned.isNotEmpty && pinned != key) return;
     if (!await verify(body, sig, key)) return;
+    // Bundle 223 (B): the real server always wins over a key that came from
+    // a nearby phone; the box made with the old key is made again.
+    final old = await joinKey();
+    if (old != null && (old['server_key'] != key || old['join_key'] != b['join_key'])) {
+      AppLogger.info('JOIN_KEY_REPLACED_BY_SERVER', detail: 'from=${old['from'] ?? 'server'}');
+    }
     if (await _saveKey(body, sig, serverUrl?.call() ?? '')) unawaited(_makeMine());
   }
 
-  /// From a nearby phone: trusted at once if it checks against the server
-  /// key this phone already pinned; otherwise only when a SECOND phone
-  /// hands the very same signed note (and server address).
+  /// From a nearby phone. Bundle 223 (B): a phone with no pinned server key
+  /// takes the key from ONE phone when the note is signed by the server key
+  /// written inside it (you chose this; the real server replaces it later,
+  /// see [refreshKey]). A pinned key must match. A saved key is never
+  /// replaced by a phone.
   Future<void> _takeKeyOffer(Map<String, dynamic> msg, String from) async {
     final note = msg['note'];
     if (note is! Map) return;
@@ -348,22 +364,9 @@ class JoinCarrier222 {
       return;
     }
     final have = await joinKey();
-    if (have != null) return; // already trusted one; never replaced by peers alone
-    Map<String, dynamic> offers = {};
-    try {
-      final raw = await store.readSetting(JoinRules222.keyOffersSetting);
-      if (raw != null && raw.isNotEmpty) offers = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-    } catch (_) {}
-    final id = hash.sha256.convert(utf8.encode('$body|$sig|$srv')).toString().substring(0, 24);
-    final from0 = (offers[id] as List?)?.map((e) => '$e').toSet() ?? <String>{};
-    from0.add(from);
-    offers[id] = from0.take(8).toList();
-    if (offers.length > 20) offers.remove(offers.keys.first);
-    await store.writeSetting(JoinRules222.keyOffersSetting, jsonEncode(offers));
-    if (from0.length >= 2) {
-      AppLogger.info('JOIN_KEY_FROM_PHONES', detail: 'n=${from0.length}');
-      if (await _saveKey(body, sig, srv)) unawaited(_makeMine());
-    }
+    if (have != null) return; // already trusted one; never replaced by peers
+    AppLogger.info('JOIN_KEY_FROM_PHONE', detail: 'n=1');
+    if (await _saveKey(body, sig, srv, source: 'phone')) unawaited(_makeMine());
   }
 
   // ------------------------------------------------------------- her box
@@ -403,8 +406,17 @@ class JoinCarrier222 {
       }
       return;
     }
-    if (info != null && info['stamp'] == me.stamp && info['done'] != true) return;
     final key = await joinKey();
+    // Bundle 223 (B): a box remembers its key; a new key makes it again even
+    // when her name and password did not change. (A 222 box has no key_id:
+    // kept as it is.)
+    final kid = keyIdOf(key);
+    if (info != null &&
+        info['stamp'] == me.stamp &&
+        info['done'] != true &&
+        (info['key_id'] == null || info['key_id'] == kid)) {
+      return;
+    }
     if (key == null) return;
     final boxId = _newId();
     final body = jsonEncode({
@@ -443,7 +455,7 @@ class JoinCarrier222 {
       'answer': '',
       'extra': '',
     });
-    await _writeMine({'box_id': boxId, 'stamp': me.stamp, 'made_at': _now(), 'carriers': <String>[], 'done': false});
+    await _writeMine({'box_id': boxId, 'stamp': me.stamp, 'key_id': kid, 'made_at': _now(), 'carriers': <String>[], 'done': false});
     AppLogger.info('JOIN_BOX_MADE');
     _changed();
     for (final p in await linkedPeers()) {

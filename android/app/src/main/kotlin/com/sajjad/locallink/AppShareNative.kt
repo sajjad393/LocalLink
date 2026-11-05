@@ -115,6 +115,9 @@ object AppShareNative {
     private fun startShare(activity: Activity, result: MethodChannel.Result) {
         val app = activity.applicationContext
         val done = AtomicBoolean(false)
+        // Bundle 223 (E): the 15 s limit is for starting the hotspot only;
+        // the address wait (up to 10 s) has its own limit.
+        val hotspotUp = AtomicBoolean(false)
         fun reply(map: Map<String, Any?>) {
             if (!done.compareAndSet(false, true)) return
             main.post { try { result.success(map) } catch (_: Exception) {} }
@@ -124,7 +127,7 @@ object AppShareNative {
         val ln = localNet(activity)
         if (ln == null) { reply(mapOf("ok" to false, "reason" to "no_radio")); return }
         val before = interfaces()
-        Log.i(TAG, "start on=${ln.hotspotOn()}")
+        Log.i(TAG, "start on=${ln.hotspotOn()} before=${AppSharePolicy.listForLog(before)}")
         val why = ln.startHotspot(AppSharePolicy.OWNER_SHARE) { info ->
             if (info["ok"] != true) {
                 val reason = AppSharePolicy.reasonFor(info["reason"]?.toString())
@@ -132,7 +135,8 @@ object AppShareNative {
                 reply(mapOf("ok" to false, "reason" to reason))
                 return@startHotspot
             }
-            waitForAddress(before, System.currentTimeMillis()) { ip, iface ->
+            hotspotUp.set(true)
+            waitForAddress(app, before, System.currentTimeMillis()) { ip, iface ->
                 Log.i(TAG, "on reused=${info["reused"]} iface=${iface ?: "?"} ip_found=${ip != null}")
                 reply(info + mapOf("ip" to ip, "addresses" to addressMap(app)["list"]))
             }
@@ -144,7 +148,7 @@ object AppShareNative {
             return
         }
         main.postDelayed({
-            if (!done.get()) {
+            if (!done.get() && !hotspotUp.get()) {
                 Log.i(TAG, "failed reason=timeout")
                 try { ln.stopHotspot(AppSharePolicy.OWNER_SHARE, "timeout") } catch (_: Exception) {}
                 reply(mapOf("ok" to false, "reason" to "timeout"))
@@ -152,14 +156,20 @@ object AppShareNative {
         }, AppSharePolicy.START_TIMEOUT_MS)
     }
 
-    private fun waitForAddress(before: Map<String, String>, startedAt: Long, done: (String?, String?) -> Unit) {
+    private fun waitForAddress(context: Context, before: Map<String, String>, startedAt: Long, done: (String?, String?) -> Unit) {
         val now = interfaces()
-        val ip = AppSharePolicy.pickHotspotIp(before, now)
-        if (ip != null || System.currentTimeMillis() - startedAt >= AppSharePolicy.ADDRESS_WAIT_MS) {
-            done(ip, now.entries.firstOrNull { it.value == ip }?.key)
+        // Bundle 223 (E): the router address (if any) decides about wlan0.
+        val ip = AppSharePolicy.pickHotspotIp(before, now, wifiIp(context))
+        val ms = System.currentTimeMillis() - startedAt
+        if (ip != null || ms >= AppSharePolicy.ADDRESS_WAIT_MS) {
+            val iface = now.entries.firstOrNull { it.value == ip }?.key
+            // Bundle 223 (E): the app writes ip_wait / ip_none; here only
+            // what Android saw (for the next log).
+            Log.i(TAG, "addr ms=$ms found=${ip ?: "none"} list=${AppSharePolicy.listForLog(now)}")
+            done(ip, iface)
             return
         }
-        main.postDelayed({ waitForAddress(before, startedAt, done) }, AppSharePolicy.ADDRESS_STEP_MS)
+        main.postDelayed({ waitForAddress(context, before, startedAt, done) }, AppSharePolicy.ADDRESS_STEP_MS)
     }
 
     /** iface → first IPv4 (up interfaces only). */

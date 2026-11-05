@@ -4,8 +4,8 @@
 // plain `flutter build apk`, so it can't be trusted. These two constants are
 // kept equal to pubspec.yaml `version:` (a test checks it).
 
-const int kAppBuild = 133;
-const String kAppVersion = '3.0.62';
+const int kAppBuild = 134;
+const String kAppVersion = '3.0.63';
 
 /// HTTP header + socket header with the build (server version gate).
 const String kAppBuildHeader = 'X-LinkUp-Build';
@@ -22,6 +22,10 @@ abstract final class AppBuild {
 
   /// The server said 426 update_required (set by the version service).
   static void Function(String body)? onUpgradeRequired;
+
+  /// Bundle 223 (O, Q18): the first log line. Made from the constants (the
+  /// hand-typed text stayed at "3.0.50" from bundle 209 to 222).
+  static String get stamp => 'v3 · $kAppVersion+$kAppBuild';
 
   static Map<String, String> withHeader(Map<String, String>? headers) => {
         ...?headers,

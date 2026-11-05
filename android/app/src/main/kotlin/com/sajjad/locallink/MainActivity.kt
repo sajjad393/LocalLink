@@ -34,6 +34,8 @@ import java.util.UUID
 
 class MainActivity : FlutterActivity() {
     companion object {
+        /** Bundle 223 (I): the gate waits for the battery screen to close. */
+        private const val BATTERY_GATE_CODE = -7746
         private const val EXTRA_CALL_ACTION_CONSUMED = "call_action_consumed"
         @Volatile private var activeInstance: MainActivity? = null
         /** Bundle 169 (4.3): the app screen exists. */
@@ -93,6 +95,16 @@ class MainActivity : FlutterActivity() {
     // Bundle 177: this screen's Nearby event sink (NearbyRadio owns Nearby).
     private var wifiEventSink: EventChannel.EventSink? = null
     private val backgroundLocationRequestCode = 7815
+    // Bundle 223 (I): one queue for every permission pop-up (none dropped).
+    private val permQueue = PermissionQueue(
+        fire = { a -> fireAsk(a) },
+        log = { line -> android.util.Log.i("LocalLinkPerm", line) },
+    )
+    // Bundle 223 (I): the Dart gate's reply waits for the answer (60 s limit).
+    private var gatePending: MethodChannel.Result? = null
+    private var gateCode = 0
+    private val gateHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val gateTimeout = Runnable { finishGate("timeout") }
     private var transportEventSink: EventChannel.EventSink? = null
     private var localVideoTextureEntry: io.flutter.view.TextureRegistry.SurfaceTextureEntry? = null
     private var remoteVideoTextureEntry: io.flutter.view.TextureRegistry.SurfaceTextureEntry? = null
@@ -526,7 +538,7 @@ class MainActivity : FlutterActivity() {
                     )
                     "requestBackgroundLocation" -> {
                         if (android.os.Build.VERSION.SDK_INT in 29..32 && NearbyRadio.hasPermission(this)) {
-                            requestPermissions(arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION), backgroundLocationRequestCode)
+                            askPermissions("bg_location", arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION), backgroundLocationRequestCode)
                         }
                         result.success(null)
                     }
@@ -597,7 +609,8 @@ class MainActivity : FlutterActivity() {
             try {
                 when (call.method) {
                     "granted" -> result.success(mapOf("granted" to gateIsGranted(call.argument<String>("name")?.trim().orEmpty())))
-                    "request" -> { gateRequest(call.argument<String>("name")?.trim().orEmpty()); result.success(null) }
+                    // Bundle 223 (I): replies after the user answered.
+                    "request" -> gateRequest(call.argument<String>("name")?.trim().orEmpty(), result)
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
@@ -1083,6 +1096,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // Bundle 223 (I): the next queued pop-up fires now; the gate replies.
+        permQueue.answered(requestCode, grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED })
+        if (gatePending != null && gateCode == requestCode) finishGate("answer")
         // Bundle 101: mic (7812) / camera (7813) denials re-enter Dart's
         // 10-minute re-ask loop — no settings-recovery dialog here.
         if (requestCode == 7812 || requestCode == 7813) return
@@ -1375,16 +1391,61 @@ class MainActivity : FlutterActivity() {
         else -> false
     }
 
-    private fun gateRequest(name: String) {
-        when (name) {
-            "microphone" -> requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "", "")
-            "nearby" -> if (!hasWifiPermission()) requestWithRationale(if (android.os.Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), wifiPermissionRequestCode, "", "")
+    /** Bundle 223 (I): asks, then replies to Dart only after the answer (or
+     *  when the battery screen closes: on resume), 60 s limit at most. Before,
+     *  it replied at once and Dart fired the next pop-up while one was open. */
+    private fun gateRequest(name: String, result: MethodChannel.Result) {
+        finishGate("replaced")
+        val code: Int? = when (name) {
+            "microphone" -> if (gateIsGranted(name)) null else {
+                requestWithRationale(arrayOf(Manifest.permission.RECORD_AUDIO), 7812, "", ""); 7812
+            }
+            "nearby" -> if (hasWifiPermission()) null else {
+                requestWithRationale(if (android.os.Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), wifiPermissionRequestCode, "", ""); wifiPermissionRequestCode
+            }
             "notifications" -> LocalLinkNotificationManager.requestNotificationPermission(this)
             // Bundle 121: the Dart sequencer owns re-ask pacing, so this entry
             // point deliberately skips the once-per-install shared-pref flag
             // that the onCreate prompt uses.
-            "background" -> requestBatteryOptimizationExemption()
+            "background" -> if (isBatteryUnrestricted()) null else { requestBatteryOptimizationExemption(); BATTERY_GATE_CODE }
+            else -> null
         }
+        if (code == null) { result.success(null); return }
+        gatePending = result
+        gateCode = code
+        gateHandler.postDelayed(gateTimeout, PermissionQueue.GATE_LIMIT_MS)
+    }
+
+    private fun finishGate(why: String) {
+        val r = gatePending ?: return
+        gatePending = null
+        gateHandler.removeCallbacks(gateTimeout)
+        android.util.Log.i("LocalLinkPerm", "PERM_GATE_DONE code=$gateCode why=$why")
+        try { r.success(null) } catch (_: Exception) {}
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Bundle 223 (I): the battery screen closed (it has no answer callback).
+        if (gatePending != null && gateCode == BATTERY_GATE_CODE) finishGate("resume")
+    }
+
+    /** Bundle 223 (I): EVERY permission pop-up goes through the one queue. */
+    fun askPermissions(name: String, permissions: Array<String>, code: Int) {
+        permQueue.ask(PermissionQueue.Ask(name, permissions, code))
+    }
+
+    /** Bundle 223 (I): the only place that calls Android's requestPermissions. */
+    private fun fireAsk(a: PermissionQueue.Ask) {
+        requestPermissions(a.permissions, a.code)
+    }
+
+    private fun permName(code: Int): String = when (code) {
+        7812 -> "microphone"
+        7813 -> "camera"
+        wifiPermissionRequestCode -> "nearby"
+        backgroundLocationRequestCode -> "bg_location"
+        else -> "code_$code"
     }
 
     // Bundle 121: gate-facing battery helpers. Bundle 124 removed the old
@@ -1397,7 +1458,7 @@ class MainActivity : FlutterActivity() {
     // native system dialog directly (signature kept; call sites untouched).
     @Suppress("UNUSED_PARAMETER")
     private fun requestWithRationale(permissions: Array<String>, requestCode: Int, title: String, rationale: String) {
-        requestPermissions(permissions, requestCode)
+        askPermissions(permName(requestCode), permissions, requestCode) // Bundle 223 (I)
     }
 
     // Bundle 177 (2): Nearby (Wi-Fi Direct) moved to NearbyRadio (one owner for the app).
@@ -1433,6 +1494,9 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy(){
+        // Bundle 223 (I): pop-ups of this screen can't be answered any more.
+        permQueue.reset()
+        finishGate("destroy")
         chatVideoPip.dispose() // Bundle 147
         // Bundle 177 (1, 2.7): Nearby keeps running when the screen closes
         // (only Log out stops it); log what survives.

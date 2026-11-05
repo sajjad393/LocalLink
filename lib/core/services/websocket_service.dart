@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -12,6 +13,12 @@ class WebSocketService {
   static const _stableConnectionWindow = Duration(seconds: 10);
   static const _maxQueuedDurableMessages = 256;
   static const _maxPayloadBytes = 64 * 1024;
+
+  /// Bundle 223 (H): every try (also a background retry) gets this long to
+  /// say `ready`; a try used to hang up to 65 s on Android's own timeout.
+  @visibleForTesting
+  Duration retryReadyLimit = const Duration(seconds: 10);
+  Timer? _retryTimer;
 
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
@@ -133,10 +140,27 @@ class WebSocketService {
 
       _channel = channel;
 
+      // Bundle 223 (C): with web_socket_channel 3 a failed connect also fails
+      // `ready` and `sink.done`. Nobody listened, so the same error came back
+      // as uncaught_async_error. It is already logged once by the stream.
+      unawaited(channel.ready.then<void>((_) {}, onError: (Object _) {}));
+      unawaited(channel.sink.done.then<void>((_) {}, onError: (Object _) {}));
+
       AppLogger.info(
         'WS_SOCKET_CREATED',
         detail: 'generation=$generation',
       );
+
+      // Bundle 223 (H): no `ready` within the limit -> close, retry later.
+      _retryTimer?.cancel();
+      final limit = retryReadyLimit;
+      _retryTimer = Timer(limit, () {
+        _retryTimer = null;
+        if (generation != _generation || _ready || _channel == null) return;
+        AppLogger.warning('WS_RETRY_TIMEOUT',
+            detail: 'generation=$generation after_ms=${limit.inMilliseconds}');
+        _handleClosed(generation, error: TimeoutException('WebSocket ready', limit));
+      });
 
       _subscription = channel.stream.listen(
             (event) => _handleEvent(generation, event),
@@ -149,7 +173,7 @@ class WebSocketService {
           _handleClosed(generation);
         },
         onError: (Object error, StackTrace stackTrace) {
-          AppLogger.error(
+          AppLogger.failure( // Bundle 223 (Q19): offline = WARN
             'WS_STREAM_ERROR',
             error: error,
             stackTrace: stackTrace,
@@ -207,7 +231,7 @@ class WebSocketService {
         try {
           await pending.future.timeout(_readyTimeout);
         } on TimeoutException catch (error, stackTrace) {
-          AppLogger.error(
+          AppLogger.failure( // Bundle 223 (Q19): offline = WARN
             'WS_READY_TIMEOUT',
             error: error,
             stackTrace: stackTrace,
@@ -323,6 +347,8 @@ class WebSocketService {
     final wasReady = _ready;
 
     _ready = true;
+    _retryTimer?.cancel(); // Bundle 223 (H)
+    _retryTimer = null;
 
     AppLogger.info(
       'WS_READY',
@@ -592,6 +618,8 @@ class WebSocketService {
 
     _ready = false;
     _opening = false;
+    _retryTimer?.cancel(); // Bundle 223 (H)
+    _retryTimer = null;
 
     _stabilityTimer?.cancel();
     _stabilityTimer = null;
@@ -686,6 +714,33 @@ class WebSocketService {
     );
   }
 
+  /// Bundle 223 (H): the network came back (NET_CHANGE up). A try that is
+  /// still hanging is dropped and a new one starts at once; the back-off
+  /// starts again. A foreground connect that is waiting keeps its own limit.
+  void networkBack() {
+    if (_manualDisconnect || _url == null || _ready) return;
+    if (_readyCompleter != null) return;
+    final hanging = _channel != null;
+    AppLogger.info('WS_NETWORK_BACK',
+        detail: 'generation=$_generation hanging=$hanging');
+    _reconnectAttempt = 0;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    if (hanging) {
+      _generation++; // events of the old try are ignored from now on
+      final oldSubscription = _subscription;
+      final oldChannel = _channel;
+      _subscription = null;
+      _channel = null;
+      _opening = false;
+      unawaited(oldSubscription?.cancel());
+      unawaited(oldChannel?.sink.close());
+    }
+    unawaited(_open(waitForReady: false));
+  }
+
   Future<void> disconnect() async {
     AppLogger.info(
       'WS_DISCONNECT_REQUEST',
@@ -695,6 +750,8 @@ class WebSocketService {
 
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    _retryTimer?.cancel(); // Bundle 223 (H)
+    _retryTimer = null;
 
     _stabilityTimer?.cancel();
     _stabilityTimer = null;
@@ -739,9 +796,11 @@ class WebSocketService {
 
     _reconnectTimer?.cancel();
     _stabilityTimer?.cancel();
+    _retryTimer?.cancel(); // Bundle 223 (H)
 
     _reconnectTimer = null;
     _stabilityTimer = null;
+    _retryTimer = null;
 
     _generation++;
 

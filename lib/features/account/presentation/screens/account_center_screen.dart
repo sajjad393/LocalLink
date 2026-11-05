@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
@@ -70,6 +71,14 @@ class AccountCenterScreen extends StatefulWidget {
   State<AccountCenterScreen> createState() => _AccountCenterScreenState();
 }
 
+/// Bundle 223 (O): `phone_only` (no server address), `no_network`
+/// (Wi-Fi and internet off) or `server_down` (the server did not answer).
+String accountOfflineBoxReason({String? serverAddress, String? reachWhy}) {
+  if ((serverAddress ?? '').trim().isEmpty) return 'phone_only';
+  if (reachWhy == 'no_network') return 'no_network';
+  return 'server_down';
+}
+
 class _AccountCenterScreenState extends State<AccountCenterScreen> {
   late final AccountBloc _controller = AccountBloc(widget.accountRepository);
 
@@ -104,8 +113,12 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
   void _logOfflineBox(String error) {
     if (_offlineLogged) return;
     _offlineLogged = true;
+    // Bundle 223 (O): why the box shows, in plain words.
+    final reason = accountOfflineBoxReason(
+        serverAddress: widget.store.serverAddress,
+        reachWhy: ServerReach.instance.skipWhy());
     AppLogger.info('ACCOUNT_OFFLINE_BOX',
-        detail: 'serverConnected=$_serverConnected '
+        detail: 'reason=$reason serverConnected=$_serverConnected '
             'viewMode=${widget.viewMode.state.serverConnected} '
             'error=${error.length > 80 ? error.substring(0, 80) : error}');
   }

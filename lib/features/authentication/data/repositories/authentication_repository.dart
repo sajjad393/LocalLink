@@ -12,7 +12,8 @@ import 'package:locallink/features/authentication/data/models/authentication_mod
 import 'package:locallink/features/connectivity/data/models/discovered_server.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 
-class AuthenticationRepository implements AuthenticationRepositoryContract {
+class AuthenticationRepository
+    implements AuthenticationRepositoryContract, AsyncOfflineLogin {
   final LocalLinkApi _api;
   final LocalStore _store;
   final ConnectivityRepositoryContract _connectivity;
@@ -192,7 +193,7 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
     final rng = Random.secure();
     final salt = Uint8List.fromList(
         List<int>.generate(PasswordKdf.saltLength, (_) => rng.nextInt(256)));
-    final hash = PasswordKdf.derive(password, salt);
+    final hash = await PasswordKdf.deriveAsync(password, salt); // Bundle 223 (J)
     final recovery = RecoveryCode.generate();
     await _store.saveOfflineAccount(
       username: normalized,
@@ -275,7 +276,7 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
     final rng = Random.secure();
     final salt = Uint8List.fromList(
         List<int>.generate(PasswordKdf.saltLength, (_) => rng.nextInt(256)));
-    final hash = PasswordKdf.derive(password, salt);
+    final hash = await PasswordKdf.deriveAsync(password, salt); // Bundle 223 (J)
     await _store.saveOfflineLoginAccount(
       username: username,
       pwdHash: PasswordKdf.b64(hash),
@@ -302,6 +303,32 @@ class AuthenticationRepository implements AuthenticationRepositoryContract {
     return mirror != null &&
         mirror['username']?.toString().trim().toLowerCase() == user &&
         PasswordKdf.verify(
+          password,
+          mirror['pwd_salt']?.toString() ?? '',
+          mirror['pwd_hash']?.toString() ?? '',
+        );
+  }
+
+  /// Bundle 223 (J): [verifyOfflineLogin] off the screen thread (the sign-in
+  /// screen uses this one; the sync one stays for the contract).
+  @override
+  Future<bool> verifyOfflineLoginAsync(String username, String password) async {
+    final user = username.trim().toLowerCase();
+    if (user.isEmpty || password.isEmpty) return false;
+    final pending = _store.offlinePending;
+    if (pending != null &&
+        pending['username']?.toString().trim().toLowerCase() == user &&
+        await PasswordKdf.verifyAsync(
+          password,
+          pending['pwd_salt']?.toString() ?? '',
+          pending['pwd_hash']?.toString() ?? '',
+        )) {
+      return true;
+    }
+    final mirror = _store.offlineLoginAccount;
+    return mirror != null &&
+        mirror['username']?.toString().trim().toLowerCase() == user &&
+        await PasswordKdf.verifyAsync(
           password,
           mirror['pwd_salt']?.toString() ?? '',
           mirror['pwd_hash']?.toString() ?? '',

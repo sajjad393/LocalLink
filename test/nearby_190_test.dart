@@ -288,9 +288,9 @@ void main() {
   group('Bundle 192 version', () {
     test('pubspec and stamp', () {
       expect(File('pubspec.yaml').readAsStringSync(),
-          contains('version: 3.0.62+133'));
+          contains('version: 3.0.63+134'));
       expect(File('lib/app/local_link_app.dart').readAsStringSync(),
-          contains("'v3 · 3.0.50 · bundles 104-209 + groups G1-G7 (2026-11-05)'"));
+          contains('AppBuild.stamp')); // Bundle 223 (Q18): made from kAppVersion
     });
   });
 }

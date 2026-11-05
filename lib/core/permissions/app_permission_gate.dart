@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
+
+import 'package:locallink/core/services/app_logger.dart';
 
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
 
@@ -8,6 +11,10 @@ import 'package:locallink/core/notifications/local_link_notification_service.dar
 ///
 /// Rules:
 ///  * NO pre-info/rationale dialog anywhere — the native system dialog only.
+///  * Bundle 223 (I): each step now WAITS for the user's answer (the native
+///    side replies after it, 60 s limit), then 1 s, then the next one.
+///    Android dropped a second request while a pop-up was open, so the old
+///    "fire even if the previous one is still open" lost pop-ups (ZTE).
 ///  * Fire order at dashboard entry: microphone -> 5s pause -> Nearby devices
 ///    -> 5s pause -> Notifications -> 5s pause -> Background (battery
 ///    optimization exemption, Bundle 121). Each step is skipped when already
@@ -28,7 +35,13 @@ import 'package:locallink/core/notifications/local_link_notification_service.dar
 class AppPermissionGate {
   static const _channel = MethodChannel('locallink/permissions');
   static const _order = ['microphone', 'nearby', 'notifications', 'background'];
-  static const _gap = Duration(seconds: 5);
+  /// Bundle 223 (I): the pause AFTER an answer (was 5 s blind).
+  @visibleForTesting
+  static Duration gap = const Duration(seconds: 1);
+
+  /// Bundle 223 (I): Dart's own safety limit (native has 60 s too).
+  @visibleForTesting
+  static Duration answerLimit = const Duration(seconds: 65);
   static const _reaskAfter = Duration(minutes: 10);
 
   static bool _chainRunning = false;
@@ -50,8 +63,8 @@ class AppPermissionGate {
     try {
       for (final name in _order) {
         if (await _granted(name)) continue;
-        await _request(name); // native dialog only, never anything custom
-        await Future<void>.delayed(_gap);
+        await _request(name); // native dialog only; returns after the answer
+        await Future<void>.delayed(gap);
       }
       final remaining = await _missing();
       if (remaining.isNotEmpty) {
@@ -84,8 +97,28 @@ class AppPermissionGate {
   }
 
   static Future<void> _request(String name) async {
+    final watch = Stopwatch()..start();
+    var how = 'answer';
     try {
-      await _channel.invokeMethod<void>('request', {'name': name});
-    } catch (_) {}
+      await _channel
+          .invokeMethod<void>('request', {'name': name}).timeout(answerLimit);
+    } on TimeoutException {
+      how = 'limit';
+    } catch (_) {
+      how = 'error';
+    }
+    AppLogger.info('PERM_GATE',
+        detail: 'name=$name $how ms=${watch.elapsedMilliseconds}');
+  }
+
+  /// Runs the chain once and waits for it (tests).
+  @visibleForTesting
+  static Future<void> runChainForTest() => _runChain();
+
+  @visibleForTesting
+  static void resetForTest() {
+    _reaskTimer?.cancel();
+    _reaskTimer = null;
+    _chainRunning = false;
   }
 }

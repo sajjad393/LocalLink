@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/admin/data/models/admin_badge.dart';
 import 'package:locallink/features/admin/data/models/admin_block_record.dart';
@@ -325,6 +326,8 @@ class AdminBadgeService {
   Future<void> syncWithServer() async {
     final s = server;
     if (s == null || _syncBusy) return;
+    // Bundle 223 (L, N): no server address / no network -> skip quietly.
+    if (ServerReach.instance.shouldSkip('admin_badges')) return;
     _syncBusy = true;
     try {
       await load();
@@ -335,6 +338,7 @@ class AdminBadgeService {
       }
       AppLogger.info('ADMIN_BADGE_SERVER_SYNC', detail: 'got=${list.length} new=$fresh');
     } catch (e) {
+      ServerReach.instance.noteFailure(e); // Bundle 223 (L)
       AppLogger.warning('ADMIN_BADGE_SERVER_SYNC', detail: 'failed error=$e');
     } finally {
       _syncBusy = false;

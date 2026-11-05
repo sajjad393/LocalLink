@@ -52,6 +52,44 @@ object MeshTransportPolicy {
     const val MAX_DIRECT_LAN_LINKS: Int = 30
 
     /** Beacon every 3 s with < 10 phones, 10 s with 10-50, 15 s with 50+. */
+    /** Bundle 223 (K): wait after "Network unreachable" (Wi-Fi off). */
+    const val LAN_BEACON_BACKOFF_MS: Long = 15_000L
+
+    /** Bundle 223 (K): "Network is unreachable" / no route (Wi-Fi off). */
+    fun isUnreachable(message: String?): Boolean {
+        val m = message ?: return false
+        return m.contains("ENETUNREACH") || m.contains("Network is unreachable") ||
+            m.contains("EHOSTUNREACH") || m.contains("No route to host")
+    }
+
+    /**
+     * Bundle 223 (K): with Wi-Fi off every beacon failed every ~4 s and sent
+     * an error to Dart (48 in 3 min on the ZTE). After an unreachable error
+     * the beacon waits [LAN_BEACON_BACKOFF_MS] and the error is reported
+     * ONCE; a good send or a network change brings the normal tier back.
+     */
+    class LanBeaconBackoff {
+        var paused: Boolean = false
+            private set
+
+        /** A send failed. True = report it (first unreachable, or any other error). */
+        fun onError(unreachable: Boolean): Boolean {
+            if (!unreachable) return true
+            if (paused) return false
+            paused = true
+            return true
+        }
+
+        /** A send worked or the network changed. True = it was paused (log "resumed"). */
+        fun onOk(): Boolean {
+            val was = paused
+            paused = false
+            return was
+        }
+
+        fun nextDelayMs(normalMs: Long): Long = if (paused) LAN_BEACON_BACKOFF_MS else normalMs
+    }
+
     fun lanBeaconIntervalMs(phonesSeen: Int): Long = when {
         phonesSeen >= LAN_LARGE_PHONES -> LAN_BEACON_LARGE_MS
         phonesSeen >= LAN_MEDIUM_PHONES -> LAN_BEACON_MEDIUM_MS

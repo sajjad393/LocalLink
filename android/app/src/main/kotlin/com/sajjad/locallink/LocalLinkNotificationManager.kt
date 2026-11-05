@@ -111,15 +111,16 @@ object LocalLinkNotificationManager {
         manager.createNotificationChannel(friendsChannel)
     }
 
-    fun requestNotificationPermission(activity: MainActivity) {
+    /** Bundle 223 (I): through the one permission queue. Returns the request
+     *  code when a pop-up was asked for, null when nothing is needed. */
+    fun requestNotificationPermission(activity: MainActivity): Int? {
         if (Build.VERSION.SDK_INT >= 33 &&
             activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            activity.requestPermissions(
-                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                REQUEST_PERMISSION,
-            )
+            activity.askPermissions("notifications", arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_PERMISSION)
+            return REQUEST_PERMISSION
         }
+        return null
     }
 
     fun notificationsEnabled(context: Context): Boolean {

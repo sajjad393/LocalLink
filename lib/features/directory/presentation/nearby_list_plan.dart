@@ -107,12 +107,16 @@ NearbyListPlan planNearbyList({
     for (final id in discoveredNodeIds) hash(id),
     for (final id in liveNodeIds) hash(id),
   };
+  // Bundle 223 (Q15): a name tag carries only 8 hex chars; match it to the
+  // full id of a friend / blocked / LAN phone first.
+  final knownHashes = <String>{...trustedHashes, ...blockedHashes, ...lanHashes};
   final shownWifi = <String>[];
   final untagged = <String>[];
   final matchedPaired = <String>{};
   var knownFriendWifi = 0;
   for (final address in wifiAddresses) {
-    final tagId = tagIdByAddress[address.trim().toLowerCase()];
+    final rawTagId = tagIdByAddress[address.trim().toLowerCase()];
+    final tagId = rawTagId == null ? null : fullTagId(rawTagId, knownHashes);
     if (tagId == null &&
         friendWifiAddresses.contains(address.trim().toLowerCase())) {
       knownFriendWifi += 1;
@@ -180,7 +184,7 @@ String? pickPairTarget({
 }) {
   if (wantedTagId != null && hashOf != null) {
     for (final id in unpairedNow) {
-      if (hashOf(id) == wantedTagId) return id;
+      if (tagIdMatches(hashOf(id), wantedTagId)) return id;
     }
     return null;
   }
@@ -189,6 +193,27 @@ String? pickPairTarget({
   if (fresh.length == 1) return fresh.first;
   if (fresh.isEmpty && unpairedNow.length == 1) return unpairedNow.first;
   return null;
+}
+
+/// Bundle 223 (Q14): a name tag's 8-char id matches a full id that starts
+/// with it; a full id must match exactly.
+bool tagIdMatches(String fullId, String tagId) {
+  if (fullId == tagId) return true;
+  return tagId.length == 8 && fullId.length > 8 && fullId.startsWith(tagId);
+}
+
+/// Bundle 223 (Q15): the known full id for an 8-char name-tag id (exactly
+/// one match), else the id itself.
+String fullTagId(String tagId, Iterable<String> known) {
+  if (tagId.length != 8) return tagId;
+  String? found;
+  for (final k in known) {
+    if (k.length > 8 && k.startsWith(tagId)) {
+      if (found != null && found != k) return tagId;
+      found = k;
+    }
+  }
+  return found ?? tagId;
 }
 
 /// Bundle 190: how long a phone that was just seen stays on the list while

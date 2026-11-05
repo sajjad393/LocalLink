@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:locallink/core/crypto/password_kdf.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
@@ -155,7 +156,11 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
       await repository.completeOfflineLogin();
       return const AuthOutcome.offline();
     }
-    final byPassword = repository.verifyOfflineLogin(user, password);
+    // Bundle 223 (J): the password check runs off the screen thread.
+    final repo = repository;
+    final byPassword = repo is AsyncOfflineLogin
+        ? await (repo as AsyncOfflineLogin).verifyOfflineLoginAsync(user, password)
+        : repository.verifyOfflineLogin(user, password);
     if (byPassword || repository.verifyOfflineRecovery(user, password)) {
       // Bundle 214 (G6): log line only (no behaviour change).
       AppLogger.info('AUTH_OFFLINE_LOGIN',

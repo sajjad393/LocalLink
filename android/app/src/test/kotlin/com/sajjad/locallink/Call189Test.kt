@@ -39,7 +39,8 @@ class Call189Test {
         assertTrue(radio.contains("m.stopPeerDiscovery(ch"))
         assertTrue(radio.contains("m.clearServiceRequests(ch"))
         // The join guard is set where a group is created / joined / left.
-        assertEquals(3, Regex("lastGroupChangeAt = System.currentTimeMillis\\(\\)").findAll(radio).count())
+        // Bundle 223 (Q5): bundle 205 added 2 more places (was 3; failing since 205).
+        assertEquals(5, Regex("lastGroupChangeAt = System.currentTimeMillis\\(\\)").findAll(radio).count())
     }
 
     @Test fun `sound line shows volume output battery saver`() {

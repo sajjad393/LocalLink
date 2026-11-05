@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:locallink/core/services/app_logger.dart';
 
 /// Offline-account credential KDF — bit-compatible with the backend's
 /// `derivePasswordKey` (internal/httpapi/auth.go): PBKDF2-HMAC-SHA256 over
@@ -45,6 +47,26 @@ class PasswordKdf {
     }
   }
 
+  /// Bundle 223 (J): the same maths (180,000 rounds, same result) on a
+  /// background isolate. On the ZTE the screen froze 6.3 s (MAIN_STALL)
+  /// while the offline account was made.
+  static Future<Uint8List> deriveAsync(String password, Uint8List salt) async {
+    final watch = Stopwatch()..start();
+    final copy = Uint8List.fromList(salt);
+    final out = await Isolate.run(() => derive(password, copy));
+    AppLogger.info('KDF', detail: 'ms=${watch.elapsedMilliseconds}');
+    return out;
+  }
+
+  /// Bundle 223 (J): [verify] on a background isolate.
+  static Future<bool> verifyAsync(
+      String password, String saltB64, String expectedB64) async {
+    final watch = Stopwatch()..start();
+    final ok = await Isolate.run(() => verify(password, saltB64, expectedB64));
+    AppLogger.info('KDF', detail: 'ms=${watch.elapsedMilliseconds} verify');
+    return ok;
+  }
+
   /// Backend stores RawURLEncoding (no padding); Dart's decoder wants padding.
   static String _b64Fix(String value) {
     final pad = (4 - value.length % 4) % 4;
@@ -52,4 +74,10 @@ class PasswordKdf {
   }
 
   static String b64(Uint8List bytes) => base64Url.encode(bytes).replaceAll('=', '');
+}
+
+/// Bundle 223 (J): a repository that can check an offline login off the
+/// screen thread. The repository contract itself does not change.
+abstract interface class AsyncOfflineLogin {
+  Future<bool> verifyOfflineLoginAsync(String username, String password);
 }

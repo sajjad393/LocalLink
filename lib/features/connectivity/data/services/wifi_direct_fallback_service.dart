@@ -512,7 +512,10 @@ final class WifiDirectFallbackService {
   /// else keeps the 155 connect.
   Future<void> pairTap(WifiDirectPeer peer) async {
     final address = peer.address.trim().toLowerCase();
-    final tag = _tags[address] ?? NearbyTagRegistry.instance.tagFor(address);
+    // Bundle 223 (Q13): a name-only tag can't join silently (no password);
+    // wait for the full tag like an untagged phone.
+    final known = NearbyTagRegistry.instance.tagFor(address);
+    final tag = _tags[address] ?? (known != null && !known.fromName ? known : null);
     if (!groupMode || tag == null) {
       // Bundle 177 (Q6): no pop-up connect. Look for the phone's tag and add
       // it the silent way as soon as the tag shows up (60 s).
@@ -585,11 +588,14 @@ final class WifiDirectFallbackService {
     if (_disposed || event is! Map) return;
     final type = event['type']?.toString();
     if (type == 'services') {
-      final tags = NearbyTag.listFromEvent(event['peers']);
+      final all = NearbyTag.listFromEvent(event['peers']);
+      // Bundle 223 (F, Q13): name-only tags have no group name / password;
+      // they fill the Nearby list (registry) but never the group rules.
+      final tags = [for (final t in all) if (!t.fromName) t];
       _tags
         ..clear()
         ..addAll({for (final t in tags) t.address: t});
-      NearbyTagRegistry.instance.ingest(tags);
+      NearbyTagRegistry.instance.ingest(all);
       _trackTags(tags);
       // Bundle 177 (6.1): the phone we wait for now has a tag.
       final waitFor = _pairWaitAddress;
