@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:locallink/features/account/data/own_profile_signal.dart';
@@ -116,7 +117,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
         username.text = value.username;
         phone.text = value.phoneNumber;
       });
+      unawaited(_readPhoneLocal218());
     });
+  }
+
+  // Bundle 218e: the number is used by another account on the server; it is
+  // kept on this phone only (orange outline + one line).
+  String _phoneLocal218 = '';
+  bool get _phoneLocalOnly =>
+      _phoneLocal218.isNotEmpty && _phoneLocal218 == phone.text.trim();
+
+  Future<void> _readPhoneLocal218() async {
+    try {
+      final v = await widget.store.readSetting(LocalLinkApi.phoneLocalOnlyKey218) ?? '';
+      if (mounted) setState(() => _phoneLocal218 = v.trim());
+    } catch (_) {}
   }
 
   Future<void> _refreshAdminCapability() async {
@@ -447,7 +462,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
             labelText: 'Phone number',
             hintText: _usernameLocked ? 'Required' : 'Optional',
             prefixIcon: const Icon(Icons.phone_outlined),
+            // Bundle 218e: typing another number hides the note at once.
+            onChanged: _phoneLocal218.isEmpty ? null : (_) => setState(() {}),
+            decoration: _phoneLocalOnly
+                ? InputDecoration(
+                    labelText: 'Phone number',
+                    hintText: _usernameLocked ? 'Required' : 'Optional',
+                    prefixIcon: const Icon(Icons.phone_outlined),
+                    labelStyle: const TextStyle(color: Color(0xFFB54708)),
+                    floatingLabelStyle: const TextStyle(color: Color(0xFFB54708)),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFF79009), width: 1.6),
+                    ),
+                  )
+                : null,
           ),
+          if (_phoneLocalOnly)
+            const Padding(
+              key: ValueKey('profile_phone_local_note'),
+              padding: EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.error_outline_rounded, size: 14, color: Color(0xFFB54708)),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text('Used by another account. Saved on this phone only.',
+                        style: TextStyle(fontSize: 12, color: Color(0xFFB54708))),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: LocalLinkSpacing.md),
           SizedBox(
             width: double.infinity,

@@ -27,6 +27,7 @@ import 'package:locallink/features/directory/data/phone_number_normalizer.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
+import 'package:locallink/features/messaging/data/services/not_on_server_218.dart';
 
 class DirectoryRepository implements DirectoryRepositoryContract {
   static const Duration _periodicSyncInterval = Duration(minutes: 2);
@@ -69,6 +70,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     return error.toString().contains('PEER_UNAVAILABLE');
   }
   bool _serverContactsSyncInFlight = false;
+
+  /// Bundle 218c: this phone just joined — ask about offline friends now.
+  bool _resolveSoon218 = false;
+  void resolveSoon218() => _resolveSoon218 = true;
   // Edges received before the author's directory profile (and therefore the
   // signing key we must verify with) was cached. Re-attempted whenever a
   // profile lands; gossip round-trips are seconds, not minutes.
@@ -930,13 +935,24 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       return false;
     }
     if (profile.userId == store.accountId) return false;
-    if (await store.isBlocked(profile.userId)) return false;
+    // Bundle 218c: a block by phone covers her new id too.
+    if (await store.isBlocked(profile.userId) ||
+        await store.isBlocked(profile.deviceId)) {
+      return false;
+    }
 
     if (!await crypto.verifyDirectoryProfile(
       canonicalPayload: profile.canonical(),
       signature: profile.signature,
       signingPublicKey: profile.signingPublicKey,
     )) {
+      return false;
+    }
+
+    // Bundle 218c: her offline id became a server id. The same signing key
+    // is the proof (only her phone has it); a different key = no move.
+    if (await _moveOfflineIds218(profile) &&
+        await store.isBlocked(profile.userId)) {
       return false;
     }
 
@@ -960,7 +976,105 @@ class DirectoryRepository implements DirectoryRepositoryContract {
 
     await store.saveDirectoryProfile(profile.toMap());
     _photoFromCard(profile); // Bundle 204
+    // Bundle 218d: a card with a server id = she joined; her messages go.
+    if (!profile.userId.startsWith('offline_')) {
+      NotOnServer218.instance.remove(profile.deviceId);
+    }
     return true;
+  }
+
+  Future<bool> _moveOfflineIds218(DirectoryProfile profile) async {
+    if (profile.userId.startsWith('offline_')) return false;
+    var moved = false;
+    try {
+      for (final row in await store.directoryProfilesByDevice218(profile.deviceId)) {
+        final oldId = row['user_id']?.toString() ?? '';
+        if (!oldId.startsWith('offline_') || oldId == profile.userId) continue;
+        if ((row['signing_public_key']?.toString() ?? '') != profile.signingPublicKey) {
+          continue;
+        }
+        await moveFriendId218(oldId, profile.userId);
+        moved = true;
+      }
+    } catch (e) {
+      AppLogger.warning('ID_MOVE_FAILED', detail: e.toString());
+    }
+    return moved;
+  }
+
+  /// Bundle 218c: everything this phone keeps by her old id goes to the new
+  /// one (contact, name, private mark, block, picture, waiting links).
+  Future<void> moveFriendId218(String oldId, String newId) async {
+    if (oldId.isEmpty || newId.isEmpty || oldId == newId) return;
+    // Links she signed with the old id: check them while her old card is
+    // still here, then they move with the contact.
+    try {
+      await _flushPendingEdgesFor(oldId);
+    } catch (_) {}
+    await store.moveUserId218(oldId, newId);
+    PeerPhotoBook.instance.moveUser218(oldId, newId);
+    try {
+      final waiting = await _waitingLinks();
+      if (waiting.remove(oldId) != null) {
+        await _saveWaiting();
+        // My add was signed for the old id: sign it again for the new one.
+        if (await store.isContact(newId)) {
+          unawaited(publishContactEdge(ContactEdge.opAdd, newId));
+        }
+      }
+    } catch (_) {}
+    AppLogger.info('ID_MOVED', detail: 'old=${_tail6(oldId)} new=${_tail6(newId)}');
+  }
+
+  /// Bundle 218c: ask the server about friends still known by an offline id
+  /// (every 30 min, or right after this phone joined).
+  DateTime? _lastResolve218;
+  final Set<String> _pushSkipLogged218 = <String>{};
+
+  @visibleForTesting
+  void debugResetResolve218() => _lastResolve218 = null;
+
+  @visibleForTesting
+  Future<bool> debugSaveVerified218(DirectoryProfile profile) => _saveVerified(profile);
+
+  Future<void> _resolveOfflineIds218({bool force = false}) async {
+    final now = DateTime.now();
+    final last = _lastResolve218;
+    if (!force && last != null && now.difference(last) < const Duration(minutes: 30)) {
+      return;
+    }
+    final ids = <String>{};
+    try {
+      for (final id in await store.rawContactUserIds()) {
+        if (id.startsWith('offline_')) ids.add(id);
+      }
+      for (final row in await store.directoryProfiles()) {
+        final id = row['user_id']?.toString() ?? '';
+        if (id.startsWith('offline_')) ids.add(id);
+      }
+    } catch (_) {}
+    if (ids.isEmpty) return;
+    _lastResolve218 = now;
+    final asked = ids.take(100).toList();
+    final found = await api.resolveIds218(asked);
+    for (final f in found) {
+      final asked = f['id']?.toString() ?? '';
+      final userId = f['user_id']?.toString() ?? '';
+      final device = f['device_id']?.toString() ?? '';
+      if (userId.isEmpty || userId.startsWith('offline_')) continue;
+      var oldId = asked.startsWith('offline_') ? asked : '';
+      if (oldId.isEmpty && device.isNotEmpty) {
+        for (final row in await store.directoryProfilesByDevice218(device)) {
+          final id = row['user_id']?.toString() ?? '';
+          if (id.startsWith('offline_')) oldId = id;
+        }
+      }
+      if (oldId.isNotEmpty && oldId != store.accountId) {
+        await moveFriendId218(oldId, userId);
+      }
+      // Bundle 218d: the server knows this phone now.
+      if (device.isNotEmpty) NotOnServer218.instance.remove(device);
+    }
   }
 
   Future<void> _saveServerProfile(DirectoryProfile profile) async {
@@ -1352,16 +1466,32 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     if (accountId == null || accountId.isEmpty) return;
     _serverContactsSyncInFlight = true;
     try {
+      // Bundle 218c: friends who joined the server get their real id first.
+      try {
+        await _resolveOfflineIds218(force: _resolveSoon218);
+        _resolveSoon218 = false;
+      } catch (_) {}
       final confirmed = await store.serverConfirmedContactIds();
       final localIds = await store.rawContactUserIds();
 
       // Push local offline adds (local, but never confirmed by the server).
       for (final id in localIds.difference(confirmed)) {
         if (id == accountId) continue;
+        // Bundle 218c: the server has no such id; it stays on this phone.
+        if (id.startsWith('offline_')) {
+          if (_pushSkipLogged218.add(id)) {
+            AppLogger.info('CONTACT_PUSH_SKIP_OFFLINE', detail: 'to=${_tail6(id)}');
+          }
+          continue;
+        }
         try {
           await api.addAccountContact(id,
               isPrivate: await store.isContactPrivate(id));
           confirmed.add(id);
+        } on ApiError218 catch (e) {
+          if (e.code == 'NOT_ON_SERVER') continue; // kept local, quietly
+          AppLogger.warning('CONTACT_PUSH_DEFERRED',
+              detail: 'offline or server error; will retry next cycle');
         } catch (e) {
           AppLogger.warning('CONTACT_PUSH_DEFERRED',
               detail: 'offline or server error; will retry next cycle');

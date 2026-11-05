@@ -108,6 +108,13 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 }
 
 /// Page 13: the user sheet (status, Wi-Fi rule, sign out all phones).
+/// Bundle 218e: `5 Nov 2026` ('' when not set).
+String joinedOffline218(Object? v) {
+  final t = parseAdminTime216(v);
+  if (t == null) return '';
+  return '${dMMM216(t)} ${t.year}';
+}
+
 Future<void> showUserSheet216(BuildContext context, Map<String, dynamic> user) {
   final bloc = context.read<AdminBloc>();
   return showAdminSheet216<void>(
@@ -231,6 +238,22 @@ class _UserSheetState extends State<_UserSheet> {
                   '@${u['username'] ?? ''} · ${n == 0 ? 'no phone' : plural216(n, 'phone')} · '
                   '${online ? 'online' : (seen.isEmpty ? 'offline' : 'last seen $seen')}',
                   style: t.cardSub),
+              // Bundle 218e: this account came from an offline account.
+              if (joinedOffline218(u['joined_offline_at']).isNotEmpty)
+                Padding(
+                  key: const ValueKey('a218_joined_offline'),
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(children: [
+                    Icon(Icons.cloud_outlined, size: 13, color: c.blue),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                          'Joined from offline · ${joinedOffline218(u['joined_offline_at'])}',
+                          overflow: TextOverflow.ellipsis,
+                          style: t.custom(12, FontWeight.w500, c.blue)),
+                    ),
+                  ]),
+                ),
             ]),
           ),
         ]),

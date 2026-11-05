@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
 import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/groups/data/group_mention_book.dart';
@@ -32,6 +33,8 @@ import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
+import 'package:locallink/features/account/presentation/screens/profile_screen.dart';
+import 'package:locallink/features/home/presentation/widgets/join_cards218.dart';
 import 'package:locallink/features/home/presentation/widgets/chats_search.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
@@ -211,6 +214,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Bundle 132 (F): one-time note when the offline account auto-published
   /// under a renamed username (e.g. it already existed on the server).
   String? _renamedAccountNotice;
+  // Bundle 218e: the join cards (done / recovery code / stuck).
+  Map<String, dynamic>? _join218;
+  String? _recovery218;
+  String _block218 = '';
 
   // Bundle 130: banner etiquette. Both offline/sync banners show for ~5
   // seconds, hide themselves, then stay quiet for 24 hours. The snooze stamp
@@ -374,7 +381,10 @@ class _HomeScreenState extends State<HomeScreen> {
         await widget.store.clearRenamedAccountNotice();
         if (mounted) setState(() => _renamedAccountNotice = renamed);
       }
+      await _readJoin218();
     }());
+    // Bundle 218e: the join can finish while Home is open.
+    JoinNotice218.changed.addListener(_onJoinChanged218);
     // First contact from a new peer arrives live: the Chats tab picks them up.
     _incomingSub = widget.messagingRepository.incoming
         .listen((_) {
@@ -400,6 +410,107 @@ class _HomeScreenState extends State<HomeScreen> {
 
   StreamSubscription<String>? _groupChangeSub;
   Timer? _groupChangeTimer;
+
+  // ---------------- Bundle 218e: join cards ---------------
+
+  void _onJoinChanged218() => unawaited(_readJoin218());
+
+  Future<void> _readJoin218() async {
+    Map<String, dynamic>? join;
+    String? recovery;
+    var block = '';
+    try {
+      final raw = await widget.store.readSetting(OfflineAccountSyncService.joinNoticeKey) ?? '';
+      if (raw.isNotEmpty) join = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {}
+    try {
+      final code = await widget.store.readSetting(OfflineAccountSyncService.joinRecoveryKey) ?? '';
+      if (code.isNotEmpty) recovery = code;
+      block = await widget.store.readSetting(OfflineAccountSyncService.blockKey) ?? '';
+    } catch (_) {}
+    final renamed = _renamedAccountNotice;
+    if (join == null && renamed != null && renamed.isNotEmpty) {
+      join = {'kind': 'renamed', 'name': renamed, 'was': ''};
+    }
+    if (!mounted) return;
+    setState(() {
+      _join218 = join;
+      _recovery218 = recovery;
+      _block218 = block;
+    });
+  }
+
+  Future<void> _closeJoin218() async {
+    setState(() {
+      _join218 = null;
+      _renamedAccountNotice = null;
+    });
+    try {
+      await widget.store.writeSetting(OfflineAccountSyncService.joinNoticeKey, '');
+    } catch (_) {}
+  }
+
+  Future<void> _openProfile218() async {
+    await _closeJoin218();
+    if (!mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProfileScreen(
+          accountRepository: widget.accountRepository,
+          api: widget.api,
+          store: widget.store,
+          transferRepository: widget.transferRepository,
+          crypto: widget.crypto,
+          identityRepository: widget.identityRepository,
+          restoreService: widget.restoreService,
+          directoryRepository: widget.directoryRepository,
+          adminRepositoryFactory: widget.adminRepositoryFactory,
+          viewMode: widget.viewMode,
+          adminCapability: widget.adminCapability,
+          connectivityController: widget.connectivityController,
+          onSignedOut: widget.onSignedOut,
+          authentication: widget.authentication,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _tryAgain218(String pairingCode) async {
+    final sync = _offlineSync ??
+        OfflineAccountSyncService(store: widget.store, auth: widget.authentication);
+    await sync.tryAgainFromCard218(pairingCode: pairingCode);
+    await _readJoin218();
+    if (!widget.store.isOfflinePending) {
+      try {
+        await widget.onSynced();
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
+  }
+
+  List<Widget> _joinCards218() => [
+        if (_join218 != null)
+          JoinCard218.done(
+            kind: _join218!['kind']?.toString() ?? 'plain',
+            name: _join218!['name']?.toString() ?? '',
+            was: _join218!['was']?.toString() ?? '',
+            phoneLocalOnly: _join218!['phone'] == true,
+            onAccount: () => unawaited(_openProfile218()),
+            onOk: () => unawaited(_closeJoin218()),
+          ),
+        if (_recovery218 != null)
+          JoinCard218.recovery(
+            code: _recovery218!,
+            context: context,
+            onSaved: () {
+              setState(() => _recovery218 = null);
+              unawaited(widget.store
+                  .writeSetting(OfflineAccountSyncService.joinRecoveryKey, '')
+                  .catchError((Object _) {}));
+            },
+          ),
+      ];
 
   // ---------------- Bundle 102: offline-account publish flow ---------------
 
@@ -649,24 +760,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _publishSucceeded(String recoveryCode) async {
     if (!mounted) return;
-    if (recoveryCode.isNotEmpty) {
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          title: const Text('Account published'),
-          content: SelectableText(
-            '\nNew recovery code:\n$recoveryCode\n\nThe server issued this code — it replaces the offline one. Keep it somewhere safe; it will not be shown again.',
-          ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('I saved it'),
-            ),
-          ],
-        ),
-      );
-    }
+    // Bundle 218e: a changed code shows as the recovery card; the same code
+    // (the server kept her offline one) needs no dialog.
+    await _readJoin218();
     if (!mounted) return;
     setState(() {
       // store.isOfflinePending is false now; banner disappears, and the
@@ -702,6 +798,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _incomingSub?.cancel();
     _groupChangeSub?.cancel();
     _groupChangeTimer?.cancel();
+    JoinNotice218.changed.removeListener(_onJoinChanged218);
     if (identical(GroupPeopleHub.instance, _peopleHub)) {
       GroupPeopleHub.instance = null;
     }
@@ -1356,14 +1453,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 // chip for explicit-retry feedback, silence otherwise.
                 if (state.syncNotice != null && _syncNoticeVisible)
                   _gatedSyncNotice(state.syncNotice!),
-                if (_renamedAccountNotice != null)
-                  // Bundle 132 (F): one-time note — the account self-published
-                  // under a renamed username (conflict on the server).
-                  _SyncNotice(
-                      message: 'Your account published as '
-                          '"${_renamedAccountNotice!}" — that name is yours '
-                          'on the server now.'),
-                if (widget.store.isOfflinePending && _offlineBannerVisible)
+                // Bundle 218e: the join cards (the renamed note of bundle 132
+                // [_renamedAccountNotice] is now the "renamed" text).
+                ..._joinCards218(),
+                if (widget.store.isOfflinePending && _block218.isNotEmpty)
+                  JoinCard218.stuck(block: _block218, onTry: _tryAgain218)
+                else if (widget.store.isOfflinePending && _offlineBannerVisible)
                   _offlineAccountBanner(),
                 // Bundle 212 (F2): my account blocked by admin (red, no close).
                 const AdminBlockedBanner(),

@@ -26,6 +26,7 @@ import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/files/bloc/file_transfer_bloc.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
+import 'package:locallink/features/messaging/data/services/not_on_server_218.dart';
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
 import 'package:locallink/features/messaging/presentation/widgets/chat_composer.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_bubble.dart';
@@ -578,6 +579,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final playedAt = status == 'played'
         ? (DateTime.tryParse(m.playedAt ?? '')?.toLocal() ?? readAt)
         : null;
+    // Bundle 218d: still waiting (the clock).
+    final notSentYet =
+        status == 'queued' || status == 'pending' || status == 'sending';
     await showMessageInfoSheet(
       context,
       preview: _miniBubble(m),
@@ -588,6 +592,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       readAt: readAt,
       playedAt: playedAt,
       receiptsOff: !ReadReceiptsSetting.instance.on,
+      notSentYet: notSentYet,
+      notOnServerName: notSentYet &&
+              NotOnServer218.instance.has(widget.controller.device.id)
+          ? _peerName(widget.controller.device)
+          : '',
     );
   }
 

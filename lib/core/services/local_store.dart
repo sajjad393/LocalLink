@@ -1386,6 +1386,16 @@ class LocalStore {
   Future<void> clearRenamedAccountNotice() =>
       _db.delete('settings', where: 'key=?', whereArgs: [_renamedNoticeKey]);
 
+  /// Bundle 218: the pairing code typed on the "stuck" card goes into the
+  /// waiting account, so the next join sends it.
+  Future<void> updateOfflinePendingPairing218(String pairingCode) async {
+    final pending = offlinePending;
+    if (pending == null) return;
+    pending['pairing_code'] = pairingCode.trim();
+    _offlinePendingJson = jsonEncode(pending);
+    await _secureStorage.write(key: _offlinePendingKey, value: _offlinePendingJson!);
+  }
+
   /// The server accepted the pending registration: clear the credential shell
   /// (the real token lives in deviceToken via saveConfiguration afterwards).
   Future<void> markAccountSynced() async {
@@ -1698,6 +1708,122 @@ class LocalStore {
     final rows = await _db.query('directory_profiles',
         where: 'device_id=?', whereArgs: [deviceId], limit: 1);
     return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+  }
+
+  /// Bundle 218c: every directory row of one phone (her offline id and her
+  /// server id can both be there for a while).
+  Future<List<Map<String, dynamic>>> directoryProfilesByDevice218(
+      String deviceId) async {
+    if (deviceId.isEmpty) return <Map<String, dynamic>>[];
+    final rows = await _db.query('directory_profiles',
+        where: 'device_id=?', whereArgs: [deviceId]);
+    return [for (final r in rows) Map<String, dynamic>.from(r)];
+  }
+
+  static const String idMovesKey218 = 'id_moves_218';
+
+  /// Bundle 218c: a friend's offline id became her server id. Contact (name,
+  /// private mark), block and sync state follow; the old card goes away.
+  /// Chats are kept by phone id, so they stay as they are.
+  Future<void> moveUserId218(String oldId, String newId) async {
+    oldId = oldId.trim();
+    newId = newId.trim();
+    if (oldId.isEmpty || newId.isEmpty || oldId == newId) return;
+    await timedTx('move_user_218', _db, (txn) async {
+      final oldRows = await txn.query('contacts',
+          where: 'user_id=?', whereArgs: [oldId], limit: 1);
+      if (oldRows.isNotEmpty) {
+        final newRows = await txn.query('contacts',
+            where: 'user_id=?', whereArgs: [newId], limit: 1);
+        if (newRows.isEmpty) {
+          await txn.update('contacts', {'user_id': newId},
+              where: 'user_id=?', whereArgs: [oldId]);
+        } else {
+          final o = oldRows.first;
+          final n = newRows.first;
+          final values = <String, Object?>{};
+          final oldName = o['custom_name']?.toString().trim() ?? '';
+          final newName = n['custom_name']?.toString().trim() ?? '';
+          if (newName.isEmpty && oldName.isNotEmpty) values['custom_name'] = oldName;
+          if ((o['is_private'] as int? ?? 0) == 1) values['is_private'] = 1;
+          final oldDevice = o['device_id']?.toString() ?? '';
+          if ((n['device_id']?.toString() ?? '').isEmpty && oldDevice.isNotEmpty) {
+            values['device_id'] = oldDevice;
+          }
+          if (values.isNotEmpty) {
+            await txn.update('contacts', values,
+                where: 'user_id=?', whereArgs: [newId]);
+          }
+          await txn.delete('contacts', where: 'user_id=?', whereArgs: [oldId]);
+        }
+      }
+      final blocked = await txn.query('blocked_users',
+          where: 'user_id=?', whereArgs: [oldId], limit: 1);
+      if (blocked.isNotEmpty) {
+        await txn.insert(
+            'blocked_users',
+            {'user_id': newId, 'blocked_at': blocked.first['blocked_at']},
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+        await txn.delete('blocked_users', where: 'user_id=?', whereArgs: [oldId]);
+      }
+      try {
+        await txn.rawUpdate(
+            'UPDATE OR IGNORE directory_sync_state SET peer_id=? WHERE peer_id=?',
+            [newId, oldId]);
+        await txn.delete('directory_sync_state',
+            where: 'peer_id=?', whereArgs: [oldId]);
+      } catch (_) {}
+      await txn.delete('directory_profiles',
+          where: 'user_id=?', whereArgs: [oldId]);
+      final confirmed = await txn.query('settings',
+          where: 'key=?', whereArgs: ['server_confirmed_contacts'], limit: 1);
+      if (confirmed.isNotEmpty) {
+        final ids = (confirmed.first['value']?.toString() ?? '')
+            .split(',')
+            .map((id) => id.trim())
+            .where((id) => id.isNotEmpty && id != oldId)
+            .toList()
+          ..sort();
+        await txn.update('settings', {'value': ids.join(',')},
+            where: 'key=?', whereArgs: ['server_confirmed_contacts']);
+      }
+      final edge = await txn.query('settings',
+          where: 'key=?', whereArgs: ['contact_edge_$oldId'], limit: 1);
+      if (edge.isNotEmpty) {
+        await txn.insert('settings',
+            {'key': 'contact_edge_$newId', 'value': edge.first['value']},
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+        await txn.delete('settings',
+            where: 'key=?', whereArgs: ['contact_edge_$oldId']);
+      }
+      var list = <dynamic>[];
+      try {
+        final raw = await txn.query('settings',
+            where: 'key=?', whereArgs: [idMovesKey218], limit: 1);
+        if (raw.isNotEmpty) {
+          list = jsonDecode(raw.first['value']?.toString() ?? '[]') as List<dynamic>;
+        }
+      } catch (_) {}
+      list.removeWhere((e) => e is Map && e['old'] == oldId);
+      list.add({'old': oldId, 'new': newId});
+      if (list.length > 500) list = list.sublist(list.length - 500);
+      await txn.insert('settings', {'key': idMovesKey218, 'value': jsonEncode(list)},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+    _blockedChanges.add(null);
+  }
+
+  /// Bundle 218c: the server id an old offline id moved to (else [id]).
+  Future<String> movedId218(String id) async {
+    if (!id.startsWith('offline_')) return id;
+    try {
+      final raw = await readSetting(idMovesKey218);
+      if (raw == null || raw.isEmpty) return id;
+      for (final e in (jsonDecode(raw) as List<dynamic>).reversed) {
+        if (e is Map && e['old'] == id) return e['new']?.toString() ?? id;
+      }
+    } catch (_) {}
+    return id;
   }
 
   Future<Map<String, dynamic>?> directoryProfileByPhone(String phone) async {
@@ -2130,6 +2256,16 @@ class LocalStore {
       where: 'id=?',
       whereArgs: [id],
     );
+  }
+
+  /// Bundle 218d: red outbox rows since [since] (one-time requeue).
+  Future<List<Map<String, dynamic>>> failedOutboxSince218(DateTime since) async {
+    final rows = await _db.query('outbox',
+        columns: ['id', 'recipient_id', 'created_at'],
+        where: "status='failed' AND created_at >= ?",
+        whereArgs: [since.toUtc().toIso8601String()],
+        limit: 2000);
+    return [for (final r in rows) Map<String, dynamic>.from(r)];
   }
 
   /// Bundle 162 (4.6): Resend on a failed message. Status merge never moves

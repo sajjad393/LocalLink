@@ -98,6 +98,14 @@ class AccountRepository implements AccountRepositoryContract {
     }
 
     await _store.saveProfile(local);
+    // Bundle 218: a new number replaces the one kept on this phone only (if
+    // the new one is taken too, the same flow marks it again).
+    try {
+      final localOnly = await _store.readSetting(LocalLinkApi.phoneLocalOnlyKey218) ?? '';
+      if (localOnly.isNotEmpty && localOnly != phoneNumber.trim()) {
+        await _store.writeSetting(LocalLinkApi.phoneLocalOnlyKey218, '');
+      }
+    } catch (_) {}
     await _store.setPendingProfileUpdate(normalizedName, normalizedUsername, phoneNumber: phoneNumber, phoneVisibility: phoneVisibility, discoverableByPhone: discoverableByPhone, discoverableByName: discoverableByName, directorySyncEnabled: directorySyncEnabled);
 
     final synced = await _api.syncPendingProfile();
@@ -111,6 +119,16 @@ class AccountRepository implements AccountRepositoryContract {
 
   @override
   Future<bool> syncPendingProfile() => _api.syncPendingProfile();
+
+  /// Bundle 218: the number used by another account, kept on this phone only
+  /// ('' = none). The Profile page shows the orange note for it.
+  Future<String> phoneLocalOnly218() async {
+    try {
+      return await _store.readSetting(LocalLinkApi.phoneLocalOnlyKey218) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
 
   @override
   Future<List<Device>> trustedDevices() => _api.accountDevices();

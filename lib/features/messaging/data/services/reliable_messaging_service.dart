@@ -5,6 +5,7 @@ import 'package:locallink/features/groups/data/group_change_hub.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/features/messaging/data/services/not_on_server_218.dart';
 import 'package:locallink/features/messaging/data/message_delete_actions.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -192,6 +193,15 @@ class ReliableMessagingService {
   @visibleForTesting
   Future<void> handleDirectEventForTest(Map<String, dynamic> event) =>
       _handleDirectEvent(event);
+
+  /// Bundle 218d tests: a server socket event / the one-time requeue.
+  @visibleForTesting
+  Future<void> handleSocketMessageForTest(Map<String, dynamic> data) =>
+      _handleSocketMessage(data);
+  @visibleForTesting
+  Future<void> requeueOld218ForTest() => _requeueOld218();
+  @visibleForTesting
+  void hookNotOnServerForTest() => _hookNotOnServer218();
 
   void _registerMediaActions() {
     final actions = MediaTransferActions.instance;
@@ -823,7 +833,63 @@ class ReliableMessagingService {
     );
   }
 
+  // Bundle 218d: a phone the server now knows → its waiting messages go.
+  final Set<String> _skipLogged218 = <String>{};
+  bool _notOnServerHooked218 = false;
+
+  void _hookNotOnServer218() {
+    if (_notOnServerHooked218) return;
+    _notOnServerHooked218 = true;
+    NotOnServer218.instance.addListener(_onNotOnServer218);
+  }
+
+  void _onNotOnServer218() {
+    if (_disposed) return;
+    if (NotOnServer218.instance.lastRemoved.isEmpty) return;
+    NotOnServer218.instance.lastRemoved = '';
+    unawaited(flush().catchError((Object _) {}));
+  }
+
+  static const String requeueKey218 = 'rnf_requeue_218';
+
+  /// Bundle 218d: once after the update, red messages of the last 60 days go
+  /// back to the clock (most were "not on the server yet").
+  Future<void> _requeueOld218() async {
+    if ((await store.readSetting(requeueKey218) ?? '') == '1') return;
+    final since = DateTime.now().toUtc().subtract(const Duration(days: 60));
+    final rows = await store.failedOutboxSince218(since);
+    if (rows.isNotEmpty) {
+      final phones = <String>{
+        for (final r in rows) r['recipient_id']?.toString() ?? ''
+      }..remove('');
+      final known = <String>{};
+      try {
+        for (final f in await api.resolveIds218(phones.toList())) {
+          final d = f['device_id']?.toString() ?? '';
+          if (d.isNotEmpty) known.add(d);
+          final asked = f['id']?.toString() ?? '';
+          if (asked.isNotEmpty) known.add(asked);
+        }
+      } catch (_) {}
+      var n = 0;
+      for (final r in rows) {
+        final id = r['id']?.toString() ?? '';
+        final peer = r['recipient_id']?.toString() ?? '';
+        if (id.isEmpty || !await store.requeueFailedOutbox(id)) continue;
+        n++;
+        if (peer.isNotEmpty && !known.contains(peer)) {
+          NotOnServer218.instance.add(peer);
+        }
+        final m = await store.messageById(id);
+        if (m != null) _incoming.add(m);
+      }
+      AppLogger.info('MESSAGE_REQUEUE_218', detail: 'count=$n');
+    }
+    await store.writeSetting(requeueKey218, '1');
+  }
+
   Future<void> synchronize() async {
+    _hookNotOnServer218();
     if (_syncing) {
       AppLogger.info(
         'MESSAGE_SYNC_SKIPPED_ALREADY_RUNNING',
@@ -863,6 +929,9 @@ class ReliableMessagingService {
 
     try {
       // (roster already pushed above the token gate — Bundle 129)
+      try {
+        await _requeueOld218();
+      } catch (_) {}
       var cursor = store.syncCursor;
       var hasMore = true;
 
@@ -1327,6 +1396,15 @@ class ReliableMessagingService {
         final localRoute = await _localRouteFor(recipientId);
         final canUseDirect =
             !store.internetOnly && localRoute?.isAvailable == true;
+
+        // Bundle 218d: the server does not know them yet: no upload, no
+        // server send; it waits for nearby or for them to join.
+        if (!canUseDirect && NotOnServer218.instance.has(recipientId)) {
+          if (_skipLogged218.add(id)) {
+            AppLogger.info('MESSAGE_SKIP_NOT_ON_SERVER', detail: 'id=$id');
+          }
+          continue;
+        }
 
         // ------------------------------------------------------------------
         // DIRECT / WI-FI TRANSPORT
@@ -1928,11 +2006,27 @@ class ReliableMessagingService {
           // to a server-clock-aligned now and let the retry loop deliver it.
           await store.updateOutboxCreatedAt(id, _rfc3339Utc(null));
         }
-        final permanent = errorCode == 'RECIPIENT_NOT_FOUND' ||
-            errorCode == 'SENDER_ID_MISMATCH' ||
+        // Bundle 218d: "not on the server yet" is not an error: the message
+        // waits (clock) and goes by nearby, or by the server once they join.
+        final notOnServer = errorCode == 'RECIPIENT_NOT_FOUND' ||
+            errorText.contains('recipient device not found');
+        if (notOnServer) {
+          final row = await store.outboxItem(id);
+          final peer = row?['recipient_id']?.toString() ?? '';
+          if (peer.isNotEmpty) NotOnServer218.instance.add(peer);
+          final cur = row?['status']?.toString() ?? '';
+          if (row != null &&
+              cur != 'sending' &&
+              cur != 'direct_delivered' &&
+              cur != 'delivered') {
+            await store.updateOutboxStatus(id, 'queued');
+          }
+          AppLogger.info('MESSAGE_WAIT_NOT_ON_SERVER', detail: 'id=$id');
+          return;
+        }
+        final permanent = errorCode == 'SENDER_ID_MISMATCH' ||
             errorText.contains('timestamp is invalid') ||
             errorText.contains('too far in the future') ||
-            errorText.contains('recipient device not found') ||
             errorText.contains('sender_id does not match') ||
             // The server already owns this id bound to OTHER metadata:
             // retrying can never succeed, so drop it from the queue.
@@ -2986,6 +3080,10 @@ class ReliableMessagingService {
     Map<String, dynamic> item,
     String status,
   ) async {
+    // Bundle 218d: no server copy for someone the server does not know.
+    if (NotOnServer218.instance.has(item['recipient_id']?.toString() ?? '')) {
+      return;
+    }
     try {
       final first = _firstDirectSendAt[id] ?? 0;
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -3174,6 +3272,9 @@ class ReliableMessagingService {
     );
 
     _disposed = true;
+    if (_notOnServerHooked218) {
+      NotOnServer218.instance.removeListener(_onNotOnServer218);
+    }
     _startupTimer?.cancel();
     _retryTimer?.cancel();
 

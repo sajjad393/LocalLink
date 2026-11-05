@@ -277,6 +277,8 @@ Future<void> showMessageInfoSheet(
   DateTime? readAt,
   DateTime? playedAt,
   bool receiptsOff = false,
+  // Bundle 218d: set when the server does not know this friend yet.
+  String notOnServerName = '',
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -316,8 +318,12 @@ Future<void> showMessageInfoSheet(
             : line(const ValueKey('info_sent'), Icons.send_rounded, 'Sent',
                 messageInfoTime(sentAt)));
       } else {
-        rows.add(line(const ValueKey('info_sent'), Icons.send_rounded, 'Sent',
-            messageInfoTime(sentAt)));
+        // Bundle 218d: a 1:1 message still waiting shows "Not sent yet" too.
+        rows.add(notSentYet && deliveredAt == null
+            ? line(const ValueKey('info_not_sent'), Icons.schedule_rounded,
+                'Not sent yet', '')
+            : line(const ValueKey('info_sent'), Icons.send_rounded, 'Sent',
+                messageInfoTime(sentAt)));
         if (deliveredAt != null) {
           rows.add(Divider(height: 1, color: colors.outlineVariant));
           rows.add(line(const ValueKey('info_delivered'), Icons.done_all_rounded,
@@ -361,7 +367,25 @@ Future<void> showMessageInfoSheet(
                     style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
                   ),
                 ),
-              if (!group && deliveredAt == null)
+              if (!group && deliveredAt == null && notOnServerName.isNotEmpty) ...[
+                Divider(height: 1, color: colors.outlineVariant),
+                const SizedBox(height: 12),
+                Container(
+                  key: const ValueKey('info_not_on_server'),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$notOnServerName is not on the server yet. It goes when '
+                    '$notOnServerName is nearby or joins the server.',
+                    style: TextStyle(fontSize: 13.5, color: colors.onSurfaceVariant),
+                  ),
+                ),
+              ],
+              if (!group && deliveredAt == null && notOnServerName.isEmpty)
                 Padding(
                   key: const ValueKey('info_waiting'),
                   padding: const EdgeInsets.only(top: 4),

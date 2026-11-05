@@ -25,6 +25,9 @@ import 'package:locallink/features/connectivity/data/services/nearby_admin_statu
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
 import 'package:locallink/core/services/session_key_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/admin/data/services/admin_block_book.dart';
+import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
+import 'package:locallink/features/messaging/data/services/not_on_server_218.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/core/config/app_config.dart';
 import 'package:locallink/core/network/api_http_client.dart';
@@ -500,6 +503,8 @@ class AppDependencies {
     networkPolicySync = NetworkPolicySyncService(store, api, socket, httpClient: this.httpClient, wifiRadio: WifiRadioControlService());
     final directory = DirectoryRepository(store: store, api: api, transport: directTransport, crypto: crypto);
     directoryRepository = directory;
+    // Bundle 218: the offline account just joined the server.
+    OfflineAccountSyncService.onJoined218 = _onJoined218;
     // Bundle 204: friends' profile pictures that come Nearby.
     messaging.onProfilePhotoFile = directory.receivePhotoFile;
     pairing = PairingService(
@@ -1056,6 +1061,9 @@ class AppDependencies {
     _silentResyncBusy = true;
     _lastSilentResyncAt = now;
     try {
+      // Bundle 218d: after a reconnect, ask the server again about phones
+      // marked "not on the server" more than 5 min ago.
+      NotOnServer218.instance.clearOlderThan(const Duration(minutes: 5));
       await messaging.synchronize();
       await messaging.flush();
       unawaited(presence.publish());
@@ -1078,7 +1086,36 @@ class AppDependencies {
     }
   }
 
+  /// Bundle 218: after an offline account joined the server (plain, renamed
+  /// or linked to her own account): the real id everywhere, her profile up
+  /// (or down, when linked), her card, contacts and waiting messages.
+  Future<void> _onJoined218(JoinKind218 kind) async {
+    try {
+      final me = store.accountId ?? '';
+      final phone = store.deviceId ?? '';
+      AdminBlockBook.instance.setSelf(userId: me, deviceId: phone);
+      AdminBadgeBook.instance.setSelf(userId: me, deviceId: phone);
+    } catch (_) {}
+    if (kind == JoinKind218.linked) {
+      await OfflineAccountSyncService.settleLinkedProfile218(
+          store, () => api.getProfile(downloadAvatar: true));
+    }
+    try {
+      final pushed = await account.syncPendingProfile();
+      if (pushed) AppLogger.info('OFFLINE_ACCOUNT_PROFILE_PUSHED');
+    } catch (_) {}
+    final dir = directoryRepository;
+    if (dir is DirectoryRepository) dir.resolveSoon218();
+    unawaited(directoryRepository.publishOwnProfile().catchError((Object _) {}));
+    unawaited(directoryRepository.syncServerContacts().catchError((Object _) {}));
+    unawaited(messaging.flush().catchError((Object _) {}));
+  }
+
   Future<void> dispose() async {
+    // Bundle 218: only clear the join hook if it is still ours.
+    if (OfflineAccountSyncService.onJoined218 == _onJoined218) {
+      OfflineAccountSyncService.onJoined218 = null;
+    }
     readReceipts.dispose(); // Bundle 198
     try {
       autoFetch.dispose(); // Bundle 208 (E)

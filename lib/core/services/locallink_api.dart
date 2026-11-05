@@ -17,6 +17,7 @@ import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/models/account_restore.dart';
 import 'package:locallink/core/services/local_store.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/directory/data/peer_photo_book.dart';
 import 'package:locallink/core/services/websocket_service.dart';
 
@@ -320,6 +321,8 @@ class LocalLinkApi {
     String? pairingCode,
   }) async {
     final id = deviceId ?? store.deviceId ?? store.generateDeviceId();
+    // Bundle 218: the phone-only account this comes from + its recovery code.
+    final extra = await _offlineJoinFields218(withRecovery: true);
     final response = await http.post(
       Uri.parse('$baseUrl/api/v1/auth/register'),
       headers: const {'Content-Type': 'application/json'},
@@ -331,9 +334,10 @@ class LocalLinkApi {
         'device_name': deviceName.trim(),
         'platform': 'android',
         if (pairingCode != null && pairingCode.trim().isNotEmpty) 'pairing_code': pairingCode.trim(),
+        ...extra,
       }),
     ).timeout(const Duration(seconds: 10));
-    if (response.statusCode != 201) throw Exception(_error(response));
+    if (response.statusCode != 201) throw _fail218(response);
     final payload = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
     final account = LocalAccount.fromJson(Map<String, dynamic>.from(payload['account'] as Map));
     final device = Device.fromJson(Map<String, dynamic>.from(payload['device'] as Map));
@@ -358,6 +362,8 @@ class LocalLinkApi {
     String? pairingCode,
   }) async {
     final id = deviceId ?? store.deviceId ?? store.generateDeviceId();
+    // Bundle 218: joining her own account keeps that account's recovery code.
+    final extra = await _offlineJoinFields218(withRecovery: false);
     final response = await http.post(
       Uri.parse('$baseUrl/api/v1/auth/login'),
       headers: const {'Content-Type': 'application/json'},
@@ -369,9 +375,10 @@ class LocalLinkApi {
         'device_name': deviceName.trim(),
         'platform': 'android',
         if (pairingCode != null && pairingCode.trim().isNotEmpty) 'pairing_code': pairingCode.trim(),
+        ...extra,
       }),
     ).timeout(const Duration(seconds: 10));
-    if (response.statusCode != 200) throw Exception(_error(response));
+    if (response.statusCode != 200) throw _fail218(response);
     final payload = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
     final account = LocalAccount.fromJson(Map<String, dynamic>.from(payload['account'] as Map));
     final device = Device.fromJson(Map<String, dynamic>.from(payload['device'] as Map));
@@ -433,9 +440,134 @@ class LocalLinkApi {
         await store.saveProfile(profile);
       }
       return true;
-    } catch (_) {
+    } catch (error) {
+      if (pending != null && !_retried218) {
+        // Bundle 218: number used by another account → save the rest; the
+        // number stays on this phone only (with a note).
+        final number = (pending['phone_number'] ?? '').toString().trim();
+        if (number.isNotEmpty && _isPhoneTaken218(error)) {
+          try {
+            await store.writeSetting(phoneLocalOnlyKey218, number);
+            await _rewritePending218(pending, phoneNumber: '');
+            await _markJoinPhoneLine218();
+            AppLogger.info('OFFLINE_ACCOUNT_PHONE_LOCAL_ONLY');
+            return await _retryOnce218();
+          } catch (_) {}
+        }
+        // The pending name is old (renamed on join): send the current one.
+        final current = (store.username ?? '').trim();
+        final wanted = (pending['username'] ?? '').toString().trim();
+        if (_isUsernameTaken218(error) && current.isNotEmpty && current != wanted) {
+          try {
+            await _rewritePending218(pending, username: current);
+            return await _retryOnce218();
+          } catch (_) {}
+        }
+      }
       return false;
     }
+  }
+
+  // ------------------------------------------------------------- Bundle 218
+  static const phoneLocalOnlyKey218 = 'phone_local_only_218';
+  bool _retried218 = false;
+
+  Future<bool> _retryOnce218() async {
+    _retried218 = true;
+    try {
+      return await syncPendingProfile();
+    } finally {
+      _retried218 = false;
+    }
+  }
+
+  Future<void> _rewritePending218(Map<String, dynamic> pending,
+      {String? username, String? phoneNumber}) {
+    return store.setPendingProfileUpdate(
+        pending['display_name']?.toString() ?? '',
+        username ?? pending['username']?.toString() ?? '',
+        phoneNumber: phoneNumber ?? pending['phone_number']?.toString() ?? '',
+        phoneVisibility: pending['phone_visibility']?.toString() ?? 'contacts',
+        discoverableByPhone: pending['discoverable_by_phone'] != false,
+        discoverableByName: pending['discoverable_by_name'] != false,
+        directorySyncEnabled: pending['directory_sync_enabled'] != false);
+  }
+
+  static bool _isPhoneTaken218(Object error) =>
+      (error is ApiError218 && error.code == 'PHONE_TAKEN') ||
+      error.toString().toLowerCase().contains('phone number is already registered');
+
+  static bool _isUsernameTaken218(Object error) =>
+      (error is ApiError218 && error.code == 'USERNAME_TAKEN') ||
+      error.toString().toLowerCase().contains('username is already registered');
+
+  /// The join card (U-1) gets the orange "number stays on this phone" line.
+  Future<void> _markJoinPhoneLine218() async {
+    try {
+      final raw = await store.readSetting('join_notice_218');
+      if (raw == null || raw.isEmpty) return;
+      final map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      map['phone'] = true;
+      await store.writeSetting('join_notice_218', jsonEncode(map));
+    } catch (_) {}
+  }
+
+  /// Extra register / login fields while a phone-only account is waiting.
+  Future<Map<String, String>> _offlineJoinFields218({required bool withRecovery}) async {
+    if (!store.isOfflinePending) return const {};
+    final out = <String, String>{};
+    try {
+      final id = (await store.profile())?.userId ?? '';
+      if (id.startsWith('offline_')) out['offline_user_id'] = id;
+    } catch (_) {}
+    if (withRecovery) {
+      final code = store.localRecoveryCode ?? '';
+      if (code.isNotEmpty) out['recovery_code'] = code;
+    }
+    return out;
+  }
+
+  /// Which of these ids (offline ids or phone ids) are on the server now.
+  /// Never throws: [] on any problem.
+  Future<List<Map<String, String>>> resolveIds218(List<String> ids) async {
+    final list = [for (final id in ids) if (id.trim().isNotEmpty) id.trim()].take(100).toList();
+    if (list.isEmpty || baseUrl.isEmpty) return const [];
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/v1/users/resolve'),
+        headers: {..._headers(), 'Content-Type': 'application/json'},
+        body: jsonEncode({'ids': list}),
+      ).timeout(const Duration(seconds: 6));
+      if (response.statusCode != 200) return const [];
+      final body = jsonDecode(response.body);
+      final found = body is Map ? body['found'] : null;
+      if (found is! List) return const [];
+      return [
+        for (final f in found)
+          if (f is Map)
+            {
+              'id': f['id']?.toString() ?? '',
+              'user_id': f['user_id']?.toString() ?? '',
+              'username': f['username']?.toString() ?? '',
+              'device_id': f['device_id']?.toString() ?? '',
+            }
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  ApiError218 _fail218(http.Response response) {
+    var code = '';
+    var owner = '';
+    try {
+      final json = jsonDecode(response.body);
+      if (json is Map) {
+        code = json['error_code']?.toString() ?? '';
+        owner = json['owner']?.toString() ?? '';
+      }
+    } catch (_) {}
+    return ApiError218(_error(response), code: code, owner: owner, status: response.statusCode);
   }
 
   Future<LocalProfile> getProfile({bool downloadAvatar = true}) async {
@@ -443,6 +575,13 @@ class LocalLinkApi {
     if (response.statusCode != 200) throw Exception(_error(response));
     final profile = LocalProfile.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
     var result = profile;
+    // Bundle 218: the number another account uses stays on this phone.
+    try {
+      final localOnly = (await store.readSetting(phoneLocalOnlyKey218)) ?? '';
+      if (localOnly.isNotEmpty && profile.phoneNumber.trim().isEmpty) {
+        result = result.copyWith(phoneNumber: localOnly);
+      }
+    } catch (_) {}
     if (downloadAvatar && profile.avatarUrl.isNotEmpty) {
       try {
         result = await _cacheProfileAvatar(profile);
@@ -461,10 +600,17 @@ class LocalLinkApi {
       headers: {..._headers(), 'Content-Type': 'application/json'},
       body: jsonEncode({'display_name': displayName.trim(), 'username': username.trim().toLowerCase(), 'phone_number': phoneNumber.trim(), 'phone_visibility': phoneVisibility, 'discoverable_by_phone': discoverableByPhone, 'discoverable_by_name': discoverableByName, 'directory_sync_enabled': directorySyncEnabled}),
     ).timeout(const Duration(seconds: 8));
-    if (response.statusCode != 200) throw Exception(_error(response));
+    if (response.statusCode != 200) throw _fail218(response);
     final profile = LocalProfile.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
     final cached = await store.profile();
-    final result = profile.copyWith(localAvatarPath: cached?.localAvatarPath ?? '');
+    var result = profile.copyWith(localAvatarPath: cached?.localAvatarPath ?? '');
+    // Bundle 218: the number used by another account stays on this phone.
+    try {
+      final localOnly = (await store.readSetting(phoneLocalOnlyKey218)) ?? '';
+      if (localOnly.isNotEmpty && result.phoneNumber.trim().isEmpty) {
+        result = result.copyWith(phoneNumber: localOnly);
+      }
+    } catch (_) {}
     await store.saveConfiguration(
       server: store.serverAddress!,
       id: store.deviceId!,
@@ -796,7 +942,7 @@ class LocalLinkApi {
         if (isPrivate != null) 'is_private': isPrivate,
       }),
     ).timeout(const Duration(seconds: 6));
-    if (response.statusCode != 200) throw Exception(_error(response));
+    if (response.statusCode != 200) throw _fail218(response);
   }
 
   Future<void> removeAccountContact(String userId) async {
@@ -1221,3 +1367,17 @@ class GroupActionException implements Exception, FriendlyError {
   String toString() => friendly;
 }
 
+/// Bundle 218: a server error with its stable code. `toString()` is the same
+/// as `Exception(text)`, so every old text check and every message shown to
+/// the user stay exactly as before.
+class ApiError218 implements Exception {
+  final String message;
+  final String code;
+  final String owner;
+  final int status;
+
+  const ApiError218(this.message, {this.code = '', this.owner = '', this.status = 0});
+
+  @override
+  String toString() => 'Exception: $message';
+}

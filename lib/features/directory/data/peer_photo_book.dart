@@ -158,6 +158,24 @@ class PeerPhotoBook extends ChangeNotifier {
 
   ProfilePhotoCode? codeOf(String userId) => _codes[userId];
 
+  /// Bundle 218c: her offline id became a server id — her picture follows.
+  void moveUser218(String oldId, String newId) {
+    if (oldId.isEmpty || newId.isEmpty || oldId == newId) return;
+    var changed = false;
+    final code = _codes.remove(oldId);
+    if (code != null) {
+      _codes[newId] ??= code;
+      changed = true;
+    }
+    for (final e in _users.entries.toList()) {
+      if (e.value == oldId) {
+        _users[e.key] = newId;
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
+  }
+
   String? userOfDevice(String deviceId) => _users[deviceId];
 
   /// The picture of [id] (user id or device id) when it is on this phone

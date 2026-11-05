@@ -1,9 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
 
+import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/core/services/local_store.dart';
+import 'package:locallink/core/services/locallink_api.dart' show ApiError218;
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 
@@ -71,12 +77,14 @@ class OfflineAccountSyncService {
     required String username,
     required String password,
     String? pairingCode,
+    JoinKind218? kind,
   }) async {
     final pending = _store.offlinePending;
     final stored = pending?['pairing_code']?.toString().trim() ?? '';
     final pairing = (pairingCode?.trim().isNotEmpty == true)
         ? pairingCode!.trim()
         : stored;
+    final wanted = pendingUsername;
     final result = await _auth.register(
       username: username,
       password: password,
@@ -84,20 +92,240 @@ class OfflineAccountSyncService {
       pairingCode: pairing.isEmpty ? null : pairing,
     );
     await _store.markAccountSynced();
-    // Bundle 123: the seeded offline profile carries a collision-safe local
-    // user id (offline_<hex>). Now that the server assigned the real one,
-    // rewrite the profile row so pairing payloads / QR identity keep pointing
-    // at the same person pre- and post-publish.
-    try {
-      final seeded = await _store.profile();
-      if (seeded != null && seeded.userId.startsWith('offline_')) {
-        await _store.saveProfile(seeded.copyWith(userId: result.account.id));
-      }
-    } catch (_) {
-      // Non-fatal: the account is published; the id swap retries on the next
-      // profile save either way.
-    }
+    // Bundle 123 + 218: swap the offline_<hex> id for the real one (inside
+    // _afterJoin218, with the name, the pending profile, the mirror, …).
+    await _afterJoin218(result,
+        kind: kind ??
+            (wanted.isNotEmpty && username.trim().toLowerCase() != wanted
+                ? JoinKind218.renamed
+                : JoinKind218.plain),
+        finalName: username.trim().toLowerCase(),
+        wasName: wanted,
+        secret: password);
     return result;
+  }
+
+  // ------------------------------------------------------------- Bundle 218
+
+  /// Set by AppDependencies: refresh the profile, push the pending profile,
+  /// publish the card, sync contacts and flush the outbox after a join.
+  static Future<void> Function(JoinKind218 kind)? onJoined218;
+
+  static const joinNoticeKey = 'join_notice_218';
+  static const joinRecoveryKey = 'join_recovery_218';
+  static const blockKey = 'offline_publish_block_218';
+  static const idMovesKey = 'id_moves_218';
+  static const linkedPhoneKey = 'linked_phone_218';
+
+  /// The server's error code (ApiError218), or `[code=X]` in a text.
+  static String codeOf218(Object error) {
+    if (error is ApiError218) return error.code;
+    return RegExp(r'\[code=([A-Z_]+)\]').firstMatch(error.toString())?.group(1) ?? '';
+  }
+
+  /// The other @name the server sent with DEVICE_TAKEN (only for this very phone).
+  static String ownerOf218(Object error) {
+    if (error is ApiError218) return error.owner;
+    return RegExp(r'\[owner=([a-z0-9._-]+)\]').firstMatch(error.toString())?.group(1) ?? '';
+  }
+
+  Future<String> _readBlock218() async {
+    try {
+      return (await _store.readSetting(blockKey)) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> _setBlock218(String value) async {
+    try {
+      await _store.writeSetting(blockKey, value);
+    } catch (_) {}
+    AppLogger.info('OFFLINE_ACCOUNT_STUCK', detail: 'why=${value.split(':').first}');
+    JoinNotice218.bump();
+  }
+
+  /// The "Try again" button on the stuck card (U-3).
+  Future<String?> tryAgainFromCard218({String? pairingCode}) async {
+    final code = pairingCode?.trim() ?? '';
+    if (code.isNotEmpty) {
+      try {
+        await _store.updateOfflinePendingPairing218(code);
+      } catch (_) {}
+    }
+    try {
+      await _store.writeSetting(blockKey, '');
+    } catch (_) {}
+    final out = await autoPublish(from: 'card');
+    JoinNotice218.bump();
+    return out;
+  }
+
+  String _storedPairing() =>
+      _store.offlinePending?['pairing_code']?.toString().trim() ?? '';
+
+  /// Everything after the server said yes. Each step on its own: one failing
+  /// step never undoes the join. Logs never hold a password, key or number.
+  Future<void> _afterJoin218(AuthResult r,
+      {required JoinKind218 kind,
+      required String finalName,
+      String wasName = '',
+      required String secret}) async {
+    var realId = '';
+    var realName = finalName;
+    try {
+      realId = r.account.id;
+      if (r.account.username.isNotEmpty) realName = r.account.username;
+    } catch (_) {}
+    LocalProfile? seeded;
+    try {
+      seeded = await _store.profile();
+    } catch (_) {}
+    final oldId = seeded?.userId ?? '';
+    // 1. Profile row: real id + final name, a newer version for friends.
+    try {
+      if (seeded != null && realId.isNotEmpty &&
+          (oldId.startsWith('offline_') || oldId == realId)) {
+        await _store.saveProfile(seeded.copyWith(
+            userId: realId,
+            username: realName,
+            profileVersion: seeded.profileVersion + 1,
+            updatedAt: DateTime.now().toUtc().toIso8601String()));
+      }
+    } catch (_) {}
+    // 2. The profile she made offline goes to the server (not on a link:
+    //    her server profile wins; her number only if the server has none).
+    try {
+      final pending = await _store.pendingProfileUpdate();
+      if (kind == JoinKind218.linked) {
+        final phone = (pending?['phone_number'] ?? seeded?.phoneNumber ?? '').toString().trim();
+        await _store.clearPendingProfileUpdate();
+        if (phone.isNotEmpty) await _store.writeSetting(linkedPhoneKey, phone);
+      } else if (pending != null) {
+        await _store.setPendingProfileUpdate(
+            pending['display_name']?.toString() ?? realName, realName,
+            phoneNumber: pending['phone_number']?.toString() ?? '',
+            phoneVisibility: pending['phone_visibility']?.toString() ?? 'contacts',
+            discoverableByPhone: pending['discoverable_by_phone'] != false,
+            discoverableByName: pending['discoverable_by_name'] != false,
+            directorySyncEnabled: pending['directory_sync_enabled'] != false);
+      } else if (seeded != null) {
+        await _store.setPendingProfileUpdate(
+            seeded.displayName.isEmpty ? realName : seeded.displayName, realName,
+            phoneNumber: seeded.phoneNumber,
+            phoneVisibility: seeded.phoneVisibility,
+            discoverableByPhone: seeded.discoverableByPhone,
+            discoverableByName: seeded.discoverableByName,
+            directorySyncEnabled: seeded.directorySyncEnabled);
+      }
+      if (kind != JoinKind218.linked && seeded != null && seeded.localAvatarPath.isNotEmpty) {
+        final waiting = await _store.pendingProfileAvatarPath();
+        final photo = File(seeded.localAvatarPath);
+        if ((waiting == null || waiting.isEmpty) && await photo.exists()) {
+          final dot = seeded.localAvatarPath.lastIndexOf('.');
+          final ext = dot > 0 ? seeded.localAvatarPath.substring(dot) : '.jpg';
+          final copy = await _store.pendingProfileAvatarFilePath(ext);
+          await photo.copy(copy);
+          await _store.setPendingProfileAvatarPath(copy);
+        }
+      }
+      AppLogger.info('OFFLINE_ACCOUNT_PROFILE_QUEUED', detail: 'kind=${kind.name}');
+    } catch (_) {}
+    // 3. Offline sign-in copy for the real account.
+    try {
+      var code = '';
+      try {
+        code = r.recoveryCode;
+      } catch (_) {}
+      await _auth.mirrorOfflineLogin(
+          username: realName,
+          password: secret,
+          recoveryCode: code.isNotEmpty ? code : (_store.localRecoveryCode ?? ''));
+      AppLogger.info('OFFLINE_ACCOUNT_MIRROR_OK');
+    } catch (_) {}
+    // 4. Recovery code: kept by a 218 server; an old server makes a new one.
+    try {
+      final code = r.recoveryCode;
+      if (kind != JoinKind218.linked && code.isNotEmpty) {
+        if (code != (_store.localRecoveryCode ?? '')) {
+          await _store.writeSetting(joinRecoveryKey, code);
+          await _store.updateLocalRecoveryCode(code);
+          AppLogger.info('OFFLINE_ACCOUNT_RECOVERY_NEW');
+        } else {
+          AppLogger.info('OFFLINE_ACCOUNT_RECOVERY_KEPT');
+        }
+      }
+    } catch (_) {}
+    // 5. My own id move.
+    try {
+      if (oldId.startsWith('offline_') && realId.isNotEmpty) {
+        await addIdMove218(_store, oldId, realId);
+      }
+    } catch (_) {}
+    // 6. The one-time card on Home.
+    try {
+      await _store.writeSetting(
+          joinNoticeKey,
+          jsonEncode({
+            'kind': kind.name,
+            'name': realName,
+            'was': wasName,
+            'at': DateTime.now().toUtc().toIso8601String(),
+          }));
+    } catch (_) {}
+    // 7. Not stuck any more.
+    try {
+      await _store.writeSetting(blockKey, '');
+    } catch (_) {}
+    if (kind == JoinKind218.linked) {
+      AppLogger.info('OFFLINE_ACCOUNT_LINKED', detail: 'user=@$realName');
+    }
+    // 8. The app refreshes everything else.
+    try {
+      final hook = onJoined218;
+      if (hook != null) unawaited(hook(kind).catchError((_) {}));
+    } catch (_) {}
+    JoinNotice218.bump();
+  }
+
+  /// Linked to her own account: after the server profile came down, her
+  /// offline number goes up only when the account has no number.
+  static Future<void> settleLinkedProfile218(
+      LocalStore store, Future<LocalProfile> Function() fetch) async {
+    String phone = '';
+    try {
+      phone = (await store.readSetting(linkedPhoneKey)) ?? '';
+    } catch (_) {}
+    LocalProfile server;
+    try {
+      server = await fetch();
+    } catch (_) {
+      return; // try again on the next join hook run
+    }
+    try {
+      if (phone.isNotEmpty && server.phoneNumber.trim().isEmpty) {
+        await store.setPendingProfileUpdate(server.displayName, server.username,
+            phoneNumber: phone,
+            phoneVisibility: server.phoneVisibility,
+            discoverableByPhone: server.discoverableByPhone,
+            discoverableByName: server.discoverableByName,
+            directorySyncEnabled: server.directorySyncEnabled);
+      }
+      await store.writeSetting(linkedPhoneKey, '');
+    } catch (_) {}
+  }
+
+  /// `id_moves_218`: [{old, new}], newest last, at most 500.
+  static Future<void> addIdMove218(LocalStore store, String oldId, String newId) async {
+    var list = <dynamic>[];
+    try {
+      final raw = await store.readSetting(idMovesKey);
+      if (raw != null && raw.isNotEmpty) list = jsonDecode(raw) as List<dynamic>;
+    } catch (_) {}
+    list.removeWhere((e) => e is Map && e['old'] == oldId);
+    list.add({'old': oldId, 'new': newId});
+    if (list.length > 500) list = list.sublist(list.length - 500);
+    await store.writeSetting(idMovesKey, jsonEncode(list));
   }
 
   String _deviceName() {
@@ -125,6 +353,8 @@ class OfflineAccountSyncService {
     _nextTry?.cancel();
     _nextTry = null;
     _failStreak = 0;
+    onJoined218 = null;
+    JoinNotice218.changed.value = 0;
   }
 
   Future<bool> _takeLock() async {
@@ -163,6 +393,12 @@ class OfflineAccountSyncService {
   Future<String?> autoPublish({String from = 'app'}) async {
     offlineAccountLog216('CHECK', 'pending=$pending from=$from');
     if (_autoPublishing || !pending) return null;
+    // Bundle 218: stuck (phone on another account / pairing code): no
+    // silent retry; the card's Try again button runs it.
+    if (from != 'card' && (await _readBlock218()).isNotEmpty) {
+      AppLogger.info('OFFLINE_ACCOUNT_BLOCKED_BY', detail: 'from=$from');
+      return null;
+    }
     if (!await _takeLock()) {
       offlineAccountLog216('BUSY', 'from=$from');
       return null;
@@ -185,10 +421,14 @@ class OfflineAccountSyncService {
         return null;
       }
       final rng = Random.secure();
+      var linkTried = false;
       for (var attempt = 0; attempt < 6; attempt++) {
         offlineAccountLog216('PUBLISH', 'try=${attempt + 1} user=@$username');
         try {
-          await publish(username: username, password: secret);
+          await publish(
+              username: username,
+              password: secret,
+              kind: attempt == 0 ? JoinKind218.plain : JoinKind218.renamed);
           // markAccountSynced() (inside publish → register) already wiped
           // the one-time secret.
           offlineAccountLog216('PUBLISH', 'ok');
@@ -200,6 +440,37 @@ class OfflineAccountSyncService {
           offlineAccountLog216('DONE', 'user=@$username');
           return attempt == 0 ? null : username;
         } catch (error) {
+          if (isUsernameConflict(error) && attempt == 0 && !linkTried) {
+            // Bundle 218: the name is taken. Same name + same password =
+            // her own account (or our own lost first answer): sign in and
+            // join this phone to it. Tried once; the rename follows if not.
+            linkTried = true;
+            AppLogger.info('OFFLINE_ACCOUNT_LINK_TRY', detail: 'user=@$pendingUsername');
+            try {
+              final pairing = _storedPairing();
+              final r = await _auth.login(
+                  username: pendingUsername,
+                  password: secret,
+                  deviceName: _deviceName(),
+                  pairingCode: pairing.isEmpty ? null : pairing);
+              await _store.markAccountSynced();
+              await _afterJoin218(r,
+                  kind: JoinKind218.linked,
+                  finalName: pendingUsername.isEmpty ? username : pendingUsername,
+                  wasName: username,
+                  secret: secret);
+              ok = true;
+              offlineAccountLog216('DONE', 'user=@$username linked');
+              return null;
+            } catch (e) {
+              if (codeOf218(e) == 'PAIRING_REQUIRED') {
+                await _setBlock218('pairing');
+                offlineAccountLog216('FAIL', 'code=pairing');
+                return null;
+              }
+              AppLogger.info('OFFLINE_ACCOUNT_LINK_NO', detail: offlineReason216(e));
+            }
+          }
           if (isUsernameConflict(error)) {
             // Silent rename: keep the base name readable, suffix 2–99.
             username = '$pendingUsername${2 + rng.nextInt(98)}';
@@ -209,6 +480,18 @@ class OfflineAccountSyncService {
           offlineAccountLog216('FAIL',
               'code=${isDeviceConflict(error) ? 'device_conflict' : 'server'} '
               'reason=${offlineReason216(error)}');
+          // Bundle 218: these need a person (admin / code), so the card
+          // shows and the silent retries stop.
+          final code = codeOf218(error);
+          if (code == 'DEVICE_TAKEN' || isDeviceConflict(error)) {
+            // The server names the other account only when the hardware id
+            // proves it is this very phone; else "another account".
+            final owner = ownerOf218(error);
+            await _setBlock218(owner.isEmpty ? 'device' : 'device:@$owner');
+          } else if (code == 'PAIRING_REQUIRED' ||
+              error.toString().toLowerCase().contains('pairing code')) {
+            await _setBlock218('pairing');
+          }
           return null; // server/device errors: stay pending, retry later
         }
       }
@@ -278,4 +561,14 @@ String offlineReason216(Object error) {
   var text = error.toString().split('\n').first.trim();
   text = text.replaceAll(RegExp(r'(password|secret|token|key)\S*', caseSensitive: false), '***');
   return text.length > 80 ? text.substring(0, 80) : text;
+}
+
+/// Bundle 218: how the offline account joined the server.
+enum JoinKind218 { plain, renamed, linked }
+
+/// Bundle 218: Home re-reads the join / stuck / recovery cards when this
+/// changes (the join can finish while Home is open).
+abstract final class JoinNotice218 {
+  static final ValueNotifier<int> changed = ValueNotifier<int>(0);
+  static void bump() => changed.value++;
 }
