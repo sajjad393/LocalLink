@@ -6,6 +6,12 @@ import 'package:locallink/features/admin/data/services/version_rule_server.dart'
 import 'package:locallink/features/share_app/domain/update_request_service.dart';
 import 'package:locallink/features/admin/data/services/admin_block_server.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_doers.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_server.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_service.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_store.dart';
+import 'package:locallink/features/admin/data/models/admin_block_record.dart' show AdminBlockRecord;
+import 'package:locallink/features/connectivity/domain/local_route.dart' show LocalRouteKind;
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/features/files/data/services/auto_fetch_service.dart';
 import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
@@ -181,6 +187,8 @@ class AppDependencies {
           unawaited(adminRoles.refresh(reason: 'connect')
               .catchError((Object _) => AdminRoleResult.keep));
           unawaited(adminBadges.syncWithServer().catchError((Object _) {}));
+          // Bundle 220: admin action cards + done receipts to / from the server.
+          unawaited(adminActions.syncWithServer().catchError((Object _) {}));
         }
       },
     );
@@ -188,6 +196,7 @@ class AppDependencies {
     _buildAdminRoles(); // Bundle 214
     _buildVersionRules(); // Bundle 213
     _buildUpdateRequests(); // Bundle 213
+    _buildAdminActions(); // Bundle 220
     meshRepository = MeshRepository(transport: directTransport);
     mesh = MeshBloc(repository: meshRepository);
     wifiDirectFallback = WifiDirectFallbackService(connectivityRepository);
@@ -710,6 +719,126 @@ class AppDependencies {
   /// Bundle 214: my own admin role, automatic (no admin login).
   late final AdminRoleService adminRoles;
 
+  /// Bundle 220: every admin action goes to all phones (signed cards, the
+  /// target does it and replies "done"; Pending until then, no time limit).
+  late final AdminActionService adminActions;
+
+  void _buildAdminActions() {
+    final link = directTransport;
+    // Plain one-step frames like 212 (Kotlin MeshOneStep admin_act_*).
+    final plain = link is SealingPeerTransport ? link.inner : link;
+    final keep = SqlAdminActionStore(store);
+    adminActions = AdminActionService(
+      store: keep,
+      selfDeviceId: () => store.deviceId ?? '',
+      selfUserId: () => store.accountId ?? '',
+      signingKey: crypto.signingPublicKey,
+      sign: crypto.signPayload,
+      boxKeys: crypto.sealKeyPairs,
+      send: (peer, payload) => plain.send(recipientId: peer, payload: payload),
+      events: link.events,
+      linkedPeers: () async {
+        final topology = await link.topology().timeout(const Duration(seconds: 3));
+        final peers = topology['peers'];
+        return <String>[
+          if (peers is List)
+            for (final p in peers.whereType<Map>())
+              if (((p['peer_id'] ?? p['node_id'])?.toString() ?? '').isNotEmpty)
+                (p['peer_id'] ?? p['node_id']).toString(),
+        ];
+      },
+      serverKey: () => adminBlocks.serverKey,
+      endedCerts: () => adminBlocks.endedCertIds,
+      usableCert: adminBlocks.usableCert,
+      adminSignIn: () async {
+        final s = await adminCapability.readValidSession();
+        if (s == null || !s.usable) return null;
+        return (token: s.token, role: s.role, username: s.username);
+      },
+      server: HttpAdminActionServer(
+        baseUrl: () => api.baseUrl,
+        deviceId: () => store.deviceId ?? '',
+        deviceToken: () => store.deviceToken ?? '',
+      ),
+      hints: socket.messages,
+      serverOnline: () => socket.isConnected,
+      viaOf: (peer) => switch (routePolicy.routes[peer]?.kind) {
+        LocalRouteKind.lan => 'wifi',
+        LocalRouteKind.wifiDirect => 'wifi_direct',
+        _ => 'mesh',
+      },
+      makeBlockInner: ({required userId, required devices, required name, required block}) async =>
+          (await adminBlocks.setBlocked(
+                  targetUserId: userId, targetDevices: devices, targetName: name, block: block))
+              .blob,
+      doers: AdminActionDoers(
+        block: (inner) async {
+          final record = AdminBlockRecord.fromBlob(inner);
+          if (record == null) return false;
+          return adminBlocks.offer(record, source: 'nearby');
+        },
+        setClosed: (closed) async {
+          await store.writeSetting(AdminActionDoers.closedKey, closed ? '1' : '');
+          unawaited(notifications
+              .showSystemNotification(
+                id: 'admin_closed_self',
+                title: closed ? 'Account closed by admin' : 'Your account is active again',
+                body: closed
+                    ? "You can read old chats but can't send or call."
+                    : 'You can send messages and call again.',
+              )
+              .catchError((Object _) {}));
+        },
+        wifi: (policy) async {
+          final full = policy['policy'] is Map
+              ? Map<String, dynamic>.from(policy['policy'] as Map)
+              : null;
+          if (full != null) {
+            // Server-made: the whole policy for this phone.
+            await store.applyAdminNetworkPolicy(full, authoritativeSnapshot: true);
+            final w = full['wifi_radio_policy']?.toString() ?? '';
+            if (w == 'forced_on' || w == 'forced_off') {
+              await WifiRadioControlService().enforce(w);
+            }
+            return;
+          }
+          // Made offline: one level (user / device) changes, the other stays.
+          final picked = policy['wifi_radio_policy']?.toString() ?? '';
+          final device = policy['level']?.toString() == 'device';
+          final user = device ? store.adminUserWifiRadioPolicy?.name : picked;
+          final dev = device ? picked : store.adminDeviceWifiRadioPolicy?.name;
+          String st(String? v) => switch (v) {
+                'forcedOn' || 'forced_on' => 'forced_on',
+                'forcedOff' || 'forced_off' => 'forced_off',
+                'allowed' => 'allowed',
+                _ => '',
+              };
+          final u = st(user), d = st(dev);
+          final effective = d.isNotEmpty ? d : u;
+          await store.applyAdminNetworkPolicy({
+            'user_wifi_radio_policy': u,
+            'device_wifi_radio_policy': d,
+            'user_policy_version':
+                store.adminUserPolicyVersion + (device ? 0 : 1),
+            'device_policy_version':
+                store.adminDevicePolicyVersion + (device ? 1 : 0),
+            'wifi_radio_policy': effective,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          });
+          if (effective == 'forced_on' || effective == 'forced_off') {
+            await WifiRadioControlService().enforce(effective);
+          }
+        },
+        badge: (inner) => adminBadges.offer(inner, from: 'nearby'),
+        versionRule: (inner) => versionRules.offer(inner, from: 'nearby'),
+        signOut: ({required removed}) async {
+          await store.writeSetting(AdminActionDoers.removedKey, removed ? '1' : 'signed_out');
+          await authentication.signOut();
+        },
+      ),
+    );
+  }
+
   void _buildAdminRoles() {
     final link = directTransport;
     final plain = link is SealingPeerTransport ? link.inner : link;
@@ -933,6 +1062,7 @@ class AppDependencies {
     unawaited(versionRules.start().catchError((Object _) {})); // Bundle 213
     unawaited(adminBadges.start().catchError((Object _) {})); // Bundle 214
     unawaited(adminRoles.start().catchError((Object _) {})); // Bundle 214
+    adminActions.start(); // Bundle 220
     updateRequests.start(); // Bundle 213
     _startAutoFetch(); // Bundle 208 (E)
     calls.start();
@@ -1005,6 +1135,7 @@ class AppDependencies {
     unawaited(versionRules.start().catchError((Object _) {})); // Bundle 213
     unawaited(adminBadges.start().catchError((Object _) {})); // Bundle 214
     unawaited(adminRoles.start().catchError((Object _) {})); // Bundle 214
+    adminActions.start(); // Bundle 220
     updateRequests.start(); // Bundle 213
     _startAutoFetch(); // Bundle 208 (E)
     calls.start();
@@ -1141,6 +1272,7 @@ class AppDependencies {
     await versionRules.dispose(); // Bundle 213
     await adminBadges.dispose(); // Bundle 214
     await adminRoles.dispose(); // Bundle 214
+    await adminActions.dispose(); // Bundle 220
     await updateRequests.stop(); // Bundle 213
     await directoryRepository.dispose();
     await messaging.dispose();

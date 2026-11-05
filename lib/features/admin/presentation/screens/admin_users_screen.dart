@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:locallink/features/admin/data/actions/admin_action_offline.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/admin_permissions.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
@@ -173,6 +175,13 @@ class _UserSheetState extends State<_UserSheet> {
     );
     if (!ok || !mounted) return;
     await context.read<AdminBloc>().setUserStatus(_id, to);
+    // Bundle 220: no server -> Off / Active / Block go as a card to all phones.
+    final note = await AdminActionOffline.ifOffline(
+      action: switch (to) { 'disabled' => 'off', 'suspended' => 'block', _ => 'active' },
+      userId: _id,
+      label: _name,
+    );
+    if (note != null && mounted) adminSnack216(context, note);
     if (mounted) setState(() => _status = to);
   }
 
@@ -184,6 +193,15 @@ class _UserSheetState extends State<_UserSheet> {
         .read<AdminBloc>()
         .updateUserNetworkPolicy(_id, wifiRadioPolicy: r.picked);
     if (saved != null && mounted) setState(() => _wifi = r.picked);
+    // Bundle 220: no server -> the Wi-Fi rule goes as a card to all phones.
+    final note = await AdminActionOffline.ifOffline(
+      action: 'wifi_rule',
+      userId: _id,
+      label: _name,
+      detail: {'level': 'user', 'wifi_radio_policy': r.picked ?? ''},
+      words: r.picked ?? 'no rule',
+    );
+    if (note != null && mounted) adminSnack216(context, note);
   }
 
   Future<void> _signOutAll() async {
@@ -201,7 +219,19 @@ class _UserSheetState extends State<_UserSheet> {
     for (final id in mine) {
       await bloc.revokeSession(id);
     }
-    if (mounted) adminSnack216(context, '$_name is signed out on ${plural216(mine.length, 'phone')}.');
+    // Bundle 220: no server -> a sign-out card for each phone.
+    final phones = <String>{
+      for (final s in bloc.state.sessions)
+        if ('${s['user_id']}' == _id && '${s['device_id'] ?? ''}'.isNotEmpty) '${s['device_id']}'
+    };
+    String? note;
+    for (final d in phones.isEmpty ? const <String>[''] : phones.toList()) {
+      note = await AdminActionOffline.ifOffline(
+          action: 'sign_out', userId: _id, label: _name, devices: [if (d.isNotEmpty) d]);
+    }
+    if (mounted) {
+      adminSnack216(context, note ?? '$_name is signed out on ${plural216(mine.length, 'phone')}.');
+    }
   }
 
   @override

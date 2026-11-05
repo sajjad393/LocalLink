@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/version_banner.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminClosedFlag;
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 
@@ -14,7 +15,8 @@ class AdminBlockedBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: AdminBlockBook.instance,
+        // Bundle 220: + "closed by admin" (Off).
+        listenable: Listenable.merge([AdminBlockBook.instance, AdminClosedFlag.closed]),
         builder: (context, _) {
           if (!AdminBlockBook.instance.selfBlocked) {
             return const SizedBox.shrink();
@@ -33,7 +35,9 @@ class AdminBlockedBanner extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      "Your account is blocked by admin. You can read old chats but can't send or call.",
+                      AdminClosedFlag.closed.value
+                          ? "Account closed by admin. You can read old chats but can't send or call."
+                          : "Your account is blocked by admin. You can read old chats but can't send or call.",
                       style: theme.textTheme.bodySmall?.copyWith(color: ink),
                     ),
                   ),

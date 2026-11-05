@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:locallink/features/admin/data/actions/admin_action_offline.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/admin_permissions.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
@@ -31,7 +32,21 @@ class AdminSessionsScreen extends StatelessWidget {
         danger: true);
     if (!ok || !context.mounted) return;
     final bloc = context.read<AdminBloc>();
+    final row = admin
+        ? null
+        : bloc.state.sessions.cast<Map<String, dynamic>?>().firstWhere(
+            (s) => '${s?['id']}' == id, orElse: () => null);
     await (admin ? bloc.revokeAdminSession(id) : bloc.revokeSession(id));
+    // Bundle 220: no server -> a sign-out card for that phone.
+    final device = '${row?['device_id'] ?? ''}';
+    if (row != null && device.isNotEmpty) {
+      final note = await AdminActionOffline.ifOffline(
+          action: 'sign_out',
+          userId: '${row['user_id'] ?? ''}',
+          label: personName216(row, fallback: '${row['username'] ?? ''}'),
+          devices: [device]);
+      if (note != null && context.mounted) adminSnack216(context, note);
+    }
   }
 
   @override

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_offline.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart';
 
 /// Bundle 212: who is being blocked / unblocked.
@@ -208,12 +210,20 @@ Future<bool> runAdminBlock(BuildContext context,
     return false;
   }
   try {
-    await service.setBlocked(
+    final record = await service.setBlocked(
       targetUserId: target.userId,
       targetDevices: target.deviceIds,
       targetName: target.name,
       block: block,
     );
+    // Bundle 220: no server -> also a card that the phone answers "done".
+    unawaited(AdminActionOffline.ifOffline(
+      action: block ? 'block' : 'unblock',
+      userId: target.userId,
+      label: target.name,
+      devices: target.deviceIds,
+      inner: record.blob,
+    ));
     messenger?.showSnackBar(SnackBar(
         content: Text(block
             ? '${target.name} is blocked for everyone.'

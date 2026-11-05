@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:locallink/features/admin/data/actions/admin_action_offline.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/admin_permissions.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
@@ -131,6 +132,16 @@ class _DeviceSheetState extends State<_DeviceSheet> {
     final saved =
         await context.read<AdminBloc>().updateDeviceNetworkPolicy(_id, wifiRadioPolicy: v);
     if (saved != null && mounted) setState(() => _wifi = v);
+    // Bundle 220: no server -> the Wi-Fi rule goes as a card to all phones.
+    final note = await AdminActionOffline.ifOffline(
+      action: 'wifi_rule',
+      userId: '${widget.device['user_id'] ?? ''}',
+      label: _name,
+      devices: [_id],
+      detail: {'level': 'device', 'wifi_radio_policy': v ?? ''},
+      words: v ?? 'no rule',
+    );
+    if (note != null && mounted) adminSnack216(context, note);
   }
 
   Future<void> _rename() async {
@@ -171,6 +182,13 @@ class _DeviceSheetState extends State<_DeviceSheet> {
     if (!ok || !mounted) return;
     final nav = Navigator.of(context);
     await context.read<AdminBloc>().revoke(_id);
+    // Bundle 220: no server -> a "remove phone" card for all phones.
+    final note = await AdminActionOffline.ifOffline(
+        action: 'remove_phone',
+        userId: '${widget.device['user_id'] ?? ''}',
+        label: _name,
+        devices: [_id]);
+    if (note != null && mounted) adminSnack216(context, note);
     if (nav.canPop()) nav.pop();
   }
 

@@ -1,3 +1,4 @@
+import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminActionSignOut;
 import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/share_app/domain/update_request_service.dart';
@@ -109,6 +110,11 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // Bundle 213: Update (get the new app from a nearby phone) and the
     // "X wants the new LinkUp" question on the phone that has it.
     VersionGuard.openUpdate = openUpdateSheet;
+    // Bundle 220: an admin signed this phone out (card from any phone).
+    AdminActionSignOut.onSignedOut = () async {
+      await _signedOut();
+      _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+    };
     UpdateRequestService.confirm = (ask, apk, battery) async {
       final ctx = _navigatorKey.currentState?.overlay?.context;
       if (!mounted || ctx == null) return null;

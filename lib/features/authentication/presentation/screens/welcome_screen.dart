@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminActionDoers;
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/widgets/gradient_pill_button.dart';
@@ -37,6 +39,9 @@ class WelcomeScreen extends StatelessWidget {
   });
 
   void _openAuth(BuildContext context, {required bool register}) {
+    // Bundle 220: the "signed out by admin" note goes once they act.
+    unawaited(Future(() => store.writeSetting(AdminActionDoers.removedKey, ''))
+        .catchError((Object _) {}));
     Navigator.push<void>(
       context,
       MaterialPageRoute(
@@ -57,9 +62,50 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return WelcomeView(
+    final view = WelcomeView(
       onCreateAccount: () => _openAuth(context, register: true),
       onLogIn: () => _openAuth(context, register: false),
+    );
+    // Bundle 220 (Q3): signed out / removed by an admin -> one short note.
+    return FutureBuilder<String?>(
+      future: Future(() => store.readSetting(AdminActionDoers.removedKey))
+          .catchError((Object _) => null),
+      builder: (context, snap) {
+        final v = snap.data ?? '';
+        if (v.isEmpty) return view;
+        final text = v == 'signed_out'
+            ? 'Signed out by admin. Your chats are still here. Log in again when the server is on.'
+            : 'This phone was removed by admin. Your chats are still here. Log in again when the server is on.';
+        return Stack(children: [
+          view,
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 16,
+            child: SafeArea(
+              top: false,
+              child: Material(
+                key: const ValueKey('welcome_admin_note'),
+                color: const Color(0xFFFFF4E5),
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: Row(children: [
+                    const Icon(Icons.admin_panel_settings_outlined,
+                        size: 18, color: Color(0xFFB54708)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(text,
+                          style: const TextStyle(
+                              fontSize: 13, color: Color(0xFF7A2E0E), letterSpacing: 0)),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ]);
+      },
     );
   }
 }

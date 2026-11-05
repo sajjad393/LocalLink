@@ -34,7 +34,17 @@ object MeshOneStep {
 
     fun isAdminBadge(type: String?): Boolean = type != null && type in badgeTypes
 
-    fun isOneStep(type: String?): Boolean = MeshRelayPolicy.isNameQuestion(type) || isAdminBlock(type) || isVersion(type) || isAdminBadge(type)
+    // Bundle 220: admin action cards, their "done" receipts and the digest
+    // (signed; each phone passes them on itself, one step at a time).
+    const val ADMIN_ACT_DIGEST: String = "admin_act_digest"
+    const val ADMIN_ACT_CARDS: String = "admin_act_cards"
+    const val ADMIN_ACT_DONE: String = "admin_act_done"
+
+    private val actionTypes = setOf(ADMIN_ACT_DIGEST, ADMIN_ACT_CARDS, ADMIN_ACT_DONE)
+
+    fun isAdminAction(type: String?): Boolean = type != null && type in actionTypes
+
+    fun isOneStep(type: String?): Boolean = MeshRelayPolicy.isNameQuestion(type) || isAdminBlock(type) || isVersion(type) || isAdminBadge(type) || isAdminAction(type)
 
     /** Came straight from the phone on this link and is for this phone. */
     fun isOneStepIn(type: String?, sourceId: String, destinationId: String, linkPeerId: String, selfId: String): Boolean =

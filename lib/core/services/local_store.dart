@@ -893,6 +893,84 @@ class LocalStore {
     } catch (_) {}
   }
 
+  // ---- Bundle 220: admin actions (cards + done receipts) -------------------
+  // New tables only. Made with CREATE TABLE IF NOT EXISTS when the service
+  // starts, so the DB version stays 34 (no migration, old tests unchanged).
+
+  bool _adminActionTables = false;
+
+  Future<void> ensureAdminActionTables() async {
+    if (_adminActionTables) return;
+    await _db.execute('''CREATE TABLE IF NOT EXISTS admin_actions (
+      id TEXT PRIMARY KEY, action TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', sig TEXT NOT NULL DEFAULT '',
+      state TEXT NOT NULL DEFAULT 'pending', need INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0,
+      mine INTEGER NOT NULL DEFAULT 0, applied INTEGER NOT NULL DEFAULT 0, label TEXT NOT NULL DEFAULT '',
+      made_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '',
+      proof TEXT NOT NULL DEFAULT '', extra TEXT NOT NULL DEFAULT ''
+    )''');
+    await _db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_admin_actions_state ON admin_actions(state, made_at)');
+    await _db.execute('''CREATE TABLE IF NOT EXISTS admin_action_receipts (
+      action_id TEXT NOT NULL, device_id TEXT NOT NULL, body TEXT NOT NULL, sig TEXT NOT NULL,
+      counted INTEGER NOT NULL DEFAULT 0, at TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY(action_id, device_id)
+    )''');
+    _adminActionTables = true;
+  }
+
+  Future<List<Map<String, Object?>>> adminActionRows() async {
+    await ensureAdminActionTables();
+    return _db.query('admin_actions');
+  }
+
+  Future<List<Map<String, Object?>>> adminActionReceiptRows() async {
+    await ensureAdminActionTables();
+    return _db.query('admin_action_receipts');
+  }
+
+  Future<void> putAdminActionRow(Map<String, Object?> row) async {
+    await ensureAdminActionTables();
+    await _db.insert('admin_actions', row, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> putAdminActionReceiptRow(Map<String, Object?> row) async {
+    await ensureAdminActionTables();
+    await _db.insert('admin_action_receipts', row,
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteAdminActionRows(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await ensureAdminActionTables();
+    for (var i = 0; i < ids.length; i += 200) {
+      final part = ids.sublist(i, i + 200 > ids.length ? ids.length : i + 200);
+      final marks = List.filled(part.length, '?').join(',');
+      await _db.delete('admin_actions', where: 'id IN ($marks)', whereArgs: part);
+      await _db.delete('admin_action_receipts', where: 'action_id IN ($marks)', whereArgs: part);
+    }
+  }
+
+  /// Bundle 220: the saved keys of a phone (from its signed profile):
+  /// signing key (checks its "done") and identity key (locks its box).
+  Future<({String userId, String signingKey, String identityKey})> directoryKeysForDevice(
+      String deviceId) async {
+    try {
+      final rows = await _db.rawQuery(
+          'SELECT user_id, signing_public_key, identity_public_key FROM directory_profiles '
+          'WHERE device_id = ? ORDER BY synced_at DESC LIMIT 1',
+          [deviceId]);
+      if (rows.isNotEmpty) {
+        final r = rows.first;
+        return (
+          userId: r['user_id']?.toString() ?? '',
+          signingKey: r['signing_public_key']?.toString() ?? '',
+          identityKey: r['identity_public_key']?.toString() ?? '',
+        );
+      }
+    } catch (_) {}
+    return (userId: '', signingKey: '', identityKey: '');
+  }
+
   // ---- Bundle G7: group files Nearby (sender rows) -------------------------
 
   Future<void> putGroupFileSends(List<Map<String, Object?>> rows) async {

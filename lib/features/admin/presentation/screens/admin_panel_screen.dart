@@ -15,6 +15,8 @@ import 'package:locallink/features/admin/data/services/admin_role_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/admin/presentation/widgets/account_switch_sheet.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_book.dart';
+import 'package:locallink/features/admin/presentation/screens/admin_actions_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_audit_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_calls_screen.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_dashboard216_screen.dart';
@@ -874,6 +876,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
             title: 'Blocked on this phone',
             subtitle: local == 0 ? 'Nobody' : people216(local),
             onTap: _showBlocked,
+          ),
+          // Bundle 220: every admin action, Pending until each phone does it.
+          AdminRow216(
+            key: const ValueKey('admin_actions_row'),
+            leading: const AdminToneIcon216(Icons.pending_actions_rounded, A216Tone.orange),
+            title: 'Admin actions',
+            subtitle: AdminActionBook.instance.pendingCount == 0
+                ? 'Pending until each phone does it'
+                : '${AdminActionBook.instance.pendingCount} pending · until each phone does it',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => AdminTheme216Scope(
+                    child: AdminActionsScreen(
+                        role: _check ? 'owner' : widget.session.role,
+                        viewMode: widget.viewMode)))),
           ),
         ]),
       ],
