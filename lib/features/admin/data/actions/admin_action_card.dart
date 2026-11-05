@@ -33,6 +33,8 @@ abstract final class AdminActionRules {
   static const Set<String> actions = {
     'block', 'unblock', 'off', 'active', 'wifi_rule', 'sign_out',
     'remove_phone', 'admin_badge', 'version_rule', 'cancel',
+    // Bundle 221 (Owner only): chats from phones + delete completely.
+    'get_chat', 'get_file', 'delete_completely',
   };
 
   /// Actions for one person (all their phones); the others are one phone.
@@ -77,6 +79,9 @@ abstract final class AdminActionRules {
         'version_rule' => detail.isEmpty ? 'Old app rule' : detail,
         'rename_phone' => 'Rename phone',
         'cancel' => 'Cancel',
+        'get_chat' => detail.isEmpty ? 'Get chat' : detail,
+        'get_file' => detail.isEmpty ? 'Get full photo' : detail,
+        'delete_completely' => detail.isEmpty ? 'Delete completely' : detail,
         _ => action,
       };
 }
@@ -104,6 +109,10 @@ class AdminActionCard {
   final String parent;
   final SignedBlob blob;
 
+  /// Bundle 221: the X25519 key answers are locked for (the server's key
+  /// for web requests, the admin phone's key for offline ones).
+  final String replyKey;
+
   const AdminActionCard({
     required this.id,
     required this.action,
@@ -118,6 +127,7 @@ class AdminActionCard {
     required this.cancels,
     required this.parent,
     required this.blob,
+    this.replyKey = '',
   });
 
   bool get isCancel => action == 'cancel';
@@ -149,6 +159,7 @@ class AdminActionCard {
       cancels: s('cancels'),
       parent: s('parent'),
       blob: blob,
+      replyKey: s('reply_key'),
     );
     if (card.id.isEmpty || DateTime.tryParse(card.at) == null) return null;
     if (card.isCancel && card.cancels.isEmpty) return null;
@@ -166,6 +177,8 @@ class AdminActionCard {
     required List<AdminActionBox> to,
     SignedBlob? inner,
     String cancels = '',
+    String parent = '',
+    String replyKey = '',
   }) =>
       jsonEncode({
         'v': 1,
@@ -181,6 +194,8 @@ class AdminActionCard {
         'to': [for (final b in to) b.toJson()],
         if (inner != null) 'inner': inner.toJson(),
         if (cancels.isNotEmpty) 'cancels': cancels,
+        if (parent.isNotEmpty) 'parent': parent,
+        if (replyKey.isNotEmpty) 'reply_key': replyKey,
       });
 }
 

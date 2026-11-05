@@ -10,6 +10,11 @@ import 'package:locallink/features/admin/data/actions/admin_action_doers.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_server.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_service.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_store.dart';
+import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
+import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
+import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+import 'package:locallink/features/admin/data/actions/delete_completely_doer.dart';
+import 'package:locallink/core/services/hidden_store_221.dart';
 import 'package:locallink/features/admin/data/models/admin_block_record.dart' show AdminBlockRecord;
 import 'package:locallink/features/connectivity/domain/local_route.dart' show LocalRouteKind;
 import 'package:locallink/core/presence/presence_hub.dart';
@@ -723,11 +728,78 @@ class AppDependencies {
   /// target does it and replies "done"; Pending until then, no time limit).
   late final AdminActionService adminActions;
 
+  /// Bundle 221: answer parts over every link + Delete completely.
+  late final ChatAnswerCarrier chatCarrier221;
+  late final DeleteCompletelyDoer purge221;
+  Timer? _sweep221;
+  final List<StreamSubscription<Object?>> _late221 = <StreamSubscription<Object?>>[];
+
+  Future<String> _name221(String device) async {
+    if (device.isEmpty) return '';
+    if (device == store.deviceId) return store.username ?? '';
+    return await store.peerDisplayName(device).catchError((Object _) => null) ?? '';
+  }
+
   void _buildAdminActions() {
     final link = directTransport;
     // Plain one-step frames like 212 (Kotlin MeshOneStep admin_act_*).
     final plain = link is SealingPeerTransport ? link.inner : link;
     final keep = SqlAdminActionStore(store);
+    // Bundle 221: chats from phones (built before the 220 service: its
+    // doers call the 3 new actions).
+    final hide = store.hide221;
+    final chatRows = SqlChatRows221(hidden: hide, db: () => hide.db, name: _name221);
+    final parts221 = SqlAnswerPartStore(hide, () => hide.db);
+    Future<List<String>> linked221() async {
+      final topology = await link.topology().timeout(const Duration(seconds: 3));
+      final peers = topology['peers'];
+      return <String>[
+        if (peers is List)
+          for (final p in peers.whereType<Map>())
+            if (((p['peer_id'] ?? p['node_id'])?.toString() ?? '').isNotEmpty)
+              (p['peer_id'] ?? p['node_id']).toString(),
+      ];
+    }
+    chatCarrier221 = ChatAnswerCarrier(
+      store: parts221,
+      selfDeviceId: () => store.deviceId ?? '',
+      send: (peer, payload) => plain.send(recipientId: peer, payload: payload),
+      events: link.events,
+      linkedPeers: linked221,
+      serverKey: () => adminBlocks.serverKey,
+      endedCerts: () => adminBlocks.endedCertIds,
+      verify: ed25519Verify,
+      signingKeyOf: (device) async => (await keep.keysOf(device)).signingKey,
+      signingKey: crypto.signingPublicKey,
+      server: HttpChatAnswerServer(
+        baseUrl: () => api.baseUrl,
+        deviceId: () => store.deviceId ?? '',
+        deviceToken: () => store.deviceToken ?? '',
+      ),
+      serverOnline: () => socket.isConnected,
+      signAdminAck: (body) async {
+        final cert = await adminBlocks.usableCert();
+        if (cert == null) return null;
+        return {'body': body, 'sig': await crypto.signPayload(body), 'cert': cert.toJson()};
+      },
+      isAdminPhone: () async => await adminBlocks.usableCert() != null,
+    );
+    ChatAnswerCarrier.instance = chatCarrier221;
+    purge221 = DeleteCompletelyDoer(SqlPurgeTarget221(
+      hidden: hide,
+      source: chatRows,
+      deleteDirect: (id) => store.deleteMessageLocal(id),
+      deleteGroup: (id) => store.deleteGroupMessageLocal(id),
+      deleteFileFn: (path) => files.deleteLocalFile(path),
+      notify: (id) => notifications.handleMessageDeleted(id),
+    ));
+    DeleteCompletelyDoer.instance = purge221;
+    final chatDoer221 = ChatDoer221(
+      builder: ChatAnswerBuilder(
+          source: chatRows, selfDeviceId: () => store.deviceId ?? '', sign: crypto.signPayload),
+      carrier: chatCarrier221,
+      purge: purge221,
+    );
     adminActions = AdminActionService(
       store: keep,
       selfDeviceId: () => store.deviceId ?? '',
@@ -835,8 +907,75 @@ class AppDependencies {
           await store.writeSetting(AdminActionDoers.removedKey, removed ? '1' : 'signed_out');
           await authentication.signOut();
         },
+        chat221: chatDoer221.call, // Bundle 221
       ),
     );
+    // Bundle 221: the Owner screens (online: server; offline: signed cards).
+    final reader = ChatAnswerReader(
+      store: parts221,
+      selfDeviceId: () => store.deviceId ?? '',
+      boxKeys: crypto.sealKeyPairs,
+      nameOf: _name221,
+    );
+    ChatAnswerReader.instance = reader;
+    final local = LocalChats221(
+      db: () => hide.db,
+      selfDeviceId: () => store.deviceId ?? '',
+      selfUserId: () => store.accountId ?? '',
+      nameOf: _name221,
+    );
+    ChatRequests221.instance = ChatRequests221(
+      server: HttpChatAdminServer(baseUrl: () => api.baseUrl),
+      signIn: () async {
+        final s = await adminCapability.readValidSession();
+        if (s == null || !s.usable) return null;
+        return (token: s.token, role: s.role, username: s.username);
+      },
+      serverOnline: () => socket.isConnected,
+      actions: adminActions,
+      reader: reader,
+      myBoxKey: crypto.publicKey,
+      selfUserId: () => store.accountId ?? '',
+      selfDeviceId: () => store.deviceId ?? '',
+      phonesOf: (who) async {
+        final phones = await keep.phonesOf(who);
+        if (phones.isNotEmpty) return phones;
+        final user = (await keep.keysOf(who)).userId;
+        if (user.isNotEmpty) {
+          final all = await keep.phonesOf(user);
+          if (all.isNotEmpty) return all;
+        }
+        return [who];
+      },
+      groupDevices: local.groupDevices,
+      localChats: local.chats,
+      people: local.people,
+      localGroups: local.groups,
+      read: store.readSetting,
+      write: store.writeSetting,
+      purgeHere: purge221,
+      progressOf: chatCarrier221.progressOf,
+    );
+  }
+
+  /// Bundle 221: start the carrier, the daily sweep (hidden files after 60
+  /// days, the admin phone's opened copies after 24 h) and the late-copy
+  /// listener (a message deleted completely that still arrives).
+  void _start221() {
+    chatCarrier221.start();
+    unawaited(chatCarrier221.refreshProgress().catchError((Object _) {}));
+    Future<void> sweep() async {
+      await store.hide221.sweep(deleteFile: files.deleteLocalFile).catchError((Object _) => 0);
+      await ChatAnswerReader.instance?.sweep().catchError((Object _) => 0);
+    }
+    unawaited(sweep());
+    _sweep221 ??= Timer.periodic(const Duration(hours: 24), (_) => unawaited(sweep()));
+    if (_late221.isEmpty) {
+      _late221.add(messaging.incoming.listen(
+          (m) => unawaited(purge221.dropLate(m.id, group: false).catchError((Object _) => false))));
+      _late221.add(groupMessagingService.incoming.listen(
+          (m) => unawaited(purge221.dropLate(m.id, group: true).catchError((Object _) => false))));
+    }
   }
 
   void _buildAdminRoles() {
@@ -1063,6 +1202,7 @@ class AppDependencies {
     unawaited(adminBadges.start().catchError((Object _) {})); // Bundle 214
     unawaited(adminRoles.start().catchError((Object _) {})); // Bundle 214
     adminActions.start(); // Bundle 220
+    _start221(); // Bundle 221
     updateRequests.start(); // Bundle 213
     _startAutoFetch(); // Bundle 208 (E)
     calls.start();
@@ -1136,6 +1276,7 @@ class AppDependencies {
     unawaited(adminBadges.start().catchError((Object _) {})); // Bundle 214
     unawaited(adminRoles.start().catchError((Object _) {})); // Bundle 214
     adminActions.start(); // Bundle 220
+    _start221(); // Bundle 221
     updateRequests.start(); // Bundle 213
     _startAutoFetch(); // Bundle 208 (E)
     calls.start();
@@ -1273,6 +1414,13 @@ class AppDependencies {
     await adminBadges.dispose(); // Bundle 214
     await adminRoles.dispose(); // Bundle 214
     await adminActions.dispose(); // Bundle 220
+    await chatCarrier221.dispose(); // Bundle 221
+    _sweep221?.cancel();
+    _sweep221 = null;
+    for (final sub in _late221) {
+      await sub.cancel();
+    }
+    _late221.clear();
     await updateRequests.stop(); // Bundle 213
     await directoryRepository.dispose();
     await messaging.dispose();

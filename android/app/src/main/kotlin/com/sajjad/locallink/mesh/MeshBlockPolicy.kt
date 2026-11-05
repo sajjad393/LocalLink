@@ -40,7 +40,11 @@ object MeshOneStep {
     const val ADMIN_ACT_CARDS: String = "admin_act_cards"
     const val ADMIN_ACT_DONE: String = "admin_act_done"
 
-    private val actionTypes = setOf(ADMIN_ACT_DIGEST, ADMIN_ACT_CARDS, ADMIN_ACT_DONE)
+    // Bundle 221: chat answer parts / "I carry" lists / acks (one part per
+    // frame; each phone passes them on itself).
+    const val ADMIN_ACT_PARTS: String = "admin_act_parts"
+
+    private val actionTypes = setOf(ADMIN_ACT_DIGEST, ADMIN_ACT_CARDS, ADMIN_ACT_DONE, ADMIN_ACT_PARTS)
 
     fun isAdminAction(type: String?): Boolean = type != null && type in actionTypes
 

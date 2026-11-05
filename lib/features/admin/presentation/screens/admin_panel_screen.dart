@@ -12,6 +12,7 @@ import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/models/admin_session.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
 import 'package:locallink/features/admin/data/services/admin_role_service.dart';
+import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/admin/presentation/widgets/account_switch_sheet.dart';
 import 'package:locallink/features/admin/domain/admin_repository_factory.dart';
@@ -891,6 +892,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                         role: _check ? 'owner' : widget.session.role,
                         viewMode: widget.viewMode)))),
           ),
+          // Bundle 221: chats from phones + Delete completely (Owner only).
+          if (widget.session.role == 'owner' || _check)
+            AdminRow216(
+              key: const ValueKey('admin_conversations_row'),
+              leading: const AdminToneIcon216(Icons.forum_outlined, A216Tone.blue),
+              title: 'Conversations',
+              subtitle: 'Ask phones for a chat · Owner only',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => AdminTheme216Scope(
+                      child: AdminConversationsScreen(viewMode: widget.viewMode)))),
+            ),
         ]),
       ],
     );

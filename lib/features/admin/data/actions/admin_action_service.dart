@@ -770,7 +770,9 @@ class AdminActionService {
       case 'remove_phone':
         return 'ok'; // done after the receipt leaves (see _tryApply)
       default:
-        return 'refused:unknown';
+        // Bundle 221: get_chat / get_file / delete_completely.
+        final chat = doers.chat221;
+        return chat == null ? 'refused:unknown' : await chat(card, plain);
     }
   }
 
@@ -791,6 +793,11 @@ class AdminActionService {
     Map<String, dynamic> detail = const {},
     String words = '',
     SignedBlob? inner,
+    // Bundle 221 (chat requests): answers locked for this key, 1 answer
+    // needed (get_chat / get_file), the request it belongs to.
+    String replyKey = '',
+    int? need,
+    String parent = '',
   }) async {
     await load();
     final signIn = await adminSignIn?.call();
@@ -849,9 +856,11 @@ class AdminActionService {
       at: _clock(),
       by: signIn.username,
       cert: cert,
-      need: action == 'version_rule' ? 0 : boxes.length,
+      need: action == 'version_rule' ? 0 : (need ?? boxes.length).clamp(1, boxes.length),
       to: boxes,
       inner: innerBlob,
+      parent: parent,
+      replyKey: replyKey,
     );
     final blob = SignedBlob(body: body, sig: await sign(body));
     final card = AdminActionCard.fromBlob(blob);

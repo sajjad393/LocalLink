@@ -6,6 +6,7 @@ import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_book.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_card.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_service.dart';
+import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 
@@ -163,8 +164,10 @@ class _AdminActionsScreenState extends State<AdminActionsScreen> {
     final c = A216.colors(context);
     final t = A216Text(c);
     final all = merged();
-    final pending = [for (final r in all) if (r.pending) r];
-    final done = [for (final r in all) if (!r.pending) r];
+    // Bundle 221: a chat answer still coming stays under Pending.
+    bool open(AdminActionRow r) => r.pending || ChatAnswerCarrier.partsPending(r.id);
+    final pending = [for (final r in all) if (open(r)) r];
+    final done = [for (final r in all) if (!open(r)) r];
     final list = _tab == 0 ? pending : done;
     final level = widget.role.isEmpty
         ? 'Owner'
@@ -288,12 +291,36 @@ class _ActionTile extends StatelessWidget {
               ]),
             ),
             const SizedBox(width: 10),
-            AdminTag216(tag, tone),
+            _tagWithBar(tag, tone),
           ]),
         ]),
       ),
     );
   }
+}
+
+/// Bundle 221: the parts tag gets a thin bar under it (mock A-4).
+Widget _tagWithBar(String tag, A216Tone tone) {
+  final m = RegExp(r'^(\d+) of (\d+) parts$').firstMatch(tag);
+  if (m == null) return AdminTag216(tag, tone);
+  final have = int.parse(m.group(1)!), of = int.parse(m.group(2)!);
+  return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
+    AdminTag216(tag, tone),
+    const SizedBox(height: 8),
+    SizedBox(
+      width: 158,
+      height: 5,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: LinearProgressIndicator(
+          key: const ValueKey('admin_action_parts_bar'),
+          value: of <= 0 ? 0 : have / of,
+          backgroundColor: const Color(0xFFE5E8EE),
+          color: const Color(0xFF2563EB),
+        ),
+      ),
+    ),
+  ]);
 }
 
 /// The two-half pill tabs of mock A-4.
@@ -357,6 +384,11 @@ String _via(String v) => switch (v) {
 /// Sub line + tag for a row (mock A-4 words).
 (String, String, A216Tone) adminActionLook(AdminActionRow r) {
   final phones = r.need > 1 ? '${r.done} of ${r.need} phones' : '';
+  // Bundle 221: a chat answer on the way (mock A-4 "40 of 80 parts").
+  final parts = ChatAnswerCarrier.progress.value[r.id];
+  if (parts != null && !parts.all && r.state != 'cancelled') {
+    return ('the rest is on the way', '${parts.have} of ${parts.of} parts', A216Tone.blue);
+  }
   if (r.state == 'cancelled') {
     return ('Cancelled ${_date(r.finishedAt)}'.trim(), 'Cancelled', A216Tone.grey);
   }

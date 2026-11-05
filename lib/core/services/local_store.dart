@@ -14,6 +14,7 @@ import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter/foundation.dart';
 import 'package:locallink/core/security/secure_storage_service.dart';
 import 'package:locallink/core/storage/database_config.dart';
+import 'package:locallink/core/services/hidden_store_221.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_sqlcipher/sqflite.dart';
@@ -898,6 +899,10 @@ class LocalStore {
   // starts, so the DB version stays 34 (no migration, old tests unchanged).
 
   bool _adminActionTables = false;
+
+  /// Bundle 221: soft delete (hidden tables, kept files), answer parts and
+  /// purged ids. New tables only (CREATE IF NOT EXISTS); DB version stays 34.
+  late final Hidden221 hide221 = Hidden221(() => _db);
 
   Future<void> ensureAdminActionTables() async {
     if (_adminActionTables) return;
@@ -2918,6 +2923,7 @@ class LocalStore {
   /// is removed and the open chat drops the bubble).
   Future<List<String>> deleteMessageLocal(String id) async {
     if (id.isEmpty) return const [];
+    await hide221.copyDirect(id); // Bundle 221: soft delete
     final paths = <String>{};
     final atts = await _db.query('message_attachments',
         columns: ['local_path', 'file_id'], where: 'message_id=?', whereArgs: [id]);
@@ -2932,12 +2938,13 @@ class LocalStore {
     paths.addAll(await _mediaExtrasFor([
       for (final row in atts) row['file_id']?.toString() ?? '',
     ]..removeWhere((f) => f.isEmpty)));
-    return paths.toList(growable: false);
+    return hide221.keepFiles([id], paths.toList(growable: false)); // Bundle 221
   }
 
   /// Bundle 197a: Delete one group message on this phone (see above).
   Future<List<String>> deleteGroupMessageLocal(String id) async {
     if (id.isEmpty) return const [];
+    await hide221.copyGroup(id); // Bundle 221: soft delete
     final paths = <String>{};
     final fileIds = <String>[];
     await LocalStore.timedTx('delete_group_message_tx', _db, (txn) async {
@@ -2963,7 +2970,7 @@ class LocalStore {
     });
     paths.addAll(await _mediaExtrasFor(fileIds));
     if (!_deletedMessageIds.isClosed) _deletedMessageIds.add(id);
-    return paths.toList(growable: false);
+    return hide221.keepFiles([id], paths.toList(growable: false)); // Bundle 221
   }
 
   /// Bundle 197a: ids of the direct chat with [peerId] that Clear chat
@@ -3792,6 +3799,7 @@ class LocalStore {
 
   Future<List<String>> deleteGroupLocal(String groupId) async {
     final localPaths = <String>[];
+    await hide221.copyGroupAll(groupId); // Bundle 221: soft delete
     await LocalStore.timedTx('delete_group_tx', _db, (txn) async {
       final outboxRows = await txn.query('group_outbox',
           columns: ['id'], where: 'group_id=?', whereArgs: [groupId]);
@@ -3850,7 +3858,7 @@ class LocalStore {
           .delete('group_invites', where: 'group_id=?', whereArgs: [groupId]);
       await txn.delete('groups', where: 'id=?', whereArgs: [groupId]);
     });
-    return localPaths;
+    return hide221.keepGroupFiles(groupId, localPaths); // Bundle 221
   }
 
   Future<List<Map<String, dynamic>>> groups() =>
