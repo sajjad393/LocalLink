@@ -836,6 +836,13 @@ class ReliableMessagingService {
 
   // Bundle 218d: a phone the server now knows → its waiting messages go.
   final Set<String> _skipLogged218 = <String>{};
+
+  // Bundle 224 (F): quiet logs for messages that wait for their friend.
+  // Logs 2026-11-07: 2 texts to a phone that was away were logged on EVERY
+  // flush for 19 h (1950 + 1950 WARN per hour) and MESSAGE_RETRY_BACKOFF_SKIP
+  // wrote 15 293 lines. Only the LOG changes: the route is still checked on
+  // every flush, so a friend coming back gets the message at once.
+  final QuietWaitLog224 _quiet224 = QuietWaitLog224();
   bool _notOnServerHooked218 = false;
 
   void _hookNotOnServer218() {
@@ -1337,6 +1344,13 @@ class ReliableMessagingService {
         'MESSAGE_OUTBOX_READ',
         detail: 'count=${items.length}',
       );
+      // Bundle 224 (F2): forget sent / removed messages; one summary line
+      // every 10 min while messages wait for a route.
+      _quiet224.keepOnly(items.map((e) => e['id'].toString()).toSet());
+      final waitingLine = _quiet224.summary(DateTime.now());
+      if (waitingLine != null) {
+        AppLogger.info('MESSAGE_WAITING', detail: waitingLine);
+      }
 
       for (final listed in items) {
         // Bundle 203 (1): a retired (stuck) flush stops here.
@@ -1367,16 +1381,23 @@ class ReliableMessagingService {
           await _maybeOnlineBackup(id, item, status);
         }
         if (!store.isOutboxRetryEligible(item)) {
-          AppLogger.info('MESSAGE_RETRY_BACKOFF_SKIP',
-              detail: 'id=$id attempt=${item['attempt_count'] ?? 0}');
+          final attempt = '${item['attempt_count'] ?? 0}';
+          if (_quiet224.backoffFirst(id, attempt)) {
+            AppLogger.info('MESSAGE_RETRY_BACKOFF_SKIP',
+                detail: 'id=$id attempt=$attempt');
+          }
           continue;
         }
 
-        AppLogger.info(
-          'MESSAGE_FLUSH_ITEM',
-          detail: 'id=$id '
-              'status=$status',
-        );
+        // Bundle 224 (F5): a message already logged as waiting (no route)
+        // is not logged again on every flush.
+        if (!_quiet224.isWaiting(id)) {
+          AppLogger.info(
+            'MESSAGE_FLUSH_ITEM',
+            detail: 'id=$id '
+                'status=$status',
+          );
+        }
 
         if (status == 'delivered') {
           await store.removeOutbox(id);
@@ -1418,7 +1439,9 @@ class ReliableMessagingService {
         // DIRECT / WI-FI TRANSPORT
         // ------------------------------------------------------------------
         if (canUseDirect) {
-          AppLogger.warning(
+          _quiet224.routeFound(id); // Bundle 224 (F)
+          // Bundle 224 (F4): a normal event - INFO, not WARN.
+          AppLogger.info(
             'MESSAGE_ROUTE_SELECTED_DIRECT',
             detail: 'socketReady=${socket.isConnected} '
                 'internetOnly=${store.internetOnly} '
@@ -1569,21 +1592,26 @@ class ReliableMessagingService {
         // SERVER / WEBSOCKET TRANSPORT
         // ------------------------------------------------------------------
         if (!socket.isConnected) {
-          AppLogger.warning(
-            'MESSAGE_ROUTE_UNAVAILABLE',
-            detail: 'socketReady=${socket.isConnected} '
-                'internetOnly=${store.internetOnly} '
-                'route=${localRoute?.kind.name ?? 'none'}',
-          );
-          AppLogger.warning(
-            'MESSAGE_SOCKET_SEND_SKIPPED_NOT_CONNECTED',
-            detail: 'id=$id',
-          );
+          // Bundle 224 (F1): once per message per waiting spell.
+          if (_quiet224.noRoute(id, recipientId, DateTime.now())) {
+            AppLogger.warning(
+              'MESSAGE_ROUTE_UNAVAILABLE',
+              detail: 'socketReady=${socket.isConnected} '
+                  'internetOnly=${store.internetOnly} '
+                  'route=${localRoute?.kind.name ?? 'none'}',
+            );
+            AppLogger.warning(
+              'MESSAGE_SOCKET_SEND_SKIPPED_NOT_CONNECTED',
+              detail: 'id=$id',
+            );
+          }
 
           continue;
         }
 
-        AppLogger.warning(
+        _quiet224.routeFound(id); // Bundle 224 (F)
+        // Bundle 224 (F4): a normal event - INFO, not WARN.
+        AppLogger.info(
           'MESSAGE_ROUTE_SELECTED_SERVER',
           detail: 'socketReady=${socket.isConnected} '
               'internetOnly=${store.internetOnly} '
@@ -2411,11 +2439,15 @@ class ReliableMessagingService {
     'link_update',
     // Bundle 150: about one per second per transfer (blue progress ring).
     'file_progress',
+    // Bundle 224 (G1): 2202 single lines per hour with no reason; now
+    // counted per reason in the 10 s summary.
+    'mesh_dropped',
   };
   final Map<String, int> _hotDirectEventCounts = <String, int>{};
+  final Map<String, int> _dropReasonCounts = <String, int>{};
   DateTime? _hotDirectEventWindowStart;
 
-  void _recordHotDirectEvent(String type) {
+  void _recordHotDirectEvent(String type, {String? reason}) {
     final now = DateTime.now();
     final windowStart = _hotDirectEventWindowStart;
     if (windowStart == null) {
@@ -2425,12 +2457,18 @@ class ReliableMessagingService {
         final counts = _hotDirectEventCounts.entries
             .map((e) => '${e.key}=${e.value}')
             .join(' ');
-        AppLogger.info('DIRECT_EVENTS_SUMMARY', detail: 'window=10s $counts');
+        AppLogger.info('DIRECT_EVENTS_SUMMARY',
+            detail: 'window=10s $counts${dropReasonText224(_dropReasonCounts)}');
         _hotDirectEventCounts.clear();
+        _dropReasonCounts.clear();
       }
       _hotDirectEventWindowStart = now;
     }
     _hotDirectEventCounts[type] = (_hotDirectEventCounts[type] ?? 0) + 1;
+    if (type == 'mesh_dropped') {
+      final r = (reason == null || reason.isEmpty) ? 'unknown' : reason;
+      _dropReasonCounts[r] = (_dropReasonCounts[r] ?? 0) + 1;
+    }
   }
 
   /// Bundle 132 (G): granular receive-transport label from a direct event —
@@ -2450,7 +2488,7 @@ class ReliableMessagingService {
     final eventType = event['type']?.toString() ?? 'unknown';
 
     if (_hotDirectEventTypes.contains(eventType)) {
-      _recordHotDirectEvent(eventType);
+      _recordHotDirectEvent(eventType, reason: event['reason']?.toString());
     } else {
       AppLogger.info(
         'DIRECT_EVENT_RECEIVED',
@@ -3430,4 +3468,75 @@ class ReliableMessagingService {
 
     return '${value.substring(0, 6)}…${value.substring(value.length - 4)}';
   }
+}
+
+/// Bundle 224 (F): which "waiting" lines were already written. Pure, so it
+/// is tested on its own (`quiet_logs_224_test.dart`).
+class QuietWaitLog224 {
+  /// One `MESSAGE_WAITING` summary at most this often.
+  static const Duration summaryEvery = Duration(minutes: 10);
+
+  final Map<String, ({String to, DateTime since})> _waiting =
+      <String, ({String to, DateTime since})>{};
+  final Map<String, String> _backoffAttempt = <String, String>{};
+  DateTime? _lastSummary;
+
+  bool isWaiting(String id) => _waiting.containsKey(id);
+
+  /// No route for [id]. True = first time in this spell (write the lines).
+  bool noRoute(String id, String to, DateTime now) {
+    if (_waiting.containsKey(id)) return false;
+    _waiting[id] = (to: to, since: now);
+    return true;
+  }
+
+  /// A route was found (or the message went out): the spell is over.
+  void routeFound(String id) => _waiting.remove(id);
+
+  /// True = first skip line for this [attempt] of [id].
+  bool backoffFirst(String id, String attempt) {
+    if (_backoffAttempt[id] == attempt) return false;
+    _backoffAttempt[id] = attempt;
+    return true;
+  }
+
+  /// Only ids still in the outbox are remembered (no growth).
+  void keepOnly(Set<String> ids) {
+    _waiting.removeWhere((id, _) => !ids.contains(id));
+    _backoffAttempt.removeWhere((id, _) => !ids.contains(id));
+  }
+
+  /// The summary text when one is due, else null.
+  String? summary(DateTime now) {
+    if (_waiting.isEmpty) {
+      _lastSummary = null; // the next waiting spell starts fresh
+      return null;
+    }
+    final last = _lastSummary;
+    if (last == null) {
+      // The first line is the per-message one; the summary starts later.
+      _lastSummary = now;
+      return null;
+    }
+    if (now.difference(last) < summaryEvery) return null;
+    _lastSummary = now;
+    var oldest = now;
+    final to = <String>{};
+    for (final w in _waiting.values) {
+      if (w.since.isBefore(oldest)) oldest = w.since;
+      final id = w.to;
+      to.add(id.length > 8 ? id.substring(id.length - 8) : id);
+    }
+    return 'n=${_waiting.length} oldest_min=${now.difference(oldest).inMinutes} '
+        'to=${to.take(5).join(',')}';
+  }
+}
+
+/// Bundle 224 (G1): ` drop=loop_detected:10,ttl_expired:3` (most first), or
+/// '' when nothing was dropped in the window.
+String dropReasonText224(Map<String, int> counts) {
+  if (counts.isEmpty) return '';
+  final list = counts.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+  return ' drop=${list.map((e) => '${e.key}:${e.value}').join(',')}';
 }

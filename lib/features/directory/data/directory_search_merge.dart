@@ -22,10 +22,12 @@ String friendSearchLogLine({
   required bool friendsAsked,
   required int shown,
   int? nearby, // Bundle 195c: rows from nearby non-friend phones (-1 = not asked)
+  int? asked, // Bundle 233: phones asked (friends + others)
 }) =>
     'len=$queryLength saved=$saved server=${server ?? 'off'} '
     'friends_asked=${friendsAsked ? 'y' : 'n'} shown=$shown'
-    '${nearby == null ? '' : ' nearby=${nearby < 0 ? 'off' : nearby}'}';
+    '${nearby == null ? '' : ' nearby=${nearby < 0 ? 'off' : nearby}'}'
+    '${asked == null ? '' : ' asked=$asked'}';
 
 /// Bundle 195a: what the last name search could reach (for the hint).
 class DirectorySearchInfo {

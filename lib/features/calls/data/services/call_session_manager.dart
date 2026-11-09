@@ -35,6 +35,7 @@ import 'package:locallink/features/connectivity/domain/local_route.dart';
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 import 'package:locallink/features/calls/data/services/call_answer_timer.dart';
+import 'package:locallink/features/calls/data/services/call_nearby_wait.dart';
 
 final class CallSessionManager implements CallGateway {
   final LocalStore store;
@@ -420,16 +421,61 @@ final class CallSessionManager implements CallGateway {
     // caller staring at "connecting…" forever. 45s covers one full link
     // recovery window, then fail closed with a clear reason.
     _connectWatchdogTimer?.cancel();
-    _connectWatchdogTimer = Timer(const Duration(seconds: 45), () {
-      final current = _session;
-      if (_disposed || current == null || current.isFinished) return;
-      if (current.direction == CallDirection.outgoing &&
-          current.state == CallState.connecting) {
-        AppLogger.warning('CALL_CONNECT_WATCHDOG_TIMEOUT', detail: 'call=${current.id}');
-        unawaited(_finishLocal(CallState.failed, 'unreachable',
-            notifyServer: false));
-      }
-    });
+    _connectWatchdogTimer = Timer(connectWatchdog, _onConnectWatchdog);
+  }
+
+  /// Connecting watchdog for a call that had a link (45 s).
+  @visibleForTesting
+  static Duration connectWatchdog = const Duration(seconds: 45);
+
+  /// Bundle 225 (P5): a call that was "away" (no link at all to the friend)
+  /// keeps trying this long in total.
+  @visibleForTesting
+  static Duration awayCallWatchdog = CallNearbyWait.awayLimit;
+
+  void _onConnectWatchdog() {
+    final current = _session;
+    if (_disposed || current == null || current.isFinished) return;
+    if (current.direction != CallDirection.outgoing ||
+        current.state != CallState.connecting) {
+      return;
+    }
+    // Bundle 225 (P5): an away call waits 60 s, not 45 s.
+    final extra = awayCallWatchdog - connectWatchdog;
+    if (CallNearbyWait.instance.wasAway(current.id) &&
+        !extra.isNegative &&
+        extra > Duration.zero &&
+        _awayExtendedCallId != current.id) {
+      _awayExtendedCallId = current.id;
+      AppLogger.info('CALL_CONNECT_WATCHDOG_EXTEND',
+          detail: 'call=${current.id} away=1 extra_s=${extra.inSeconds}');
+      _connectWatchdogTimer = Timer(extra, _onConnectWatchdog);
+      return;
+    }
+    AppLogger.warning('CALL_CONNECT_WATCHDOG_TIMEOUT', detail: 'call=${current.id}');
+    unawaited(_finishLocal(CallState.failed, 'unreachable',
+        notifyServer: false));
+  }
+
+  String? _awayExtendedCallId;
+
+  /// Bundle 225 (P1): start / stop the away-call wait after a route check.
+  void _syncAwayCall(CallSession session, {required bool routeAvailable}) {
+    final wait = CallNearbyWait.instance;
+    if (CallNearbyWait.isAwayCall(session, routeAvailable: routeAvailable)) {
+      wait.start(session);
+    } else if (wait.waitingFor(session.id)) {
+      wait.stop(routeAvailable ? 'route' : 'ended');
+    }
+  }
+
+  /// Bundle 225 (P1): the wait ends when the call rings, connects or ends.
+  void _syncAwayCallState(CallSession? session) {
+    final wait = CallNearbyWait.instance;
+    final id = wait.callId;
+    if (id == null) return;
+    final why = CallNearbyWait.endWhy(session, id);
+    if (why != null) wait.stop(why);
   }
 
   // Bundle 146: two accepts for the same call (notification + screen, or a
@@ -1566,6 +1612,10 @@ final class CallSessionManager implements CallGateway {
         route.peerId != session.peerId) {
       return;
     }
+    // Bundle 225 (P1): a link (LAN, Wi-Fi Direct or mesh) is back.
+    if (CallNearbyWait.instance.waitingFor(session.id)) {
+      CallNearbyWait.instance.stop('route');
+    }
     unawaited(_trySendPendingInvite());
   }
 
@@ -1602,6 +1652,10 @@ final class CallSessionManager implements CallGateway {
     // combined with the 5s route-wait resend — makes invites resilient to
     // link flapping instead of silently never leaving this device.
     final routeAvailable = route.isAvailable;
+    final latest = _session;
+    if (latest != null && latest.id == session.id) {
+      _syncAwayCall(latest, routeAvailable: routeAvailable);
+    }
     if (!routeAvailable) {
       AppLogger.info(
         'CALL_WAITING_FOR_ROUTE',
@@ -2204,6 +2258,7 @@ final class CallSessionManager implements CallGateway {
     _syncCallUi(session);
     _syncCallLockScreen(session);
     _syncNoNearbyTimer(session);
+    _syncAwayCallState(session);
     final pending = _pendingNotificationAccept;
     if (pending != null &&
         isRinging &&

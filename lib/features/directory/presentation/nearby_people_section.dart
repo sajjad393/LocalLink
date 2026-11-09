@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
@@ -15,6 +16,7 @@ import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
 import 'package:locallink/features/connectivity/data/services/friend_link_memo.dart';
+import 'package:locallink/features/connectivity/data/services/nearby_ble.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/directory/data/friend_requests.dart';
@@ -96,6 +98,15 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
   // Bundle 170: nearby permission (null = not checked yet).
   bool? _permission;
 
+  // Bundle 226 (B5): the Bluetooth cards (× hides one for 7 days).
+  static const String _bleAllowHideKey = 'ble_card_allow_hidden_until';
+  static const String _bleOffHideKey = 'ble_card_off_hidden_until';
+  static const String _bleBlockedKey = 'ble_perm_blocked';
+  int _bleAllowHiddenUntil = 0;
+  int _bleOffHiddenUntil = 0;
+  bool _bleBlocked = false;
+  bool _bleAsking = false;
+
   // Bundle 170: the "someone found" moment.
   late final AnimationController _found = AnimationController(
     vsync: this,
@@ -111,6 +122,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     super.initState();
     unawaited(_startSearch(askPermission: false));
     unawaited(_refreshTrusted());
+    unawaited(_loadBle()); // Bundle 226
     _pairedSub = widget.pairing.paired.listen(_onPaired);
     // Bundle 196 (12b): while Nearby is open, an accepted request opens
     // the chat; "wait" shows a short note.
@@ -363,13 +375,18 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         _snack('Adding ${_personName(peer.nodeId) ?? 'this phone'}…');
         return;
       } catch (error) {
-        AppLogger.warning('PAIR_TAP', detail: 'stage=caught error=$error');
         lastError = error;
         final text = cleanBlocError(error);
         final lower = text.toLowerCase();
         final endpointPending = lower.contains('not visible') ||
             lower.contains('not configured') ||
             lower.contains('wait for it');
+        // Bundle 224 (C2): "not visible yet" is a wait, not a fault (INFO).
+        if (endpointPending) {
+          AppLogger.info('PAIR_TAP', detail: 'stage=caught error=$error');
+        } else {
+          AppLogger.warning('PAIR_TAP', detail: 'stage=caught error=$error');
+        }
         if (!endpointPending || attempt == 3) {
           _snack(text);
           return;
@@ -589,6 +606,11 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
       children: [
         _header(context, dots: any && !_celebrating),
         if (_permission == false) _permissionCard(context),
+        // Bundle 226 (B5): one Bluetooth card at most (the Wi-Fi card wins).
+        ListenableBuilder(
+          listenable: NearbyBleStatus.instance,
+          builder: (context, _) => _bleCardFor(context),
+        ),
         if (_celebrating)
           _lookingBox(context,
               foundProgress: _found.value, initial: _celebrateInitial)
@@ -671,6 +693,133 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         ),
       ),
     );
+  }
+
+  // ---------------------------------------------- Bundle 226 (B5) cards
+
+  Future<void> _loadBle() async {
+    final control = NearbyBleActions.control;
+    if (control == null) return;
+    try {
+      NearbyBleStatus.instance.updateFrom(await control.bleStatus());
+    } catch (_) {}
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _bleAllowHiddenUntil = prefs.getInt(_bleAllowHideKey) ?? 0;
+        _bleOffHiddenUntil = prefs.getInt(_bleOffHideKey) ?? 0;
+        _bleBlocked = prefs.getBool(_bleBlockedKey) ?? false;
+      });
+    } catch (_) {}
+  }
+
+  Widget _bleCardFor(BuildContext context) {
+    if (NearbyBleActions.control == null) return const SizedBox.shrink();
+    final status = NearbyBleStatus.instance;
+    final kind = bleCardFor(
+      state: status.state,
+      sdk: status.sdk,
+      wifiCardShown: _permission == false,
+      now: DateTime.now().millisecondsSinceEpoch,
+      allowHiddenUntil: _bleAllowHiddenUntil,
+      offHiddenUntil: _bleOffHiddenUntil,
+    );
+    if (kind == BleCard.none) return const SizedBox.shrink();
+    return _bleCard(context, kind);
+  }
+
+  /// Built like [_permissionCard], plus a small × after the button and an
+  /// 8 dp gap under the card.
+  Widget _bleCard(BuildContext context, BleCard kind) {
+    final scheme = Theme.of(context).colorScheme;
+    final allow = kind == BleCard.allow;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Card(
+        key: ValueKey<String>(allow ? 'ble_allow_card' : 'ble_off_card'),
+        color: scheme.tertiaryContainer.withValues(alpha: .6),
+        child: ListTile(
+          title: Text(allow ? 'Faster connect with Bluetooth' : 'Bluetooth is off'),
+          subtitle: Text(
+              allow ? 'Find friends in seconds.' : 'Turn it on for faster connect'),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FilledButton(
+                onPressed: _bleAsking ? null : (allow ? _bleAllow : _bleTurnOn),
+                child: Text(allow ? 'Allow' : 'Turn on'),
+              ),
+              IconButton(
+                key: ValueKey<String>(allow ? 'ble_allow_hide' : 'ble_off_hide'),
+                tooltip: 'Hide',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.close_rounded,
+                    size: 18, color: scheme.onSurfaceVariant),
+                onPressed: () => _bleHide(kind),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _bleAllow() async {
+    final control = NearbyBleActions.control;
+    if (control == null || _bleAsking) return;
+    // "Don't ask again" before: Android shows nothing - open the settings.
+    if (_bleBlocked) {
+      AppLogger.info('NEARBY', detail: 'BLE_PERM open_settings');
+      try {
+        await control.openBluetoothSettings(app: true);
+      } catch (_) {}
+      return;
+    }
+    setState(() => _bleAsking = true);
+    try {
+      final r = await control
+          .askBlePermission()
+          .timeout(const Duration(seconds: 60));
+      NearbyBleStatus.instance.updateFrom(r);
+      if (r['blocked'] == true) {
+        _bleBlocked = true;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool(_bleBlockedKey, true);
+        } catch (_) {}
+      }
+    } catch (_) {
+      // No answer: the card stays; the next tap asks again.
+    } finally {
+      if (mounted) setState(() => _bleAsking = false);
+    }
+  }
+
+  Future<void> _bleTurnOn() async {
+    final control = NearbyBleActions.control;
+    if (control == null) return;
+    AppLogger.info('NEARBY', detail: 'BLE open_bluetooth_settings');
+    try {
+      await control.openBluetoothSettings();
+    } catch (_) {}
+  }
+
+  Future<void> _bleHide(BleCard kind) async {
+    final until =
+        DateTime.now().millisecondsSinceEpoch + BleRules.cardHideMs;
+    setState(() {
+      if (kind == BleCard.allow) {
+        _bleAllowHiddenUntil = until;
+      } else {
+        _bleOffHiddenUntil = until;
+      }
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+          kind == BleCard.allow ? _bleAllowHideKey : _bleOffHideKey, until);
+    } catch (_) {}
   }
 
   Widget _card(ConnectivityState state, _NearbyEntry e) {

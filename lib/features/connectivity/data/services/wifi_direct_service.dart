@@ -95,6 +95,31 @@ class WifiDirectService {
       _channel.invokeMethod('stopLocalHotspot', {'reason': reason});
   Future<void> setNearbyLinkTarget(String? id) =>
       _channel.invokeMethod('setNearbyLinkTarget', {'id': id});
+  // Bundle 226 (B3): Bluetooth LE finds friends.
+  Future<Map<String, Object?>> bleStatus() async {
+    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>('bleStatus');
+    return <String, Object?>{
+      for (final e in (raw ?? const <dynamic, dynamic>{}).entries)
+        e.key.toString(): e.value,
+    };
+  }
+
+  Future<void> setBleWanted(Map<String, Object?> wants) =>
+      _channel.invokeMethod('setBleWanted', wants);
+
+  Future<Map<String, Object?>> askBlePermission() async {
+    final raw =
+        await _channel.invokeMethod<Map<dynamic, dynamic>>('askBlePermission');
+    return <String, Object?>{
+      for (final e in (raw ?? const <dynamic, dynamic>{}).entries)
+        e.key.toString(): e.value,
+    };
+  }
+
+  Future<bool> openBluetoothSettings({bool app = false}) async =>
+      await _channel.invokeMethod<bool>('openBluetoothSettings', {'app': app}) ??
+      false;
+
   Future<void> cancelConnect() => _channel.invokeMethod('cancelConnect');
   Future<void> disconnect() => _channel.invokeMethod('disconnect');
 

@@ -75,6 +75,11 @@ class BackgroundRunner {
       await _tell('idle', 'store_failed');
       return;
     }
+    // Bundle 224 (H1): the server gate knows the address (or that there is
+    // none) before any background step can call the server.
+    try {
+      deps.bindServerReach();
+    } catch (_) {}
     final configured = await deps.store.isConfigured();
     final decision = decideBackgroundStart(
       configured: configured,

@@ -23,6 +23,18 @@ class AppRouter {
     required this.onThemeModeChanged,
   });
 
+  /// Bundle 227 (F1): ONE start screen. Flutter splits '/home' into '/' +
+  /// '/home' and kept a hidden Welcome under Home; `popUntil(isFirst)` (a
+  /// notification tap, the new-friend chat) then removed Home and the next
+  /// back / call end showed Welcome while logged in.
+  static List<Route<dynamic>> oneStartScreen(
+          String name, Route<dynamic> Function(RouteSettings) generate) =>
+      [generate(RouteSettings(name: name))];
+
+  /// Bundle 227 (F3): "back to Home first" stops at Home, never deeper.
+  static bool isHomeOrFirst(Route<dynamic> route) =>
+      route.settings.name == AppRoutes.home || route.isFirst;
+
   Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case AppRoutes.home:

@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/core/services/app_logger.dart';
 
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart' as call_bloc;
 import 'package:locallink/features/calls/data/models/call_session.dart';
+import 'package:locallink/features/calls/data/services/call_nearby_wait.dart';
 import 'package:locallink/features/calls/presentation/call_end_words.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_action_bar.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_header.dart';
@@ -36,6 +38,8 @@ class _CallScreenState extends State<CallScreen> {
   Timer? _ticker;
   bool _switchDialogOpen = false;
   bool _endPopScheduled = false;
+  // Bundle 227 (F4): the screen closes ONE time, and only itself.
+  bool _closed = false;
 
   @override
   void initState() {
@@ -72,6 +76,12 @@ class _CallScreenState extends State<CallScreen> {
             ? 'Ringing…'
             : 'Incoming call',
         // Bundle 137: plain "Calling…" instead of "Trying to reach…".
+        // Bundle 225 (P5): no link at all to the friend yet (not even mesh).
+        CallState.connecting
+            when session.direction == CallDirection.outgoing &&
+                !session.signalingConnected &&
+                CallNearbyWait.instance.waitingFor(session.id) =>
+          CallNearbyWait.waitingText(session.peerName),
         CallState.connecting =>
           session.direction == CallDirection.outgoing &&
                   !session.signalingConnected
@@ -103,6 +113,31 @@ class _CallScreenState extends State<CallScreen> {
         CallState.ended => CallEndWords.endedText(session.reason) ?? 'Call ended',
       };
 
+  /// Bundle 227 (F4): before, every rebuild after the end (call ended ->
+  /// saved in history -> cleared, plus the 1 s ticker) called `maybePop()`,
+  /// which closes WHATEVER is on top: the call screen, then the chat under
+  /// it, then Home's "Press back again to exit" - or the hidden Welcome.
+  /// Now: one close, of this route only. A dialog on top of the call screen
+  /// (Switch to video?) closes with it; a minimized call screen (already
+  /// gone) closes nothing.
+  void _closeOnce() {
+    if (_closed || !mounted) return;
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isActive) return;
+    _closed = true;
+    final navigator = Navigator.of(context);
+    if (!route.isCurrent) {
+      navigator.popUntil((r) => r == route || r is! PopupRoute);
+    }
+    if (route.isCurrent) {
+      navigator.pop();
+    } else if (route.isActive) {
+      navigator.removeRoute(route);
+    }
+    AppLogger.info('CALL_SCREEN_CLOSE',
+        detail: 'call=${_session.id} state=${_session.state.name}');
+  }
+
   String _formatDuration(int seconds) {
     final value = seconds < 0 ? 0 : seconds;
     return '${(value ~/ 60).toString().padLeft(2, '0')}:${(value % 60).toString().padLeft(2, '0')}';
@@ -130,15 +165,11 @@ class _CallScreenState extends State<CallScreen> {
           if (CallEndWords.holdScreen(session.reason)) {
             if (!_endPopScheduled) {
               _endPopScheduled = true;
-              final navigator = Navigator.of(context);
-              Future<void>.delayed(CallEndWords.readTime, () {
-                if (mounted) navigator.maybePop();
-              });
+              Future<void>.delayed(CallEndWords.readTime, _closeOnce);
             }
-          } else {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) Navigator.of(context).maybePop();
-            });
+          } else if (!_endPopScheduled) {
+            _endPopScheduled = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) => _closeOnce());
           }
         }
 

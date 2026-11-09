@@ -674,6 +674,9 @@ class AdminBlockService {
     final s = server;
     if (s == null) return;
     await load();
+    // Bundle 231: the pairing proof (ServerProof231) may have pinned the key
+    // after load(); read it again so it is never overwritten.
+    _serverKey ??= _nonEmpty(await read(trustKeySetting));
     final key = await s.trustKey();
     if (key.isEmpty) return;
     if (_serverKey == null) {

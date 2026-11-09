@@ -34,6 +34,7 @@ import 'package:locallink/features/groups/data/group_mute_book.dart';
 import 'dart:async';
 
 import 'package:locallink/features/connectivity/data/services/nearby_admin_status.dart';
+import 'package:locallink/features/connectivity/data/services/nearby_ble.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
 import 'package:locallink/core/services/session_key_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
@@ -57,6 +58,7 @@ import 'package:locallink/features/admin/data/actions/admin_action_box.dart' sho
 import 'package:locallink/features/account/data/repositories/account_repository.dart';
 import 'package:locallink/features/account/data/repositories/identity_repository.dart';
 import 'package:locallink/features/calls/data/platform/call_audio_platform_service.dart';
+import 'package:locallink/features/calls/data/services/call_nearby_wait.dart';
 import 'package:locallink/features/calls/data/platform/call_ringtone_platform_service.dart';
 import 'package:locallink/features/calls/data/platform/call_handover_platform_service.dart';
 import 'package:locallink/features/calls/data/services/call_notification_platform_service.dart';
@@ -210,6 +212,11 @@ class AppDependencies {
     meshRepository = MeshRepository(transport: directTransport);
     mesh = MeshBloc(repository: meshRepository);
     wifiDirectFallback = WifiDirectFallbackService(connectivityRepository);
+    // Bundle 226 (B5): the Add Contact Bluetooth cards.
+    final bleRepo = connectivityRepository;
+    if (bleRepo is NearbyBleControl) {
+      NearbyBleActions.control = bleRepo as NearbyBleControl;
+    }
     // Bundle 161: the two nearby tests (off by default).
     unawaited(NearbyExperiments.instance.load());
     routePolicy = LocalRoutePolicyService(
@@ -429,9 +436,13 @@ class AppDependencies {
         voiceRelay.note(event['active'] == true, DateTime.now());
       }
     });
+    // Bundle 225 (P4): an outgoing call that has not reached the friend yet
+    // is not "busy" (group moves may run for it); a live / ringing call is.
     wifiDirectFallback.isBusy = () =>
-        (calls.session?.isFinished == false) ||
+        CallNearbyWait.callBusy(calls.session) ||
         voiceRelay.active(DateTime.now());
+    // Bundle 225 (P1): an away call wakes Nearby for that friend.
+    CallNearbyWait.instance.addListener(_onCallNearbyWait);
     // Bundle 159.3: read-only nearby status for the admin view.
     NearbyAdminStatus.loader = () async {
       Map<String, dynamic>? topology;
@@ -1248,11 +1259,20 @@ class AppDependencies {
   /// Bundle 185 (D2): the part the first screen needs (identity + keys).
   /// The rest ([initializeLocalOnlyServices] / [initializeConfiguredServices]
   /// with `coreDone: true`) runs right after the first frame.
+  /// Bundle 224 (H1): one place for the server gate's binding. Used by the
+  /// app start ([initializeCore]) AND the background start
+  /// (`BackgroundRunner`), which never called it before - so with the app
+  /// closed a phone-only account still called the server and logged
+  /// "Server address is required" (WARN) after every BOOT_ENGINE_DART_START.
+  void bindServerReach() {
+    ServerReach.instance.bind(
+        address: () => store.serverAddress, socketUp: () => socket.isConnected);
+  }
+
   Future<void> initializeCore({required bool localOnly}) async {
     // Bundle 223 (L, N): background server calls skip quietly with no
     // server address / no network; a fresh gate for every sign-in.
-    ServerReach.instance.bind(
-        address: () => store.serverAddress, socketUp: () => socket.isConnected);
+    bindServerReach();
     if (localOnly) await store.ensureDeviceIdentity();
     await crypto.init(store.deviceId!);
   }
@@ -1465,6 +1485,10 @@ class AppDependencies {
     unawaited(messaging.flush().catchError((Object _) {}));
   }
 
+  /// Bundle 225 (P1): an away call wakes Nearby for that friend.
+  void _onCallNearbyWait() =>
+      wifiDirectFallback.callWaiting(CallNearbyWait.instance.peerId);
+
   Future<void> dispose() async {
     // Bundle 218: only clear the join hook if it is still ours.
     if (OfflineAccountSyncService.onJoined218 == _onJoined218) {
@@ -1511,6 +1535,7 @@ class AppDependencies {
     await notifications.dispose();
     await calls.close();
     await routePolicy.dispose();
+    CallNearbyWait.instance.removeListener(_onCallNearbyWait);
     await wifiDirectFallback.dispose();
     await _voiceRelaySub?.cancel();
     await pairing.dispose();

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_group_planner.dart';
+import 'package:locallink/features/connectivity/data/services/nearby_ble.dart';
 
 /// Bundle 200 (B): the backup Wi-Fi Direct group for one friend pair.
 ///
@@ -211,6 +212,13 @@ class FriendLinkInput {
   /// Bundle 201 (A3): last time a phone without a tag was seen (0 = never).
   final int phoneSeenAt;
 
+  /// Bundle 225 (P3): device id of the friend an outgoing call waits for
+  /// (no link at all), or null.
+  final String? callTargetId;
+
+  /// Bundle 226 (B4): fresh Bluetooth sightings by short id (8 hex).
+  final Map<String, BleSighting> ble;
+
   const FriendLinkInput({
     required this.now,
     required this.selfHash,
@@ -230,6 +238,8 @@ class FriendLinkInput {
     this.signWaitMs = FriendLinkRules.signWaitMs,
     this.knownHosts = const <String, String>{},
     this.phoneSeenAt = 0,
+    this.callTargetId,
+    this.ble = const <String, BleSighting>{},
   });
 }
 
@@ -282,9 +292,18 @@ FriendLinkAction planFriendLink(FriendLinkInput input) {
 
   switch (input.role) {
     case NearbyGroupRole.member:
+      // Bundle 225 (P3): a call never moves this phone out of a group
+      // others use (only the urgent search runs).
+      if (input.callTargetId != null) {
+        return const FriendLinkAction.none('call_keeps_group');
+      }
       return const FriendLinkAction.none('member_keeps_group');
     case NearbyGroupRole.host:
-      if (mine == null) return const FriendLinkAction.none('host_keeps_group');
+      if (mine == null) {
+        return FriendLinkAction.none(input.callTargetId != null
+            ? 'call_keeps_group'
+            : 'host_keeps_group');
+      }
       if (input.myMembers > 0) return const FriendLinkAction.none('linked');
       if (input.busy) return const FriendLinkAction.none('busy');
       // Both phones host the pair's group: the bigger id moves.
@@ -293,6 +312,23 @@ FriendLinkAction planFriendLink(FriendLinkInput input) {
         if (hosts.isNotEmpty) {
           return FriendLinkAction.leaveAndJoin(mine, hosts.first, 'both_host');
         }
+      }
+      // Bundle 226 (B4): both host our pair group and the friend's
+      // Bluetooth says so - the bigger id leaves and joins it by name (no
+      // Wi-Fi Direct address needed).
+      if (input.selfHash.compareTo(mine.hash) > 0) {
+        final s = input.ble[_id8(mine.hash)];
+        if (s != null &&
+            s.hostsPairFor(_id8(input.selfHash)) &&
+            !input.skip.contains(friendSkipKey(BleRules.joinAddress, mine.hash))) {
+          return FriendLinkAction.leaveAndJoin(
+              mine, BleRules.joinAddress, 'ble_both_host');
+        }
+      }
+      // Bundle 225 (P3): never close the group while a call waits for
+      // that friend.
+      if (input.callTargetId != null && input.callTargetId == mine.id) {
+        return const FriendLinkAction.none('call_host_waits');
       }
       if (input.hostSince > 0 &&
           input.now - input.hostSince >= FriendLinkRules.idleCloseMs) {
@@ -304,6 +340,50 @@ FriendLinkAction planFriendLink(FriendLinkInput input) {
   }
 
   if (!input.allowed) return const FriendLinkAction.none('battery');
+
+  // Bundle 226 (B4): a friend's Bluetooth says "I host OUR pair group and
+  // want you" -> join it by name now (no Wi-Fi Direct search, no address).
+  final self8 = _id8(input.selfHash);
+  if (input.ble.isNotEmpty) {
+    for (final f in input.friends) {
+      if (f.reachable || f.tagSeen) continue;
+      final s = input.ble[_id8(f.hash)];
+      if (s == null || !s.hostsPairFor(self8)) continue;
+      if (input.skip.contains(friendSkipKey(BleRules.joinAddress, f.hash))) {
+        continue;
+      }
+      return FriendLinkAction.join(f, BleRules.joinAddress, 'ble_wants_me');
+    }
+  }
+
+  // Bundle 225 (P3): an outgoing call waits for this friend (no link at
+  // all). Act at once, in any id order: the remembered address, else a host
+  // phone without a tag (it may be the friend's group), else open the pair's
+  // group now (no "phone seen" gate, no sign wait, no rest).
+  final callId = input.callTargetId;
+  if (callId != null) {
+    FriendLinkFriend? target;
+    for (final f in input.friends) {
+      if (f.id == callId) target = f;
+    }
+    if (target != null && !target.reachable && !target.tagSeen) {
+      final known = input.knownHosts[target.id]?.trim().toLowerCase();
+      if (known != null &&
+          known.isNotEmpty &&
+          !input.skip.contains(friendSkipKey(known, target.hash)) &&
+          input.peers.any((p) =>
+              p.groupOwner &&
+              p.address.toLowerCase() == known &&
+              !input.taggedAddresses.contains(known))) {
+        return FriendLinkAction.join(target, known, 'known_host');
+      }
+      final hosts = untaggedHosts(target);
+      if (hosts.isNotEmpty) {
+        return FriendLinkAction.join(target, hosts.first, 'call_join');
+      }
+      return FriendLinkAction.open(target, 'call_open');
+    }
+  }
 
   // 0. Bundle 201 (A5): the friend's remembered address is a host now -
   // join at once (no wait, any id order). A wrong guess fails and that
@@ -318,6 +398,21 @@ FriendLinkAction planFriendLink(FriendLinkInput input) {
         p.address.toLowerCase() == known &&
         !input.taggedAddresses.contains(known));
     if (hostNow) return FriendLinkAction.join(f, known, 'known_host');
+  }
+
+  // Bundle 226 (B4): the friend is right here (Bluetooth) and one of us
+  // wants the other: the smaller id opens the pair group at once (no
+  // "phone seen" gate, no sign wait); the bigger id waits for its pair flag.
+  if (input.ble.isNotEmpty && input.now >= input.openRestUntil) {
+    for (final f in input.friends) {
+      if (f.reachable || f.tagSeen) continue;
+      final s = input.ble[_id8(f.hash)];
+      if (s == null) continue;
+      if (!(s.wants(self8) || f.pending)) continue;
+      if (input.selfHash.compareTo(f.hash) < 0) {
+        return FriendLinkAction.open(f, 'ble_open');
+      }
+    }
   }
 
   final wanted = [
@@ -374,3 +469,6 @@ FriendLinkAction planFriendLink(FriendLinkInput input) {
   }
   return const FriendLinkAction.none('wait_friend_group');
 }
+
+/// Bundle 226: the 8-hex short id of a 16-hex tag hash.
+String _id8(String hash) => hash.length > 8 ? hash.substring(0, 8) : hash;

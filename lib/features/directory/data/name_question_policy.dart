@@ -58,6 +58,21 @@ class NameQuestionPolicy {
     return true;
   }
 
+  /// Bundle 233: every linked LinkUp phone (friends "contact" + others
+  /// "relay"). Friends hold their friends' copies, so they are asked too.
+  static List<String> linkedLinkUpPhones(Map<String, dynamic> topology) {
+    final peers = topology['peers'];
+    if (peers is! List) return const [];
+    final out = <String>[];
+    for (final p in peers.whereType<Map>()) {
+      final trust = p['trust']?.toString();
+      if (trust != 'relay' && trust != 'contact') continue;
+      final id = (p['peer_id'] ?? p['node_id'])?.toString() ?? '';
+      if (id.isNotEmpty && !out.contains(id)) out.add(id);
+    }
+    return out;
+  }
+
   /// Linked phones that are not friends (trust "relay") from a topology map.
   static List<String> nearbyNonFriends(Map<String, dynamic> topology) {
     final peers = topology['peers'];

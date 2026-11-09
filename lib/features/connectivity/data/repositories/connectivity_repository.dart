@@ -4,6 +4,7 @@ import 'package:locallink/features/connectivity/data/models/discovered_server.da
 import 'package:locallink/features/connectivity/data/models/network_snapshot.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
 import 'package:locallink/features/connectivity/data/services/discovery_service.dart';
+import 'package:locallink/features/connectivity/data/services/nearby_ble.dart';
 import 'package:locallink/features/connectivity/data/services/network_monitor_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_service.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
@@ -17,7 +18,8 @@ class ConnectivityRepository
         NearbyBridgeControl,
         NearbyCallFlagControl,
         NearbyFriendGroupControl,
-        NearbyLocalNetControl {
+        NearbyLocalNetControl,
+        NearbyBleControl {
   final WebSocketService socket;
   final WifiDirectService wifiDirect;
   final PeerTransportContract directTransport;
@@ -98,6 +100,22 @@ class ConnectivityRepository
 
   @override
   Future<void> createNearbyGroup() => wifiDirect.createNearbyGroup();
+
+  // Bundle 226 (B3): Bluetooth LE finds friends.
+  @override
+  Future<Map<String, Object?>> bleStatus() => wifiDirect.bleStatus();
+
+  @override
+  Future<void> setBleWanted(BleWants wants) =>
+      wifiDirect.setBleWanted(wants.toMap());
+
+  @override
+  Future<Map<String, Object?>> askBlePermission() =>
+      wifiDirect.askBlePermission();
+
+  @override
+  Future<bool> openBluetoothSettings({bool app = false}) =>
+      wifiDirect.openBluetoothSettings(app: app);
 
   /// Bundle 200 (B): the friend backup group.
   @override

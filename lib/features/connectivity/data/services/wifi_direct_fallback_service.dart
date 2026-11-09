@@ -9,6 +9,7 @@ import 'package:locallink/features/connectivity/data/models/wifi_direct_models.d
 import 'package:locallink/features/connectivity/data/services/friend_link_memo.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_friend_link.dart';
+import 'package:locallink/features/connectivity/data/services/nearby_ble.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_group_planner.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_local_net_planner.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
@@ -258,6 +259,67 @@ final class WifiDirectFallbackService {
   /// Bundle 205 (P2): search at the next tick (group lost / Wi-Fi off).
   bool _searchSoon = false;
 
+  /// Bundle 225 (P1): an outgoing call waits for this friend (device id),
+  /// who has no link at all. Cleared by the call side or at [_callUntil].
+  String? _callTarget;
+  int _callUntil = 0;
+  bool _callAddedWaiter = false;
+
+  /// Bundle 225: safety limit (the call itself gives up after 60 s).
+  static const int callWaitLimitMs = 65 * 1000;
+
+  @visibleForTesting
+  String? get callTarget => _callTarget;
+
+  // ------------------------------------------ Bundle 226: Bluetooth LE (B4)
+  final BleSightings _ble = BleSightings();
+  int _bleEchoAt = 0;
+  BleWants? _bleSent;
+  int _bleSentAt = 0;
+  bool _bleAsked = false;
+
+  /// Fresh Bluetooth sightings (tests / status).
+  Map<String, BleSighting> bleSeen() => _ble.fresh(_clock());
+
+  /// Bundle 225 (P1): [peerId] = the friend an outgoing call waits for (no
+  /// router, Wi-Fi Direct or mesh link); null = the wait is over. While set:
+  /// urgent searching and the pair's friend group opens / joins at once.
+  void callWaiting(String? peerId) {
+    final id = peerId?.trim() ?? '';
+    if (id.isEmpty) {
+      _clearCallTarget('call_side');
+      return;
+    }
+    if (_disposed) return;
+    if (_callTarget == id) return;
+    if (_callTarget != null) _clearCallTarget('replaced');
+    _callTarget = id;
+    _callUntil = _clock() + callWaitLimitMs;
+    _callAddedWaiter = !_waitingSince.containsKey(id);
+    _searchSoon = true;
+    AppLogger.info('NEARBY',
+        detail: 'call_wait start friend=${NearbyTag.idFor(id).substring(0, 8)}');
+    unawaited(requestRoute(id));
+  }
+
+  void _clearCallTarget(String why) {
+    final id = _callTarget;
+    if (id == null) return;
+    _callTarget = null;
+    _callUntil = 0;
+    AppLogger.info('NEARBY', detail: 'call_wait end why=$why');
+    // The call added this waiter: drop it again (no extra searching for
+    // 10 min after the call). A waiter that was there before stays.
+    if (_callAddedWaiter) cancelWaiting(id);
+    _callAddedWaiter = false;
+  }
+
+  /// The call target, or null when none / its time is over.
+  String? _activeCallTarget(int now) {
+    if (_callTarget != null && now > _callUntil) _clearCallTarget('timeout');
+    return _callTarget;
+  }
+
   /// Bundle 205 (P2): when a friend that was reachable nearby went missing
   /// (0 = nobody missing).
   int _friendLostAt = 0;
@@ -402,6 +464,7 @@ final class WifiDirectFallbackService {
     // Bundle 177 (5.2): start from the real group state (the closed app may
     // already be in a group), never "leave then join again".
     unawaited(_readRealState());
+    unawaited(_readBleStatus()); // Bundle 226
     if (groupMode) _armGroupTimer();
     if (_localNet != null && !_listening) {
       _listening = true;
@@ -569,6 +632,8 @@ final class WifiDirectFallbackService {
     }
     _groupTimer?.cancel();
     _groupTimer = null;
+    _mergeRecheck?.cancel(); // Bundle 224 (D2)
+    _mergeRecheck = null;
     _waitingSince.clear();
     _rediscoveryTimer?.cancel();
     _rediscoveryTimer = null;
@@ -623,6 +688,15 @@ final class WifiDirectFallbackService {
     }
     if (type == 'tag_window') {
       _onTagWindow(event);
+      return;
+    }
+    // Bundle 226 (B3/B4): Bluetooth LE.
+    if (type == 'ble_state') {
+      NearbyBleStatus.instance.updateFrom(event);
+      return;
+    }
+    if (type == 'ble_seen') {
+      _onBleSeen(event);
       return;
     }
     if (type == 'local_net') {
@@ -794,6 +868,23 @@ final class WifiDirectFallbackService {
 
   // ------------------------------------------------ Bundle 157: the group
 
+  /// Bundle 224 (D2): one timer for the end of the merge wait (the rules
+  /// and the 10 s wait itself are unchanged; this only saves the wait for
+  /// the next 5 s tick).
+  Timer? _mergeRecheck;
+
+  @visibleForTesting
+  static int mergeRecheckMs = NearbyGroupRules.mergeSeenMs + 200;
+
+  void _armMergeRecheck() {
+    if (_mergeRecheck != null || _disposed || !groupMode) return;
+    _mergeRecheck = Timer(Duration(milliseconds: mergeRecheckMs), () {
+      _mergeRecheck = null;
+      if (_disposed || !groupMode) return;
+      unawaited(_evaluateGroup());
+    });
+  }
+
   void _armGroupTimer() {
     if (_groupTimer != null || _disposed || !_started) return;
     _groupTimer = Timer.periodic(_groupTickInterval, (_) {
@@ -814,6 +905,14 @@ final class WifiDirectFallbackService {
       if (_tagState[t.address] != state) {
         _tagState[t.address] = state;
         _firstSeen[t.address] = now;
+        // Bundle 224 (D2): a host of another group appeared while we host -
+        // check again the moment the 10 s merge wait ends.
+        if (t.host &&
+            t.group != null &&
+            t.group != _myGroup &&
+            _role == NearbyGroupRole.host) {
+          _armMergeRecheck();
+        }
       }
       if (_myGroup != null && t.group == _myGroup && !t.host) {
         _mates.add(t.idHash);
@@ -826,7 +925,22 @@ final class WifiDirectFallbackService {
     _firstSeen.removeWhere((a, _) => !present.contains(a));
   }
 
+  /// Bundle 224 (A5): in a group LinkUp did not make (Realme Share / XShare).
+  bool _foreignGroup = false;
+
+  /// Bundle 224 (A5): the last group was foreign - its end is not "our host
+  /// left" (D4 has no LinkUp mates to wait for).
+  bool _lastGroupForeign = false;
+
   void _applyMyGroup(Map<dynamic, dynamic> event) {
+    // Bundle 224 (A5): older native code sends no key -> false.
+    _foreignGroup = event['foreign'] == true;
+    if (_foreignGroup) {
+      _inFriendGroup = false;
+      _lastGroupForeign = true;
+    } else if ((event['name']?.toString() ?? '').isNotEmpty) {
+      _lastGroupForeign = false;
+    }
     final role = switch (event['role']?.toString()) {
       'host' => NearbyGroupRole.host,
       'member' => NearbyGroupRole.member,
@@ -875,10 +989,13 @@ final class WifiDirectFallbackService {
     }
     final leaving = _pendingKind == NearbyGroupActionKind.leave ||
         _pendingKind == NearbyGroupActionKind.leaveAndJoin;
+    final foreignEnded = role == NearbyGroupRole.none && _lastGroupForeign;
+    if (role == NearbyGroupRole.none) _lastGroupForeign = false;
     if (before == NearbyGroupRole.member &&
         role == NearbyGroupRole.none &&
         !leaving &&
-        !_inFriendGroup) {
+        !_inFriendGroup &&
+        !foreignEnded) {
       // D4: our host left. Wait 1–4 s, then join the new host — or, as the
       // smallest id of the old group, become it.
       _lostAt = now;
@@ -930,7 +1047,17 @@ final class WifiDirectFallbackService {
         // Bundle 201 (A5): remember the friend's address for next time.
         final id = _friendPendingId;
         final address = _friendPendingAddress;
-        if (reason == 'friend_join' && id != null && address != null) {
+        // Bundle 226: a join by name over Bluetooth has no address to keep.
+        if (reason == 'friend_join' &&
+            _friendPendingReason.startsWith('ble_')) {
+          AppLogger.info('BLE_JOIN',
+              detail: 'friend=${id == null ? '-' : NearbyTag.idFor(id).substring(0, 8)} '
+                  'after_ms=${now - _pendingSince} why=$_friendPendingReason');
+        }
+        if (reason == 'friend_join' &&
+            id != null &&
+            address != null &&
+            address != BleRules.joinAddress) {
           _memo.learnAddress(id, address, now);
           if (_foreground) {
             FriendNearbyHints.instance.wdAddresses =
@@ -1030,6 +1157,7 @@ final class WifiDirectFallbackService {
     // How often to look for nearby tags (Bundle 159 battery rules, see
     // NearbySearchCadence).
     final urgent = _pairTarget != null ||
+        _activeCallTarget(now) != null ||
         _pendingKind != null ||
         (_lostAt > 0 && now - _lostAt <= NearbyGroupRules.lostWindowMs);
     // Bundle 205 (P2): linked = in a group with someone; reconnect = a
@@ -1060,6 +1188,8 @@ final class WifiDirectFallbackService {
     } else if (!batteryStop) {
       _batteryStopLogged = false;
     }
+    // Bundle 226: the Bluetooth advert follows every tick (also "off").
+    unawaited(_publishBle(now));
     if (_off()) return;
     if (!_discoveryInFlight &&
         NearbySearchCadence.due(
@@ -1180,6 +1310,7 @@ final class WifiDirectFallbackService {
         bridgeAllowed: !_bridging && now >= _bridgeOffUntil,
         bridgeSeen: {..._bridgeSeen},
         selfCharging: _selfCharging,
+        foreignGroup: _foreignGroup,
       ));
       if (plan.reason != _lastPlanReason) {
         _lastPlanReason = plan.reason;
@@ -1189,6 +1320,15 @@ final class WifiDirectFallbackService {
                 'tags=${_tags.length}');
       }
       if (!plan.acts) {
+        // Bundle 224 (A5): no friend link either while in a foreign group.
+        if (plan.reason == 'foreign_group') {
+          if (_lastFriendReason != 'foreign_group') {
+            _lastFriendReason = 'foreign_group';
+            AppLogger.info('WD_FRIEND',
+                detail: 'plan=none reason=foreign_group role=${_role.name}');
+          }
+          return;
+        }
         // Bundle 200 (B): no tag rule acts - the friend backup link.
         await _evaluateFriendLink(group, now, busy);
         return;
@@ -1245,7 +1385,6 @@ final class WifiDirectFallbackService {
       for (final t in _tags.values)
         if (now - t.seenAt <= NearbyGroupRules.freshMs) t.idHash,
     };
-    final busy = _isBusy();
     final out = <FriendLinkFriend>[];
     final names = <String>{};
     var missingRecent = 0;
@@ -1289,7 +1428,9 @@ final class WifiDirectFallbackService {
         reachable: reachable,
         tagSeen: tagSeen,
         wantedSince: _friendWantedSince[id] ?? 0,
-        pending: busy || _friendPending.contains(id),
+        // Bundle 225 (P3): only the friend an away call waits for (a live
+        // call no longer marks every friend).
+        pending: id == _callTarget || _friendPending.contains(id),
       ));
     }
     _friendWantedSince.removeWhere((id, _) => !keys.containsKey(id));
@@ -1347,6 +1488,8 @@ final class WifiDirectFallbackService {
       signWaitMs: _signWaitMs,
       knownHosts: _memo.knownHosts(now),
       phoneSeenAt: _phoneSeenAt,
+      callTargetId: _activeCallTarget(now),
+      ble: _ble.fresh(now), // Bundle 226 (B4)
     ));
     _saveMemo();
     if (plan.reason != _lastFriendReason) {
@@ -1429,6 +1572,141 @@ final class WifiDirectFallbackService {
           detail: '${plan.kind.name} failed error=$error');
       _failPending(now);
     }
+  }
+
+  // ------------------------------------------ Bundle 226: Bluetooth LE (B4)
+
+  Future<void> _readBleStatus() async {
+    final c = connectivity;
+    if (c is! NearbyBleControl) return;
+    try {
+      NearbyBleStatus.instance
+          .updateFrom(await (c as NearbyBleControl).bleStatus());
+    } catch (_) {}
+  }
+
+  void _onBleSeen(Map<dynamic, dynamic> event) {
+    final now = _clock();
+    final s = BleSighting.fromEvent(event, now);
+    final self = _selfHash;
+    if (s == null || self == null) return;
+    final self8 = NearbyTag.wantedIdFor(self);
+    if (s.id8 == self8) return;
+    _ble.add(s);
+    // Is it a friend (we have a link key)?
+    String? friendId;
+    try {
+      for (final id in (friendLinkKeys?.call() ?? const <String, List<String>>{}).keys) {
+        if (NearbyTag.wantedIdFor(NearbyTag.idFor(id)) == s.id8) {
+          friendId = id;
+          break;
+        }
+      }
+    } catch (_) {}
+    final linked = friendId != null
+        ? _reachableLocally(friendId)
+        : _myGroup != null &&
+            _tags.values.any((t) =>
+                NearbyTag.wantedIdFor(t.idHash) == s.id8 && t.group == _myGroup);
+    // Any LinkUp phone searching now: search too (both at the same moment).
+    if (bleSearchEcho(
+      s: s,
+      now: now,
+      lastEchoAt: _bleEchoAt,
+      linkedToIt: linked,
+      onRouter: _usableWifi,
+      liveCall: _isBusy(),
+      allowed: _friendAllowed() && !_off(),
+    )) {
+      _bleEchoAt = now;
+      _searchSoon = true;
+      AppLogger.info('NEARBY', detail: 'BLE search_echo id=${s.id8}');
+    }
+    if (friendId == null || linked) return;
+    // A friend who wants me (or that I want): act now, not at the next tick.
+    final wantsMe = s.wants(self8);
+    if (wantsMe && !s.pair) _searchSoon = true; // its host flag comes soon
+    final mine = wantsMe ||
+        friendId == _callTarget ||
+        _friendPending.contains(friendId) ||
+        _waitingSince.containsKey(friendId);
+    if (mine && groupMode && !_disposed) unawaited(_evaluateGroup());
+  }
+
+  /// What my Bluetooth advert says (sent when it changed, or every 60 s).
+  BleWants _bleWants(int now) {
+    final self = _selfHash;
+    if (self == null || _off() || !_friendAllowed()) {
+      return const BleWants(self: '');
+    }
+    final call = _activeCallTarget(now);
+    String? pairFriendId;
+    final myGroup = _myGroup;
+    if (_role == NearbyGroupRole.host && myGroup != null) {
+      Map<String, List<String>> keys;
+      try {
+        keys = friendLinkKeys?.call() ?? const <String, List<String>>{};
+      } catch (_) {
+        keys = const <String, List<String>>{};
+      }
+      for (final e in keys.entries) {
+        if (e.value.isEmpty) continue;
+        final creds =
+            _friendCreds[e.value.first] ?? FriendLinkCredentials.fromKeyHex(e.value.first);
+        if (creds != null && creds.name == myGroup) {
+          pairFriendId = e.key.trim();
+          break;
+        }
+      }
+    }
+    String id8(String id) => NearbyTag.wantedIdFor(NearbyTag.idFor(id));
+    final list = <BleWant>[];
+    void add(String id, {bool isCall = false}) {
+      final w = id8(id);
+      if (list.any((x) => x.id8 == w) || list.length >= 3) return;
+      list.add(BleWant(w, call: isCall, pair: id == pairFriendId));
+    }
+
+    if (call != null) add(call, isCall: true);
+    if (pairFriendId != null) add(pairFriendId);
+    for (final id in _friendPending) {
+      if (!_reachableLocally(id)) add(id);
+    }
+    final waiting = _waitingSince.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    for (final e in waiting) {
+      add(e.key);
+    }
+    return BleWants(
+      self: NearbyTag.wantedIdFor(self),
+      wanted: list,
+      urgent: call != null || _pairTarget != null,
+      searching: _lastGroupDiscoveryAt > 0 &&
+          now - _lastGroupDiscoveryAt <= BleRules.searchWindowMs,
+      host: _role == NearbyGroupRole.host,
+      member: _role == NearbyGroupRole.member,
+      router: _usableWifi,
+      foreground: _foreground,
+    );
+  }
+
+  Future<void> _publishBle(int now) async {
+    final c = connectivity;
+    if (c is! NearbyBleControl) return;
+    final wants = _bleWants(now);
+    if (wants == _bleSent && now - _bleSentAt < 60 * 1000) return;
+    final first = !_bleAsked;
+    _bleAsked = true;
+    _bleSent = wants;
+    _bleSentAt = now;
+    if (first || wants.wanted.isNotEmpty || wants.self.isEmpty) {
+      AppLogger.info('NEARBY',
+          detail: 'BLE wants=${wants.wanted.join(',')} '
+              'urgent=${wants.urgent ? 1 : 0} on=${wants.self.isEmpty ? 0 : 1}');
+    }
+    try {
+      await (c as NearbyBleControl).setBleWanted(wants);
+    } catch (_) {}
   }
 
   Future<void> _cancelConnectQuietly() async {

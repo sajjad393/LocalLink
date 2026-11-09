@@ -13,6 +13,7 @@ import android.util.Log
 import com.sajjad.locallink.mesh.LocalNetPolicy
 import com.sajjad.locallink.mesh.NearbyGroupPolicy
 import com.sajjad.locallink.mesh.NearbyTagPolicy
+import com.sajjad.locallink.mesh.TxtAskPolicy
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -47,6 +48,21 @@ class NearbyTagManager(
     private var groupKey: String? = null
     private var ownerAddress: String? = null
     private var wanted: List<String> = emptyList()
+    // Bundle 224 (A3): in a group LinkUp did not make (Realme Share / XShare).
+    @Volatile var foreign = false
+        private set
+    private var foreignName: String? = null
+    private var foreignSince = 0L
+    // Bundle 224 (A2): our own old-way group (Android < 10).
+    @Volatile var legacyCreatedAt = 0L
+    private var legacyOwnName: String? = null
+    private var legacyGroup = false
+    // Bundle 224 (A2): the group our own join call went to (an old-way group
+    // from a tag with `lg=1` has no `DIRECT-LL-` name but is LinkUp's).
+    @Volatile private var joinedName: String? = null
+
+    /** Bundle 224 (A2): called right before our own silent join. */
+    fun noteJoining(name: String?) { joinedName = name?.takeIf { NearbyGroupPolicy.validNetworkName(it) } }
     // Bundle 158: this phone bridges its group and a normal Wi-Fi network.
     private var bridge = false
     // Bundle 161: LocalLink hotspot (name + password) and linked group.
@@ -114,6 +130,11 @@ class NearbyTagManager(
     init {
         tagId = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_ID, null)?.takeIf { NearbyTagPolicy.validId(it) }
+        // Bundle 224 (A2): our old-way group name survives a restart.
+        legacyOwnName = try {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LEGACY_OWN, null)
+                ?.takeIf { NearbyGroupPolicy.validNetworkName(it) }
+        } catch (_: Exception) { null }
     }
 
     /** Dart sends the short hash of this phone's device id once per start. */
@@ -135,6 +156,8 @@ class NearbyTagManager(
             groupName = null
             groupKey = null
             ownerAddress = null
+            legacyGroup = false
+            setForeign(null, 0)
             publish()
             emitGroup()
             return
@@ -146,8 +169,26 @@ class NearbyTagManager(
             // a member publishes only the name.
             manager.requestGroupInfo(channel) { group ->
                 members = if (host) group?.clientList?.size ?: 0 else 0
-                groupName = group?.networkName?.takeIf { NearbyGroupPolicy.validNetworkName(it) }
-                groupKey = if (host) group?.passphrase?.takeIf { NearbyGroupPolicy.validPassphrase(it) } else null
+                val name = group?.networkName?.takeIf { NearbyGroupPolicy.validNetworkName(it) }
+                // Bundle 224 (A2, A3): only a LinkUp group is published / joined.
+                val now = System.currentTimeMillis()
+                val own = host && NearbyGroupPolicy.legacyOwn(name, legacyOwnName, legacyCreatedAt, now)
+                val joined = member && name != null && name == joinedName
+                if (own && name != null && !name.startsWith(NearbyGroupPolicy.NAME_PREFIX) && name != legacyOwnName) {
+                    legacyOwnName = name; legacyCreatedAt = 0L
+                    try { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_LEGACY_OWN, name).apply() } catch (_: Exception) {}
+                }
+                if (name != null && !NearbyGroupPolicy.isLinkUpGroup(name, own || joined)) {
+                    groupName = null
+                    groupKey = null
+                    legacyGroup = false
+                    setForeign(name, if (host) members else -1)
+                } else {
+                    groupName = name
+                    groupKey = if (host) group?.passphrase?.takeIf { NearbyGroupPolicy.validPassphrase(it) } else null
+                    legacyGroup = (own || joined) && name != null && !name.startsWith(NearbyGroupPolicy.NAME_PREFIX)
+                    setForeign(null, 0)
+                }
                 ownerAddress = group?.owner?.deviceAddress
                 publish()
                 emitGroup()
@@ -221,9 +262,30 @@ class NearbyTagManager(
         }
     }
 
+    /** Bundle 224 (A3): one line when a foreign group starts / ends. We never
+     *  leave or close it (D1): it may be the user's own file share. */
+    private fun setForeign(name: String?, membersNow: Int) {
+        val now = System.currentTimeMillis()
+        if (name != null) {
+            if (name != foreignName) {
+                val role = if (host) "host" else if (member) "member" else "none"
+                Log.i(TAG, "WD_FOREIGN_GROUP on grp=$name role=$role members=${if (membersNow >= 0) membersNow.toString() else "-"}")
+                if (foreignName == null) foreignSince = now
+            }
+            foreign = true
+            foreignName = name
+            return
+        }
+        val was = foreignName ?: run { foreign = false; return }
+        Log.i(TAG, "WD_FOREIGN_GROUP off grp=$was after_s=${(now - foreignSince).coerceAtLeast(0L) / 1000}")
+        foreign = false
+        foreignName = null
+        foreignSince = 0L
+    }
+
     private fun emitGroup() {
         val role = if (host) "host" else if (member) "member" else "none"
-        Log.i(TAG, "group state role=$role members=$members grp=${groupName ?: "-"}")
+        Log.i(TAG, "group state role=$role members=$members grp=${groupName ?: "-"}${if (foreign) " foreign=1" else ""}")
         emit(mapOf(
             "type" to "my_group",
             "role" to role,
@@ -232,6 +294,8 @@ class NearbyTagManager(
             "owner_address" to ownerAddress,
             // Bundle 159: on a charger (preferred as host/bridge on a tie).
             "charging" to charging,
+            // Bundle 224 (A3): busy with a group LinkUp did not make.
+            "foreign" to foreign,
         ))
     }
 
@@ -246,8 +310,13 @@ class NearbyTagManager(
             emitGroup()
         }
         val wifi = try { onWifi() } catch (_: Exception) { false }
-        val txt = NearbyTagPolicy.encode(id, host, member, members, groupName, groupKey, wanted, bridge, charging, wifi,
-            v6 = groupV6(), hotspotSsid = hotspotSsid, hotspotKey = hotspotKey, linkTarget = linkTarget, inCall = inCall)
+        // Bundle 224 (A3): in a foreign group we publish host=0 m=0 (no LinkUp
+        // group here). These locals hide the fields only inside publish().
+        val host = this.host && !foreign
+        val member = this.member && !foreign
+        val txt = NearbyTagPolicy.encode(id, host, member, if (foreign) 0 else members, groupName, groupKey, wanted, bridge, charging, wifi,
+            v6 = if (foreign) null else groupV6(), hotspotSsid = hotspotSsid, hotspotKey = hotspotKey, linkTarget = linkTarget, inCall = inCall,
+            legacyGroup = legacyGroup)
         val signature = txt.toString() + "|" + NearbyTagPolicy.encodeName(id, host, member, wanted.isNotEmpty())
         if (!force && signature == lastPublished) { then?.invoke(); return }
         lastPublished = signature
@@ -271,7 +340,7 @@ class NearbyTagManager(
     private fun addService(info: WifiP2pDnsSdServiceInfo, txt: Map<String, String>, then: (() -> Unit)? = null) {
         try {
             manager.addLocalService(channel, info, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"} wf=${txt["wf"] ?: "0"} v6=${if (txt.containsKey("v6")) 1 else 0} hs=${if (txt.containsKey("hs")) 1 else 0} lt=${txt["lt"] ?: "-"} call=${txt["call"] ?: "0"}"); then?.invoke() }
+                override fun onSuccess() { Log.i(TAG, "tag published host=${txt["host"]} m=${txt["m"]} n=${txt["n"]} full=${txt["full"]} grp=${txt["g"] ?: "-"} key=${if (txt.containsKey("k")) 1 else 0}${if (txt.containsKey("lg")) " lg=1" else ""} w=${txt["w"]?.split(",")?.size ?: 0} br=${txt["br"] ?: "0"} pwr=${txt["pwr"] ?: "0"} wf=${txt["wf"] ?: "0"} v6=${if (txt.containsKey("v6")) 1 else 0} hs=${if (txt.containsKey("hs")) 1 else 0} lt=${txt["lt"] ?: "-"} call=${txt["call"] ?: "0"}"); then?.invoke() }
                 override fun onFailure(reason: Int) {
                     lastPublished = ""
                     Log.w(TAG, "tag publish failed reason=$reason")
@@ -480,17 +549,48 @@ class NearbyTagManager(
     private fun askTxt(seq: Int, instanceName: String, address: String) {
         if (seq != windowSeq || !searchWindowOpen()) return
         if (address in txtFrom || !txtAsked.add(address)) return
-        Log.i(TAG, "WD_TAG txt_ask from=$address name=$instanceName")
+        Log.i(TAG, "WD_TAG txt_ask from=$address name=$instanceName try=1")
         try {
             val exact = WifiP2pDnsSdServiceRequest.newInstance(instanceName, NearbyTagPolicy.SERVICE_TYPE)
             manager.addServiceRequest(channel, exact, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() = discoverServices(seq)
+                override fun onSuccess() {
+                    discoverServices(seq)
+                    // Bundle 224 (D1): the answer was often lost - ask again (same request).
+                    val askedAt = System.currentTimeMillis()
+                    main.postDelayed({ reAskTxt(seq, address, 1, askedAt) }, TxtAskPolicy.GAP_MS)
+                }
                 override fun onFailure(reason: Int) { Log.w(TAG, "WD_TAG_FAIL step=txt_ask reason=$reason") }
             })
         } catch (e: SecurityException) {
             Log.w(TAG, "tag request denied: ${e.message}")
         } catch (e: Exception) {
             Log.w(TAG, "WD_TAG_FAIL step=txt_ask error=${e.javaClass.simpleName}")
+        }
+    }
+
+    /** Bundle 224 (D1): up to [TxtAskPolicy.MAX_TRIES] asks per phone per
+     *  window, [TxtAskPolicy.GAP_MS] apart. The exact request is still added,
+     *  so only the service search is run again. BUSY (2) stops the extra asks. */
+    private fun reAskTxt(seq: Int, address: String, triesDone: Int, lastAskAt: Long) {
+        if (seq != windowSeq || !searchWindowOpen()) return
+        val now = System.currentTimeMillis()
+        if (!TxtAskPolicy.shouldAsk(triesDone, lastAskAt, now, address in txtFrom)) return
+        val tryNo = triesDone + 1
+        Log.i(TAG, "WD_TAG txt_ask from=$address try=$tryNo")
+        try {
+            manager.discoverServices(channel, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    main.postDelayed({ reAskTxt(seq, address, tryNo, now) }, TxtAskPolicy.GAP_MS)
+                }
+                override fun onFailure(reason: Int) {
+                    Log.w(TAG, "WD_TAG_FAIL step=txt_reask reason=$reason")
+                    if (!TxtAskPolicy.stopOnFailure(reason)) main.postDelayed({ reAskTxt(seq, address, tryNo, now) }, TxtAskPolicy.GAP_MS)
+                }
+            })
+        } catch (e: SecurityException) {
+            Log.w(TAG, "tag request denied: ${e.message}")
+        } catch (e: Exception) {
+            Log.w(TAG, "WD_TAG_FAIL step=txt_reask error=${e.javaClass.simpleName}")
         }
     }
 
@@ -521,5 +621,6 @@ class NearbyTagManager(
         const val TAG = "NEARBY"
         private const val PREFS = "locallink_nearby_tag"
         private const val KEY_ID = "tag_id"
+        private const val KEY_LEGACY_OWN = "legacy_own_group" // Bundle 224 (A2)
     }
 }

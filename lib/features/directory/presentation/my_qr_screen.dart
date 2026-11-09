@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import 'package:locallink/core/services/qr_scan_config_232.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/directory/data/peer_photo_book.dart';
@@ -154,7 +155,8 @@ class ContactQrScannerScreen extends StatefulWidget {
 }
 
 class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
-  final MobileScannerController scanner = MobileScannerController();
+  // Bundle 232: sharper picture + QR only (see qr_scan_config_232.dart).
+  final MobileScannerController scanner = linkUpQrScannerController();
   bool torchOn = false;
   bool done = false;
   bool resolving = false;
@@ -311,7 +313,8 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
             children: [
               MobileScanner(
                 controller: scanner,
-                scanWindow: window,
+                // Bundle 232: no scanWindow. The box is only a guide; the
+                // plugin filter dropped codes that were big enough to read.
                 onDetect: (capture) async {
                   if (capture.barcodes.isEmpty) return;
                   final raw = capture.barcodes.first.rawValue;
@@ -503,7 +506,9 @@ class _QrCardWithShareState extends State<_QrCardWithShare> {
                       QrImageView(
                         data: widget.payload,
                         size: 232,
-                        errorCorrectionLevel: QrErrorCorrectLevel.H,
+                        // Bundle 232: Q instead of H = 113 squares instead
+                        // of 129, still safe with the photo in the middle.
+                        errorCorrectionLevel: QrErrorCorrectLevel.Q,
                         backgroundColor: Colors.white,
                       ),
                       Container(

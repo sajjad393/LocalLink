@@ -1,3 +1,4 @@
+import 'package:locallink/core/security/server_proof_231.dart';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -125,6 +126,13 @@ class AuthenticationRepository
           lastError = StateError(identityError);
           continue;
         }
+        // Bundle 231 (audit S2): the pinned server key must match the proof.
+        final proofError =
+            await ServerProof231.check(info, read: _store.readSetting);
+        if (proofError != null) {
+          lastError = StateError(proofError);
+          continue;
+        }
 
         // First-contact trust is automatic so the authentication UI never
         // exposes server identity/setup controls. Existing pinned trust is
@@ -132,6 +140,8 @@ class AuthenticationRepository
         if (!isServerTrusted(info)) {
           await trustServer(info);
         }
+        await ServerProof231.pin(info,
+            read: _store.readSetting, write: _store.writeSetting);
 
         return;
       } catch (error) {

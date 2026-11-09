@@ -17,6 +17,8 @@ object NearbyBackgroundPolicy {
         "createNearbyGroup", "joinNearbyGroup",
         // Bundle 200 (B): the friend backup group (silent, same as above).
         "createFriendGroup",
+        // Bundle 226 (B3): Bluetooth LE (state + what to advertise; silent).
+        "bleStatus", "setBleWanted",
         // Leaving / stopping is always silent and saves battery (an empty
         // group nobody joined closes itself).
         "disconnect", "cancelConnect", "leaveLocalNet", "stopLocalHotspot",

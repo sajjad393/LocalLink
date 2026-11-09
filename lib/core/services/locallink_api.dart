@@ -7,6 +7,7 @@ import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/core/network/build_http.dart' as http; // Bundle 213: build header
 import 'package:locallink/core/network/api_http_client.dart';
 import 'package:locallink/core/security/security_policy.dart';
+import 'package:locallink/core/security/server_proof_231.dart';
 
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
@@ -234,10 +235,23 @@ class LocalLinkApi {
       };
 
 
-  Future<PairingInfo> pairingInfo() async {
-    final response = await http.get(Uri.parse('$baseUrl/api/v1/pairing/info')).timeout(const Duration(seconds: 6));
+  Future<PairingInfo> pairingInfo() => _pairingInfoFrom(baseUrl);
+
+  /// Bundle 231 (audit S2): asks with a fresh nonce. A 231 server signs it
+  /// with its server key; a proof that doesn't verify is refused here (all
+  /// callers: sign in, recovery, account transfer). An old server ignores the
+  /// nonce and answers as before.
+  Future<PairingInfo> _pairingInfoFrom(String base) async {
+    final nonce = ServerProof231.newNonce();
+    final response = await http.get(Uri.parse('$base/api/v1/pairing/info?nonce=$nonce')).timeout(const Duration(seconds: 6));
     if (response.statusCode != 200) throw Exception(_error(response));
-    return PairingInfo.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
+    final info = PairingInfo.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
+    if (!info.hasProof) return info;
+    if (!await ServerProof231.verifyAnswer(info, nonce)) {
+      AppLogger.warning('PAIR_PROOF', detail: 'result=bad_signature');
+      throw StateError(ServerProof231.identityChanged);
+    }
+    return info.withProofOk(true);
   }
 
   Future<AuthResult> reEnrollDevice({
@@ -808,12 +822,8 @@ class LocalLinkApi {
     return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
   }
 
-  Future<PairingInfo> probePairingInfo(String server) async {
-    final normalized = normalizeServerAddress(server);
-    final response = await http.get(Uri.parse('$normalized/api/v1/pairing/info')).timeout(const Duration(seconds: 6));
-    if (response.statusCode != 200) throw Exception(_error(response));
-    return PairingInfo.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
-  }
+  Future<PairingInfo> probePairingInfo(String server) =>
+      _pairingInfoFrom(normalizeServerAddress(server));
 
   /// Reuse [idempotencyKey] when retrying after an unknown network outcome.
   Future<AccountTransferStart> startAccountTransfer({String? idempotencyKey}) async {

@@ -1,3 +1,4 @@
+import 'package:locallink/core/security/server_proof_231.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -61,9 +62,18 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
           lastError = StateError('LinkUp server identity changed.');
           continue;
         }
+        // Bundle 231 (audit S2): the pinned server key must match the proof.
+        final proofError =
+            await ServerProof231.check(info, read: _store.readSetting);
+        if (proofError != null) {
+          lastError = StateError(proofError);
+          continue;
+        }
         if (!isServerTrusted(info)) {
           await trustServer(info);
         }
+        await ServerProof231.pin(info,
+            read: _store.readSetting, write: _store.writeSetting);
         final normalized = normalizeServerAddress(candidate);
         final id = _store.deviceId ?? _store.generateDeviceId();
         await saveConfiguration(server: normalized, id: id, name: name);
@@ -174,7 +184,9 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
     try {
       final info = await verifyServer(saved).timeout(const Duration(seconds: 4));
       final pinned = _store.serverFingerprint ?? '';
-      return pinned.isEmpty || pinned.toUpperCase() == info.fingerprint.toUpperCase();
+      if (pinned.isNotEmpty && pinned.toUpperCase() != info.fingerprint.toUpperCase()) return false;
+      // Bundle 231: a server that fails the key check counts as not reachable.
+      return await ServerProof231.check(info, read: _store.readSetting) == null;
     } catch (_) {
       return false;
     }

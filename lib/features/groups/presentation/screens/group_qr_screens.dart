@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:locallink/core/models/group_join_code.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/qr_scan_config_232.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
@@ -36,7 +37,8 @@ const Color _qrBlue = Color(0xFF1E5BFF);
 class GroupQrPainter extends CustomPainter {
   GroupQrPainter(String data)
       : _image = QrImage(QrCode.fromData(
-            data: data, errorCorrectLevel: QrErrorCorrectLevel.H));
+            // Bundle 232: Q instead of H (fewer squares, easier to scan).
+            data: data, errorCorrectLevel: QrErrorCorrectLevel.Q));
 
   final QrImage _image;
 
@@ -50,7 +52,7 @@ class GroupQrPainter extends CustomPainter {
     final dark = Paint()..color = _qrDark;
     final white = Paint()..color = Colors.white;
     final blue = Paint()..color = _qrBlue;
-    // Keep the middle free for the group photo (error level H).
+    // Keep the middle free for the group photo (error level Q is enough).
     final hole = (n * 0.22).round();
     final lo = (n - hole) ~/ 2;
     final hi = lo + hole;
@@ -355,7 +357,8 @@ class GroupScanScreen extends StatefulWidget {
 }
 
 class _GroupScanScreenState extends State<GroupScanScreen> {
-  final MobileScannerController _scanner = MobileScannerController();
+  // Bundle 232: sharper picture + QR only (see qr_scan_config_232.dart).
+  final MobileScannerController _scanner = linkUpQrScannerController();
   bool _torch = false;
   bool _done = false;
   String? _error;
@@ -445,7 +448,7 @@ class _GroupScanScreenState extends State<GroupScanScreen> {
             children: [
               MobileScanner(
                 controller: _scanner,
-                scanWindow: window,
+                // Bundle 232: no scanWindow (the box is only a guide).
                 onDetect: (capture) async {
                   if (capture.barcodes.isEmpty) return;
                   final raw = capture.barcodes.first.rawValue;

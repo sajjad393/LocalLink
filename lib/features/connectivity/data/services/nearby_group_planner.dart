@@ -128,6 +128,10 @@ class NearbyGroupInput {
   /// Bundle 159: this phone is on a charger (preferred host/bridge on a tie).
   final bool selfCharging;
 
+  /// Bundle 224 (A6): this phone is in a Wi-Fi Direct group LinkUp did not
+  /// make (Realme Share / XShare). Nothing is planned until it ends (D1).
+  final bool foreignGroup;
+
   const NearbyGroupInput({
     required this.selfHash,
     required this.now,
@@ -151,6 +155,7 @@ class NearbyGroupInput {
     this.bridgeAllowed = false,
     this.bridgeSeen = const <String, int>{},
     this.selfCharging = false,
+    this.foreignGroup = false,
   });
 }
 
@@ -353,6 +358,9 @@ abstract final class NearbyGroupRules {
 ///   no group with space is nearby (D2), or as the D4 new host;
 /// * never a second group when one with space is nearby; never kick (D9).
 NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
+  // Bundle 224 (A6): never create / join / leave / merge while another app
+  // holds this phone's one Wi-Fi Direct group (D1: we never close it).
+  if (input.foreignGroup) return const NearbyGroupAction.none('foreign_group');
   final fresh = [
     for (final t in input.tags)
       if (input.now - t.seenAt <= NearbyGroupRules.freshMs &&

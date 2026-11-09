@@ -196,6 +196,7 @@ class LocalStore {
       },
     );
     _databaseOpened = true;
+    await _ensurePublicCards233();
     await _loadSettings();
     // Bundle 197a: deleted ids + cleared chats (settings table, no DB change).
     await MessageDeleteBook.instance.load(read: readSetting, write: writeSetting);
@@ -1944,6 +1945,12 @@ class LocalStore {
       } catch (_) {}
       await txn.delete('directory_profiles',
           where: 'user_id=?', whereArgs: [oldId]);
+      // Bundle 233: the pass-on copy moves with the person (card text keeps
+      // the old id inside, so it is simply dropped; the next card refills).
+      try {
+        await txn.delete('directory_public_cards',
+            where: 'user_id=?', whereArgs: [oldId]);
+      } catch (_) {}
       final confirmed = await txn.query('settings',
           where: 'key=?', whereArgs: ['server_confirmed_contacts'], limit: 1);
       if (confirmed.isNotEmpty) {
@@ -1993,6 +2000,65 @@ class LocalStore {
       }
     } catch (_) {}
     return id;
+  }
+
+  /// Bundle 233: each person's newest copy that may be passed on UNCHANGED
+  /// (no phone number inside, or number visibility "public"). A friend's
+  /// copy with the number can't be passed on: removing the number broke the
+  /// owner's signature. New table, created at every open (no DB version).
+  Future<void> _ensurePublicCards233() async {
+    try {
+      await _db.execute(
+          "CREATE TABLE IF NOT EXISTS directory_public_cards (user_id TEXT PRIMARY KEY, card TEXT NOT NULL, profile_version INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT '')");
+    } catch (_) {
+      // Without the table a friend's friend is just not passed on (as before).
+    }
+  }
+
+  /// Bundle 233: keeps [card] when it is newer than the saved one
+  /// (higher version, or the same version with a later updated_at).
+  /// Returns true when it was stored.
+  Future<bool> savePublicCard233(Map<String, dynamic> card) async {
+    final id = card['user_id']?.toString() ?? '';
+    if (id.isEmpty) return false;
+    final version = int.tryParse(card['profile_version']?.toString() ?? '') ?? 0;
+    final updated = card['updated_at']?.toString() ?? '';
+    final old = await _db.query('directory_public_cards',
+        columns: ['card', 'profile_version', 'updated_at'],
+        where: 'user_id=?',
+        whereArgs: [id],
+        limit: 1);
+    final text = jsonEncode(card);
+    if (old.isNotEmpty) {
+      final oldVersion =
+          int.tryParse(old.first['profile_version']?.toString() ?? '') ?? 0;
+      final oldUpdated = old.first['updated_at']?.toString() ?? '';
+      if (oldVersion > version) return false;
+      if (oldVersion == version && oldUpdated.compareTo(updated) > 0) {
+        return false;
+      }
+      if (old.first['card']?.toString() == text) return false;
+    }
+    await _db.insert(
+        'directory_public_cards',
+        {
+          'user_id': id,
+          'card': text,
+          'profile_version': version,
+          'updated_at': updated,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
+    return true;
+  }
+
+  /// Bundle 233: the saved pass-on copy of [userId], or null.
+  Future<Map<String, dynamic>?> publicCard233(String userId) async {
+    if (userId.isEmpty) return null;
+    final rows = await _db.query('directory_public_cards',
+        columns: ['card'], where: 'user_id=?', whereArgs: [userId], limit: 1);
+    if (rows.isEmpty) return null;
+    final decoded = jsonDecode(rows.first['card']?.toString() ?? '');
+    return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
   }
 
   Future<Map<String, dynamic>?> directoryProfileByPhone(String phone) async {

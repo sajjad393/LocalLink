@@ -135,6 +135,8 @@ object NearbyRadio {
             // Bundle 161: linked groups + LocalLink hotspot (tests, off by default).
             localNet = LocalNetManager.bind(a, { tags }) { event -> emit(event) }
             registerReceiver(a)
+            // Bundle 226 (B3): Bluetooth LE finds friends (Android 10+).
+            NearbyBle.start(a) { event -> emit(event) }
             Log.i(TAG, "NEARBY_RADIO_READY perm=${hasPermission(a)}")
             true
         } catch (e: Exception) {
@@ -160,6 +162,7 @@ object NearbyRadio {
     fun shutdown(reason: String) {
         val a = app ?: return
         Log.i(TAG, "NEARBY_RADIO_STOP reason=$reason")
+        NearbyBle.stop(reason) // Bundle 226
         if (receiverOn) { try { a.unregisterReceiver(receiver) } catch (_: Exception) {}; receiverOn = false }
         try { localNet?.dispose() } catch (_: Exception) {}
         localNet = null
@@ -258,7 +261,8 @@ object NearbyRadio {
             when (call.method) {
                 "getPeers", "getNearbyTags" -> result.success(emptyList<Map<String, Any?>>())
                 "localNetStatus" -> result.success(emptyMap<String, Any?>())
-                "dispose", "setNearbyWanted", "setNearbyInCall" -> result.success(null)
+                "dispose", "setNearbyWanted", "setNearbyInCall", "setBleWanted" -> result.success(null)
+                "bleStatus" -> result.success(if (a != null) NearbyBle.status(a) else mapOf("state" to "unsupported", "sdk" to Build.VERSION.SDK_INT))
                 else -> result.error("WIFI_DIRECT", "Wi-Fi Direct is not available", null)
             }
             return
@@ -309,11 +313,18 @@ object NearbyRadio {
             "createFriendGroup" -> createFriendGroup(call.argument<String>("name"), call.argument<String>("key"), result)
             "joinNearbyGroup" -> joinNearbyGroup(call.argument<String>("name"), call.argument<String>("key"), call.argument<String>("address"), call.argument<Boolean>("leave") ?: false, result)
             "cancelConnect" -> if (m != null && ch != null) m.cancelConnect(ch, actionResult(result)) else result.success(null)
-            "disconnect" -> if (m != null && ch != null) {
+            // Bundle 224 (A, D1): never close a group LinkUp did not make.
+            "disconnect" -> if (tags?.foreign == true) {
+                Log.i(TAG, "WD_FOREIGN_GROUP keep why=disconnect")
+                result.success(null)
+            } else if (m != null && ch != null) {
                 lastGroupChangeAt = System.currentTimeMillis() // Bundle 205 (P6): this phone closed it
                 m.removeGroup(ch, actionResult(result))
             } else result.success(null)
             "connectionInfo" -> connectionInfo(result)
+            // Bundle 226 (B3): Bluetooth LE state + what this phone advertises.
+            "bleStatus" -> result.success(NearbyBle.status(a))
+            "setBleWanted" -> { NearbyBle.setWanted(call.arguments as? Map<*, *>); result.success(null) }
             // 177 (2.6): closing a screen never stops Nearby any more.
             "dispose" -> result.success(null)
             else -> result.notImplemented()
@@ -432,6 +443,7 @@ object NearbyRadio {
      *  running (one started while ringing kept going ~2 min into the call).
      *  Any thread; the work runs on the main looper. Never throws. */
     fun stopSearchForCall() {
+        NearbyBle.onCallVoice(true) // Bundle 226: no Bluetooth scan during call voice
         main.post {
             try { stopSearchNow() } catch (_: Exception) {}
         }
@@ -509,6 +521,7 @@ object NearbyRadio {
 
     /** Bundle 184 (E1): look for nearby tags again shortly after a call. */
     fun resumeAfterCall() {
+        NearbyBle.onCallVoice(false) // Bundle 226
         main.postDelayed({
             if (CallNearbyPause.searchAllowed()) tags?.scheduleDiscovery(0L)
         }, CallNearbyPause.RESUME_AFTER_MS + 200L)
@@ -571,6 +584,8 @@ object NearbyRadio {
                     m.createGroup(ch, config, listener)
                 } else {
                     Log.i(TAG, "group create legacy")
+                    // Bundle 224 (A2): the group that forms next is ours.
+                    tags?.legacyCreatedAt = System.currentTimeMillis()
                     m.createGroup(ch, listener)
                 }
             } catch (e: Exception) { result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: ${e.message}", null) }
@@ -640,8 +655,15 @@ object NearbyRadio {
                 try {
                     lastGroupChangeAt = System.currentTimeMillis() // Bundle 189 (A)
                     Log.i(TAG, "group join grp=$name mode=password")
+                    tags?.noteJoining(name) // Bundle 224 (A2)
                     m.connect(ch, WifiP2pConfig.Builder().setNetworkName(name!!).setPassphrase(key!!).enablePersistentMode(false).build(), listener)
                 } catch (e: Exception) { result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: ${e.message}", null) }
+            }
+            // Bundle 224 (A, D1): never leave a group LinkUp did not make.
+            if (formed && tags?.foreign == true) {
+                Log.i(TAG, "WD_FOREIGN_GROUP keep why=join")
+                result.error("IN_GROUP_FOREIGN", "This phone is in another app's Wi-Fi Direct group", null)
+                return@requestConnectionInfo
             }
             if (formed) {
                 lastGroupChangeAt = System.currentTimeMillis() // Bundle 189 (A)

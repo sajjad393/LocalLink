@@ -90,6 +90,23 @@ object MeshTransportPolicy {
         fun nextDelayMs(normalMs: Long): Long = if (paused) LAN_BEACON_BACKOFF_MS else normalMs
     }
 
+    /** Bundle 224 (B1): the result of one beacon round over all addresses. */
+    enum class BeaconOutcome { OK, PAUSE, REPORT }
+
+    /** OK when at least one address worked (or there was none, as before);
+     *  PAUSE only when every address failed with "unreachable"; REPORT for
+     *  any other error. */
+    fun beaconOutcome(okCount: Int, unreachableCount: Int, otherCount: Int): BeaconOutcome = when {
+        okCount > 0 -> BeaconOutcome.OK
+        otherCount > 0 -> BeaconOutcome.REPORT
+        unreachableCount > 0 -> BeaconOutcome.PAUSE
+        else -> BeaconOutcome.OK
+    }
+
+    /** Bundle 224 (B2): a Wi-Fi Direct group formed, or our role changed. */
+    fun wdGroupChanged(wasConnected: Boolean?, wasOwner: Boolean?, connected: Boolean, owner: Boolean): Boolean =
+        connected && (wasConnected != true || wasOwner != owner)
+
     fun lanBeaconIntervalMs(phonesSeen: Int): Long = when {
         phonesSeen >= LAN_LARGE_PHONES -> LAN_BEACON_LARGE_MS
         phonesSeen >= LAN_MEDIUM_PHONES -> LAN_BEACON_MEDIUM_MS
@@ -130,3 +147,43 @@ object MeshTransportPolicy {
         return transportPriority(incoming) > transportPriority(existing)
     }
 }
+
+/**
+ * Bundle 224 (G2): the "RELAY file stalled" line. The first [FIRST_LINES]
+ * stalls are logged as before; after that at most one line per [EVERY_MS]
+ * per transfer. Log only - the resend itself is unchanged.
+ */
+object FileStallLog224 {
+    const val FIRST_LINES = 20
+    const val EVERY_MS = 10 * 60 * 1000L
+
+    fun shouldLog(stalls: Int, lastLogAt: Long, now: Long): Boolean {
+        if (stalls <= FIRST_LINES) return true
+        return lastLogAt <= 0L || now - lastLogAt >= EVERY_MS || now < lastLogAt
+    }
+}
+
+/**
+ * Bundle 224 (C1): Add contact just after a Wi-Fi Direct group formed failed at
+ * once with "not visible yet" because the other phone's beacon had not come.
+ * The send now waits up to [WAIT_MS] for it, checking every [STEP_MS].
+ * After a give-up the next sends to that phone fail fast for
+ * [FAST_FAIL_AFTER_GIVE_UP_MS] (the app already retries 4 times).
+ */
+object PairEndpointWait {
+    const val WAIT_MS = 10_000L
+    const val STEP_MS = 500L
+    const val FAST_FAIL_AFTER_GIVE_UP_MS = 30_000L
+
+    enum class Step { SEND, WAIT, GIVE_UP }
+
+    fun next(elapsedMs: Long, found: Boolean): Step = when {
+        found -> Step.SEND
+        elapsedMs >= WAIT_MS -> Step.GIVE_UP
+        else -> Step.WAIT
+    }
+
+    fun mayWait(lastGiveUpAt: Long, now: Long): Boolean =
+        lastGiveUpAt <= 0L || now < lastGiveUpAt || now - lastGiveUpAt >= FAST_FAIL_AFTER_GIVE_UP_MS
+}
+

@@ -113,8 +113,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     VersionGuard.openUpdate = openUpdateSheet;
     // Bundle 220: an admin signed this phone out (card from any phone).
     AdminActionSignOut.onSignedOut = () async {
-      await _signedOut();
-      _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      await _signedOut(); // Bundle 227 (F2): opens Welcome itself.
     };
     UpdateRequestService.confirm = (ask, apk, battery) async {
       final ctx = _navigatorKey.currentState?.overlay?.context;
@@ -180,7 +179,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       lastSeenAt: '',
     );
     if (!mounted) return false;
-    navigator.popUntil((route) => route.isFirst);
+    navigator.popUntil(AppRouter.isHomeOrFirst); // Bundle 227 (F3)
     unawaited(navigator.push(
       MaterialPageRoute(
         builder: (_) => ChatScreen(
@@ -451,7 +450,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       if (device == null || device.id == _deps.store.deviceId) return;
       if (!mounted) return;
       // Another chat open: back to Home first, then open this one.
-      navigator.popUntil((route) => route.isFirst);
+      navigator.popUntil(AppRouter.isHomeOrFirst); // Bundle 227 (F3)
       await navigator.push(
         MaterialPageRoute(
           builder: (_) => ChatScreen(
@@ -475,7 +474,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       if (policy.activeGroupConversationId == action.conversationId) return;
       final group = await _deps.store.groupById(action.conversationId);
       if (group == null || !mounted) return;
-      navigator.popUntil((route) => route.isFirst);
+      navigator.popUntil(AppRouter.isHomeOrFirst); // Bundle 227 (F3)
       await navigator.push(
         MaterialPageRoute(
           builder: (_) => GroupChatScreen(
@@ -573,6 +572,13 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   /// admin session and the crown cards stay too (Reset clears them).
   Future<void> _signedOut() async {
     await _configuredNow();
+    // Bundle 227 (F2): open Welcome on purpose - there is no hidden Welcome
+    // under Home any more (and after a fresh login there never was one).
+    if (!mounted || _configured) return;
+    _navigatorKey.currentState?.pushNamedAndRemoveUntil(
+      AppRoutes.welcome,
+      (route) => false,
+    );
   }
 
   Future<void> _resetAccount() async {
@@ -720,6 +726,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       darkTheme: LocalLinkTheme.dark(),
       themeMode: _themeMode,
       initialRoute: _configured ? AppRoutes.home : AppRoutes.welcome,
+      // Bundle 227 (F1): only Home OR Welcome at the start, never both.
+      onGenerateInitialRoutes: (name) =>
+          AppRouter.oneStartScreen(name, _router.onGenerateRoute),
       onGenerateRoute: _router.onGenerateRoute,
       // Bundle 147: floating mini video player above every screen; while
       // Android shows the PiP window only the video is drawn.

@@ -87,6 +87,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
 
   /// Bundle 195c: name questions to nearby phones that are not friends.
   int _lastNameAskAt = 0;
+  int _lastNameAsked = 0; // Bundle 233: phones asked by the last question
   final Map<String, int> _nameAnsweredAt = <String, int>{};
   final Map<String, _NameAsk> _nameAsks = <String, _NameAsk>{};
 
@@ -820,15 +821,54 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     } catch (_) {}
   }
 
-  DirectoryProfile _redactForGossip(DirectoryProfile profile) {
-    if (profile.phoneVisibility == 'public') return profile;
-    return profile.copyWith(phoneNumber: '');
+  /// Bundle 233: true = [profile] can be passed on exactly as it is (its
+  /// signature covers the number, so a copy is never edited).
+  static bool _safeToPassOn(DirectoryProfile profile) =>
+      profile.phoneNumber.trim().isEmpty || profile.phoneVisibility == 'public';
+
+  /// Bundle 233: keep the pass-on copy (see [LocalStore.savePublicCard233]).
+  Future<void> _keepPublicCard(DirectoryProfile profile) async {
+    try {
+      if (await store.savePublicCard233(profile.toMap())) {
+        AppLogger.info('DIR_PUBLIC_CARD',
+            detail: 'saved to=${_tail6(profile.userId)} v=${profile.profileVersion}');
+      }
+    } catch (_) {
+      // No pass-on copy: this person is just not passed on (never broken).
+    }
+  }
+
+  /// Bundle 233: the copy of [profile] that may go to another phone, or null.
+  /// It replaces the old "remove the number" step, which broke the
+  /// signature so the other phone dropped the person every time.
+  /// 1. safe as it is -> unchanged;
+  /// 2. else the saved pass-on copy (same key, same or newer version);
+  /// 3. else nothing (counted in [skips]).
+  Future<DirectoryProfile?> _shareableCard(DirectoryProfile profile,
+      [_ShareSkips? skips]) async {
+    if (_safeToPassOn(profile)) return profile;
+    try {
+      final raw = await store.publicCard233(profile.userId);
+      if (raw != null) {
+        final card = DirectoryProfile.fromMap(raw);
+        if (card.userId == profile.userId &&
+            card.isSigned &&
+            _safeToPassOn(card) &&
+            card.signingPublicKey == profile.signingPublicKey &&
+            card.profileVersion >= profile.profileVersion) {
+          return card;
+        }
+      }
+    } catch (_) {}
+    skips?.count++;
+    return null;
   }
 
   Future<Map<String, dynamic>?> _profileForRequester(
     DirectoryProfile profile,
-    String requesterUserId,
-  ) async {
+    String requesterUserId, [
+    _ShareSkips? skips,
+  ]) async {
     if (!profile.directorySyncEnabled) return null;
 
     if (profile.phoneVisibility == 'contacts' &&
@@ -838,7 +878,12 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       final contactVisible = await _buildOwnProfile(revealPhoneToContact: true);
       return contactVisible?.toMap();
     }
-    return _redactForGossip(profile).toMap();
+    return (await _shareableCard(profile, skips))?.toMap();
+  }
+
+  void _logShareSkips(String where, _ShareSkips skips) {
+    if (skips.count <= 0) return;
+    AppLogger.info('DIR_SHARE_SKIP', detail: 'where=$where count=${skips.count}');
   }
 
   Future<void> _handleProfileQuery(Map<String, dynamic> message) async {
@@ -864,7 +909,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         phoneQueryAllowed &&
         (requestedUserId.isEmpty || local.userId == requestedUserId) &&
         !await store.isBlocked(local.userId)) {
-      final profileMap = await _profileForRequester(local, requesterUserId);
+      final skips = _ShareSkips();
+      final profileMap =
+          await _profileForRequester(local, requesterUserId, skips);
+      _logShareSkips('query', skips);
       if (profileMap != null) {
         await transport.send(
           recipientId: origin,
@@ -893,6 +941,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     // Bundle 196 (6.5): old per-contact private marks are ignored; only
     // the person's own Private profile setting counts.
     const privateIds = <String>{};
+    final skips = _ShareSkips(); // Bundle 233
     for (final row in profiles) {
       if (rows.length >= _maxSyncProfiles) break;
       final profile = DirectoryProfile.fromMap(row);
@@ -900,9 +949,11 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       // Bundle 90: a contact the local owner marked private is never
       // re-shared onward — third parties stop learning it from this device.
       if (!isShareableRow(profile.userId, privateIds)) continue;
-      final payload = await _profileForRequester(profile, requesterUserId);
+      final payload =
+          await _profileForRequester(profile, requesterUserId, skips);
       if (payload != null) rows.add(payload);
     }
+    _logShareSkips('sync', skips);
 
     // Bundle 154: pages keep each packet small. Older phones handle every
     // page like a normal response (they ignore 'page'/'pages').
@@ -956,6 +1007,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         await store.isBlocked(profile.userId)) {
       return false;
     }
+
+    // Bundle 233: a checked copy that is safe to pass on is kept, even when
+    // the main row below keeps a friend copy with the number.
+    if (_safeToPassOn(profile)) await _keepPublicCard(profile);
 
     final oldRow = await store.directoryProfile(profile.userId);
     if (oldRow != null) {
@@ -1187,28 +1242,35 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     // Bundle 195a: online, the server is asked too (it used to be asked only
     // when no saved profile matched, so a second "Safeer" was never shown).
     List<DirectoryProfile>? server; // null = server not reached
+    // Bundle 233: server known to be down / no network -> no 8 s wait.
+    var skipServer = false;
     try {
-      final call = api.directoryByName(q);
-      final remoteProfiles = local.isEmpty
-          ? await call
-          : await call.timeout(const Duration(seconds: 4));
-      final localIds = {for (final p in local) p.userId};
-      final results = <DirectoryProfile>[];
-      for (final remote in remoteProfiles) {
-        if (remote.userId == store.accountId ||
-            await store.isBlocked(remote.userId)) {
-          continue;
-        }
-        final result = _fromServerProfile(remote);
-        if (await _isMe(result)) continue;
-        // A saved (signed) profile is kept as it is.
-        if (!localIds.contains(result.userId)) {
-          await _saveServerProfile(result);
-        }
-        results.add(result);
-      }
-      server = results;
+      skipServer = ServerReach.instance.shouldSkip('directory_search');
     } catch (_) {}
+    if (!skipServer) {
+      try {
+        final call = api.directoryByName(q);
+        final remoteProfiles = local.isEmpty
+            ? await call
+            : await call.timeout(const Duration(seconds: 4));
+        final localIds = {for (final p in local) p.userId};
+        final results = <DirectoryProfile>[];
+        for (final remote in remoteProfiles) {
+          if (remote.userId == store.accountId ||
+              await store.isBlocked(remote.userId)) {
+            continue;
+          }
+          final result = _fromServerProfile(remote);
+          if (await _isMe(result)) continue;
+          // A saved (signed) profile is kept as it is.
+          if (!localIds.contains(result.userId)) {
+            await _saveServerProfile(result);
+          }
+          results.add(result);
+        }
+        server = results;
+      } catch (_) {}
+    }
     DirectorySearchInfo.serverReached = server != null;
 
     final merged = <DirectoryProfile>[];
@@ -1234,7 +1296,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     var nearby = -1;
     if (results.isEmpty) {
       nearby = await _askNearbyByName(q);
-      if (nearby > 0) results = await _savedNameMatches(q);
+      // Bundle 233: read again whenever phones were asked - a friend's sync
+      // answer may have saved the person just before the name answer
+      // (which then counts 0 new).
+      if (nearby >= 0) results = await _savedNameMatches(q);
     }
     AppLogger.info('FRIEND_SEARCH',
         detail: friendSearchLogLine(
@@ -1243,7 +1308,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
             server: server?.length,
             friendsAsked: true,
             shown: results.length,
-            nearby: nearby));
+            nearby: nearby,
+            asked: nearby < 0 ? null : _lastNameAsked));
     return results;
   }
 
@@ -2023,12 +2089,18 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     if (now - _lastNameAskAt < NameQuestionPolicy.gapMs) return -1;
     _lastNameAskAt = now;
     var peers = const <String>[];
+    var friends = 0;
     try {
-      peers = NameQuestionPolicy.nearbyNonFriends(
-          await transport.topology().timeout(const Duration(seconds: 3)));
+      // Bundle 233: friends are asked too (they hold their friends' copies).
+      final topology =
+          await transport.topology().timeout(const Duration(seconds: 3));
+      peers = NameQuestionPolicy.linkedLinkUpPhones(topology);
+      friends = peers.length - NameQuestionPolicy.nearbyNonFriends(topology).length;
     } catch (_) {}
+    _lastNameAsked = peers.length;
     AppLogger.info('FRIEND_SEARCH_ASK',
-        detail: 'len=${query.length} peers=${peers.length} kind=nearby');
+        detail: 'len=${query.length} peers=${peers.length} kind=linked '
+            'friends=$friends nearby=${peers.length - friends}');
     if (peers.isEmpty) return 0;
     final requestId = 'nameq-${DateTime.now().microsecondsSinceEpoch}';
     final ask = _NameAsk(peers.toSet());
@@ -2079,6 +2151,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     // Bundle 196 (6.5): old per-contact marks ignored (own setting only).
     const privateIds = <String>{};
     final rows = <Map<String, dynamic>>[];
+    final skips = _ShareSkips(); // Bundle 233
     for (final row in await store.searchDirectoryByName(query)) {
       if (rows.length >= NameQuestionPolicy.maxRows) break;
       if (!NameQuestionPolicy.rowShareable(row,
@@ -2087,8 +2160,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       }
       final profile = DirectoryProfile.fromMap(row);
       if (!profile.isSigned || await store.isBlocked(profile.userId)) continue;
-      rows.add(_redactForGossip(profile).toMap());
+      final card = await _shareableCard(profile, skips); // Bundle 233
+      if (card != null) rows.add(card.toMap());
     }
+    _logShareSkips('name', skips);
     final kind = asker.isNotEmpty && await store.isContact(asker)
         ? 'friend'
         : 'nearby';
@@ -2703,6 +2778,11 @@ List<List<T>> directorySyncPages<T>(List<T> rows,
 }
 
 /// Bundle 195c: one name question waiting for answers.
+/// Bundle 233: people left out of one answer (no pass-on copy yet).
+class _ShareSkips {
+  int count = 0;
+}
+
 class _NameAsk {
   _NameAsk(this.waiting);
   final Set<String> waiting;

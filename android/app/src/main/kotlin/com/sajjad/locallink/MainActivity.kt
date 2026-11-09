@@ -95,6 +95,9 @@ class MainActivity : FlutterActivity() {
     // Bundle 177: this screen's Nearby event sink (NearbyRadio owns Nearby).
     private var wifiEventSink: EventChannel.EventSink? = null
     private val backgroundLocationRequestCode = 7815
+    // Bundle 226 (B1): Bluetooth LE scan + advertise (Android 12+), from the Allow card only.
+    private val bluetoothRequestCode = 7816
+    private var pendingBleResult: MethodChannel.Result? = null
     // Bundle 223 (I): one queue for every permission pop-up (none dropped).
     private val permQueue = PermissionQueue(
         fire = { a -> fireAsk(a) },
@@ -282,6 +285,9 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, wifiChannelName).setMethodCallHandler { call, result ->
             // The permission dialog needs this screen; everything else is NearbyRadio.
             if (call.method == "requestEnable") requestWifiPermission(result)
+            // Bundle 226 (B1/B5): Bluetooth pop-up and settings need this screen.
+            else if (call.method == "askBlePermission") askBlePermission(result)
+            else if (call.method == "openBluetoothSettings") result.success(openBluetoothSettings(call.argument<Boolean>("app") == true))
             else NearbyRadio.handle(call, result, null)
         }
 
@@ -1102,6 +1108,20 @@ class MainActivity : FlutterActivity() {
         // Bundle 101: mic (7812) / camera (7813) denials re-enter Dart's
         // 10-minute re-ask loop — no settings-recovery dialog here.
         if (requestCode == 7812 || requestCode == 7813) return
+        // Bundle 226 (B1): the Allow card waits for this answer.
+        if (requestCode == bluetoothRequestCode) {
+            NearbyBle.refresh("permission")
+            val r = pendingBleResult
+            pendingBleResult = null
+            val status = HashMap<String, Any?>(NearbyBle.status(this))
+            // Denied and Android will not show the pop-up again -> the card opens settings next time.
+            status["blocked"] = !NearbyBle.scanPermission(this) &&
+                android.os.Build.VERSION.SDK_INT >= 31 &&
+                !shouldShowRequestPermissionRationale(Manifest.permission.BLUETOOTH_SCAN)
+            android.util.Log.i("NEARBY", "BLE_PERM ${if (NearbyBle.scanPermission(this)) "granted" else "denied"}")
+            try { r?.success(status) } catch (_: Exception) {}
+            return
+        }
         // Bundle 177 (9.5): the screen re-reads the state on resume.
         if (requestCode == backgroundLocationRequestCode) {
             NearbyRadio.logState(this, "bg_location_answer")
@@ -1428,6 +1448,7 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         // Bundle 223 (I): the battery screen closed (it has no answer callback).
         if (gatePending != null && gateCode == BATTERY_GATE_CODE) finishGate("resume")
+        NearbyBle.refresh("resume") // Bundle 226: back from Bluetooth / app settings
     }
 
     /** Bundle 223 (I): EVERY permission pop-up goes through the one queue. */
@@ -1445,6 +1466,7 @@ class MainActivity : FlutterActivity() {
         7813 -> "camera"
         wifiPermissionRequestCode -> "nearby"
         backgroundLocationRequestCode -> "bg_location"
+        bluetoothRequestCode -> "bluetooth"
         else -> "code_$code"
     }
 
@@ -1463,6 +1485,33 @@ class MainActivity : FlutterActivity() {
 
     // Bundle 177 (2): Nearby (Wi-Fi Direct) moved to NearbyRadio (one owner for the app).
     private fun hasWifiPermission():Boolean=NearbyRadio.hasPermission(this)
+
+    /** Bundle 226 (B1): Bluetooth scan + advertise, through the one queue.
+     *  Android 13+ with "Nearby devices" allowed grants it with no pop-up.
+     *  Replies with the new status after the answer. Never asks on < 12. */
+    private fun askBlePermission(result: MethodChannel.Result) {
+        if (android.os.Build.VERSION.SDK_INT < 31 || NearbyBle.scanPermission(this)) {
+            NearbyBle.refresh("permission")
+            result.success(NearbyBle.status(this))
+            return
+        }
+        if (pendingBleResult != null) {
+            result.error("PERMISSION_REQUEST_ACTIVE", "A Bluetooth permission request is already in progress", null)
+            return
+        }
+        pendingBleResult = result
+        android.util.Log.i("NEARBY", "BLE_PERM asked")
+        askPermissions("bluetooth", arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_ADVERTISE), bluetoothRequestCode)
+    }
+
+    /** Bundle 226 (B5): the app never turns Bluetooth on - it opens the
+     *  Bluetooth settings ([app] = this app's settings page instead, after
+     *  "Don't ask again"). */
+    private fun openBluetoothSettings(app: Boolean): Boolean = try {
+        if (app) startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+        else startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))
+        true
+    } catch (_: Exception) { false }
 
     private fun copyToCache(uri: Uri): Map<String,Any>{
         val resolver=contentResolver; val name=queryName(uri)?:"attachment"; val mime=resolver.getType(uri)?:"application/octet-stream"; val safeName=name.replace(Regex("[^A-Za-z0-9._-]"),"_"); val pickDir=File(filesDir,"locallink_picks").apply{mkdirs()}; val outFile=File(pickDir,"locallink_${UUID.randomUUID()}_$safeName"); resolver.openInputStream(uri).use{input->requireNotNull(input){"Could not open selected file"};FileOutputStream(outFile).use{output->input.copyTo(output)}}; return mapOf("path" to outFile.absolutePath,"name" to name,"content_type" to mime,"size" to outFile.length())
@@ -1496,6 +1545,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy(){
         // Bundle 223 (I): pop-ups of this screen can't be answered any more.
         permQueue.reset()
+        pendingBleResult = null // Bundle 226
         finishGate("destroy")
         chatVideoPip.dispose() // Bundle 147
         // Bundle 177 (1, 2.7): Nearby keeps running when the screen closes

@@ -29,6 +29,9 @@ class ServerReach {
   bool? _wifi;
   bool? _internet;
   DateTime? _downUntil;
+  // Bundle 224 (H2): a call failed with "Server address is required" -
+  // treat it like no server address until the next sign-in ([bind]).
+  bool _noServerSeen = false;
   final Map<String, String> _logged = <String, String>{};
 
   /// Called at every sign-in: starts with an open gate (Q9: no state from
@@ -39,6 +42,7 @@ class ServerReach {
     _wifi = null;
     _internet = null;
     _downUntil = null;
+    _noServerSeen = false;
     _logged.clear();
   }
 
@@ -51,6 +55,10 @@ class ServerReach {
 
   /// A server call failed. A network error closes the gate for [downFor].
   void noteFailure(Object error) {
+    if (isNoServerError(error)) {
+      _noServerSeen = true; // Bundle 224 (H2)
+      return;
+    }
     if (isNetworkError(error)) _downUntil = _clock().add(downFor);
   }
 
@@ -63,6 +71,7 @@ class ServerReach {
     if (address != null && (address()?.trim() ?? '').isEmpty) {
       return 'no_server';
     }
+    if (_noServerSeen) return 'no_server'; // Bundle 224 (H2)
     if (_socketUp?.call() == true) return null;
     if (_wifi == false && _internet == false) return 'no_network';
     final until = _downUntil;
@@ -86,6 +95,12 @@ class ServerReach {
 
   @visibleForTesting
   void resetForTest() => bind();
+
+  /// Bundle 224 (H2): the API layer's "no server address" error (a
+  /// phone-only account). Not a network error: [isNetworkError] stays false.
+  static bool isNoServerError(Object error) =>
+      error is FormatException &&
+      error.message.contains('Server address is required');
 
   /// No route / refused / timed out: the server can't be reached.
   static bool isNetworkError(Object error) =>

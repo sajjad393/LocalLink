@@ -26,6 +26,31 @@ object NearbyGroupPolicy {
 
     fun validPassphrase(pass: String?): Boolean = pass != null && passPattern.matches(pass)
 
+    /** Bundle 224 (A1): how long after our own old-way create (Android < 10)
+     *  the group that forms counts as ours. */
+    const val LEGACY_OWN_WINDOW_MS = 60_000L
+
+    /**
+     * Bundle 224 (A1): is this Wi-Fi Direct group a LinkUp group? A
+     * `DIRECT-LL-` name, or this phone's own old-way group (Android < 10
+     * picks the name). Realme Share / XShare / system groups (for example
+     * `DIRECT-44-realme C71`, `DIRECT-N7-XSHARE-5G-DGJP8`) are not.
+     * [validNetworkName] is unchanged (join and friend code use it).
+     */
+    fun isLinkUpGroup(name: String?, legacyOwn: Boolean): Boolean {
+        if (!validNetworkName(name)) return false
+        return name!!.startsWith(NAME_PREFIX) || legacyOwn
+    }
+
+    /** Bundle 224 (A2): is [name] our own old-way group? It is when it is the
+     *  name we remembered, or the first group formed within 60 s of our
+     *  old-way create (then the caller remembers its name). */
+    fun legacyOwn(name: String?, ownName: String?, createdAt: Long, now: Long): Boolean {
+        if (name.isNullOrEmpty()) return false
+        if (ownName != null && name == ownName) return true
+        return createdAt > 0L && now >= createdAt && now - createdAt <= LEGACY_OWN_WINDOW_MS
+    }
+
     /** A fresh group name: `DIRECT-LL-` + 6 random characters. */
     fun newNetworkName(random: SecureRandom = SecureRandom()): String =
         NAME_PREFIX + randomText(6, random)

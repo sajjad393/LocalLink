@@ -86,6 +86,8 @@ object NearbyTagPolicy {
         // Bundle 167 (5.5): a voice call is going on here (it goes first as
         // the new host when the old host leaves).
         inCall: Boolean = false,
+        // Bundle 224 (A4): our own old-way group (Android < 10, no `DIRECT-LL-` name).
+        legacyGroup: Boolean = false,
     ): Map<String, String> {
         val n = members.coerceIn(0, 64)
         val txt = linkedMapOf(
@@ -99,6 +101,7 @@ object NearbyTagPolicy {
         )
         if ((host || member) && NearbyGroupPolicy.validNetworkName(groupName)) txt["g"] = groupName!!
         if (host && NearbyGroupPolicy.validPassphrase(groupKey)) txt["k"] = groupKey!!
+        if (txt.containsKey("g") && legacyGroup && !groupName!!.startsWith(NearbyGroupPolicy.NAME_PREFIX)) txt["lg"] = "1"
         val w = cleanWanted(wanted)
         if (w.isNotEmpty()) txt["w"] = w.joinToString(",")
         if (bridge && (host || member)) txt["br"] = "1"
@@ -220,9 +223,15 @@ object NearbyTagPolicy {
             "gv" to (txt["gv"] == "1"),
         )
         val group = txt["g"]
-        if ((host || member) && NearbyGroupPolicy.validNetworkName(group)) tag["group"] = group!!
+        // Bundle 224 (A4): only a LinkUp group can be joined - a `DIRECT-LL-`
+        // name, or an old-way group marked `lg=1`. A Realme Share / XShare
+        // group (also from a phone still on 223) is dropped; the phone itself
+        // is still seen.
+        val linkUpGroup = (host || member) && NearbyGroupPolicy.validNetworkName(group) &&
+            (group!!.startsWith(NearbyGroupPolicy.NAME_PREFIX) || txt["lg"] == "1")
+        if (linkUpGroup) tag["group"] = group!!
         val key = txt["k"]
-        if (host && NearbyGroupPolicy.validPassphrase(key)) tag["key"] = key!!
+        if (linkUpGroup && host && NearbyGroupPolicy.validPassphrase(key)) tag["key"] = key!!
         val wanted = cleanWanted(txt["w"]?.split(","))
         if (wanted.isNotEmpty()) tag["wanted"] = wanted
         // Bundle 158: the group's bridge (only meaningful in a group).
@@ -246,4 +255,23 @@ object NearbyTagPolicy {
         if (txt["call"] == "1") tag["in_call"] = true
         return tag
     }
+}
+
+/**
+ * Bundle 224 (D1): asking a phone for its tag details (TXT) once was not
+ * enough - on 2026-11-07 02:11:37 the one ask got no answer and the join
+ * waited for the next search (35 s). Ask up to 3 times, 4 s apart, in the
+ * same search window. The search timing itself is unchanged.
+ */
+object TxtAskPolicy {
+    const val MAX_TRIES = 3
+    const val GAP_MS = 4_000L
+    /** WifiP2pManager.BUSY */
+    const val REASON_BUSY = 2
+
+    fun shouldAsk(triesDone: Int, lastAskAt: Long, now: Long, txtSeen: Boolean): Boolean =
+        !txtSeen && triesDone < MAX_TRIES && (now - lastAskAt >= GAP_MS - 50L || now < lastAskAt)
+
+    /** BUSY = the radio is busy: no more extra asks in this window. */
+    fun stopOnFailure(reason: Int): Boolean = reason == REASON_BUSY
 }

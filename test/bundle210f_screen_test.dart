@@ -42,7 +42,7 @@ void main() {
         () {
       final manifest =
           File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
-      expect('uses-permission'.allMatches(manifest).length, 21);
+      expect('uses-permission'.allMatches(manifest).length, 25); // Bundle 226: +4 Bluetooth
       final main = File(
               'android/app/src/main/kotlin/com/sajjad/locallink/MainActivity.kt')
           .readAsStringSync();

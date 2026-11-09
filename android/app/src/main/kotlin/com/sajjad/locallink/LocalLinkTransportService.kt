@@ -73,6 +73,8 @@ class LocalLinkTransportService : Service() {
         private const val DIRECT_ROUTE_TTL_MS = 5 * 60_000L
         private const val ROUTE_ADVERTISEMENT_INTERVAL_MS = 10_000L
         private const val LAN_BEACON_MAX_SIZE = 2_048
+        // Same text as before 224 (the app retries on "not visible" / "wait for it").
+        private const val PAIR_NOT_VISIBLE_TEXT = "peer is not visible on the local network yet — wait for it to appear under On this network"
         private const val CHANNEL_ID = "locallink_background"
         private const val OLD_CHANNEL_ID = "locallink_transport"
         private const val NOTIFICATION_ID = 2201
@@ -300,6 +302,10 @@ class LocalLinkTransportService : Service() {
     private val fileSealTrial: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val fileStalls = ConcurrentHashMap<String, Int>()
     private val fileStallAt = ConcurrentHashMap<String, Long>()
+    // Bundle 224 (E): no quick reconnect loop.
+    private val flapGuard = MeshDialFlapGuard()
+    // Bundle 224 (G2): last "file stalled" log per transfer.
+    private val fileStallLogAt = ConcurrentHashMap<String, Long>()
     private val fileRelayLogAt = ConcurrentHashMap<String, Long>()
     // How the last file packet from each phone came (true = locked).
     private val fileLastLocked = ConcurrentHashMap<String, Boolean>()
@@ -630,6 +636,7 @@ class LocalLinkTransportService : Service() {
                 try {
                     // Bundle 223 (K): the network changed - normal beacon tier now.
                     if (lanBackoff.onOk()) Log.i("NEARBY", "LAN_BEACON resumed why=net_change")
+                    flapGuard.resetAll() // Bundle 224 (E1)
                     startLanTransport(); lanBeaconNow = true
                 } catch (e: Exception) { Log.w(BG_TAG, "NET_CHANGE lan_restart_failed reason=${e.javaClass.simpleName}") }
             }, "locallink-net-change").start()
@@ -940,7 +947,14 @@ class LocalLinkTransportService : Service() {
         transportGroupOwner = groupOwner
         transportGroupOwnerAddress = groupOwnerAddress
         persistState()
+        val prevNote = lastConnNote
         lastConnNote = Triple(connected, groupOwner, groupOwnerAddress)
+        // Bundle 224 (B2): a new Wi-Fi Direct group (or a new role) -> tell the
+        // phones in it about us now, not after the 15 s beacon pause.
+        if (MeshTransportPolicy.wdGroupChanged(prevNote?.first, prevNote?.second, connected, groupOwner)) {
+            if (lanBackoff.onOk()) Log.i("NEARBY", "LAN_BEACON resumed why=wd_group")
+            lanBeaconNow = true
+        }
         if (!connected) {
             // Bundle 205 (P1, L4): a stale "not connected" (sent before the
             // group formed, arriving after) closed a fresh Wi-Fi Direct link
@@ -1313,21 +1327,36 @@ class LocalLinkTransportService : Service() {
             .put("relay", if (MeshRelayPolicy.RELAY_ENABLED) 1 else 0)
         val bytes = packet.toString().toByteArray(Charsets.UTF_8)
         val addresses = lanBroadcastAddresses()
-        try {
-            addresses.forEach { destination ->
+        // Bundle 224 (B1): one try per address. Before, the old Wi-Fi going
+        // down (while Wi-Fi Direct came up) threw on the first address, so
+        // the Wi-Fi Direct address got nothing and the beacon paused 15 s.
+        var ok = 0; var unreachableCount = 0; var other = 0
+        var firstError: Exception? = null
+        addresses.forEach { destination ->
+            try {
                 socket.send(DatagramPacket(bytes, bytes.size, destination, lanDiscoveryPort))
+                ok++
+            } catch (e: Exception) {
+                if (MeshTransportPolicy.isUnreachable(e.message)) unreachableCount++ else other++
+                if (firstError == null || !MeshTransportPolicy.isUnreachable(e.message)) firstError = e
             }
-            if (lanBackoff.onOk()) Log.i("NEARBY", "LAN_BEACON resumed why=sent") // Bundle 223 (K)
-        } catch (e: Exception) {
-            // Bundle 223 (K): "Network unreachable" is reported ONCE, then a 15 s pause.
-            val unreachable = MeshTransportPolicy.isUnreachable(e.message)
-            if (!lanBackoff.onError(unreachable)) return
-            if (unreachable) Log.i("NEARBY", "LAN_BEACON paused why=no_network wait_ms=${MeshTransportPolicy.LAN_BEACON_BACKOFF_MS}")
-            transportEvent("error", mapOf(
-                "transport" to MeshTransportPolicy.LAN,
-                "operation" to "discovery_broadcast",
-                "error" to (e.message ?: "LAN discovery broadcast failed"),
-            ))
+        }
+        when (MeshTransportPolicy.beaconOutcome(ok, unreachableCount, other)) {
+            MeshTransportPolicy.BeaconOutcome.OK -> {
+                if (lanBackoff.onOk()) Log.i("NEARBY", "LAN_BEACON resumed why=sent") // Bundle 223 (K)
+            }
+            else -> {
+                // Bundle 223 (K): "Network unreachable" on EVERY address is
+                // reported ONCE, then a 15 s pause. Other errors as before.
+                val unreachable = MeshTransportPolicy.beaconOutcome(ok, unreachableCount, other) == MeshTransportPolicy.BeaconOutcome.PAUSE
+                if (!lanBackoff.onError(unreachable)) return
+                if (unreachable) Log.i("NEARBY", "LAN_BEACON paused why=no_network wait_ms=${MeshTransportPolicy.LAN_BEACON_BACKOFF_MS}")
+                transportEvent("error", mapOf(
+                    "transport" to MeshTransportPolicy.LAN,
+                    "operation" to "discovery_broadcast",
+                    "error" to (firstError?.message ?: "LAN discovery broadcast failed"),
+                ))
+            }
         }
     }
 
@@ -1400,8 +1429,8 @@ class LocalLinkTransportService : Service() {
             // harmless because registerPeer replaces the older same-transport
             // link and the seen-packet tracker dedupes any duplicate frames.
             if (knownPeers.contains(nodeId)) {
-                if (mayDialLanContact(nodeId, now)) connectLanPeer(nodeId, host, port)
-            } else if (beacon.optInt("relay", 0) == 1 && shouldDialRelay(self, nodeId, now)) {
+                if (mayDialLanContact(nodeId, now) && flapAllows(nodeId, now)) connectLanPeer(nodeId, host, port)
+            } else if (beacon.optInt("relay", 0) == 1 && flapAllows(nodeId, now) && shouldDialRelay(self, nodeId, now)) {
                 // Bundle 156 (D12): a few strangers' phones as relay
                 // neighbours. They can only pass on sealed packets.
                 Log.i("RELAY", "dial relay peer=$nodeId relays=${relayLinkCount()}")
@@ -1414,6 +1443,18 @@ class LocalLinkTransportService : Service() {
      *  when a message needs one (see routerNoRoute). */
     private fun directLanContactLinks(): Int = allPhysicalPeerLinks().count {
         it.transportName == MeshTransportPolicy.LAN && it.trust == MeshRelayPolicy.TRUST_CONTACT && !it.socket.isClosed
+    }
+
+    /** Bundle 224 (E2): false while this peer's quick drops hold dialling. */
+    private fun flapAllows(nodeId: String, now: Long): Boolean {
+        if (flapGuard.takeFreed(nodeId, now)) Log.i("RELAY", "LINK_FLAP free peer=${nodeId.takeLast(8)}")
+        return flapGuard.mayDial(nodeId, now)
+    }
+
+    /** Bundle 224 (E1): a link (or a dial that was refused) ended. */
+    private fun noteLinkEnded(peerId: String, livedMs: Long) {
+        val hold = flapGuard.onLinkEnded(peerId, livedMs, System.currentTimeMillis())
+        if (hold > 0L) Log.i("RELAY", "LINK_FLAP hold peer=${peerId.takeLast(8)} s=${hold / 1000} quick_drops=${MeshDialFlapGuard.DROPS_FOR_HOLD}")
     }
 
     private fun mayDialLanContact(nodeId: String, now: Long): Boolean {
@@ -1474,8 +1515,68 @@ class LocalLinkTransportService : Service() {
         if (self.isNullOrBlank()) { Log.w(pairLogTag, "pair-packet tx failed: device identity not configured; cb: not configured"); cb(false, "transport is not configured — identity missing"); return }
         if (!validTransportId(target) || target == self || !PairKind.valid(pair)) { cb(false, "invalid pair packet"); return }
         if (body.isBlank() || body.length > lanPairMaxBytes) { cb(false, "pair payload is too large"); return }
+        flapGuard.reset(target) // Bundle 224 (E1): the user's Pair tap
         val endpoint = lanEndpoints[target]
-        if (endpoint == null) { Log.w(pairLogTag, "pair-packet tx failed: no LAN endpoint for $target yet"); cb(false, "peer is not visible on the local network yet — wait for it to appear under On this network"); return }
+        if (endpoint == null) {
+            // Bundle 224 (C1): just after a Wi-Fi Direct group forms the other
+            // phone's beacon may not be here yet. Wait up to 10 s (once per
+            // phone; fail fast for 30 s after a give-up, as before).
+            if (waitForPairEndpoint(target, pair, body, cb)) return
+            Log.w(pairLogTag, "pair-packet tx failed: no LAN endpoint for $target yet"); cb(false, PAIR_NOT_VISIBLE_TEXT); return
+        }
+        sendPairDatagrams(target, endpoint.host, pair, body, cb)
+    }
+
+    // Bundle 224 (C1): one waiter per phone; later taps join it.
+    private class PendingPair(val pair: String, val body: String, val cb: (Boolean, String?) -> Unit)
+    private val pairWaiters = HashMap<String, MutableList<PendingPair>>()
+    private val pairGaveUpAt = ConcurrentHashMap<String, Long>()
+
+    /** True = the send is now waiting (cb is called later). */
+    private fun waitForPairEndpoint(target: String, pair: String, body: String, cb: (Boolean, String?) -> Unit): Boolean {
+        val now = System.currentTimeMillis()
+        if (!PairEndpointWait.mayWait(pairGaveUpAt[target] ?: 0L, now)) return false
+        synchronized(pairWaiters) {
+            val list = pairWaiters[target]
+            if (list != null) { list.add(PendingPair(pair, body, cb)); return true }
+            pairWaiters[target] = mutableListOf(PendingPair(pair, body, cb))
+        }
+        Thread({
+            try { lanDiscoverySocket?.let { broadcastLanBeacon(it) } } catch (_: Exception) {}
+            lanBeaconNow = true
+            val start = System.currentTimeMillis()
+            var host: String? = null
+            while (true) {
+                val elapsed = System.currentTimeMillis() - start
+                val ep = if (transportRunning) lanEndpoints[target] else null
+                when (PairEndpointWait.next(elapsed, ep != null)) {
+                    PairEndpointWait.Step.SEND -> { host = ep?.host; Log.i(pairLogTag, "pair-packet endpoint found after_ms=$elapsed target=$target") }
+                    PairEndpointWait.Step.GIVE_UP -> pairGaveUpAt[target] = System.currentTimeMillis()
+                    PairEndpointWait.Step.WAIT -> { try { Thread.sleep(PairEndpointWait.STEP_MS) } catch (_: InterruptedException) {}; continue }
+                }
+                break
+            }
+            val waiting = synchronized(pairWaiters) { pairWaiters.remove(target) ?: mutableListOf() }
+            val h = host
+            if (h == null) {
+                Log.w(pairLogTag, "pair-packet tx failed: no LAN endpoint for $target yet (waited ${PairEndpointWait.WAIT_MS} ms)")
+                waiting.forEach { try { it.cb(false, PAIR_NOT_VISIBLE_TEXT) } catch (_: Exception) {} }
+                return@Thread
+            }
+            pairGaveUpAt.remove(target)
+            // The same kind twice (two taps) is sent once with the newest body.
+            waiting.groupBy { it.pair }.forEach { (kind, items) ->
+                sendPairDatagrams(target, h, kind, items.last().body) { ok, err ->
+                    items.forEach { try { it.cb(ok, err) } catch (_: Exception) {} }
+                }
+            }
+        }, "locallink-pair-wait").start()
+        return true
+    }
+
+    private fun sendPairDatagrams(target: String, host: String, pair: String, body: String, cb: (Boolean, String?) -> Unit) {
+        val self = transportDeviceId
+        if (self.isNullOrBlank()) { cb(false, "transport is not configured — identity missing"); return }
         val packet = JSONObject()
             .put("type", "pair_packet")
             .put("pair", pair)
@@ -1488,7 +1589,7 @@ class LocalLinkTransportService : Service() {
                 // 3 unicast datagrams, 250ms apart: UDP has no delivery ack,
                 // and the receiver deduplicates on arrival timestamp anyway.
                 DatagramSocket().use { socket ->
-                    val destination = InetAddress.getByName(endpoint.host)
+                    val destination = InetAddress.getByName(host)
                     repeat(3) {
                         socket.send(DatagramPacket(bytes, bytes.size, destination, lanDiscoveryPort))
                         Thread.sleep(250)
@@ -1515,10 +1616,10 @@ class LocalLinkTransportService : Service() {
                 if (!MeshTransportPolicy.isValidPort(port)) throw IllegalArgumentException("invalid LAN peer port")
                 socket.connect(InetSocketAddress(host, port), MeshTransportPolicy.SOCKET_CONNECT_TIMEOUT_MS)
                 configureSocket(socket)
-                val connection = authenticateClient(socket, host, MeshTransportPolicy.LAN, nodeId) ?: run { socket?.close(); return@Thread }
+                val connection = authenticateClient(socket, host, MeshTransportPolicy.LAN, nodeId) ?: run { socket?.close(); noteLinkEnded(nodeId, 0L); return@Thread }
                 if (registerPeer(connection)) {
                     Thread { readTransportLoop(connection) }.start()
-                }
+                } else if (transportPeers[nodeId] == null) noteLinkEnded(nodeId, 0L) // Bundle 224 (E1)
             } catch (e: Exception) {
                 try { socket?.close() } catch (_: Exception) {}
                 meshPeers.failed(nodeId, MeshTransportPolicy.LAN)
@@ -1604,7 +1705,8 @@ class LocalLinkTransportService : Service() {
 
     private fun authenticateClient(socket: Socket, ownerAddress: String, transportName: String = MeshTransportPolicy.WIFI_DIRECT, expectedPeerId: String? = null): PeerConnection? {
         val id = transportDeviceId ?: return null
-        val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
+        // Bundle 229 (S1): never keeps more than LineLimits allow of one line.
+        val reader = BoundedLineReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
         val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
         // Bundle 160: my fresh random number for the signed device id.
         val clientNonce = MeshLinkAuth.newNonce()
@@ -1626,7 +1728,7 @@ class LocalLinkTransportService : Service() {
             .toString())
         writer.newLine()
         writer.flush()
-        val challenge = reader.readLine()?.let { JSONObject(it) } ?: return null
+        val challenge = reader.readLine(LineLimits.HANDSHAKE_MAX_CHARS)?.let { JSONObject(it) } ?: return null
         if (challenge.optString("type") != "challenge") return null
         if (challenge.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
         val peerId = challenge.optString("peer_id").ifBlank { challenge.optString("node_id") }
@@ -1650,7 +1752,7 @@ class LocalLinkTransportService : Service() {
         writer.write(authJson.toString())
         writer.newLine()
         writer.flush()
-        val auth = reader.readLine()?.let { JSONObject(it) } ?: return null
+        val auth = reader.readLine(LineLimits.HANDSHAKE_MAX_CHARS)?.let { JSONObject(it) } ?: return null
         if (auth.optString("type") != "auth_ok" || auth.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
         val serverMacOk = shared != null && MeshLinkAuth.verify(shared.key, "s", id, peerId, clientNonce, serverNonce, auth.optString("mac"))
         val linkAuth = MeshLinkAuth.applyStrict(
@@ -1667,9 +1769,10 @@ class LocalLinkTransportService : Service() {
 
     private fun acceptHandshake(socket: Socket, transportName: String = MeshTransportPolicy.WIFI_DIRECT): PeerConnection? {
         if (!MeshTransportPolicy.isSupportedTransport(transportName)) return null
-        val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
+        // Bundle 229 (S1): never keeps more than LineLimits allow of one line.
+        val reader = BoundedLineReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
         val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
-        val hello = reader.readLine()?.let { JSONObject(it) } ?: return null
+        val hello = reader.readLine(LineLimits.HANDSHAKE_MAX_CHARS)?.let { JSONObject(it) } ?: return null
         if (hello.optString("type") != "hello") return null
         if (hello.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
         val peer = hello.optString("node_id").ifBlank { hello.optString("device_id") }
@@ -1701,7 +1804,7 @@ class LocalLinkTransportService : Service() {
         writer.write(challengeJson.toString())
         writer.newLine()
         writer.flush()
-        val auth = reader.readLine()?.let { JSONObject(it) } ?: return null
+        val auth = reader.readLine(LineLimits.HANDSHAKE_MAX_CHARS)?.let { JSONObject(it) } ?: return null
         if (auth.optString("node_id").ifBlank { auth.optString("device_id") } != peer ||
             auth.optInt("transport_auth_version", -1) != TRANSPORT_AUTH_VERSION) return null
         val shared = if (clientAuth) MeshLinkAuth.match(myKeys, jsonStringList(auth.optJSONArray("lkp"))) else null
@@ -1727,13 +1830,39 @@ class LocalLinkTransportService : Service() {
 
     private fun handleIncomingTransportSafe(socket: Socket, transportName: String = MeshTransportPolicy.WIFI_DIRECT) {
         try {
-            val connection = acceptHandshake(socket, transportName) ?: run { socket.close(); return }
+            // Bundle 229 (S1): at most LineLimits.MAX_PENDING_HANDSHAKES link
+            // attempts in their handshake at once (working links don't count).
+            if (!LineLimits.handshakeAllowed(pendingHandshakes.incrementAndGet())) {
+                pendingHandshakes.decrementAndGet()
+                noteHandshakesFull(transportName)
+                try { socket.close() } catch (_: Exception) {}
+                return
+            }
+            val connection = try {
+                acceptHandshake(socket, transportName)
+            } finally {
+                pendingHandshakes.decrementAndGet()
+            } ?: run { socket.close(); return }
             if (registerPeer(connection)) {
                 readTransportLoop(connection)
             }
+        } catch (e: LineTooLongException) {
+            Log.w("LINK", "LINE_TOO_LONG peer=? side=hs transport=$transportName max=${e.max}")
+            try { socket.close() } catch (_: Exception) {}
         } catch (_: Exception) {
             try { socket.close() } catch (_: Exception) {}
         }
+    }
+
+    /** Bundle 229 (S1): incoming handshakes in progress right now. */
+    private val pendingHandshakes = AtomicInteger(0)
+    @Volatile private var handshakesFullLoggedAt = 0L
+
+    private fun noteHandshakesFull(transportName: String) {
+        val now = System.currentTimeMillis()
+        if (now - handshakesFullLoggedAt < 60_000L) return
+        handshakesFullLoggedAt = now
+        Log.w("LINK", "HANDSHAKES_FULL transport=$transportName max=${LineLimits.MAX_PENDING_HANDSHAKES}")
     }
 
     private fun registerPeer(connection:PeerConnection): Boolean {
@@ -1930,7 +2059,7 @@ class LocalLinkTransportService : Service() {
                 // peer (or its battery manager) has been quiet. Genuine death
                 // is scored by the stale-pong heartbeat rule, not by silence.
                 val line = try {
-                    connection.reader.readLine()
+                    connection.reader.readLine(LineLimits.DATA_KEEP_MAX_CHARS, LineLimits.DATA_HARD_MAX_CHARS)
                 } catch (_: SocketTimeoutException) {
                     if (System.currentTimeMillis() - maxOf(connection.lastPongAt, connection.lastSeenAt) >
                         MeshTransportPolicy.HEARTBEAT_TIMEOUT_MS * 2) {
@@ -1943,6 +2072,8 @@ class LocalLinkTransportService : Service() {
                 // Never tear the socket over one fat line: video keyframes ride
                 // this channel, and breaking here every ~2s produced the
                 // Reconnecting/PEER_UNAVAILABLE loop with zero inbound frames.
+                // Bundle 229 (S1): a fat line is now skipped without keeping it.
+                if (connection.reader.droppedLast) { noteVideoDrop("wire_line_over_256k"); continue }
                 if (line.length > 256 * 1024) { noteVideoDrop("wire_line_over_256k"); continue }
                 val packet = JSONObject(line)
                 if (packet.toString().toByteArray(Charsets.UTF_8).size > 256 * 1024) { noteVideoDrop("wire_packet_over_256k"); continue }
@@ -2046,6 +2177,11 @@ class LocalLinkTransportService : Service() {
                     "route_answer" -> handleRouteAnswer(connection.peerId, packet)
                 }
             }
+        } catch (error: LineTooLongException) {
+            // Bundle 229 (S1): one endless line - the link is closed.
+            exitCause = "line_too_long"
+            exitDetail = "max=${error.max}"
+            Log.w("LINK", "LINE_TOO_LONG peer=${connection.peerId.take(8)} side=data max=${error.max}")
         } catch (error: Exception) {
             exitCause = "read_exception"
             exitDetail = "${error.javaClass.simpleName}: ${error.message}"
@@ -2057,6 +2193,9 @@ class LocalLinkTransportService : Service() {
                 "error" to exitDetail,
             ))
             unregisterPeer(connection.peerId, connection.socket)
+            // Bundle 224 (E1): only when no other link serves this peer (a
+            // replaced duplicate is not a drop).
+            if (transportPeers[connection.peerId] == null) noteLinkEnded(connection.peerId, System.currentTimeMillis() - connection.connectedAt)
             // Bundle 142: a superseded duplicate socket or a secondary link
             // (LAN vs Wi-Fi Direct) closing is NOT a disconnect — another live
             // link still serves this peer. Reporting it anyway made the UI and
@@ -2078,13 +2217,16 @@ class LocalLinkTransportService : Service() {
             val ownerAddr = transportGroupOwnerAddress
             if (connection.transportName == MeshTransportPolicy.WIFI_DIRECT && !transportGroupOwner &&
                 !ownerAddr.isNullOrEmpty() && lastConnNote?.first == true && !destroying && transportRunning) {
+                // Bundle 224 (E3): quick drops -> redial after the hold (never dropped).
+                val held = flapGuard.holdLeftMs(connection.peerId, System.currentTimeMillis())
+                if (held > 0L) Log.i("NEARBY", "WD_REDIAL later why=flap s=${(held + 999L) / 1000}")
                 mainHandler.postDelayed({
                     if (lastConnNote?.first == true && !transportGroupOwner && !destroying) {
                         Log.i("NEARBY", "WD_REDIAL why=link_died")
                         lastOwnerConnectAt.set(0L)
                         connectTransportToOwner(ownerAddr)
                     }
-                }, 1_000L)
+                }, 1_000L + held)
             }
             transportEvent("topology", meshTopologySnapshot())
         }
@@ -4963,7 +5105,7 @@ class LocalLinkTransportService : Service() {
         val peerId: String,
         val socket: Socket,
         val ownerAddress: String?,
-        val reader: BufferedReader,
+        val reader: BoundedLineReader,
         val writer: BufferedWriter,
         val transportName: String = MeshTransportPolicy.WIFI_DIRECT,
         val remoteAddress: String? = null,
@@ -5304,7 +5446,7 @@ class LocalLinkTransportService : Service() {
         val bits=bitsetDecode(p.optString("received_chunks"),t.totalChunks)
         for(i in bits.indices)if(bits[i])t.acknowledged[i]=true
         if(bits.any{it}) outgoingRetryCounts[t.transferId]=0
-        fileStalls.remove(t.transferId);fileStallAt.remove(t.transferId)
+        fileStalls.remove(t.transferId);fileStallAt.remove(t.transferId);fileStallLogAt.remove(t.transferId)
         if(fileSealTrial.contains(t.recipientId)&&fileStalls.keys.none{k->outgoingTransfers[k]?.recipientId==t.recipientId})fileSealTrial.remove(t.recipientId)
         t.updatedAt=System.currentTimeMillis()
         if(missingChunkCount(t)==0){Log.i("LOCAL_LINK_TRANSPORT",FileSendLogPolicy.sendDone(t.transferId,t.size,t.sha256,t.totalChunks)) /* Bundle 193 */;deleteOutgoingMeta(t);outgoingTransfers.remove(id);outgoingRetryCounts.remove(id);outgoingSendInFlight.remove(id);transportEvent("file_sent",mapOf("transfer_id" to t.transferId,"message_id" to t.messageId,"file_id" to t.fileId,"size" to t.size,"sha256" to t.sha256))}
@@ -5338,7 +5480,12 @@ noteFileStall(t,now);try{sendRoutedPayload(t.recipientId,JSONObject().put("type"
         val stalls=fileStalls.merge(t.transferId,1,Int::plus)?:1
         val flip=FileSealPolicy.flipFor(stalls)
         val changed=if(flip)fileSealTrial.add(t.recipientId) else fileSealTrial.remove(t.recipientId)
-        if(changed)Log.i("RELAY","RELAY file stalled to=${t.recipientId} stalls=$stalls try=${if(fileSealPeers.contains(t.recipientId)!=flip)"locked" else "plain"}")
+        // Bundle 224 (G2): the first switches as before, then one line per 10 min
+        // (a stuck file wrote a line every ~20 s for 11 h on 2026-11-07).
+        if(changed&&FileStallLog224.shouldLog(stalls,fileStallLogAt[t.transferId]?:0L,now)){
+            fileStallLogAt[t.transferId]=now
+            Log.i("RELAY","RELAY file stalled to=${t.recipientId} stalls=$stalls try=${if(fileSealPeers.contains(t.recipientId)!=flip)"locked" else "plain"}${if(stalls>FileStallLog224.FIRST_LINES)" (every 10 min)" else ""}")
+        }
     }
 
     override fun onDestroy(){destroying=true;try{mainHandler.removeCallbacks(disconnectRecheck);stopReconnectWake("destroy")}catch(_:Exception){};networkWatcher?.stop();networkWatcher=null;stopCallVideoInternal("");stopCallMediaInternal("");meshMaintenanceThread?.interrupt();meshMaintenanceThread=null;stopTransportSockets();running=false;if(instance===this)instance=null;super.onDestroy()}

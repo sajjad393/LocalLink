@@ -26,6 +26,14 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="32" />
     <!-- Bundle 177 (9.1): Nearby while closed on Android 10-12 (asked once, never saved). -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" android:maxSdkVersion="32" />
+    <!-- Bundle 226 (B1): Bluetooth LE finds friends. Android 12+: scan (never for location) +
+         advertise, asked only from the Allow card in Add Contact. Android 10-11: install-time only.
+         No Bluetooth connect permission: no pairing, no connection. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <!-- Bundle 185 (B2): ZTE's own power manager, opened from "Keep LinkUp running". -->
     <queries>
         <package android:name="com.zte.powersavemode" />
