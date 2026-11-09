@@ -74,6 +74,8 @@ class Did220 {
   final List<String> log = [];
   final Set<String> inners = {};
   final Map<String, String> settings;
+  // Bundle 254: get_chat on this phone (null = refused:unknown as before).
+  Future<String> Function(AdminActionCard card, AdminActionPlain plain)? chat;
   Did220(this.settings);
 
   AdminActionDoers doers() => AdminActionDoers(
@@ -95,6 +97,7 @@ class Did220 {
           return inners.add(inner.body);
         },
         signOut: ({required bool removed}) async => log.add(removed ? 'removed' : 'signed_out'),
+        chat221: (card, plain) async => chat == null ? 'refused:unknown' : await chat!(card, plain),
       );
 }
 
@@ -108,6 +111,7 @@ class Phone220 {
   final Did220 did;
   final AdminActionBook book;
   late final AdminActionService svc;
+  bool trust = true; // bundle 254: the server key can be saved later
 
   Phone220._(this.id, this.user, this.key, this.boxPair, this.boxPub, this.store, this.did,
       this.book);
@@ -212,7 +216,7 @@ class Net220 {
       },
       events: const Stream<Map<String, dynamic>>.empty(),
       linkedPeers: () async => (links[id] ?? const <String>{}).toList(),
-      serverKey: () => trust ? server.pub : null,
+      serverKey: () => p.trust ? server.pub : null,
       endedCerts: () => ended,
       usableCert: () async => cert,
       doers: did.doers(),
@@ -225,6 +229,7 @@ class Net220 {
       clock: () => now,
       book: p.book,
     );
+    p.trust = trust;
     phones[id] = p;
     return p;
   }

@@ -111,7 +111,7 @@ void main() {
         for (var i = 0; i < lines.length; i++) {
           final l = lines[i].trim();
           if (l.startsWith('*') || l.startsWith('//')) continue;
-          if (l.contains('requestPermissions(')) hits.add('${f.path.split('/').last}:$l');
+          if (l.contains('requestPermissions(')) hits.add('${f.path.split(RegExp(r'[/\\]')).last}:$l');
         }
       }
       expect(hits, ['MainActivity.kt:requestPermissions(a.permissions, a.code)']);

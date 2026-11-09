@@ -214,6 +214,22 @@ class _AddContactScreenState extends State<AddContactScreen> {
     if (mounted) await _loadContacts();
   }
 
+  /// Bundle 242: opens My QR (the same screen as Profile).
+  Future<void> _openMyQr242() async {
+    final me = await widget.pairing?.ownQrProfile242();
+    if (!mounted) return;
+    if (me == null) {
+      _showError('Your profile is not ready yet.');
+      return;
+    }
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MyQrScreen(profile: me, crypto: widget.crypto, repository: widget.repository),
+      ),
+    );
+  }
+
   Future<void> _scan() async {
     await Navigator.push<void>(
       context,
@@ -232,7 +248,21 @@ class _AddContactScreenState extends State<AddContactScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Add Contact')),
+        appBar: AppBar(
+          title: const Text('Add Contact'),
+          // Bundle 242 (mock 242): My QR at the top right.
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: IconButton.filledTonal(
+                key: const ValueKey('add_contact_my_qr_242'),
+                tooltip: 'My QR code',
+                onPressed: _openMyQr242,
+                icon: const Icon(Icons.qr_code_2_rounded),
+              ),
+            ),
+          ],
+        ),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16),

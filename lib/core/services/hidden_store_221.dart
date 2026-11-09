@@ -886,19 +886,49 @@ class LocalChats221 {
   /// People this phone knows (directory), for the request sheet.
   Future<List<Map<String, dynamic>>> people() async {
     final rows = await db().query('directory_profiles',
-        columns: ['user_id', 'device_id', 'username', 'display_name'],
+        columns: ['user_id', 'device_id', 'username', 'display_name', 'updated_at'],
         orderBy: 'display_name COLLATE NOCASE',
         limit: 2000);
     final self = selfUserId();
+    // Bundle 254 (21.2): "Me" on top; device + @username on every row; when
+    // two accounts share one phone the older one is marked "old account".
     final out = <Map<String, dynamic>>[
-      {'id': self.isEmpty ? selfDeviceId() : self, 'name': await nameOf(selfDeviceId()).catchError((_) => 'Me'), 'username': ''},
+      {
+        'id': self.isEmpty ? selfDeviceId() : self,
+        'name': await nameOf(selfDeviceId()).catchError((_) => 'Me'),
+        'username': '',
+        'device': selfDeviceId(),
+        'me': true,
+      },
     ];
+    final newestOnPhone = <String, String>{}; // device -> newest updated_at
+    for (final r in rows) {
+      final d = r['device_id']?.toString() ?? '';
+      final at = r['updated_at']?.toString() ?? '';
+      if (d.isEmpty) continue;
+      final cur = newestOnPhone[d];
+      if (cur == null || at.compareTo(cur) > 0) newestOnPhone[d] = at;
+    }
+    final perPhone = <String, int>{};
+    for (final r in rows) {
+      final d = r['device_id']?.toString() ?? '';
+      if (d.isNotEmpty) perPhone[d] = (perPhone[d] ?? 0) + 1;
+    }
     for (final r in rows) {
       final id = r['user_id']?.toString() ?? '';
       if (id.isEmpty || id == self) continue;
       final dn = r['display_name']?.toString() ?? '';
       final un = r['username']?.toString() ?? '';
-      out.add({'id': id, 'name': dn.isNotEmpty ? dn : un, 'username': un});
+      final d = r['device_id']?.toString() ?? '';
+      final at = r['updated_at']?.toString() ?? '';
+      final old = d.isNotEmpty && (perPhone[d] ?? 0) > 1 && at.compareTo(newestOnPhone[d] ?? '') < 0;
+      out.add({
+        'id': id,
+        'name': dn.isNotEmpty ? dn : un,
+        'username': un,
+        'device': d,
+        if (old) 'old': true,
+      });
     }
     return out;
   }

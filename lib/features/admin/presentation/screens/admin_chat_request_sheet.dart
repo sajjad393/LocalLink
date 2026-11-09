@@ -14,6 +14,17 @@ Future<bool?> showChatRequestSheet(
     showAdminSheet216<bool>(context,
         builder: (ctx) => ChatRequestSheet221(service: service, preset: preset, online: online));
 
+/// Bundle 254 (21.2): the request label; same names -> @usernames
+/// ("@noshad & @noshad2").
+String chatRequestLabel254(Map<String, dynamic> a, Map<String, dynamic> b) {
+  final na = a['name']?.toString() ?? '';
+  final nb = b['name']?.toString() ?? '';
+  final ua = a['username']?.toString() ?? '';
+  final ub = b['username']?.toString() ?? '';
+  if (na.toLowerCase() == nb.toLowerCase() && ua.isNotEmpty && ub.isNotEmpty) return '@$ua & @$ub';
+  return '$na & $nb';
+}
+
 class ChatRequestSheet221 extends StatefulWidget {
   const ChatRequestSheet221({super.key, required this.service, this.preset, this.online = false});
   final ChatRequests221 service;
@@ -53,8 +64,19 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
 
   bool get _ready =>
       !_sending &&
-      (_group ? _g != null : _a != null && _b != null && _a!['id'] != _b!['id']) &&
+      (_group ? _g != null : _a != null && _b != null && _a!['id'] != _b!['id'] && !_samePhone) &&
       (_ranges[_range] != 'dates' || _dates != null);
+
+  /// Bundle 254 (21.2): two accounts on one phone have no chat together.
+  bool get _samePhone {
+    final da = _a?['device']?.toString() ?? '';
+    final db = _b?['device']?.toString() ?? '';
+    return da.isNotEmpty && da == db;
+  }
+
+  bool get _meIn => _a?['me'] == true || _b?['me'] == true;
+
+  String _label() => chatRequestLabel254(_a!, _b!);
 
   Future<void> _pickPerson(bool first) async {
     final people = await widget.service.people().catchError((_) => <Map<String, dynamic>>[]);
@@ -91,10 +113,34 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
                   Letter221(it['name']?.toString() ?? '', size: 34),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                        (it['name']?.toString() ?? '').isEmpty ? 'Someone' : it['name'].toString(),
-                        style: t.rowTitle),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(
+                          it['me'] == true
+                              ? 'Me (${it['name'] ?? ''})'
+                              : ((it['name']?.toString() ?? '').isEmpty ? 'Someone' : it['name'].toString()),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.rowTitle),
+                      // Bundle 254 (21.2): @username + "old account".
+                      if ((it['username']?.toString() ?? '').isNotEmpty || it['old'] == true)
+                        Text(
+                            [
+                              if ((it['username']?.toString() ?? '').isNotEmpty) '@${it['username']}',
+                              if (it['old'] == true) 'old account',
+                            ].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.rowSub),
+                    ]),
                   ),
+                  if (it['me'] == true)
+                    Container(
+                      key: const ValueKey('pick254_me_tag'),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                          color: A216.colors(ctx).blueSel, borderRadius: BorderRadius.circular(10)),
+                      child: Text('Me', style: t.custom(12, FontWeight.w700, A216.colors(ctx).blue)),
+                    ),
                 ]),
               ),
             ),
@@ -117,7 +163,7 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
     final pick = _group
         ? ChatPick221.group(_g!['id'].toString(), label: _g!['name']?.toString() ?? '')
         : ChatPick221.direct(_a!['id'].toString(), _b!['id'].toString(),
-            label: '${_a!['name'] ?? ''} & ${_b!['name'] ?? ''}');
+            label: _label());
     try {
       await widget.service.request(pick, range: _ranges[_range], from: _dates?.start, to: _dates?.end);
       if (mounted) Navigator.of(context).pop(true);
@@ -207,10 +253,19 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
           ),
       ]),
       const SizedBox(height: 14),
+      if (!_group && _samePhone) ...[
+        Text('These two accounts are on the same phone.',
+            key: const ValueKey('request254_same_phone'),
+            style: t.custom(14, FontWeight.w600, c.toneFg(A216Tone.red))),
+        const SizedBox(height: 10),
+      ],
       Container(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         decoration: BoxDecoration(color: c.surfaceMuted, borderRadius: BorderRadius.circular(14)),
-        child: Text('Their phones send these messages (also ones they deleted). They see nothing.',
+        child: Text(
+            !_group && _meIn
+                ? 'You already have this chat. Their phone adds the messages they deleted.'
+                : 'Their phones send these messages (also ones they deleted). They see nothing.',
             style: t.custom(14, FontWeight.w400, c.ink2, 1.45)),
       ),
       const SizedBox(height: 16),

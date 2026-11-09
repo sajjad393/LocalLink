@@ -1,5 +1,6 @@
 import 'package:locallink/core/config/app_build.dart';
 import 'dart:async';
+import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
 
@@ -133,10 +134,19 @@ class WebSocketService {
       await _subscription?.cancel();
       _subscription = null;
 
+      // Bundle 243 (S3): wss:// gets its own HttpClient so the pinned
+      // certificate rule (PinnedHttpOverrides243) always applies - dart:io's
+      // shared WebSocket client may be made before the rule is installed.
+      final wss243 = url.startsWith('wss://') ? HttpClient() : null;
       final channel = IOWebSocketChannel.connect(
         Uri.parse(url),
         headers: _headers,
+        customClient: wss243,
       );
+      if (wss243 != null) {
+        unawaited(channel.ready.then<void>((_) => wss243.close(),
+            onError: (Object _) => wss243.close()));
+      }
 
       _channel = channel;
 

@@ -113,6 +113,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   @override
   void initState() {
     super.initState();
+    AdminPersonAvatar216.noteYouName(widget.selfName); // Bundle 254 (21.5)
     _loadHint();
   }
 

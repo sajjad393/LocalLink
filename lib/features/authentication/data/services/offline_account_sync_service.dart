@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
 
+import 'package:locallink/core/identity/dup_account_235.dart';
 import 'package:locallink/core/models/account.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/profile.dart';
@@ -127,6 +128,7 @@ class OfflineAccountSyncService {
     if (address.isEmpty || token.isEmpty || userId.isEmpty) return;
     final wanted = pendingUsername;
     final secret = await _store.readOfflinePublishSecret() ?? '';
+    final lock = _lock236(); // Bundle 236: read before the pending is wiped
     final name = _deviceName();
     await _store.saveConfiguration(
       server: address,
@@ -148,7 +150,11 @@ class OfflineAccountSyncService {
       expiresAt: expiresAt,
     );
     await _afterJoin218(result,
-        kind: kind, finalName: username.trim().toLowerCase(), wasName: wanted, secret: secret);
+        kind: kind,
+        finalName: username.trim().toLowerCase(),
+        wasName: wanted,
+        secret: secret,
+        lock236: lock);
     AppLogger.info('JOIN_RELAY_JOINED', detail: 'status=$status user=@$username');
   }
 
@@ -157,6 +163,66 @@ class OfflineAccountSyncService {
   /// Set by AppDependencies: refresh the profile, push the pending profile,
   /// publish the card, sync contacts and flush the outbox after a join.
   static Future<void> Function(JoinKind218 kind)? onJoined218;
+
+  /// Bundle 235: set by the app (AccountReturn235.syncReturn). True = a
+  /// phone-only return was handled (or waits); the normal join is skipped.
+  static Future<bool> Function()? returnSync235;
+
+  /// Bundle 236 (B2): set by AppDependencies - registers the account made
+  /// offline with its saved password lock (salt + hash + rounds), never the
+  /// password itself. Same answer as a normal register.
+  static Future<AuthResult> Function({
+    required String username,
+    required String salt,
+    required String hash,
+    required int iterations,
+    required String deviceName,
+    String? pairingCode,
+  })? lockRegister236;
+
+  /// Bundle 236 (B5): the server is too old for an account made offline
+  /// with no saved password: wait quietly (card text, silent retries).
+  static const String waitServerBlock236 = 'wait_server';
+
+  /// The saved password lock of the account made offline (salt, hash).
+  (String, String)? _lock236() {
+    final p = _store.offlinePending;
+    final salt = p?['pwd_salt']?.toString().trim() ?? '';
+    final hash = p?['pwd_hash']?.toString().trim() ?? '';
+    if (salt.isEmpty || hash.isEmpty) return null;
+    return (salt, hash);
+  }
+
+  /// Bundle 236 (B2): [publish] without the password - the saved lock goes.
+  Future<AuthResult> publishWithLock236({
+    required String username,
+    required (String, String) lock,
+    JoinKind218? kind,
+  }) async {
+    final register = lockRegister236;
+    if (register == null) throw StateError('lock register not ready');
+    final pairing = _storedPairing();
+    final wanted = pendingUsername;
+    final result = await register(
+      username: username,
+      salt: lock.$1,
+      hash: lock.$2,
+      iterations: PasswordKdf.iterations,
+      deviceName: _deviceName(),
+      pairingCode: pairing.isEmpty ? null : pairing,
+    );
+    await _store.markAccountSynced();
+    await _afterJoin218(result,
+        kind: kind ??
+            (wanted.isNotEmpty && username.trim().toLowerCase() != wanted
+                ? JoinKind218.renamed
+                : JoinKind218.plain),
+        finalName: username.trim().toLowerCase(),
+        wasName: wanted,
+        secret: '',
+        lock236: lock);
+    return result;
+  }
 
   static const joinNoticeKey = 'join_notice_218';
   static const joinRecoveryKey = 'join_recovery_218';
@@ -276,7 +342,13 @@ class OfflineAccountSyncService {
       {required JoinKind218 kind,
       required String finalName,
       String wasName = '',
-      required String secret}) async {
+      required String secret,
+      (String, String)? lock236}) async {
+    // Bundle 235: the server took this account on this phone (the phone
+    // was free or the admin gave it away): no "Confirm your account".
+    try {
+      await DupBlock235.clear(_store.writeSetting);
+    } catch (_) {}
     var realId = '';
     var realName = finalName;
     try {
@@ -343,11 +415,23 @@ class OfflineAccountSyncService {
       try {
         code = r.recoveryCode;
       } catch (_) {}
-      await _auth.mirrorOfflineLogin(
-          username: realName,
-          password: secret,
-          recoveryCode: code.isNotEmpty ? code : (_store.localRecoveryCode ?? ''));
-      AppLogger.info('OFFLINE_ACCOUNT_MIRROR_OK');
+      final recovery =
+          code.isNotEmpty ? code : (_store.localRecoveryCode ?? '');
+      if (secret.isNotEmpty) {
+        await _auth.mirrorOfflineLogin(
+            username: realName, password: secret, recoveryCode: recovery);
+        AppLogger.info('OFFLINE_ACCOUNT_MIRROR_OK');
+      } else if (lock236 != null) {
+        // Bundle 236 (B2): no saved password - the saved lock is the same
+        // maths, so it becomes the offline sign-in copy as it is.
+        await _store.saveOfflineLoginAccount(
+            username: realName,
+            pwdSalt: lock236.$1,
+            pwdHash: lock236.$2,
+            recoveryCode: recovery);
+        AppLogger.info('OFFLINE_ACCOUNT_MIRROR_OK', detail: 'mode=lock');
+      }
+      // Bundle 236: never a copy with an empty password.
     } catch (_) {}
     // 4. Recovery code: kept by a 218 server; an old server makes a new one.
     try {
@@ -460,6 +544,7 @@ class OfflineAccountSyncService {
     _nextTry = null;
     _failStreak = 0;
     onJoined218 = null;
+    lockRegister236 = null;
     JoinNotice218.changed.value = 0;
   }
 
@@ -501,7 +586,9 @@ class OfflineAccountSyncService {
     if (_autoPublishing || !pending) return null;
     // Bundle 218: stuck (phone on another account / pairing code): no
     // silent retry; the card's Try again button runs it.
-    if (from != 'card' && (await _readBlock218()).isNotEmpty) {
+    final block = from == 'card' ? '' : await _readBlock218();
+    // Bundle 236 (B5): "waiting for the server update" keeps quiet retries.
+    if (block.isNotEmpty && block != waitServerBlock236) {
       AppLogger.info('OFFLINE_ACCOUNT_BLOCKED_BY', detail: 'from=$from');
       return null;
     }
@@ -516,9 +603,21 @@ class OfflineAccountSyncService {
         await _store.writeSetting(lastTryKey, '${clock().millisecondsSinceEpoch}');
       } catch (_) {}
       if (!await probeServerReachable()) return null;
+      // Bundle 235: this phone came back to its old account with no server:
+      // that account's new password goes up (no new account, no rename).
+      final back = returnSync235;
+      if (back != null && await back()) {
+        ok = !pending;
+        return null;
+      }
       final secret = await _store.readOfflinePublishSecret();
-      if (secret == null || secret.isEmpty) {
-        offlineAccountLog216('FAIL', 'code=no_secret reason=needs_password');
+      final pw = secret ?? '';
+      // Bundle 236 (B2): no saved password -> the saved password lock goes
+      // up instead. Nothing is asked.
+      final lock = pw.isEmpty ? _lock236() : null;
+      final lockMode = pw.isEmpty;
+      if (lockMode && (lock == null || lockRegister236 == null)) {
+        offlineAccountLog216('FAIL', 'code=no_secret reason=no_lock');
         return null;
       }
       var username = pendingUsername;
@@ -529,12 +628,20 @@ class OfflineAccountSyncService {
       final rng = Random.secure();
       var linkTried = false;
       for (var attempt = 0; attempt < 6; attempt++) {
-        offlineAccountLog216('PUBLISH', 'try=${attempt + 1} user=@$username');
+        offlineAccountLog216('PUBLISH',
+            'try=${attempt + 1} user=@$username${lockMode ? ' mode=lock' : ''}');
         try {
-          await publish(
-              username: username,
-              password: secret,
-              kind: attempt == 0 ? JoinKind218.plain : JoinKind218.renamed);
+          if (lockMode) {
+            await publishWithLock236(
+                username: username,
+                lock: lock!,
+                kind: attempt == 0 ? JoinKind218.plain : JoinKind218.renamed);
+          } else {
+            await publish(
+                username: username,
+                password: pw,
+                kind: attempt == 0 ? JoinKind218.plain : JoinKind218.renamed);
+          }
           // markAccountSynced() (inside publish → register) already wiped
           // the one-time secret.
           offlineAccountLog216('PUBLISH', 'ok');
@@ -546,7 +653,11 @@ class OfflineAccountSyncService {
           offlineAccountLog216('DONE', 'user=@$username');
           return attempt == 0 ? null : username;
         } catch (error) {
-          if (isUsernameConflict(error) && attempt == 0 && !linkTried) {
+          // Bundle 236: no password = no "same name + same password" try.
+          if (isUsernameConflict(error) &&
+              attempt == 0 &&
+              !linkTried &&
+              !lockMode) {
             // Bundle 218: the name is taken. Same name + same password =
             // her own account (or our own lost first answer): sign in and
             // join this phone to it. Tried once; the rename follows if not.
@@ -556,7 +667,7 @@ class OfflineAccountSyncService {
               final pairing = _storedPairing();
               final r = await _auth.login(
                   username: pendingUsername,
-                  password: secret,
+                  password: pw,
                   deviceName: _deviceName(),
                   pairingCode: pairing.isEmpty ? null : pairing);
               await _store.markAccountSynced();
@@ -564,7 +675,7 @@ class OfflineAccountSyncService {
                   kind: JoinKind218.linked,
                   finalName: pendingUsername.isEmpty ? username : pendingUsername,
                   wasName: username,
-                  secret: secret);
+                  secret: pw);
               ok = true;
               offlineAccountLog216('DONE', 'user=@$username linked');
               return null;
@@ -589,11 +700,33 @@ class OfflineAccountSyncService {
           // Bundle 218: these need a person (admin / code), so the card
           // shows and the silent retries stop.
           final code = codeOf218(error);
+          if (lockMode &&
+              (code == 'PAIRING_REQUIRED' ||
+                  _oldServerAnswer236(error))) {
+            // Bundle 236 (B5): the server is not updated yet - wait quietly.
+            await _setBlock218(waitServerBlock236);
+            return null;
+          }
           if (code == 'DEVICE_TAKEN' || isDeviceConflict(error)) {
             // The server names the other account only when the hardware id
             // proves it is this very phone; else "another account".
             final owner = ownerOf218(error);
             await _setBlock218(owner.isEmpty ? 'device' : 'device:@$owner');
+            // Bundle 235: the server says this very phone has another
+            // account: the app asks to confirm it.
+            if (error is ApiError218 && error.duplicate && owner.isNotEmpty &&
+                error.ownerUserId.isNotEmpty) {
+              await DupBlock235.set(
+                  _store.writeSetting,
+                  DupBlockInfo235(
+                    userId: error.ownerUserId,
+                    username: owner,
+                    name: error.ownerName,
+                    deviceId: _store.deviceId ?? '',
+                    source: 'server',
+                    at: DateTime.now().toUtc().toIso8601String(),
+                  ));
+            }
           } else if (code == 'PAIRING_REQUIRED' ||
               error.toString().toLowerCase().contains('pairing code')) {
             await _setBlock218('pairing');
@@ -610,6 +743,13 @@ class OfflineAccountSyncService {
         offlineAccountLog216('NEXT_TRY', 'in=next_connect');
       }
     }
+  }
+
+  /// Bundle 236 (B5): an old server refuses the empty password (400) - it
+  /// does not know the saved-lock sign-up yet.
+  static bool _oldServerAnswer236(Object error) {
+    if (error is ApiError218) return error.status == 400 && error.code.isEmpty;
+    return error.toString().toLowerCase().contains('password');
   }
 
   static Timer? _nextTry;

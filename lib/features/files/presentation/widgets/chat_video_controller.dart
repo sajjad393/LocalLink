@@ -13,6 +13,13 @@ import 'package:video_player/video_player.dart';
 ///   VIDEO_PLAY_READY duration_ms=<n> size=<bytes> w=<n> h=<n>
 ///   VIDEO_PLAY_STOP reason=end|paused|error pos_ms=<n> duration_ms=<n> size=<bytes>
 ///   VIDEO_PLAY_ERROR pos_ms=<n> duration_ms=<n> size=<bytes> error=<text>
+/// Bundle 247 (phase 11, logs only): the 193 logs could not tell WHO stopped
+/// a video at 0.5 s / 1.3 s. Now the reason says it:
+///   reason=user (the pause button / closing the viewer), buffering (the
+///   player waits for data), end (also when the stop comes a few ms before
+///   the reported length - two "paused" lines at 52852/52879 and
+///   16679/16734 were really the end), paused (anything else);
+///   VIDEO_PLAY_RESUME pos_ms=<n> after a stop.
 class VideoPlayLog {
   VideoPlayLog(this.size);
 
@@ -20,6 +27,10 @@ class VideoPlayLog {
   bool _ready = false;
   bool _wasPlaying = false;
   bool _errorLogged = false;
+  int _stops = 0;
+
+  /// Bundle 247: the next stop comes from the app (pause button / close).
+  bool userPause = false;
 
   /// Returns (event, detail) pairs to log for this state change.
   List<(String, String)> update({
@@ -32,6 +43,7 @@ class VideoPlayLog {
     double width = 0,
     double height = 0,
     String? error,
+    bool buffering = false,
   }) {
     final out = <(String, String)>[];
     final pos = position.inMilliseconds;
@@ -51,9 +63,15 @@ class VideoPlayLog {
     if (_wasPlaying && !playing) {
       final reason = hasError
           ? 'error'
-          : (completed || (dur > 0 && pos >= dur) ? 'end' : 'paused');
+          : (completed || (dur > 0 && pos >= dur - 300)
+              ? 'end'
+              : (userPause ? 'user' : (buffering ? 'buffering' : 'paused')));
       out.add(('VIDEO_PLAY_STOP',
           'reason=$reason pos_ms=$pos duration_ms=$dur size=$size'));
+      _stops++;
+      userPause = false;
+    } else if (!_wasPlaying && playing && _stops > 0) {
+      out.add(('VIDEO_PLAY_RESUME', 'pos_ms=$pos duration_ms=$dur'));
     }
     _wasPlaying = playing;
     return out;
@@ -175,6 +193,7 @@ class VideoPlayerChatController extends ChangeNotifier
         width: v.size.width,
         height: v.size.height,
         error: v.errorDescription,
+        buffering: v.isBuffering,
       );
       for (final (event, detail) in lines) {
         if (event == 'VIDEO_PLAY_ERROR') {
@@ -253,6 +272,7 @@ class VideoPlayerChatController extends ChangeNotifier
   @override
   Future<void> pause() {
     _stopPoll();
+    _playLog.userPause = true; // Bundle 247 (log only)
     return _c.pause();
   }
 
@@ -277,6 +297,12 @@ class VideoPlayerChatController extends ChangeNotifier
     if (_closed) return;
     _closed = true;
     _stopPoll();
+    // Bundle 247 (log only): closing while playing = the user left.
+    if (_c.value.isPlaying) {
+      AppLogger.info('VIDEO_PLAY_STOP',
+          detail: 'reason=closed pos_ms=${_c.value.position.inMilliseconds} '
+              'duration_ms=${_c.value.duration.inMilliseconds} size=${_playLog.size}');
+    }
     _c.removeListener(notifyListeners);
     _c.removeListener(_logPlay);
     await _c.dispose();

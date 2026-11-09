@@ -9,6 +9,9 @@ import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/features/directory/presentation/blocked_people_screen.dart';
 
 import 'package:locallink/core/services/identity_crypto_service.dart';
+import 'package:locallink/core/models/profile.dart';
+import 'package:locallink/features/directory/domain/directory_models.dart';
+import 'package:locallink/features/directory/presentation/my_qr_screen.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
@@ -102,6 +105,43 @@ class MessengerSettingsScreen extends StatelessWidget {
           repositoryFactory: adminRepositoryFactory,
         ),
         current: AccountSwitchPlace.user);
+  }
+
+  /// Bundle 242: My QR from the Settings profile card (the same screen and
+  /// card as Profile).
+  Future<void> _openMyQr242(BuildContext context) async {
+    LocalProfile? value;
+    try {
+      value = await store.profile();
+    } catch (_) {}
+    if (!context.mounted) return;
+    if (value == null || value.userId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Your profile is not ready yet.')));
+      return;
+    }
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MyQrScreen(
+          profile: DirectoryProfile(
+            userId: value!.userId,
+            deviceId: store.deviceId ?? value.deviceId,
+            username: value.username,
+            displayName: value.displayName,
+            profileVersion: value.profileVersion,
+            updatedAt: value.updatedAt,
+            phoneVisibility: value.phoneVisibility,
+            discoverableByPhone: value.discoverableByPhone,
+            discoverableByName: value.discoverableByName,
+            directorySyncEnabled: value.directorySyncEnabled,
+            source: 'local',
+          ),
+          crypto: crypto,
+          repository: directoryRepository,
+        ),
+      ),
+    );
   }
 
   Future<void> _openAccount(BuildContext context) async {
@@ -210,6 +250,32 @@ class MessengerSettingsScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                    // Bundle 242 (mock 242): My QR, same round button.
+                    Material(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? colors.surfaceContainerHighest
+                          : const Color(0xFFF2F4F7),
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        key: const ValueKey('settings_my_qr_242'),
+                        onTap: () => _openMyQr242(context),
+                        child: Tooltip(
+                          message: 'My QR code',
+                          child: SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: Icon(Icons.qr_code_2_rounded,
+                                size: 19,
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? colors.onSurface
+                                    : const Color(0xFF344054)),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     // Bundle 216 (B): round arrow = Account, for everyone.
                     Material(
                       color: Theme.of(context).brightness == Brightness.dark

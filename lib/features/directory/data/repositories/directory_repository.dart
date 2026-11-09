@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
+import 'package:locallink/core/security/security_code_245.dart';
 import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/profile.dart';
@@ -28,6 +29,7 @@ import 'package:locallink/features/directory/data/phone_number_normalizer.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
+import 'package:locallink/features/directory/data/services/duplicate_guard_235.dart';
 import 'package:locallink/features/messaging/data/services/not_on_server_218.dart';
 
 class DirectoryRepository implements DirectoryRepositoryContract {
@@ -1001,6 +1003,13 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       return false;
     }
 
+    // Bundle 235: a new account on a phone I know as another account's
+    // phone is not taken (the phone is told who owns it).
+    final dup = DuplicateGuard235.instance;
+    if (dup != null && await dup.refuseCard(profile, via: 'card')) {
+      return false;
+    }
+
     // Bundle 218c: her offline id became a server id. The same signing key
     // is the proof (only her phone has it); a different key = no move.
     if (await _moveOfflineIds218(profile) &&
@@ -1019,6 +1028,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       if (old.isSigned &&
           old.signingPublicKey.isNotEmpty &&
           old.signingPublicKey != profile.signingPublicKey) {
+        // Bundle 245 (S7): no longer dropped with no word - kept aside for
+        // "Accept new code" (the old card stays in use until then).
+        await SecurityCode245.instance.noteCardChange(old, profile);
         return false;
       }
       if (old.profileVersion == profile.profileVersion) {
@@ -1519,7 +1531,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     unawaited(syncServerContacts());
     // Bundle 195b: a friend came near / the 2-min cycle: send waiting links.
     unawaited(resendFriendLinks());
-    unawaited(resendBlockStates()); // Bundle 196
+    // Bundle 238: the link / server is back: slow block states go at once.
+    unawaited(resendBlockStates(linkBack: true)); // Bundle 196
   }
 
   @override
@@ -1603,6 +1616,11 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         }
         if (contact.deviceId.isNotEmpty || !hadLocal) {
           await store.addContact(contact.userId, contact.deviceId);
+        }
+        // Bundle 237: his old phones (moves from before this update).
+        if (contact.pastDeviceIds.isNotEmpty) {
+          await store.rememberServerPastPhones237(
+              contact.userId, contact.pastDeviceIds, contact.deviceId);
         }
         // The server entry is MY list row: its is_private applies here too
         // (restore-after-reinstall keeps your private marks).
@@ -2508,7 +2526,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   }
 
   /// Bundle 196: send waiting block states again (2-min cycle, app start).
-  Future<void> resendBlockStates() async {
+  Future<void> resendBlockStates({bool linkBack = false}) async {
     if (!_started || !transport.isStarted || _blockResendInFlight) return;
     _blockResendInFlight = true;
     try {
@@ -2517,7 +2535,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       var changed = false;
       for (final w in all.values.toList()) {
         final now = DateTime.now().millisecondsSinceEpoch;
-        final step = BlockStateResendPolicy.step(w, nowMs: now);
+        final step =
+            BlockStateResendPolicy.step(w, nowMs: now, linkBack: linkBack);
         if (step == BlockStateStep.wait) continue;
         if (step == BlockStateStep.send) {
           final ok = await _sendBlockState(w, tryNo: w.tries + 1);
@@ -2525,14 +2544,25 @@ class DirectoryRepository implements DirectoryRepositoryContract {
           if (ok) {
             all[w.userId] = w.tried(now);
             changed = true;
+          } else {
+            _logBlockRetry238(w, 'no_key');
           }
+          continue;
+        }
+        if (!w.slow) {
+          // Bundle 238: never drop a block / unblock that got no "got it":
+          // keep trying slowly (30 min, and when the link comes back).
+          all[w.userId] = w.toSlow(now);
+          changed = true;
+          AppLogger.info('BLOCK_STATE_RETRY',
+              detail: 'to=${_tail6(w.userId)} mode=slow '
+                  'after=${BlockStateResendPolicy.stopWord(step)} tries=${w.tries}');
           continue;
         }
         all.remove(w.userId);
         changed = true;
-        AppLogger.info('BLOCK_STATE_CONFIRMED',
-            detail: 'to=${_tail6(w.userId)} '
-                'by=${BlockStateResendPolicy.stopWord(step)} tries=${w.tries}');
+        AppLogger.warning('BLOCK_STATE_GAVE_UP',
+            detail: 'to=${_tail6(w.userId)} days=90');
       }
       if (changed) await _saveWaitingBlockStates(all);
     } catch (e) {
@@ -2540,6 +2570,19 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     } finally {
       _blockResendInFlight = false;
     }
+  }
+
+  /// Bundle 238: a block state that could not go yet (no key / phone known
+  /// for that person). Logged at most once per 30 min per person.
+  final Map<String, int> _blockRetryLogAt238 = {};
+  void _logBlockRetry238(WaitingBlockState w, String reason) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _blockRetryLogAt238[w.userId] ?? 0;
+    if (now - last < BlockStateResendPolicy.slowGapMs) return;
+    if (_blockRetryLogAt238.length > 200) _blockRetryLogAt238.clear();
+    _blockRetryLogAt238[w.userId] = now;
+    AppLogger.info('BLOCK_STATE_RETRY',
+        detail: 'to=${_tail6(w.userId)} reason=$reason state=${w.state}');
   }
 
   Future<bool> _sendBlockState(WaitingBlockState w, {required int tryNo}) async {
@@ -2618,6 +2661,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     AppLogger.info('BLOCK_STATE_RECEIVED',
         detail: 'state=${s.state} from=${_tail6(s.fromUserId)} '
             'new=${changed ? 'y' : 'n'}');
+    if (changed) {
+      AppLogger.info('BLOCK_STATE_APPLIED',
+          detail: 'state=${s.state} from=${_tail6(s.fromUserId)}');
+    }
     if (changed) unawaited(BlockHub.instance.reload());
     unawaited(_sendBlockStateAck(s));
   }

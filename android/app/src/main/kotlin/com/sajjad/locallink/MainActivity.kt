@@ -244,6 +244,27 @@ class MainActivity : FlutterActivity() {
         }, "locallink-video-info").start()
     }
 
+    // Bundle 235 addition: open WhatsApp (then WhatsApp Business) with the
+    // text ready to send ("Message yourself"). False = neither is installed.
+    // The text is a recovery code: never logged.
+    private fun shareToWhatsApp235(text: String): Boolean {
+        if (text.isEmpty()) return false
+        for (pkg in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+            try {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                    setPackage(pkg)
+                }
+                startActivity(send)
+                return true
+            } catch (e: Exception) {
+                // Not installed (ActivityNotFoundException) - try the next one.
+            }
+        }
+        return false
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         // Bundle 149: run the one-time Opus self-test early, in the background,
@@ -270,6 +291,9 @@ class MainActivity : FlutterActivity() {
             } else if (call.method == "powerSave") {
                 // Bundle 217: the map lines stop moving while battery saver is on.
                 result.success(try { (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isPowerSaveMode } catch (e: Exception) { false })
+            } else if (call.method == "shareToWhatsApp") {
+                // Bundle 235 addition: "Save on WhatsApp" for a new recovery code.
+                result.success(shareToWhatsApp235(call.argument<String>("text") ?: ""))
             } else {
                 result.notImplemented()
             }

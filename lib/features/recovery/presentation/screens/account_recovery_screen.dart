@@ -1,13 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_button.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
 import 'package:locallink/features/recovery/bloc/account_recovery_bloc.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
+import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
 
 class AccountRecoveryScreen extends StatefulWidget {
   final RecoveryRepositoryContract repository;
@@ -522,89 +521,63 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
   Widget _done(BuildContext context, ForgotPasswordState222 state) {
     final scheme = Theme.of(context).colorScheme;
     final code = state.doneCode ?? '';
+    // Bundle 235 addition (mock v3): tick, the code hidden in one box
+    // (Show / Copy / Share), "Save on WhatsApp" at the bottom (was "I saved it").
     return PopScope(
       canPop: false,
       child: Scaffold(
         appBar: AppBar(title: const Text('Password changed'), automaticallyImplyLeading: false),
         body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-            children: [
-              Center(
-                child: Container(
-                  width: 72,
-                  height: 72,
-                  decoration: const BoxDecoration(color: _greenBg, shape: BoxShape.circle),
-                  alignment: Alignment.center,
-                  child: const Text('OK', style: TextStyle(color: _green, fontWeight: FontWeight.w800, fontSize: 18)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text("You're signed in", textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 6),
-              if (code.isNotEmpty) ...[
-                Text('Your new recovery code', textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
-                const SizedBox(height: 14),
-                Container(
-                  key: const ValueKey('forgot222-new-code'),
-                  padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: scheme.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: scheme.outlineVariant),
-                  ),
-                  child: SelectableText(code,
+          child: Column(children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                children: [
+                  const DoneTick235(),
+                  const SizedBox(height: 16),
+                  const Text("You're signed in", textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  if (code.isNotEmpty) ...[
+                    Text('Save your new recovery code now.', textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
+                    const SizedBox(height: 18),
+                    RecoveryCodeBox235(key: const ValueKey('forgot222-new-code'), code: code, share: true),
+                    const SizedBox(height: 16),
+                    const RecoveryCodeNotes235(),
+                  ] else ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Your new password works on this phone now. It goes to the server when the server is back, then you get a new recovery code.',
+                      key: const ValueKey('forgot222-offline-done'),
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800, fontSize: 20, letterSpacing: 0.5)),
-                ),
-                const SizedBox(height: 12),
-                Row(children: [
-                  Expanded(
-                    child: FilledButton.tonal(
-                      style: FilledButton.styleFrom(shape: const StadiumBorder(), minimumSize: const Size.fromHeight(46)),
-                      onPressed: () async {
-                        await Clipboard.setData(ClipboardData(text: code));
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Code copied')));
-                        }
-                      },
-                      child: const Text('Copy'),
+                      style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.tonal(
-                      style: FilledButton.styleFrom(shape: const StadiumBorder(), minimumSize: const Size.fromHeight(46)),
-                      onPressed: () => Share.share(code),
-                      child: const Text('Share'),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                Text('The old code no longer works. Keep this one private: it lets you set a new password.',
-                    style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4)),
-              ] else ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Your new password works on this phone now. It goes to the server when the server is back, then you get a new recovery code.',
-                  key: const ValueKey('forgot222-offline-done'),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4),
-                ),
-              ],
-              const SizedBox(height: 22),
-              SizedBox(
-                height: 52,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(shape: const StadiumBorder()),
-                  onPressed: _finish,
-                  child: Text(code.isNotEmpty ? 'I saved it' : 'OK', style: const TextStyle(fontWeight: FontWeight.w700)),
-                ),
+                  ],
+                ],
               ),
-            ],
-          ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+              decoration: BoxDecoration(border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: .6)))),
+              child: code.isNotEmpty
+                  ? SaveOnWhatsApp235(
+                      buttonKey: const ValueKey('forgot222-whatsapp'),
+                      code: code,
+                      username: _username.text,
+                      onSaved: _finish,
+                    )
+                  : SizedBox(
+                      height: 52,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(shape: const StadiumBorder()),
+                        onPressed: _finish,
+                        child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+            ),
+          ]),
         ),
       ),
     );
   }
+
 }

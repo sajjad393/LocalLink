@@ -16,6 +16,10 @@ class AdminActionRow {
   final String madeAt;
   final String finishedAt;
   final String via;
+  /// Bundle 254 (21.3): the target phone got the card but has no server key yet.
+  final bool waitTrust;
+  /// Bundle 254 (21.12): every target phone had no copy of the asked chat.
+  final bool emptyAll;
 
   const AdminActionRow({
     required this.id,
@@ -32,6 +36,8 @@ class AdminActionRow {
     this.madeAt = '',
     this.finishedAt = '',
     this.via = '',
+    this.waitTrust = false,
+    this.emptyAll = false,
   });
 
   bool get pending => state == 'pending';

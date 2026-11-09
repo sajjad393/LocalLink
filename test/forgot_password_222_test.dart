@@ -11,6 +11,7 @@ import 'package:locallink/features/authentication/data/models/authentication_mod
 import 'package:locallink/features/recovery/bloc/account_recovery_bloc.dart' show ForgotPasswordBloc222, ForgotTab222;
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
 import 'package:locallink/features/recovery/presentation/screens/account_recovery_screen.dart';
+import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
 
 class _Repo implements RecoveryRepositoryContract {
   bool online = true;
@@ -234,7 +235,11 @@ void main() {
       expect(find.text('Uses the code saved on this phone. The new password goes to the server when it is back.'), findsOneWidget);
     });
 
-    testWidgets('R-4: new code shown once with Copy, Share, I saved it', (tester) async {
+    testWidgets('R-4: new code shown once (hidden, Show), Copy, Share, Save on WhatsApp', (tester) async {
+      // Bundle 235 addition: the code starts hidden; "I saved it" became
+      // "Save on WhatsApp" (closes when the app is back from WhatsApp).
+      WhatsAppShare235.debugOpen = (text) async => true;
+      addTearDown(() => WhatsAppShare235.debugOpen = null);
       var finished = 0;
       await pump(tester, _Repo(), done: () async => finished++);
       final fields = find.byType(TextField);
@@ -246,10 +251,20 @@ void main() {
       await tester.pump();
       expect(find.text('Password changed'), findsOneWidget);
       expect(find.text("You're signed in"), findsOneWidget);
+      expect(find.text('P3HD8-LKWT6-MZQA2-RX7YB'), findsNothing);
+      await tester.tap(find.text('Show'));
+      await tester.pump();
       expect(find.text('P3HD8-LKWT6-MZQA2-RX7YB'), findsOneWidget);
       expect(find.text('Copy'), findsOneWidget);
       expect(find.text('Share'), findsOneWidget);
-      await tester.tap(find.text('I saved it'));
+      await tester.tap(find.text('Save on WhatsApp'));
+      await tester.pump();
+      expect(finished, 0);
+      for (final s in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused,
+          AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+        tester.binding.handleAppLifecycleStateChanged(s);
+      }
+      await tester.pump();
       await tester.pump();
       expect(finished, 1);
     });

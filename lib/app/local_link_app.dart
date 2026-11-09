@@ -9,6 +9,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:locallink/app/app_dependencies.dart';
+import 'package:locallink/features/authentication/presentation/screens/confirm_account_235_screen.dart';
 import 'package:locallink/core/diagnostics/app_log_file.dart';
 import 'package:locallink/core/diagnostics/startup_timer.dart';
 import 'package:locallink/core/services/memory_trim.dart';
@@ -732,9 +733,14 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       onGenerateRoute: _router.onGenerateRoute,
       // Bundle 147: floating mini video player above every screen; while
       // Android shows the PiP window only the video is drawn.
-      builder: (context, child) => ChatVideoShell(
-        hub: ChatVideoHub.instance,
-        child: child ?? const SizedBox.shrink(),
+      builder: (context, child) => DupBlockGate235(
+        // Bundle 235: "Confirm your account" covers the app while this
+        // phone's new account waits for proof of the old one.
+        actions: _deps.confirmAccount235,
+        child: ChatVideoShell(
+          hub: ChatVideoHub.instance,
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
     );
   }

@@ -10,6 +10,7 @@ import 'package:locallink/features/connectivity/domain/peer_transport_contract.d
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
+import 'package:locallink/features/directory/data/services/duplicate_guard_235.dart';
 import 'package:locallink/features/directory/data/friend_requests.dart';
 
 /// Bundle 108 — verified pairing request pulled from the local network.
@@ -185,6 +186,30 @@ final class PairingService {
 
   /// Ask the locally visible peer [nodeId] to pair. Throws when the peer
   /// is not currently visible on the local network (native error).
+  /// Bundle 242: this phone's own card for "My QR" (Add Contact top-right),
+  /// built the same way as the Profile screen does. Null with no profile.
+  Future<DirectoryProfile?> ownQrProfile242() async {
+    try {
+      final value = await _store.profile();
+      if (value == null || value.userId.isEmpty) return null;
+      return DirectoryProfile(
+        userId: value.userId,
+        deviceId: _store.deviceId ?? value.deviceId,
+        username: value.username,
+        displayName: value.displayName,
+        profileVersion: value.profileVersion,
+        updatedAt: value.updatedAt,
+        phoneVisibility: value.phoneVisibility,
+        discoverableByPhone: value.discoverableByPhone,
+        discoverableByName: value.discoverableByName,
+        directorySyncEnabled: value.directorySyncEnabled,
+        source: 'local',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> requestPair(String nodeId) async {
     AppLogger.info('PAIR_STAGE', detail: 'requestPair entered node=$nodeId');
     // Bundle 194: remember the tap (the answer = "my Add worked").
@@ -309,6 +334,13 @@ final class PairingService {
       // no contact, no notification.
       if (await _isBlocked(profile, nodeId)) {
         AppLogger.info('PAIR_BLOCKED_IGNORED', detail: 'kind=$kind');
+        return;
+      }
+
+      // Bundle 235: a new account on a phone I know as another account's
+      // phone: no answer, no contact (the phone is told who owns it).
+      final dup = DuplicateGuard235.instance;
+      if (dup != null && await dup.refuseCard(profile, via: 'pair')) {
         return;
       }
 

@@ -6,6 +6,7 @@ import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/group.dart';
+import 'package:locallink/core/services/person_phones_237.dart';
 import 'package:locallink/features/home/domain/home_repository_contract.dart';
 
 final class HomeState extends Equatable {
@@ -333,6 +334,11 @@ final class HomeBloc extends Cubit<HomeState> {
   /// Picks which device should represent a user in the conversation list: an
   /// online device wins, otherwise the one seen most recently.
   bool _isBetterConversationPeer(Device a, Device b) {
+    // Bundle 237: a friend's current phone always wins over his old phone
+    // (sends go to the phone he uses now).
+    final pastA = PersonPhones237.instance.isPast(a.id);
+    final pastB = PersonPhones237.instance.isPast(b.id);
+    if (pastA != pastB) return pastB;
     // Bundle 148: same live rule as every screen (per device, not merged).
     bool online(Device d) =>
         presence.statusOfDevice(d.id) != PresenceStatus.offline;

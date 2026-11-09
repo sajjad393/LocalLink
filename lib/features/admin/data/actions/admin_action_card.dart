@@ -15,8 +15,16 @@ abstract final class AdminActionRules {
   static const String cardsType = 'admin_act_cards';
   static const String doneType = 'admin_act_done';
 
+  /// Bundle 254 (21.3): "I got your card but can't check it yet (no server
+  /// key)". Old phones ignore this type.
+  static const String seenType = 'admin_act_seen';
+
   static bool isFrameType(String? t) =>
-      t == digestType || t == cardsType || t == doneType;
+      t == digestType || t == cardsType || t == doneType || t == seenType;
+
+  /// Bundle 254 (21.3): cards kept aside until the server key is saved.
+  static const int maxWaitTrust = 200;
+  static const String waitTrustSetting = 'admin_act_wait_trust';
 
   static const int appBuild = 131;
   static const int maxCardBytes = 16 * 1024;

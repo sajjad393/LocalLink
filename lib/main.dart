@@ -6,12 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:locallink/app/background_runner.dart';
 import 'package:locallink/app/local_link_app.dart';
 import 'package:locallink/core/diagnostics/app_log_file.dart';
+import 'package:locallink/core/network/tls_pin_243.dart';
 import 'package:locallink/core/services/app_logger.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   // Bundle 180: the last hour of logs (tap Chats 5 times to share).
   unawaited(AppLogFile.instance.start(engine: 'ui'));
+  PinnedHttpOverrides243.install(); // Bundle 243: pinned HTTPS
 
   FlutterError.onError = (details) {
     if (!kReleaseMode) {
@@ -44,6 +46,7 @@ void main() {
 void backgroundMain() {
   WidgetsFlutterBinding.ensureInitialized();
   unawaited(AppLogFile.instance.start(engine: 'bg')); // Bundle 180
+  PinnedHttpOverrides243.install(); // Bundle 243: pinned HTTPS
   PlatformDispatcher.instance.onError = (error, stackTrace) {
     AppLogger.error(
       'uncaught_async_error',

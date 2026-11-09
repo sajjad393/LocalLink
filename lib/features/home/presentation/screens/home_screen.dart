@@ -558,6 +558,7 @@ class _HomeScreenState extends State<HomeScreen> {
           JoinCard218.recovery(
             code: _recovery218!,
             context: context,
+            username: widget.store.username?.trim() ?? '',
             onSaved: () {
               setState(() => _recovery218 = null);
               unawaited(widget.store
@@ -607,10 +608,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 TextButton(
+                  key: const ValueKey('offline_publish_button'),
                   onPressed: _publishBusy
                       ? null
                       : () => _maybeOfferPublish(force: true),
-                  child: const Text('Publish'),
+                  // Bundle 236 (B1): small spinner while it runs.
+                  child: _publishBusy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Publish'),
                 ),
                 IconButton(
                   tooltip: 'Dismiss for 24 hours',
@@ -631,8 +639,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Auto-prompt once per session when a publishable server answers, plus
-  /// manual retry from the banner. Everything else stays off the network.
+  /// Bundle 236 (B1): no password sheet any more ("don't ask for a password
+  /// or a code"). Home start (once) and the banner run the same silent
+  /// publish as the background; the 218 cards show the result.
   Future<void> _maybeOfferPublish({bool force = false}) async {
     final sync = _offlineSync;
     if (sync == null ||
@@ -640,177 +649,20 @@ class _HomeScreenState extends State<HomeScreen> {
         !mounted ||
         _publishBusy ||
         (!force && _publishPromptShown)) return;
-    _publishBusy = true;
-    final ok = await sync.probeServerReachable();
-    if (!mounted || !ok || (!force && _publishPromptShown)) {
-      _publishBusy = false;
+    setState(() {
+      _publishBusy = true;
+      _publishPromptShown = true;
+    });
+    try {
+      await sync.autoPublish(from: force ? 'banner' : 'home');
+    } catch (_) {}
+    if (!mounted) return;
+    if (!sync.pending) {
+      await _publishSucceeded('');
       return;
     }
-    setState(() => _publishPromptShown = true);
-    await _showPublishSheet();
-    _publishBusy = false;
-  }
-
-  Future<void> _showPublishSheet() async {
-    final sync = _offlineSync;
-    if (sync == null) return;
-    final passwordController = TextEditingController();
-    final usernameController =
-        TextEditingController(text: sync.pendingUsername);
-    final pairingController = TextEditingController(
-        text: widget.store.offlinePending?['pairing_code']?.toString() ?? '');
-    String? error;
-    var renaming = false;
-    var working = false;
-
-    Future<void> attempt(StateSetter setSheetState) async {
-      final password = passwordController.text;
-      if (password.length < 8) {
-        setSheetState(() => error = 'Password must be at least 8 characters.');
-        return;
-      }
-      if (!renaming && !sync.verifyPassword(password)) {
-        setSheetState(
-            () => error = 'That is not the password you used offline.');
-        return;
-      }
-      setSheetState(() {
-        error = null;
-        working = true;
-      });
-      try {
-        final result = await sync.publish(
-          username: usernameController.text.trim(),
-          password: password,
-          pairingCode: pairingController.text,
-        );
-        if (!mounted) return;
-        Navigator.pop(context); // close sheet
-        await _publishSucceeded(result.recoveryCode);
-      } catch (e) {
-        if (!mounted) return;
-        if (sync.isUsernameConflict(e)) {
-          setSheetState(() {
-            renaming = true;
-            working = false;
-            error = null;
-          });
-        } else {
-          setSheetState(() {
-            working = false;
-            error = cleanBlocError(e);
-          });
-        }
-      }
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        final theme = Theme.of(sheetContext);
-        return StatefulBuilder(
-          builder: (context, setSheetState) => Padding(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 20,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.cloud_upload_outlined,
-                        color: theme.colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        renaming
-                            ? 'Pick a new username'
-                            : 'Publish your account',
-                        style: theme.textTheme.titleMedium,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  renaming
-                      ? 'The server already knows "${usernameController.text.trim()}". Choose another name — your offline password stays the same.'
-                      : 'The network server is available. Confirm your password once: it is sent only to this server to create your account there.',
-                  style: theme.textTheme.bodySmall,
-                ),
-                const SizedBox(height: 12),
-                if (renaming) ...[
-                  TextField(
-                    controller: usernameController,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'New username',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ] else ...[
-                  TextField(
-                    controller: passwordController,
-                    autofocus: true,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Password',
-                    ),
-                    onSubmitted: (_) {
-                      if (!working) attempt(setSheetState);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: pairingController,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Pairing code (only if your network uses one)',
-                    ),
-                  ),
-                ],
-                if (error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(error!,
-                      style: TextStyle(color: theme.colorScheme.error)),
-                ],
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: working ? null : () => Navigator.pop(context),
-                      child: const Text('Later'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed:
-                          working ? null : () => attempt(setSheetState),
-                      child: working
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(renaming ? 'Try this name' : 'Publish'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    setState(() => _publishBusy = false);
+    await _readJoin218();
   }
 
   Future<void> _publishSucceeded(String recoveryCode) async {

@@ -298,7 +298,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
   }
 
   static A216Tone _toneOf(ChatRequestRow221 r) {
-    if (r.cancelled) return A216Tone.grey;
+    if (r.cancelled || r.empty) return A216Tone.grey;
     if (r.ready) return A216Tone.green;
     if (r.half) return A216Tone.blue;
     if (r.oldApp) return A216Tone.red;

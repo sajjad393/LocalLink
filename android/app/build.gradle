@@ -56,6 +56,13 @@ android {
                 // working during development; only Play-Store distribution
                 // must set the env vars above.
                 signingConfig signingConfigs.debug
+                // Bundle 246 (S10): say it clearly. Lose this key = phones
+                // can't update (uninstall + data loss). Back it up.
+                if (gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }) {
+                    logger.warn("WARNING: LinkUp release APK is signed with the DEBUG key " +
+                            "(~/.android/debug.keystore). Keep a backup of that file (USB + cloud); " +
+                            "without it, installed phones cannot take updates.")
+                }
             }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

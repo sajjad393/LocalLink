@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart' show SimpleKeyPair;
 import 'package:flutter/foundation.dart';
+import 'package:locallink/core/identity/dup_account_235.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/link_key_service.dart';
@@ -82,8 +83,16 @@ class StoreSealKeySource implements SealKeySource {
     _publicKeys.clear();
   }
 
+  int _keyGeneration235 = KeyChange235.generation;
+
   @override
   Future<List<int>?> contactPublicKey(String peerId) async {
+    // Bundle 235: a friend's phone came back to its old account with new
+    // keys: read them again now (not after the 15 s cache).
+    if (_keyGeneration235 != KeyChange235.generation) {
+      _keyGeneration235 = KeyChange235.generation;
+      _trustedAt = DateTime.fromMillisecondsSinceEpoch(0);
+    }
     await _refreshTrusted();
     if (_trusted[peerId] != true) return null;
     final cached = _publicKeys[peerId];

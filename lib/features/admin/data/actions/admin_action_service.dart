@@ -13,7 +13,7 @@ import 'package:locallink/features/admin/data/actions/admin_action_server.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_store.dart';
 import 'package:locallink/features/admin/data/models/admin_block_record.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart'
-    show AdminSignIn, ed25519Verify;
+    show AdminSignIn, AdminTrustSaved, ed25519Verify;
 
 class _Entry {
   _Entry(this.id, this.action);
@@ -77,6 +77,9 @@ class AdminActionService {
 
   static AdminActionService? instance;
 
+  /// Bundle 254 (21.11): time of the last Off/Active card done here.
+  static const String closedAtKey = 'admin_closed_at';
+
   final AdminActionStore store;
   final String Function() selfDeviceId;
   final String Function() selfUserId;
@@ -117,6 +120,12 @@ class AdminActionService {
   final Map<String, DateTime> _digestSentAt = <String, DateTime>{};
   final Set<String> _taking = <String>{}; // card ids being checked now
   final Set<String> _applying = <String>{}; // card ids being done now
+  // Bundle 254 (21.3): cards this phone can't check yet (no server key),
+  // id -> {card, from, via}. Re-checked when the key is saved.
+  final Map<String, Map<String, dynamic>> _waitTrust = <String, Map<String, dynamic>>{};
+  final Set<String> _notMineLogged = <String>{};
+  final Set<String> _emptyLogged = <String>{};
+  bool _recheckBusy = false;
   bool _loaded = false;
   bool _started = false;
   bool _syncBusy = false;
@@ -167,6 +176,7 @@ class AdminActionService {
       }
       AdminClosedFlag.closed.value =
           (await store.readSetting(AdminActionDoers.closedKey) ?? '') == '1';
+      await _loadWaitTrust();
     } catch (error) {
       AppLogger.warning('ADMIN_ACT_LOAD_FAIL', detail: '$error');
     }
@@ -181,8 +191,11 @@ class AdminActionService {
     _hintSub = hints?.listen((m) {
       if (m['type']?.toString() == 'admin_action') syncSoon();
     });
-    _digestTimer = Timer.periodic(AdminActionRules.digestEvery,
-        (_) => unawaited(sendDigests().catchError((_) {})));
+    _digestTimer = Timer.periodic(AdminActionRules.digestEvery, (_) {
+      unawaited(sendDigests().catchError((_) {}));
+      unawaited(recheckWaitTrust().catchError((_) {}));
+    });
+    AdminTrustSaved.onSaved = () => unawaited(recheckWaitTrust().catchError((_) {}));
     _serverTimer = Timer.periodic(AdminActionRules.serverEvery,
         (_) => unawaited(syncWithServer().catchError((_) {})));
     unawaited(Future<void>.delayed(AdminActionRules.firstSync, () async {
@@ -190,6 +203,7 @@ class AdminActionService {
       await syncWithServer();
       await sendDigests();
       await _retryApply();
+      await recheckWaitTrust();
     }).catchError((_) {}));
   }
 
@@ -200,7 +214,10 @@ class AdminActionService {
     await _sub?.cancel();
     await _hintSub?.cancel();
     _started = false;
-    if (identical(instance, this)) instance = null;
+    if (identical(instance, this)) {
+      instance = null;
+      AdminTrustSaved.onSaved = null;
+    }
   }
 
   void syncSoon() {
@@ -237,6 +254,8 @@ class AdminActionService {
         finishedAt: e.pending ? '' : e.updatedAt,
         via: e.receipts.values.map((r) => r.via).firstWhere((v) => v.isNotEmpty,
             orElse: () => ''),
+        waitTrust: e.pending && _waitSeen(e),
+        emptyAll: e.extra['empty_all'] == true,
       ));
     }
     out.sort((a, b) => b.madeAt.compareTo(a.madeAt));
@@ -249,6 +268,7 @@ class AdminActionService {
     if (!e.pending) return e.need > 1 ? '${e.done} of ${e.need} phones' : 'Done';
     if (e.action == 'version_rule') return 'Reached ${e.done}';
     if (e.need > 1) return '${e.done} of ${e.need} phones';
+    if (_waitSeen(e)) return 'Reached the phone - it must reach the server once';
     return 'Waiting for the phone';
   }
 
@@ -292,6 +312,8 @@ class AdminActionService {
         await _onCards(from, msg);
       case AdminActionRules.doneType:
         await _onDone(from, msg);
+      case AdminActionRules.seenType:
+        await _onSeen(from, msg);
     }
   }
 
@@ -303,6 +325,12 @@ class AdminActionService {
     for (final e in list) {
       if (items.length >= 1500) break;
       items.add([e.id, e.pending ? 'p' : (e.state == 'done' ? 'd' : 'x')]);
+    }
+    // Bundle 254 (21.3): cards kept aside count as "have it", so phones stop
+    // sending the same card every minute.
+    for (final id in _waitTrust.keys) {
+      if (items.length >= 1500) break;
+      if (!_entries.containsKey(id)) items.add([id, 'p']);
     }
     return {'type': AdminActionRules.digestType, 'items': items};
   }
@@ -477,6 +505,10 @@ class AdminActionService {
 
   Future<bool> _offerNew(AdminActionCard card, {required String from, required String via}) async {
     final reason = await check(card);
+    if (reason == 'no_trust') {
+      await _keepForTrust(card, from: from, via: via);
+      return false;
+    }
     if (reason != null) {
       AppLogger.warning('ADMIN_ACT_REJECT',
           detail: 'reason=$reason id=${_tail(card.id)} from=${_tail(from)}');
@@ -493,6 +525,8 @@ class AdminActionService {
       ..need = card.need
       ..madeAt = card.at
       ..updatedAt = _now();
+    // Bundle 254 (21.12): who brought it (a "seen" note goes back there).
+    if (from.isNotEmpty && from != 'server') e.extra['from'] = from;
     _entries[card.id] = e;
     // Receipts that came before the card.
     for (final k in _loose.keys.where((k) => k.startsWith('${card.id}|')).toList()) {
@@ -647,6 +681,147 @@ class AdminActionService {
     }
   }
 
+  // ------------------------------------------- Bundle 254 (21.3): no trust yet
+
+  bool _waitSeen(_Entry e) =>
+      e.mine && e.extra['wait_trust'] is List && (e.extra['wait_trust'] as List).isNotEmpty;
+
+  int get waitTrustCount => _waitTrust.length;
+
+  Future<void> _loadWaitTrust() async {
+    final raw = await store.readSetting(AdminActionRules.waitTrustSetting) ?? '';
+    if (raw.isEmpty) return;
+    try {
+      final d = jsonDecode(raw);
+      if (d is! List) return;
+      for (final it in d.whereType<Map>()) {
+        final id = it['id']?.toString() ?? '';
+        if (id.isNotEmpty && it['card'] is Map) _waitTrust[id] = Map<String, dynamic>.from(it);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveWaitTrust() async {
+    try {
+      await store.writeSetting(AdminActionRules.waitTrustSetting,
+          _waitTrust.isEmpty ? '' : jsonEncode(_waitTrust.values.toList()));
+    } catch (_) {}
+  }
+
+  /// The card can't be checked yet: keep it aside (once), log once and tell
+  /// the phone that brought it ("seen, waiting for the server key").
+  Future<void> _keepForTrust(AdminActionCard card,
+      {required String from, required String via}) async {
+    if (_waitTrust.containsKey(card.id)) return; // already kept: quiet
+    while (_waitTrust.length >= AdminActionRules.maxWaitTrust) {
+      _waitTrust.remove(_waitTrust.keys.first);
+    }
+    _waitTrust[card.id] = {
+      'id': card.id,
+      'card': card.blob.toJson(),
+      'from': from,
+      'via': via,
+      'cancel': card.isCancel,
+    };
+    await _saveWaitTrust();
+    AppLogger.warning('ADMIN_ACT_WAIT_TRUST',
+        detail: 'id=${_tail(card.id)} action=${card.action} from=${_tail(from)}');
+    await _sendSeen(from, card.id, 'no_trust');
+  }
+
+  /// "seen" note: why = no_trust (can't check the card yet) or empty (no
+  /// copy of the asked chat on this phone). Goes to the phone that brought
+  /// the card; it is not a receipt and never counts as done.
+  Future<void> _sendSeen(String to, String cardId, String why) async {
+    if (to.isEmpty || to == 'server') return;
+    try {
+      final body = jsonEncode({
+        't': AdminActionRules.seenType,
+        'id': cardId,
+        'device': selfDeviceId(),
+        'user': selfUserId(),
+        'why': why,
+        'at': _now(),
+      });
+      await _safeSend(to, {
+        'type': AdminActionRules.seenType,
+        'notes': [SignedBlob(body: body, sig: await sign(body)).toJson()],
+      });
+    } catch (_) {}
+  }
+
+  /// The admin phone hears "seen, no trust" from a target phone.
+  Future<void> _onSeen(String from, Map<String, dynamic> msg) async {
+    for (final raw in (msg['notes'] as List? ?? const []).take(20)) {
+      final b = SignedBlob.fromJson(raw);
+      if (b == null) continue;
+      Map<String, dynamic> n;
+      try {
+        final d = jsonDecode(b.body);
+        if (d is! Map) continue;
+        n = Map<String, dynamic>.from(d);
+      } catch (_) {
+        continue;
+      }
+      if (n['t'] != AdminActionRules.seenType) continue;
+      final id = n['id']?.toString() ?? '';
+      final device = n['device']?.toString() ?? '';
+      final e = _entries[id];
+      if (e == null || !e.mine || !e.pending || device.isEmpty) continue;
+      final targets = (e.extra['devices'] as List? ?? const []).map((x) => x.toString());
+      if (!targets.contains(device)) continue; // only the target phone counts
+      final keys = await store.keysOf(device);
+      if (keys.signingKey.isEmpty || !await verify(b.body, b.sig, keys.signingKey)) continue;
+      final why = n['why']?.toString() ?? 'no_trust';
+      final slot = why == 'empty' ? 'empty' : 'wait_trust';
+      final list = (e.extra[slot] as List? ?? const []).map((x) => x.toString()).toList();
+      if (list.contains(device)) continue;
+      list.add(device);
+      e.extra[slot] = list;
+      await _save(e);
+      AppLogger.info('ADMIN_ACT_WAIT_SEEN',
+          detail: 'id=${_tail(id)} phone=${_tail(device)} why=$why');
+      if (slot == 'empty' && targets.every(list.contains)) await _closeEmpty(e);
+      _publish();
+    }
+  }
+
+  /// Bundle 254 (21.12): every target phone said "no copy of this chat":
+  /// the request closes as "No messages" (signed cancel card, so carriers
+  /// stop too). Stays pending when this phone can't sign (no admin key).
+  Future<void> _closeEmpty(_Entry e) async {
+    final signIn = await adminSignIn?.call();
+    final cert = await usableCert();
+    if (signIn == null || cert == null) return;
+    e.extra['empty_all'] = true;
+    await _replaceOld(e, by: signIn.username, cert: cert, newId: '', state: 'cancelled');
+    AppLogger.info('CHAT_REQ_EMPTY_ALL', detail: 'id=${_tail(e.id)}');
+  }
+
+  /// The server key is saved now: check the kept cards again (cancels
+  /// first, so a cancelled card is never done).
+  Future<void> recheckWaitTrust() async {
+    if (_waitTrust.isEmpty || _recheckBusy) return;
+    final key = serverKey();
+    if (key == null || key.isEmpty) return;
+    _recheckBusy = true;
+    try {
+      final list = _waitTrust.values.toList()
+        ..sort((a, b) => (b['cancel'] == true ? 1 : 0) - (a['cancel'] == true ? 1 : 0));
+      _waitTrust.clear();
+      await _saveWaitTrust();
+      AppLogger.info('ADMIN_ACT_TRUST_RECHECK', detail: 'cards=${list.length}');
+      for (final it in list) {
+        final blob = SignedBlob.fromJson(it['card']);
+        if (blob == null) continue;
+        await offerCard(blob,
+            from: it['from']?.toString() ?? '', via: it['via']?.toString() ?? '');
+      }
+    } finally {
+      _recheckBusy = false;
+    }
+  }
+
   // ----------------------------------------------------------- doing it here
 
   Future<void> _retryApply() async {
@@ -682,7 +857,15 @@ class AdminActionService {
         if (plain != null) break;
       }
     }
-    if (plain == null || plain.device != selfDeviceId()) return; // not for me
+    if (plain == null || plain.device != selfDeviceId()) {
+      // not for me. Bundle 254 (21.3): say so once per card in the log.
+      if (card.action != 'version_rule' && _notMineLogged.add(card.id)) {
+        if (_notMineLogged.length > 2000) _notMineLogged.clear();
+        AppLogger.info('ADMIN_ACT_NOT_MINE',
+            detail: 'id=${_tail(card.id)} action=${card.action}');
+      }
+      return;
+    }
     var result = 'ok';
     // Never on the admin's own account.
     final cert = card.cert == null ? null : AdminCert.fromBlob(card.cert!);
@@ -700,6 +883,15 @@ class AdminActionService {
         signOutAfter = (card.action == 'sign_out' || card.action == 'remove_phone') &&
             result == 'ok';
       } catch (error) {
+        // Bundle 254 (21.12): no copy of the asked chat here: say it once
+        // (log + "seen: empty" to the phone that brought it), no receipt.
+        if (error is StateError && error.message == 'no_copy_here' && card.action == 'get_chat') {
+          if (_emptyLogged.add(card.id)) {
+            AppLogger.info('CHAT_REQ_EMPTY', detail: 'id=${_tail(card.id)}');
+            await _sendSeen(e.extra['from']?.toString() ?? '', card.id, 'empty');
+          }
+          return;
+        }
         AppLogger.warning('ADMIN_ACT_DO_FAIL', detail: 'action=${card.action} $error');
         return; // try again later (next start / next card copy)
       }
@@ -749,6 +941,14 @@ class AdminActionService {
         if (inner != null) await doers.block(inner);
         final closed = card.action == 'off';
         final was = (await store.readSetting(AdminActionDoers.closedKey) ?? '') == '1';
+        // Bundle 254 (21.11): an older Off/Active that comes late changes nothing.
+        final cardAt = DateTime.tryParse(card.at);
+        final lastAt = DateTime.tryParse(await store.readSetting(closedAtKey) ?? '');
+        if (cardAt != null && lastAt != null && cardAt.isBefore(lastAt)) {
+          AppLogger.info('ADMIN_ACT_OLD_CLOSE', detail: 'id=${_tail(card.id)} action=${card.action}');
+          return 'already';
+        }
+        if (cardAt != null) await store.writeSetting(closedAtKey, cardAt.toUtc().toIso8601String());
         await doers.setClosed(closed);
         AdminClosedFlag.closed.value = closed;
         return was == closed ? 'already' : 'ok';
@@ -813,7 +1013,10 @@ class AdminActionService {
     if (cert == null) {
       throw StateError('Connect to the server once to turn on offline admin actions.');
     }
-    if (pendingMine >= AdminActionRules.maxPendingPerAdmin) {
+    // Bundle 254 (21.1): an older pending Block/Unblock (or Off/Active) for
+    // the same person is replaced by this one, so it doesn't count.
+    final older = _olderSameFamily(action, targetUserId);
+    if (pendingMine - older.length >= AdminActionRules.maxPendingPerAdmin) {
       throw StateError('Finish or cancel some actions first');
     }
     var innerBlob = inner;
@@ -882,10 +1085,64 @@ class AdminActionService {
     await _save(e);
     AppLogger.info('ADMIN_ACT_MADE',
         detail: 'action=$action id=${_tail(id)} phones=${boxes.length}');
+    for (final o in older) {
+      await _replaceOld(o, by: signIn.username, cert: cert, newId: id);
+    }
     unawaited(_spreadCards([blob], except: '').catchError((_) {}));
     unawaited(syncWithServer().catchError((_) {}));
     _publish();
     return id;
+  }
+
+  static const List<Set<String>> _families = [
+    {'block', 'unblock'},
+    {'off', 'active'},
+  ];
+
+  List<_Entry> _olderSameFamily(String action, String targetUserId) {
+    final fam = _families.where((f) => f.contains(action)).firstOrNull;
+    if (fam == null || targetUserId.isEmpty) return const [];
+    return _entries.values
+        .where((e) =>
+            e.mine &&
+            e.pending &&
+            fam.contains(e.action) &&
+            (e.extra['user']?.toString() ?? '') == targetUserId)
+        .toList();
+  }
+
+  /// Bundle 254 (21.1): closes an older card with a signed cancel card (it
+  /// travels like any cancel); here the row says "Replaced".
+  Future<void> _replaceOld(_Entry e,
+      {required String by,
+      required SignedBlob cert,
+      required String newId,
+      String state = 'replaced'}) async {
+    try {
+      final body = AdminActionCard.newBody(
+        id: _newId(),
+        action: 'cancel',
+        at: _clock(),
+        by: by,
+        cert: cert,
+        need: 0,
+        to: const [],
+        cancels: e.id,
+      );
+      final blob = SignedBlob(body: body, sig: await sign(body));
+      final card = AdminActionCard.fromBlob(blob);
+      if (card == null) return;
+      e.extra['cancel_card'] = blob.toJson();
+      await _takeCancel(card, from: '');
+      e.state = state;
+      await _save(e);
+      if (state == 'replaced') {
+        AppLogger.info('ADMIN_ACT_REPLACED', detail: 'id=${_tail(e.id)} by=${_tail(newId)}');
+      }
+      _publish();
+    } catch (error) {
+      AppLogger.warning('ADMIN_ACT_REPLACE_FAIL', detail: 'id=${_tail(e.id)} $error');
+    }
   }
 
   /// Cancel: on the server when online (server-made or synced cards), else a
@@ -953,7 +1210,8 @@ class AdminActionService {
         final labels = <Map<String, dynamic>>[];
         for (final e in _entries.values) {
           if (e.pending && e.card != null) cards.add(e.card!.blob);
-          if (e.state == 'cancelled' && e.extra['cancel_card'] is Map &&
+          if ((e.state == 'cancelled' || e.state == 'replaced') &&
+              e.extra['cancel_card'] is Map &&
               e.extra['cancel_sent'] != true) {
             final c = SignedBlob.fromJson(e.extra['cancel_card']);
             if (c != null) cards.add(c);

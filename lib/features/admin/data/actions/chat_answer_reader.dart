@@ -403,6 +403,8 @@ class ChatRequestRow221 {
   final Map<String, dynamic>? chat;
   final String from;
   final String to;
+  /// Bundle 254 (21.12): every phone said it has no copy of this chat.
+  final bool empty;
 
   const ChatRequestRow221({
     required this.id,
@@ -420,6 +422,7 @@ class ChatRequestRow221 {
     this.chat,
     this.from = '',
     this.to = '',
+    this.empty = false,
   });
 
   bool get ready => of > 0 && parts >= of;
@@ -428,6 +431,7 @@ class ChatRequestRow221 {
 
   /// The words on the right of a row (mock A-1 / A-2).
   String get tag {
+    if (empty) return 'No messages';
     if (cancelled) return 'Cancelled';
     if (ready) return 'Ready';
     if (half) return '$parts of $of parts';
@@ -591,6 +595,7 @@ class ChatRequests221 {
         chat: m['chat'] is Map ? Map<String, dynamic>.from(m['chat'] as Map) : known?.chat,
         from: m['from']?.toString() ?? '',
         to: m['to']?.toString() ?? '',
+        empty: st?.emptyAll ?? false,
       );
     }
     final list = out.values.toList()..sort((a, b) => b.madeAt.compareTo(a.madeAt));
@@ -620,6 +625,14 @@ class ChatRequests221 {
     };
   }
 
+  /// Bundle 254 (21.12): both accounts are on the very same phone(s).
+  Future<bool> samePhone(String userA, String userB) async {
+    if (userA.isEmpty || userB.isEmpty || userA == userB) return false;
+    final a = (await phonesOf(userA).catchError((_) => <String>[])).where((d) => d.isNotEmpty).toSet();
+    final b = (await phonesOf(userB).catchError((_) => <String>[])).where((d) => d.isNotEmpty).toSet();
+    return a.isNotEmpty && a.length == b.length && a.containsAll(b);
+  }
+
   /// The chat ref (all phones of it) + the phones a card goes to (not mine).
   Future<({Map<String, dynamic> chat, List<String> targets, bool meIn})> _resolve(ChatPick221 pick) async {
     final mine = {selfDeviceId(), ...await phonesOf(selfUserId()).catchError((_) => <String>[])}
@@ -646,6 +659,10 @@ class ChatRequests221 {
   /// Get chat. Returns the request id.
   Future<String> request(ChatPick221 pick, {String range = 'full', DateTime? from, DateTime? to}) async {
     final r = rangeOf(range, from: from, to: to);
+    // Bundle 254 (21.12): two accounts on ONE phone have no chat together.
+    if (!pick.isGroup && await samePhone(pick.userA, pick.userB)) {
+      throw StateError('These two accounts are on the same phone - there is no chat between them.');
+    }
     final token = await _token();
     if (token != null && serverOnline()) {
       final res = await server.create(token, {

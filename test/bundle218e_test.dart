@@ -16,6 +16,7 @@ import 'package:locallink/features/admin/presentation/screens/admin_users_screen
 import 'package:locallink/features/authentication/data/services/offline_account_sync_service.dart';
 import 'package:locallink/features/home/presentation/widgets/join_cards218.dart';
 import 'package:locallink/features/messaging/data/services/not_on_server_218.dart';
+import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
 
 import 'admin_test_support.dart';
 import 'support/g211_fakes.dart';
@@ -112,7 +113,9 @@ void main() {
   });
 
   group('recovery card', () {
-    testWidgets('read-only code, Copy, I saved it', (tester) async {
+    testWidgets('hidden code, Show, Copy, Save on WhatsApp', (tester) async {
+      // Bundle 235 addition: the code starts hidden (dots, Show); "I saved
+      // it" became "Save on WhatsApp" (same key, runs after WhatsApp).
       final copied = <String>[];
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform,
           (call) async {
@@ -128,14 +131,25 @@ void main() {
                   builder: (context) => JoinCard218.recovery(
                       code: 'K7QM-2XPA-9TRD', context: context, onSaved: () => saved++)))));
       expect(find.byKey(const ValueKey('join218_recovery')), findsOneWidget);
+      expect(find.text('K7QM-2XPA-9TRD'), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+      await tester.tap(find.text('Show'));
+      await tester.pump();
       expect(find.text('K7QM-2XPA-9TRD'), findsOneWidget);
-      final field = tester.widget<TextField>(find.byType(TextField));
-      expect(field.enabled, isFalse);
       await tester.tap(find.byKey(const ValueKey('join218_copy')));
       await tester.pump();
       expect(copied, ['K7QM-2XPA-9TRD']);
       expect(find.text('Copied'), findsOneWidget);
+      WhatsAppShare235.debugOpen = (text) async => true;
+      addTearDown(() => WhatsAppShare235.debugOpen = null);
       await tester.tap(find.byKey(const ValueKey('join218_saved')));
+      await tester.pump();
+      expect(saved, 0);
+      for (final s in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused,
+          AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+        tester.binding.handleAppLifecycleStateChanged(s);
+      }
+      await tester.pump();
       expect(saved, 1);
     });
   });

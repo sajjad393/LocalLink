@@ -243,7 +243,8 @@ class LocalLinkApi {
   /// nonce and answers as before.
   Future<PairingInfo> _pairingInfoFrom(String base) async {
     final nonce = ServerProof231.newNonce();
-    final response = await http.get(Uri.parse('$base/api/v1/pairing/info?nonce=$nonce')).timeout(const Duration(seconds: 6));
+    // Bundle 243: &proof=2 asks for the v2 proof (HTTPS port + cert hash).
+    final response = await http.get(Uri.parse('$base/api/v1/pairing/info?nonce=$nonce&proof=2')).timeout(const Duration(seconds: 6));
     if (response.statusCode != 200) throw Exception(_error(response));
     final info = PairingInfo.fromJson(Map<String, dynamic>.from(jsonDecode(response.body) as Map));
     if (!info.hasProof) return info;
@@ -346,6 +347,57 @@ class LocalLinkApi {
       body: jsonEncode({
         'username': username.trim().toLowerCase(),
         'password': password,
+        'device_id': id,
+        'hardware_fp': store.hardwareFp,
+        'device_name': deviceName.trim(),
+        'platform': 'android',
+        if (pairingCode != null && pairingCode.trim().isNotEmpty) 'pairing_code': pairingCode.trim(),
+        ...extra,
+      }),
+    ).timeout(const Duration(seconds: 10));
+    if (response.statusCode != 201) throw _fail218(response);
+    final payload = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    final account = LocalAccount.fromJson(Map<String, dynamic>.from(payload['account'] as Map));
+    final device = Device.fromJson(Map<String, dynamic>.from(payload['device'] as Map));
+    final token = payload['token']?.toString();
+    if (token == null || token.isEmpty) throw Exception('Server returned no session token');
+    await store.saveConfiguration(
+      server: store.serverAddress!,
+      id: device.id,
+      name: device.name,
+      token: token,
+      accountId: account.id,
+      username: account.username,
+    );
+    return AuthResult(account: account, device: device, expiresAt: payload['expires_at']?.toString() ?? '', recoveryCode: payload['recovery_code']?.toString() ?? '');
+  }
+
+  /// Bundle 236 (B2): an account made offline whose saved password is gone
+  /// signs up with its saved password lock (PBKDF2 salt + hash + rounds,
+  /// the same maths as the server) - never the password. Only with its
+  /// offline id; the server stores the lock as it is.
+  Future<AuthResult> registerWithLock236({
+    required String username,
+    required String salt,
+    required String hash,
+    required int iterations,
+    required String deviceName,
+    String? pairingCode,
+  }) async {
+    final id = store.deviceId ?? store.generateDeviceId();
+    final extra = await _offlineJoinFields218(withRecovery: true);
+    if ((extra['offline_user_id'] ?? '').isEmpty) {
+      throw StateError('No account made offline to send.');
+    }
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/v1/auth/register'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'username': username.trim().toLowerCase(),
+        'password': '',
+        'password_salt': salt,
+        'password_hash': hash,
+        'password_iterations': iterations,
         'device_id': id,
         'hardware_fp': store.hardwareFp,
         'device_name': deviceName.trim(),
@@ -577,14 +629,27 @@ class LocalLinkApi {
   ApiError218 _fail218(http.Response response) {
     var code = '';
     var owner = '';
+    var duplicate = false;
+    var ownerUserId = '';
+    var ownerName = '';
     try {
       final json = jsonDecode(response.body);
       if (json is Map) {
         code = json['error_code']?.toString() ?? '';
         owner = json['owner']?.toString() ?? '';
+        // Bundle 235: this very phone has another account.
+        duplicate = json['duplicate'] == true;
+        ownerUserId = json['owner_user_id']?.toString() ?? '';
+        ownerName = json['owner_name']?.toString() ?? '';
       }
     } catch (_) {}
-    return ApiError218(_error(response), code: code, owner: owner, status: response.statusCode);
+    return ApiError218(_error(response),
+        code: code,
+        owner: owner,
+        status: response.statusCode,
+        duplicate: duplicate,
+        ownerUserId: ownerUserId,
+        ownerName: ownerName);
   }
 
   Future<LocalProfile> getProfile({bool downloadAvatar = true}) async {
@@ -958,6 +1023,23 @@ class LocalLinkApi {
       username: account.username,
     );
     return AuthResult(account: account, device: device, expiresAt: payload['expires_at']?.toString() ?? '', recoveryCode: payload['recovery_code']?.toString() ?? '');
+  }
+
+  /// Bundle 235: after the old account proved itself on this phone with the
+  /// server, a short note signed by the server's trust key: friends' phones
+  /// take this phone's new keys from it. Returns (body, sig).
+  Future<({String body, String sig})> returnNote235({
+    required String signingKey,
+    required String identityKey,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/v1/account/return-note'),
+      headers: {..._headers(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'signing_key': signingKey, 'identity_key': identityKey}),
+    ).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) throw _fail218(response);
+    final m = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    return (body: m['body']?.toString() ?? '', sig: m['sig']?.toString() ?? '');
   }
 
   Future<RecoveryCodeStatus> recoveryCodeStatus() async {
@@ -1443,7 +1525,19 @@ class ApiError218 implements Exception {
   final String owner;
   final int status;
 
-  const ApiError218(this.message, {this.code = '', this.owner = '', this.status = 0});
+  /// Bundle 235: the server says this phone already has another account
+  /// ([ownerUserId] / [owner] / [ownerName]).
+  final bool duplicate;
+  final String ownerUserId;
+  final String ownerName;
+
+  const ApiError218(this.message,
+      {this.code = '',
+      this.owner = '',
+      this.status = 0,
+      this.duplicate = false,
+      this.ownerUserId = '',
+      this.ownerName = ''});
 
   @override
   String toString() => 'Exception: $message';

@@ -18,6 +18,12 @@ class PairingInfo {
   /// True only after [LocalLinkApi] verified [proof] with our nonce.
   final bool proofOk;
 
+  /// Bundle 243 (S3): a v2 proof also covers the HTTPS port and the
+  /// certificate hash. 0 / '' from a server without HTTPS.
+  final int proofVersion;
+  final int tlsPort;
+  final String tlsCertSha256;
+
   const PairingInfo({
     required this.service,
     required this.version,
@@ -30,6 +36,9 @@ class PairingInfo {
     this.proofTs = '',
     this.proof = '',
     this.proofOk = false,
+    this.proofVersion = 0,
+    this.tlsPort = 0,
+    this.tlsCertSha256 = '',
   });
 
   bool get hasProof => proof.isNotEmpty;
@@ -46,6 +55,9 @@ class PairingInfo {
         proofTs: proofTs,
         proof: proof,
         proofOk: ok,
+        proofVersion: proofVersion,
+        tlsPort: tlsPort,
+        tlsCertSha256: tlsCertSha256,
       );
 
   factory PairingInfo.fromJson(Map<String, dynamic> json) => PairingInfo(
@@ -59,6 +71,9 @@ class PairingInfo {
         keyId: json['key_id']?.toString() ?? '',
         proofTs: json['ts']?.toString() ?? '',
         proof: json['proof']?.toString() ?? '',
+        proofVersion: int.tryParse(json['proof_v']?.toString() ?? '') ?? 0,
+        tlsPort: int.tryParse(json['tls_port']?.toString() ?? '') ?? 0,
+        tlsCertSha256: (json['tls_cert_sha256']?.toString() ?? '').toLowerCase(),
       );
 }
 

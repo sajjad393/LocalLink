@@ -50,7 +50,9 @@ final class HomeRepository implements HomeRepositoryContract {
   Future<String?> userIdForDevice(String deviceId) async {
     final profile = await _store.directoryProfileByDeviceId(deviceId);
     final userId = profile?['user_id']?.toString().trim();
-    return (userId == null || userId.isEmpty) ? null : userId;
+    if (userId != null && userId.isNotEmpty) return userId;
+    // Bundle 237: a friend's old phone belongs to him too (ONE chat row).
+    return _store.personOfPastPhone237(deviceId);
   }
 
   @override

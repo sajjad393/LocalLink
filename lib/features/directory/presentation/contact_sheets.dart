@@ -451,7 +451,7 @@ Future<bool> showPrivateProfileSheet(BuildContext context) async {
   return ok == true;
 }
 
-enum ChatInfoChoice { call, search, block, unblock }
+enum ChatInfoChoice { call, search, block, unblock, security }
 
 /// Screen 14b / 14c: chat ⋮ › Conversation info.
 Future<ChatInfoChoice?> showChatInfoSheet(
@@ -463,6 +463,8 @@ Future<ChatInfoChoice?> showChatInfoSheet(
   String username = '',
   Widget? avatar,
   Widget? wayCard,
+  bool showSecurity = false, // Bundle 245
+  bool securityChanged = false,
 }) {
   AppLogger.info('CHAT_INFO_SHEET', detail: 'action=open');
   return _showSheet<ChatInfoChoice>(
@@ -486,6 +488,15 @@ Future<ChatInfoChoice?> showChatInfoSheet(
                 icon: Icons.call_outlined,
                 label: 'Voice call',
                 onTap: () => Navigator.pop(c, ChatInfoChoice.call),
+              ),
+            // Bundle 245 (S7): the Security code of this chat.
+            if (showSecurity && !blocked)
+              ContactSheetAction(
+                key: const Key('chat_info_security'),
+                icon: securityChanged ? Icons.gpp_maybe_outlined : Icons.verified_user_outlined,
+                label: securityChanged ? 'Security code changed' : 'Security code',
+                red: securityChanged,
+                onTap: () => Navigator.pop(c, ChatInfoChoice.security),
               ),
             ContactSheetAction(
               key: const Key('chat_info_search'),

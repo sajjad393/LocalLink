@@ -48,13 +48,26 @@ class AccountContact {
   final String addedAt;
   final bool isPrivate;
 
-  const AccountContact({required this.userId, required this.deviceId, required this.addedAt, this.isPrivate = false});
+  /// Bundle 237: the person's other phones on the server (newest first).
+  final List<String> pastDeviceIds;
+
+  const AccountContact({
+    required this.userId,
+    required this.deviceId,
+    required this.addedAt,
+    this.isPrivate = false,
+    this.pastDeviceIds = const [],
+  });
 
   factory AccountContact.fromJson(Map<String, dynamic> json) => AccountContact(
         userId: json['user_id']?.toString() ?? '',
         deviceId: json['device_id']?.toString() ?? '',
         addedAt: json['added_at']?.toString() ?? '',
         isPrivate: json['is_private'] == true || json['is_private'] == 1,
+        pastDeviceIds: [
+          for (final v in (json['past_device_ids'] is List ? json['past_device_ids'] as List : const []))
+            if ((v?.toString() ?? '').isNotEmpty) v.toString(),
+        ].take(10).toList(),
       );
 }
 

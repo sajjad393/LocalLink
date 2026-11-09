@@ -26,6 +26,7 @@ const _filters = ['All', 'Admins', 'Active', 'Stopped'];
 class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String _q = '';
   String _filter = 'All'; // Bundle 222: by name (the "Not on server" chip comes and goes)
+  bool _showHidden238 = false; // Bundle 238: "Show hidden (N)"
 
   /// Bundle 222: extra row height (and photo shift) for the crown on a
   /// 20 px photo whose row already leaves 12 px above it, plus 2 px air.
@@ -73,11 +74,14 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<List<OfflineUser222>>(
       valueListenable: AdminOfflineUsers222.rows,
-      builder: (context, local, _) => _build(context, local),
+      builder: (context, local, _) => ValueListenableBuilder<List<OfflineUser222>>(
+        valueListenable: AdminOfflineUsers222.hidden,
+        builder: (context, gone, _) => _build(context, local, gone),
+      ),
     );
   }
 
-  Widget _build(BuildContext context, List<OfflineUser222> local) {
+  Widget _build(BuildContext context, List<OfflineUser222> local, [List<OfflineUser222> gone = const []]) {
     // Mock U-1: All, Admins, Active, Not on server, (Stopped).
     final filters = [..._filters.take(3), if (local.isNotEmpty) 'Not on server', ..._filters.skip(3)];
     if (!filters.contains(_filter)) _filter = 'All';
@@ -93,6 +97,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       builder: (context, state) {
         final rows = state.users.where(_match).toList();
         final mine = _localRows(local);
+        // Bundle 238: old offline rows (30 days / cleared phone), only on
+        // the switch; the count follows the filter and the search.
+        final hiddenRows = _localRows(gone);
+        final shownHidden = _showHidden238 ? hiddenRows : const <OfflineUser222>[];
         return [
           AdminSearch216(
             hint: 'Search name or @username',
@@ -109,7 +117,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           const SizedBox(height: 12),
           if (state.loading && state.users.isEmpty && mine.isEmpty)
             const AdminLoading216()
-          else if (rows.isEmpty && mine.isEmpty)
+          else if (rows.isEmpty && mine.isEmpty && shownHidden.isEmpty)
             const AdminEmptyState216(
                 icon: Icons.search_rounded,
                 tone: A216Tone.grey,
@@ -158,9 +166,79 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                   ),
                   onTap: () => showOfflineUserSheet222(context, u),
                 ),
+              // Bundle 238: hidden offline rows, only when switched on.
+              for (final u in shownHidden)
+                AdminRow216(
+                  key: ValueKey('a238_hidden_user_${u.userId}'),
+                  height: 64,
+                  leading: ServerPersonAvatar216(name: u.name, userId: u.userId, hasAvatar: false, grey: true),
+                  title: u.name,
+                  subtitle: hiddenSub238(u),
+                  trailing: const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: AdminTag216('Hidden', A216Tone.grey),
+                  ),
+                  onTap: () => showOfflineUserSheet222(context, u),
+                ),
             ]),
+          if (hiddenRows.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ShowHiddenRow238(
+              count: hiddenRows.length,
+              value: _showHidden238,
+              onChanged: (v) => setState(() => _showHidden238 = v),
+            ),
+          ],
         ];
       },
+    );
+  }
+}
+
+/// Bundle 238: "Not seen for 30+ days · router · 41 days" - why it hides.
+String hiddenSub238(OfflineUser222 u) =>
+    ['Not seen for 30+ days', u.link, offlineShort222(u.seenAt)].where((x) => x.isNotEmpty).join(' · ');
+
+/// Bundle 238 (mock 238): the switch under the list. Old offline rows
+/// (not seen for 30 days, or a cleared phone that joined again) stay in the
+/// data; only the list hides them.
+class ShowHiddenRow238 extends StatelessWidget {
+  final int count;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  const ShowHiddenRow238({super.key, required this.count, required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const ValueKey('a238_users_show_hidden'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => onChanged(!value),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+          child: Row(
+            children: [
+              Icon(Icons.visibility_off_outlined, size: 18, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Show hidden ($count)', style: theme.textTheme.bodyMedium),
+                    Text('Offline accounts not seen for 30 days',
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+              Switch(value: value, onChanged: onChanged),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

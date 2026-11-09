@@ -187,9 +187,9 @@ class _AdminActionsScreenState extends State<AdminActionsScreen> {
         ),
       ),
       onRefresh: _loadServer,
-      children: [
-        if (!_online)
-          Container(
+      pinned: _online
+          ? null
+          : Container(
             key: const ValueKey('admin_actions_offline_bar'),
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
@@ -211,6 +211,7 @@ class _AdminActionsScreenState extends State<AdminActionsScreen> {
               ),
             ]),
           ),
+      children: [
         _Tabs(
           labels: ['Pending ${pending.length}', 'Done ${done.length}'],
           selected: _tab,
@@ -287,6 +288,13 @@ class _ActionTile extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: t.custom(13, FontWeight.w400, c.grey, 1.3)),
+                ],
+                // Bundle 254 (21.9): show that a pending row can be stopped.
+                if (row.canCancel) ...[
+                  const SizedBox(height: 4),
+                  Text('Tap to cancel',
+                      key: ValueKey('admin_action_cancel_hint_${row.id}'),
+                      style: t.custom(13, FontWeight.w600, c.blue, 1.3)),
                 ],
               ]),
             ),
@@ -389,6 +397,7 @@ String _via(String v) => switch (v) {
   if (parts != null && !parts.all && r.state != 'cancelled') {
     return ('the rest is on the way', '${parts.have} of ${parts.of} parts', A216Tone.blue);
   }
+  if (r.emptyAll) return ('No messages in this chat', 'No messages', A216Tone.grey);
   if (r.state == 'cancelled') {
     return ('Cancelled ${_date(r.finishedAt)}'.trim(), 'Cancelled', A216Tone.grey);
   }
@@ -407,6 +416,10 @@ String _via(String v) => switch (v) {
   final since = 'since ${_date(r.madeAt)}';
   if (r.need > 1) {
     return ('$since · phones confirmed', '${r.done} of ${r.need}', A216Tone.blue);
+  }
+  // Bundle 254 (21.3): the phone got it but has no server key yet.
+  if (r.waitTrust) {
+    return ('reached the phone · it must reach the server once', 'Pending', A216Tone.orange);
   }
   return ('$since · no phone reached yet', 'Pending', A216Tone.orange);
 }

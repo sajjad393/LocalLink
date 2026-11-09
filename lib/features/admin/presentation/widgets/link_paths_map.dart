@@ -184,6 +184,7 @@ class LinkPathsMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    AdminPersonAvatar216.noteYouName(selfName); // Bundle 254 (21.5)
     final c = A216.colors(context);
     final links = linksOf(nodes, serverOnline);
     final t = A216Text(c);

@@ -66,6 +66,12 @@ enum AdminBlockReadiness { ready, needServer, notOwner, noTrust }
 ///   this one is missing (max 1 digest per phone per 30 s).
 /// - "Got it" notes go back hop to hop so the admin phone counts phones.
 /// - Server sync on connect and every 10 min; newest wins everywhere.
+/// Bundle 254 (21.3): told when this phone saves the server key, so admin
+/// cards kept aside ("no trust yet") are checked again at once.
+abstract final class AdminTrustSaved {
+  static void Function()? onSaved;
+}
+
 class AdminBlockService {
   AdminBlockService({
     required this.read,
@@ -674,15 +680,19 @@ class AdminBlockService {
     final s = server;
     if (s == null) return;
     await load();
+    // Bundle 254 (21.3): admin cards kept aside wait for this moment.
+    final hadKey = _serverKey != null;
     // Bundle 231: the pairing proof (ServerProof231) may have pinned the key
     // after load(); read it again so it is never overwritten.
     _serverKey ??= _nonEmpty(await read(trustKeySetting));
+    if (!hadKey && _serverKey != null) AdminTrustSaved.onSaved?.call();
     final key = await s.trustKey();
     if (key.isEmpty) return;
     if (_serverKey == null) {
       _serverKey = key;
       await write(trustKeySetting, key);
       AppLogger.info('TRUST_KEY_SAVED', detail: 'key=${_tail(key)}');
+      AdminTrustSaved.onSaved?.call();
     } else if (_serverKey != key) {
       AppLogger.warning('TRUST_KEY_CHANGED',
           detail: 'kept=${_tail(_serverKey!)} new=${_tail(key)}');

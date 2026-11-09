@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:locallink/core/network/tls_pin_243.dart';
 
 /// Central security policy for LocalLink's local-only server endpoints.
 ///
@@ -19,7 +20,9 @@ class SecurityPolicy {
 
   static const int maxServerAddressLength = 255;
 
-  static Uri normalizeServerUri(String value) {
+  /// Bundle 243: [tls243] (default on) moves a plain-HTTP address of the
+  /// pinned server to its HTTPS port while the pin is active.
+  static Uri normalizeServerUri(String value, {bool tls243 = true}) {
     final raw = value.trim();
     if (raw.isEmpty || raw.length > maxServerAddressLength) {
       throw const FormatException('Server address is required');
@@ -48,6 +51,10 @@ class SecurityPolicy {
         'LinkUp server must use a private, link-local, loopback, or explicitly local hostname',
       );
     }
+    if (tls243 && uri.scheme == 'http') {
+      final up = TlsPin243.upgrade(Uri(scheme: 'http', host: uri.host, port: uri.hasPort ? uri.port : null));
+      if (up.scheme == 'https') return up;
+    }
     if (uri.scheme == 'http' && !allowInsecureHttp) {
       throw const FormatException(
         'Plain HTTP is disabled in release builds. Configure HTTPS for release builds.',
@@ -72,7 +79,7 @@ class SecurityPolicy {
       throw const FormatException('Resource reference is required');
     final candidate = Uri.tryParse(raw);
     final resolved = candidate != null && candidate.hasScheme
-        ? candidate
+        ? TlsPin243.upgrade(candidate) // Bundle 243
         : base.resolve(raw);
     if (resolved.scheme != base.scheme ||
         resolved.host.toLowerCase() != base.host.toLowerCase() ||

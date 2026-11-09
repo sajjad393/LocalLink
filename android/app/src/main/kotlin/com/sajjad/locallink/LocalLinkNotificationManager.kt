@@ -269,7 +269,12 @@ object LocalLinkNotificationManager {
         // Bundle 141: no initials disc; the left logo glyph stays the small icon.
         // Bundle 204 (mock 204 A8, approved): a friend's picture on the right
         // when the app gives one (friends only; no picture = nothing there).
+        // Bundle 242: no picture (private / none) = a letter circle in the
+        // app's avatar colours, from the phone only (no network).
         circlePicture(avatarPath)?.let { builder.setLargeIcon(it) }
+        if (avatarPath.isNullOrBlank() || !java.io.File(avatarPath).exists()) {
+            letterCircle(initials, title)?.let { builder.setLargeIcon(it) }
+        }
 
         val image = loadImage(imagePath)
         if (image != null && visibility == 1) {
@@ -716,6 +721,37 @@ object LocalLinkNotificationManager {
                 android.graphics.Rect(0, 0, out, out),
                 paint,
             )
+            result
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Bundle 242: same colours as LocalLinkAvatarColor.forName (Dart). */
+    private val avatarPalette = intArrayOf(
+        0xFF1FD7D4.toInt(), 0xFF7C6BF0.toInt(), 0xFF2F6FF6.toInt(), 0xFFE74BC8.toInt(),
+        0xFF2BA0F0.toInt(), 0xFF8E58F5.toInt(), 0xFF00A8B5.toInt(), 0xFFD95FA0.toInt(),
+    )
+
+    private fun letterCircle(initials: String, name: String): Bitmap? {
+        val letters = initials.trim().take(2).uppercase()
+        if (letters.isEmpty()) return null
+        return try {
+            var hash = 0
+            for (c in name.trim()) hash = (hash * 31 + c.code) and 0x7FFFFFFF
+            val color = if (name.isBlank()) avatarPalette[0] else avatarPalette[hash % avatarPalette.size]
+            val out = 192
+            val result = Bitmap.createBitmap(out, out, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(result)
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            paint.color = color
+            canvas.drawCircle(out / 2f, out / 2f, out / 2f, paint)
+            paint.color = android.graphics.Color.WHITE
+            paint.textAlign = android.graphics.Paint.Align.CENTER
+            paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
+            paint.textSize = if (letters.length > 1) out * 0.38f else out * 0.46f
+            val y = out / 2f - (paint.descent() + paint.ascent()) / 2f
+            canvas.drawText(letters, out / 2f, y, paint)
             result
         } catch (_: Exception) {
             null

@@ -801,7 +801,33 @@ class LocalLinkTransportService : Service() {
         return root
     }
 
+    /** Bundle 239 (S6): link check counts, one LINK_AUTH_DAY line per day.
+     *  Strict mode stays OFF (it would break offline first contact). */
+    private val linkAuthDayLock = Any()
+    private var linkAuthDay = ""
+    private var linkAuthVerifiedN = 0
+    private var linkAuthLegacyN = 0
+    private var linkAuthRejectedN = 0
+    private fun countLinkAuthDay(verdict: MeshLinkAuth.Verdict) {
+        try {
+            val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+            synchronized(linkAuthDayLock) {
+                if (linkAuthDay.isNotEmpty() && linkAuthDay != today) {
+                    Log.i("LINK_AUTH_DAY", "day=$linkAuthDay verified=$linkAuthVerifiedN legacy=$linkAuthLegacyN rejected=$linkAuthRejectedN")
+                    linkAuthVerifiedN = 0; linkAuthLegacyN = 0; linkAuthRejectedN = 0
+                }
+                linkAuthDay = today
+                when (verdict) {
+                    MeshLinkAuth.Verdict.VERIFIED -> linkAuthVerifiedN++
+                    MeshLinkAuth.Verdict.LEGACY -> linkAuthLegacyN++
+                    MeshLinkAuth.Verdict.REJECT -> linkAuthRejectedN++
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
     private fun noteLinkAuth(peer: String, side: String, decision: MeshLinkAuth.Decision) {
+        countLinkAuthDay(decision.verdict)
         when (decision.verdict) {
             MeshLinkAuth.Verdict.VERIFIED -> {
                 if (linkVerified.add(peer)) persistState()

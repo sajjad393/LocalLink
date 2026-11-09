@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:locallink/core/security/security_code_245.dart';
+import 'package:locallink/features/directory/presentation/security_code_screen.dart';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/storage/presentation/media_message_actions.dart';
@@ -820,6 +822,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
       // Bundle 201 (F, mock ST S3): "Connected by …".
       wayCard: PresenceWayCard(deviceId: device.id),
+      showSecurity: SecurityCode245.instance.bound, // Bundle 245
+      securityChanged: SecurityCode245.instance.pendingFor(device.id) != null,
     );
     if (!mounted || choice == null) return;
     switch (choice) {
@@ -831,7 +835,52 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         await _block(device);
       case ChatInfoChoice.unblock:
         await _unblock(device);
+      case ChatInfoChoice.security:
+        await _openSecurityCode245(device);
     }
+  }
+
+  /// Bundle 245 (audit S7).
+  Future<void> _openSecurityCode245(Device device) async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => SecurityCodeScreen(deviceId: device.id, name: _peerName(device)),
+    ));
+  }
+
+  /// Bundle 245 (audit S7): "<name>'s security code changed" under the bar.
+  Widget _keyChangeBanner245(BuildContext context, Device device) {
+    return ListenableBuilder(
+      listenable: SecurityCode245.instance,
+      builder: (context, _) {
+        if (SecurityCode245.instance.pendingFor(device.id) == null) {
+          return const SizedBox.shrink();
+        }
+        final colors = Theme.of(context).colorScheme;
+        return Material(
+          key: const ValueKey('chat_key_change_245'),
+          color: colors.surfaceContainerHigh,
+          child: InkWell(
+            onTap: () => _openSecurityCode245(device),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+              child: Row(children: [
+                Icon(Icons.gpp_maybe_outlined, size: 18, color: colors.error),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text("${_peerName(device)}'s security code changed.",
+                      style: TextStyle(fontSize: 14, color: colors.onSurface)),
+                ),
+                TextButton(
+                  key: const ValueKey('chat_key_change_check'),
+                  onPressed: () => _openSecurityCode245(device),
+                  child: const Text('Check'),
+                ),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   /// Bundle 196 (10.3 / 12.6): the bar that replaces the message box.
@@ -1123,6 +1172,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             children: [
               if (state.error != null)
                 LocalLinkInlineError(message: friendlyErrorMessage(state.error!), onRetry: () => widget.controller.load()),
+              _keyChangeBanner245(context, device), // Bundle 245
               Expanded(
                 // Loading no longer blanks the whole chat: the shimmer only
                 // shows for the very first paint (no messages at all).

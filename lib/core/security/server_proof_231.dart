@@ -44,6 +44,11 @@ abstract final class ServerProof231 {
           String serverId, String fingerprint, String nonce, String ts) =>
       'll-pair-v1|$serverId|$fingerprint|$nonce|$ts';
 
+  /// Bundle 243 (S3): the v2 proof also covers the HTTPS port + cert hash.
+  static String messageV2(String serverId, String fingerprint, String nonce,
+          String ts, int tlsPort, String tlsSha) =>
+      'll-pair-v2|$serverId|$fingerprint|$nonce|$ts|$tlsPort|$tlsSha';
+
   static List<int>? _decode(String value) {
     try {
       return base64Url.decode(base64Url.normalize(value.trim()));
@@ -62,7 +67,10 @@ abstract final class ServerProof231 {
     }
     try {
       return await Ed25519().verify(
-        utf8.encode(message(info.serverId, info.fingerprint, nonce, info.proofTs)),
+        utf8.encode(info.proofVersion == 2
+            ? messageV2(info.serverId, info.fingerprint, nonce, info.proofTs,
+                info.tlsPort, info.tlsCertSha256)
+            : message(info.serverId, info.fingerprint, nonce, info.proofTs)),
         signature: Signature(sig,
             publicKey: SimplePublicKey(pub, type: KeyPairType.ed25519)),
       );

@@ -34,6 +34,8 @@ class IdentityTrustService {
   Future<IdentityTrustState> state(String deviceId) async =>
       identityTrustStateFromString(await secureStorage.read(key: _key(deviceId)));
 
+  /// Bundle 245 (S7): the user compared the Security code and it matched.
+  Future<void> markVerified(String deviceId) async => secureStorage.write(key: _key(deviceId), value: IdentityTrustState.verified.value);
   Future<void> markChanged(String deviceId) async => secureStorage.write(key: _key(deviceId), value: IdentityTrustState.changed.value);
   Future<void> markRevoked(String deviceId) async => secureStorage.write(key: _key(deviceId), value: IdentityTrustState.revoked.value);
 

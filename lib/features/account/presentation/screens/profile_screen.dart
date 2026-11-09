@@ -34,6 +34,7 @@ import 'package:locallink/features/authentication/domain/authentication_reposito
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/features/transfer/presentation/screens/account_transfer_screen.dart';
+import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
 
 class ProfileScreen extends StatefulWidget {
   final AccountRepositoryContract accountRepository;
@@ -274,12 +275,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.pop(context);
               final code = await _rotateRecovery();
               if (code == null || !mounted) return;
+              // Bundle 235 addition (mock v3): the code hidden in one box
+              // (Show / Copy), "Save on WhatsApp" closes after WhatsApp.
               await showDialog<void>(
                 context: context,
-                builder: (_) => AlertDialog(
+                builder: (dialogContext) => AlertDialog(
+                  key: const ValueKey('profile235-new-code'),
+                  icon: const Icon(Icons.key_outlined),
                   title: const Text('New recovery code'),
-                  content: SelectableText(code),
-                  actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        RecoveryCodeBox235(code: code, compact: true),
+                        const SizedBox(height: 14),
+                        const RecoveryCodeNotes235(),
+                        const SizedBox(height: 8),
+                        SaveOnWhatsApp235(
+                          buttonKey: const ValueKey('profile235-whatsapp'),
+                          code: code,
+                          username: widget.store.username?.trim() ?? '',
+                          height: 48,
+                          onSaved: () async {
+                            if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Close')),
+                  ],
                 ),
               );
             },

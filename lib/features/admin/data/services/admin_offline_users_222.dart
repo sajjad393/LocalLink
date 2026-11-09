@@ -49,6 +49,39 @@ abstract final class AdminOfflineUsers222 {
   /// The offline rows (Admin → Users listens).
   static final ValueNotifier<List<OfflineUser222>> rows = ValueNotifier(const []);
 
+  /// Bundle 238: rows not seen for [hideAfter], or whose phone now has a
+  /// server account (a cleared phone that joined again). Only hidden on the
+  /// list ("Show hidden (N)"); nothing is deleted.
+  static final ValueNotifier<List<OfflineUser222>> hidden = ValueNotifier(const []);
+  static const Duration hideAfter = Duration(days: 30);
+
+  /// Bundle 238 (pure, tests): which rows are hidden. [directory] is the
+  /// phone's directory (user_id, device_id); a phone that now shows a
+  /// non-offline account is a cleared phone, so its old offline row hides.
+  static (List<OfflineUser222>, List<OfflineUser222>) split238(
+      List<OfflineUser222> all,
+      {required List<Map<String, Object?>> directory, DateTime? now}) {
+    final t0 = (now ?? DateTime.now()).toUtc();
+    final rejoined = <String>{};
+    for (final r in directory) {
+      final id = '${r['user_id'] ?? ''}';
+      final dev = '${r['device_id'] ?? ''}';
+      if (id.isNotEmpty && dev.isNotEmpty && !id.startsWith('offline_')) rejoined.add(dev);
+    }
+    final shown = <OfflineUser222>[];
+    final gone = <OfflineUser222>[];
+    for (final u in all) {
+      final t = DateTime.tryParse(u.seenAt);
+      final old = t != null && t0.difference(t.toUtc()) > hideAfter;
+      if (old || (u.deviceId.isNotEmpty && rejoined.contains(u.deviceId))) {
+        gone.add(u);
+      } else {
+        shown.add(u);
+      }
+    }
+    return (shown, gone);
+  }
+
   /// Set by AppDependencies; reads the phone's own data.
   static LocalStore? _store;
   static Future<bool> Function(String deviceId)? _carries;
@@ -63,6 +96,7 @@ abstract final class AdminOfflineUsers222 {
     _store = null;
     _carries = null;
     rows.value = const [];
+    hidden.value = const [];
   }
 
   /// "Wi-Fi Direct" / "mesh" / "router" / "nearby" from the phone's link
@@ -154,6 +188,19 @@ abstract final class AdminOfflineUsers222 {
     }
   }
 
+  /// Bundle 238: every directory row (user id + phone id), to see a phone
+  /// that now has a server account. Empty on any error.
+  static Future<List<Map<String, Object?>>> _allDirectory238(LocalStore s) async {
+    try {
+      final rows = await s.directoryProfiles();
+      return [
+        for (final r in rows) {'user_id': r['user_id'], 'device_id': r['device_id']}
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   static Map<String, String> parseMoves(String? raw) {
     final out = <String, String>{};
     try {
@@ -217,8 +264,12 @@ abstract final class AdminOfflineUsers222 {
         selfUserId: s.accountId ?? '',
         carried: carried,
       );
-      rows.value = List.unmodifiable(picked);
-      AppLogger.info('USERS_LOCAL_ROWS', detail: 'n=${picked.length} server=${server ? 'on' : 'off'}');
+      // Bundle 238: old rows / cleared phones go under "Show hidden (N)".
+      final (shown, gone) = split238(picked, directory: await _allDirectory238(s));
+      rows.value = List.unmodifiable(shown);
+      hidden.value = List.unmodifiable(gone);
+      AppLogger.info('USERS_LOCAL_ROWS',
+          detail: 'n=${shown.length} server=${server ? 'on' : 'off'}${gone.isEmpty ? '' : ' hidden=${gone.length}'}');
     } catch (e) {
       AppLogger.warning('USERS_LOCAL_ROWS_FAIL', detail: '$e');
     }

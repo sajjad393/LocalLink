@@ -78,12 +78,19 @@ class WaitingBlockState {
   final int tries;
   final int lastTryMs;
 
+  /// Bundle 238: the fast tries (50 / 7 days) ran out with no "got it":
+  /// the state is kept and tried slowly (every 30 min, and when the link or
+  /// the server comes back) instead of being dropped - a block or unblock
+  /// must reach the other phone (212 rule).
+  final bool slow;
+
   const WaitingBlockState({
     required this.userId,
     required this.state,
     required this.ts,
     this.tries = 0,
     this.lastTryMs = 0,
+    this.slow = false,
   });
 
   WaitingBlockState tried(int nowMs) => WaitingBlockState(
@@ -91,7 +98,12 @@ class WaitingBlockState {
       state: state,
       ts: ts,
       tries: tries + 1,
-      lastTryMs: nowMs);
+      lastTryMs: nowMs,
+      slow: slow);
+
+  /// Bundle 238: switch to the slow tries (the try count starts again).
+  WaitingBlockState toSlow(int nowMs) => WaitingBlockState(
+      userId: userId, state: state, ts: ts, lastTryMs: nowMs, slow: true);
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'u': userId,
@@ -99,6 +111,7 @@ class WaitingBlockState {
         'ts': ts,
         'n': tries,
         'last': lastTryMs,
+        if (slow) 'slow': 1,
       };
 
   static WaitingBlockState? fromJson(Object? raw) {
@@ -117,6 +130,7 @@ class WaitingBlockState {
       ts: ts,
       tries: int.tryParse(raw['n']?.toString() ?? '') ?? 0,
       lastTryMs: int.tryParse(raw['last']?.toString() ?? '') ?? 0,
+      slow: raw['slow']?.toString() == '1',
     );
   }
 
@@ -153,7 +167,22 @@ class BlockStateResendPolicy {
   static const int lifetimeMs = 7 * 24 * 60 * 60 * 1000;
   static const int maxWaiting = 50;
 
-  static BlockStateStep step(WaitingBlockState w, {required int nowMs}) {
+  /// Bundle 238: slow tries after the fast ones ran out.
+  static const int slowGapMs = 30 * 60 * 1000;
+  static const int slowLifetimeMs = 90 * 24 * 60 * 60 * 1000;
+
+  /// [linkBack] = the link or the server just came back: a slow state is
+  /// tried at once (still never more than once per [minGapMs]).
+  static BlockStateStep step(WaitingBlockState w,
+      {required int nowMs, bool linkBack = false}) {
+    if (w.slow) {
+      if (nowMs - w.ts >= slowLifetimeMs) return BlockStateStep.stopTimeout;
+      final gap = linkBack ? minGapMs : slowGapMs;
+      if (w.lastTryMs > 0 && nowMs - w.lastTryMs < gap) {
+        return BlockStateStep.wait;
+      }
+      return BlockStateStep.send;
+    }
     if (nowMs - w.ts >= lifetimeMs) return BlockStateStep.stopTimeout;
     if (w.tries >= maxTries) return BlockStateStep.stopMaxTries;
     if (w.lastTryMs > 0 && nowMs - w.lastTryMs < minGapMs) {

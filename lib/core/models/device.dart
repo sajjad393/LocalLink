@@ -8,8 +8,12 @@ enum DeviceNetworkStatus {
 DeviceNetworkStatus deviceNetworkStatusFromString(String? value) {
   switch (value) {
     case 'green': return DeviceNetworkStatus.serverConnected;
+    // Bundle 239 (S5 A): the server sends 'yellow' for "server connected".
+    case 'yellow': return DeviceNetworkStatus.serverConnected;
     case 'orange': return DeviceNetworkStatus.wifiDirect;
-    case 'unknown': return DeviceNetworkStatus.unknown;
+    case 'unknown':
+    case 'gray': // Bundle 239: our own saved value for unknown
+      return DeviceNetworkStatus.unknown;
     default: return DeviceNetworkStatus.disconnected;
   }
 }

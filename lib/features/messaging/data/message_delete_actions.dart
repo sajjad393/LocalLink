@@ -2,6 +2,7 @@ import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/message_delete_book.dart';
+import 'package:locallink/core/services/person_phones_237.dart';
 
 /// Bundle 197a: the local half of every delete (1-to-1 and groups), shared
 /// by the direct and the group messaging services.
@@ -131,6 +132,17 @@ class MessageDeleteActions {
         ? MessageDeleteBook.groupKey(chatId)
         : MessageDeleteBook.directKey(chatId);
     await book.clearChat(key, keepRow: keepRow);
+    // Bundle 237: the friend's old phones are the same chat - cleared too,
+    // so an old copy can never come back under an old phone id.
+    if (!group && !PersonPhones237.instance.isEmpty) {
+      try {
+        for (final p in await store.phonesOfPerson237(chatId)) {
+          if (p != chatId) {
+            await book.clearChat(MessageDeleteBook.directKey(p), keepRow: false);
+          }
+        }
+      } catch (_) {}
+    }
     final ids = group
         ? await store.clearableGroupMessageIds(chatId)
         : await store.clearableDirectMessageIds(chatId);

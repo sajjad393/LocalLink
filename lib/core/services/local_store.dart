@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:locallink/core/security/security_code_245.dart';
+import 'package:locallink/core/network/tls_pin_243.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/core/models/group_event.dart';
@@ -32,6 +34,7 @@ import 'package:locallink/core/models/message.dart';
 import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/core/models/message_search_hit.dart';
 import 'package:locallink/core/services/message_delete_book.dart';
+import 'package:locallink/core/services/person_phones_237.dart';
 import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/models/profile.dart';
@@ -200,6 +203,9 @@ class LocalStore {
     await _loadSettings();
     // Bundle 197a: deleted ids + cleared chats (settings table, no DB change).
     await MessageDeleteBook.instance.load(read: readSetting, write: writeSetting);
+    // Bundle 237: friends' old phone ids (settings table, no DB change).
+    await PersonPhones237.instance.load(read: readSetting, write: writeSetting);
+    await SecurityCode245.instance.load(read: readSetting, write: writeSetting); // Bundle 245
     // Bundle 197b: small pictures, Gallery links, removed / saved media.
     await _loadMediaBook();
     await _migrateLegacySharedPreferences();
@@ -1443,7 +1449,8 @@ class LocalStore {
       String? token,
       String? accountId,
       String? username}) async {
-    _serverAddress = server.trim();
+    // Bundle 243: always save the plain address (HTTPS is applied on use).
+    _serverAddress = TlsPin243.downgrade(server.trim());
     _deviceId = id.trim();
     _deviceName = name.trim();
     await _putSetting('server_address', _serverAddress!);
@@ -1849,8 +1856,27 @@ class LocalStore {
       row[key] = v == true || v?.toString() == '1' ? 1 : 0;
     }
     row['synced_at'] ??= DateTime.now().toUtc().toIso8601String();
+    // Bundle 237: the same person on another phone -> keep the old phone id.
+    final uid = row['user_id']?.toString() ?? '';
+    final did = row['device_id']?.toString() ?? '';
+    var oldDevice = '';
+    if (uid.isNotEmpty && did.isNotEmpty) {
+      final old = await _db.query('directory_profiles',
+          columns: ['device_id'], where: 'user_id=?', whereArgs: [uid], limit: 1);
+      oldDevice = old.isEmpty ? '' : old.first['device_id']?.toString() ?? '';
+    }
     await _db.insert('directory_profiles', row,
         conflictAlgorithm: ConflictAlgorithm.replace);
+    if (did.isNotEmpty) {
+      try {
+        await PersonPhones237.instance.forgetForOthers(did, userId: uid);
+        if (oldDevice.isNotEmpty && oldDevice != did && !uid.startsWith('offline_')) {
+          await _personMoved237(uid, oldDevice, did, 'card');
+        }
+      } catch (e) {
+        AppLogger.warning('PERSON_PHONE_237_FAILED', detail: '$e');
+      }
+    }
   }
 
   Future<Map<String, dynamic>?> directoryProfile(String userId) async {
@@ -1878,6 +1904,14 @@ class LocalStore {
     final rows = await _db.query('directory_profiles',
         where: 'device_id=?', whereArgs: [deviceId], limit: 1);
     return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+  }
+
+  /// Bundle 235: a new account's card from a phone that has another
+  /// account goes away (the contact list and chats are not touched).
+  Future<void> dropDirectoryProfile235(String userId) async {
+    if (userId.trim().isEmpty) return;
+    await _db.delete('directory_profiles',
+        where: 'user_id=?', whereArgs: [userId.trim()]);
   }
 
   /// Bundle 218c: every directory row of one phone (her offline id and her
@@ -2082,9 +2116,16 @@ class LocalStore {
   static const int directorySearchLimit = 200;
   Future<List<Map<String, dynamic>>> directoryProfiles() async =>
       _db.query('directory_profiles', orderBy: 'updated_at DESC');
+  /// Bundle 237: adding someone who is already a contact keeps the name you
+  /// gave them, the private mark and the first "added" time (only the phone
+  /// id changes, and the old phone id is remembered for ONE chat). A new
+  /// name is used only when one is typed.
   Future<void> addContact(String userId, String deviceId,
-          {String customName = ''}) async =>
-      _db.insert(
+      {String customName = ''}) async {
+    final rows = await _db.query('contacts',
+        columns: ['device_id'], where: 'user_id=?', whereArgs: [userId], limit: 1);
+    if (rows.isEmpty) {
+      await _db.insert(
           'contacts',
           {
             'user_id': userId,
@@ -2093,6 +2134,162 @@ class LocalStore {
             'custom_name': customName.trim(),
           },
           conflictAlgorithm: ConflictAlgorithm.replace);
+      return;
+    }
+    final oldDevice = rows.first['device_id']?.toString() ?? '';
+    final update = <String, Object?>{};
+    if (deviceId.isNotEmpty) update['device_id'] = deviceId;
+    if (customName.trim().isNotEmpty) update['custom_name'] = customName.trim();
+    if (update.isNotEmpty) {
+      await _db.update('contacts', update, where: 'user_id=?', whereArgs: [userId]);
+    }
+    if (oldDevice.isNotEmpty &&
+        deviceId.isNotEmpty &&
+        oldDevice != deviceId &&
+        !userId.startsWith('offline_')) {
+      try {
+        await _personMoved237(userId, oldDevice, deviceId, 'contact');
+      } catch (e) {
+        AppLogger.warning('PERSON_PHONE_237_FAILED', detail: '$e');
+      }
+    }
+  }
+
+  // ---------------------------------------------------------- Bundle 237
+  static String _short237(String id) =>
+      id.length > 6 ? id.substring(id.length - 6) : id;
+
+  /// [userId] moved from [oldDevice] to [newDevice]: remember the old phone
+  /// and send my waiting messages to the new phone (once).
+  Future<void> _personMoved237(
+      String userId, String oldDevice, String newDevice, String via) async {
+    final changed = await PersonPhones237.instance
+        .remember(userId, oldDevice, currentDeviceId: newDevice);
+    if (!changed) return;
+    AppLogger.info('PERSON_PHONE_237',
+        detail: 'user=${_short237(userId)} old=${_short237(oldDevice)} '
+            'new=${_short237(newDevice)} via=$via');
+    await _resendQueued237(oldDevice, newDevice);
+  }
+
+  /// The server contacts list (`past_device_ids`): moves from before 237.
+  Future<void> rememberServerPastPhones237(
+      String userId, List<String> pastDeviceIds, String currentDeviceId) async {
+    if (userId.isEmpty || pastDeviceIds.isEmpty || userId.startsWith('offline_')) {
+      return;
+    }
+    try {
+      final changed = await PersonPhones237.instance.rememberAll(
+          userId, pastDeviceIds, currentDeviceId: currentDeviceId);
+      if (!changed) return;
+      AppLogger.info('PERSON_PHONE_237',
+          detail: 'user=${_short237(userId)} old=${pastDeviceIds.length} '
+              'new=${_short237(currentDeviceId)} via=server');
+      if (currentDeviceId.isNotEmpty) {
+        for (final old in pastDeviceIds) {
+          await _resendQueued237(old, currentDeviceId);
+        }
+      }
+    } catch (e) {
+      AppLogger.warning('PERSON_PHONE_237_FAILED', detail: '$e');
+    }
+  }
+
+  /// My messages still waiting for [oldDevice] go to [newDevice] instead
+  /// (sealed again for the new phone on the next send try).
+  Future<void> _resendQueued237(String oldDevice, String newDevice) async {
+    final self = _deviceId;
+    if (self == null || oldDevice.isEmpty || newDevice.isEmpty || oldDevice == newDevice) {
+      return;
+    }
+    final rows = await _db.query('outbox',
+        columns: ['id'],
+        where: "recipient_id=? AND status NOT IN ('delivered','direct_delivered','server_accepted')",
+        whereArgs: [oldDevice]);
+    if (rows.isEmpty) return;
+    final ids = [
+      for (final r in rows)
+        if ((r['id']?.toString() ?? '').isNotEmpty) r['id'].toString(),
+    ];
+    await _db.transaction((txn) async {
+      for (final id in ids) {
+        await txn.update('outbox', {'recipient_id': newDevice, 'network_body': null},
+            where: 'id=?', whereArgs: [id]);
+        await txn.update('messages', {'recipient_id': newDevice},
+            where: 'id=? AND sender_id=?', whereArgs: [id, self]);
+      }
+    });
+    AppLogger.info('PERSON_PHONE_RESEND_237',
+        detail: 'old=${_short237(oldDevice)} new=${_short237(newDevice)} count=${ids.length}');
+  }
+
+  /// The person behind an old phone id (null = not an old phone, or the
+  /// phone is now somebody's current phone).
+  Future<String?> personOfPastPhone237(String deviceId) async {
+    final book = PersonPhones237.instance;
+    if (book.isEmpty || deviceId.isEmpty) return null;
+    final owner = book.ownerOf(deviceId);
+    if (owner == null) return null;
+    if (await _isOtherPersonsCurrent237(deviceId, owner)) return null;
+    return owner;
+  }
+
+  Future<bool> _isOtherPersonsCurrent237(String deviceId, String userId) async {
+    final rows = await _db.query('directory_profiles',
+        columns: ['user_id'], where: 'device_id=?', whereArgs: [deviceId]);
+    for (final r in rows) {
+      final u = r['user_id']?.toString() ?? '';
+      if (u.isNotEmpty && u != userId && !u.startsWith('offline_')) return true;
+    }
+    return false;
+  }
+
+  /// Every phone id of the person behind [deviceId] (current + old), always
+  /// including [deviceId] itself. Just [deviceId] when nothing is known.
+  Future<Set<String>> phonesOfPerson237(String deviceId) async {
+    final out = <String>{deviceId};
+    final book = PersonPhones237.instance;
+    if (book.isEmpty || deviceId.isEmpty) return out;
+    try {
+      var user = (await directoryProfileByDeviceId(deviceId))?['user_id']?.toString() ?? '';
+      if (user.isEmpty) {
+        final c = await _db.query('contacts',
+            columns: ['user_id'], where: 'device_id=?', whereArgs: [deviceId], limit: 1);
+        user = c.isEmpty ? '' : c.first['user_id']?.toString() ?? '';
+      }
+      if (user.isEmpty) user = await personOfPastPhone237(deviceId) ?? '';
+      if (user.isEmpty) return out;
+      final past = book.pastOf(user);
+      if (past.isEmpty && !book.isPast(deviceId)) return out;
+      final current = (await directoryProfile(user))?['device_id']?.toString() ?? '';
+      if (current.isNotEmpty) out.add(current);
+      for (final p in past) {
+        if (p.isEmpty || out.contains(p)) continue;
+        if (await _isOtherPersonsCurrent237(p, user)) continue;
+        out.add(p);
+      }
+    } catch (_) {}
+    return out;
+  }
+
+  /// The phone to use now for [deviceId]: the person's current phone when
+  /// [deviceId] is one of their old phones, else [deviceId].
+  Future<String> currentPhone237(String deviceId) async {
+    final owner = await personOfPastPhone237(deviceId);
+    if (owner == null) return deviceId;
+    final current = (await directoryProfile(owner))?['device_id']?.toString() ?? '';
+    return current.isEmpty ? deviceId : current;
+  }
+
+  /// `(sender=me AND recipient IN phones) OR (sender IN phones AND recipient=me)`.
+  static ({String where, List<Object?> args}) phonesWhere237(String self, Set<String> phones) {
+    final ids = phones.toList();
+    final q = List.filled(ids.length, '?').join(',');
+    return (
+      where: '((sender_id=? AND recipient_id IN ($q)) OR (sender_id IN ($q) AND recipient_id=?))',
+      args: [self, ...ids, ...ids, self],
+    );
+  }
 
   /// Bundle 111: rename (or clear, with an empty string) the local custom
   /// name of a contact. Local-only by design.
@@ -2938,7 +3135,25 @@ class LocalStore {
       FROM messages m
       WHERE m.sender_id=? OR m.recipient_id=?
       GROUP BY peer''', [self, self, self]);
-    return _withAttachmentTypes(rows, 'peer', 'message_attachments', 'message_id');
+    final out = await _withAttachmentTypes(rows, 'peer', 'message_attachments', 'message_id');
+    if (PersonPhones237.instance.isEmpty || out.isEmpty) return out;
+    // Bundle 237: one person = the newest message of all his phones, shown
+    // under each of his phone ids (the Chats row may use any of them).
+    final merged = Map<String, ChatPreview>.from(out);
+    for (final key in out.keys) {
+      final phones = await phonesOfPerson237(key);
+      if (phones.length < 2) continue;
+      ChatPreview? best;
+      for (final p in phones) {
+        final c = out[p];
+        if (c != null && (best == null || c.createdAt.isAfter(best.createdAt))) best = c;
+      }
+      if (best == null) continue;
+      for (final p in phones) {
+        merged[p] = best;
+      }
+    }
+    return merged;
   }
 
   /// Bundle 163 (4.7): last message per group (group id -> preview).
@@ -3024,6 +3239,14 @@ class LocalStore {
     }
     // Bundle 197a: Clear chat keeps the empty row (Delete chat does not).
     peers.addAll(MessageDeleteBook.instance.keptEmptyDirectPeers());
+    // Bundle 237: a chat with a friend's old phone is also a chat with his
+    // current phone (the Chats list shows ONE row for him).
+    if (!PersonPhones237.instance.isEmpty) {
+      for (final p in peers.toList()) {
+        final now = await currentPhone237(p);
+        if (now != p) peers.add(now);
+      }
+    }
     return peers;
   }
 
@@ -3130,10 +3353,12 @@ class LocalStore {
   Future<List<String>> clearableDirectMessageIds(String peerId) async {
     final self = _deviceId;
     if (self == null || peerId.isEmpty) return const [];
+    // Bundle 237: Clear / Delete chat covers all the friend's phones.
+    final w = phonesWhere237(self, await phonesOfPerson237(peerId));
     final rows = await _db.query('messages',
         columns: ['id', 'sender_id', 'status'],
-        where: '(sender_id=? AND recipient_id=?) OR (sender_id=? AND recipient_id=?)',
-        whereArgs: [self, peerId, peerId, self]);
+        where: w.where,
+        whereArgs: w.args);
     return [
       for (final r in rows)
         if (!(r['sender_id']?.toString() == self &&
@@ -3207,11 +3432,12 @@ class LocalStore {
   Future<List<Message>> messagesFor(String otherId) async {
     final self = _deviceId;
     if (self == null) return [];
+    // Bundle 237: the friend's old phones too (ONE chat per person).
+    final w = phonesWhere237(self, await phonesOfPerson237(otherId));
     final rows = await _db.query(
       'messages',
-      where:
-          '((sender_id=? AND recipient_id=?) OR (sender_id=? AND recipient_id=?))',
-      whereArgs: [self, otherId, otherId, self],
+      where: w.where,
+      whereArgs: w.args,
       orderBy: 'created_at ASC, id ASC',
     );
     final out = <Message>[];
@@ -3537,10 +3763,13 @@ class LocalStore {
   Future<List<Message>> unreadMessagesForConversation(String otherId) async {
     final self = _deviceId;
     if (self == null || otherId.isEmpty) return [];
+    // Bundle 237: unread from all the friend's phones.
+    final phones = (await phonesOfPerson237(otherId)).toList();
+    final q = List.filled(phones.length, '?').join(',');
     final rows = await _db.query(
       'messages',
-      where: 'sender_id=? AND recipient_id=? AND is_read=0',
-      whereArgs: [otherId, self],
+      where: 'sender_id IN ($q) AND recipient_id=? AND is_read=0',
+      whereArgs: [...phones, self],
       orderBy: 'created_at ASC, id ASC',
     );
     final out = <Message>[];

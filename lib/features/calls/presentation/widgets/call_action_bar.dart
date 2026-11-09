@@ -8,8 +8,10 @@ import 'package:locallink/features/calls/presentation/widgets/call_palette.dart'
 ///
 /// Incoming ringing: green Answer + red Decline circles with labels.
 /// In-call (identical on both the caller and the receiver side): a dark pill
-/// with mute and speaker and a large red End button. (Video is temporarily
-/// hidden from the UI — bundle 97; the plumbing stays dormant for later.)
+/// with mute and speaker and a large red End button.
+/// Bundle 248: the camera button is back (hidden since bundle 97) for a
+/// connected nearby call (Wi-Fi Direct / LAN). The receive side ("Switch to
+/// video call?") is unchanged.
 class CallActionBar extends StatelessWidget {
   final CallBloc controller;
   final CallSession session;
@@ -97,6 +99,17 @@ class CallActionBar extends StatelessWidget {
               tooltip: session.speakerOn ? 'Speaker off' : 'Speaker on',
               onPressed: () => _run(controller.toggleSpeaker),
             ),
+            if (showVideoButton248(session))
+              _CallToggleButton(
+                key: const Key('call_video_toggle_248'),
+                icon: session.videoEnabled
+                    ? Icons.videocam_rounded
+                    : Icons.videocam_off_rounded,
+                active: session.videoEnabled,
+                tooltip: session.videoEnabled ? 'Turn camera off' : 'Turn camera on',
+                // Errors show as the call screen's snackbar (CallBloc error).
+                onPressed: () => _run(controller.toggleVideo),
+              ),
             _CallCircleButton(
               icon: Icons.call_end_rounded,
               background: CallPalette.red,
@@ -111,6 +124,10 @@ class CallActionBar extends StatelessWidget {
     );
   }
 }
+
+/// Bundle 248: the camera button shows only in a connected nearby call.
+bool showVideoButton248(CallSession session) =>
+    session.state == CallState.connected && session.directMode && !session.isFinished;
 
 class _CallCircleButton extends StatelessWidget {
   final IconData icon;
@@ -167,6 +184,7 @@ class _CallToggleButton extends StatelessWidget {
   final Future<void> Function() onPressed;
 
   const _CallToggleButton({
+    super.key,
     required this.icon,
     required this.active,
     required this.tooltip,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/features/storage/presentation/storage_test_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -52,6 +53,22 @@ import 'package:locallink/features/admin/presentation/widgets/admin_version_card
 /// the tool menus (People / Network / Safety / System). Offline the menus
 /// become locked rows and open again by themselves when the server is
 /// back. The desktop-style shell is untouched for wide screens.
+/// Bundle 254 (21.4): the live way (PresenceHub, the same answer as the
+/// chat header) first; the saved device flags only as a backup.
+bool adminHubNearby254(String id, [PresenceHub? hub]) =>
+    (hub ?? PresenceHub.instance).statusOfDevice(id) == PresenceStatus.nearby;
+
+LinkTag? adminHubTag254(String id, [PresenceHub? hub]) {
+  final h = hub ?? PresenceHub.instance;
+  if (!adminHubNearby254(id, h)) return null;
+  return switch (h.wayOf(id)) {
+    PresenceWay.wifiDirect => LinkTag.wifiDirect,
+    PresenceWay.wifi => LinkTag.localWifi,
+    PresenceWay.mesh => LinkTag.mesh,
+    _ => null,
+  };
+}
+
 class AdminPanelScreen extends StatefulWidget {
   final LocalLinkApi api;
   final LocalStore store;
@@ -368,7 +385,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     return DateTime.now().toUtc().difference(at.toUtc()).inMinutes < 4;
   }
 
+  static bool _hubNearby(String id) => adminHubNearby254(id);
+  static LinkTag? _hubTag(String id) => adminHubTag254(id);
+
   LinkTag _tagFor(Device d) {
+    final hub = _hubTag(d.id);
+    if (hub != null) return hub;
     if (d.wifiDirectConnected) return LinkTag.wifiDirect;
     if (d.meshAvailable) return LinkTag.mesh;
     if (d.lanAvailable) return LinkTag.localWifi;
@@ -377,7 +399,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   }
 
   Set<String> get _blockedIds =>
-      {for (final r in _blocked) r['user_id']?.toString() ?? ''};
+      {for (final r in _blocked) r['user_id']?.toString() ?? ''}..remove('');
+
+  // Bundle 254 (21.4): blocked ids are USER ids; a device matches through
+  // its owner too.
+  bool _isBlockedDevice(String id) {
+    final ids = _blockedIds;
+    if (ids.contains(id)) return true;
+    final user = PresenceHub.instance.userOf(id) ?? '';
+    return user.isNotEmpty && ids.contains(user);
+  }
 
   int _hiddenDupes = 0;
   bool _mapLogged = false;
@@ -388,8 +419,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     final raw = [
       for (final d in _devices)
         if (!d.current &&
-            !_blockedIds.contains(d.id) &&
-            (d.wifiDirectConnected ||
+            !_isBlockedDevice(d.id) &&
+            (_hubNearby(d.id) ||
+                d.wifiDirectConnected ||
                 d.meshAvailable ||
                 d.lanAvailable ||
                 _recent(d)))
@@ -787,9 +819,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   }
 
   static String _offlineWay(List<Device> onLink) {
-    if (onLink.any((d) => d.wifiDirectConnected)) return 'Wi-Fi Direct';
-    if (onLink.any((d) => d.meshAvailable)) return 'Mesh';
-    if (onLink.any((d) => d.lanAvailable)) return 'Local Wi-Fi';
+    final hub = {for (final d in onLink) _hubTag(d.id)};
+    if (hub.contains(LinkTag.wifiDirect) || onLink.any((d) => d.wifiDirectConnected)) {
+      return 'Wi-Fi Direct';
+    }
+    if (hub.contains(LinkTag.mesh) || onLink.any((d) => d.meshAvailable)) return 'Mesh';
+    if (hub.contains(LinkTag.localWifi) || onLink.any((d) => d.lanAvailable)) return 'Local Wi-Fi';
     return 'No link';
   }
 

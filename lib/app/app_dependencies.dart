@@ -1,3 +1,7 @@
+import 'package:locallink/core/security/security_code_245.dart';
+import 'package:locallink/core/security/identity_trust_service.dart';
+import 'package:locallink/core/network/tls_pin_243.dart';
+import 'package:locallink/core/network/tls_upgrade_243.dart';
 import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/features/admin/data/services/version_rule_service.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_service.dart';
@@ -52,6 +56,10 @@ import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/core/services/websocket_service.dart';
 import 'package:locallink/features/authentication/data/repositories/authentication_repository.dart';
 import 'package:locallink/features/authentication/data/services/offline_account_sync_service.dart';
+import 'package:locallink/core/identity/dup_account_235.dart';
+import 'package:locallink/features/authentication/data/services/account_return_235.dart';
+import 'package:locallink/features/authentication/presentation/screens/confirm_account_235_screen.dart';
+import 'package:locallink/features/directory/data/services/duplicate_guard_235.dart';
 import 'package:locallink/features/authentication/data/services/join_carrier_222.dart';
 import 'package:locallink/features/admin/data/services/admin_offline_users_222.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_box.dart' show AdminActionBoxLock;
@@ -533,8 +541,11 @@ class AppDependencies {
     networkPolicySync = NetworkPolicySyncService(store, api, socket, httpClient: this.httpClient, wifiRadio: WifiRadioControlService());
     final directory = DirectoryRepository(store: store, api: api, transport: directTransport, crypto: crypto);
     directoryRepository = directory;
+    _bindSecurityCode245();
     // Bundle 218: the offline account just joined the server.
     OfflineAccountSyncService.onJoined218 = _onJoined218;
+    // Bundle 236 (B2): no saved password -> the saved password lock goes up.
+    OfflineAccountSyncService.lockRegister236 = api.registerWithLock236;
     // Bundle 204: friends' profile pictures that come Nearby.
     messaging.onProfilePhotoFile = directory.receivePhotoFile;
     pairing = PairingService(
@@ -543,6 +554,7 @@ class AppDependencies {
       directory: directoryRepository,
       transport: directTransport,
     );
+    _buildDuplicateGuard235(); // Bundle 235
     // Bundle 177 (7.8, 8.1): "X added you as a friend" with Remove / Block,
     // in the open app and the closed app alike.
     notifications.onFriendRemove = directoryRepository.removeContact;
@@ -1189,6 +1201,64 @@ class AppDependencies {
     );
   }
 
+  /// Bundle 235: one phone = one account (see DuplicateGuard235).
+  DuplicateGuard235? duplicateGuard235;
+  AccountReturn235? accountReturn235;
+  ConfirmAccountActions235? confirmAccount235;
+
+  void _buildDuplicateGuard235() {
+    final link = directTransport;
+    // Plain one-step frames (signed where it matters): the other phone may
+    // hold keys this phone does not know yet, so they are never sealed.
+    final plain = link is SealingPeerTransport ? link.inner : link;
+    final guard = DuplicateGuard235(
+      store: store,
+      signingKey: crypto.signingPublicKey,
+      identityKey: crypto.publicKey,
+      sign: crypto.signPayload,
+      send: (peer, payload) => plain.send(recipientId: peer, payload: payload),
+      broadcast: plain.broadcast,
+      events: link.events,
+      serverAllows: (newUserId, deviceId) async {
+        if ((store.deviceToken ?? '').isEmpty) return false;
+        final p = await api.directoryByUserId(newUserId);
+        return p != null && (p.deviceId.isEmpty || p.deviceId == deviceId);
+      },
+      republish: () => directoryRepository.publishOwnProfile(),
+    );
+    duplicateGuard235 = guard;
+    DuplicateGuard235.instance = guard;
+    final back = AccountReturn235(
+      store: store,
+      auth: authentication,
+      api: api,
+      recovery: recoveryRepository,
+      guard: () => duplicateGuard235,
+    );
+    accountReturn235 = back;
+    OfflineAccountSyncService.returnSync235 = back.syncReturn;
+    confirmAccount235 = ConfirmAccountActions235(
+      serverOnline: back.serverOnline,
+      withCode: back.withCode,
+      withPassword: back.withPassword,
+      checkAgain: back.checkAgain,
+      finish: () => DupBlock235.clear(store.writeSetting),
+    );
+  }
+
+  bool _dup235Started = false;
+
+  Future<void> _startDuplicateGuard235() async {
+    try {
+      await DupBlock235.load(store.readSetting);
+    } catch (_) {}
+    if (_dup235Started) return;
+    _dup235Started = true;
+    duplicateGuard235?.start();
+    // Friends near now get my recovery key (needs a saved code).
+    unawaited(duplicateGuard235?.spreadMyRecoveryKey().catchError((Object _) {}));
+  }
+
   void _buildAdminBlocks() {
     final link = directTransport;
     // Plain one-step frames (signed, not secret): never sealed, so they go
@@ -1267,6 +1337,41 @@ class AppDependencies {
   void bindServerReach() {
     ServerReach.instance.bind(
         address: () => store.serverAddress, socketUp: () => socket.isConnected);
+    // Bundle 243: the pinned HTTPS certificate (both engines).
+    unawaited(TlsPin243.load(store.readSetting));
+  }
+
+  /// Bundle 245 (audit S7): Security code + key-change warning.
+  void _bindSecurityCode245() {
+    const trust = IdentityTrustService();
+    SecurityCode245.instance
+      ..myKey = crypto.signingPublicKey
+      ..myUserId = (() => store.accountId ?? '')
+      ..profileFor = ((id) async =>
+          await store.directoryProfileByDeviceId(id) ?? await store.directoryProfile(id))
+      ..saveProfile = store.saveDirectoryProfile
+      ..verifyProfile = ((p) => crypto.verifyDirectoryProfile(
+          canonicalPayload: p.canonical(),
+          signature: p.signature,
+          signingPublicKey: p.signingPublicKey))
+      ..isContact = store.isContact
+      ..trustState = trust.state
+      ..markVerified = trust.markVerified
+      ..markChanged = trust.markChanged
+      ..clearTrust = trust.clear;
+  }
+
+  /// Bundle 243 (audit S3 B): HTTPS when the server offers it.
+  TlsUpgrade243? _tls243;
+  void _startTls243() {
+    _tls243?.stop();
+    _tls243 = TlsUpgrade243(
+      serverAddress: () => store.serverAddress,
+      pairingInfo: api.pairingInfo,
+      read: store.readSetting,
+      write: store.writeSetting,
+      socketUp: () => socket.isConnected,
+    )..start();
   }
 
   Future<void> initializeCore({required bool localOnly}) async {
@@ -1284,6 +1389,7 @@ class AppDependencies {
     await mesh.start();
     await wifiDirectFallback.start();
     publishNearbyIdentity();
+    await _startDuplicateGuard235(); // Bundle 235
     pairing.start();
     // Bundle 109: prime Wi-Fi Direct probing for trusted devices right after
     // boot — friends nearby link up without anyone opening Nearby.
@@ -1360,6 +1466,7 @@ class AppDependencies {
     await mesh.start();
     await wifiDirectFallback.start();
     publishNearbyIdentity();
+    await _startDuplicateGuard235(); // Bundle 235
     pairing.start();
     // Bundle 109: prime Wi-Fi Direct probing for trusted devices right after
     // boot — friends nearby link up without anyone opening Nearby.
@@ -1375,6 +1482,7 @@ class AppDependencies {
     adminActions.start(); // Bundle 220
     _start221(); // Bundle 221
     updateRequests.start(); // Bundle 213
+    _startTls243(); // Bundle 243
     _startAutoFetch(); // Bundle 208 (E)
     calls.start();
     await _loadReadReceiptsSetting();
@@ -1433,6 +1541,13 @@ class AppDependencies {
       // Bundle 218d: after a reconnect, ask the server again about phones
       // marked "not on the server" more than 5 min ago.
       NotOnServer218.instance.clearOlderThan(const Duration(minutes: 5));
+      // Bundle 235: a phone-only return to the old account goes up first
+      // (the history sync below may fail on a phone with no sign-in yet).
+      if (store.isOfflinePending) {
+        try {
+          await accountReturn235?.syncReturn();
+        } catch (_) {}
+      }
       await messaging.synchronize();
       await messaging.flush();
       unawaited(presence.publish());
@@ -1494,6 +1609,14 @@ class AppDependencies {
     if (OfflineAccountSyncService.onJoined218 == _onJoined218) {
       OfflineAccountSyncService.onJoined218 = null;
     }
+    // Bundle 235
+    final back235 = accountReturn235;
+    if (back235 != null && OfflineAccountSyncService.returnSync235 == back235.syncReturn) {
+      OfflineAccountSyncService.returnSync235 = null;
+    }
+    try {
+      await duplicateGuard235?.dispose();
+    } catch (_) {}
     readReceipts.dispose(); // Bundle 198
     try {
       autoFetch.dispose(); // Bundle 208 (E)

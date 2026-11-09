@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
+import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
 
 /// Bundle 218e: the cards on Chats after an offline account joined the
 /// server (or could not). Matches mock_218_app01..03.
@@ -21,6 +21,10 @@ class JoinCard218 extends StatefulWidget {
   final String fieldValue;
   final List<JoinButton218> buttons;
 
+  /// Bundle 235 addition: custom content under the text (the recovery
+  /// code box + "Save on WhatsApp").
+  final Widget? extra;
+
   const JoinCard218({
     super.key,
     this.cardKey,
@@ -33,6 +37,7 @@ class JoinCard218 extends StatefulWidget {
     this.field = '',
     this.fieldValue = '',
     this.buttons = const [],
+    this.extra,
   });
 
   /// U-1 / U-2: "You're on the server now" (plain, renamed, linked).
@@ -79,6 +84,19 @@ class JoinCard218 extends StatefulWidget {
     required String block,
     required Future<void> Function(String pairingCode) onTry,
   }) {
+    // Bundle 236 (B5): the server is not updated yet - no code, no
+    // password; the app keeps trying by itself.
+    if (block == 'wait_server') {
+      return JoinCard218(
+        key: const ValueKey('join236_wait_server'),
+        icon: JoinIcon218.clock,
+        title: 'Waiting for the server',
+        body: 'Waiting for the server to be updated.',
+        buttons: [
+          JoinButton218.busy(const ValueKey('join218_try'), 'Try again', onTry),
+        ],
+      );
+    }
     if (block == 'pairing') {
       return JoinCard218(
         key: const ValueKey('join218_stuck_pairing'),
@@ -124,22 +142,36 @@ class JoinCard218 extends StatefulWidget {
     required String code,
     required BuildContext context,
     required VoidCallback onSaved,
+    String username = '',
   }) {
+    // Bundle 235 addition (mock v3): the code hidden in one box with
+    // Show / Copy, then a full-width "Save on WhatsApp" (was "I saved it").
     return JoinCard218(
       key: const ValueKey('join218_recovery'),
       icon: JoinIcon218.key,
       title: 'Your recovery code changed',
-      body: 'Write it down. The old one no longer works.',
-      field: 'recovery',
-      fieldValue: code,
-      buttons: [
-        JoinButton218(const ValueKey('join218_copy'), 'Copy', () {
-          Clipboard.setData(ClipboardData(text: code));
-          ScaffoldMessenger.maybeOf(context)
-              ?.showSnackBar(const SnackBar(content: Text('Copied')));
-        }),
-        JoinButton218(const ValueKey('join218_saved'), 'I saved it', onSaved, tonal: true),
-      ],
+      body: 'Save it now. The old one no longer works.',
+      extra: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          RecoveryCodeBox235(
+            key: const ValueKey('join218_recovery_field'),
+            code: code,
+            compact: true,
+            copyKey: const ValueKey('join218_copy'),
+            copiedText: 'Copied',
+          ),
+          const SizedBox(height: 10),
+          SaveOnWhatsApp235(
+            buttonKey: const ValueKey('join218_saved'),
+            code: code,
+            username: username,
+            height: 44,
+            hint: false,
+            onSaved: () async => onSaved(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -335,6 +367,11 @@ class _JoinCard218State extends State<JoinCard218> {
                     child: Text(widget.blueLine,
                         style: TextStyle(
                             fontSize: 12.5, fontWeight: FontWeight.w500, letterSpacing: 0, color: colors.primary)),
+                  ),
+                if (widget.extra != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: widget.extra,
                   ),
                 if (widget.field.isNotEmpty)
                   Padding(

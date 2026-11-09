@@ -436,7 +436,9 @@ final class LocalLinkNotificationService {
       publicBody: _publicBody(),
       // Bundle 137: no initials disc. Bundle 204 (mock 204 A8): a friend's
       // picture on the right when there is one; the app icon stays left.
-      initials: '',
+      // Bundle 242: the letters for the letter circle when there is no
+      // picture (never when notifications hide the name).
+      initials: _initials242(identity.initials),
       avatarPath: identity.localAvatarPath,
       imagePath: attachment?.path,
       attachmentId: attachment?.id,
@@ -510,7 +512,9 @@ final class LocalLinkNotificationService {
       publicBody: _publicBody(),
       // Bundle 137: no initials disc. Bundle 204 (mock 204 A8): a friend's
       // picture on the right when there is one; the app icon stays left.
-      initials: '',
+      // Bundle 242: the letters for the letter circle when there is no
+      // picture (never when notifications hide the name).
+      initials: _initials242(identity.initials),
       avatarPath: identity.localAvatarPath,
       imagePath: attachment?.path,
       attachmentId: attachment?.id,
@@ -1042,6 +1046,9 @@ final class LocalLinkNotificationService {
       return null;
     }
   }
+
+  String _initials242(String initials) =>
+      preferences.privacyMode == NotificationPrivacyMode.hidden ? '' : initials;
 
   String _titleForPrivacy(
     String title, {

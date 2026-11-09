@@ -28,6 +28,9 @@ class AdminPage216 extends StatelessWidget {
 
   /// Body built by the caller instead of [children] (map, custom scroll).
   final Widget? body;
+  /// Bundle 254 (21.8): a bar pinned under the title (outside the list, 8 dp
+  /// top space) so a scroll or pull-to-refresh never hides it.
+  final Widget? pinned;
   final bool back;
 
   /// 216d: server pages lock while the server is lost.
@@ -44,6 +47,7 @@ class AdminPage216 extends StatelessWidget {
     this.right,
     this.children = const [],
     this.body,
+    this.pinned,
     this.back = true,
     this.needsServer = false,
     this.viewMode,
@@ -63,6 +67,13 @@ class AdminPage216 extends StatelessWidget {
         );
     if (onRefresh != null && body == null) {
       content = RefreshIndicator(onRefresh: onRefresh!, child: content);
+    }
+    if (pinned != null) {
+      content = Column(children: [
+        Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: pinned!),
+        Expanded(child: content),
+      ]);
     }
     if (needsServer && viewMode != null) {
       content = ServerLockGate(
@@ -315,17 +326,19 @@ class AdminCard216 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = A216.colors(context);
+    // Bundle 254 (21.6): clip the CARD (padding included), not the padded
+    // content, so a title in the top-left corner is never cut by the curve.
     return Container(
       height: height,
       padding: padding,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: fill ?? c.surface,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: border ?? c.line),
         boxShadow: shadow && !c.dark ? const [A216.cardShadow] : null,
       ),
-      child: ClipRRect(
-          borderRadius: BorderRadius.circular(radius - 1), child: child),
+      child: child,
     );
   }
 }
@@ -1541,6 +1554,16 @@ class AdminPersonAvatar216 extends StatelessWidget {
   /// False = never draw the crown here (the caller wraps it in AdminCrown).
   final bool crown;
 
+  /// Bundle 254 (21.5): the map labels me "You"; the letter / colour / photo
+  /// must still come from my real name (same as the top card), not "Y".
+  static String youName = '';
+  static void noteYouName(String n) {
+    final v = n.trim();
+    if (v.isNotEmpty && v != 'You') youName = v;
+  }
+
+  String get _shownName => name == 'You' && youName.isNotEmpty ? youName : name;
+
   const AdminPersonAvatar216({
     super.key,
     required this.name,
@@ -1567,7 +1590,7 @@ class AdminPersonAvatar216 extends StatelessWidget {
             backgroundColor: c.div,
             backgroundImage: server)
         : AccountAvatar(
-            name: name,
+            name: _shownName,
             radius: radius,
             peerId: deviceId ?? userId,
             userId: userId,
