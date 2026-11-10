@@ -1442,6 +1442,9 @@ class LocalStore {
         where: 'key IN (?,?)', whereArgs: ['server_id', 'server_fingerprint']);
   }
 
+  /// Bundle 256 B2: called when a new server address is saved.
+  static void Function()? onServerSaved256;
+
   Future<void> saveConfiguration(
       {required String server,
       required String id,
@@ -1450,10 +1453,18 @@ class LocalStore {
       String? accountId,
       String? username}) async {
     // Bundle 243: always save the plain address (HTTPS is applied on use).
+    final before256 = _serverAddress;
     _serverAddress = TlsPin243.downgrade(server.trim());
     _deviceId = id.trim();
     _deviceName = name.trim();
     await _putSetting('server_address', _serverAddress!);
+    // Bundle 256 B2: a new server address -> a phone-only account tries
+    // to go up now.
+    if (_serverAddress!.isNotEmpty && _serverAddress != before256) {
+      try {
+        onServerSaved256?.call();
+      } catch (_) {}
+    }
     await _putSetting('device_id', _deviceId!);
     await _putSetting('device_name', _deviceName!);
     if (accountId != null && accountId.trim().isNotEmpty) {

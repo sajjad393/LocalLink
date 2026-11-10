@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/server_clock_255.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
@@ -99,6 +100,7 @@ class AdminPage216 extends StatelessWidget {
                     back: back,
                     viewMode: needsServer ? viewMode : null),
                 const AdminUiCheckBanner216(),
+                const ServerClockBar255(),
                 Expanded(child: content),
               ],
             ),
@@ -107,6 +109,55 @@ class AdminPage216 extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Bundle 255 A3: pinned warning while the server PC clock is over 1 h off.
+class ServerClockBar255 extends StatelessWidget {
+  const ServerClockBar255({super.key});
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<Duration?>(
+        valueListenable: ServerClock255.wrong,
+        builder: (context, offset, _) => offset == null
+            ? const SizedBox.shrink()
+            : Container(
+                key: const ValueKey('server_clock_bar_255'),
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF0C7),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFEC84B)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.schedule_rounded,
+                        size: 20, color: Color(0xFFB54708)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(ServerClock255.title(offset),
+                              style: const TextStyle(
+                                  fontFamily: 'Roboto216',
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF93370D))),
+                          const SizedBox(height: 2),
+                          const Text(ServerClock255.body,
+                              style: TextStyle(
+                                  fontFamily: 'Roboto216',
+                                  fontSize: 12.5,
+                                  color: Color(0xFF93370D))),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      );
 }
 
 /// The 60 dp app bar (§1.5). With [viewMode] the subtitle turns into

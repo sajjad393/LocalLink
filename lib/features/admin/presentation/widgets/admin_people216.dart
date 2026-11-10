@@ -94,9 +94,25 @@ Future<({String? picked})?> pickWifiRule216(BuildContext context,
   if (d['wifi_direct_connected'] == true) return (text: 'Wi-Fi Direct', tone: A216Tone.amber);
   if (d['mesh_available'] == true) return (text: 'Mesh', tone: A216Tone.purple);
   if (d['lan_available'] == true) return (text: 'Local Wi-Fi', tone: A216Tone.teal);
+  // Bundle 255 B9: online with no link flag is NOT a server link (noshad's
+  // phone said "Server" before it ever reached the server).
   return d['online'] == true
-      ? (text: 'Server', tone: A216Tone.green)
+      ? (text: 'Online', tone: A216Tone.grey)
       : (text: 'Offline', tone: A216Tone.grey);
+}
+
+/// Bundle 255 B9: ALL links of a phone (same flags as the Network tiles),
+/// so a row and the tiles never disagree. No flag = grey Online / Offline.
+List<({String text, A216Tone tone})> deviceLinks255(Map<String, dynamic> d) {
+  final one = deviceLink216(d);
+  if (one.text == 'Removed') return [one];
+  final all = <({String text, A216Tone tone})>[
+    if (d['server_connected'] == true) (text: 'Server', tone: A216Tone.green),
+    if (d['wifi_direct_connected'] == true) (text: 'Wi-Fi Direct', tone: A216Tone.amber),
+    if (d['mesh_available'] == true) (text: 'Mesh', tone: A216Tone.purple),
+    if (d['lan_available'] == true) (text: 'Local Wi-Fi', tone: A216Tone.teal),
+  ];
+  return all.isEmpty ? [one] : all;
 }
 
 String linkWord216(Object? link) => switch ('$link') {

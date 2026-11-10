@@ -55,7 +55,7 @@ class ConnectivityRepository
 
   @override
   Future<List<DiscoveredServer>> discoverServers({
-    Duration timeout = const Duration(seconds: 3),
+    Duration timeout = const Duration(seconds: 5),
   }) => discovery.discover(timeout: timeout);
 
   @override

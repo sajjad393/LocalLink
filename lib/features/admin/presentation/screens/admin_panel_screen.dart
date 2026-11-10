@@ -735,7 +735,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     child: SizedBox(
                         width: 36,
                         height: 36,
-                        child: Center(child: AdminCrown.mark(18, halo: null))),
+                        child: Center(child: AdminCrown.mark(15, halo: null))),
                   ),
                 ),
               ),

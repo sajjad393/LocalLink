@@ -6,7 +6,7 @@ abstract interface class AuthenticationRepositoryContract {
   String normalizeServerAddress(String value);
   String generateUniqueDeviceName();
   Future<List<DiscoveredServer>> discoverServers({
-    Duration timeout = const Duration(seconds: 3),
+    Duration timeout = const Duration(seconds: 5),
   });
   Future<PairingInfo> verifyServer({
     required String address,
@@ -80,4 +80,13 @@ abstract interface class AuthenticationRepositoryContract {
   Future<void> signOut();
 
   Future<bool> isSignedOut();
+}
+
+/// Bundle 256 A5: a LinkUp server answered but can't be used safely
+/// (identity changed, bad proof). Shown as it is; no phone-only account.
+class ServerProblem256 implements Exception {
+  final String message;
+  const ServerProblem256(this.message);
+  @override
+  String toString() => message;
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:flutter/material.dart';
@@ -149,6 +150,63 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
   }
 
   /// Grey rounded note (offline box, recovery note), 16 from the edges.
+  bool _finding256 = false;
+
+  /// Bundle 256 C1: "Your account is on this phone only" + Find server now.
+  Widget _phoneOnly256(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return _note(
+      key: const ValueKey('account_phone_only_256'),
+      vertical: 14,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.phone_android_rounded, size: 18, color: colors.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Your account is on this phone only. It goes up to the server '
+              'by itself when the server is found.',
+              style: text.bodySmall
+                  ?.copyWith(color: colors.onSurfaceVariant, letterSpacing: 0),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonal(
+            key: const ValueKey('account_find_server_256'),
+            onPressed: _finding256 ? null : _findServer256,
+            child: _finding256
+                ? const SizedBox(
+                    width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Find server now'),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _findServer256() async {
+    setState(() => _finding256 = true);
+    AppLogger.info('ACCOUNT_FIND_SERVER', detail: 'tap');
+    var ran = false;
+    try {
+      ran = await OfflinePublishTicker256.instance.tryNow();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _finding256 = false);
+    final pending = widget.store.isOfflinePending;
+    if (!pending) unawaited(_controller.load());
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(!pending
+            ? 'Your account is on the server now.'
+            : ran
+                ? 'No LinkUp server answered. It keeps trying by itself.'
+                : 'Open Chats once, then try again.')));
+  }
+
   Widget _note(
       {required Key key, required Widget child, double vertical = 16}) {
     return Padding(
@@ -260,7 +318,12 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                           ),
                         ),
                       ]),
-                      if (error != null) ...[
+                      // Bundle 256 C1: a phone-only account is not "Can't
+                      // reach LinkUp" - say where it is and offer a search.
+                      if (widget.store.isOfflinePending) ...[
+                        const SizedBox(height: 12),
+                        _phoneOnly256(context),
+                      ] else if (error != null) ...[
                         const SizedBox(height: 12),
                         // Bundle 133 / 183 (C1): an unreachable LinkUp is a
                         // STATE, not an error — a calm one-line note; a real

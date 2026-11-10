@@ -6,6 +6,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/server_clock_255.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -37,6 +38,9 @@ class WebSocketService {
   Completer<void>? _readyCompleter;
 
   String? _url;
+
+  /// Bundle 255 D1: the address of the live socket (null = none).
+  String? get currentUrl => _url;
   Map<String, String> _headers = const {};
 
   bool _manualDisconnect = false;
@@ -328,6 +332,7 @@ class WebSocketService {
         if (serverNow != null) {
           serverClockOffset =
               serverNow.toUtc().difference(DateTime.now().toUtc());
+          ServerClock255.noteReady(serverClockOffset!);
         }
         _markReady(generation);
         return;

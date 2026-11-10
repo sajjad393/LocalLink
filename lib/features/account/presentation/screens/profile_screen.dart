@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:locallink/core/utils/phone_rule_256.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:locallink/features/account/data/own_profile_signal.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
@@ -121,6 +122,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       });
       unawaited(_readPhoneLocal218());
     });
+    unawaited(_showProfileNote256());
+  }
+
+  /// Bundle 256 D3: the server refused a saved change - say it once.
+  Future<void> _showProfileNote256() async {
+    try {
+      final note = (await widget.store.readSetting(LocalLinkApi.profileNoteKey256) ?? '').trim();
+      if (note.isEmpty) return;
+      await widget.store.writeSetting(LocalLinkApi.profileNoteKey256, '');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(note)));
+    } catch (_) {}
   }
 
   // Bundle 218e: the number is used by another account on the server; it is
@@ -165,6 +178,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ));
         return;
       }
+    }
+    // Bundle 256 D1: never send a number the server refuses (400).
+    if (!phoneOk256(phone.text)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(phoneHint256)));
+      return;
     }
     try {
       final synced = await bloc.saveProfile(
@@ -503,7 +521,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             hintText: _usernameLocked ? 'Required' : 'Optional',
             prefixIcon: const Icon(Icons.phone_outlined),
             // Bundle 218e: typing another number hides the note at once.
-            onChanged: _phoneLocal218.isEmpty ? null : (_) => setState(() {}),
+            // Bundle 256 D1: the server's number rule is checked as you type.
+            onChanged: (_) => setState(() {}),
             decoration: _phoneLocalOnly
                 ? InputDecoration(
                     labelText: 'Phone number',
@@ -533,12 +552,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
+          if (!phoneOk256(phone.text))
+            Padding(
+              key: const ValueKey('profile_phone_bad_256'),
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.error_outline_rounded, size: 14, color: Theme.of(context).colorScheme.error),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text('$phoneHint256. Save stays off until the number is right.',
+                        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.error)),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: LocalLinkSpacing.md),
           SizedBox(
             width: double.infinity,
             // Bundle 105: brand gradient CTA (matches the profile redesign).
             child: GradientPillButton(
-              onPressed: bloc.isSaving ? null : save,
+              onPressed: bloc.isSaving || !phoneOk256(phone.text) ? null : save,
               child: bloc.isSaving
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Text('Save changes'),

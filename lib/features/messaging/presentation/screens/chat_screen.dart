@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:locallink/core/widgets/admin_crown.dart';
+import 'package:locallink/core/widgets/messenger_date_divider.dart' show chatDayLabel255;
 import 'package:locallink/core/security/security_code_245.dart';
 import 'package:locallink/features/directory/presentation/security_code_screen.dart';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
@@ -1033,6 +1035,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     )
                   : AppBar(
             titleSpacing: 0,
+            // Bundle 255 B2: taller only for a crowned friend, so the 56 dp
+            // bar never cuts the crown (photo radius 20, 8 dp above it).
+            toolbarHeight: !iBlocked && AdminCrown.showFor(device.id)
+                ? kToolbarHeight + AdminCrownRoom.extraFor(20, already: 8)
+                : null,
             leading: _searching
                 ? IconButton(
                     tooltip: 'Close search',
@@ -1059,10 +1066,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       if (iBlocked)
                         MutedAvatar(name: device.name, radius: 20)
                       else
-                        PresenceAvatar(
+                        // Bundle 255 B2: room for the crown above the photo.
+                        AdminCrownRoom(id: device.id, radius: 20, already: 8, child: PresenceAvatar(
                           avatar: AccountAvatar(name: device.name, radius: 20, peerId: device.id),
                           device: device,
-                        ),
+                        )),
                       const SizedBox(width: LocalLinkSpacing.md),
                       Expanded(
                         child: Column(
@@ -1430,11 +1438,8 @@ class _DateDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
     final date = this.date.toLocal(); // Bundle 174 (7)
-    final label = now.year == date.year && now.month == date.month && now.day == date.day
-        ? 'Today'
-        : '${date.day}/${date.month}/${date.year}';
+    final label = chatDayLabel255(date, DateTime.now()); // Bundle 255 B3
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: LocalLinkSpacing.md),
       child: DecoratedBox(

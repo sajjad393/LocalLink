@@ -37,8 +37,9 @@ bool _sameDay(DateTime a, DateTime b) =>
 ///
 /// * A call with someone else in between starts a new row.
 /// * A new day starts a new row.
-/// * Bundle 174: a missed call is ALWAYS its own row (red), it never
-///   groups - not even with another missed call.
+/// * Bundle 255 B5 (replaces 174's "missed is always alone"): missed
+///   calls back to back join ONE red row "Sajjad (3)". A missed call never
+///   joins an answered or outgoing call.
 ///
 /// [history] must be newest first (as stored). The order is kept.
 List<CallGroup> groupCallHistory(
@@ -54,8 +55,7 @@ List<CallGroup> groupCallHistory(
         last.peerId(selfId) == call.peerId(selfId) &&
         call.peerId(selfId).isNotEmpty &&
         _sameDay(last.startedAt, call.startedAt) &&
-        !isMissed(last) &&
-        !isMissed(call);
+        isMissed(last) == isMissed(call);
     if (joins) {
       current!.add(call);
     } else {

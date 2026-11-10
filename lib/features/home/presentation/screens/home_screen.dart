@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
 import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/groups/data/group_mention_book.dart';
@@ -369,6 +370,9 @@ class _HomeScreenState extends State<HomeScreen> {
           store: widget.store, auth: widget.authentication);
       WidgetsBinding.instance.addPostFrameCallback(
           (_) => _maybeOfferPublish());
+      // Bundle 256 B1/B2: keep trying while the app is open (timer, Wi-Fi
+      // back, resume, server saved / told by a nearby phone).
+      OfflinePublishTicker256.instance.start(_tickPublish256);
     }
     _controller.start();
     _loadChatPeerIds();
@@ -665,6 +669,27 @@ class _HomeScreenState extends State<HomeScreen> {
     await _readJoin218();
   }
 
+  /// Bundle 256 B1: one quiet try from the ticker.
+  Future<void> _tickPublish256(String why) async {
+    final sync = _offlineSync;
+    if (sync == null || !mounted) return;
+    if (!sync.pending) {
+      OfflinePublishTicker256.instance.stop();
+      return;
+    }
+    if (_publishBusy) return;
+    try {
+      await sync.autoPublish(from: why);
+    } catch (_) {}
+    if (!mounted) return;
+    if (!sync.pending) {
+      OfflinePublishTicker256.instance.stop();
+      await _publishSucceeded('');
+      return;
+    }
+    await _readJoin218();
+  }
+
   Future<void> _publishSucceeded(String recoveryCode) async {
     if (!mounted) return;
     // Bundle 218e: a changed code shows as the recovery card; the same code
@@ -697,6 +722,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     if (identical(ForwardHub.instance, _forwardHub)) ForwardHub.instance = null;
+    OfflinePublishTicker256.instance.stop(); // Bundle 256 B1
     _mediaLifecycle?.dispose();
     for (final timer in _bannerTimers) {
       timer.cancel();
@@ -1405,7 +1431,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Chats with no stored message keep their old order at the bottom.
   List<Widget> _sortedConversationTiles(BuildContext context, HomeState state) {
     final localId = widget.store.deviceId ?? '';
-    final entries = <(DateTime?, int, Widget)>[];
+    final entries = <(DateTime?, int, Widget, String?)>[];
     var order = 0;
     for (final group in state.groups) {
       final preview = _groupPreviews[group.id];
@@ -1447,6 +1473,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         },
         ),
+        null,
       ));
     }
     for (final device in _visibleDevices(state)) {
@@ -1486,6 +1513,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 : () => _call(device),
           ),
         ),
+        device.id,
       ));
     }
     entries.sort((a, b) {
@@ -1500,8 +1528,13 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       return a.$2.compareTo(b.$2);
     });
+    // Bundle 255 B1: who sits in row 0 (crown room on the card).
+    _firstChatPeer255 = entries.isEmpty ? null : entries.first.$4;
     return entries.map((e) => e.$3).toList(growable: false);
   }
+
+  /// Bundle 255 B1: device id of the first Chats row (null = a group).
+  String? _firstChatPeer255;
 
   /// Bundle G1 (mock 9): a group without messages yet.
   String _emptyGroupLine(LocalGroup group, HomeState state) {
@@ -1529,8 +1562,15 @@ class _HomeScreenState extends State<HomeScreen> {
       .toList();
 
   /// Bundle 153 / 183 (O): the shared Settings-style grey card.
+  /// Bundle 255 B1: row 0 gets crown room while that person is an admin
+  /// (photo radius 24, 12 dp above it in a chat row; measured in tests).
   Widget _conversationGroup(BuildContext context, List<Widget> tiles) =>
-      MessengerListGroup(dividerIndent: 72, children: tiles);
+      MessengerListGroup(
+          dividerIndent: 72,
+          crownFirstId: _firstChatPeer255,
+          crownRadius: 24,
+          crownAlready: 12,
+          children: tiles);
 
   Widget _callsTab() => CallsScreen(
         controller: widget.calls,

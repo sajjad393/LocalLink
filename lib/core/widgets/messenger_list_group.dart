@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/widgets/admin_crown.dart';
+
 /// Bundle 153 / 183: shared pieces so Chats, Calls, People, Settings and
 /// Account all look the same.
 ///
@@ -60,12 +62,41 @@ class MessengerListGroup extends StatelessWidget {
   /// Distance of the card from the screen edges.
   final double inset;
 
+  /// Bundle 255 B1: id (+ other id) of the person in row 0. While that
+  /// person wears the admin crown, row 0 gets just enough top room so the
+  /// card edge never cuts the crown (rows 2+ draw over the row above).
+  /// Everybody else sees no change.
+  final String? crownFirstId;
+  final String? crownFirstOtherId;
+
+  /// Photo radius of row 0 and the space already above that photo.
+  final double crownRadius;
+  final double crownAlready;
+
   const MessengerListGroup({
     super.key,
     required this.children,
     this.dividerIndent = 72,
     this.inset = 16,
+    this.crownFirstId,
+    this.crownFirstOtherId,
+    this.crownRadius = 24,
+    this.crownAlready = 0,
   });
+
+  /// Bundle 255 B1: the same card with crown room for row 0.
+  MessengerListGroup withCrown(String? firstId,
+          {String? otherId, double radius = 24, double already = 0}) =>
+      MessengerListGroup(
+        key: key,
+        dividerIndent: dividerIndent,
+        inset: inset,
+        crownFirstId: firstId,
+        crownFirstOtherId: otherId,
+        crownRadius: radius,
+        crownAlready: already,
+        children: children,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +111,17 @@ class MessengerListGroup extends StatelessWidget {
           color: colors.outlineVariant.withValues(alpha: .4),
         ));
       }
-      rows.add(children[i]);
+      final hasCrownId = (crownFirstId ?? '').isNotEmpty ||
+          (crownFirstOtherId ?? '').isNotEmpty;
+      rows.add(i == 0 && hasCrownId
+          ? AdminCrownRoom(
+              id: crownFirstId,
+              otherId: crownFirstOtherId,
+              radius: crownRadius,
+              already: crownAlready,
+              child: children[i],
+            )
+          : children[i]);
     }
     // Bundle 183 (O2): ONE card style everywhere = the Settings card
     // (soft grey, thin border, corners 20). A Material (not a coloured

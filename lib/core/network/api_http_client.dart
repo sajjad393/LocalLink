@@ -134,7 +134,8 @@ class ApiHttpClient {
           'HTTP_ERROR_RESPONSE',
           detail:
           '$method ${_safeUri(uri)} -> ${response.statusCode} '
-              '(${stopwatch.elapsedMilliseconds}ms)',
+              '(${stopwatch.elapsedMilliseconds}ms)'
+              '${serverErrorText256(response.body)}',
         );
       }
 
@@ -170,5 +171,23 @@ class ApiHttpClient {
   void close() {
     AppLogger.info('HTTP_CLIENT_CLOSE');
     _client.close();
+  }
+}
+
+/// Bundle 256 D2: the server's own short error words for the log
+/// (` error="invalid phone number"`), or '' for anything else. Only the
+/// `error` field of a small JSON body - never the body itself.
+String serverErrorText256(String body) {
+  if (body.isEmpty || body.length > 400) return '';
+  try {
+    final json = jsonDecode(body);
+    if (json is! Map) return '';
+    var text = (json['error'] ?? '').toString().trim();
+    if (text.isEmpty) return '';
+    text = text.split('\n').first;
+    if (text.length > 60) text = text.substring(0, 60);
+    return ' error="$text"';
+  } catch (_) {
+    return '';
   }
 }

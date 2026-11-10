@@ -1,3 +1,7 @@
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:locallink/core/services/server_reach.dart';
+import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
+import 'package:locallink/features/directory/presentation/add_friend_256.dart';
 import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/features/directory/presentation/contact_sheets.dart';
 import 'dart:async';
@@ -103,6 +107,9 @@ class _AddContactScreenState extends State<AddContactScreen> {
       return;
     }
     if (!mounted) return;
+    // Bundle 256 E1/E2: every tap and every failure is in the log.
+    final source = DirectorySearchInfo.serverReached ? 'online' : 'friend_card';
+    AppLogger.info('FRIEND_ADD_START', detail: 'source=$source');
     final customName =
         await showSaveContactDialog(context, profile.displayName);
     if (customName == null || !mounted) return;
@@ -128,7 +135,8 @@ class _AddContactScreenState extends State<AddContactScreen> {
         const SnackBar(content: Text('Contact added')),
       );
     } catch (e) {
-      if (mounted) _showError(cleanBlocError(e));
+      logFriendAddFail256(source, e);
+      if (mounted) _showError(friendAddFailText256(e));
     }
   }
 
@@ -269,6 +277,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (widget.connectivity != null) _status256(),
                 TextField(
                   controller: query,
                   textInputAction: TextInputAction.search,
@@ -434,6 +443,32 @@ class _AddContactScreenState extends State<AddContactScreen> {
     );
   }
 
+  // ------------------------------------------------------- Bundle 256 E3
+  bool _finding256 = false;
+
+  Widget _status256() => BlocBuilder<ConnectivityBloc, ConnectivityState>(
+        bloc: widget.connectivity,
+        buildWhen: (a, b) => a.snapshot.serverConnected != b.snapshot.serverConnected,
+        builder: (context, state) => AddStatusLine256(
+          status: addStatus256(
+              serverConnected: state.snapshot.serverConnected,
+              wifi: ServerReach.instance.wifi),
+          busy: _finding256,
+          onTap: _findServer256,
+        ),
+      );
+
+  Future<void> _findServer256() async {
+    setState(() => _finding256 = true);
+    AppLogger.info('ADD_CONTACT_FIND_SERVER', detail: 'tap');
+    try {
+      // A phone-only account: the same try as Account > Find server now.
+      final ran = await OfflinePublishTicker256.instance.tryNow();
+      if (!ran) await widget.connectivity?.refresh();
+    } catch (_) {}
+    if (mounted) setState(() => _finding256 = false);
+  }
+
   /// Keeps one Nearby section (one search) for the life of this screen.
   final GlobalKey _nearbyKey = GlobalKey();
 
@@ -544,11 +579,12 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
         _loadPrivacy();
       }
     } catch (e) {
+      logFriendAddFail256('profile', e); // Bundle 256 E2
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            cleanBlocError(e),
+            friendAddFailText256(e),
           ),
         ),
       );

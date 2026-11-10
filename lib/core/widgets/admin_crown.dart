@@ -164,8 +164,9 @@ class AdminCrown extends StatelessWidget {
     this.background,
   });
 
-  /// Crown width on a photo of [radius]: 1.1·R, never under 13 (217).
-  static double sizeFor(double radius) => math.max(13.0, radius * 1.1);
+  /// Crown width on a photo of [radius]: 0.9·R, never under 11
+  /// (Bundle 256 F1: about 18 % smaller than 217's 1.1·R / 13).
+  static double sizeFor(double radius) => math.max(11.0, radius * 0.9);
 
   /// Bundle 222 (mock C-1): the height the crown needs ABOVE a photo of
   /// [radius] (crown + halo + pearls), so a card or list edge never cuts it.

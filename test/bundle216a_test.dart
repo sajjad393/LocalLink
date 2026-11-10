@@ -25,7 +25,7 @@ void main() {
     expect(c.center.dx, closeTo(photo.center.dx, 0.5));
     expect(c.top, lessThan(photo.top));
     expect(c.width, closeTo(AdminCrown.sizeFor(40), 0.5));
-    expect(AdminCrown.sizeFor(8), 13); // 217: never smaller than 13
+    expect(AdminCrown.sizeFor(8), 11); // 256 F1: never smaller than 11
   });
 
   testWidgets('role tag: painted crown + "Admin · Owner"', (tester) async {

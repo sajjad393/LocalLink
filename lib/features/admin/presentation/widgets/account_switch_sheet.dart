@@ -185,7 +185,7 @@ class AccountSwitchSheet extends StatelessWidget {
                 leading: CircleAvatar(
                   radius: 22,
                   backgroundColor: const Color(0xFFFFF6DB),
-                  child: AdminCrown.mark(24, halo: null),
+                  child: AdminCrown.mark(20, halo: null),
                 ),
                 title: const Text('Admin',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),

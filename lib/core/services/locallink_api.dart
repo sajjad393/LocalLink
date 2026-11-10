@@ -533,12 +533,35 @@ class LocalLinkApi {
           } catch (_) {}
         }
       }
+      // Bundle 256 D3: the server refused the saved change (400). It will
+      // refuse it every time, so stop resending: a bad number is dropped
+      // (the rest is sent again once), anything else is cleared. One note
+      // tells the user.
+      if (pending != null && error is ApiError218 && error.status == 400) {
+        final reason = error.message.trim();
+        final number = (pending['phone_number'] ?? '').toString().trim();
+        final phoneProblem = number.isNotEmpty && reason.toLowerCase().contains('phone');
+        AppLogger.info('PROFILE_SYNC_DROPPED',
+            detail: 'part=${phoneProblem ? 'phone' : 'all'} reason=${reason.length > 60 ? reason.substring(0, 60) : reason}');
+        try {
+          await store.writeSetting(profileNoteKey256,
+              phoneProblem ? 'Your phone number was not saved: $reason' : 'Your profile change was not saved: $reason');
+          if (phoneProblem && !_retried218) {
+            await _rewritePending218(pending, phoneNumber: '');
+            return await _retryOnce218();
+          }
+          await store.clearPendingProfileUpdate();
+        } catch (_) {}
+      }
       return false;
     }
   }
 
   // ------------------------------------------------------------- Bundle 218
   static const phoneLocalOnlyKey218 = 'phone_local_only_218';
+
+  /// Bundle 256 D3: one note for Profile ("Your phone number was not saved").
+  static const profileNoteKey256 = 'profile_note_256';
   bool _retried218 = false;
 
   Future<bool> _retryOnce218() async {

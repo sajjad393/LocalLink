@@ -228,9 +228,11 @@ class _CallsScreenState extends State<CallsScreen> {
       // together inside a rounded white container with hairline dividers.
       // Bundle 171: back-to-back calls with the same person share a row.
       final rows = <Widget>[];
+      String? firstPeer;
       for (final group in groupCallHistory(records,
           selfId: widget.selfId, isMissed: _isMissed)) {
         final call = group.latest;
+        firstPeer ??= call.peerId(widget.selfId);
         rows.add(CallHistoryTile(
           call: call,
           selfId: widget.selfId,
@@ -247,11 +249,14 @@ class _CallsScreenState extends State<CallsScreen> {
         ));
       }
       // Bundle 153 / 183 (O): the shared Settings-style grey card.
-      children.add(MessengerListGroup(children: rows));
+      // Bundle 255 B1: crown room on row 0 (radius 21, 21 dp above it).
+      children.add(MessengerListGroup(children: rows)
+          .withCrown(firstPeer, radius: 21, already: 21));
     });
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 28),
+      // Bundle 255 B4: room for the round button (same as Chats).
+      padding: const EdgeInsets.only(bottom: 96),
       children: children,
     );
   }

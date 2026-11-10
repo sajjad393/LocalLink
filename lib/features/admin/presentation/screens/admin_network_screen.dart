@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/utils/phone_label_255.dart';
+import 'package:locallink/core/widgets/admin_crown.dart';
+
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_people216.dart';
@@ -100,8 +103,12 @@ class AdminNetworkScreen extends StatelessWidget {
               for (final d in online)
                 AdminRow216(
                   key: ValueKey('a216_net_phone_${d['id']}'),
-                  height: 62,
-                  leading: ServerPersonAvatar216(
+                  // Bundle 255 B1 (as Users 222): an admin row is taller and
+                  // its photo sits lower, so the card never cuts the crown.
+                  height: _crowned255(d) ? 62 + _crownExtra255 : 62,
+                  leading: Padding(
+                    padding: EdgeInsets.only(top: _crowned255(d) ? _crownExtra255 : 0),
+                    child: ServerPersonAvatar216(
                     name: personName216(
                         {'display_name': d['display_name'], 'username': d['username']},
                         fallback: '?'),
@@ -109,11 +116,29 @@ class AdminNetworkScreen extends StatelessWidget {
                     deviceId: '${d['id']}',
                     hasAvatar: d['has_avatar'] == true,
                   ),
-                  title: '${d['name'] ?? 'Phone'}',
+                  ),
+                  // Bundle 255 B9: "<owner>'s phone" for a default name.
+                  title: phoneTitle255(
+                      '${d['name'] ?? ''}',
+                      personName216(
+                          {'display_name': d['display_name'], 'username': d['username']},
+                          fallback: '')),
                   subtitle: how(d),
+                  // Bundle 255 B9: every link of the phone, as the tiles.
                   trailing: Padding(
                     padding: const EdgeInsets.only(right: 4),
-                    child: AdminTag216(deviceLink216(d).text, deviceLink216(d).tone),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 150),
+                      child: Wrap(
+                        key: ValueKey('a216_net_links_${d['id']}'),
+                        alignment: WrapAlignment.end,
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: [
+                          for (final l in deviceLinks255(d)) AdminTag216(l.text, l.tone),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
             ]),
@@ -123,4 +148,14 @@ class AdminNetworkScreen extends StatelessWidget {
       },
     );
   }
+}
+
+/// Bundle 255 B1: a 20 px photo in a 62 px row has 11 px above it.
+final double _crownExtra255 = AdminCrownRoom.extraFor(20, already: 11) + 2;
+
+bool _crowned255(Map d) {
+  final user = '${d['user_id'] ?? ''}';
+  final dev = '${d['id'] ?? ''}';
+  if (user.isEmpty && dev.isEmpty) return false;
+  return AdminCrown.showFor(user, dev);
 }

@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/services/app_logger.dart';
 
 import 'package:locallink/core/identity/dup_account_235.dart';
@@ -740,7 +741,10 @@ class OfflineAccountSyncService {
       _autoPublishing = false;
       await _dropLock();
       if (!ok && pending && from != 'background') {
-        offlineAccountLog216('NEXT_TRY', 'in=next_connect');
+        // Bundle 256 B3: the real next try while the app is open.
+        final t = OfflinePublishTicker256.instance;
+        offlineAccountLog216('NEXT_TRY',
+            t.active ? 'in=${t.gapSeconds}s why=timer' : 'in=next_connect');
       }
     }
   }

@@ -382,10 +382,30 @@ class Letter221 extends StatelessWidget {
 
 /// Two overlapping letters (a private chat) or one big letter (a group).
 class ChatAvatars221 extends StatelessWidget {
-  const ChatAvatars221({super.key, required this.names, this.group = false, this.size = 72});
+  const ChatAvatars221(
+      {super.key, required this.names, this.group = false, this.size = 72, this.photoIds});
   final List<String> names;
   final bool group;
   final double size;
+
+  /// Bundle 255 B8: device ids (same order as [names]); photos when this
+  /// phone has them, letters stay the fallback.
+  final List<String>? photoIds;
+
+  Widget _one(int i, double s, {bool ring = false}) {
+    final ids = photoIds;
+    if (ids == null || ids.length <= i || ids[i].isEmpty) {
+      return Letter221(names[i], size: s, ring: ring);
+    }
+    final photo = AdminPersonAvatar216(
+        name: names[i], deviceId: ids[i], radius: ring ? s / 2 - 2 : s / 2, crown: false);
+    if (!ring) return photo;
+    return Container(
+      decoration: BoxDecoration(
+          shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
+      child: photo,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -400,8 +420,8 @@ class ChatAvatars221 extends StatelessWidget {
       width: size,
       height: size,
       child: Stack(children: [
-        Positioned(left: 0, top: size * 0.12, child: Letter221(names[0], size: s)),
-        Positioned(left: size * 0.4, top: size * 0.4, child: Letter221(names[1], size: s, ring: true)),
+        Positioned(left: 0, top: size * 0.12, child: _one(0, s)),
+        Positioned(left: size * 0.4, top: size * 0.4, child: _one(1, s, ring: true)),
       ]),
     );
   }
@@ -417,7 +437,7 @@ class OwnerChip221 extends StatelessWidget {
           key: const ValueKey('chats221_owner'),
           color: const Color(0xFFFFF6DB),
           shape: const CircleBorder(side: BorderSide(color: Color(0xFFF2D27A))),
-          child: SizedBox(width: 36, height: 36, child: Center(child: AdminCrown.mark(18, halo: null))),
+          child: SizedBox(width: 36, height: 36, child: Center(child: AdminCrown.mark(15, halo: null))),
         ),
       );
 }

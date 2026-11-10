@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart' show SimpleKeyPair;
 import 'package:http/http.dart' as http;
+import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/core/network/build_http.dart' show BuildHeaderClient;
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_box.dart';
@@ -307,7 +308,11 @@ class ChatAnswerReader {
       action: action,
       answerId: best.key,
       fromDevice: parts.first.device,
-      fromName: await nameOf(parts.first.device).catchError((_) => ''),
+      // Bundle 255 B7: a default phone label is not a name -> '' (the
+      // viewer then takes the name from the answering phone's messages).
+      fromName: await nameOf(parts.first.device)
+          .then((n) => isDefaultPhoneLabel255(n) ? '' : n.trim())
+          .catchError((_) => ''),
       of: of,
       parts: parts.length,
       complete: complete,

@@ -29,6 +29,7 @@ class TlsUpgrade243 {
     required this.read,
     required this.write,
     required this.socketUp,
+    this.onHttpsOn,
     TlsProbe243? probeTls,
     HttpProbe243? probeHttp,
   })  : _probeTls = probeTls ?? probeTls243,
@@ -39,6 +40,10 @@ class TlsUpgrade243 {
   final TlsRead243 read;
   final TlsWrite243 write;
   final bool Function() socketUp;
+
+  /// Bundle 255 D1: called after a tick that leaves HTTPS on ('on' / 'ok'),
+  /// so a live socket still on plain ws:// can move to wss://.
+  final void Function()? onHttpsOn;
   final TlsProbe243 _probeTls;
   final HttpProbe243 _probeHttp;
 
@@ -66,7 +71,9 @@ class TlsUpgrade243 {
     if (_busy) return 'busy';
     _busy = true;
     try {
-      return await _tick();
+      final r = await _tick();
+      if (r == 'on' || r == 'ok') onHttpsOn?.call();
+      return r;
     } catch (e) {
       _once('error', 'result=error');
       return 'error';

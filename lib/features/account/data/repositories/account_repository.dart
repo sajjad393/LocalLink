@@ -26,6 +26,13 @@ class AccountRepository implements AccountRepositoryContract {
     LocalProfile? remote;
     Object? error;
 
+    // Bundle 256 C2: a phone-only account has no server yet - show the
+    // saved profile and make no server call (was "Server address is
+    // required" -> "Can't reach LinkUp").
+    if (_store.isOfflinePending || (_store.serverAddress ?? '').trim().isEmpty) {
+      return AccountProfileLoadResult(cached: await _store.profile(), remote: null, error: null);
+    }
+
     try {
       await _api.syncPendingProfile();
     } catch (_) {

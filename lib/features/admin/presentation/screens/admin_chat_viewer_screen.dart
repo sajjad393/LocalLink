@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart';
@@ -81,8 +82,56 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   String get _sub {
     final r = widget.request;
     final range = r.from.isEmpty ? 'Full chat' : '${_day(r.from)} - ${_day(r.to)}';
-    final from = _view?.fromName ?? '';
+    final v = _view;
+    final from = v == null ? '' : _owner255(v);
     return from.isEmpty ? range : "$range · from $from's phone";
+  }
+
+  /// Bundle 255 B7: the answering phone's owner: its name in the answer,
+  /// else the name on its own messages, else the label name.
+  String _owner255(ChatAnswerView v) {
+    final named = v.fromName.trim();
+    if (named.isNotEmpty && !isDefaultPhoneLabel255(named)) return named;
+    for (final m in v.messages) {
+      final n = m['sender_name']?.toString().trim() ?? '';
+      if (n.isNotEmpty && v.fromDevice.isNotEmpty && m['sender'] == v.fromDevice) return n;
+    }
+    return '';
+  }
+
+  /// Bundle 255 B6: a message with no sender name (old apps, offline
+  /// accounts) takes the name from the label "noshad & sajjad": the
+  /// answering phone's side or the other one. '' = "Someone".
+  String _nameFor255(ChatAnswerView v, Map<String, dynamic> m, bool right) {
+    final names = [for (final n in _names) if (n.trim().isNotEmpty) n.trim()];
+    if ((_pick?.isGroup ?? false) || names.length != 2) return '';
+    final owner = _owner255(v);
+    if (!right) return owner.isNotEmpty ? owner : names.first;
+    if (owner.isEmpty) return names.last;
+    final other = names.where((n) => n != owner).toList();
+    return other.isEmpty ? '' : other.first;
+  }
+
+  /// Bundle 255 B8: header names in the same order as [_photoIds255]
+  /// (answering phone's owner first).
+  List<String> get _headerNames255 {
+    final v = _view;
+    final names = _names;
+    if (v == null || names.length != 2 || _photoIds255 == null) return names;
+    final owner = _owner255(v);
+    return owner.isNotEmpty && names[1].trim() == owner ? [names[1], names[0]] : names;
+  }
+
+  /// Bundle 255 B8: device ids for the header photos (answering phone,
+  /// then the other person) when both are known; null = letters.
+  List<String>? get _photoIds255 {
+    final v = _view;
+    if (v == null || (_pick?.isGroup ?? false) || v.fromDevice.isEmpty) return null;
+    for (final m in v.messages) {
+      final s = m['sender']?.toString() ?? '';
+      if (s.isNotEmpty && s != v.fromDevice) return [v.fromDevice, s];
+    }
+    return null;
   }
 
   static String _day(String d) {
@@ -236,7 +285,11 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
         elevation: 0,
         titleSpacing: 0,
         title: Row(children: [
-          ChatAvatars221(names: _names, group: _pick?.isGroup ?? false, size: 46),
+          ChatAvatars221(
+              names: _headerNames255,
+              group: _pick?.isGroup ?? false,
+              size: 46,
+              photoIds: _photoIds255),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -346,7 +399,8 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final right = !group && v.fromDevice.isNotEmpty && m['sender'] != v.fromDevice;
     final deleted = (m['deleted_at']?.toString() ?? '').isNotEmpty;
     final outside = m['outside'] == true;
-    final name = m['sender_name']?.toString() ?? '';
+    final sent = m['sender_name']?.toString().trim() ?? '';
+    final name = sent.isNotEmpty ? sent : _nameFor255(v, m, right);
     final at = DateTime.tryParse('${m['created_at']}')?.toLocal();
     final time = at == null ? '' : TimeOfDay.fromDateTime(at).format(context);
     final route = AdminChatViewerScreenRoutes.word(m['route']?.toString() ?? '');

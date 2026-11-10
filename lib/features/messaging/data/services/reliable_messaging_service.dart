@@ -1,3 +1,6 @@
+import 'package:locallink/core/security/server_proof_231.dart';
+import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
+import 'package:locallink/features/authentication/data/services/server_hint_256.dart';
 import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
@@ -1547,7 +1550,7 @@ class ReliableMessagingService {
                 'sender_id': store.deviceId,
                 'recipient_id': recipientId,
                 'body': body,
-                'created_at': _rfc3339Utc(item['created_at']),
+                'created_at': _rfc3339UtcPhone(item['created_at']),
                 if (attachments.isNotEmpty) 'attachments': attachments,
               },
             );
@@ -2511,6 +2514,10 @@ class ReliableMessagingService {
       if (event['wifi'] == true || event['internet'] == true) {
         socket.networkBack();
       }
+      // Bundle 256 B1: Wi-Fi back -> a phone-only account tries now.
+      if (event['wifi_up'] == true || event['wifi'] == true) {
+        OfflinePublishTicker256.instance.nudge('wifi_up');
+      }
       unawaited(_safeFlush('network_changed'));
       return;
     }
@@ -2724,6 +2731,7 @@ class ReliableMessagingService {
         unawaited(_repushFor(peer).catchError((Object e) {
           AppLogger.warning('MEDIA_REPUSH_AUTO_FAILED', detail: '$e');
         }));
+        unawaited(_sendServerHint256(peer));
       }
 
       return;
@@ -2779,6 +2787,15 @@ class ReliableMessagingService {
         detail: 'type=${type ?? 'unknown'} '
             'id=${data['id']?.toString() ?? ''}',
       );
+
+      // Bundle 256 A3: a nearby phone told the server address.
+      if (type == ServerHint256.type) {
+        final wanted = store.isOfflinePending || (store.serverAddress ?? '').trim().isEmpty;
+        if (ServerHint256.instance.take(data, wanted: wanted)) {
+          OfflinePublishTicker256.instance.nudge('server_hint');
+        }
+        return;
+      }
 
       // ----------------------------------------------------------------------
       // DIRECT MESSAGE
@@ -3445,6 +3462,40 @@ class ReliableMessagingService {
     }
     return value.toIso8601String();
   }
+
+  /// Bundle 256 A3: tell a phone that just linked where the server is
+  /// (only a phone that reached the server; once per 10 min per phone).
+  Future<void> _sendServerHint256(String peer) async {
+    try {
+      if (store.isOfflinePending) return;
+      final server = store.serverAddress?.trim() ?? '';
+      if (server.isEmpty) return;
+      final key = (await store.readSetting(ServerProof231.trustKeySetting))?.trim() ?? '';
+      final payload = ServerHint256.instance
+          .payloadFor(peer, server: server, key: key, self: store.deviceId);
+      if (payload == null) return;
+      await directTransport.send(recipientId: peer, payload: payload);
+      AppLogger.info('SERVER_HINT_SENT', detail: 'to=${_shortId(peer)}');
+    } catch (_) {
+      // Best effort: the new phone still searches by itself.
+    }
+  }
+
+  /// Bundle 255 A2: Wi-Fi / Wi-Fi Direct / mesh sends never touch the
+  /// server, so they keep the phone's own time (no server-clock clamp).
+  /// The receiver already guards a bad phone clock (peer clock offset +
+  /// "never later than arrival + 5 s").
+  String _rfc3339UtcPhone(Object? raw) {
+    final parsed = DateTime.tryParse(raw?.toString() ?? '');
+    final value = (parsed ?? DateTime.now()).toUtc();
+    if (!_timeKeptLogged255) {
+      _timeKeptLogged255 = true;
+      AppLogger.info('MESSAGE_TIME_KEPT', detail: 'way=direct');
+    }
+    return value.toIso8601String();
+  }
+
+  static bool _timeKeptLogged255 = false;
 
   String _newId() {
     final random = Random.secure();

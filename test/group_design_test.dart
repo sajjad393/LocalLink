@@ -49,11 +49,11 @@ void main() {
       expect(find.text('Today'), findsOneWidget);
     });
 
-    testWidgets('formats older dates as d/m/y', (tester) async {
+    testWidgets('formats older dates as "5 Jan 2025" (255 B3)', (tester) async {
       await tester.pumpWidget(
-        _host(MessengerDateDivider(date: DateTime(2026, 1, 5))),
+        _host(MessengerDateDivider(date: DateTime(2025, 1, 5))),
       );
-      expect(find.text('5/1/2026'), findsOneWidget);
+      expect(find.text('5 Jan 2025'), findsOneWidget);
     });
   });
 

@@ -7,7 +7,9 @@ import 'package:locallink/core/crypto/recovery_code.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/local_store.dart';
+import 'package:locallink/features/authentication/data/services/server_hint_256.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/connectivity/data/models/discovered_server.dart';
@@ -44,7 +46,7 @@ class AuthenticationRepository
 
   @override
   Future<List<DiscoveredServer>> discoverServers({
-    Duration timeout = const Duration(seconds: 3),
+    Duration timeout = const Duration(seconds: 5),
   }) {
     return _connectivity.discoverServers(timeout: timeout);
   }
@@ -112,18 +114,33 @@ class AuthenticationRepository
       final discovered = await discoverServers();
       candidates.addAll(discovered.map((server) => server.address));
     } catch (_) {}
+    // Bundle 256 A3: the address a nearby LinkUp phone told (checked by
+    // the same server proof below, plus its key tail).
+    final hint = ServerHint256.instance.address?.trim() ?? '';
+    if (hint.isNotEmpty) candidates.add(hint);
 
     if (candidates.isEmpty) {
       throw StateError('No LinkUp server is available on the local network.');
     }
 
     Object? lastError;
+    // Bundle 256 A5: a server that ANSWERED with a problem (identity
+    // changed, bad proof) is not "no server": no phone-only account then.
+    String? problem;
     for (final candidate in candidates) {
       try {
         final info = await verifyServer(address: candidate, deviceName: name);
+        if (candidate == hint &&
+            hint != savedServer &&
+            !ServerHint256.instance.keyMatches(info.serverKey)) {
+          AppLogger.info('SERVER_HINT_IGNORED', detail: 'reason=key_tail');
+          lastError = StateError('No LinkUp server is available on the local network.');
+          continue;
+        }
         final identityError = serverIdentityError(info);
         if (identityError != null) {
           lastError = StateError(identityError);
+          problem ??= identityError;
           continue;
         }
         // Bundle 231 (audit S2): the pinned server key must match the proof.
@@ -131,6 +148,7 @@ class AuthenticationRepository
             await ServerProof231.check(info, read: _store.readSetting);
         if (proofError != null) {
           lastError = StateError(proofError);
+          problem ??= proofError;
           continue;
         }
 
@@ -146,9 +164,13 @@ class AuthenticationRepository
         return;
       } catch (error) {
         lastError = error;
+        if (error is StateError && error.message == ServerProof231.identityChanged) {
+          problem ??= error.message;
+        }
       }
     }
 
+    if (problem != null) throw ServerProblem256(problem);
     final last = lastError;
     throw StateError(
       last == null

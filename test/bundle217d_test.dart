@@ -6,9 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 
 void main() {
-  test('sizes: 1.1 x radius, never under 13; height 0.88 x width', () {
-    expect(AdminCrown.sizeFor(40), closeTo(44, 1e-9));
-    expect(AdminCrown.sizeFor(5), 13);
+  test('sizes: 0.9 x radius, never under 11 (256 F1); height 0.88 x width', () {
+    expect(AdminCrown.sizeFor(40), closeTo(36, 1e-9));
+    expect(AdminCrown.sizeFor(5), 11);
     expect(CrownPainter216.heightFor(50), closeTo(44, 1e-9));
   });
 

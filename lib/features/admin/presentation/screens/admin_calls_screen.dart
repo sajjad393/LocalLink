@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/widgets/admin_crown.dart';
+
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_people216.dart';
@@ -75,11 +77,17 @@ class _AdminCallsScreenState extends State<AdminCallsScreen> {
                       ? 'someone'
                       : '${c['callee_name']}';
                   final secs = (c['duration_seconds'] as num?) ?? 0;
+                  final uid = '${c['caller_user_id'] ?? ''}';
+                  // Bundle 255 B1 (as Users 222): taller admin row.
+                  final crowned = uid.isNotEmpty && AdminCrown.showFor(uid);
+                  final extra = AdminCrownRoom.extraFor(20, already: 12) + 2;
                   return AdminRow216(
                     key: ValueKey('a216_call_${c['id']}'),
-                    height: 64,
-                    leading: ServerPersonAvatar216(
-                        name: caller, userId: '${c['caller_user_id'] ?? ''}'),
+                    height: crowned ? 64 + extra : 64,
+                    leading: Padding(
+                      padding: EdgeInsets.only(top: crowned ? extra : 0),
+                      child: ServerPersonAvatar216(name: caller, userId: uid),
+                    ),
                     title: '$caller → $callee',
                     subtitle: k.text == 'Missed'
                         ? 'Voice · ${whenSub216(c['started_at'])}'

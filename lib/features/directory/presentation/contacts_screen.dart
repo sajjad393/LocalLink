@@ -219,7 +219,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
             onRefresh: bloc.load,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.only(bottom: LocalLinkSpacing.xxl),
+              // Bundle 255 B4: room for the round button (same as Chats).
+              padding: const EdgeInsets.only(bottom: 96),
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, LocalLinkSpacing.md, LocalLinkSpacing.lg, 0),
@@ -451,7 +452,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ),
       );
     }
-    return MessengerListGroup(children: tiles);
+    // Bundle 255 B1: crown room on row 0 (radius 24, 16 dp above the
+    // photo in a People row; measured in tests).
+    return MessengerListGroup(
+        crownFirstId: contacts.isEmpty ? null : contacts.first.deviceId,
+        crownFirstOtherId: contacts.isEmpty ? null : contacts.first.userId,
+        crownRadius: 24,
+        crownAlready: 16,
+        children: tiles);
   }
 
   static String _titleOf(DirectoryProfile p) =>
@@ -534,7 +542,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget _requestGroup(BuildContext context, List<FriendRequest> requests) {
     final colors = Theme.of(context).colorScheme;
     final now = FriendRequestBook.instance.now();
-    return MessengerListGroup(children: [
+    // Bundle 255 B1: crown room on row 0 (radius 24, 10 dp above it).
+    return MessengerListGroup(
+        crownFirstId: requests.isEmpty ? null : requests.first.deviceId,
+        crownRadius: 24,
+        crownAlready: 10,
+        children: [
       for (final r in requests)
         Padding(
           key: ValueKey('people_request_${r.deviceId}'),

@@ -77,6 +77,14 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   /// Bundle 218c: this phone just joined — ask about offline friends now.
   bool _resolveSoon218 = false;
   void resolveSoon218() => _resolveSoon218 = true;
+
+  /// Bundle 256 E5: this phone joined the server (new id) - send my new
+  /// signed card straight to every friend, so their phones move my old
+  /// offline id to the new one now (not only when the server is asked).
+  Future<void> cardToFriendsAfterJoin256() async {
+    AppLogger.info('ID_MOVED_TELL', detail: 'cards to friends');
+    await _cardToFriends();
+  }
   // Edges received before the author's directory profile (and therefore the
   // signing key we must verify with) was cached. Re-attempted whenever a
   // profile lands; gossip round-trips are seconds, not minutes.
@@ -1557,6 +1565,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       final localIds = await store.rawContactUserIds();
 
       // Push local offline adds (local, but never confirmed by the server).
+      var pushed256 = 0;
       for (final id in localIds.difference(confirmed)) {
         if (id == accountId) continue;
         // Bundle 218c: the server has no such id; it stays on this phone.
@@ -1570,6 +1579,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
           await api.addAccountContact(id,
               isPrivate: await store.isContactPrivate(id));
           confirmed.add(id);
+          pushed256++;
         } on ApiError218 catch (e) {
           if (e.code == 'NOT_ON_SERVER') continue; // kept local, quietly
           AppLogger.warning('CONTACT_PUSH_DEFERRED',
@@ -1579,6 +1589,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
               detail: 'offline or server error; will retry next cycle');
         }
       }
+
+      // Bundle 256 E4: the waiting contacts went up.
+      if (pushed256 > 0) AppLogger.info('CONTACT_PUSH', detail: 'ok n=$pushed256');
 
       // Push removals handled while the mirror call failed (confirmed on the
       // server at some point, but no longer present locally). DELETE is

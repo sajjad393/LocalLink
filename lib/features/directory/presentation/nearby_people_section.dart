@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:locallink/core/services/server_reach.dart';
+import 'package:locallink/features/connectivity/data/services/wifi_radio_control_service.dart';
+import 'package:locallink/features/directory/presentation/nearby_status_256.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/app_logger.dart';
@@ -117,6 +120,77 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
   bool _celebrating = false;
   String _celebrateInitial = '';
 
+  // Bundle 256 E6-E9: chips, Wi-Fi card, phones kept 2 min, NEARBY_LIST.
+  Timer? _tick256;
+  bool? _radioOn256;
+  final NearbyKept256<MeshPeer> _kept256 = NearbyKept256<MeshPeer>();
+  String _listLine256 = '';
+  int _listLoggedAt256 = 0;
+
+  /// Wi-Fi radio off = off; else the network watcher (null = not known).
+  bool? get _wifi256 => _radioOn256 == false ? false : ServerReach.instance.wifi;
+
+  Future<void> _onTick256() async {
+    bool? radio;
+    try {
+      radio = (await WifiRadioControlService().status()).enabled;
+    } catch (_) {
+      radio = null; // no channel (tests) - the watcher alone decides
+    }
+    if (!mounted) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_listLine256.isNotEmpty && now - _listLoggedAt256 >= 30000) {
+      _listLoggedAt256 = now;
+      AppLogger.info('NEARBY_LIST', detail: _listLine256);
+    }
+    if (radio != _radioOn256 || !_kept256.isEmpty) {
+      setState(() => _radioOn256 = radio);
+    }
+  }
+
+  Future<void> _openWifi256() async {
+    AppLogger.info('NEARBY', detail: 'WIFI_CARD open_settings');
+    try {
+      await WifiRadioControlService().openSettings();
+    } catch (_) {}
+  }
+
+  Widget _wifiCard256(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Card(
+        key: const ValueKey<String>('nearby_wifi_card_256'),
+        color: scheme.tertiaryContainer.withValues(alpha: .6),
+        child: ListTile(
+          title: const Text('Wi-Fi went off'),
+          subtitle: const Text(
+              "Phones on your Wi-Fi can't see you. Still looking with Wi-Fi Direct."),
+          trailing: FilledButton(
+            onPressed: _openWifi256,
+            child: const Text('Wi-Fi'),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _keptCard256(({String id, String? name, MeshPeer peer, int ageMs}) k) {
+    return Opacity(
+      key: ValueKey<String>('nearby_kept_${k.id}'),
+      opacity: .6,
+      child: _NearbyCard(
+        initial: initialOf(k.name ?? nearbyUnknownName),
+        title: k.name ?? nearbyUnknownName,
+        subtitle: nearbySeenLabel256(k.ageMs),
+        action: FilledButton.tonal(
+          onPressed: () => _pairSheet(k.peer),
+          child: const Text('Add friend'),
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -128,6 +202,8 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     // the chat; "wait" shows a short note.
     FriendRequestBook.instance.nearbyOnScreen++;
     _waitingSub = widget.pairing.waiting.listen(_onWaiting);
+    unawaited(_onTick256());
+    _tick256 = Timer.periodic(const Duration(seconds: 5), (_) => unawaited(_onTick256()));
   }
 
   void _onWaiting(String name) {
@@ -145,6 +221,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     _waitingSub = null;
     unawaited(_pairedSub?.cancel());
     _pairedSub = null;
+    _tick256?.cancel();
     _found.dispose();
     super.dispose();
   }
@@ -601,20 +678,58 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     }
 
     final plan = _plan(meshState, peers);
+    // Bundle 256 E8: phones that just left stay 2 min, greyed.
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    _kept256.saw([
+      for (final e in entries)
+        if (e.mesh != null) (id: e.mesh!.nodeId, name: e.name, peer: e.mesh!),
+    ], nowMs);
+    final kept = _kept256.kept(nowMs, {
+      for (final e in entries)
+        if (e.mesh != null) e.mesh!.nodeId,
+      ..._trustedIds,
+      ..._blockedIds,
+    });
+    final wifi = _wifi256;
+    final bleState = NearbyBleStatus.instance.state;
+    _listLine256 = nearbyListLog256(
+      shown: entries.length,
+      lan: entries.where((e) => (e.mesh?.transport ?? '').contains('lan')).length,
+      wd: entries.where((e) => e.wifi != null || (e.mesh?.transport ?? '').contains('direct')).length,
+      ble: entries.where((e) => (e.mesh?.transport ?? '').contains('ble')).length,
+      kept: kept.length,
+      wifi: wifi,
+      bleState: bleState,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(context, dots: any && !_celebrating),
+        // Bundle 256 E6: why the list may be empty, at a glance.
+        AnimatedBuilder(
+          animation: NearbyBleStatus.instance,
+          builder: (context, _) => NearbyChips256(
+            chips: nearbyChips256(
+              wifi: wifi,
+              wifiDirectOn: _permission == true && state.snapshot.wifiDirectSupported,
+              ble: NearbyBleActions.control == null ? 'unknown' : NearbyBleStatus.instance.state,
+            ),
+          ),
+        ),
+        // Bundle 256 E7: Wi-Fi went off (only opens Android Wi-Fi settings).
+        if (wifi == false) _wifiCard256(context),
         if (_permission == false) _permissionCard(context),
         // Bundle 226 (B5): one Bluetooth card at most (the Wi-Fi card wins).
         ListenableBuilder(
           listenable: NearbyBleStatus.instance,
-          builder: (context, _) => _bleCardFor(context),
+          builder: (context, _) => _bleCardFor(context, listEmpty: !any),
         ),
         if (_celebrating)
           _lookingBox(context,
               foundProgress: _found.value, initial: _celebrateInitial)
-        else if (!any) ...[
+        else if (!any && kept.isNotEmpty) ...[
+          for (final k in kept) _keptCard256(k),
+        ] else if (!any) ...[
           if (plan.emptyState == NearbyEmptyState.everyoneAdded)
             _NearbyInfoCard(
               icon: Icons.how_to_reg_rounded,
@@ -626,8 +741,10 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
             )
           else if (_permission != false)
             _lookingBox(context),
-        ] else
+        ] else ...[
           for (final e in entries) _card(state, e),
+          for (final k in kept) _keptCard256(k),
+        ],
       ],
     );
   }
@@ -714,7 +831,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     } catch (_) {}
   }
 
-  Widget _bleCardFor(BuildContext context) {
+  Widget _bleCardFor(BuildContext context, {bool listEmpty = false}) {
     if (NearbyBleActions.control == null) return const SizedBox.shrink();
     final status = NearbyBleStatus.instance;
     final kind = bleCardFor(
@@ -722,7 +839,9 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
       sdk: status.sdk,
       wifiCardShown: _permission == false,
       now: DateTime.now().millisecondsSinceEpoch,
-      allowHiddenUntil: _bleAllowHiddenUntil,
+      // Bundle 256 E9: while nobody is listed the Allow card stays on top
+      // (× hides it only while the list has people).
+      allowHiddenUntil: listEmpty ? 0 : _bleAllowHiddenUntil,
       offHiddenUntil: _bleOffHiddenUntil,
     );
     if (kind == BleCard.none) return const SizedBox.shrink();

@@ -13,11 +13,17 @@ final class AuthOutcome {
   final AuthResult? result;
   final bool offline;
 
-  const AuthOutcome.online(this.result) : offline = false;
-
-  const AuthOutcome.offline()
+  const AuthOutcome.offline({this.madeOffline = false})
       : result = null,
         offline = true;
+
+  const AuthOutcome.online(this.result)
+      : offline = false,
+        madeOffline = false;
+
+  /// Bundle 256 A4: a NEW phone-only account was made because no server
+  /// answered - the screen says so once ("Saved on this phone").
+  final bool madeOffline;
 
   bool get online => result != null;
 }
@@ -31,11 +37,16 @@ final class AuthenticationState extends Equatable {
   /// the register screen may now offer the offline account path.
   final bool offlineRegisterAvailable;
 
+  /// Bundle 256 A4: what the screen shows under the button while busy:
+  /// 'search' = looking for the server, 'found' = server found. Null = none.
+  final String? stage;
+
   const AuthenticationState({
     this.registerMode = false,
     this.busy = false,
     this.error,
     this.offlineRegisterAvailable = false,
+    this.stage,
   });
 
   AuthenticationState copyWith({
@@ -44,6 +55,8 @@ final class AuthenticationState extends Equatable {
     String? error,
     bool clearError = false,
     bool? offlineRegisterAvailable,
+    String? stage,
+    bool clearStage = false,
   }) {
     return AuthenticationState(
       registerMode: registerMode ?? this.registerMode,
@@ -51,12 +64,13 @@ final class AuthenticationState extends Equatable {
       error: clearError ? null : (error ?? this.error),
       offlineRegisterAvailable:
           offlineRegisterAvailable ?? this.offlineRegisterAvailable,
+      stage: clearStage ? null : (stage ?? this.stage),
     );
   }
 
   @override
   List<Object?> get props =>
-      [registerMode, busy, error, offlineRegisterAvailable];
+      [registerMode, busy, error, offlineRegisterAvailable, stage];
 }
 
 final class AuthenticationBloc extends Cubit<AuthenticationState> {
@@ -92,10 +106,14 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
       throw _validation('Password must be at least 8 characters.');
     }
 
-    emit(state.copyWith(busy: true, clearError: true));
+    final what = state.registerMode ? 'create' : 'sign_in';
+    emit(state.copyWith(busy: true, clearError: true, stage: 'search'));
+    var serverFound = false;
     try {
       final deviceName = repository.generateUniqueDeviceName();
       await repository.prepareForAuthentication(deviceName: deviceName);
+      serverFound = true;
+      emit(state.copyWith(stage: 'found'));
       if (state.registerMode) {
         final result = await repository.register(
           username: user,
@@ -104,6 +122,7 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
         );
         await _mirror(user, password, result);
         await repository.completeOfflineLogin(); // clears any prior sign-out gate
+        AppLogger.info('AUTH_RESULT', detail: 'what=$what mode=server');
         return AuthOutcome.online(result);
       }
       final result = await repository.login(
@@ -113,21 +132,29 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
       );
       await _mirror(user, password, result);
       await repository.completeOfflineLogin();
+      AppLogger.info('AUTH_RESULT', detail: 'what=$what mode=server');
       return AuthOutcome.online(result);
     } catch (error) {
+      // Bundle 256 A5: offline ONLY when no server answered.
       if (_isOfflineEligible(error)) {
-        // Bundle 110: invisible server-first → offline fallback.
+        final reason = serverFound ? 'server_lost' : 'no_server';
+        // Bundle 110: server-first → offline fallback.
         final offline = await _offlineFallback(user, password);
-        if (offline != null) return offline;
+        if (offline != null) {
+          AppLogger.info('AUTH_RESULT', detail: 'what=$what mode=offline reason=$reason');
+          return offline;
+        }
       }
-      final message = cleanBlocError(error);
+      AppLogger.info('AUTH_RESULT',
+          detail: 'what=$what mode=none reason=${error is ServerProblem256 ? 'server_problem' : 'error'}');
+      final message = error is ServerProblem256 ? error.message : cleanBlocError(error);
       emit(state.copyWith(
-        error: _cleanAuthenticationError(message),
+        error: error is ServerProblem256 ? message : _cleanAuthenticationError(message),
         offlineRegisterAvailable: false,
       ));
       rethrow;
     } finally {
-      emit(state.copyWith(busy: false));
+      emit(state.copyWith(busy: false, clearStage: true));
     }
   }
 
@@ -154,7 +181,7 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
       }
       await repository.registerOffline(username: user, password: password);
       await repository.completeOfflineLogin();
-      return const AuthOutcome.offline();
+      return const AuthOutcome.offline(madeOffline: true);
     }
     // Bundle 223 (J): the password check runs off the screen thread.
     final repo = repository;
@@ -211,6 +238,7 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
   }
 
   bool _isOfflineEligible(Object error) {
+    if (error is ServerProblem256) return false; // Bundle 256 A5
     if (error is StateError) return true; // prepareForAuthentication failures
     final text = error.toString().toLowerCase();
     return text.contains('socketexception') ||

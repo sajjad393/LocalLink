@@ -46,6 +46,10 @@ class ServerReach {
     _logged.clear();
   }
 
+  /// Bundle 256 A2: last Wi-Fi state from the native watcher (null = not
+  /// known yet, e.g. before the first sign-in).
+  bool? get wifi => _wifi;
+
   /// The native network watcher (network_changed).
   void networkChanged({bool? wifi, bool? internet}) {
     _wifi = wifi;

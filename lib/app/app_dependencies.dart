@@ -1,3 +1,4 @@
+import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/security/security_code_245.dart';
 import 'package:locallink/core/security/identity_trust_service.dart';
 import 'package:locallink/core/network/tls_pin_243.dart';
@@ -767,7 +768,16 @@ class AppDependencies {
 
   Future<String> _name221(String device) async {
     if (device.isEmpty) return '';
-    if (device == store.deviceId) return store.username ?? '';
+    if (device == store.deviceId) {
+      // Bundle 255 B6: an offline-pending account has no store.username yet
+      // ("Someone" in the admin copy) -> profile name, then the offline name.
+      final me = await store.profile().catchError((Object _) => null);
+      final shown = (me?.displayName ?? '').trim();
+      if (shown.isNotEmpty) return shown;
+      final user = (store.username ?? '').trim();
+      if (user.isNotEmpty) return user;
+      return store.offlinePending?['username']?.toString().trim() ?? '';
+    }
     return await store.peerDisplayName(device).catchError((Object _) => null) ?? '';
   }
 
@@ -1371,13 +1381,50 @@ class AppDependencies {
       read: store.readSetting,
       write: store.writeSetting,
       socketUp: () => socket.isConnected,
+      onHttpsOn: _wssSwitch255,
     )..start();
+  }
+
+  /// Bundle 255 D1: HTTPS is on but the live socket is still plain ws://
+  /// (10 Nov: 13 min on ws://). Move it to wss:// once, never during a call
+  /// (then on the next tick after the call).
+  /// Bundle 256 B2: a newly saved server address nudges the publish.
+  static void bindServerSaved256() {
+    LocalStore.onServerSaved256 =
+        () => OfflinePublishTicker256.instance.nudge('server_saved');
+  }
+
+  void _wssSwitch255() {
+    final now = socket.currentUrl ?? '';
+    if (!now.startsWith('ws://') || !socket.isConnected) return;
+    final String next;
+    try {
+      next = api.wsUrl;
+    } catch (_) {
+      return;
+    }
+    if (!next.startsWith('wss://')) return;
+    var inCall = false;
+    try {
+      inCall = callService.session != null;
+    } catch (_) {
+      return; // calls not set up yet
+    }
+    if (inCall) {
+      AppLogger.info('WS_TLS_SWITCH', detail: 'wait=call');
+      return;
+    }
+    AppLogger.info('WS_TLS_SWITCH', detail: 'from=ws to=wss');
+    unawaited(api.connectRealtime().catchError((Object e) {
+      AppLogger.warning('WS_TLS_SWITCH', detail: 'result=failed');
+    }));
   }
 
   Future<void> initializeCore({required bool localOnly}) async {
     // Bundle 223 (L, N): background server calls skip quietly with no
     // server address / no network; a fresh gate for every sign-in.
     bindServerReach();
+    bindServerSaved256();
     if (localOnly) await store.ensureDeviceIdentity();
     await crypto.init(store.deviceId!);
   }
@@ -1595,7 +1642,10 @@ class AppDependencies {
     } catch (_) {}
     final dir = directoryRepository;
     if (dir is DirectoryRepository) dir.resolveSoon218();
-    unawaited(directoryRepository.publishOwnProfile().catchError((Object _) {}));
+    unawaited(directoryRepository.publishOwnProfile().catchError((Object _) {}).then((_) async {
+      // Bundle 256 E5: friends learn the new id over LAN / Wi-Fi Direct now.
+      if (dir is DirectoryRepository) await dir.cardToFriendsAfterJoin256();
+    }).catchError((Object _) {}));
     unawaited(directoryRepository.syncServerContacts().catchError((Object _) {}));
     unawaited(messaging.flush().catchError((Object _) {}));
   }

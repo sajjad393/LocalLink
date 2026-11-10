@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_offline.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/admin_permissions.dart';
@@ -74,7 +75,9 @@ class _AdminDevicesScreenState extends State<AdminDevicesScreen> {
                       hasAvatar: d['has_avatar'] == true,
                       grey: removed,
                     ),
-                    title: '${d['name'] ?? 'Phone'}',
+                    // Bundle 255 B9: "<owner>'s phone" for a default name.
+                    title: phoneTitle255('${d['name'] ?? ''}',
+                        owner(d) == 'No owner' ? '' : owner(d)),
                     subtitle:
                         '${owner(d)} · ${online(d) ? 'online' : age216(d['last_seen_at'])}',
                     titleColor: removed ? A216.colors(context).grey2 : null,

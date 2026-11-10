@@ -78,6 +78,9 @@ class _SetupScreenState extends State<SetupScreen> {
         // falling through to the dashboard with the profile never offered
         // (bundle 123 already seeds a usable row; this is the human step).
         // Offline login keeps the drop-straight-in behavior.
+        // Bundle 256 A4: a NEW phone-only account is told once (it was
+        // silent on 10 Nov while the server was on the same Wi-Fi).
+        if (outcome.madeOffline && mounted) await _savedOnPhone256();
         if (_controller.registerMode && mounted) {
           await Navigator.push(
             context,
@@ -100,6 +103,62 @@ class _SetupScreenState extends State<SetupScreen> {
     } catch (_) {
       // The controller exposes the user-facing error state.
     }
+  }
+
+  /// Bundle 256 A4: "Saved on this phone" (no server answered).
+  Future<void> _savedOnPhone256() => showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          key: const ValueKey('signup_saved_on_phone_256'),
+          icon: const Icon(Icons.phone_android_rounded),
+          title: const Text('Saved on this phone'),
+          content: const Text(
+              'No LinkUp server answered on this Wi-Fi.\n\n'
+              'Your account is saved on this phone and goes up to the server '
+              'by itself when the server is found.'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+
+  /// Bundle 256 A4: what happens while the button spins.
+  Widget _stage256(BuildContext context, String? stage) {
+    if (stage == null) return const SizedBox.shrink();
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final found = stage == 'found';
+    return Padding(
+      key: ValueKey('signup_stage_$stage'),
+      padding: const EdgeInsets.only(top: LocalLinkSpacing.md),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: found
+              ? const Icon(Icons.check_circle_rounded, size: 18, color: Color(0xFF12B76A))
+              : const SizedBox(
+                  width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(found ? 'Server found' : 'Looking for the LinkUp server…',
+                style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            Text(
+                found
+                    ? (_controller.registerMode
+                        ? 'Creating your account on the server…'
+                        : 'Signing you in on the server…')
+                    : 'Asking this Wi-Fi and nearby LinkUp phones (up to 5 s)',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+          ]),
+        ),
+      ]),
+    );
   }
 
   // Bundle 110: the old manual "Create account offline" panel is gone —
@@ -410,6 +469,7 @@ class _SetupScreenState extends State<SetupScreen> {
                         )
                       : Text(register ? 'Register' : 'Log in'),
                 ),
+                if (state.busy) _stage256(context, state.stage),
                 const SizedBox(height: LocalLinkSpacing.md),
                 TextButton(
                   onPressed: state.busy ? null : _switchMode,

@@ -183,7 +183,7 @@ class _AdminActionsScreenState extends State<AdminActionsScreen> {
           color: const Color(0xFFFFF6DB),
           shape: const CircleBorder(side: BorderSide(color: Color(0xFFF2D27A))),
           child: SizedBox(
-              width: 36, height: 36, child: Center(child: AdminCrown.mark(18, halo: null))),
+              width: 36, height: 36, child: Center(child: AdminCrown.mark(15, halo: null))),
         ),
       ),
       onRefresh: _loadServer,
