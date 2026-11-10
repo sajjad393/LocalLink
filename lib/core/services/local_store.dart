@@ -1912,8 +1912,14 @@ class LocalStore {
 
   Future<Map<String, dynamic>?> directoryProfileByDeviceId(
       String deviceId) async {
+    // Bundle 257 (A8): the server card first (an old offline card of the
+    // same phone may still be there), then the newest.
     final rows = await _db.query('directory_profiles',
-        where: 'device_id=?', whereArgs: [deviceId], limit: 1);
+        where: 'device_id=?',
+        whereArgs: [deviceId],
+        orderBy:
+            "CASE WHEN user_id LIKE 'offline\\_%' ESCAPE '\\' THEN 1 ELSE 0 END, updated_at DESC",
+        limit: 1);
     return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
   }
 

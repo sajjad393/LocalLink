@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:locallink/core/security/identity_trust_service.dart';
 import 'package:locallink/core/security/safety_number.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/link_key_refresh_257.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 
 /// Bundle 245 (audit S7): Security code + key-change warning.
@@ -166,6 +167,7 @@ class SecurityCode245 extends ChangeNotifier {
     _pending.remove(userId);
     await _save();
     AppLogger.info('KEY_ACCEPT_245', detail: 'result=saved user=${_tail(userId)}');
+    LinkKeyRefresh257.request('accept'); // Bundle 257 (A3/A6)
     notifyListeners();
     return true;
   }

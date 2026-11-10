@@ -311,8 +311,10 @@ class Scale160Test {
     @Test fun `older phones connect the old way until they once passed`() {
         assertEquals(MeshLinkAuth.Decision(MeshLinkAuth.Verdict.LEGACY, "old_phone"), MeshLinkAuth.decide(true, false, false, false, false))
         assertEquals(MeshLinkAuth.Decision(MeshLinkAuth.Verdict.LEGACY, "no_shared_key"), MeshLinkAuth.decide(true, true, false, false, false))
-        assertEquals(MeshLinkAuth.Decision(MeshLinkAuth.Verdict.REJECT, "auth_required"), MeshLinkAuth.decide(true, false, false, false, true))
-        assertEquals(MeshLinkAuth.Decision(MeshLinkAuth.Verdict.REJECT, "auth_required"), MeshLinkAuth.decide(true, true, false, false, true))
+        // Bundle 257 (A1): passed once + no shared key now = the old way
+        // ("rekey"), no longer refused (it locked friends out).
+        assertEquals(MeshLinkAuth.Decision(MeshLinkAuth.Verdict.LEGACY, "rekey"), MeshLinkAuth.decide(true, false, false, false, true))
+        assertEquals(MeshLinkAuth.Decision(MeshLinkAuth.Verdict.LEGACY, "rekey"), MeshLinkAuth.decide(true, true, false, false, true))
         // No key here (stranger, or keys not loaded yet): the old way.
         assertEquals(MeshLinkAuth.Verdict.LEGACY, MeshLinkAuth.decide(false, true, false, false, true).verdict)
     }

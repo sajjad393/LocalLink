@@ -725,6 +725,9 @@ class LocalLinkTransportService : Service() {
     /** Bundle 160: {peerId: [{o: myKeyId, p: theirKeyId, k: 64 hex}]} from Dart. */
     private fun updateLinkKeysInternal(json:String){
         val parsed = parseLinkKeys(json) ?: return
+        // Bundle 257 (A2): a friend whose key changed or went away verifies
+        // fresh (the old "passed before" mark is dropped).
+        resetVerifiedFor257(MeshLinkAuth.changedPeers(HashMap(linkKeys), parsed), parsed)
         linkKeys.clear(); linkKeys.putAll(parsed)
         persistState()
         Log.i("LINK_AUTH", "keys peers=${parsed.size} verified=${linkVerified.size}")
@@ -828,18 +831,42 @@ class LocalLinkTransportService : Service() {
 
     private fun noteLinkAuth(peer: String, side: String, decision: MeshLinkAuth.Decision) {
         countLinkAuthDay(decision.verdict)
+        // Bundle 257 (A5): the end of the id (the start is "android-" for all).
         when (decision.verdict) {
             MeshLinkAuth.Verdict.VERIFIED -> {
                 if (linkVerified.add(peer)) persistState()
-                Log.i("LINK_AUTH", "verified peer=${peer.take(8)} side=$side")
+                Log.i("LINK_AUTH", "verified peer=${peer.takeLast(8)} side=$side")
             }
             MeshLinkAuth.Verdict.LEGACY -> if (decision.reason == "no_local_key") {
-                Log.d("LINK_AUTH", "legacy peer=${peer.take(8)} side=$side reason=${decision.reason}")
-            } else Log.i("LINK_AUTH", "legacy peer=${peer.take(8)} side=$side reason=${decision.reason}")
+                Log.d("LINK_AUTH", "legacy peer=${peer.takeLast(8)} side=$side reason=${decision.reason}")
+            } else if (decision.reason == "rekey") {
+                // Bundle 257 (A1): once per peer per 10 min (it may repeat on every link).
+                if (rateOk257("rekey|$peer")) Log.i("LINK_AUTH", "legacy peer=${peer.takeLast(8)} side=$side reason=rekey")
+            } else Log.i("LINK_AUTH", "legacy peer=${peer.takeLast(8)} side=$side reason=${decision.reason}")
             MeshLinkAuth.Verdict.REJECT -> {
-                Log.w("LINK_AUTH", "reject peer=${peer.take(8)} side=$side reason=${decision.reason}")
+                Log.w("LINK_AUTH", "reject peer=${peer.takeLast(8)} side=$side reason=${decision.reason}")
                 transportEvent("peer_link_rejected", mapOf("peer_id" to peer, "reason" to "link_auth_${decision.reason}"))
             }
+        }
+    }
+
+    /** Bundle 257: true at most once per [key] per 10 min (log limiter). */
+    private val logAt257 = ConcurrentHashMap<String, Long>()
+    private fun rateOk257(key: String): Boolean {
+        val now = System.currentTimeMillis()
+        val last = logAt257[key] ?: 0L
+        if (now - last < 600_000L) return false
+        if (logAt257.size > 300) logAt257.clear()
+        logAt257[key] = now
+        return true
+    }
+
+    /** Bundle 257 (A2): drop "passed before" for friends whose key changed. */
+    private fun resetVerifiedFor257(changed: Set<String>, now: Map<String, List<MeshLinkAuth.LinkKey>>) {
+        for (peer in changed) {
+            if (!linkVerified.remove(peer)) continue
+            val why = if (now.containsKey(peer)) "key_changed" else "key_gone"
+            if (rateOk257("reset|$peer")) Log.i("LINK_AUTH", "verified_reset peer=${peer.takeLast(8)} why=$why")
         }
     }
 
@@ -861,7 +888,7 @@ class LocalLinkTransportService : Service() {
             // Bundle 212 (D2): only contact links; it comes back as a relay
             // link (carries others' sealed packets) and relay links stay.
             if(MeshBlockPolicy.closeLink(link.trust,blockedPeers.contains(link.peerId))){
-                Log.i("LINK_AUTH","contact link closed peer=${link.peerId.take(8)} reason=blocked")
+                Log.i("LINK_AUTH","contact link closed peer=${link.peerId.takeLast(8)} reason=blocked")
                 try{link.socket.close()}catch(_:Exception){}
             }
         }
@@ -874,7 +901,7 @@ class LocalLinkTransportService : Service() {
         if(!on)return
         for(link in allPhysicalPeerLinks()){
             if(link.trust==MeshRelayPolicy.TRUST_CONTACT&&!link.verified){
-                Log.w("LINK_AUTH","reject peer=${link.peerId.take(8)} side=live reason=strict_unchecked")
+                Log.w("LINK_AUTH","reject peer=${link.peerId.takeLast(8)} side=live reason=strict_unchecked")
                 transportEvent("peer_link_rejected",mapOf("peer_id" to link.peerId,"reason" to "link_auth_strict_unchecked"))
                 try{link.socket.close()}catch(_:Exception){}
             }
@@ -1785,7 +1812,12 @@ class LocalLinkTransportService : Service() {
             MeshLinkAuth.decide(myKeys.isNotEmpty(), serverAuth, shared != null, serverMacOk, linkVerified.contains(peerId)),
             strictLinkCheck, trust == MeshRelayPolicy.TRUST_CONTACT)
         noteLinkAuth(peerId, "dial", linkAuth)
-        if (linkAuth.verdict == MeshLinkAuth.Verdict.REJECT) return null
+        if (linkAuth.verdict == MeshLinkAuth.Verdict.REJECT) {
+            // Bundle 257 (A4): a refused link counts as a quick drop so the
+            // dials back off (the LAN dial notes it itself).
+            if (transportName != MeshTransportPolicy.LAN) noteLinkEnded(peerId, 0L)
+            return null
+        }
         socket.soTimeout = 0
         return PeerConnection(peerId, socket, if (transportName == MeshTransportPolicy.WIFI_DIRECT) null else ownerAddress, reader, writer, transportName, socket.inetAddress?.hostAddress,
             trust = trust, sealCapable = challenge.optInt("seal", 0) == 1, voiceCapable = challenge.optInt("voice", 0) == 1,
@@ -1839,7 +1871,12 @@ class LocalLinkTransportService : Service() {
             MeshLinkAuth.decide(myKeys.isNotEmpty(), clientAuth, shared != null, clientMacOk, linkVerified.contains(peer)),
             strictLinkCheck, trust == MeshRelayPolicy.TRUST_CONTACT)
         noteLinkAuth(peer, "answer", linkAuth)
-        if (linkAuth.verdict == MeshLinkAuth.Verdict.REJECT) return null
+        if (linkAuth.verdict == MeshLinkAuth.Verdict.REJECT) {
+            // Bundle 257 (A4): my own dials to a refused peer back off too
+            // (answering stays allowed - Bundle 224).
+            noteLinkEnded(peer, 0L)
+            return null
+        }
         val ok = JSONObject().put("type", "auth_ok").put("transport_auth_version", TRANSPORT_AUTH_VERSION)
         if (linkAuth.verdict == MeshLinkAuth.Verdict.VERIFIED && shared != null) {
             ok.put("mac", MeshLinkAuth.mac(shared.key, "s", peer, self, clientNonce, serverNonce))

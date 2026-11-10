@@ -17,7 +17,8 @@ import javax.crypto.spec.SecretKeySpec
  * Rules:
  *  * both sides have a key  -> the HMAC is required (wrong = link refused);
  *  * an older phone / no shared key -> the old way, logged (LINK_AUTH legacy);
- *  * a contact that passed once must always pass (no silent downgrade);
+ *  * a contact that passed once and has no shared key now -> the old way
+ *    (Bundle 257: it was refused before, which locked friends out);
  *  * strangers (relay links) have no key: old way, sealed packets only.
  *
  * Key ids are the short ids from the message seal (base64url of 8 bytes).
@@ -96,8 +97,29 @@ object MeshLinkAuth {
         if (peerOffers && matched) {
             return if (macOk) Decision(Verdict.VERIFIED, "mac_ok") else Decision(Verdict.REJECT, "bad_mac")
         }
-        if (verifiedBefore) return Decision(Verdict.REJECT, "auth_required")
+        // Bundle 257 (A1): a contact that passed once but has no shared key
+        // now (phone reinstalled, data cleared, new keys, account moved) is
+        // NOT refused any more - that locked friends out of Wi-Fi Direct and
+        // Local Wi-Fi for good (10 Nov logs: 1352 refusals in 1 h). The link
+        // works the old way; chats/files on it stay sealed per friend. A
+        // wrong MAC with a matching key is still refused (bad_mac above) and
+        // strict mode still refuses (applyStrict).
+        if (verifiedBefore) return Decision(Verdict.LEGACY, "rekey")
         return Decision(Verdict.LEGACY, if (peerOffers) "no_shared_key" else "old_phone")
+    }
+
+    /**
+     * Bundle 257 (A2): the peers whose link key offers changed or went away
+     * between two pushes from Dart. Their "passed before" mark is dropped so
+     * they verify fresh with the new key.
+     */
+    fun changedPeers(old: Map<String, List<LinkKey>>, new: Map<String, List<LinkKey>>): Set<String> {
+        val out = HashSet<String>()
+        for ((peer, keys) in old) {
+            val now = new[peer]
+            if (now == null || now.map { it.offer }.toSet() != keys.map { it.offer }.toSet()) out.add(peer)
+        }
+        return out
     }
 
     /**

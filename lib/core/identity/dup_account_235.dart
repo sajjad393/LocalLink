@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:locallink/core/crypto/password_kdf.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/link_key_refresh_257.dart';
 
 /// Bundle 235: one phone = one account.
 ///
@@ -132,7 +133,10 @@ abstract final class DupBlock235 {
 /// The seal key cache drops its copies when this changes.
 abstract final class KeyChange235 {
   static int generation = 0;
-  static void bump() => generation++;
+  static void bump() {
+    generation++;
+    LinkKeyRefresh257.request('key_change'); // Bundle 257 (A3)
+  }
 }
 
 /// Bundle 235: the recovery key. Made from the account's recovery code (and

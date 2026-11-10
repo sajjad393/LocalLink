@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:locallink/core/identity/dup_account_235.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
+import 'package:locallink/core/services/link_key_refresh_257.dart';
 import 'package:locallink/core/services/link_key_service.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/message_seal_service.dart';
@@ -30,8 +31,19 @@ abstract interface class SealKeySource {
   Future<void> writeSetting(String key, String value);
 }
 
+/// Bundle 257: optional extras of a key source (the production one has
+/// them; test fakes may not).
+abstract interface class LinkKeyCache257 {
+  /// Forget cached contact keys / trust so the next read is fresh.
+  void forgetContactKeys257();
+
+  /// Why [contactPublicKey] last gave null for [peerId] (`not_friend`,
+  /// `revoked`, `blocked`, `no_card`, `no_key`, `bad_key`), or null.
+  String? missReason257(String peerId);
+}
+
 /// Production key source: local store + identity keys.
-class StoreSealKeySource implements SealKeySource {
+class StoreSealKeySource implements SealKeySource, LinkKeyCache257 {
   StoreSealKeySource({required this.store, required this.crypto});
 
   final LocalStore store;
@@ -42,7 +54,24 @@ class StoreSealKeySource implements SealKeySource {
   Map<String, bool> _trusted = const {};
   DateTime _trustedAt = DateTime.fromMillisecondsSinceEpoch(0);
   Set<String> _blocked = const {};
+  Set<String> _revoked257 = const {};
   final Map<String, List<int>> _publicKeys = <String, List<int>>{};
+  final Map<String, String> _miss257 = <String, String>{};
+
+  @override
+  void forgetContactKeys257() {
+    _trustedAt = DateTime.fromMillisecondsSinceEpoch(0);
+    _publicKeys.clear();
+  }
+
+  @override
+  String? missReason257(String peerId) => _miss257[peerId];
+
+  List<int>? _miss(String peerId, String why) {
+    if (_miss257.length > 500) _miss257.clear();
+    _miss257[peerId] = why;
+    return null;
+  }
 
   @override
   String? get selfId => store.deviceId;
@@ -79,6 +108,10 @@ class StoreSealKeySource implements SealKeySource {
       for (final d in devices)
         if (d.revokedAt.isEmpty && !_blocked.contains(d.id)) d.id: true,
     };
+    _revoked257 = {
+      for (final d in devices)
+        if (d.revokedAt.isNotEmpty) d.id,
+    };
     _trustedAt = now;
     _publicKeys.clear();
   }
@@ -94,23 +127,35 @@ class StoreSealKeySource implements SealKeySource {
       _trustedAt = DateTime.fromMillisecondsSinceEpoch(0);
     }
     await _refreshTrusted();
-    if (_trusted[peerId] != true) return null;
+    if (_trusted[peerId] != true) {
+      // Bundle 257 (A7): remember why (LINK_KEY_MISSING).
+      return _miss(
+        peerId,
+        _blocked.contains(peerId)
+            ? 'blocked'
+            : _revoked257.contains(peerId)
+                ? 'revoked'
+                : 'not_friend',
+      );
+    }
     final cached = _publicKeys[peerId];
     if (cached != null) return cached;
     final profile = await store.directoryProfileByDeviceId(peerId);
-    final raw = profile?['identity_public_key']?.toString() ?? '';
-    if (raw.isEmpty) return null;
+    if (profile == null) return _miss(peerId, 'no_card');
+    final raw = profile['identity_public_key']?.toString() ?? '';
+    if (raw.isEmpty) return _miss(peerId, 'no_key');
     try {
       var v = raw.trim();
       while (v.length % 4 != 0) {
         v += '=';
       }
       final bytes = base64Url.decode(v);
-      if (bytes.length != 32) return null;
+      if (bytes.length != 32) return _miss(peerId, 'bad_key');
       _publicKeys[peerId] = bytes;
+      _miss257.remove(peerId);
       return bytes;
     } catch (_) {
-      return null;
+      return _miss(peerId, 'bad_key');
     }
   }
 
@@ -139,7 +184,10 @@ class SealingPeerTransport implements PeerTransportContract {
   SealingPeerTransport(this.inner,
       {MessageSealService? sealer, DateTime Function()? clock})
       : _sealer = sealer ?? MessageSealService(),
-        _clock = clock ?? DateTime.now;
+        _clock = clock ?? DateTime.now {
+    // Bundle 257 (A3): cards / key changes ask for the link keys again.
+    LinkKeyRefresh257.onRequest = refreshLinkKeys257;
+  }
 
   final DateTime Function() _clock;
 
@@ -919,12 +967,77 @@ class SealingPeerTransport implements PeerTransportContract {
     unawaited(pushLinkKeys(peerIds));
   }
 
+  /// Bundle 257 (A3): the last friend list the link keys were built for.
+  List<String> _lastPeerIds257 = const <String>[];
+  Timer? _refreshTimer257;
+  String _refreshWhy257 = '';
+  bool _pushedNow257 = false;
+  final Map<String, DateTime> _missLogged257 = <String, DateTime>{};
+
+  /// Bundle 257 (A3): a friend card / key changed - build and push the link
+  /// keys again in 2 s (many cards in a row = one push).
+  void refreshLinkKeys257(String why) {
+    _refreshWhy257 = why;
+    if (_refreshTimer257?.isActive ?? false) return;
+    _refreshTimer257 = Timer(const Duration(seconds: 2), () {
+      unawaited(refreshLinkKeysNow257(_refreshWhy257));
+    });
+  }
+
+  /// Bundle 257 (A3): the refresh itself (no wait).
+  @visibleForTesting
+  Future<void> refreshLinkKeysNow257(String why) async {
+    final keys = _keys;
+    if (keys == null || _lastPeerIds257.isEmpty) return;
+    if (keys is LinkKeyCache257) {
+      try {
+        (keys as LinkKeyCache257).forgetContactKeys257();
+      } catch (_) {}
+    }
+    _pushedNow257 = false;
+    await pushLinkKeys(_lastPeerIds257);
+    if (_pushedNow257) {
+      AppLogger.info('LINK_AUTH', detail: 'keys refresh why=$why');
+    }
+  }
+
+  /// Bundle 257 (A7): one line per friend with no link key (once per
+  /// friend and reason per hour).
+  void _logMissing257(
+    SealKeySource keys,
+    String self,
+    List<String> peerIds,
+    Map<String, List<Map<String, String>>> map,
+  ) {
+    final now = _clock();
+    for (final raw in peerIds) {
+      final id = raw.trim();
+      if (id.isEmpty || id == self || map.containsKey(id)) continue;
+      String why = 'no_key';
+      if (keys is LinkKeyCache257) {
+        try {
+          why = (keys as LinkKeyCache257).missReason257(id) ?? 'no_key';
+        } catch (_) {}
+      }
+      final mark = '$id|$why';
+      final last = _missLogged257[mark];
+      if (last != null && now.difference(last) < const Duration(hours: 1)) {
+        continue;
+      }
+      if (_missLogged257.length > 500) _missLogged257.clear();
+      _missLogged257[mark] = now;
+      final tail = id.length <= 6 ? id : id.substring(id.length - 6);
+      AppLogger.info('LINK_KEY_MISSING', detail: 'peer=$tail why=$why');
+    }
+  }
+
   /// Bundle 160: signed device id — hands the native side one link key per
   /// contact (and per own key, up to 3). Only when something changed.
   Future<void> pushLinkKeys(List<String> peerIds) async {
     final base = inner;
     final keys = _keys;
     if (base is! WifiDirectTransportService || keys == null) return;
+    _lastPeerIds257 = List<String>.of(peerIds);
     try {
       final self = keys.selfId;
       if (self == null || self.isEmpty) return;
@@ -934,6 +1047,7 @@ class SealingPeerTransport implements PeerTransportContract {
         mine: await keys.ownKeys(),
         publicKeyOf: keys.contactPublicKey,
       );
+      _logMissing257(keys, self, peerIds, map);
       try {
         final blocked = (await keys.blockedPeerIds()).toSet();
         _friendLinkKeys = <String, List<String>>{
@@ -949,6 +1063,7 @@ class SealingPeerTransport implements PeerTransportContract {
       if (signature == _linkKeysPushed) return;
       if (!await base.updateLinkKeys(map)) return; // service not up yet
       _linkKeysPushed = signature;
+      _pushedNow257 = true;
       AppLogger.info('LINK_AUTH', detail: 'keys pushed contacts=${map.length}');
     } catch (error) {
       AppLogger.warning('LINK_AUTH', detail: 'keys push failed error=$error');

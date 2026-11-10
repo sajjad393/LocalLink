@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
 import 'package:locallink/core/security/security_code_245.dart';
+import 'package:locallink/core/services/link_key_refresh_257.dart';
 import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/profile.dart';
@@ -1018,6 +1019,25 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       return false;
     }
 
+    // Bundle 257 (A8): an old offline card of someone who already moved to
+    // a server id (a friend still passes the old copy on) is not saved
+    // again - it made ID_MOVED run on every start and left two cards for
+    // one phone.
+    if (profile.userId.startsWith('offline_')) {
+      try {
+        final movedTo = await store.movedId218(profile.userId);
+        if (movedTo.isNotEmpty &&
+            movedTo != profile.userId &&
+            !movedTo.startsWith('offline_')) {
+          if (_oldCardLogged257.add(profile.userId)) {
+            AppLogger.info('ID_MOVED_OLD_CARD_SKIP',
+                detail: 'old=${_tail6(profile.userId)}');
+          }
+          return false;
+        }
+      } catch (_) {}
+    }
+
     // Bundle 218c: her offline id became a server id. The same signing key
     // is the proof (only her phone has it); a different key = no move.
     if (await _moveOfflineIds218(profile) &&
@@ -1052,12 +1072,16 @@ class DirectoryRepository implements DirectoryRepositoryContract {
 
     await store.saveDirectoryProfile(profile.toMap());
     _photoFromCard(profile); // Bundle 204
+    // Bundle 257 (A3): a new / changed card may give a link key.
+    LinkKeyRefresh257.request('card');
     // Bundle 218d: a card with a server id = she joined; her messages go.
     if (!profile.userId.startsWith('offline_')) {
       NotOnServer218.instance.remove(profile.deviceId);
     }
     return true;
   }
+
+  final Set<String> _oldCardLogged257 = <String>{};
 
   Future<bool> _moveOfflineIds218(DirectoryProfile profile) async {
     if (profile.userId.startsWith('offline_')) return false;
@@ -1100,6 +1124,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       }
     } catch (_) {}
     AppLogger.info('ID_MOVED', detail: 'old=${_tail6(oldId)} new=${_tail6(newId)}');
+    LinkKeyRefresh257.request('id_moved'); // Bundle 257 (A3)
   }
 
   /// Bundle 218c: ask the server about friends still known by an offline id
