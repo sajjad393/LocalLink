@@ -9,6 +9,7 @@ import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/files/presentation/widgets/chat_photo.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/features/storage/domain/media_clean_policy.dart';
+import 'package:locallink/core/identity/person_name_258.dart';
 
 /// Colours of the bar / legend (mock 12).
 const Map<MediaKind, Color> kStorageColors = {
@@ -30,7 +31,12 @@ Future<Map<String, String>> loadStorageNames(LocalStore store) async {
   final out = <String, String>{};
   try {
     for (final d in await store.localDevices()) {
-      out['d:${d.id}'] = d.name.isEmpty ? 'LinkUp user' : d.name;
+      // Bundle 258 (C1): the person's name, not the phone model.
+      String? name;
+      try {
+        name = await store.peerDisplayName(d.id);
+      } catch (_) {}
+      out['d:${d.id}'] = name ?? NameBook258.noName;
     }
   } catch (_) {}
   try {

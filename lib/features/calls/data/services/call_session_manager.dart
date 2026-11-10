@@ -36,6 +36,7 @@ import 'package:locallink/features/connectivity/data/services/local_route_policy
 import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 import 'package:locallink/features/calls/data/services/call_answer_timer.dart';
 import 'package:locallink/features/calls/data/services/call_nearby_wait.dart';
+import 'package:locallink/core/identity/person_name_258.dart';
 
 final class CallSessionManager implements CallGateway {
   final LocalStore store;
@@ -588,14 +589,15 @@ final class CallSessionManager implements CallGateway {
   Duration? _notificationTapAge;
 
   /// Single display-name rule for every call-surface peer label:
-  /// directory profile display_name → username → 'Unknown user'.
+  /// directory profile display_name → username → last known → LinkUp user.
   /// Device ids and device names are never shown as a person's name.
   Future<String> _peerDisplayName(String peerId) async {
     try {
       final label = await repository.labelForPeer(peerId);
       if (label != null && label.trim().isNotEmpty) return label.trim();
     } catch (_) {}
-    return 'Unknown user';
+    // Bundle 258 (B2): the last name seen for this person.
+    return NameBook258.instance.lastKnown(peerId) ?? NameBook258.noName;
   }
 
   Future<void> rejectIncoming({String reason = 'rejected'}) async {

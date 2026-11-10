@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
+import 'package:locallink/core/identity/person_name_258.dart';
 import 'package:locallink/core/security/security_code_245.dart';
 import 'package:locallink/core/services/link_key_refresh_257.dart';
 import 'package:locallink/core/services/server_reach.dart';
@@ -138,6 +139,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     unawaited(syncServerContacts());
     unawaited(_startFriendLinks());
     unawaited(_loadPhotoCodes());
+    unawaited(retryHeldCards258().catchError((Object _) {})); // Bundle 258
+    unawaited(_loadCardOwed258().catchError((Object _) {})); // Bundle 258
   }
 
   // ------------------------------------------- Bundle 204: profile photos
@@ -200,7 +203,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
 
   /// Bundle 207 (H3): my picture changed -> my card to every friend now,
   /// again when each one is next seen.
-  Future<void> _cardToFriends() async {
+  Future<void> _cardToFriends({String why = 'photo'}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     var n = 0;
     for (final user in await store.rawContactUserIds()) {
@@ -208,27 +211,134 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       try {
         if (await store.isBlocked(user)) continue;
       } catch (_) {}
-      final device =
+      var device =
           (await store.directoryProfile(user))?['device_id']?.toString() ?? '';
+      // Bundle 258 (D2): no card of that friend here yet -> the phone kept
+      // with the contact.
+      if (device.isEmpty) {
+        try {
+          device = await store.contactDevice258(user);
+        } catch (_) {}
+      }
       if (device.isEmpty || device == store.deviceId) continue;
       _cardOwed[device] = (sends: 1, lastMs: now);
+      _owedSince258.putIfAbsent(device, () => now);
       n++;
-      unawaited(_sendCardTo(device));
+      unawaited(_sendCardTo(device, why: why).then((ok) {
+        // Bundle 258 (D3): a try only counts when it could be sent.
+        if (!ok && _cardOwed[device]?.sends == 1) {
+          _cardOwed[device] = (sends: 0, lastMs: now);
+        }
+      }));
     }
-    AppLogger.info('PEER_CARD_TO_FRIENDS', detail: 'count=$n');
+    AppLogger.info('PEER_CARD_TO_FRIENDS', detail: 'count=$n why=$why');
+    unawaited(_saveCardOwed258());
   }
 
   Future<void> _owedCardOnSeen(String device) async {
     final owed = _cardOwed[device];
     if (owed == null) return;
     final now = DateTime.now().millisecondsSinceEpoch;
+    // Bundle 258 (D3): owed for 7 days at most.
+    final since = _owedSince258[device] ?? now;
+    if (now - since > cardOwedFor258.inMilliseconds) {
+      _cardOwed.remove(device);
+      _owedSince258.remove(device);
+      unawaited(_saveCardOwed258());
+      return;
+    }
     if (now - owed.lastMs < cardOwedGap.inMilliseconds) return;
     if (owed.sends >= cardOwedMaxSends) {
       _cardOwed.remove(device);
+      _owedSince258.remove(device);
+      unawaited(_saveCardOwed258());
       return;
     }
-    _cardOwed[device] = (sends: owed.sends + 1, lastMs: now);
-    await _sendCardTo(device, why: 'seen');
+    // Bundle 258 (D3): only a send that went out counts as a try.
+    _cardOwed[device] = (sends: owed.sends, lastMs: now);
+    final ok = await _sendCardTo(device, why: 'seen');
+    final cur = _cardOwed[device];
+    if (ok && cur != null) {
+      _cardOwed[device] = (sends: cur.sends + 1, lastMs: now);
+    }
+  }
+
+  // ------------------------------------------- Bundle 258 (D): my card
+  static const String cardPrintKey258 = 'card_print_258';
+  static const String cardOwedKey258 = 'card_owed_258';
+  static const Duration cardOwedFor258 = Duration(days: 7);
+  final Map<String, int> _owedSince258 = <String, int>{};
+  String? _cardPrint258Cache;
+
+  /// What friends see on my card (changes = send it to them).
+  static String _cardPrint258(DirectoryProfile p) => jsonEncode([
+        p.userId,
+        p.username,
+        p.displayName,
+        p.phoneNumber,
+        p.phoneVisibility,
+        p.avatarUrl,
+        p.directorySyncEnabled,
+        p.discoverableByPhone,
+        p.discoverableByName,
+      ]);
+
+  Future<String?> _readCardPrint258() async {
+    final cached = _cardPrint258Cache;
+    if (cached != null) return cached;
+    try {
+      return _cardPrint258Cache = await store.readSetting(cardPrintKey258);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeCardPrint258(String fp) async {
+    _cardPrint258Cache = fp;
+    try {
+      await store.writeSetting(cardPrintKey258, fp);
+    } catch (_) {}
+  }
+
+  /// The friends still owed my card survive a restart (7 days at most).
+  Future<void> _saveCardOwed258() async {
+    try {
+      await store.writeSetting(
+          cardOwedKey258,
+          jsonEncode({
+            for (final e in _cardOwed.entries)
+              e.key: [e.value.sends, _owedSince258[e.key] ?? e.value.lastMs]
+          }));
+    } catch (_) {}
+  }
+
+  Future<void> _loadCardOwed258() async {
+    String? raw;
+    try {
+      raw = await store.readSetting(cardOwedKey258);
+    } catch (_) {
+      return;
+    }
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final map = jsonDecode(raw);
+      if (map is! Map) return;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      var n = 0;
+      for (final e in map.entries) {
+        final v = e.value;
+        if (v is! List || v.length < 2) continue;
+        final sends = int.tryParse('${v[0]}') ?? 0;
+        final since = int.tryParse('${v[1]}') ?? now;
+        if (now - since > cardOwedFor258.inMilliseconds) continue;
+        final device = e.key.toString();
+        if (_cardOwed.containsKey(device)) continue;
+        _cardOwed[device] = (sends: sends, lastMs: 0);
+        _owedSince258[device] = since;
+        n++;
+      }
+      if (n > 0) AppLogger.info('PEER_CARD_OWED', detail: 'restored=$n');
+    } catch (_) {}
   }
 
   @visibleForTesting
@@ -400,7 +510,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       return;
     }
     // The friend asked with my current code: it has my new card.
-    _cardOwed.remove(from);
+    if (_cardOwed.remove(from) != null) {
+      _owedSince258.remove(from);
+      unawaited(_saveCardOwed258());
+    }
     if (!code.nearbyOk) {
       AppLogger.info('PEER_PHOTO_REFUSED', detail: 'why=too_big');
       return;
@@ -510,11 +623,21 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final photoCode = ownPhoto?.code ?? '';
     final before = _publishedPhotoCode;
     _publishedPhotoCode = photoCode;
-    if (before != null && before != photoCode) {
-      unawaited(_cardToFriends().catchError((Object e) {
+    // Bundle 258 (D1): ANY change people see (name, username, number,
+    // who may see it, picture) goes to every friend directly and again when
+    // each is next seen - also a change made offline or before a restart.
+    final fp = _cardPrint258(signed);
+    final fpBefore = await _readCardPrint258();
+    final photoChanged = before != null && before != photoCode;
+    final cardChanged =
+        fpBefore != null && fpBefore.isNotEmpty && fpBefore != fp;
+    if (photoChanged || cardChanged) {
+      unawaited(_cardToFriends(why: photoChanged ? 'photo' : 'profile')
+          .catchError((Object e) {
         AppLogger.warning('PEER_CARD_TO_FRIENDS_FAILED', detail: '$e');
       }));
     }
+    if (fpBefore != fp) unawaited(_writeCardPrint258(fp));
 
     await store.saveDirectoryProfile(signed.toMap());
     _updates.add(signed);
@@ -655,6 +778,12 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     if (eventType == 'peer_discovered' || eventType == 'peer_connected') {
       final peer = event['peer_id']?.toString() ?? '';
       if (_cardOwed.containsKey(peer)) unawaited(_owedCardOnSeen(peer));
+      // Bundle 258 (A3): a phone whose new code is still held came near.
+      if (eventType == 'peer_connected' &&
+          peer.isNotEmpty &&
+          SecurityCode245.instance.pendingFor(peer) != null) {
+        unawaited(askOwnCard258(peer, why: 'held_seen'));
+      }
     }
     if (eventType == 'peer_connected') {
       final peer = event['peer_id']?.toString() ?? '';
@@ -695,6 +824,19 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     // field the other phone wrote itself).
     if (NameQuestionPolicy.isNameType(type) || type == photoNeedType) {
       message['_from'] = event['sender_id']?.toString() ?? '';
+    }
+    // Bundle 258 (A1): the phone that handed this message over (link layer
+    // or server), never a field written inside the message.
+    final sender258 = event['sender_id']?.toString() ?? '';
+    // Bundle 258 (A1): a phone whose locked messages this phone can't open
+    // (my copy of its card has its old key) sends its card in the open.
+    if (type == ownCardType258) {
+      await _handleOwnCard258(message, sender258);
+      return;
+    }
+    if (type == ownCardAskType258) {
+      await _answerOwnCardAsk258(sender258);
+      return;
     }
     if (!type.startsWith('DIRECTORY_') &&
         type != 'CONTACT_EDGE' &&
@@ -756,7 +898,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         final map = message['profile'];
         if (map is! Map) return;
         final profile = DirectoryProfile.fromMap(Map<String, dynamic>.from(map));
-        if (await _saveVerified(profile)) {
+        if (await _saveVerified(profile, fromId: sender258)) {
           _updates.add(profile);
           await _forwardGossip(message);
           await _flushPendingEdgesFor(profile.userId);
@@ -768,7 +910,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         if (map is! Map) return;
         final profile = DirectoryProfile.fromMap(Map<String, dynamic>.from(map));
         if (profile.directorySyncEnabled) return;
-        if (await _saveVerified(profile, allowDisabled: true)) {
+        if (await _saveVerified(profile, allowDisabled: true, fromId: sender258)) {
           _updates.add(profile);
           await _forwardGossip(message);
         }
@@ -782,7 +924,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         final map = message['profile'];
         if (map is! Map) return;
         final profile = DirectoryProfile.fromMap(Map<String, dynamic>.from(map));
-        if (await _saveVerified(profile, allowDisabled: true)) {
+        if (await _saveVerified(profile, allowDisabled: true, fromId: sender258)) {
           _updates.add(profile);
           await _flushPendingEdgesFor(profile.userId); // Bundle 195b
         }
@@ -801,7 +943,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
             maxVersion = profile.profileVersion > maxVersion
                 ? profile.profileVersion
                 : maxVersion;
-            if (await _saveVerified(profile, allowDisabled: true)) {
+            if (await _saveVerified(profile,
+                allowDisabled: true, fromId: sender258)) {
               _updates.add(profile);
               await _flushPendingEdgesFor(profile.userId); // Bundle 195b
             }
@@ -988,6 +1131,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   Future<bool> _saveVerified(
     DirectoryProfile profile, {
     bool allowDisabled = false,
+    String fromId = '',
   }) async {
     if (profile.userId.isEmpty ||
         profile.deviceId.isEmpty ||
@@ -1050,18 +1194,30 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     if (_safeToPassOn(profile)) await _keepPublicCard(profile);
 
     final oldRow = await store.directoryProfile(profile.userId);
+    var keyWhy258 = '';
+    DirectoryProfile? keyOld258;
     if (oldRow != null) {
       final old = DirectoryProfile.fromMap(oldRow);
-      if (old.profileVersion > profile.profileVersion) return false;
+      // Bundle 258 (A1): a reinstalled phone may start again at a lower
+      // version - a new key is checked first (below), not dropped here.
+      final sameKey258 = !old.isSigned ||
+          old.signingPublicKey.isEmpty ||
+          old.signingPublicKey == profile.signingPublicKey;
+      if (sameKey258 && old.profileVersion > profile.profileVersion) {
+        return false;
+      }
       if (old.isSigned &&
           old.signingPublicKey.isNotEmpty &&
           old.signingPublicKey != profile.signingPublicKey) {
-        // Bundle 245 (S7): no longer dropped with no word - kept aside for
-        // "Accept new code" (the old card stays in use until then).
-        await SecurityCode245.instance.noteCardChange(old, profile);
-        return false;
+        // Bundle 258 (A1): proven -> taken now. Else held (245 S7).
+        keyWhy258 = await _keyProof258(profile, fromId);
+        if (keyWhy258.isEmpty) {
+          await SecurityCode245.instance.noteCardChange(old, profile);
+          return false;
+        }
+        keyOld258 = old;
       }
-      if (old.profileVersion == profile.profileVersion) {
+      if (keyWhy258.isEmpty && old.profileVersion == profile.profileVersion) {
         if (old.updatedAt.compareTo(profile.updatedAt) > 0) return false;
         if (old.updatedAt == profile.updatedAt &&
             old.signature == profile.signature) {
@@ -1072,6 +1228,11 @@ class DirectoryRepository implements DirectoryRepositoryContract {
 
     await store.saveDirectoryProfile(profile.toMap());
     _photoFromCard(profile); // Bundle 204
+    // Bundle 258 (A1): the new code is in use now (grey line in the chat).
+    if (keyOld258 != null) {
+      await SecurityCode245.instance.autoTake258(keyOld258, profile, keyWhy258);
+    }
+    NameBook258.instance.notifyChanged(); // Bundle 258 (B3)
     // Bundle 257 (A3): a new / changed card may give a link key.
     LinkKeyRefresh257.request('card');
     // Bundle 218d: a card with a server id = she joined; her messages go.
@@ -1082,6 +1243,185 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   }
 
   final Set<String> _oldCardLogged257 = <String>{};
+
+  // ------------------------------------------- Bundle 258 (A1/A3): codes
+  /// A phone's own public card, sent in the open (see [MessageSealService
+  /// .plainTypes258]) to a friend that still has its old key.
+  static const String ownCardType258 = 'DIRECTORY_OWN_CARD_258';
+  static const String ownCardAskType258 = 'DIRECTORY_CARD_ASK_258';
+  static const Duration cardAskGap258 = Duration(minutes: 10);
+  static const Duration proofGap258 = Duration(minutes: 2);
+  final Map<String, int> _cardAskAt258 = <String, int>{};
+  final Map<String, int> _cardAnswerAt258 = <String, int>{};
+  final Map<String, int> _proofTriedAt258 = <String, int>{};
+  Map<String, String>? _serverKeys258;
+  int _serverKeysAt258 = 0;
+
+  /// Why a card with a NEW signing key may be taken now: 'owner' (it came
+  /// from that phone itself), 'server' (the server says that account's
+  /// phone is this phone and has this key), or '' (held).
+  Future<String> _keyProof258(DirectoryProfile p, String fromId) async {
+    if (fromId.isNotEmpty && fromId == p.deviceId) return 'owner';
+    if (await _serverVouches258(p)) return 'server';
+    return '';
+  }
+
+  Future<bool> _serverVouches258(DirectoryProfile p) async {
+    if (p.identityPublicKey.isEmpty || p.userId.startsWith('offline_')) {
+      return false;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final tryKey = '${p.userId}|${p.signingPublicKey}';
+    if (now - (_proofTriedAt258[tryKey] ?? 0) < proofGap258.inMilliseconds) {
+      return false;
+    }
+    _proofTriedAt258[tryKey] = now;
+    if (ServerReach.instance.skipWhy() != null) return false;
+    try {
+      final remote = await api
+          .directoryByUserId(p.userId)
+          .timeout(const Duration(seconds: 6));
+      if (remote == null || remote.deviceId != p.deviceId) return false;
+      var keys = _serverKeys258;
+      if (keys == null ||
+          (keys[p.deviceId] != p.identityPublicKey &&
+              now - _serverKeysAt258 > 10000)) {
+        keys = await api.identityKeys().timeout(const Duration(seconds: 6));
+        _serverKeys258 = keys;
+        _serverKeysAt258 = now;
+      }
+      ServerReach.instance.noteOk();
+      return keys[p.deviceId] == p.identityPublicKey;
+    } catch (e) {
+      ServerReach.instance.noteFailure(e);
+      return false;
+    }
+  }
+
+  /// A locked message from [sender] could not be opened with the key of my
+  /// copy of its card (bound to [SealingPeerTransport
+  /// .onSenderKeyMismatch258]): check a held card, ask that phone.
+  void senderKeyMismatch258(String sender) {
+    unawaited(_onKeyMismatch258(sender).catchError((Object _) {}));
+  }
+
+  Future<void> _onKeyMismatch258(String sender) async {
+    if (sender.isEmpty || !_started) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - (_cardAskAt258[sender] ?? 0) < cardAskGap258.inMilliseconds) {
+      return;
+    }
+    await retryHeldCards258(only: sender);
+    await askOwnCard258(sender, why: 'seal_mismatch');
+  }
+
+  /// Ask [device] for its own card (in the open; at most once in 10 min).
+  Future<void> askOwnCard258(String device, {required String why}) async {
+    if (device.isEmpty || device == store.deviceId || !transport.isStarted) {
+      return;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - (_cardAskAt258[device] ?? 0) < cardAskGap258.inMilliseconds) {
+      return;
+    }
+    _cardAskAt258[device] = now;
+    try {
+      await transport.send(recipientId: device, payload: <String, dynamic>{
+        'type': ownCardAskType258,
+        'created_at': now,
+      });
+      AppLogger.info('KEY_CARD_ASK_258',
+          detail: 'to=${_tail6(device)} why=$why');
+    } catch (_) {
+      AppLogger.info('KEY_CARD_ASK_258',
+          detail: 'to=${_tail6(device)} why=$why sent=n');
+    }
+  }
+
+  /// A friend asks for my card: my public card (no number unless it is
+  /// public), to my contacts only, at most once a minute each.
+  Future<void> _answerOwnCardAsk258(String sender) async {
+    if (sender.isEmpty || sender == store.deviceId || !transport.isStarted) {
+      return;
+    }
+    try {
+      if (await store.isBlocked(sender)) return;
+      var user = (await store.directoryProfileByDeviceId(sender))?['user_id']
+              ?.toString() ??
+          '';
+      if (user.isEmpty) user = await store.contactUserOfDevice258(sender) ?? '';
+      if (user.isEmpty ||
+          !await store.isContact(user) ||
+          await store.isBlocked(user)) {
+        return;
+      }
+    } catch (_) {
+      return;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - (_cardAnswerAt258[sender] ?? 0) < 60000) return;
+    _cardAnswerAt258[sender] = now;
+    final signed = await _buildOwnProfile();
+    if (signed == null) return;
+    try {
+      await transport.send(recipientId: sender, payload: <String, dynamic>{
+        'type': ownCardType258,
+        'created_at': now,
+        'profile': signed.toMap(),
+      });
+      AppLogger.info('KEY_CARD_OUT_258', detail: 'to=${_tail6(sender)}');
+    } catch (_) {}
+  }
+
+  /// A phone's own card in the open: only its own card counts.
+  Future<void> _handleOwnCard258(
+      Map<String, dynamic> message, String sender) async {
+    final map = message['profile'];
+    if (map is! Map || sender.isEmpty) return;
+    final profile = DirectoryProfile.fromMap(Map<String, dynamic>.from(map));
+    if (profile.deviceId != sender) return;
+    final saved =
+        await _saveVerified(profile, allowDisabled: true, fromId: sender);
+    AppLogger.info('KEY_CARD_IN_258',
+        detail: 'from=${_tail6(sender)} saved=${saved ? 'y' : 'n'}');
+    if (saved) {
+      if (!_updates.isClosed) _updates.add(profile);
+      await _flushPendingEdgesFor(profile.userId);
+    }
+  }
+
+  /// Bundle 258 (A3): cards still waiting for "Accept new code" (older
+  /// builds, or no proof yet) are checked again: the server, then the
+  /// phone itself is asked. [only] = one phone id.
+  Future<void> retryHeldCards258({String only = ''}) async {
+    final held = SecurityCode245.instance.pendingCards;
+    if (held.isEmpty) return;
+    for (final p in held) {
+      final card = p.profile;
+      if (only.isNotEmpty && card.deviceId != only && p.oldDeviceId != only) {
+        continue;
+      }
+      try {
+        if (await _saveVerified(card, allowDisabled: true)) {
+          if (!_updates.isClosed) _updates.add(card);
+          continue;
+        }
+      } catch (_) {}
+      if (only.isEmpty) unawaited(askOwnCard258(card.deviceId, why: 'held'));
+    }
+  }
+
+  @visibleForTesting
+  Future<Map<String, dynamic>?> debugBuildOwnCard258() async =>
+      (await _buildOwnProfile())?.toMap();
+
+  @visibleForTesting
+  void debugResetKeyChecks258() {
+    _cardAskAt258.clear();
+    _cardAnswerAt258.clear();
+    _proofTriedAt258.clear();
+    _serverKeys258 = null;
+  }
 
   Future<bool> _moveOfflineIds218(DirectoryProfile profile) async {
     if (profile.userId.startsWith('offline_')) return false;
@@ -1190,6 +1530,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       if (existing.profileVersion > profile.profileVersion) return;
     }
     await store.saveDirectoryProfile(profile.toMap());
+    NameBook258.instance.notifyChanged(); // Bundle 258 (B3)
   }
 
   DirectoryProfile _fromServerProfile(LocalProfile profile) => DirectoryProfile(
@@ -1568,6 +1909,25 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     unawaited(resendBlockStates(linkBack: true)); // Bundle 196
   }
 
+  /// Bundle 258 (B1): after a sign-in / reinstall the friend list and
+  /// names come from this pull. A failed pull is tried again in 30 s (the
+  /// first 10 tries), then the normal 2-min cycle takes over.
+  Timer? _contactsRetry258;
+  int _contactsRetries258 = 0;
+  static const int contactsQuickRetries258 = 10;
+  static const Duration contactsRetryGap258 = Duration(seconds: 30);
+
+  void _contactsRetrySoon258() {
+    if (!_started || _contactsRetries258 >= contactsQuickRetries258) return;
+    if (_contactsRetry258?.isActive ?? false) return;
+    _contactsRetries258++;
+    AppLogger.info('CONTACTS_SYNC_RETRY',
+        detail: 'in=${contactsRetryGap258.inSeconds}s try=$_contactsRetries258');
+    _contactsRetry258 = Timer(contactsRetryGap258, () {
+      unawaited(syncServerContacts());
+    });
+  }
+
   @override
   Future<void> syncServerContacts() async {
     // Contact relationships are stored per ACCOUNT on the server (survives
@@ -1675,11 +2035,17 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       }
       await store.saveServerConfirmedContactIds(remoteIds);
       if (!announce) await store.writeSetting(firstContactsSyncKey, '1');
+      // Bundle 258 (B1): the server answered - stop the quick retries,
+      // and held new codes can be checked with it now (A3).
+      _contactsRetry258?.cancel();
+      _contactsRetries258 = 0;
+      unawaited(retryHeldCards258().catchError((Object _) {}));
     } catch (e) {
       // Never silently discard sync failures: log and leave local state
       // untouched; the next cycle retries both directions.
       ServerReach.instance.noteFailure(e); // Bundle 223 (L)
       AppLogger.warning('CONTACTS_SYNC_FAILED', detail: e.toString());
+      _contactsRetrySoon258();
     } finally {
       _serverContactsSyncInFlight = false;
     }
@@ -2251,7 +2617,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       for (final row in list.whereType<Map>().take(NameQuestionPolicy.maxRows)) {
         final profile = DirectoryProfile.fromMap(Map<String, dynamic>.from(row));
         if (!profile.discoverableByName) continue;
-        if (await _saveVerified(profile)) {
+        if (await _saveVerified(profile, fromId: from)) {
           ask.saved++;
           if (!_updates.isClosed) _updates.add(profile);
           await _flushPendingEdgesFor(profile.userId);
@@ -2836,6 +3202,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   @override
   Future<void> dispose() async {
     _syncTimer?.cancel();
+    _contactsRetry258?.cancel(); // Bundle 258
     _syncTimer = null;
     await _transportSub?.cancel();
     _transportSub = null;

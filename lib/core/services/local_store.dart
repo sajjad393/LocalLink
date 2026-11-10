@@ -25,7 +25,7 @@ import 'package:locallink/core/diagnostics/store_health.dart';
 
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/call.dart';
-import 'package:locallink/core/identity/display_label.dart';
+import 'package:locallink/core/identity/person_name_258.dart';
 import 'package:locallink/core/models/call_quality.dart';
 import 'package:locallink/core/models/chat_preview.dart';
 import 'package:locallink/core/models/group.dart';
@@ -206,6 +206,7 @@ class LocalStore {
     // Bundle 237: friends' old phone ids (settings table, no DB change).
     await PersonPhones237.instance.load(read: readSetting, write: writeSetting);
     await SecurityCode245.instance.load(read: readSetting, write: writeSetting); // Bundle 245
+    await NameBook258.instance.load(read: readSetting, write: writeSetting); // Bundle 258
     // Bundle 197b: small pictures, Gallery links, removed / saved media.
     await _loadMediaBook();
     await _migrateLegacySharedPreferences();
@@ -1902,12 +1903,22 @@ class LocalStore {
   /// (e.g. "Unknown user") on null — never a device name or a raw id.
   Future<String?> peerDisplayName(String id) async {
     if (id.trim().isEmpty) return null;
-    final profile = await directoryProfile(id) ?? await directoryProfileByDeviceId(id);
+    var profile = await directoryProfile(id) ?? await directoryProfileByDeviceId(id);
+    // Bundle 258 (B2): no card for this phone -> the card of the contact
+    // kept with it (e.g. he moved to a new phone).
+    if (profile == null) {
+      try {
+        final user = await contactUserOfDevice258(id);
+        if (user != null) profile = await directoryProfile(user);
+      } catch (_) {}
+    }
     // Bundle 111: a locally set custom contact name fully replaces the
     // (possibly changing) profile name everywhere a person is displayed.
     final custom = await _customNameFor(id, profile);
     if (custom != null && custom.isNotEmpty) return custom;
-    return displayNameFromProfile(profile);
+    // Bundle 258 (B2): no card (fresh login) -> the last name seen for this
+    // person (kept on this phone), never the phone model.
+    return NameBook258.instance.pick(profile: profile, ids: [id]);
   }
 
   Future<Map<String, dynamic>?> directoryProfileByDeviceId(
@@ -2238,6 +2249,24 @@ class LocalStore {
     });
     AppLogger.info('PERSON_PHONE_RESEND_237',
         detail: 'old=${_short237(oldDevice)} new=${_short237(newDevice)} count=${ids.length}');
+  }
+
+  /// Bundle 258: the contact (account id) kept with phone [deviceId] in my
+  /// contact list, or null.
+  Future<String?> contactUserOfDevice258(String deviceId) async {
+    if (deviceId.trim().isEmpty) return null;
+    final rows = await _db.query('contacts',
+        columns: ['user_id'], where: 'device_id=?', whereArgs: [deviceId], limit: 1);
+    final u = rows.isEmpty ? '' : rows.first['user_id']?.toString() ?? '';
+    return u.isEmpty ? null : u;
+  }
+
+  /// Bundle 258 (D2): the phone id kept with contact [userId] ('' = none).
+  Future<String> contactDevice258(String userId) async {
+    if (userId.trim().isEmpty) return '';
+    final rows = await _db.query('contacts',
+        columns: ['device_id'], where: 'user_id=?', whereArgs: [userId], limit: 1);
+    return rows.isEmpty ? '' : rows.first['device_id']?.toString() ?? '';
   }
 
   /// The person behind an old phone id (null = not an old phone, or the

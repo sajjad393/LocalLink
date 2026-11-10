@@ -90,6 +90,7 @@ import 'package:locallink/features/messaging/presentation/widgets/message_option
 import 'package:locallink/features/authentication/data/services/offline_account_sync_service.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/features/account/presentation/widgets/private_profile_card.dart';
+import 'package:locallink/core/identity/person_name_258.dart';
 
 class HomeScreen extends StatefulWidget {
   final LocalLinkApi api;
@@ -814,7 +815,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final preview = _directPreviews[device.id];
       out.add(ForwardTarget(
         id: device.id,
-        name: labels[device.id] ?? 'Unknown user',
+        name: labels[device.id] ?? NameBook258.noName,
         subtitle: preview == null
             ? ''
             : chatPreviewText(preview, localDeviceId: localId),
@@ -1163,11 +1164,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Route<void> _chatRoute(Device device, {String? jumpTo}) {
+    // Bundle 258 (C1): the chat opens with the person's name (the list
+    // title), not the phone model from the devices table.
+    final named = device.copyWithPresence(
+        name: _controller.state.deviceLabels[device.id] ??
+            NameBook258.instance.lastKnown(device.id) ??
+            NameBook258.noName);
     return MaterialPageRoute(
         builder: (_) => ChatScreen(
           jumpToMessageId: jumpTo,
           controller:
-              ChatBloc(repository: widget.messagingRepository, device: device),
+              ChatBloc(repository: widget.messagingRepository, device: named),
           files: widget.files,
           notifications: widget.notifications,
           calls: widget.calls,
@@ -1271,7 +1278,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ChatsSearchChat(
           id: d.id,
           group: false,
-          title: state.deviceLabels[d.id] ?? 'Unknown user',
+          title: state.deviceLabels[d.id] ?? NameBook258.noName,
           subtitle: _directPreviews[d.id] == null
               ? _deviceSubtitle(d)
               : chatPreviewText(_directPreviews[d.id]!, localDeviceId: localId),
@@ -1288,7 +1295,7 @@ class _HomeScreenState extends State<HomeScreen> {
       search: (q) => widget.store.searchMessages(q),
       titleOf: (h) => h.group
           ? (groupsById[h.chatId]?.name ?? 'Group')
-          : (state.deviceLabels[h.chatId] ?? 'Unknown user'),
+          : (state.deviceLabels[h.chatId] ?? NameBook258.noName),
       avatarOf: (h) => h.group
           ? GroupAvatar(
               radius: 26,
@@ -1492,7 +1499,7 @@ class _HomeScreenState extends State<HomeScreen> {
             blocked: BlockHub.instance.isBlockedDevice(device.id),
             // People-facing titles show the profile nickname; a
             // device label ("My Android Phone") is never a person.
-            title: state.deviceLabels[device.id] ?? 'Unknown user',
+            title: state.deviceLabels[device.id] ?? NameBook258.noName,
             // Status stays on the photo badge; the line shows the last
             // message (status text only when there is none yet).
             subtitle: preview == null
@@ -1504,7 +1511,7 @@ class _HomeScreenState extends State<HomeScreen> {
             unreadCount: _unreadDirectCounts[device.id] ?? 0,
             onTap: () => _openChat(device),
             onLongPress: () => _holdDirectRow(
-                device, state.deviceLabels[device.id] ?? 'Unknown user'),
+                device, state.deviceLabels[device.id] ?? NameBook258.noName),
             // Bundle 196: no call button when I blocked them, or when
             // they blocked me (their signed block state).
             onCall: BlockHub.instance.isBlockedDevice(device.id) ||

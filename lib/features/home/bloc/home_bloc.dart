@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/core/identity/person_name_258.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/group.dart';
@@ -59,6 +60,10 @@ final class HomeBloc extends Cubit<HomeState> {
   StreamSubscription<Map<String, dynamic>>? _presenceSub;
   StreamSubscription<Map<String, dynamic>>? _directPresenceSub;
   Timer? _statusTimer;
+  // Bundle 258 (B3): a friend card / name came in -> the titles again.
+  StreamSubscription<void>? _nameSub;
+  Timer? _relabelTimer;
+  final Stream<void>? nameChanges;
   bool _started = false;
   bool _closed = false;
   bool _localDiscoveryAttempted = false;
@@ -67,6 +72,7 @@ final class HomeBloc extends Cubit<HomeState> {
     required this.repository,
     this.onServerSyncUnavailable,
     PresenceHub? presence,
+    this.nameChanges,
   })  : presence = presence ?? PresenceHub.instance,
         super(const HomeState());
 
@@ -87,7 +93,28 @@ final class HomeBloc extends Cubit<HomeState> {
         repository.directPresenceEvents.listen(_onDirectPresence);
     _statusTimer = Timer.periodic(
         const Duration(seconds: 10), (_) => expireStalePresence());
+    _nameSub = (nameChanges ?? NameBook258.instance.changes)
+        .listen((_) => _relabelSoon());
     unawaited(load());
+  }
+
+  /// Bundle 258 (B3): many cards in a row = one pass, 1 s later. Only the
+  /// names change (no reload, no spinner).
+  void _relabelSoon() {
+    if (_closed || (_relabelTimer?.isActive ?? false)) return;
+    _relabelTimer = Timer(const Duration(seconds: 1), () {
+      unawaited(relabel());
+    });
+  }
+
+  /// Bundle 258 (B3): the chat titles again (a card that came later no
+  /// longer leaves "Unknown user" until the next reload).
+  Future<void> relabel() async {
+    if (_closed) return;
+    final devices = state.devices;
+    final labels = await _labelsFor(devices);
+    if (_closed || !identical(devices, state.devices)) return;
+    emit(state.copyWith(deviceLabels: labels));
   }
 
   Future<void> load({bool userInitiated = false, bool quiet = false}) async {
@@ -420,6 +447,8 @@ final class HomeBloc extends Cubit<HomeState> {
   Future<void> close() async {
     _closed = true;
     _statusTimer?.cancel();
+    _relabelTimer?.cancel();
+    await _nameSub?.cancel();
     await _presenceSub?.cancel();
     await _directPresenceSub?.cancel();
     return super.close();

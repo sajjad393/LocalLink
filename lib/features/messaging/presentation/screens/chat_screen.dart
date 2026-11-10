@@ -844,9 +844,38 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   /// Bundle 245 (audit S7).
   Future<void> _openSecurityCode245(Device device) async {
+    unawaited(SecurityCode245.instance.autoSeen258(device.id)); // Bundle 258
     await Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (_) => SecurityCodeScreen(deviceId: device.id, name: _peerName(device)),
     ));
+  }
+
+  /// Bundle 258 (A2): the friend's new security code was taken by itself
+  /// (proven by the friend's phone or the server). A quiet grey line for
+  /// 24 h; tapping it opens the Security code screen (and hides it).
+  Widget _autoKeyLine258(BuildContext context, Device device) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      key: const ValueKey('chat_key_auto_258'),
+      color: colors.surfaceContainerLow,
+      child: InkWell(
+        onTap: () => _openSecurityCode245(device),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.lock_outline, size: 14, color: colors.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text("${_peerName(device)}'s security code changed",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12.5, color: colors.onSurfaceVariant)),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   /// Bundle 245 (audit S7): "<name>'s security code changed" under the bar.
@@ -855,7 +884,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       listenable: SecurityCode245.instance,
       builder: (context, _) {
         if (SecurityCode245.instance.pendingFor(device.id) == null) {
-          return const SizedBox.shrink();
+          // Bundle 258 (A2): taken by itself -> one grey line, no button.
+          if (SecurityCode245.instance.autoFor(device.id) == null) {
+            return const SizedBox.shrink();
+          }
+          return _autoKeyLine258(context, device);
         }
         final colors = Theme.of(context).colorScheme;
         return Material(

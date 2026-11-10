@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/directory/data/peer_photo_book.dart';
+import 'package:locallink/core/identity/person_name_258.dart';
 
 final class NotificationIdentity {
   final String displayName;
@@ -31,7 +32,7 @@ final class NotificationIdentityResolver {
       // auto-generated device label as if it were the person.
       final name = displayName.isNotEmpty
           ? displayName
-          : (username.isNotEmpty ? username : 'Unknown user');
+          : (username.isNotEmpty ? username : NameBook258.noName);
       return NotificationIdentity(
         displayName: name,
         initials: _initials(name),
@@ -40,9 +41,18 @@ final class NotificationIdentityResolver {
       );
     }
 
+    // Bundle 258 (B2): no card (fresh login) -> custom / last known name.
+    String? known;
+    try {
+      known = await store.peerDisplayName(peerId);
+    } catch (_) {}
+    if (known != null && known.trim().isNotEmpty) {
+      return NotificationIdentity(
+          displayName: known.trim(), initials: _initials(known.trim()));
+    }
     return const NotificationIdentity(
-      displayName: 'Unknown user',
-      initials: 'UN',
+      displayName: NameBook258.noName,
+      initials: 'LU',
     );
   }
 
@@ -58,7 +68,7 @@ final class NotificationIdentityResolver {
         // sender id is never shown.
         final rowName = row['name']?.toString().trim() ?? '';
         final name = await store.peerDisplayName(senderId) ??
-            (rowName.isNotEmpty ? rowName : 'Unknown user');
+            (rowName.isNotEmpty ? rowName : NameBook258.noName);
         final profile = await store.directoryProfileByDeviceId(senderId);
         return NotificationIdentity(
           displayName: name,

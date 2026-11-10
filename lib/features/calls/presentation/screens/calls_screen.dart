@@ -22,6 +22,7 @@ import 'package:locallink/features/calls/presentation/widgets/call_history_tile.
 import 'package:locallink/features/calls/presentation/call_history_groups.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
+import 'package:locallink/core/identity/person_name_258.dart';
 
 class CallsScreen extends StatefulWidget {
   final CallBloc controller;
@@ -59,7 +60,8 @@ class _CallsScreenState extends State<CallsScreen> {
     final live = widget.controller.deviceNames[_peerId(call)];
     if (live != null && live.isNotEmpty) return live;
     if (call.peerName.isNotEmpty) return call.peerName;
-    return 'Unknown user';
+    // Bundle 258 (B2): the last name seen for this person, never "Unknown".
+    return NameBook258.instance.lastKnown(_peerId(call)) ?? NameBook258.noName;
   }
 
   // Bundle 174: incoming + never answered = Missed (red, own row).

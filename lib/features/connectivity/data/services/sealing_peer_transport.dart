@@ -299,6 +299,10 @@ class SealingPeerTransport implements PeerTransportContract {
   @visibleForTesting
   PeerSessionKey? peerSession(String peerId) => _peerSessions[peerId];
 
+  /// Bundle 258 (A1): a locked message from [sender] was made with a key
+  /// my copy of its card does not have (bound by AppDependencies).
+  static void Function(String sender)? onSenderKeyMismatch258;
+
   // ---------------------------------------------------------------- events
   @override
   Stream<Map<String, dynamic>> get events {
@@ -453,6 +457,13 @@ class SealingPeerTransport implements PeerTransportContract {
         AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=unknown_session_key');
         unawaited(_sendReset(sender, outer['pk']?.toString() ?? ''));
         return null;
+      }
+      // Bundle 258 (A1): my copy of the sender's card has its OLD key (it
+      // was reinstalled): the directory asks that phone for its card.
+      if (e.reason == 'sender_key_mismatch') {
+        try {
+          onSenderKeyMismatch258?.call(sender);
+        } catch (_) {}
       }
       // Our key may have just been rotated: reload it once and retry.
       if (e.reason != 'unknown_recipient_key' || keys is! StoreSealKeySource) {

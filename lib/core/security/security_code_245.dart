@@ -21,11 +21,21 @@ import 'package:locallink/features/directory/domain/directory_models.dart';
 ///   ([IdentityTrustService.markChanged]) so calls show the existing
 ///   warning; everyone else works as before until they tap Accept.
 /// Kept in settings `key_change_245` (no database change).
+///
+/// Bundle 258 (A): a new code is now taken BY ITSELF when it is proven -
+/// the card came from that phone itself, or the server says that phone has
+/// that key ([autoTake258]). The chat shows a grey line "Security code
+/// changed" for 24 h (no button); a Verified friend goes back to Not
+/// verified. Only a card nobody could prove (passed on by someone else,
+/// server not reachable) still waits here, and is taken as soon as one of
+/// the proofs comes. Auto changes are kept in settings `key_auto_258`.
 class SecurityCode245 extends ChangeNotifier {
   SecurityCode245();
   static final SecurityCode245 instance = SecurityCode245();
   static const String settingKey = 'key_change_245';
   static const int maxPending = 200;
+  static const String autoSettingKey = 'key_auto_258';
+  static const Duration autoShowFor = Duration(hours: 24);
 
   // Bindings (AppDependencies). Null in tests that don't bind = feature off.
   Future<String> Function()? myKey;
@@ -41,6 +51,7 @@ class SecurityCode245 extends ChangeNotifier {
 
   Future<void> Function(String key, String value)? _write;
   final Map<String, PendingKey245> _pending = <String, PendingKey245>{};
+  final Map<String, AutoKey258> _auto = <String, AutoKey258>{};
 
   bool get bound => myKey != null && profileFor != null;
   int get pendingCount => _pending.length;
@@ -51,6 +62,19 @@ class SecurityCode245 extends ChangeNotifier {
   }) async {
     _write = write;
     _pending.clear();
+    _auto.clear();
+    try {
+      final raw = await read(autoSettingKey);
+      if (raw != null && raw.isNotEmpty) {
+        final map = jsonDecode(raw);
+        if (map is Map) {
+          for (final e in map.entries) {
+            final a = AutoKey258.fromJson(e.value);
+            if (a != null) _auto[e.key.toString()] = a;
+          }
+        }
+      }
+    } catch (_) {}
     try {
       final raw = await read(settingKey);
       if (raw != null && raw.isNotEmpty) {
@@ -73,6 +97,86 @@ class SecurityCode245 extends ChangeNotifier {
       await w(settingKey, jsonEncode({for (final e in _pending.entries) e.key: e.value.toJson()}));
     } catch (_) {}
   }
+
+  Future<void> _saveAuto() async {
+    final w = _write;
+    if (w == null) return;
+    final now = DateTime.now().toUtc();
+    _auto.removeWhere((_, a) => now.difference(a.at) > autoShowFor);
+    try {
+      await w(autoSettingKey,
+          jsonEncode({for (final e in _auto.entries) e.key: e.value.toJson()}));
+    } catch (_) {}
+  }
+
+  /// Bundle 258 (A1): the new card was proven ([why] = owner / server) and
+  /// is saved by the caller. No waiting change any more; a Verified friend
+  /// goes back to Not verified (no call warning); the chat shows the grey
+  /// line. Never throws.
+  Future<void> autoTake258(
+      DirectoryProfile old, DirectoryProfile incoming, String why) async {
+    try {
+      final user = incoming.userId;
+      if (user.isEmpty) return;
+      final hadPending = _pending.remove(user) != null;
+      if (hadPending) await _save();
+      final trust = trustState;
+      for (final id in {old.deviceId, incoming.deviceId}) {
+        if (id.isEmpty) continue;
+        final state =
+            trust == null ? null : await trust(id);
+        if (state == IdentityTrustState.verified ||
+            state == IdentityTrustState.changed) {
+          await clearTrust?.call(id);
+        }
+      }
+      _auto[user] = AutoKey258(
+          oldDeviceId: old.deviceId,
+          deviceId: incoming.deviceId,
+          at: DateTime.now().toUtc());
+      await _saveAuto();
+      AppLogger.info('KEY_AUTO_258',
+          detail: 'user=${_tail(user)} phone=${_tail(incoming.deviceId)} '
+              'why=$why${hadPending ? ' was_waiting=y' : ''}');
+      LinkKeyRefresh257.request('key_auto');
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Bundle 258 (A2): a change taken by itself in the last 24 h for this
+  /// chat (by its phone id: the old or the new), and not seen yet.
+  AutoKey258? autoFor(String deviceId, {String userId = ''}) {
+    final now = DateTime.now().toUtc();
+    bool fresh(AutoKey258 a) => !a.seen && now.difference(a.at) <= autoShowFor;
+    final byUser = userId.isEmpty ? null : _auto[userId];
+    if (byUser != null) return fresh(byUser) ? byUser : null;
+    for (final a in _auto.values) {
+      if ((a.oldDeviceId == deviceId || a.deviceId == deviceId) && fresh(a)) {
+        return a;
+      }
+    }
+    return null;
+  }
+
+  /// Bundle 258 (A2): the Security code screen was opened - the grey line
+  /// goes away for that chat.
+  Future<void> autoSeen258(String deviceId) async {
+    var changed = false;
+    for (final e in _auto.entries.toList()) {
+      final a = e.value;
+      if (!a.seen && (a.oldDeviceId == deviceId || a.deviceId == deviceId)) {
+        _auto[e.key] = a.markSeen();
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    await _saveAuto();
+    notifyListeners();
+  }
+
+  /// Bundle 258 (A3): the cards still waiting (older builds, or no proof
+  /// yet), to be checked again.
+  List<PendingKey245> get pendingCards => List.unmodifiable(_pending.values);
 
   /// A checked card whose signing key differs from the one I keep.
   /// Never throws.
@@ -177,6 +281,7 @@ class SecurityCode245 extends ChangeNotifier {
   @visibleForTesting
   void resetForTest() {
     _pending.clear();
+    _auto.clear();
     myKey = null;
     myUserId = null;
     profileFor = null;
@@ -236,4 +341,40 @@ class SecurityCodeView245 {
   final PendingKey245? pending;
 
   List<String> get groups => SafetyNumber.groups(digits);
+}
+
+/// Bundle 258 (A2): a code that changed by itself (for the grey line).
+class AutoKey258 {
+  const AutoKey258({
+    required this.oldDeviceId,
+    required this.deviceId,
+    required this.at,
+    this.seen = false,
+  });
+  final String oldDeviceId;
+  final String deviceId;
+  final DateTime at;
+  final bool seen;
+
+  AutoKey258 markSeen() =>
+      AutoKey258(oldDeviceId: oldDeviceId, deviceId: deviceId, at: at, seen: true);
+
+  Map<String, dynamic> toJson() => {
+        'old_device_id': oldDeviceId,
+        'device_id': deviceId,
+        'at': at.toIso8601String(),
+        if (seen) 'seen': true,
+      };
+
+  static AutoKey258? fromJson(Object? v) {
+    if (v is! Map) return null;
+    final at = DateTime.tryParse(v['at']?.toString() ?? '');
+    if (at == null) return null;
+    return AutoKey258(
+      oldDeviceId: v['old_device_id']?.toString() ?? '',
+      deviceId: v['device_id']?.toString() ?? '',
+      at: at,
+      seen: v['seen'] == true,
+    );
+  }
 }

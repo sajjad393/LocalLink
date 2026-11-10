@@ -33,6 +33,7 @@ import 'package:locallink/features/files/presentation/widgets/chat_video_hub.dar
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/features/connectivity/domain/local_route.dart';
 import 'package:locallink/features/files/presentation/widgets/media_view_cache.dart';
+import 'package:locallink/core/identity/person_name_258.dart';
 
 class LocalLinkApp extends StatefulWidget {
   const LocalLinkApp({super.key});
@@ -158,6 +159,16 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
 
   /// Bundle 194: open the chat with [deviceId] (same chat screen as a
   /// message notification tap). Never during a call.
+  /// Bundle 258 (C1): a chat opened from a notification shows the person's
+  /// name (custom / card / last known), not the phone model.
+  Future<Device> _named258(Device d, {String? fallback}) async {
+    String? name;
+    try {
+      name = await _deps.store.peerDisplayName(d.id);
+    } catch (_) {}
+    return d.copyWithPresence(name: name ?? fallback ?? NameBook258.noName);
+  }
+
   Future<bool> _openFriendChat(String deviceId, String displayName) async {
     if (!mounted || deviceId.trim().isEmpty) return false;
     final navigator = _navigatorKey.currentState;
@@ -179,6 +190,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       createdAt: '',
       lastSeenAt: '',
     );
+    device = await _named258(device,
+        fallback: displayName.trim().isEmpty ? null : displayName.trim());
     if (!mounted) return false;
     navigator.popUntil(AppRouter.isHomeOrFirst); // Bundle 227 (F3)
     unawaited(navigator.push(
@@ -447,8 +460,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     if (action.conversationType == NotificationConversationType.direct) {
       // That chat is already open: stay there (no second copy).
       if (policy.activeDirectConversationId == action.conversationId) return;
-      final device = await _deps.store.deviceById(action.conversationId);
-      if (device == null || device.id == _deps.store.deviceId) return;
+      final raw = await _deps.store.deviceById(action.conversationId);
+      if (raw == null || raw.id == _deps.store.deviceId) return;
+      final device = await _named258(raw); // Bundle 258 (C1)
       if (!mounted) return;
       // Another chat open: back to Home first, then open this one.
       navigator.popUntil(AppRouter.isHomeOrFirst); // Bundle 227 (F3)

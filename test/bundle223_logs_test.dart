@@ -29,9 +29,9 @@ void main() {
   test('223-32 the stamp is made from kAppVersion + kAppBuild = pubspec', () {
     final pub = File('pubspec.yaml').readAsStringSync();
     expect(pub, contains('version: $kAppVersion+$kAppBuild'));
-    expect(kAppVersion, '3.0.75');
-    expect(kAppBuild, 146);
-    expect(AppBuild.stamp, 'v3 · 3.0.75+146');
+    expect(kAppVersion, '3.0.76');
+    expect(kAppBuild, 147);
+    expect(AppBuild.stamp, 'v3 · 3.0.76+147');
     final app = File('lib/app/local_link_app.dart').readAsStringSync();
     expect(app, contains("AppLogger.info('APP_BUILD_STAMP', detail: AppBuild.stamp);"));
     expect(app, isNot(contains('3.0.50')));

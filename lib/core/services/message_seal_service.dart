@@ -78,9 +78,19 @@ class MessageSealService {
       type == sealedType || type == sealedLiveType;
 
   /// Whether a payload of [type] is sealed before it leaves this phone.
+  /// Bundle 258 (A1): a phone's own PUBLIC card (no phone number unless it
+  /// is public) and the ask for it travel in the open: they are for a
+  /// friend that still has the old key of this phone (after a reinstall),
+  /// who could not open a locked one. The card is signed; nothing secret.
+  static const Set<String> plainTypes258 = {
+    'DIRECTORY_OWN_CARD_258',
+    'DIRECTORY_CARD_ASK_258',
+  };
+
   static bool shouldSeal(String? type) {
     final t = type?.trim() ?? '';
     if (t.isEmpty || isSealedType(t)) return false;
+    if (plainTypes258.contains(t)) return false; // Bundle 258
     for (final prefix in _nativePrefixes) {
       if (t.startsWith(prefix)) return false;
     }

@@ -5,6 +5,7 @@ import 'package:locallink/core/models/message_reaction.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/messaging/data/services/reliable_messaging_service.dart';
+import 'package:locallink/core/identity/person_name_258.dart';
 
 /// Public messaging data boundary used by presentation code.
 ///
@@ -30,8 +31,10 @@ final class MessagingRepository implements MessagingRepositoryContract {
     // the auto-generated DEVICE label ("My Android Phone (xxxx)"). Overlay
     // the account profile nickname (display_name → username) so headers,
     // avatars and dialogs show the person, never the device label.
-    final label = await _peerLabel(deviceId);
-    if (label == null || label == device.name) return device;
+    // Bundle 258 (C1): no card and no name seen yet -> "LinkUp user", never
+    // the phone model ("RMX3938") from the devices table.
+    final label = await _peerLabel(deviceId) ?? NameBook258.noName;
+    if (label == device.name) return device;
     return device.copyWithPresence(name: label);
   }
 
