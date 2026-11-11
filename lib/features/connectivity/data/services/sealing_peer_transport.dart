@@ -303,6 +303,20 @@ class SealingPeerTransport implements PeerTransportContract {
   /// my copy of its card does not have (bound by AppDependencies).
   static void Function(String sender)? onSenderKeyMismatch258;
 
+  /// Bundle 259 (C1): a locked direct message from [sender] can't be opened
+  /// at all (this phone was reinstalled: no card for it, or it still uses
+  /// my old key). Bound by AppDependencies; rate limits live there.
+  static void Function(String sender, String why)? onCantOpen259;
+
+  void _cantOpen259(Map<String, dynamic> event, String sender, String self,
+      String why) {
+    final to = event['recipient_id']?.toString() ?? '';
+    if (to.isNotEmpty && to != self) return;
+    try {
+      onCantOpen259?.call(sender, why);
+    } catch (_) {}
+  }
+
   // ---------------------------------------------------------------- events
   @override
   Stream<Map<String, dynamic>> get events {
@@ -436,6 +450,9 @@ class SealingPeerTransport implements PeerTransportContract {
       if (theirs == null) {
         // Not a contact (or blocked): nothing else from strangers reaches the app.
         AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=not_a_contact');
+        if (!blockAck && !groupPacket) {
+          _cantOpen259(event, sender, self, 'not_a_contact');
+        }
         return null;
       }
       stranger = true;
@@ -482,6 +499,9 @@ class SealingPeerTransport implements PeerTransportContract {
         );
       } on SealOpenException catch (e2) {
         AppLogger.warning('SEAL_OPEN_FAILED', detail: 'reason=${e2.reason}');
+        if (e2.reason == 'unknown_recipient_key' && !blockAck && !groupPacket) {
+          _cantOpen259(event, sender, self, 'unknown_recipient_key');
+        }
         return null;
       }
     }

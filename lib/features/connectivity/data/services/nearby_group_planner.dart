@@ -132,6 +132,11 @@ class NearbyGroupInput {
   /// make (Realme Share / XShare). Nothing is planned until it ends (D1).
   final bool foreignGroup;
 
+  /// Bundle 260 (A1): this phone is a member of a group nobody runs any
+  /// more (no link inside it for 30 s, joined 30 s+ ago, no call). The
+  /// service decides; the planner leaves.
+  final bool groupDead;
+
   const NearbyGroupInput({
     required this.selfHash,
     required this.now,
@@ -156,6 +161,7 @@ class NearbyGroupInput {
     this.bridgeSeen = const <String, int>{},
     this.selfCharging = false,
     this.foreignGroup = false,
+    this.groupDead = false,
   });
 }
 
@@ -248,6 +254,7 @@ abstract final class NearbySearchCadence {
     bool charging = false,
     bool linked = false,
     int reconnectAgoMs = -1,
+    bool lostFriendOnWifi = false,
   }) {
     // Bundle 177 (Q2): app closed, not charging: 10% or less = no search,
     // under 20% = every 10 min. Charging or unknown level = normal rules.
@@ -270,6 +277,13 @@ abstract final class NearbySearchCadence {
     }
     if (waiting) return backgroundWaitingMs;
     if (inGroup || !onWifi) return backgroundIdleMs;
+    // Bundle 260 (A3): on the router Wi-Fi, but a friend's link died lately
+    // (he walked off the Wi-Fi): search every 60 s for 5 min, then every
+    // 3 min until 30 min, so his group's tag is heard.
+    if (lostFriendOnWifi && onWifi && reconnectAgoMs >= 0) {
+      if (reconnectAgoMs < reconnectFastForMs) return reconnectSlowMs;
+      if (reconnectAgoMs < reconnectSlowForMs) return backgroundIdleMs;
+    }
     return 0;
   }
 
@@ -439,6 +453,10 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
           return NearbyGroupAction.leaveAndJoin(host, 'pair_move');
         }
       }
+      // Bundle 260 (A1): the group's host app is gone (no link inside the
+      // group for 30 s): leave it, so this phone can join a friend who
+      // wants it (wanted_by_group / the Bundle 158 bridge).
+      if (input.groupDead) return const NearbyGroupAction.leave('group_dead');
       return const NearbyGroupAction.none('member_keeps_group');
 
     case NearbyGroupRole.host:

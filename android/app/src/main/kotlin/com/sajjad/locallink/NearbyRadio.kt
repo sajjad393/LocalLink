@@ -138,11 +138,38 @@ object NearbyRadio {
             // Bundle 226 (B3): Bluetooth LE finds friends (Android 10+).
             NearbyBle.start(a) { event -> emit(event) }
             Log.i(TAG, "NEARBY_RADIO_READY perm=${hasPermission(a)}")
+            closeLeftoverGroup(a, m, ch) // Bundle 260 (A6)
             true
         } catch (e: Exception) {
             Log.w(TAG, "NEARBY_RADIO_FAILED ${e.message}")
             false
         }
+    }
+
+    /** Bundle 260 (A6): checked once per app process. */
+    @Volatile private var leftoverChecked = false
+
+    /** Bundle 260 (A6): a LinkUp group this phone still hosts from before the
+     *  app died (force stop) is closed once at start - its members can then
+     *  join a group whose app runs. */
+    private fun closeLeftoverGroup(a: Context, m: WifiP2pManager, ch: WifiP2pManager.Channel) {
+        if (leftoverChecked) return
+        leftoverChecked = true
+        if (!hasPermission(a)) return
+        try {
+            m.requestGroupInfo(ch) { g ->
+                try {
+                    val name = g?.networkName
+                    val members = g?.clientList?.size ?: 0
+                    if (g == null || tags?.foreign == true ||
+                        !LeftoverGroupPolicy.shouldClose(true, g.isGroupOwner, name)) return@requestGroupInfo
+                    m.removeGroup(ch, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() { Log.i(TAG, LeftoverGroupPolicy.line(name, members, true)) }
+                        override fun onFailure(reason: Int) { Log.w(TAG, LeftoverGroupPolicy.line(name, members, false)) }
+                    })
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
     }
 
     private fun reinit(context: Context) {

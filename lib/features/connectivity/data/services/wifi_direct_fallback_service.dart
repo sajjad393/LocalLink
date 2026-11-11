@@ -377,6 +377,26 @@ final class WifiDirectFallbackService {
   // ---------------------------------------------------- Bundle 158 bridge
   /// Device ids of LocalLink phones seen on this Wi-Fi (LAN beacons).
   Iterable<String> Function()? lanPeerIds;
+
+  // ------------------------------------------ Bundle 260 (A1): dead group
+  /// Device ids linked through the Wi-Fi Direct group now (bound by
+  /// AppDependencies; null = not known, never "dead").
+  Iterable<String> Function()? groupPeerIds;
+  static const int groupDeadMs = 30 * 1000;
+  static const int groupDeadCoolMs = 10 * 60 * 1000;
+  int _memberSince = 0;
+  int _groupLinkSeenAt = 0;
+  String? _memberHost;
+  final Map<String, int> _deadGroupUntil = <String, int>{};
+  final Map<String, int> _deadGroupLeftAt = <String, int>{};
+  String? _deadLoggedGroup;
+
+  /// Bundle 260 (A3): newest time a friend that is missing now was
+  /// reachable, while this phone is on the router Wi-Fi (0 = none).
+  int _friendLostOnWifiAt = 0;
+
+  @visibleForTesting
+  Set<String> get deadGroupCooling => _deadGroupUntil.keys.toSet();
   String? _pendingReason;
   bool _bridging = false;
   int _bridgeSince = 0;
@@ -947,7 +967,15 @@ final class WifiDirectFallbackService {
       _ => NearbyGroupRole.none,
     };
     final name = event['name']?.toString();
-    if (name != null && name.isNotEmpty && name != _myGroup) _mates.clear();
+    if (name != null && name.isNotEmpty && name != _myGroup) {
+      _mates.clear();
+      // Bundle 260 (A1): another group - its 30 s start again.
+      if (_myGroup != null && _role == NearbyGroupRole.member) {
+        final now = _clock();
+        _memberSince = now;
+        _groupLinkSeenAt = now;
+      }
+    }
     _myGroup = (name == null || name.isEmpty) ? null : name;
     _myMembers = (event['members'] as num?)?.toInt() ?? 0;
     // Bundle 200 (B): in the friend backup group (no D4 new host for it).
@@ -981,6 +1009,16 @@ final class WifiDirectFallbackService {
     _role = role;
     if (role == NearbyGroupRole.host) _hostSince = now;
     if (role != NearbyGroupRole.host) _hostSince = 0;
+    // Bundle 260 (A1): when this phone became a member (and of whom).
+    if (role == NearbyGroupRole.member) {
+      _memberSince = now;
+      _groupLinkSeenAt = now;
+      _memberHost = _pendingHost?.trim().toLowerCase();
+    } else {
+      _memberSince = 0;
+      _groupLinkSeenAt = 0;
+      _memberHost = null;
+    }
     // Bundle 205 (P2): the group ended - look for phones at once.
     if (role == NearbyGroupRole.none) _searchSoon = true;
     if (role == NearbyGroupRole.none) {
@@ -1164,6 +1202,10 @@ final class WifiDirectFallbackService {
     // friend nearby lately is missing now.
     final linked = _role == NearbyGroupRole.member ||
         (_role == NearbyGroupRole.host && _myMembers > 0);
+    // Bundle 260 (A3): on the router Wi-Fi, a friend's link died lately.
+    final lostOnWifi = _usableWifi &&
+        _friendLostOnWifiAt > 0 &&
+        now >= _friendLostOnWifiAt;
     final everyMs = NearbySearchCadence.everyMs(
       urgent: urgent,
       foreground: _foreground,
@@ -1173,9 +1215,12 @@ final class WifiDirectFallbackService {
       batteryLevel: _batteryLevel,
       charging: _batteryCharging,
       linked: linked,
-      reconnectAgoMs: _friendLostAt > 0 && now >= _friendLostAt
-          ? now - _friendLostAt
-          : -1,
+      reconnectAgoMs: lostOnWifi
+          ? now - _friendLostOnWifiAt
+          : _friendLostAt > 0 && now >= _friendLostAt
+              ? now - _friendLostAt
+              : -1,
+      lostFriendOnWifi: lostOnWifi,
     );
     // Bundle 177 (Q2): log the battery stop once per low-battery spell.
     final batteryStop = !_foreground &&
@@ -1287,6 +1332,8 @@ final class WifiDirectFallbackService {
         _callFlag = busy;
         unawaited(_setCallFlag(busy));
       }
+      final groupDead = _groupDeadNow(now, busy);
+      _coolDeadGroups(now);
       final plan = planNearbyGroup(NearbyGroupInput(
         selfHash: self,
         now: now,
@@ -1301,7 +1348,7 @@ final class WifiDirectFallbackService {
         pairTarget: _pairTarget,
         pairAgeMs: now - _pairAt,
         pairInviteAllowed: !_pairInvited,
-        cooling: _coolingUntil.keys.toSet(),
+        cooling: {..._coolingUntil.keys, ..._deadGroupUntil.keys},
         lostAt: _lostAt,
         lostJitterMs: _lostJitterMs,
         lostMates: _lostMates,
@@ -1311,6 +1358,7 @@ final class WifiDirectFallbackService {
         bridgeSeen: {..._bridgeSeen},
         selfCharging: _selfCharging,
         foreignGroup: _foreignGroup,
+        groupDead: groupDead,
       ));
       if (plan.reason != _lastPlanReason) {
         _lastPlanReason = plan.reason;
@@ -1343,11 +1391,97 @@ final class WifiDirectFallbackService {
         return;
       }
       if (!_backoff.mayAct(now, userTap: userTap)) return;
+      if (plan.reason == 'group_dead') _markGroupDead(now);
       await _runGroupAction(group, plan, now);
     } finally {
       _groupBusy = false;
       if (_pendingUserTap && !_disposed) unawaited(_evaluateGroup());
     }
+  }
+
+  /// Bundle 260 (A1): a member whose group has had no link for 30 s (the
+  /// host's app was stopped, its Wi-Fi Direct group is still up). Never
+  /// while a call runs, in the first 30 s, in a foreign or friend group, or
+  /// while this phone also has a local-net link.
+  bool _groupDeadNow(int now, bool busy) {
+    final myGroup = _myGroup;
+    final read = groupPeerIds;
+    if (_role != NearbyGroupRole.member ||
+        myGroup == null ||
+        _foreignGroup ||
+        _inFriendGroup ||
+        _lnState != 'off' ||
+        read == null) {
+      return false;
+    }
+    var alive = false;
+    try {
+      alive = read().any((id) => id.trim().isNotEmpty);
+    } catch (_) {
+      alive = true; // not known: never "dead"
+    }
+    if (!alive) {
+      alive = _tags.values.any((t) =>
+          t.host &&
+          t.group == myGroup &&
+          now >= t.seenAt &&
+          now - t.seenAt <= groupDeadMs);
+    }
+    // On the router Wi-Fi a mate's link may run over the router (a `lan`
+    // route): a phone of this group that sends Wi-Fi beacons is alive.
+    if (!alive && _usableWifi) {
+      final lan = _lanHashes();
+      if (lan.isNotEmpty) {
+        alive = lan.any(_mates.contains) ||
+            _tags.values
+                .any((t) => t.group == myGroup && lan.contains(t.idHash));
+      }
+    }
+    if (alive || _groupLinkSeenAt <= 0 || now < _groupLinkSeenAt) {
+      _groupLinkSeenAt = now;
+      return false;
+    }
+    if (_memberSince <= 0 || now - _memberSince < groupDeadMs) return false;
+    if (now - _groupLinkSeenAt < groupDeadMs) return false;
+    if (busy || _activeCallTarget(now) != null) return false;
+    return true;
+  }
+
+  /// Bundle 260 (A1): this phone leaves a dead group - its host is not
+  /// joined again for 10 min (a new tag from it ends that at once).
+  void _markGroupDead(int now) {
+    final myGroup = _myGroup;
+    final addresses = <String>{
+      if (_memberHost != null && _memberHost!.isNotEmpty) _memberHost!,
+      for (final t in _tags.values)
+        if (t.host && t.group == myGroup && t.address.isNotEmpty)
+          t.address.toLowerCase(),
+    };
+    for (final a in addresses) {
+      _deadGroupUntil[a] = now + groupDeadCoolMs;
+      _deadGroupLeftAt[a] = now;
+    }
+    if (myGroup != _deadLoggedGroup) {
+      _deadLoggedGroup = myGroup;
+      AppLogger.info('NEARBY',
+          detail: 'group dead grp=${myGroup ?? '-'} '
+              'no_link_s=${(now - _groupLinkSeenAt) ~/ 1000} '
+              'in_group_s=${(now - _memberSince) ~/ 1000}');
+    }
+  }
+
+  /// Bundle 260 (A1): cooling ends after 10 min, or when that host sends a
+  /// new tag (its app runs again).
+  void _coolDeadGroups(int now) {
+    if (_deadGroupUntil.isEmpty) return;
+    final fresh = <String, int>{
+      for (final t in _tags.values) t.address.toLowerCase(): t.seenAt,
+    };
+    _deadGroupUntil.removeWhere((a, until) {
+      final left = _deadGroupLeftAt[a] ?? 0;
+      return until <= now || now < left || (fresh[a] ?? 0) > left;
+    });
+    _deadGroupLeftAt.removeWhere((a, _) => !_deadGroupUntil.containsKey(a));
   }
 
   // ------------------------------------------ Bundle 200: friend link (B)
@@ -1389,6 +1523,7 @@ final class WifiDirectFallbackService {
     final names = <String>{};
     var missingRecent = 0;
     var lostAt = 0;
+    var lostOnWifiAt = 0; // Bundle 260 (A3)
     for (final entry in keys.entries) {
       final id = entry.key.trim();
       if (id.isEmpty || entry.value.isEmpty) continue;
@@ -1415,6 +1550,11 @@ final class WifiDirectFallbackService {
         final was = _memo.lastReachable[id] ?? 0;
         if (was > lostAt) lostAt = was;
       }
+      // Bundle 260 (A3): the same on the router Wi-Fi (he walked off it).
+      if (!reachable && !tagSeen && _usableWifi) {
+        final was = _memo.lastReachable[id] ?? 0;
+        if (was > lostOnWifiAt) lostOnWifiAt = was;
+      }
       if (reachable || tagSeen || _usableWifi) {
         _friendWantedSince.remove(id);
         _friendSignLogged.remove(id);
@@ -1439,6 +1579,7 @@ final class WifiDirectFallbackService {
     _memo.wdAddress.removeWhere((id, _) => !keys.containsKey(id));
     _friendGroupNames = names;
     _friendLostAt = lostAt;
+    _friendLostOnWifiAt = lostOnWifiAt;
     // Bundle 201 (D): hints for the Nearby list (open app only).
     if (_foreground) {
       FriendNearbyHints.instance
@@ -1486,7 +1627,12 @@ final class WifiDirectFallbackService {
       skip: _friendSkipUntil.keys.toSet(),
       openRestUntil: _friendOpenRestUntil,
       signWaitMs: _signWaitMs,
-      knownHosts: _memo.knownHosts(now),
+      // Bundle 260 (A1): never the host of a group just left as dead.
+      knownHosts: <String, String>{
+        for (final e in _memo.knownHosts(now).entries)
+          if (!_deadGroupUntil.containsKey(e.value.trim().toLowerCase()))
+            e.key: e.value,
+      },
       phoneSeenAt: _phoneSeenAt,
       callTargetId: _activeCallTarget(now),
       ble: _ble.fresh(now), // Bundle 226 (B4)

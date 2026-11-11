@@ -1912,6 +1912,14 @@ class LocalStore {
         if (user != null) profile = await directoryProfile(user);
       } catch (_) {}
     }
+    // Bundle 259 (A1): a friend's OLD phone (the 237 list, filled by the
+    // server contacts pull) -> his current card.
+    if (profile == null) {
+      try {
+        final owner = await personOfPastPhone237(id);
+        if (owner != null) profile = await directoryProfile(owner);
+      } catch (_) {}
+    }
     // Bundle 111: a locally set custom contact name fully replaces the
     // (possibly changing) profile name everywhere a person is displayed.
     final custom = await _customNameFor(id, profile);
@@ -2098,6 +2106,20 @@ class LocalStore {
       if (oldVersion > version) return false;
       if (oldVersion == version && oldUpdated.compareTo(updated) > 0) {
         return false;
+      }
+      // Bundle 260 (B2): the same signed card again (only local fields like
+      // `synced_at` / `source` differ) - nothing new to keep. Every copy of
+      // the card storm was saved again before.
+      final signature = card['signature']?.toString() ?? '';
+      if (signature.isNotEmpty) {
+        try {
+          final saved = jsonDecode(old.first['card']?.toString() ?? '');
+          if (saved is Map &&
+              oldVersion == version &&
+              saved['signature']?.toString() == signature) {
+            return false;
+          }
+        } catch (_) {}
       }
       if (old.first['card']?.toString() == text) return false;
     }

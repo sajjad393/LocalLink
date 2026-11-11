@@ -239,6 +239,12 @@ class AppDependencies {
         (peerId) => routePolicy.routes[peerId]?.isAvailable ?? false;
     // Bundle 158: phones on this Wi-Fi (a bridge is only for the others).
     wifiDirectFallback.lanPeerIds = () => routePolicy.lanPeerIds;
+    // Bundle 260 (A1): phones linked through the Wi-Fi Direct group (a
+    // member with none of them for 30 s leaves a dead group).
+    wifiDirectFallback.groupPeerIds = () => [
+          for (final r in routePolicy.routes.values)
+            if (r.kind == LocalRouteKind.wifiDirect) r.peerId,
+        ];
     // Bundle 200 (B): the friend backup group (pair name + password from the
     // link key) and who has messages waiting.
     final sealingForFriends = directTransport;
@@ -546,6 +552,9 @@ class AppDependencies {
     // Bundle 258 (A1): a friend's locked message made with a key my copy of
     // its card does not have -> ask that phone for its card.
     SealingPeerTransport.onSenderKeyMismatch258 = directory.senderKeyMismatch258;
+    // Bundle 259 (C1): a friend's locked message can't be opened at all
+    // (this phone was reinstalled) -> send him my card, ask for his.
+    SealingPeerTransport.onCantOpen259 = directory.cantOpenFrom259;
     // Bundle 218: the offline account just joined the server.
     OfflineAccountSyncService.onJoined218 = _onJoined218;
     // Bundle 236 (B2): no saved password -> the saved password lock goes up.

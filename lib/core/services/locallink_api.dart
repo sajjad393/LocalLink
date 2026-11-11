@@ -731,6 +731,9 @@ class LocalLinkApi {
   Future<List<LocalProfile>> directoryByName(String query) async => _directoryList('/api/v1/directory/name?q=${Uri.encodeQueryComponent(query.trim())}');
   Future<LocalProfile?> directoryByPhone(String phone) async => _directorySingle('/api/v1/directory/phone?phone=${Uri.encodeQueryComponent(phone)}');
   Future<LocalProfile?> directoryByUserId(String userId) async => _directorySingle('/api/v1/directory/user/${Uri.encodeComponent(userId)}');
+  /// Bundle 259 (B2): the owner's card of a phone id (contacts and chat
+  /// partners only). An older server (no such route) answers 404 -> null.
+  Future<LocalProfile?> directoryByDevice(String deviceId) async => _directorySingle('/api/v1/directory/device/${Uri.encodeComponent(deviceId)}');
 
   Future<LocalProfile?> _directorySingle(String path) async {
     final response = await http.get(Uri.parse('$baseUrl$path'), headers: _headers()).timeout(const Duration(seconds: 8));

@@ -68,6 +68,55 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   DateTime? _lastSyncAt;
   DateTime? _lastNoRouteLogAt;
 
+  /// Bundle 260 (B1): last `state` / Wi-Fi Direct `connection` value seen
+  /// (null = none yet), so only a real change skips the 20 s pause.
+  bool? _stateConnected260;
+  bool? _wdConnected260;
+  static const Duration syncMinGap260 = Duration(seconds: 5);
+  int _syncSkips260 = 0;
+  DateTime? _syncSkipLogAt260;
+
+  /// Bundle 260 (B3): when each asking phone last got my cards, and a
+  /// check value of that answer.
+  final Map<String, ({int at, int hash})> _syncAnswered260 =
+      <String, ({int at, int hash})>{};
+  static const Duration syncAnswerGap260 = Duration(seconds: 60);
+
+  /// Bundle 260 (B1): let the next [sync] run 5 s after the last one
+  /// (instead of the 20 s pause; at once when the last one is older).
+  void _syncAgainSoon260({bool schedule = false}) {
+    final last = _syncRanAt260;
+    if (last == null || _lastSyncAt == null) return;
+    // From the time the last sync really ran (calling this again never
+    // moves it further back).
+    _lastSyncAt = last.subtract(_syncCooldown - syncMinGap260);
+    if (!schedule || !_started) return;
+    // A real new link inside the 5 s: sync right when the 5 s are over.
+    final wait = last.add(syncMinGap260).difference(DateTime.now().toUtc());
+    if (wait <= Duration.zero || (_edgeSync260?.isActive ?? false)) return;
+    _edgeSync260 = Timer(wait + const Duration(milliseconds: 50), () {
+      if (_started) unawaited(sync());
+    });
+  }
+
+  Timer? _edgeSync260;
+
+  /// Bundle 260 (B1): when [sync] really ran last.
+  DateTime? _syncRanAt260;
+
+  /// Bundle 260 (B1): one log line a minute at most with the skipped syncs.
+  void _countSyncSkip260(DateTime now) {
+    _syncSkips260++;
+    final last = _syncSkipLogAt260;
+    if (last != null && now.difference(last) < const Duration(minutes: 1)) {
+      return;
+    }
+    _syncSkipLogAt260 = now;
+    AppLogger.info('DIR_SYNC_SKIP',
+        detail: 'why=cooldown n=$_syncSkips260');
+    _syncSkips260 = 0;
+  }
+
   /// Bundle 162 (4.11): "no route to that phone yet" (native
   /// PEER_UNAVAILABLE), however it was wrapped.
   static bool isPeerUnavailableError(Object error) {
@@ -136,7 +185,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       // Directory must not prevent LocalLink from opening.
     }
     unawaited(sync());
-    unawaited(syncServerContacts());
+    // Bundle 259 (A3): the first pull after start / sign-in is never
+    // skipped because of a failed call just before.
+    unawaited(syncServerContacts(force: true));
     unawaited(_startFriendLinks());
     unawaited(_loadPhotoCodes());
     unawaited(retryHeldCards258().catchError((Object _) {})); // Bundle 258
@@ -752,7 +803,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       // line at most once a minute, and the next route event syncs again.
       // Anything else stays an error.
       if (isPeerUnavailableError(error)) {
-        _lastSyncAt = null;
+        // Bundle 260 (B1): the next sync may run 5 s from now (it was at
+        // once, which fed the sync storm on a busy link).
+        _syncAgainSoon260();
         final now = DateTime.now();
         final last = _lastNoRouteLogAt;
         if (last == null || now.difference(last) >= const Duration(minutes: 1)) {
@@ -793,17 +846,29 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       }
       return;
     }
-    if (eventType == 'state' && event['connected'] == true) {
-      _lastSyncAt = null;
-      unawaited(sync());
+    // Bundle 260 (B1): the native side sends a `state` event on every
+    // transport set-up (about 1000 an hour on a busy phone). Only a real
+    // change (not connected -> connected) skips the 20 s pause, and even
+    // then at least 5 s after the last sync.
+    if (eventType == 'state') {
+      final connected = event['connected'] == true;
+      final edge = connected && _stateConnected260 != true;
+      _stateConnected260 = connected;
+      if (edge) {
+        _syncAgainSoon260(schedule: true);
+      }
+      if (connected) unawaited(sync());
       return;
     }
     if (eventType == 'connection') {
       final connection = event['connection'];
-      if (connection is Map && connection['connected'] == true) {
-        _lastSyncAt = null;
-        unawaited(sync());
+      final connected = connection is Map && connection['connected'] == true;
+      final edge = connected && _wdConnected260 != true;
+      _wdConnected260 = connected;
+      if (edge) {
+        _syncAgainSoon260(schedule: true);
       }
+      if (connected) unawaited(sync());
       return;
     }
 
@@ -1112,6 +1177,28 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     // Bundle 154: pages keep each packet small. Older phones handle every
     // page like a normal response (they ignore 'page'/'pages').
     final pages = directorySyncPages(rows);
+    // Bundle 260 (B3): the SAME answer goes to one phone at most once a
+    // minute (a changed answer goes at once); the request is still passed on.
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    var hash = 0;
+    try {
+      hash = jsonEncode(rows).hashCode;
+    } catch (_) {
+      hash = nowMs; // can't compare: answer
+    }
+    final last = _syncAnswered260[origin];
+    if (last != null &&
+        last.hash == hash &&
+        nowMs >= last.at &&
+        nowMs - last.at < syncAnswerGap260.inMilliseconds) {
+      await _forwardGossip(message);
+      return;
+    }
+    _syncAnswered260.remove(origin);
+    _syncAnswered260[origin] = (at: nowMs, hash: hash);
+    if (_syncAnswered260.length > 200) {
+      _syncAnswered260.remove(_syncAnswered260.keys.first);
+    }
     for (var i = 0; i < pages.length; i++) {
       await transport.send(
         recipientId: origin,
@@ -1409,6 +1496,156 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       } catch (_) {}
       if (only.isEmpty) unawaited(askOwnCard258(card.deviceId, why: 'held'));
     }
+  }
+
+  // ------------------------------------- Bundle 259 (B2): missing names
+  static const Duration nameAskGap259 = Duration(hours: 6);
+  static const int nameAskMax259 = 50;
+  final Map<String, int> _nameAskedAt259 = <String, int>{};
+  bool _nameFillBusy259 = false;
+
+  /// Chats with a phone this phone has no card for (a friend's old phone,
+  /// someone never added) ask the server who owns that phone. Each phone
+  /// is asked at most once in 6 h; the run stops at the first network
+  /// error. Never throws.
+  Future<void> fillMissingNames259() async {
+    if (!_started || _nameFillBusy259) return;
+    _nameFillBusy259 = true;
+    var asked = 0, found = 0, none = 0;
+    try {
+      final peers = await store.chatPeerIds();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      _nameAskedAt259.removeWhere(
+          (_, at) => now - at >= nameAskGap259.inMilliseconds || now < at);
+      for (final id in peers) {
+        if (asked >= nameAskMax259) break;
+        if (id.isEmpty || id == store.deviceId) continue;
+        if (_nameAskedAt259.containsKey(id)) continue;
+        if (await _hasCard259(id)) continue;
+        if (ServerReach.instance.skipWhy() != null) break;
+        _nameAskedAt259[id] = now;
+        asked++;
+        LocalProfile? remote;
+        try {
+          remote = await api
+              .directoryByDevice(id)
+              .timeout(const Duration(seconds: 3));
+        } catch (e) {
+          ServerReach.instance.noteFailure(e);
+          _nameAskedAt259.remove(id); // not answered: ask again next run
+          break;
+        }
+        if (remote == null ||
+            remote.userId.isEmpty ||
+            remote.userId == store.accountId ||
+            await store.isBlocked(remote.userId)) {
+          none++;
+          continue;
+        }
+        found++;
+        await _saveServerProfile(_fromServerProfile(remote));
+        final name = remote.displayName.trim().isNotEmpty
+            ? remote.displayName.trim()
+            : remote.username.trim();
+        NameBook258.instance.remember(name, [id, remote.userId]);
+        if (remote.deviceId.isNotEmpty && remote.deviceId != id) {
+          await store.rememberServerPastPhones237(
+              remote.userId, [id], remote.deviceId);
+        }
+      }
+    } catch (_) {
+      // Names stay as they are ("LinkUp user" / the last name seen).
+    } finally {
+      _nameFillBusy259 = false;
+      if (asked > 0) {
+        AppLogger.info('NAME_FILL_259',
+            detail: 'asked=$asked found=$found none=$none');
+        NameBook258.instance.notifyChanged();
+      }
+    }
+  }
+
+  /// A card for phone [id] (its own, the contact kept with it, or the
+  /// person it was an old phone of).
+  Future<bool> _hasCard259(String id) async {
+    if (await store.directoryProfileByDeviceId(id) != null) return true;
+    final user = await store.contactUserOfDevice258(id);
+    if (user != null && await store.directoryProfile(user) != null) return true;
+    final owner = await store.personOfPastPhone237(id);
+    if (owner != null && await store.directoryProfile(owner) != null) {
+      return true;
+    }
+    return false;
+  }
+
+  // ------------------------------- Bundle 259 (C1): offline reinstall
+  static const Duration cantOpenGap259 = Duration(minutes: 10);
+  static const int cantOpenPerHour259 = 20;
+  final Map<String, int> _cantOpenAt259 = <String, int>{};
+  final List<int> _cantOpenSent259 = <int>[];
+
+  /// A locked direct message from [sender] could not be opened (this phone
+  /// was reinstalled: no card for that friend, or he still uses my old
+  /// key). Bound to [SealingPeerTransport.onCantOpen259]: my public card
+  /// goes to that phone in the open (the 258 owner rule takes it there),
+  /// then I ask for his card.
+  void cantOpenFrom259(String sender, String why) {
+    unawaited(_onCantOpen259(sender, why).catchError((Object _) {}));
+  }
+
+  Future<void> _onCantOpen259(String sender, String why) async {
+    if (sender.isEmpty ||
+        !_started ||
+        sender == store.deviceId ||
+        !transport.isStarted) {
+      return;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _cantOpenAt259[sender];
+    if (last != null && now >= last && now - last < cantOpenGap259.inMilliseconds) {
+      return;
+    }
+    _cantOpenSent259.removeWhere((t) => now - t >= 3600 * 1000 || now < t);
+    if (_cantOpenSent259.length >= cantOpenPerHour259) return;
+    try {
+      if (await store.isBlocked(sender)) return;
+      final user = (await store.directoryProfileByDeviceId(sender))?['user_id']
+              ?.toString() ??
+          '';
+      if (user.isNotEmpty && await store.isBlocked(user)) return;
+    } catch (_) {
+      return;
+    }
+    _cantOpenAt259[sender] = now;
+    _cantOpenSent259.add(now);
+    if (_cantOpenAt259.length > 200) {
+      _cantOpenAt259.remove(_cantOpenAt259.keys.first);
+    }
+    final signed = await _buildOwnProfile();
+    if (signed == null) return;
+    var sent = true;
+    try {
+      await transport.send(recipientId: sender, payload: <String, dynamic>{
+        'type': ownCardType258,
+        'created_at': now,
+        'profile': signed.toMap(),
+      });
+    } catch (_) {
+      sent = false;
+    }
+    AppLogger.info('KEY_REINSTALL_HELLO_259',
+        detail: 'to=${_tail6(sender)} why=$why${sent ? '' : ' sent=n'}');
+    await askOwnCard258(sender, why: 'reinstall');
+  }
+
+  @visibleForTesting
+  void debugMarkStarted259() => _started = true;
+
+  @visibleForTesting
+  void debugReset259() {
+    _nameAskedAt259.clear();
+    _cantOpenAt259.clear();
+    _cantOpenSent259.clear();
   }
 
   @visibleForTesting
@@ -1881,11 +2118,13 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     if (!_started || !transport.isStarted || _syncInFlight) return;
     final now = DateTime.now().toUtc();
     if (_lastSyncAt != null && now.difference(_lastSyncAt!) < _syncCooldown) {
+      _countSyncSkip260(now);
       return;
     }
 
     _syncInFlight = true;
     _lastSyncAt = now;
+    _syncRanAt260 = now;
     try {
       await publishOwnProfile();
       await transport.broadcast(
@@ -1929,7 +2168,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   }
 
   @override
-  Future<void> syncServerContacts() async {
+  Future<void> syncServerContacts({bool force = false}) async {
     // Contact relationships are stored per ACCOUNT on the server (survives
     // reinstalls) and the model is MUTUAL: entries the other account created
     // must appear here without a manual re-add. This routine is what pulls
@@ -1938,7 +2177,13 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final accountId = store.accountId;
     if (accountId == null || accountId.isEmpty) return;
     // Bundle 223 (L): no network / server just failed -> skip quietly.
-    if (ServerReach.instance.shouldSkip('contacts_sync')) return;
+    // Bundle 259 (A3): [force] (the first pull after start) only skips
+    // when this account has no server at all.
+    if (force && ServerReach.instance.skipWhy() != 'no_server') {
+      AppLogger.info('CONTACTS_SYNC_FORCED', detail: 'why=start');
+    } else if (ServerReach.instance.shouldSkip('contacts_sync')) {
+      return;
+    }
     _serverContactsSyncInFlight = true;
     try {
       // Bundle 218c: friends who joined the server get their real id first.
@@ -1996,6 +2241,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       // are protected by not being in `confirmed`.
       final remote = await api.listAccountContacts();
       final remoteIds = <String>{};
+      var new259 = 0; // Bundle 259 (A2)
+      var past259 = 0;
       // Bundle 177 (8.2): no "added you" notices on the first sync after an
       // install / restore (that would be one per old contact).
       final announce =
@@ -2015,6 +2262,8 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         if (contact.deviceId.isNotEmpty || !hadLocal) {
           await store.addContact(contact.userId, contact.deviceId);
         }
+        if (!hadLocal) new259++;
+        if (contact.pastDeviceIds.isNotEmpty) past259++;
         // Bundle 237: his old phones (moves from before this update).
         if (contact.pastDeviceIds.isNotEmpty) {
           await store.rememberServerPastPhones237(
@@ -2034,12 +2283,19 @@ class DirectoryRepository implements DirectoryRepositoryContract {
         photoBook.dropPicture(id); // Bundle 204
       }
       await store.saveServerConfirmedContactIds(remoteIds);
+      // Bundle 259 (A2): a log line that shows the pull worked, and the
+      // chat list reads its names again (old phones are known now).
+      AppLogger.info('CONTACTS_SYNC_OK',
+          detail: 'n=${remoteIds.length} new=$new259 past=$past259');
+      NameBook258.instance.notifyChanged();
       if (!announce) await store.writeSetting(firstContactsSyncKey, '1');
       // Bundle 258 (B1): the server answered - stop the quick retries,
       // and held new codes can be checked with it now (A3).
       _contactsRetry258?.cancel();
       _contactsRetries258 = 0;
       unawaited(retryHeldCards258().catchError((Object _) {}));
+      // Bundle 259 (B2): chats that still have no name ask the server.
+      unawaited(fillMissingNames259().catchError((Object _) {}));
     } catch (e) {
       // Never silently discard sync failures: log and leave local state
       // untouched; the next cycle retries both directions.
@@ -3203,6 +3459,7 @@ class DirectoryRepository implements DirectoryRepositoryContract {
   Future<void> dispose() async {
     _syncTimer?.cancel();
     _contactsRetry258?.cancel(); // Bundle 258
+    _edgeSync260?.cancel(); // Bundle 260
     _syncTimer = null;
     await _transportSub?.cancel();
     _transportSub = null;
