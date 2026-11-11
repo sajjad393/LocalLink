@@ -34,7 +34,51 @@ class CallNearbyWait extends ChangeNotifier {
   String? get callId => _callId;
 
   /// Device id of the friend the away call waits for (null = none).
-  String? get peerId => _peerId;
+  /// Bundle 266 (D): or the friend who calls us through the server.
+  String? get peerId => _peerId ?? _wakePeerId;
+
+  // Bundle 266 (D1): a friend calls through the server and there is no
+  // nearby way to them: Nearby looks for that friend now (friends only,
+  // only while their call is on, 60 s at most).
+  String? _wakeCallId;
+  String? _wakePeerId;
+  DateTime? _wakeSince;
+
+  String? get wakeCallId => _wakeCallId;
+
+  bool wakingFor(String callId) => _wakeCallId != null && _wakeCallId == callId;
+
+  void startWake(String callId, String peerId) {
+    final id = callId.trim();
+    final peer = peerId.trim();
+    if (id.isEmpty || peer.isEmpty || _wakeCallId == id) return;
+    if (_wakeCallId != null) stopWake('replaced');
+    _wakeCallId = id;
+    _wakePeerId = peer;
+    _wakeSince = _clock();
+    AppLogger.info('CALL_NEARBY_WAKE',
+        detail: 'start friend=${_short(peer)} call=$id');
+    notifyListeners();
+  }
+
+  void stopWake(String why) {
+    final id = _wakeCallId;
+    if (id == null) return;
+    final since = _wakeSince;
+    final after = since == null ? 0 : _clock().difference(since).inSeconds;
+    AppLogger.info('CALL_NEARBY_WAKE',
+        detail: 'end why=$why after_s=$after call=$id');
+    _wakeCallId = null;
+    _wakePeerId = null;
+    _wakeSince = null;
+    notifyListeners();
+  }
+
+  /// Bundle 266 (D1): why a running wake ends for [s] (null = it goes on).
+  static String? wakeEndWhy(CallSession? s, String callId) {
+    if (s == null || s.id != callId || s.isFinished) return 'ended';
+    return null;
+  }
 
   bool waitingFor(String callId) => _callId != null && _callId == callId;
 
@@ -122,6 +166,9 @@ class CallNearbyWait extends ChangeNotifier {
     _callId = null;
     _peerId = null;
     _since = null;
+    _wakeCallId = null;
+    _wakePeerId = null;
+    _wakeSince = null;
     _wasAway.clear();
   }
 }

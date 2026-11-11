@@ -735,6 +735,21 @@ class LocalLinkApi {
   /// partners only). An older server (no such route) answers 404 -> null.
   Future<LocalProfile?> directoryByDevice(String deviceId) async => _directorySingle('/api/v1/directory/device/${Uri.encodeComponent(deviceId)}');
 
+  /// Bundle 267: one page of people this account can add (not me, not my
+  /// contacts). An older server (no such route) -> null.
+  Future<({List<LocalProfile> people, bool more})?> directoryPeople({int offset = 0, int limit = 50}) async {
+    final response = await http.get(Uri.parse('$baseUrl/api/v1/directory/people?offset=$offset&limit=$limit'), headers: _headers()).timeout(const Duration(seconds: 6));
+    if (response.statusCode == 404 || response.statusCode == 405) return null;
+    if (response.statusCode != 200) throw Exception(_error(response));
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map || decoded['profiles'] is! List) return null;
+    final rows = decoded['profiles'] as List;
+    return (
+      people: rows.map((e) => LocalProfile.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+      more: decoded['more'] == true,
+    );
+  }
+
   Future<LocalProfile?> _directorySingle(String path) async {
     final response = await http.get(Uri.parse('$baseUrl$path'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode == 404) return null;

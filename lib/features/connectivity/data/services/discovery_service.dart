@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/features/connectivity/data/models/discovered_server.dart';
@@ -34,7 +36,8 @@ class _RawDiscoverySocket implements DiscoverySocket {
   final _out = StreamController<(List<int>, InternetAddress)>.broadcast();
 
   @override
-  void send(List<int> data, InternetAddress to, int port) => _socket.send(data, to, port);
+  void send(List<int> data, InternetAddress to, int port) =>
+      DiscoveryService.checkSent(_socket.send(data, to, port));
 
   @override
   Stream<(List<int>, InternetAddress)> get replies => _out.stream;
@@ -58,6 +61,13 @@ class _RawDiscoverySocket implements DiscoverySocket {
 ///   Wi-Fi known off -> no wait, no search;
 /// * logs `SERVER_SEARCH start / try / found / none reason=...`.
 class DiscoveryService {
+  /// Bundle 265 (C1): `RawDatagramSocket.send` returns 0 when nothing left
+  /// the phone - count it as a send error, not as a sent packet.
+  @visibleForTesting
+  static void checkSent(int bytes) {
+    if (bytes <= 0) throw const SocketException('not sent');
+  }
+
   static const int discoveryPort = 45454;
   static const String request = 'LOCLINK_DISCOVER_V1';
 
@@ -123,6 +133,23 @@ class DiscoveryService {
     return a == 10 || (a == 192 && b == 168) || (a == 172 && b >= 16 && b <= 31);
   }
 
+  /// Bundle 264 (A1): test-only server address (GitHub emulator run). Empty
+  /// in every normal build, so phones search exactly as before.
+  static const String testServerIp264 =
+      String.fromEnvironment('LINKUP_TEST_SERVER_IP');
+
+  /// Bundle 264 (A2): where the search asks. The test address is added only
+  /// when it is set and private.
+  static Set<String> targets264(List<String> addresses,
+      {String testIp = testServerIp264}) {
+    final ip = testIp.trim();
+    return <String>{
+      '255.255.255.255',
+      for (final a in addresses) subnetBroadcast(a),
+      if (ip.isNotEmpty && isPrivateIpv4(ip)) ip,
+    };
+  }
+
   /// "192.168.18.88" -> "192.168.18.255" (home Wi-Fi is /24 almost always).
   static String subnetBroadcast(String address) {
     final p = address.split('.');
@@ -154,10 +181,7 @@ class DiscoveryService {
       }
     }
 
-    final targets = <String>{
-      '255.255.255.255',
-      for (final a in addresses) subnetBroadcast(a),
-    };
+    final targets = targets264(addresses); // Bundle 264 (A3)
     AppLogger.info('SERVER_SEARCH',
         detail: 'start addrs=${addresses.length} targets=${targets.length} '
             'timeout_ms=${timeout.inMilliseconds}');
@@ -179,6 +203,10 @@ class DiscoveryService {
         final decoded = jsonDecode(utf8.decode(r.$1));
         if (decoded is! Map) return;
         final server = DiscoveredServer.fromJson(Map<String, dynamic>.from(decoded), r.$2);
+        if (server.hostIgnored) {
+          AppLogger.info('SERVER_SEARCH',
+              detail: 'host_ignored from=${r.$2.address}');
+        }
         if (found.isEmpty) {
           AppLogger.info('SERVER_SEARCH',
               detail: 'found addr=${server.address} '

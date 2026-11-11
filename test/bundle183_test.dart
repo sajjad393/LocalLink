@@ -868,9 +868,10 @@ void main() {
       final view = AppViewModeCubit(); // not connected
       await _pushed(tester, _account(repo, view));
       await _settle(tester);
-      expect(find.byKey(const ValueKey('account_offline_box')), findsOneWidget);
+      // Bundle 263 (B4): no offline box any more - the saved profile shows.
+      expect(find.byKey(const ValueKey('account_offline_box')), findsNothing);
       expect(find.text("Can't reach LinkUp. Showing saved profile."),
-          findsOneWidget);
+          findsNothing);
       expect(find.textContaining('server'), findsNothing);
       // LinkUp comes back while the screen is open -> box goes away.
       repo.error = null;

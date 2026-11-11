@@ -122,6 +122,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    SecurityCode245.instance.addListener(_onKeys263); // Bundle 263 (C5)
     _transferController = FileTransferBloc(repository: widget.files);
     widget.notifications?.setActiveDirectConversation(widget.controller.device.id);
     _voice = VoiceRecorderController(
@@ -850,72 +851,89 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     ));
   }
 
-  /// Bundle 258 (A2): the friend's new security code was taken by itself
-  /// (proven by the friend's phone or the server). A quiet grey line for
-  /// 24 h; tapping it opens the Security code screen (and hides it).
-  Widget _autoKeyLine258(BuildContext context, Device device) {
-    final colors = Theme.of(context).colorScheme;
-    return Material(
+  /// Bundle 258 (A2) / Bundle 263 (C): "security code changed" notes in
+  /// the chat itself, like WhatsApp - small centred pills at the time of the
+  /// change, between the messages. They stay; tapping one opens the Security
+  /// code screen. One keyed group per place in the list.
+  Widget _autoKeyLine258(
+      BuildContext context, Device device, List<KeyEvent263> events) {
+    return KeyedSubtree(
       key: const ValueKey('chat_key_auto_258'),
-      color: colors.surfaceContainerLow,
-      child: InkWell(
-        onTap: () => _openSecurityCode245(device),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.lock_outline, size: 14, color: colors.onSurfaceVariant),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text("${_peerName(device)}'s security code changed",
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 12.5, color: colors.onSurfaceVariant)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final e in events)
+            KeyedSubtree(
+              key: ValueKey<String>(
+                  'key_pill_263:${e.userId}:${e.at.microsecondsSinceEpoch}'),
+              child: _keyChangeBanner245(context, device, e),
             ),
-          ]),
+        ],
+      ),
+    );
+  }
+
+  /// Bundle 245 (audit S7): "<name>'s security code changed" - Bundle 263:
+  /// now one pill in the messages (no bar on top). A change still waiting
+  /// for proof says "Tap to check" (the page has Accept new code).
+  Widget _keyChangeBanner245(
+      BuildContext context, Device device, KeyEvent263 e) {
+    final colors = Theme.of(context).colorScheme;
+    final text = e.waiting
+        ? "${_peerName(device)}'s security code changed. Tap to check."
+        : "${_peerName(device)}'s security code changed. Tap to learn more.";
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: LocalLinkSpacing.sm),
+      child: Center(
+        child: Material(
+          color: colors.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(LocalLinkRadius.pill),
+          child: InkWell(
+            key: e.waiting
+                ? const ValueKey('chat_key_change_check')
+                : const ValueKey('chat_key_pill_263'),
+            borderRadius: BorderRadius.circular(LocalLinkRadius.pill),
+            onTap: () => _openSecurityCode245(device),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: LocalLinkSpacing.md, vertical: LocalLinkSpacing.xs),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.lock_outline, size: 12, color: colors.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(text,
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(color: colors.onSurfaceVariant)),
+                ),
+              ]),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  /// Bundle 245 (audit S7): "<name>'s security code changed" under the bar.
-  Widget _keyChangeBanner245(BuildContext context, Device device) {
-    return ListenableBuilder(
-      listenable: SecurityCode245.instance,
-      builder: (context, _) {
-        if (SecurityCode245.instance.pendingFor(device.id) == null) {
-          // Bundle 258 (A2): taken by itself -> one grey line, no button.
-          if (SecurityCode245.instance.autoFor(device.id) == null) {
-            return const SizedBox.shrink();
-          }
-          return _autoKeyLine258(context, device);
-        }
-        final colors = Theme.of(context).colorScheme;
-        return Material(
-          key: const ValueKey('chat_key_change_245'),
-          color: colors.surfaceContainerHigh,
-          child: InkWell(
-            onTap: () => _openSecurityCode245(device),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-              child: Row(children: [
-                Icon(Icons.gpp_maybe_outlined, size: 18, color: colors.error),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text("${_peerName(device)}'s security code changed.",
-                      style: TextStyle(fontSize: 14, color: colors.onSurface)),
-                ),
-                TextButton(
-                  key: const ValueKey('chat_key_change_check'),
-                  onPressed: () => _openSecurityCode245(device),
-                  child: const Text('Check'),
-                ),
-              ]),
-            ),
-          ),
-        );
-      },
-    );
+  /// Bundle 263 (C5): the notes between message [index - 1] and [index].
+  static List<KeyEvent263> keyEventsBefore263(
+      List<KeyEvent263> events, List<Message> messages, int index) {
+    if (index < 0 || index >= messages.length) return const <KeyEvent263>[];
+    return KeyEvent263.between(events,
+        index == 0 ? null : messages[index - 1].createdAt, messages[index].createdAt);
+  }
+
+  /// Bundle 263 (C5): the notes after the last message.
+  static List<KeyEvent263> keyEventsAfterLast263(
+      List<KeyEvent263> events, List<Message> messages) {
+    if (messages.isEmpty) return const <KeyEvent263>[];
+    return KeyEvent263.after(events, messages.last.createdAt);
+  }
+
+  void _onKeys263() {
+    if (mounted) setState(() {});
   }
 
   /// Bundle 196 (10.3 / 12.6): the bar that replaces the message box.
@@ -989,6 +1007,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    SecurityCode245.instance.removeListener(_onKeys263); // Bundle 263
     _flashTimer?.cancel();
     _composerFocus.dispose();
     _textController.dispose();
@@ -1021,6 +1040,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         // Bundle 207 (L2): search hides nothing (like groups); matches are
         // marked, "2 of 3", up / down jumps with the flash.
         final visibleMessages = state.messages;
+        // Bundle 263 (C5): the security code notes of this chat (none while
+        // searching).
+        final keyEvents = searchQuery.isEmpty
+            ? SecurityCode245.instance.eventsFor(device.id)
+            : const <KeyEvent263>[];
         final matches = _searchMatches(state.messages, searchQuery);
         _maybeAutoScroll(
           visibleMessages.length,
@@ -1213,7 +1237,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             children: [
               if (state.error != null)
                 LocalLinkInlineError(message: friendlyErrorMessage(state.error!), onRetry: () => widget.controller.load()),
-              _keyChangeBanner245(context, device), // Bundle 245
+              // Bundle 263 (C1): no security code bar on top; the notes are
+              // in the messages (keyEventsBefore263 / keyEventsAfterLast263).
               Expanded(
                 // Loading no longer blanks the whole chat: the shimmer only
                 // shows for the very first paint (no messages at all).
@@ -1327,6 +1352,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                       if (sectionLabel != null)
                                         _TransportDivider(label: sectionLabel),
                                       if (showDate) _DateDivider(date: message.createdAt),
+                                      // Bundle 263 (C2/C5): security code
+                                      // notes made before this message.
+                                      if (keyEventsBefore263(keyEvents, visibleMessages, index).isNotEmpty)
+                                        _autoKeyLine258(context, device,
+                                            keyEventsBefore263(keyEvents, visibleMessages, index)),
                                       // Bundle 182: my unsent photo/video
                                       // follows the friend's live status
                                       // (Offline -> "Waiting").
@@ -1347,6 +1377,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                               )
                                             : swipeable,
                                       ),
+                                      // Bundle 263 (C5): notes after the last
+                                      // message go under it.
+                                      if (index == visibleMessages.length - 1 &&
+                                          keyEventsAfterLast263(keyEvents, visibleMessages).isNotEmpty)
+                                        _autoKeyLine258(context, device,
+                                            keyEventsAfterLast263(keyEvents, visibleMessages)),
                                     ],
                                   );
                                 },

@@ -37,6 +37,12 @@ class SecurityCode245 extends ChangeNotifier {
   static const String autoSettingKey = 'key_auto_258';
   static const Duration autoShowFor = Duration(hours: 24);
 
+  /// Bundle 263 (C3): the "security code changed" notes that stay in the
+  /// chat (WhatsApp style). Settings key, max per person, kept for.
+  static const String eventsSettingKey = 'key_events_263';
+  static const int maxEventsPerUser = 20;
+  static const Duration keepEventsFor = Duration(days: 365);
+
   // Bindings (AppDependencies). Null in tests that don't bind = feature off.
   Future<String> Function()? myKey;
   String Function()? myUserId;
@@ -52,6 +58,7 @@ class SecurityCode245 extends ChangeNotifier {
   Future<void> Function(String key, String value)? _write;
   final Map<String, PendingKey245> _pending = <String, PendingKey245>{};
   final Map<String, AutoKey258> _auto = <String, AutoKey258>{};
+  final List<KeyEvent263> _events = <KeyEvent263>[];
 
   bool get bound => myKey != null && profileFor != null;
   int get pendingCount => _pending.length;
@@ -63,6 +70,7 @@ class SecurityCode245 extends ChangeNotifier {
     _write = write;
     _pending.clear();
     _auto.clear();
+    _events.clear();
     try {
       final raw = await read(autoSettingKey);
       if (raw != null && raw.isNotEmpty) {
@@ -87,7 +95,108 @@ class SecurityCode245 extends ChangeNotifier {
         }
       }
     } catch (_) {}
+    // Bundle 263 (C3): the chat notes. First start after the update: made
+    // from the changes this phone already keeps (so yesterday's shows).
+    var hadEvents = false;
+    try {
+      final raw = await read(eventsSettingKey);
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw);
+        if (list is List) {
+          hadEvents = true;
+          for (final v in list) {
+            final e = KeyEvent263.fromJson(v);
+            if (e != null) _events.add(e);
+          }
+        }
+      }
+    } catch (_) {}
+    if (!hadEvents && (_auto.isNotEmpty || _pending.isNotEmpty)) {
+      for (final e in _auto.entries) {
+        _events.add(KeyEvent263(
+            userId: e.key,
+            oldDeviceId: e.value.oldDeviceId,
+            deviceId: e.value.deviceId,
+            at: e.value.at));
+      }
+      for (final e in _pending.entries) {
+        _events.add(KeyEvent263(
+            userId: e.key,
+            oldDeviceId: e.value.oldDeviceId,
+            deviceId: e.value.profile.deviceId,
+            at: e.value.at,
+            waiting: true));
+      }
+      await _saveEvents();
+    }
     notifyListeners();
+  }
+
+  /// Bundle 263 (C3): a new note, or a waiting note of this person becomes
+  /// taken ([waiting] false) - one note per change, not two.
+  Future<void> _addEvent(String userId, String oldDeviceId, String deviceId,
+      {required bool waiting}) async {
+    if (userId.isEmpty) return;
+    final now = DateTime.now().toUtc();
+    if (!waiting) {
+      for (var i = _events.length - 1; i >= 0; i--) {
+        final e = _events[i];
+        if (e.userId == userId && e.waiting) {
+          _events[i] = KeyEvent263(
+              userId: userId,
+              oldDeviceId: e.oldDeviceId,
+              deviceId: deviceId.isEmpty ? e.deviceId : deviceId,
+              at: e.at);
+          await _saveEvents();
+          AppLogger.info('KEY_EVENT_263', detail: 'user=${_tail(userId)} waiting=n was_waiting=y');
+          return;
+        }
+      }
+    }
+    _events.add(KeyEvent263(
+        userId: userId,
+        oldDeviceId: oldDeviceId,
+        deviceId: deviceId,
+        at: now,
+        waiting: waiting));
+    await _saveEvents();
+    AppLogger.info('KEY_EVENT_263', detail: 'user=${_tail(userId)} waiting=${waiting ? 'y' : 'n'}');
+  }
+
+  Future<void> _saveEvents() async {
+    final now = DateTime.now().toUtc();
+    _events.removeWhere((e) => now.difference(e.at) > keepEventsFor);
+    _events.sort((a, b) => a.at.compareTo(b.at));
+    final perUser = <String, int>{};
+    for (final e in _events) {
+      perUser[e.userId] = (perUser[e.userId] ?? 0) + 1;
+    }
+    for (final u in perUser.keys) {
+      var extra = perUser[u]! - maxEventsPerUser;
+      while (extra > 0) {
+        _events.remove(_events.firstWhere((e) => e.userId == u));
+        extra--;
+      }
+    }
+    final w = _write;
+    if (w == null) return;
+    try {
+      await w(eventsSettingKey, jsonEncode([for (final e in _events) e.toJson()]));
+    } catch (_) {}
+  }
+
+  /// Bundle 263 (C3/C5): the notes for a chat (by its phone id: the old or
+  /// the new, or by the person's user id), oldest first.
+  List<KeyEvent263> eventsFor(String deviceId, {String userId = ''}) {
+    if (deviceId.isEmpty && userId.isEmpty) return const <KeyEvent263>[];
+    final out = _events
+        .where((e) =>
+            (userId.isNotEmpty && e.userId == userId) ||
+            (deviceId.isNotEmpty &&
+                (e.deviceId == deviceId || e.oldDeviceId == deviceId)))
+        .toList()
+      ..sort((a, b) => a.at.compareTo(b.at));
+    return List.unmodifiable(out);
   }
 
   Future<void> _save() async {
@@ -135,6 +244,7 @@ class SecurityCode245 extends ChangeNotifier {
           deviceId: incoming.deviceId,
           at: DateTime.now().toUtc());
       await _saveAuto();
+      await _addEvent(user, old.deviceId, incoming.deviceId, waiting: false); // Bundle 263
       AppLogger.info('KEY_AUTO_258',
           detail: 'user=${_tail(user)} phone=${_tail(incoming.deviceId)} '
               'why=$why${hadPending ? ' was_waiting=y' : ''}');
@@ -203,6 +313,7 @@ class SecurityCode245 extends ChangeNotifier {
         await markChanged?.call(old.deviceId);
       }
       await _save();
+      await _addEvent(user, old.deviceId, incoming.deviceId, waiting: true); // Bundle 263
       AppLogger.warning('KEY_CHANGE_245',
           detail: 'user=${_tail(user)} old_phone=${_tail(old.deviceId)} new_phone=${_tail(incoming.deviceId)}');
       notifyListeners();
@@ -270,6 +381,7 @@ class SecurityCode245 extends ChangeNotifier {
     if (p.profile.deviceId != p.oldDeviceId) await clearTrust?.call(p.profile.deviceId);
     _pending.remove(userId);
     await _save();
+    await _addEvent(userId, p.oldDeviceId, p.profile.deviceId, waiting: false); // Bundle 263
     AppLogger.info('KEY_ACCEPT_245', detail: 'result=saved user=${_tail(userId)}');
     LinkKeyRefresh257.request('accept'); // Bundle 257 (A3/A6)
     notifyListeners();
@@ -282,6 +394,7 @@ class SecurityCode245 extends ChangeNotifier {
   void resetForTest() {
     _pending.clear();
     _auto.clear();
+    _events.clear();
     myKey = null;
     myUserId = null;
     profileFor = null;
@@ -375,6 +488,63 @@ class AutoKey258 {
       deviceId: v['device_id']?.toString() ?? '',
       at: at,
       seen: v['seen'] == true,
+    );
+  }
+}
+
+/// Bundle 263 (C3): one "security code changed" note in a chat.
+class KeyEvent263 {
+  const KeyEvent263({
+    required this.userId,
+    required this.oldDeviceId,
+    required this.deviceId,
+    required this.at,
+    this.waiting = false,
+  });
+  final String userId;
+  final String oldDeviceId;
+  final String deviceId;
+  final DateTime at;
+
+  /// No proof yet (the Security code page has "Accept new code").
+  final bool waiting;
+
+  Map<String, dynamic> toJson() => {
+        'user_id': userId,
+        'old_device_id': oldDeviceId,
+        'device_id': deviceId,
+        'at': at.toIso8601String(),
+        if (waiting) 'waiting': true,
+      };
+
+  /// Bundle 263 (C5): the notes after [from] (null = from the start) and
+  /// not after [upTo] - the ones shown above the message made at [upTo].
+  static List<KeyEvent263> between(
+      List<KeyEvent263> events, DateTime? from, DateTime upTo) {
+    if (events.isEmpty) return const <KeyEvent263>[];
+    return [
+      for (final e in events)
+        if ((from == null || e.at.isAfter(from)) && !e.at.isAfter(upTo)) e,
+    ];
+  }
+
+  /// Bundle 263 (C5): the notes after the last message ([last]).
+  static List<KeyEvent263> after(List<KeyEvent263> events, DateTime last) {
+    if (events.isEmpty) return const <KeyEvent263>[];
+    return [for (final e in events) if (e.at.isAfter(last)) e];
+  }
+
+  static KeyEvent263? fromJson(Object? v) {
+    if (v is! Map) return null;
+    final at = DateTime.tryParse(v['at']?.toString() ?? '');
+    final user = v['user_id']?.toString() ?? '';
+    if (at == null || user.isEmpty) return null;
+    return KeyEvent263(
+      userId: user,
+      oldDeviceId: v['old_device_id']?.toString() ?? '',
+      deviceId: v['device_id']?.toString() ?? '',
+      at: at.toUtc(),
+      waiting: v['waiting'] == true,
     );
   }
 }

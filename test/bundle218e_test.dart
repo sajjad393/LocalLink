@@ -200,7 +200,8 @@ void main() {
     test('cards first on Chats; the stuck card replaces the offline banner', () {
       expect(src, contains('..._joinCards218(),'));
       expect(src, contains('JoinCard218.stuck(block: _block218, onTry: _tryAgain218)'));
-      expect(src, contains('else if (widget.store.isOfflinePending && _offlineBannerVisible)'));
+      // Bundle 263 (A2): the "Account saved - Publish" banner is gone.
+      expect(src, isNot(contains('_offlineAccountBanner()')));
       expect(src, contains('sync.tryAgainFromCard218(pairingCode: pairingCode)'));
       expect(src, contains('JoinNotice218.changed.addListener(_onJoinChanged218)'));
       expect(src, contains('JoinNotice218.changed.removeListener(_onJoinChanged218)'));

@@ -2206,6 +2206,17 @@ class LocalStore {
           'ORDER BY p.display_name COLLATE NOCASE ASC LIMIT $directorySearchLimit',
           ['%$query%', '%$query%', '%$query%']);
 
+  /// Bundle 267: people this phone learned from nearby phones / friends
+  /// (not from the server), who are not my contacts and not blocked, name
+  /// order. The Add Contact list when the server can't be reached.
+  Future<List<Map<String, dynamic>>> peopleToAdd267() async => _db.rawQuery(
+      'SELECT p.* FROM directory_profiles p '
+      "WHERE p.source <> 'server' AND p.discoverable_by_name <> 0 "
+      'AND p.directory_sync_enabled <> 0 '
+      'AND p.user_id NOT IN (SELECT user_id FROM contacts) '
+      'AND p.user_id NOT IN (SELECT user_id FROM blocked_users) '
+      'ORDER BY p.display_name COLLATE NOCASE ASC LIMIT $directorySearchLimit');
+
   /// Bundle 154: name search used to stop at 50 people. With 300+ users
   /// nearby a short query ("ali") can match more; 200 keeps every realistic
   /// match while the list stays light (typing more letters narrows it).

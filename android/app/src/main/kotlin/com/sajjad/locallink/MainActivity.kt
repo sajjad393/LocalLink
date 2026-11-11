@@ -828,9 +828,59 @@ class MainActivity : FlutterActivity() {
             } catch (e: Exception) { result.error("CALL_AUDIO_ERROR", e.message, null) }
         }
 
+        // Bundle 266 (B2): locked voice pieces that go through the server.
+        // Sent to Flutter in small batches (every 40 ms), never one event per
+        // piece (184 F1: ~50 events a second froze the ZTE screen).
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "locallink/call_voice_server").setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                val sink = events ?: return
+                val waiting = java.util.concurrent.ConcurrentLinkedQueue<Pair<String, String>>()
+                val posted = java.util.concurrent.atomic.AtomicBoolean(false)
+                val handler = android.os.Handler(android.os.Looper.getMainLooper())
+                val flush = Runnable {
+                    posted.set(false)
+                    var callId = ""
+                    val voices = ArrayList<String>()
+                    while (true) {
+                        val next = waiting.poll() ?: break
+                        if (callId.isNotEmpty() && next.first != callId) {
+                            try { sink.success(mapOf("call_id" to callId, "voices" to ArrayList(voices))) } catch (_: Throwable) {}
+                            voices.clear()
+                        }
+                        callId = next.first
+                        voices.add(next.second)
+                    }
+                    if (voices.isNotEmpty()) try { sink.success(mapOf("call_id" to callId, "voices" to voices)) } catch (_: Throwable) {}
+                }
+                LocalLinkTransportService.serverVoiceSink = { id, voice ->
+                    if (waiting.size < 64) waiting.add(id to voice)
+                    if (posted.compareAndSet(false, true)) handler.postDelayed(flush, 40L)
+                }
+            }
+            override fun onCancel(arguments: Any?) { LocalLinkTransportService.serverVoiceSink = null }
+        })
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, callMediaChannelName).setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
+                    // Bundle 266 (B2): server voice on/off for a call, and a piece from the server.
+                    "server_voice" -> {
+                        LocalLinkTransportService.setServerVoice(call.argument<String>("call_id")?.trim().orEmpty(), call.argument<Boolean>("on") == true)
+                        result.success(null)
+                    }
+                    "server_voice_in" -> {
+                        val inCallId = call.argument<String>("call_id")?.trim().orEmpty()
+                        val inSender = call.argument<String>("sender_id")?.trim().orEmpty()
+                        val voices = (call.argument<List<*>>("voices") ?: emptyList<Any>()).take(32)
+                        result.success(null)
+                        // Off the main thread: open + hand to the decode line.
+                        if (voices.isNotEmpty()) CallServerVoiceIn266.run {
+                            for (v in voices) {
+                                val voice = (v as? String)?.trim().orEmpty()
+                                if (voice.isNotEmpty() && voice.length <= CallServerVoice266.MAX_B64) LocalLinkTransportService.serverVoiceIn(inCallId, inSender, voice)
+                            }
+                        }
+                    }
                     "start" -> {
                         val callId = call.argument<String>("call_id")?.trim().orEmpty()
                         val peerId = call.argument<String>("peer_id")?.trim().orEmpty()

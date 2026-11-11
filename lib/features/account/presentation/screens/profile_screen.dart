@@ -1,3 +1,4 @@
+import 'package:locallink/core/services/app_logger.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:locallink/core/utils/phone_rule_256.dart';
@@ -209,7 +210,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await widget.directoryRepository?.publishOwnProfile();
       OwnProfileSignal.bump();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(synced ? 'Profile saved' : 'Saved on this phone; it will sync when available')));
+      // Bundle 263 (B1): the same words online or not; it is sent later by itself.
+      AppLogger.info('PROFILE_SAVED_263', detail: 'synced=${synced ? 'y' : 'n'}');
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile saved')));
       if (widget.onboarding) Navigator.pop(context);
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));

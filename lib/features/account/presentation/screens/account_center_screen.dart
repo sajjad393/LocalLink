@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/services/server_reach.dart';
+import 'package:locallink/core/diagnostics/ui_hidden_263.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
@@ -95,6 +96,10 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
   void initState() {
     super.initState();
     _controller.load();
+    // Bundle 263 (F1): opening Account tries the phone-only account upload
+    // (it was a search button).
+    OfflinePublishTicker256.instance.nudge('account_open');
+    if (widget.store.isOfflinePending) UiHidden263.note('account_phone_only');
     _serverSub = widget.viewMode.stream.listen((view) {
       if (!mounted || view.serverConnected == _serverConnected) return;
       setState(() => _serverConnected = view.serverConnected);
@@ -150,63 +155,6 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
   }
 
   /// Grey rounded note (offline box, recovery note), 16 from the edges.
-  bool _finding256 = false;
-
-  /// Bundle 256 C1: "Your account is on this phone only" + Find server now.
-  Widget _phoneOnly256(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-    return _note(
-      key: const ValueKey('account_phone_only_256'),
-      vertical: 14,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(Icons.phone_android_rounded, size: 18, color: colors.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Your account is on this phone only. It goes up to the server '
-              'by itself when the server is found.',
-              style: text.bodySmall
-                  ?.copyWith(color: colors.onSurfaceVariant, letterSpacing: 0),
-            ),
-          ),
-        ]),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.tonal(
-            key: const ValueKey('account_find_server_256'),
-            onPressed: _finding256 ? null : _findServer256,
-            child: _finding256
-                ? const SizedBox(
-                    width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Find server now'),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Future<void> _findServer256() async {
-    setState(() => _finding256 = true);
-    AppLogger.info('ACCOUNT_FIND_SERVER', detail: 'tap');
-    var ran = false;
-    try {
-      ran = await OfflinePublishTicker256.instance.tryNow();
-    } catch (_) {}
-    if (!mounted) return;
-    setState(() => _finding256 = false);
-    final pending = widget.store.isOfflinePending;
-    if (!pending) unawaited(_controller.load());
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(!pending
-            ? 'Your account is on the server now.'
-            : ran
-                ? 'No LinkUp server answered. It keeps trying by itself.'
-                : 'Open Chats once, then try again.')));
-  }
-
   Widget _note(
       {required Key key, required Widget child, double vertical = 16}) {
     return Padding(
@@ -318,46 +266,22 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                           ),
                         ),
                       ]),
-                      // Bundle 256 C1: a phone-only account is not "Can't
-                      // reach LinkUp" - say where it is and offer a search.
-                      if (widget.store.isOfflinePending) ...[
+                      // Bundle 263 (B3/B4): no phone-only box with a search
+                      // button and no "Can't reach LinkUp" box - the
+                      // saved profile just shows and the upload / reload run
+                      // by themselves. A real failure while the server IS
+                      // connected keeps the red inline error.
+                      if (!widget.store.isOfflinePending &&
+                          error != null &&
+                          !showOfflineBox) ...[
                         const SizedBox(height: 12),
-                        _phoneOnly256(context),
-                      ] else if (error != null) ...[
-                        const SizedBox(height: 12),
-                        // Bundle 133 / 183 (C1): an unreachable LinkUp is a
-                        // STATE, not an error — a calm one-line note; a real
-                        // failure while connected keeps the red inline error.
-                        if (showOfflineBox)
-                          _note(
-                            key: const ValueKey('account_offline_box'),
-                            child: Row(
-                              children: [
-                                Icon(Icons.cloud_off_outlined,
-                                    size: 18, color: colors.onSurfaceVariant),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    "Can't reach LinkUp. Showing saved profile.",
-                                    maxLines: 2,
-                                    style: text.bodySmall?.copyWith(
-                                        color: colors.onSurfaceVariant,
-                                        letterSpacing: 0),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            vertical: 17,
-                          )
-                        else
-                          Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 16),
-                            child: LocalLinkInlineError(
-                                message:
-                                    'Your saved profile is shown. ${friendlyErrorMessage(error)}',
-                                onRetry: _controller.load),
-                          ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: LocalLinkInlineError(
+                              message:
+                                  'Your saved profile is shown. ${friendlyErrorMessage(error)}',
+                              onRetry: _controller.load),
+                        ),
                       ],
                       // Bundle 183 (B5): plain words, Settings style.
                       const MessengerGroupLabel('Phones'),

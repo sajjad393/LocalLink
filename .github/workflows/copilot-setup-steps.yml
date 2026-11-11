@@ -1,0 +1,32 @@
+# Bundle 264 (E1): the machine Copilot uses when you assign it an issue.
+# Same tools as "Runtime test 264". Only used if you choose to use Copilot.
+name: Copilot Setup Steps
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 59
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.7
+          channel: stable
+      - run: flutter pub get
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm

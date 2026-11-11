@@ -189,7 +189,9 @@ void main() {
     final i = s.indexOf('old.signingPublicKey != profile.signingPublicKey');
     expect(s.substring(i, i + 300), contains('SecurityCode245.instance.noteCardChange(old, profile);'));
     final chat = File('lib/features/messaging/presentation/screens/chat_screen.dart').readAsStringSync();
-    expect(chat, contains('_keyChangeBanner245(context, device), // Bundle 245'));
+    // Bundle 263 (C): no bar on top; the notes are in the messages.
+    expect(chat, isNot(contains('_keyChangeBanner245(context, device), // Bundle 245')));
+    expect(chat, contains('_autoKeyLine258(context, device,'));
     final store = File('lib/core/services/local_store.dart').readAsStringSync();
     expect(store, contains('SecurityCode245.instance.load(read: readSetting, write: writeSetting)'));
   });

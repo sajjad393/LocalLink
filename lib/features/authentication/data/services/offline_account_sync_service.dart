@@ -549,17 +549,26 @@ class OfflineAccountSyncService {
     JoinNotice218.changed.value = 0;
   }
 
-  Future<bool> _takeLock() async {
+  /// Bundle 265 (C2): the background engine writes `<until>|bg`. Opening
+  /// the app destroys that engine before its `finally` frees the lease, and
+  /// the background engine never runs while the app is open - so inside the
+  /// app a `|bg` lease is always left over and is taken over at once.
+  Future<bool> _takeLock({bool bg = false}) async {
     if (_lockHeld) return false;
     _lockHeld = true;
     try {
-      final until = int.tryParse(await _store.readSetting(leaseKey) ?? '') ?? 0;
+      final raw = await _store.readSetting(leaseKey) ?? '';
+      final until = int.tryParse(raw.split('|').first) ?? 0;
       final now = clock().millisecondsSinceEpoch;
       if (until > now) {
-        _lockHeld = false;
-        return false;
+        if (bg || !raw.endsWith('|bg')) {
+          _lockHeld = false;
+          return false;
+        }
+        offlineAccountLog216('LEASE', 'cleared=bg');
       }
-      await _store.writeSetting(leaseKey, '${now + lease.inMilliseconds}');
+      await _store.writeSetting(
+          leaseKey, '${now + lease.inMilliseconds}${bg ? '|bg' : ''}');
       return true;
     } catch (_) {
       return true; // no settings table (tests / early boot): memory lock only
@@ -593,7 +602,7 @@ class OfflineAccountSyncService {
       AppLogger.info('OFFLINE_ACCOUNT_BLOCKED_BY', detail: 'from=$from');
       return null;
     }
-    if (!await _takeLock()) {
+    if (!await _takeLock(bg: from == 'background')) {
       offlineAccountLog216('BUSY', 'from=$from');
       return null;
     }

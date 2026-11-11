@@ -36,6 +36,7 @@ import 'package:locallink/features/connectivity/data/services/local_route_policy
 import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 import 'package:locallink/features/calls/data/services/call_answer_timer.dart';
 import 'package:locallink/features/calls/data/services/call_nearby_wait.dart';
+import 'package:locallink/features/calls/data/services/call_voice_key_266.dart';
 import 'package:locallink/core/identity/person_name_258.dart';
 
 final class CallSessionManager implements CallGateway {
@@ -245,6 +246,332 @@ final class CallSessionManager implements CallGateway {
     final key = CallVoiceKey.generate();
     _voiceKeys[session.id] = key;
     return key;
+  }
+
+  // ------------------------------------------------ Bundle 266
+  // A: calls ring through the server too. B: they talk through the server
+  // when there is no nearby way (locked end to end). D: the friend who calls
+  // through the server wakes Nearby for us.
+
+  /// Calls the server knows (their invite went or came through it).
+  final Set<String> _serverKnown = <String>{};
+
+  /// Calls whose invite already went through the server (once per call).
+  final Set<String> _serverInviteSent = <String>{};
+
+  /// `type|call` already copied to the server (one copy, not per retry).
+  final Set<String> _serverCopied = <String>{};
+
+  /// B1: call keys worked out from the pair link key (memory only).
+  final Map<String, String> _derivedKeys = <String, String>{};
+
+  /// B: the call that talks through the server when needed (null = none).
+  String? _serverVoiceCallId;
+  final Set<String> _serverVoiceStopped = <String>{};
+  StreamSubscription<Map<String, dynamic>>? _voiceOutSub;
+  DateTime? _serverVoiceRxAt;
+  int _serverVoiceTx = 0;
+  int _serverVoiceRx = 0;
+  final List<String> _voiceInBatch = <String>[];
+  String _voiceInCall = '';
+  String _voiceInSender = '';
+  Timer? _voiceInTimer;
+
+  /// D: the 60 s limit of the Nearby wake for a server call.
+  Timer? _wakeTimer;
+  static const Duration wakeLimit266 = Duration(seconds: 60);
+
+  static const Set<String> _serverCopyTypes = <String>{
+    'call_invite_ack',
+    'call_accept',
+    'call_reject',
+    'call_busy',
+    'call_end',
+  };
+
+  @visibleForTesting
+  bool serverKnownForTest(String callId) => _serverKnown.contains(callId);
+
+  @visibleForTesting
+  String? get serverVoiceCallForTest => _serverVoiceCallId;
+
+  @visibleForTesting
+  String? derivedKeyForTest(String callId) => _derivedKeys[callId];
+
+  static void _addBounded(Set<String> set, String value, [int max = 64]) {
+    set.add(value);
+    while (set.length > max) {
+      set.remove(set.first);
+    }
+  }
+
+  void _markServerKnown(String callId) {
+    final id = callId.trim();
+    if (id.isEmpty) return;
+    _addBounded(_serverKnown, id);
+  }
+
+  /// B1: the caller works the call key out from the link key before the
+  /// first invite (a random key as before when there is no link key).
+  Future<void> _prepareVoiceKey266(CallSession session) async {
+    if (_voiceKeys.containsKey(session.id)) return;
+    final transport = directTransport;
+    if (transport is! SealingPeerTransport) return;
+    final key = await transport.callVoiceKey266(session.peerId, session.id);
+    if (key == null || _voiceKeys.containsKey(session.id)) return;
+    _voiceKeys[session.id] = key;
+    _derivedKeys[session.id] = key;
+  }
+
+  /// A1: the invite through the server too, once per call (the server
+  /// knows the call id and never rings twice).
+  void _sendInviteViaServer266(String callId, Map<String, dynamic> invite) {
+    if (_serverInviteSent.contains(callId)) return;
+    final ws = socket;
+    if (ws == null || !ws.isConnected) return;
+    final sent = ws.send({
+      ...Map<String, dynamic>.from(invite)
+        ..remove(SealingPeerTransport.voiceKeyField),
+      'sender_id': store.deviceId,
+      'transport_mode': CallTransportMode.offlineMesh.wireName,
+    });
+    if (!sent) return;
+    _addBounded(_serverInviteSent, callId);
+    _markServerKnown(callId);
+    AppLogger.info('CALL_INVITE_SERVER', detail: 'sent call=$callId');
+  }
+
+  /// A2: answer / end / busy / reject of a call the server knows go
+  /// through the server too (not only when the nearby send fails).
+  void _copyToServer266(Map<String, dynamic> msg) {
+    final type = msg['type']?.toString() ?? '';
+    final callId = msg['call_id']?.toString() ?? '';
+    if (!_serverCopyTypes.contains(type) || !_serverKnown.contains(callId)) {
+      return;
+    }
+    final key = '$type|$callId';
+    if (_serverCopied.contains(key)) return;
+    final ws = socket;
+    if (ws == null || !ws.isConnected) return;
+    final sent = ws.send({
+      ...Map<String, dynamic>.from(msg)
+        ..remove(SealingPeerTransport.voiceKeyField),
+      'sender_id': store.deviceId,
+      'transport_mode': CallTransportMode.offlineMesh.wireName,
+    });
+    if (!sent) return;
+    _addBounded(_serverCopied, key, 128);
+    AppLogger.info('CALL_SIGNAL_SERVER_COPY', detail: 'type=$type call=$callId');
+  }
+
+  /// A: the server keeps a connected call only while it hears from it
+  /// (60 s). A call the server knows sends its heartbeat there too.
+  void _serverHeartbeat266(CallSession session) {
+    if (!_serverKnown.contains(session.id) || session.answeredAt == null) {
+      return;
+    }
+    final ws = socket;
+    if (ws == null || !ws.isConnected) return;
+    ws.send({'type': 'call_heartbeat', 'call_id': session.id});
+  }
+
+  /// The server said "answered" for our call. The nearby answer (with the
+  /// codec and the lock) usually comes within milliseconds when a nearby way
+  /// exists: wait a little for it. False = nothing more to do here.
+  Future<bool> _serverAnswer266(CallSession session) async {
+    var route = false;
+    try {
+      route = await _hasLocalRouteTo(session.peerId);
+    } catch (_) {}
+    if (route) {
+      for (var i = 0; i < 15 && _transport == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        final live = _session;
+        if (live == null || live.id != session.id || _isClosing(live)) {
+          return false;
+        }
+      }
+    }
+    final live = _session;
+    if (live == null || live.id != session.id || _isClosing(live)) return false;
+    if (_transport != null) return false; // the nearby answer started it
+    // opus2 when we offered it: the friend picks it by the same rule, and
+    // each voice piece says its codec (the sound falls back by itself).
+    final used =
+        live.supportedMediaCodecs.contains(_opusCodec) ? _opusCodec : _pcmCodec;
+    // The friend can't say voice_lock through the server: keep the lock only
+    // when both phones work the key out (B1).
+    final derived = _derivedKeys[live.id];
+    if (derived == null || _voiceKeys[live.id] != derived) {
+      _voiceKeys.remove(live.id);
+    }
+    _setSession(live.copyWith(mediaCodec: used));
+    AppLogger.info('CALL_ANSWER_VIA_SERVER',
+        detail: 'call=${live.id} codec=$used '
+            'locked=${_voiceKeys.containsKey(live.id)} route=$route');
+    return true;
+  }
+
+  /// B4: server voice may run for [s] (the server knows the call, the
+  /// socket is up and both phones use the worked-out key).
+  bool _serverVoiceAllowed(CallSession s) {
+    final derived = _derivedKeys[s.id];
+    final ws = socket;
+    return derived != null &&
+        _voiceKeys[s.id] == derived &&
+        _serverKnown.contains(s.id) &&
+        !_serverVoiceStopped.contains(s.id) &&
+        ws != null &&
+        ws.isConnected;
+  }
+
+  /// B4: the friend's voice is coming through the server right now.
+  bool _serverVoiceRunning(CallSession s) {
+    final at = _serverVoiceRxAt;
+    return _serverVoiceCallId == s.id &&
+        _serverVoiceAllowed(s) &&
+        at != null &&
+        DateTime.now().difference(at) < const Duration(seconds: 5);
+  }
+
+  /// B2/B3: turns server voice on for the live answered call, off otherwise.
+  Future<void> _syncServerVoice266() async {
+    final s = _session;
+    final want = s != null &&
+        !_isClosing(s) &&
+        s.answeredAt != null &&
+        _transport != null &&
+        _serverVoiceAllowed(s);
+    final current = _serverVoiceCallId;
+    if (want && current == s.id) return;
+    if (!want && current == null) return;
+    if (current != null) {
+      _serverVoiceCallId = null;
+      _flushVoiceIn();
+      await _voiceOutSub?.cancel();
+      _voiceOutSub = null;
+      AppLogger.info('CALL_VOICE_SERVER',
+          detail: 'at=off call=$current tx=$_serverVoiceTx rx=$_serverVoiceRx');
+      try {
+        await mediaPlatform.setServerVoice(callId: current, on: false);
+      } catch (_) {}
+    }
+    if (!want) return;
+    final id = s.id;
+    _serverVoiceCallId = id;
+    _serverVoiceTx = 0;
+    _serverVoiceRx = 0;
+    _serverVoiceRxAt = null;
+    try {
+      _voiceOutSub ??= mediaPlatform
+          .serverVoiceOut()
+          .listen(_onServerVoiceOut, onError: (Object _) {});
+    } catch (_) {}
+    AppLogger.info('CALL_VOICE_SERVER', detail: 'at=on call=$id');
+    try {
+      await mediaPlatform.setServerVoice(callId: id, on: true);
+    } catch (_) {}
+  }
+
+  /// B3: locked pieces from the native side -> one `call_voice` frame each.
+  void _onServerVoiceOut(Map<String, dynamic> event) {
+    final id = event['call_id']?.toString() ?? '';
+    if (id.isEmpty || id != _serverVoiceCallId) return;
+    final voices = event['voices'];
+    if (voices is! List) return;
+    final ws = socket;
+    if (ws == null || !ws.isConnected) return;
+    for (final v in voices) {
+      if (v is! String || v.isEmpty || v.length > 1400) continue;
+      if (ws.send({'type': 'call_voice', 'call_id': id, 'voice': v})) {
+        _serverVoiceTx++;
+      }
+    }
+  }
+
+  /// B3: a locked piece through the server -> the native side (small
+  /// batches every 40 ms, no log per piece).
+  void _onServerVoiceIn(Map<String, dynamic> msg) {
+    final s = _session;
+    final id = msg['call_id']?.toString() ?? '';
+    final sender = msg['sender_id']?.toString().trim() ?? '';
+    final voice = msg['voice']?.toString() ?? '';
+    if (s == null ||
+        s.id != id ||
+        _isClosing(s) ||
+        _transport == null ||
+        sender != s.peerId ||
+        voice.isEmpty ||
+        voice.length > 1400) {
+      return;
+    }
+    _serverVoiceRxAt = DateTime.now();
+    if (_serverVoiceRx++ == 0) {
+      AppLogger.info('CALL_VOICE_SERVER', detail: 'at=first_rx call=$id');
+    }
+    if (_voiceInCall != id || _voiceInSender != sender) {
+      _flushVoiceIn();
+      _voiceInCall = id;
+      _voiceInSender = sender;
+    }
+    _voiceInBatch.add(voice);
+    if (_voiceInBatch.length >= 16) {
+      _flushVoiceIn();
+      return;
+    }
+    _voiceInTimer ??= Timer(const Duration(milliseconds: 40), _flushVoiceIn);
+  }
+
+  void _flushVoiceIn() {
+    _voiceInTimer?.cancel();
+    _voiceInTimer = null;
+    if (_voiceInBatch.isEmpty) return;
+    final voices = List<String>.of(_voiceInBatch);
+    _voiceInBatch.clear();
+    unawaited(mediaPlatform
+        .serverVoiceIn(
+            callId: _voiceInCall, senderId: _voiceInSender, voices: voices)
+        .catchError((Object _) {}));
+  }
+
+  /// B3: the server stopped passing our voice (one line, off for this call).
+  void _onServerVoiceStop(Map<String, dynamic> msg) {
+    final id = msg['call_id']?.toString().trim() ?? '';
+    if (id.isEmpty || _serverVoiceStopped.contains(id)) return;
+    _addBounded(_serverVoiceStopped, id, 16);
+    AppLogger.info('CALL_VOICE_SERVER',
+        detail: 'at=stop call=$id reason=${msg['reason'] ?? '-'}');
+    unawaited(_syncServerVoice266());
+  }
+
+  /// D1: a friend calls through the server and there is no nearby way to
+  /// them -> Nearby looks for that friend while the call is on (60 s max).
+  Future<void> _wakeForServerCall266(String callId, String peerId) async {
+    var route = true;
+    try {
+      route = await _hasLocalRouteTo(peerId);
+    } catch (_) {}
+    final s = _session;
+    if (route || s == null || s.id != callId || _isClosing(s)) return;
+    CallNearbyWait.instance.startWake(callId, peerId);
+    _wakeTimer?.cancel();
+    _wakeTimer = Timer(wakeLimit266, () {
+      _wakeTimer = null;
+      if (CallNearbyWait.instance.wakingFor(callId)) {
+        CallNearbyWait.instance.stopWake('limit');
+      }
+    });
+  }
+
+  void _syncWake266(CallSession? session) {
+    final wait = CallNearbyWait.instance;
+    final id = wait.wakeCallId;
+    if (id == null) return;
+    final why = CallNearbyWait.wakeEndWhy(session, id);
+    if (why == null) return;
+    _wakeTimer?.cancel();
+    _wakeTimer = null;
+    wait.stopWake(why);
   }
 
   void start() {
@@ -792,6 +1119,13 @@ final class CallSessionManager implements CallGateway {
     await _routeSub?.cancel();
     await _socketSub?.cancel();
     _socketSub = null;
+    // Bundle 266
+    _voiceInTimer?.cancel();
+    _voiceInTimer = null;
+    _wakeTimer?.cancel();
+    _wakeTimer = null;
+    await _voiceOutSub?.cancel();
+    _voiceOutSub = null;
     _nativeSub = null;
     _notificationActionSub = null;
     _presentationRevision++;
@@ -821,7 +1155,20 @@ final class CallSessionManager implements CallGateway {
   Future<void> _handleServerCallSignal(Map<String, dynamic> msg) async {
     if (_disposed) return;
     final type = msg['type']?.toString() ?? '';
+    // Bundle 266 (B3): voice pieces never go through the signal dispatcher.
+    if (type == 'call_voice') {
+      _onServerVoiceIn(msg);
+      return;
+    }
+    if (type == 'call_voice_stop') {
+      _onServerVoiceStop(msg);
+      return;
+    }
     if (!type.startsWith('call_')) return;
+    // Bundle 266 (A2): the server knows this call.
+    if (type == 'call_invite' || type == 'call_invite_ack') {
+      _markServerKnown(msg['call_id']?.toString() ?? '');
+    }
     final withDefaults = Map<String, dynamic>.from(msg);
     withDefaults['server'] = true;
     // The hub only handles offline_mesh calls; satisfying the local-invite
@@ -841,8 +1188,10 @@ final class CallSessionManager implements CallGateway {
     // identical fingerprints legitimately, and _seenInviteIds covers them.
     const skipDedupe = {'call_invite', 'call_heartbeat_ack'};
     if (!skipDedupe.contains(type)) {
-      final key =
-          '$type|${msg['call_id'] ?? ''}|${msg['sender_id'] ?? ''}';
+      // Bundle 266: the server sends every call_state with the caller as
+      // sender, so "connected" then "ended" are two different signals.
+      final key = '$type|${msg['call_id'] ?? ''}|${msg['sender_id'] ?? ''}'
+          '${type == 'call_state' ? '|${msg['status'] ?? ''}' : ''}';
       final now = DateTime.now();
       _recentSignalFingerprints.removeWhere(
           (_, ts) => now.difference(ts) > const Duration(seconds: 10));
@@ -896,6 +1245,8 @@ final class CallSessionManager implements CallGateway {
         msg['transport_mode']?.toString().trim().toLowerCase() ==
             CallTransportMode.offlineMesh.wireName;
     if (!localInvite) return;
+    // Bundle 266 (A2): an invite through the server = the server knows it.
+    if (msg['server'] == true) _markServerKnown(callId);
     // Bundle 172: this call already ended (its "call ended" came first, or
     // it rang here before). A late copy from the send queue never rings.
     if (_endedCalls.contains(callId)) {
@@ -921,6 +1272,19 @@ final class CallSessionManager implements CallGateway {
         }
       }
     } else {
+      // Bundle 266 (B1): the locked copy of an invite that first came
+      // through the server - its key wins (before the answer).
+      final lateKey =
+          CallVoiceKey.normalize(msg[SealingPeerTransport.voiceKeyField]);
+      final ringing = _session;
+      if (lateKey != null &&
+          ringing != null &&
+          ringing.id == callId &&
+          ringing.state == CallState.ringing &&
+          _voiceKeys[callId] != lateKey) {
+        _voiceKeys[callId] = lateKey;
+        AppLogger.info('CALL_VOICE_KEY_FROM_INVITE', detail: 'call=$callId');
+      }
       AppLogger.info('CALL_INVITE_DUPLICATE_IGNORED', detail: 'call=$callId');
       return;
     }
@@ -1015,7 +1379,7 @@ final class CallSessionManager implements CallGateway {
     final advertised = (msg['supported_media_codecs'] is List)
         ? (msg['supported_media_codecs'] as List)
             .map((e) => e.toString().trim().toLowerCase())
-            .where((e) => e.isNotEmpty)
+            .where((e) => e.isNotEmpty && e != CallVoiceKey266.marker)
             .toSet()
             .toList()
         : const <String>['pcm_s16le'];
@@ -1038,11 +1402,41 @@ final class CallSessionManager implements CallGateway {
     final voiceKey =
         CallVoiceKey.normalize(msg[SealingPeerTransport.voiceKeyField]);
     _voiceKeys.clear();
+    _derivedKeys.clear();
     if (voiceKey != null) _voiceKeys[callId] = voiceKey;
+    // Bundle 266 (B1): no key in the invite (it came through the server)
+    // but the caller used the worked-out key -> work it out here too.
+    if (voiceKey == null &&
+        CallVoiceKey266.marked(msg['supported_media_codecs'])) {
+      final transport = directTransport;
+      if (transport is SealingPeerTransport) {
+        final derived = await transport.callVoiceKey266(peerId, callId);
+        if (derived != null &&
+            _session?.id == callId &&
+            !_voiceKeys.containsKey(callId)) {
+          _voiceKeys[callId] = derived;
+          _derivedKeys[callId] = derived;
+        }
+      }
+    } else if (voiceKey != null &&
+        CallVoiceKey266.marked(msg['supported_media_codecs'])) {
+      // The locked invite carries the worked-out key: remember it as such
+      // (server voice may run for this call).
+      final transport = directTransport;
+      if (transport is SealingPeerTransport) {
+        final derived = await transport.callVoiceKey266(peerId, callId);
+        if (derived != null && derived == voiceKey) {
+          _derivedKeys[callId] = derived;
+        }
+      }
+    }
     await _persistSession();
     _startRingTimer(outgoing: false);
     // Bundle 176 (3): if this engine stops while ringing, the next one rings on.
     unawaited(handover?.park(callId, msg));
+    // Bundle 266 (D1): rang through the server, no nearby way -> Nearby
+    // looks for this friend now (only while their call is on).
+    if (msg['server'] == true) unawaited(_wakeForServerCall266(callId, peerId));
     unawaited(_sendSignal({
       'type': 'call_invite_ack',
       'call_id': callId,
@@ -1593,6 +1987,13 @@ final class CallSessionManager implements CallGateway {
       return;
     }
     AppLogger.info('CALL_INVITE_ACK_RECEIVED', detail: 'call=${session.id}');
+    // Bundle 266 (A3): first invite -> their phone rings, and which way.
+    final ringSentAt = _inviteSentAt;
+    if (ringSentAt != null && ringSentAt.$1 == session.id) {
+      AppLogger.info('CALL_RING_MS',
+          detail: 'call=${session.id} ms=${ringSentAt.$2.elapsedMilliseconds} '
+              'via=${msg['server'] == true ? 'server' : 'mesh'}');
+    }
     _stopRouteWaitTimer();
     _setSession(session.copyWith(state: CallState.ringing, signalingConnected: true));
     _startRingTimer(outgoing: true);
@@ -1604,6 +2005,17 @@ final class CallSessionManager implements CallGateway {
   }
 
   void _handleRouteChange(LocalRouteResult route) {
+    // Bundle 266 (D1): a nearby way to the friend who calls through the
+    // server is there - the wake has done its job.
+    final wake = CallNearbyWait.instance;
+    if (route.isAvailable &&
+        wake.wakeCallId != null &&
+        wake.peerId == route.peerId &&
+        !_disposed) {
+      _wakeTimer?.cancel();
+      _wakeTimer = null;
+      wake.stopWake('route');
+    }
     final session = _session;
     if (_disposed ||
         !route.isAvailable ||
@@ -1667,7 +2079,10 @@ final class CallSessionManager implements CallGateway {
     _inviteInFlight = true;
     _lastInviteAttemptAt = now;
     try {
-      await _sendSignal({
+      // Bundle 266 (B1): the call key from the link key (both phones can
+      // work it out, so a call that rings through the server talks locked).
+      await _prepareVoiceKey266(session);
+      final invite = <String, dynamic>{
         'type': 'call_invite',
         'call_id': session.id,
         'recipient_id': session.peerId,
@@ -1675,7 +2090,10 @@ final class CallSessionManager implements CallGateway {
         'transport_mode': session.transportMode.wireName,
         'mesh_call': true,
         'direct': true,
-        'supported_media_codecs': session.supportedMediaCodecs,
+        'supported_media_codecs': <String>[
+          ...session.supportedMediaCodecs,
+          if (_derivedKeys.containsKey(session.id)) CallVoiceKey266.marker,
+        ],
         // Bundle 172: an invite waits in the send queue 60 s at most, so a
         // cancelled call never rings hours later.
         queueLifetimeField: inviteQueueLifetime.inMilliseconds,
@@ -1683,7 +2101,11 @@ final class CallSessionManager implements CallGateway {
         // invite; SealingPeerTransport drops it otherwise).
         if (_voiceKeyForInvite(session) case final key?)
           SealingPeerTransport.voiceKeyField: key,
-      });
+      };
+      await _sendSignal(invite);
+      // Bundle 266 (A1): and through the server (once per call), so a
+      // friend the server reaches rings now whatever the nearby state.
+      _sendInviteViaServer266(session.id, invite);
       AppLogger.info('CALL_INVITE_SENT', detail: 'transport=${route.kind.name} queued=${!routeAvailable}');
       // Bundle 186 (A3): first invite of this call (repeats keep the time).
       if (_inviteSentAt?.$1 != session.id) {
@@ -1719,20 +2141,50 @@ final class CallSessionManager implements CallGateway {
         !_signalTargetsThisSession(msg, session)) return;
     final status = msg['status']?.toString() ?? '';
     final reason = msg['reason']?.toString() ?? '';
+    // Bundle 266: a call that is over here stays over (late server copies).
+    if (session.isFinished) return;
+    // Bundle 266: the server's own timeouts never end a call that still
+    // talks nearby (or whose sound is arriving).
+    if (msg['server'] == true &&
+        (reason == 'heartbeat_timeout' || reason == 'server_timeout')) {
+      var nearby = _mediaIsLive;
+      if (!nearby) {
+        try {
+          nearby = await _hasLocalRouteTo(session.peerId);
+        } catch (_) {}
+      }
+      if (nearby) {
+        AppLogger.info('CALL_SERVER_STATE_IGNORED',
+            detail: 'call=${session.id} status=$status reason=$reason');
+        return;
+      }
+    }
     if (status == 'connected') {
       // Bundle 172: never start the sound for a call that is over.
       if (_isClosing(session)) return;
       if (session.direction == CallDirection.outgoing &&
           session.state != CallState.connected) {
+        // Bundle 266: answered through the server - codec + lock first.
+        if (_transport == null &&
+            msg['server'] == true &&
+            !await _serverAnswer266(session)) {
+          return;
+        }
+        final current = _session;
+        if (current == null || current.id != session.id || _isClosing(current)) {
+          return;
+        }
         await transportFactory.ensureReady();
         if (_transport == null) {
           _transport =
-              transportFactory.resolve(requested: session.transportMode);
-          await _transport!.start(session);
+              transportFactory.resolve(requested: current.transportMode);
+          await _transport!.start(current);
         }
         await _markConnected();
       } else if (session.direction == CallDirection.incoming &&
           session.state != CallState.connected) {
+        // Bundle 266: our answer is still starting; it connects by itself.
+        if (_acceptingCallId == session.id) return;
         await _markConnected();
       }
       return;
@@ -1790,6 +2242,8 @@ final class CallSessionManager implements CallGateway {
         'mesh_call': true,
         'transport_mode': CallTransportMode.offlineMesh.wireName,
       });
+      // Bundle 266 (A2): a call the server knows hears it there too.
+      _copyToServer266(msg);
     } catch (error) {
       // Wi-Fi Direct peers flap constantly (see peer_connected/disconnected
       // churn in DIRECT_EVENT logs). A heartbeat landing while the peer is
@@ -1816,6 +2270,14 @@ final class CallSessionManager implements CallGateway {
           'transport_mode': CallTransportMode.offlineMesh.wireName,
         });
         if (relayed) {
+          // Bundle 266 (A1): the server knows this call now.
+          final relayedId = msg['call_id']?.toString() ?? '';
+          if (type == 'call_invite') {
+            _addBounded(_serverInviteSent, relayedId);
+            _markServerKnown(relayedId);
+          } else if (_serverKnown.contains(relayedId)) {
+            _addBounded(_serverCopied, '$type|$relayedId', 128);
+          }
           AppLogger.warning(
             'CALL_SIGNAL_RELAYED',
             detail: 'type=$type call=${msg['call_id'] ?? ''} '
@@ -1841,6 +2303,13 @@ final class CallSessionManager implements CallGateway {
     if (live != null && _isClosing(live)) return;
     final localStillAvailable = await _hasLocalRouteTo(active.peerId);
     if (!localStillAvailable) {
+      // Bundle 266 (B4): the call can talk through the server - keep it.
+      final now = _session;
+      if (now != null && now.id == active.id && _serverVoiceAllowed(now)) {
+        AppLogger.info('CALL_SERVER_VOICE_KEEP',
+            detail: 'call=${active.id} reason=${reason ?? '-'}');
+        return;
+      }
       await _fail(reason ?? 'mesh_route_failed');
       return;
     }
@@ -1908,6 +2377,7 @@ final class CallSessionManager implements CallGateway {
     await _persistSession();
     _startHeartbeatTimer();
     _startStatsTimer();
+    unawaited(_syncServerVoice266()); // Bundle 266 (B)
   }
 
   Future<void> _fail(String reason) async {
@@ -1947,6 +2417,8 @@ final class CallSessionManager implements CallGateway {
     } catch (_) {}
     _transport = null;
     _voiceKeys.remove(session.id);
+    _derivedKeys.remove(session.id); // Bundle 266
+    unawaited(_syncServerVoice266());
     if (notifyServer)
       unawaited(_sendSignal({
         'type': 'call_end',
@@ -2066,6 +2538,10 @@ final class CallSessionManager implements CallGateway {
   void _sendHeartbeat() {
     final session = _session;
     if (session == null || _isClosing(session)) return;
+    // Bundle 266: the server hears from a call it knows (else it ends it
+    // after 60 s), and server voice turns on once the socket is back.
+    _serverHeartbeat266(session);
+    unawaited(_syncServerVoice266());
     unawaited(() async {
       // Bundle 129: heartbeat ticks used to throw PlatformException
       // (PEER_UNAVAILABLE) every 15 s whenever the mesh route was momentarily
@@ -2182,10 +2658,12 @@ final class CallSessionManager implements CallGateway {
       _noNearbyCallId = null;
       return;
     }
-    if (route) {
+    // Bundle 266 (B4): the voice comes through the server - not ended.
+    final viaServer = !route && _serverVoiceRunning(now);
+    if (route || viaServer) {
       // A nearby way is there; the recovery may still make it. Wait again.
       AppLogger.info('CALL_NO_NEARBY_WAIT',
-          detail: 'call=$callId reason=route_present');
+          detail: 'call=$callId reason=${viaServer ? 'server_voice' : 'route_present'}');
       _noNearbyCallId = null;
       _syncNoNearbyTimer(now);
       return;
@@ -2261,6 +2739,7 @@ final class CallSessionManager implements CallGateway {
     _syncCallLockScreen(session);
     _syncNoNearbyTimer(session);
     _syncAwayCallState(session);
+    _syncWake266(session); // Bundle 266 (D1)
     final pending = _pendingNotificationAccept;
     if (pending != null &&
         isRinging &&

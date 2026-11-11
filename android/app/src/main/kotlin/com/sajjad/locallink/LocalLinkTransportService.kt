@@ -180,6 +180,12 @@ class LocalLinkTransportService : Service() {
             (instance ?: throw IllegalStateException("transport service is not running")).startCallMediaInternal(callId, peerId, codec, voiceKey)
         }
         fun stopCallMedia(callId:String) { instance?.stopCallMediaInternal(callId) }
+        /** Bundle 266 (B2): locked voice pieces for the server (call id, base64 piece). Set by the open app. */
+        @Volatile var serverVoiceSink: ((String, String) -> Unit)? = null
+        /** Bundle 266 (B2): this call may talk through the server when there is no nearby way. */
+        fun setServerVoice(callId:String, on:Boolean) { instance?.setServerVoiceInternal(callId, on) }
+        /** Bundle 266 (B2): a locked voice piece that came through the server. */
+        fun serverVoiceIn(callId:String, senderId:String, voice:String) { instance?.serverVoiceInInternal(callId, senderId, voice) }
         fun setCallMediaMuted(callId:String, muted:Boolean) { instance?.setCallMediaMutedInternal(callId, muted) }
         fun callMediaStats(callId:String): Map<String,Any?> = instance?.callMediaStatsInternal(callId) ?: emptyMap()
         fun currentDeviceId(): String? = instance?.transportDeviceId
@@ -2757,6 +2763,100 @@ class LocalLinkTransportService : Service() {
         return audio + video.mapKeys { (k, _) -> if (k == "sent_frames" || k == "received_frames" || k == "dropped_frames") "video_$k" else k }
     }
 
+    /** Bundle 266 (B2): the call that may send voice through the server (null = none). */
+    @Volatile private var serverVoiceFor: String? = null
+
+    private fun setServerVoiceInternal(callId:String, on:Boolean) {
+        val id = callId.trim()
+        if (id.isEmpty()) return
+        val was = serverVoiceFor
+        if (on) serverVoiceFor = id else if (was == id) serverVoiceFor = null
+        if ((was == id) != on) Log.i("LocalLinkCall", "VOICE_SERVER call=$id at=${if (on) "on" else "off"}")
+    }
+
+    /** Bundle 266 (B2): opens a server piece with this call's key, then the normal locked path. */
+    private fun serverVoiceInInternal(callId:String, senderId:String, voice:String) {
+        val current = callMedia ?: return
+        val selfId = transportDeviceId ?: return
+        val key = current.voiceKey ?: return
+        if (callId != current.callId || senderId != current.peerId) return
+        val raw = try { Base64.decode(voice, Base64.NO_WRAP) } catch (_:Exception) { return }
+        val piece = CallServerVoice266.unpackBytes(raw) ?: return
+        if (piece.stream != current.voiceStream) return
+        val plain = CallVoiceSeal.open(key, senderId, selfId, piece.stream, piece.nonce, piece.cipher)
+        if (plain == null) {
+            current.noteVoiceOpenFailed()
+            return
+        }
+        val inner = try { JSONObject(String(plain, Charsets.UTF_8)) } catch (_:Exception) { return }
+        if (inner.optString("type") != "call_media") return
+        current.noteServerRx()
+        handleIncomingCallMediaPayload(inner, senderId, 1, locked = true)
+    }
+
+    /**
+     * Bundle 266 (C): during a call, a quiet active link -> ping the other
+     * links to this friend; the first that answers becomes active. Speaker
+     * thread; the pings go out on their own thread (never blocks the sound).
+     */
+    private fun callLinkCheck266(session: CallMediaSession, now: Long) {
+        val peer = session.peerId
+        val links = peerLinks[peer]?.values?.filter { !it.socket.isClosed } ?: return
+        val active = transportPeers[peer] ?: return
+        val st = session.linkState
+        val old = st.from
+        if (old != null && st.switchedAt > 0L) {
+            if (old.socket.isClosed) {
+                st.from = null; st.switchedAt = 0L
+            } else if (CallLinkSwitch266.backToOld(st.switchedAt, old.lastSeenAt)) {
+                if (transportPeers[peer] === active && active !== old) {
+                    transportPeers[peer] = old
+                    Log.i("LocalLinkCall", CallLinkSwitch266.line(session.callId, linkWord266(active), linkWord266(old), 0L) + " why=back")
+                }
+                st.from = null; st.switchedAt = 0L
+                return
+            }
+        }
+        if (links.size < 2) return
+        val others = links.filter { it !== active }
+        if (st.probeAt > 0L) {
+            val pick = CallLinkSwitch266.pickAnswered(st.probeAt, others.map { it.lastSeenAt })
+            if (pick >= 0) {
+                val to = others[pick]
+                if (transportPeers[peer] === active) {
+                    transportPeers[peer] = to
+                    if (st.from == null) { st.from = active }
+                    st.switchedAt = now
+                    Log.i("LocalLinkCall", CallLinkSwitch266.line(session.callId, linkWord266(active), linkWord266(to), now - session.lastVoiceRxAt))
+                }
+                st.probeAt = 0L
+            } else if (CallLinkSwitch266.probeOver(st.probeAt, now)) {
+                st.probeAt = 0L
+            }
+            return
+        }
+        if (!CallLinkSwitch266.shouldProbe(now, session.lastVoiceRxAt, active.lastSeenAt, others.size, st.lastProbeAt, session.isRunning)) return
+        st.probeAt = now
+        st.lastProbeAt = now
+        try {
+            Thread({
+                for (link in others) {
+                    try { link.send(JSONObject().put("type", "ping").put("sent_at", now)) } catch (_:Exception) {}
+                }
+            }, "call-link-probe").apply { isDaemon = true }.start()
+        } catch (_:Throwable) {}
+    }
+
+    private fun linkWord266(c: PeerConnection): String = CallPathPolicy.kind(c.transportName, false, c.remoteAddress)
+
+    /** Bundle 266 (C): link switch state of one call (speaker thread only). */
+    private class CallLinkState266 {
+        var probeAt = 0L
+        var lastProbeAt = 0L
+        var switchedAt = 0L
+        var from: PeerConnection? = null
+    }
+
     /** Bundle 159: a locked voice frame — opens only with this call's key. */
     private fun handleIncomingSealedVoice(packet:MeshPacket) {
         val current = callMedia ?: return
@@ -2964,6 +3064,39 @@ class LocalLinkTransportService : Service() {
         fun noteVoiceOpenFailed() {
             if (voiceOpenFailed.incrementAndGet() == 1L) Log.w("LocalLinkCall", "CALL_VOICE_OPEN_FAILED call=$callId")
         }
+        // Bundle 266 (B2): voice through the server (no nearby way).
+        private val serverTx = AtomicLong(0)
+        private val serverRx = AtomicLong(0)
+        private val serverBig = AtomicLong(0)
+        @Volatile private var serverLastTxAt = 0L
+        private var serverLoggedAt = 0L
+        fun noteServerRx() {
+            if (serverRx.incrementAndGet() == 1L) Log.i("LocalLinkCall", "VOICE_SERVER call=$callId at=first_rx")
+        }
+        private fun serverVoiceOn(): Boolean = serverVoiceFor == callId
+        // Bundle 266 (C): when the friend's voice last arrived, and the link switch state.
+        @Volatile var lastVoiceRxAt = 0L
+        val linkState = CallLinkState266()
+        private var linkCheckAt = 0L
+
+        /** Bundle 266 (B2): one locked piece to the server. False = not sent. */
+        private fun sendServerVoice(nonce: ByteArray?, cipher: ByteArray?): Boolean {
+            if (nonce == null || cipher == null || !serverVoiceOn()) return false
+            val sink = serverVoiceSink ?: return false
+            val bytes = CallServerVoice266.packBytes(voiceStream, nonce, cipher)
+            if (bytes == null) {
+                if (serverBig.incrementAndGet() == 1L) Log.w("LocalLinkCall", "VOICE_SERVER call=$callId at=too_big codec=$sendCodec")
+                return false
+            }
+            return try {
+                sink(callId, Base64.encodeToString(bytes, Base64.NO_WRAP))
+                serverLastTxAt = System.currentTimeMillis()
+                if (serverTx.incrementAndGet() == 1L) Log.i("LocalLinkCall", "VOICE_SERVER call=$callId at=first_tx")
+                true
+            } catch (_:Throwable) { false }
+        }
+
+        private fun serverLine(): String = CallServerVoice266.line(callId, serverTx.get(), serverRx.get(), serverBig.get(), serverVoiceOn())
         // Bundle 149: `opus2` only when both phones negotiated it AND this
         // phone passed the Opus self-test (CallOpusCodec.usable). The legacy
         // 142-145 "opus" name always means PCM. The codec actually SENT can
@@ -3122,6 +3255,7 @@ class LocalLinkTransportService : Service() {
         fun stop() {
             if (!running.compareAndSet(true,false)) return
             if (voiceKey != null) Log.i("LocalLinkCall", "CALL_VOICE_LOCK call=$callId locked_sent=${lockedSent.get()} locked_rx=${lockedReceived.get()} plain_fallback=${plainFallbacks.get()} open_failed=${voiceOpenFailed.get()}")
+            if (serverTx.get() > 0L || serverRx.get() > 0L || serverBig.get() > 0L) Log.i("LocalLinkCall", serverLine()) // Bundle 266
             try { track?.let { underruns = it.underrunCount.toLong() } } catch (_:Throwable) {}
             try {
                 val total = snapshot()
@@ -3304,8 +3438,11 @@ class LocalLinkTransportService : Service() {
             // it. If no voice-capable route exists right now, fall back to
             // plain voice, which still only crosses contacts (156 rule).
             if (key != null && self != null) {
+                var sealedNonce: ByteArray? = null // Bundle 266 (B2)
+                var sealedCipher: ByteArray? = null
                 val sealedOk = try {
                     val (nonce, cipherText) = CallVoiceSeal.seal(key, self, peerId, voiceStream, payload.toString().toByteArray(Charsets.UTF_8))
+                    sealedNonce = nonce; sealedCipher = cipherText
                     val outer = JSONObject().put("type", MeshRelayPolicy.SEALED_VOICE).put("recipient_id", peerId)
                         .put("vs", voiceStream)
                         .put("n", Base64.encodeToString(nonce, Base64.NO_WRAP))
@@ -3315,6 +3452,11 @@ class LocalLinkTransportService : Service() {
                 if (sealedOk) {
                     sent.incrementAndGet(); tcpTx.incrementAndGet()
                     if (lockedSent.incrementAndGet() == 1L) Log.i("LocalLinkCall", "CALL_VOICE_LOCKED call=$callId dir=tx stream=${voiceStream.take(6)}")
+                    return
+                }
+                // Bundle 266 (B2): no nearby way -> the same locked piece through the server.
+                if (sendServerVoice(sealedNonce, sealedCipher)) {
+                    sent.incrementAndGet()
                     return
                 }
                 plainFallbacks.incrementAndGet()
@@ -3458,6 +3600,7 @@ class LocalLinkTransportService : Service() {
                     jitterMs += (deviation - jitterMs) / 16.0
                 }
                 lastArrivalMs = arrival
+                lastVoiceRxAt = arrival // Bundle 266 (C)
                 lastSenderTimestampMs = timestamp
                 if (viaUdp) udpRx.incrementAndGet() else tcpRx.incrementAndGet()
             }
@@ -3578,7 +3721,8 @@ class LocalLinkTransportService : Service() {
         private fun pathNow(): CallPathPolicy.Path {
             val conn = try { activePeerConnection(peerId) } catch (_:Exception) { null }
             val route = if (conn == null) (try { routeTable[peerId] } catch (_:Exception) { null }) else null
-            val kind = CallPathPolicy.kind(conn?.transportName, route != null, conn?.remoteAddress)
+            val server = serverVoiceOn() && System.currentTimeMillis() - serverLastTxAt < CallServerVoice266.PATH_FRESH_MS // Bundle 266
+            val kind = CallPathPolicy.kind(conn?.transportName, route != null, conn?.remoteAddress, server)
             val hops = if (conn != null) 1 else route?.hopCount ?: 0
             val via = if (conn == null && route != null) CallPathPolicy.shortId(route.nextHopNodeId) else "-"
             return CallPathPolicy.Path(kind, hops, via, udpOn)
@@ -3608,6 +3752,14 @@ class LocalLinkTransportService : Service() {
             if (speakerMs > maxSpeakerMs) maxSpeakerMs = speakerMs
             val now = System.currentTimeMillis()
             notePath("change") // Bundle 192: checked every 2 s, logged on change
+            if (now - linkCheckAt !in 0 until CallLinkSwitch266.CHECK_MS) { // Bundle 266 (C)
+                linkCheckAt = now
+                try { callLinkCheck266(this, now) } catch (_:Throwable) {}
+            }
+            if (serverVoiceOn() && now - serverLoggedAt !in 0 until CallServerVoice266.LOG_EVERY_MS) { // Bundle 266 (B2)
+                if (serverLoggedAt > 0L) Log.i("LocalLinkCall", serverLine())
+                serverLoggedAt = now
+            }
             if (now - lastHealthAt in 0 until CallVoiceHealth.LOG_EVERY_MS) return
             lastHealthAt = now
             try { underruns = t.underrunCount.toLong() } catch (_:Throwable) {}

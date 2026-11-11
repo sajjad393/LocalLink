@@ -57,6 +57,9 @@ class WebSocketService {
 
   Stream<Map<String, dynamic>> get messages => _messages.stream;
 
+  /// Bundle 266 (B3): frame types sent and received without a log line.
+  static const Set<String> quietTypes266 = <String>{'call_voice'};
+
   Stream<bool> get connectionState => _state.stream;
 
   bool get isConnected => _ready;
@@ -317,7 +320,7 @@ class WebSocketService {
       final type = value['type']?.toString() ?? 'unknown';
       final id = value['id']?.toString();
 
-      AppLogger.info(
+      if (!quietTypes266.contains(type)) AppLogger.info(
         'WS_MESSAGE_RECEIVED',
         detail:
         'type=$type'
@@ -412,8 +415,10 @@ class WebSocketService {
       }) {
     final type = payload['type']?.toString() ?? 'unknown';
     final id = payload['id']?.toString();
+    // Bundle 266 (B3): no log line per voice piece (~50 a second).
+    final quiet = quietTypes266.contains(type);
 
-    AppLogger.info(
+    if (!quiet) AppLogger.info(
       'WS_SEND_REQUEST',
       detail:
       'type=$type'
@@ -480,7 +485,7 @@ class WebSocketService {
     try {
       channel.sink.add(encoded);
 
-      AppLogger.info(
+      if (!quiet) AppLogger.info(
         'WS_SEND_SUCCESS',
         detail:
         'type=$type '

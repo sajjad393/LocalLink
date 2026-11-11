@@ -19,11 +19,12 @@ object CallPathPolicy {
     /** Path word from the direct link's transport name, or the relay route. */
     // Bundle 205 (P1, L2): a `lan` link inside a Wi-Fi Direct group
     // (192.168.49.x) is Wi-Fi Direct, not a router.
-    fun kind(directTransport: String?, hasRoute: Boolean, remoteAddress: String? = null): String = when (directTransport?.trim()?.lowercase()) {
+    // Bundle 266 (B2): no nearby way but the voice goes through the server -> `server`.
+    fun kind(directTransport: String?, hasRoute: Boolean, remoteAddress: String? = null, server: Boolean = false): String = when (directTransport?.trim()?.lowercase()) {
         "lan" -> if (LinkKindPolicy.onP2pNetwork(remoteAddress)) "wifi_direct" else "lan"
         "wifi_direct" -> "wifi_direct"
         "local_net" -> "local_net"
-        null, "" -> if (hasRoute) "mesh" else "none"
+        null, "" -> if (hasRoute) "mesh" else if (server) "server" else "none"
         else -> directTransport.trim().lowercase()
     }
 

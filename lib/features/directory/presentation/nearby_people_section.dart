@@ -61,6 +61,10 @@ class NearbyPeopleSection extends StatefulWidget {
   /// Text typed in the search box ('' = show everyone).
   final String filter;
 
+  /// Bundle 267: an extra line under "Looking for LinkUp phones…" (Add
+  /// Contact opens this section only after a search found no one).
+  final String? waitLine;
+
   /// This account's user id — phones of the same account are hidden.
   final String selfUserId;
 
@@ -74,6 +78,7 @@ class NearbyPeopleSection extends StatefulWidget {
     this.title = 'Nearby',
     this.filter = '',
     this.selfUserId = '',
+    this.waitLine,
   });
 
   @override
@@ -480,9 +485,6 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     if (await _openIfFriend(peer.nodeId)) return; // Bundle 194
     if (!mounted) return;
     final scheme = Theme.of(context).colorScheme;
-    final tail = peer.nodeId.length > 8
-        ? peer.nodeId.substring(peer.nodeId.length - 8)
-        : peer.nodeId;
     // Reuse the wifi-direct peer name when it is the only visible phone —
     // it is almost certainly the same device discovered over LAN.
     final wifiPeers = widget.connectivity.state.snapshot.wifiPeers;
@@ -521,32 +523,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
             Text('Add $displayName as a friend?',
                 style: Theme.of(sheetContext).textTheme.titleMedium,
                 textAlign: TextAlign.center),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text('device …$tail',
-                      style: Theme.of(sheetContext).textTheme.bodySmall,
-                      overflow: TextOverflow.ellipsis),
-                ),
-                IconButton(
-                  tooltip: 'Copy device id',
-                  visualDensity: VisualDensity.compact,
-                  iconSize: 18,
-                  onPressed: () async {
-                    await Clipboard.setData(
-                        ClipboardData(text: peer.nodeId));
-                    if (sheetContext.mounted) {
-                      ScaffoldMessenger.of(sheetContext).showSnackBar(
-                        const SnackBar(content: Text('Device id copied')),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.copy_rounded),
-                ),
-              ],
-            ),
+            // Bundle 263 (B6): no phone id row (not useful to a normal user).
             const SizedBox(height: 4),
             Chip(
               // Bundle 170: no transport words — just Nearby.
@@ -790,6 +767,13 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         const SizedBox(height: LocalLinkSpacing.sm),
         Text('Looking for LinkUp phones…',
             textAlign: TextAlign.center, style: text.titleSmall),
+        if (widget.waitLine != null && initial.isEmpty) ...[
+          const SizedBox(height: 2),
+          Text(widget.waitLine!,
+              key: const ValueKey('nearby_wait_267'),
+              textAlign: TextAlign.center,
+              style: text.bodyMedium),
+        ],
         const SizedBox(height: 2),
         Text('Both phones need Wi-Fi on',
             textAlign: TextAlign.center, style: text.bodySmall),

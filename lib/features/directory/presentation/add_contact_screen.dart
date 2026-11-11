@@ -1,5 +1,4 @@
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:locallink/core/services/server_reach.dart';
+import 'package:locallink/core/diagnostics/ui_hidden_263.dart';
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/features/directory/presentation/add_friend_256.dart';
 import 'package:locallink/core/presence/block_hub.dart';
@@ -22,6 +21,7 @@ import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
 import 'package:locallink/features/directory/data/services/pairing_service.dart';
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 import 'package:locallink/features/directory/data/directory_search_merge.dart';
+import 'package:locallink/features/directory/data/people_to_add_267.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/directory/presentation/nearby_people_section.dart';
 import 'package:locallink/features/directory/presentation/profile_view_rules.dart';
@@ -72,12 +72,43 @@ class _AddContactScreenState extends State<AddContactScreen> {
   /// Bundle 173: who is already a contact ("Added" instead of "Add").
   Set<String> _contactIds = const <String>{};
 
+  // Bundle 267: the list under an empty search box (people to add).
+  List<DirectoryProfile> _people267 = const <DirectoryProfile>[];
+  String _peopleSource267 = 'none';
+  bool _peopleLoading267 = false;
+  bool _peopleMore267 = false;
+  int _peopleNext267 = 0;
+  bool _peopleSynced267 = false;
+  bool? _serverUp267;
+  StreamSubscription<ConnectivityState>? _serverSub267;
+
   @override
   void initState() {
     super.initState();
     bloc = DirectoryBloc(widget.repository);
     query.addListener(_onQueryChanged);
     _loadContacts();
+    // Bundle 267: people to add, shown while the search box is empty.
+    if (widget.repository is PeopleSource267) {
+      _peopleLoading267 = true;
+      unawaited(_loadPeople267(force: true));
+    }
+    final c = widget.connectivity;
+    if (c != null) {
+      _serverUp267 = c.state.snapshot.serverConnected;
+      _serverSub267 = c.stream.listen((state) {
+        final up = state.snapshot.serverConnected;
+        if (up == _serverUp267) return;
+        _serverUp267 = up;
+        if (mounted && widget.repository is PeopleSource267) {
+          unawaited(_loadPeople267(force: true));
+        }
+      });
+    }
+    // Bundle 263 (F1): try the server / the phone-only upload on open.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _autoFind263();
+    });
   }
 
   Future<void> _loadContacts() async {
@@ -140,8 +171,36 @@ class _AddContactScreenState extends State<AddContactScreen> {
     }
   }
 
+  /// Bundle 267: first page ([force]) or the next server page. Server not
+  /// reached -> the people nearby phones shared; then one sync with nearby
+  /// phones and one reload.
+  Future<void> _loadPeople267({bool force = false}) async {
+    if (_peopleLoading267 && !force) return;
+    if (!force && !_peopleMore267) return;
+    final next = !force;
+    setState(() => _peopleLoading267 = true);
+    final page = await PeopleToAdd267.load(widget.repository,
+        offset: next ? _peopleNext267 : 0);
+    if (!mounted) return;
+    setState(() {
+      _peopleLoading267 = false;
+      _peopleSource267 = page.source;
+      _peopleMore267 = page.more;
+      _peopleNext267 = page.nextOffset;
+      _people267 = next ? [..._people267, ...page.people] : page.people;
+    });
+    if (!next && page.source == 'nearby' && !_peopleSynced267) {
+      _peopleSynced267 = true;
+      try {
+        await widget.repository.sync();
+      } catch (_) {}
+      if (mounted) await _loadPeople267(force: true);
+    }
+  }
+
   @override
   void dispose() {
+    unawaited(_serverSub267?.cancel());
     _debounce?.cancel();
     query.dispose();
     bloc.close();
@@ -277,7 +336,6 @@ class _AddContactScreenState extends State<AddContactScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (widget.connectivity != null) _status256(),
                 TextField(
                   controller: query,
                   textInputAction: TextInputAction.search,
@@ -333,9 +391,9 @@ class _AddContactScreenState extends State<AddContactScreen> {
         ),
       );
 
-  /// Bundle 170: search results first, then the Nearby people (always under
-  /// the search box, narrowed while typing). No match → "No one called …
-  /// found" and everyone nearby under "People nearby".
+  /// Bundle 170: search results first. Bundle 267: an empty box shows the
+  /// people to add (server, or what nearby phones shared); Nearby appears
+  /// only after a search found no one ("People nearby" + please wait).
   Widget _buildResults(BuildContext context) {
     final text = query.text.trim();
     final typing = text.length >= 2;
@@ -356,7 +414,8 @@ class _AddContactScreenState extends State<AddContactScreen> {
     final theme = Theme.of(context);
     // A Column (not a lazy list) so the Nearby part keeps its state while
     // results come and go above it.
-    return SingleChildScrollView(
+    final scroll = SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -408,7 +467,10 @@ class _AddContactScreenState extends State<AddContactScreen> {
               style: theme.textTheme.bodySmall,
             ),
           ),
-        if (_hasNearby)
+        if (!typing) ..._people267Section(theme),
+        // Bundle 267: Nearby only after a search found no one; it starts
+        // its search the moment it is shown.
+        if (_hasNearby && noMatch)
           NearbyPeopleSection(
             key: _nearbyKey,
             connectivity: widget.connectivity!,
@@ -417,17 +479,8 @@ class _AddContactScreenState extends State<AddContactScreen> {
             crypto: widget.crypto,
             pairing: widget.pairing!,
             selfUserId: widget.selfUserId,
-            title: noMatch ? 'People nearby' : 'Nearby',
-            filter: typing && !noMatch ? text : '',
-          )
-        else if (!typing)
-          Padding(
-            padding: const EdgeInsets.only(top: 24),
-            child: Text(
-              'Type at least 2 characters to search.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall,
-            ),
+            title: 'People nearby',
+            waitLine: PeopleToAdd267.waitLine,
           ),
         if (noMatch)
           Padding(
@@ -441,32 +494,93 @@ class _AddContactScreenState extends State<AddContactScreen> {
       ],
       ),
     );
+    if (typing) return scroll;
+    // Bundle 267: pull down = reload; near the end = next server page.
+    return RefreshIndicator(
+      onRefresh: () => _loadPeople267(force: true),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (n) {
+          if (n.metrics.extentAfter < 300 &&
+              _peopleMore267 &&
+              !_peopleLoading267) {
+            unawaited(_loadPeople267());
+          }
+          return false;
+        },
+        child: scroll,
+      ),
+    );
   }
 
-  // ------------------------------------------------------- Bundle 256 E3
-  bool _finding256 = false;
-
-  Widget _status256() => BlocBuilder<ConnectivityBloc, ConnectivityState>(
-        bloc: widget.connectivity,
-        buildWhen: (a, b) => a.snapshot.serverConnected != b.snapshot.serverConnected,
-        builder: (context, state) => AddStatusLine256(
-          status: addStatus256(
-              serverConnected: state.snapshot.serverConnected,
-              wifi: ServerReach.instance.wifi),
-          busy: _finding256,
-          onTap: _findServer256,
+  /// Bundle 267: the people-to-add list (same cards as the search results).
+  List<Widget> _people267Section(ThemeData theme) {
+    final shown = [
+      for (final p in _people267)
+        if (!_contactIds.contains(p.userId) &&
+            !BlockHub.instance.isBlockedUser(p.userId))
+          p,
+    ];
+    final server = _peopleSource267 == 'server';
+    return [
+      if (shown.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            server ? PeopleToAdd267.titleServer : PeopleToAdd267.titleNearby,
+            key: const ValueKey('people267_title'),
+            style:
+                theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          ),
         ),
-      );
+      for (final profile in shown)
+        SearchResultCard(
+          key: ValueKey('people267_${profile.userId}'),
+          profile: profile,
+          initial: _initial(profile),
+          isContact: false,
+          onOpen: () => _open(profile),
+          onAdd: () => _addFromResults(profile),
+        ),
+      if (_peopleLoading267)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        )
+      else if (shown.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 24),
+          child: Text(
+            server ? PeopleToAdd267.emptyServer : PeopleToAdd267.emptyNearby,
+            key: const ValueKey('people267_empty'),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+    ];
+  }
 
-  Future<void> _findServer256() async {
-    setState(() => _finding256 = true);
-    AppLogger.info('ADD_CONTACT_FIND_SERVER', detail: 'tap');
-    try {
-      // A phone-only account: the same try as Account > Find server now.
-      final ran = await OfflinePublishTicker256.instance.tryNow();
-      if (!ran) await widget.connectivity?.refresh();
-    } catch (_) {}
-    if (mounted) setState(() => _finding256 = false);
+  // ------------------------------------------------------- Bundle 263 B5
+  /// No "Server connected / No server - searching nearby phones" line any
+  /// more: opening Add friend does what "Find server now" did, by itself.
+  void _autoFind263() {
+    final ticker = OfflinePublishTicker256.instance;
+    if (ticker.active) {
+      UiHidden263.note('add_status', 'phone_only=y');
+      ticker.nudge('add_open');
+      return;
+    }
+    UiHidden263.note('add_status',
+        'server=${widget.connectivity?.state.snapshot.serverConnected == true ? 'y' : 'n'}');
+    final c = widget.connectivity;
+    if (c != null && !c.state.snapshot.serverConnected) {
+      unawaited(c.refresh().catchError((Object _) {}));
+    }
   }
 
   /// Keeps one Nearby section (one search) for the life of this screen.

@@ -55,6 +55,27 @@ class CallMediaPlatformService {
     await _channel.invokeMethod('stop', {'call_id': callId});
   }
 
+  /// Bundle 266 (B2): this call may talk through the server when there is
+  /// no nearby way (the native side still prefers any nearby way).
+  Future<void> setServerVoice({required String callId, required bool on}) async {
+    await _channel.invokeMethod('server_voice', {'call_id': callId, 'on': on});
+  }
+
+  /// Bundle 266 (B2): locked voice pieces that came through the server
+  /// (a small batch; the native side opens them with the call key).
+  Future<void> serverVoiceIn({required String callId, required String senderId, required List<String> voices}) async {
+    await _channel.invokeMethod('server_voice_in', {'call_id': callId, 'sender_id': senderId, 'voices': voices});
+  }
+
+  static const EventChannel _serverVoiceOut = EventChannel('locallink/call_voice_server');
+
+  /// Bundle 266 (B2): locked voice pieces to send through the server
+  /// ({call_id, voices}). Listened to only while a call talks that way.
+  Stream<Map<String, dynamic>> serverVoiceOut() => _serverVoiceOut
+      .receiveBroadcastStream()
+      .where((e) => e is Map)
+      .map((e) => Map<String, dynamic>.from(e as Map));
+
   Future<Map<String, dynamic>> stats({required String callId}) async {
     final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>('stats', {'call_id': callId}) ?? const {};
     return Map<String, dynamic>.from(raw);

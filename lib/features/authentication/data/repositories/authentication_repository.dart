@@ -110,8 +110,10 @@ class AuthenticationRepository
       candidates.add(savedServer);
     }
 
+    var foundCount = 0; // Bundle 265 (R1): for the first-trust log only
     try {
       final discovered = await discoverServers();
+      foundCount = discovered.length;
       candidates.addAll(discovered.map((server) => server.address));
     } catch (_) {}
     // Bundle 256 A3: the address a nearby LinkUp phone told (checked by
@@ -156,6 +158,7 @@ class AuthenticationRepository
         // exposes server identity/setup controls. Existing pinned trust is
         // still checked and a changed fingerprint is rejected above.
         if (!isServerTrusted(info)) {
+          AppLogger.info('SERVER_FIRST_TRUST', detail: 'found=$foundCount');
           await trustServer(info);
         }
         await ServerProof231.pin(info,

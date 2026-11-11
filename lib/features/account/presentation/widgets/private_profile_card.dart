@@ -156,11 +156,10 @@ class _PrivateProfileCardState extends State<PrivateProfileCard> {
           detail: 'on=${makePrivate ? 'y' : 'n'} saved=y synced=${synced ? 'y' : 'n'} '
               'phone=${ProfilePrivacyRule.phoneVisibilityFor(private: makePrivate)}');
       messenger.showSnackBar(SnackBar(
-        content: Text(!synced
-            ? 'Saved; will update when online'
-            : (makePrivate
-                ? 'Your profile is private'
-                : 'Your profile is public again')),
+        // Bundle 263 (B2): the same words online or not.
+        content: Text(makePrivate
+            ? 'Your profile is private'
+            : 'Your profile is public again'),
       ));
     } catch (e) {
       if (mounted) setState(() => _private = !makePrivate);

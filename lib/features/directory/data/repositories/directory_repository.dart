@@ -22,6 +22,7 @@ import 'package:locallink/features/directory/data/block_state.dart';
 import 'package:locallink/features/directory/data/contact_edge.dart';
 import 'package:locallink/features/directory/data/friend_requests.dart';
 import 'package:locallink/features/directory/data/directory_search_merge.dart';
+import 'package:locallink/features/directory/data/people_to_add_267.dart';
 import 'package:locallink/features/directory/data/friend_link_resend.dart';
 import 'package:locallink/features/directory/data/name_question_policy.dart';
 import 'package:locallink/features/directory/data/peer_photo_book.dart';
@@ -35,7 +36,7 @@ import 'package:locallink/features/directory/data/services/duplicate_guard_235.d
 import 'package:locallink/features/messaging/data/services/not_on_server_218.dart';
 import 'package:locallink/core/services/own_profile_261.dart';
 
-class DirectoryRepository implements DirectoryRepositoryContract {
+class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource267 {
   static const Duration _periodicSyncInterval = Duration(minutes: 2);
   static const Duration _syncCooldown = Duration(seconds: 20);
   static const Duration _gossipLifetime = Duration(minutes: 5);
@@ -1968,6 +1969,52 @@ class DirectoryRepository implements DirectoryRepositoryContract {
             nearby: nearby,
             asked: nearby < 0 ? null : _lastNameAsked));
     return results;
+  }
+
+  /// Bundle 267: the Add Contact list. Server reachable -> everyone on the
+  /// server who is not my contact (50 a page); otherwise the people my
+  /// nearby phones / friends shared with this phone.
+  @override
+  Future<PeoplePage267> peopleToAdd267({int offset = 0}) async {
+    var skipServer = false;
+    try {
+      skipServer = ServerReach.instance.shouldSkip('add_list');
+    } catch (_) {}
+    if (!skipServer) {
+      try {
+        final page = await api.directoryPeople(offset: offset);
+        if (page != null) {
+          final out = <DirectoryProfile>[];
+          for (final remote in page.people) {
+            if (remote.userId.isEmpty ||
+                remote.userId == store.accountId ||
+                await store.isBlocked(remote.userId) ||
+                await store.isContact(remote.userId)) {
+              continue;
+            }
+            final result = _fromServerProfile(remote);
+            if (await _isMe(result)) continue;
+            await _saveServerProfile(result);
+            out.add(result);
+          }
+          return PeoplePage267(
+              people: out,
+              more: page.more,
+              nextOffset: offset + page.people.length,
+              source: 'server');
+        }
+      } catch (_) {}
+    }
+    if (offset > 0) return const PeoplePage267(source: 'nearby');
+    final out = <DirectoryProfile>[];
+    for (final row in await store.peopleToAdd267()) {
+      final id = row['user_id']?.toString() ?? '';
+      if (id.isEmpty || id == store.accountId) continue;
+      final profile = DirectoryProfile.fromMap(row);
+      if (await _isMe(profile)) continue;
+      out.add(profile);
+    }
+    return PeoplePage267(people: out, source: 'nearby');
   }
 
   /// Saved profiles matching [q] (hidden / blocked / self removed).

@@ -139,7 +139,9 @@ void main() {
       ));
       expect(find.text('Add Contact'), findsOneWidget);
       expect(find.text('Scan QR code'), findsOneWidget);
-      expect(find.text('Type at least 2 characters to search.'),
+      // Bundle 267: the empty box shows the people-to-add list (none here).
+      expect(
+          find.text('No one to show yet. Search a name or scan a QR code.'),
           findsOneWidget);
     });
 

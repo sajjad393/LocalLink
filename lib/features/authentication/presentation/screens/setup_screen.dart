@@ -1,3 +1,5 @@
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/diagnostics/ui_hidden_263.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -80,7 +82,9 @@ class _SetupScreenState extends State<SetupScreen> {
         // Offline login keeps the drop-straight-in behavior.
         // Bundle 256 A4: a NEW phone-only account is told once (it was
         // silent on 10 Nov while the server was on the same Wi-Fi).
-        if (outcome.madeOffline && mounted) await _savedOnPhone256();
+        // Bundle 263 (B7): no "Saved on this phone" dialog any more - the
+        // account goes up to the server by itself (log line only).
+        if (outcome.madeOffline) UiHidden263.note('signup_saved');
         if (_controller.registerMode && mounted) {
           await Navigator.push(
             context,
@@ -105,56 +109,26 @@ class _SetupScreenState extends State<SetupScreen> {
     }
   }
 
-  /// Bundle 256 A4: "Saved on this phone" (no server answered).
-  Future<void> _savedOnPhone256() => showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          key: const ValueKey('signup_saved_on_phone_256'),
-          icon: const Icon(Icons.phone_android_rounded),
-          title: const Text('Saved on this phone'),
-          content: const Text(
-              'No LinkUp server answered on this Wi-Fi.\n\n'
-              'Your account is saved on this phone and goes up to the server '
-              'by itself when the server is found.'),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-
   /// Bundle 256 A4: what happens while the button spins.
   Widget _stage256(BuildContext context, String? stage) {
     if (stage == null) return const SizedBox.shrink();
     final tt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-    final found = stage == 'found';
     return Padding(
       key: ValueKey('signup_stage_$stage'),
       padding: const EdgeInsets.only(top: LocalLinkSpacing.md),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
           padding: const EdgeInsets.only(top: 2),
-          child: found
-              ? const Icon(Icons.check_circle_rounded, size: 18, color: Color(0xFF12B76A))
-              : const SizedBox(
-                  width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+          // Bundle 263 (B8): the spinner until it is done (no "Server found").
+          child: const SizedBox(
+              width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(found ? 'Server found' : 'Looking for the LinkUp server…',
+            // Bundle 263 (B8): plain words, no server words.
+            Text(_controller.registerMode ? 'Creating your account…' : 'Signing you in…',
                 style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 2),
-            Text(
-                found
-                    ? (_controller.registerMode
-                        ? 'Creating your account on the server…'
-                        : 'Signing you in on the server…')
-                    : 'Asking this Wi-Fi and nearby LinkUp phones (up to 5 s)',
-                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
           ]),
         ),
       ]),
@@ -204,11 +178,9 @@ class _SetupScreenState extends State<SetupScreen> {
     } catch (error) {
       // Restore must not block login silently; surface and let the user retry
       // from Account Center instead of masking the failure as "no history".
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                'Could not check your account history on the server (${cleanBlocError(error)}). You can restore it later from Account > Account data.')));
-      }
+      // Bundle 263 (B9): no snack - restore stays in Account > Account data
+      // and this check runs again on the next sign-in.
+      AppLogger.warning('RESTORE_MANIFEST', detail: 'fail ${cleanBlocError(error)}');
       return;
     }
     final total = (manifest.counts['messages'] ?? 0) +

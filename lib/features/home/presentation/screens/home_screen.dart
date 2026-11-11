@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
+import 'package:locallink/core/diagnostics/ui_hidden_263.dart';
 import 'package:locallink/core/widgets/session_dead_banner_262.dart';
 import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/groups/data/group_mention_book.dart';
@@ -17,7 +18,6 @@ import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:locallink/core/diagnostics/log_share_flow.dart';
 import 'package:locallink/core/diagnostics/tap_burst_counter.dart';
@@ -37,7 +37,7 @@ import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
 import 'package:locallink/features/account/presentation/screens/profile_screen.dart';
 import 'package:locallink/features/home/presentation/widgets/join_cards218.dart';
-import 'package:locallink/features/authentication/data/services/join_carrier_222.dart' show JoinCarrier222, JoinStatus222;
+import 'package:locallink/features/authentication/data/services/join_carrier_222.dart' show JoinCarrier222;
 import 'package:locallink/features/home/presentation/widgets/chats_search.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/domain/identity_repository_contract.dart';
@@ -213,7 +213,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Bundle 102: offline-pending account state (session-scoped UI).
   OfflineAccountSyncService? _offlineSync;
-  bool _offlineBannerDismissed = false;
 
   /// Bundle 132 (F): one-time note when the offline account auto-published
   /// under a renamed username (e.g. it already existed on the server).
@@ -223,64 +222,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _recovery218;
   String _block218 = '';
 
-  // Bundle 130: banner etiquette. Both offline/sync banners show for ~5
-  // seconds, hide themselves, then stay quiet for 24 hours. The snooze stamp
-  // is persisted (survives restarts); the hide timer + session flag are
-  // per-launch. The X button dismisses for the same 24h, not just this launch.
-  static const Duration _bannerVisibleFor = Duration(seconds: 5);
-  static const Duration _bannerCooldown = Duration(hours: 24);
-  static const String _kOfflineBannerSnoozeKey =
-      'ui_banner_offline_account_snoozed_until_ms';
-  static const String _kSyncNoticeSnoozeKey =
-      'ui_banner_sync_notice_snoozed_until_ms';
-  final Set<String> _bannerArmed = {};
-  final Set<String> _bannerHiddenThisSession = {};
-  final List<Timer> _bannerTimers = [];
-  int _offlineBannerSnoozedUntilMs = 0;
-  int _syncNoticeSnoozedUntilMs = 0;
-
-  Future<void> _loadBannerSnoozes() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      _offlineBannerSnoozedUntilMs =
-          prefs.getInt(_kOfflineBannerSnoozeKey) ?? 0;
-      _syncNoticeSnoozedUntilMs = prefs.getInt(_kSyncNoticeSnoozeKey) ?? 0;
-      if (mounted) setState(() {});
-    } catch (_) {}
-  }
-
-  Future<void> _persistBannerSnooze(String prefsKey) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(prefsKey,
-          DateTime.now().add(_bannerCooldown).millisecondsSinceEpoch);
-    } catch (_) {}
-  }
-
-  /// Scheduled exactly once per banner per show-episode. Runs inside build
-  /// (armed-set guarded): records the 24h snooze immediately and starts the
-  /// 5s self-hide timer.
-  void _armBannerAutoHide({
-    required String id,
-    required String prefsKey,
-    required void Function() hide,
-  }) {
-    if (_bannerArmed.contains(id)) return;
-    _bannerArmed.add(id);
-    unawaited(_persistBannerSnooze(prefsKey));
-    _bannerTimers.add(Timer(_bannerVisibleFor, () {
-      if (!mounted) return;
-      hide();
-    }));
-  }
-
-  bool get _syncNoticeVisible =>
-      !_bannerHiddenThisSession.contains('sync_notice') &&
-      DateTime.now().millisecondsSinceEpoch >= _syncNoticeSnoozedUntilMs;
-
-  bool get _offlineBannerVisible =>
-      !_offlineBannerDismissed &&
-      DateTime.now().millisecondsSinceEpoch >= _offlineBannerSnoozedUntilMs;
   bool _publishPromptShown = false;
   bool _publishBusy = false;
 
@@ -378,7 +319,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _controller.start();
     _loadChatPeerIds();
-    unawaited(_loadBannerSnoozes());
     // Bundle 132 (F): one-time "joined as …" note after an automatic publish
     // with a rename. Read it, clear it in storage, keep it in memory so it
     // shows this session and never again.
@@ -445,6 +385,23 @@ class _HomeScreenState extends State<HomeScreen> {
     if (join == null && renamed != null && renamed.isNotEmpty) {
       join = {'kind': 'renamed', 'name': renamed, 'was': ''};
     }
+    // Bundle 263 (A4): only the name note stays; any other "You're on the
+    // server now" note is closed without a card (log only).
+    if (join != null && join['kind']?.toString() != 'renamed') {
+      UiHidden263.note('done', 'kind=${join['kind'] ?? ''}');
+      join = null;
+      try {
+        await widget.store.writeSetting(OfflineAccountSyncService.joinNoticeKey, '');
+      } catch (_) {}
+    }
+    // Bundle 263 (F7): the hidden cards still leave one log line.
+    if (widget.store.isOfflinePending) {
+      if (block == OfflineAccountSyncService.waitServerBlock236) {
+        UiHidden263.note('wait_server');
+      } else if (block.isEmpty) {
+        UiHidden263.note('publish');
+      }
+    }
     if (!mounted) return;
     setState(() {
       _join218 = join;
@@ -506,8 +463,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _pwdOnlyHere222 = false;
 
   /// Bundle 222 (U-3): her account is being carried by nearby phones.
-  JoinStatus222 _carry222 = const JoinStatus222();
-
+  /// Bundle 263 (A1): no card any more - read for the log line only.
   void _onCarry222() => unawaited(_readCarry222());
 
   Future<void> _readCarry222() async {
@@ -515,18 +471,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (c == null) return;
     try {
       final st = await c.status();
-      if (mounted) setState(() => _carry222 = st);
+      // Bundle 263 (A1): no card any more, one log line instead.
+      if (st.waiting && st.carriers > 0) {
+        UiHidden263.note('carried', 'n=${st.carriers}');
+      }
     } catch (_) {}
-  }
-
-  static String _ago222(String at) {
-    final t = DateTime.tryParse(at);
-    if (t == null) return '';
-    final d = DateTime.now().toUtc().difference(t.toUtc());
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inMinutes < 60) return '${d.inMinutes} min ago';
-    if (d.inHours < 24) return '${d.inHours} h ago';
-    return d.inDays == 1 ? '1 day ago' : '${d.inDays} days ago';
   }
 
   List<Widget> _joinCards218() => [
@@ -545,13 +494,9 @@ class _HomeScreenState extends State<HomeScreen> {
               }),
             ],
           ),
-        if (_join218 == null && _carry222.waiting && _carry222.carriers > 0)
-          JoinCard218.carried222(
-            firstCarrier: _carry222.firstCarrier,
-            carriers: _carry222.carriers,
-            sentAgo: _ago222(_carry222.sentAt),
-          ),
-        if (_join218 != null)
+        // Bundle 263 (A4): only the name note ("@old was taken, so you are
+        // @new") is shown; the other done notes are closed in _readJoin218.
+        if (_join218 != null && _join218!['kind']?.toString() == 'renamed')
           JoinCard218.done(
             kind: _join218!['kind']?.toString() ?? 'plain',
             name: _join218!['name']?.toString() ?? '',
@@ -575,75 +520,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ];
 
   // ---------------- Bundle 102: offline-account publish flow ---------------
-
-  Widget _gatedSyncNotice(String message) {
-    _armBannerAutoHide(
-      id: 'sync_notice',
-      prefsKey: _kSyncNoticeSnoozeKey,
-      hide: () => setState(() => _bannerHiddenThisSession.add('sync_notice')),
-    );
-    return _SyncNotice(message: message);
-  }
-
-  Widget _offlineAccountBanner() {
-    _armBannerAutoHide(
-      id: 'offline_account',
-      prefsKey: _kOfflineBannerSnoozeKey,
-      hide: () => setState(() => _offlineBannerDismissed = true),
-    );
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Material(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: _publishBusy ? null : () => _maybeOfferPublish(force: true),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-            child: Row(
-              children: [
-                Icon(Icons.cloud_upload_outlined,
-                    size: 18, color: theme.colorScheme.onSurfaceVariant),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Account saved — it will publish itself automatically the moment the server answers.',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-                TextButton(
-                  key: const ValueKey('offline_publish_button'),
-                  onPressed: _publishBusy
-                      ? null
-                      : () => _maybeOfferPublish(force: true),
-                  // Bundle 236 (B1): small spinner while it runs.
-                  child: _publishBusy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Publish'),
-                ),
-                IconButton(
-                  tooltip: 'Dismiss for 24 hours',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () {
-                    // Bundle 130: manual dismiss now also snoozes 24h.
-                    unawaited(_persistBannerSnooze(_kOfflineBannerSnoozeKey));
-                    setState(() => _offlineBannerDismissed = true);
-                  },
-                  icon: Icon(Icons.close,
-                      size: 16, color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   /// Bundle 236 (B1): no password sheet any more ("don't ask for a password
   /// or a code"). Home start (once) and the banner run the same silent
@@ -708,13 +584,13 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       // Next launch boots into the fully-configured path regardless.
     }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account published to the server.')));
-    }
+    // Bundle 263 (A6): no snack after the upload (the cards say what matters).
   }
 
   Future<void> _refresh() async {
+    // Bundle 263 (F1): pull-to-refresh also tries the phone-only account
+    // upload now (it was the Publish button).
+    OfflinePublishTicker256.instance.nudge('refresh');
     await Future.wait([
       _controller.load(userInitiated: true),
       _loadChatPeerIds(),
@@ -726,9 +602,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (identical(ForwardHub.instance, _forwardHub)) ForwardHub.instance = null;
     OfflinePublishTicker256.instance.stop(); // Bundle 256 B1
     _mediaLifecycle?.dispose();
-    for (final timer in _bannerTimers) {
-      timer.cancel();
-    }
     _unreadTimer?.cancel();
     _incomingSub?.cancel();
     _groupChangeSub?.cancel();
@@ -1381,6 +1254,7 @@ class _HomeScreenState extends State<HomeScreen> {
         bloc: _controller,
         builder: (context, state) {
           if (_chatsSearching) return _chatsSearchBody(state);
+          if (state.syncNotice != null) UiHidden263.note('sync_notice'); // Bundle 263 (A5)
           if (state.loading && state.devices.isEmpty && state.groups.isEmpty) {
             return const LocalLinkLoadingView(
                 message: 'Loading your conversations…');
@@ -1391,17 +1265,18 @@ class _HomeScreenState extends State<HomeScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(bottom: 96),
               children: [
-                // Red exception banners are banned from the chats tab: quiet
-                // chip for explicit-retry feedback, silence otherwise.
-                if (state.syncNotice != null && _syncNoticeVisible)
-                  _gatedSyncNotice(state.syncNotice!),
+                // Bundle 263 (A5): no sync chip on the Chats tab (the bloc
+                // retries by itself; saved chats stay on screen).
                 // Bundle 218e: the join cards (the renamed note of bundle 132
                 // [_renamedAccountNotice] is now the "renamed" text).
                 ..._joinCards218(),
-                if (widget.store.isOfflinePending && _block218.isNotEmpty)
-                  JoinCard218.stuck(block: _block218, onTry: _tryAgain218)
-                else if (widget.store.isOfflinePending && _offlineBannerVisible)
-                  _offlineAccountBanner(),
+                // Bundle 263 (A2/A3): no "Account saved - Publish" banner and
+                // no "Waiting for the server to be updated" card; the upload
+                // runs by itself. The admin / pairing code cards stay.
+                if (widget.store.isOfflinePending &&
+                    _block218.isNotEmpty &&
+                    _block218 != OfflineAccountSyncService.waitServerBlock236)
+                  JoinCard218.stuck(block: _block218, onTry: _tryAgain218),
                 // Bundle 212 (F2): my account blocked by admin (red, no close).
                 const AdminBlockedBanner(),
                 // Bundle 262 (D): the server signed this phone out.
@@ -1699,40 +1574,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-
-/// Quiet, neutral offline line for automatic (background) sync failures.
-/// Deliberately not red and without a Retry button: the app retries itself.
-class _SyncNotice extends StatelessWidget {
-  final String message;
-  const _SyncNotice({required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.cloud_off_outlined,
-              size: 18, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style:
-                  TextStyle(color: scheme.onSurfaceVariant, fontSize: 13.5),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 /// Bundle 136: green "Call in progress — tap to return" bar pinned under the
 /// Chats list (Scaffold bottomNavigationBar slot so adding it is zero-risk).

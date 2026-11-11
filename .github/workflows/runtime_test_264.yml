@@ -1,0 +1,172 @@
+# Bundle 264: run-time test on an Android emulator + the real Go server.
+# Runs only when you press Actions -> "Runtime test 264" -> Run workflow.
+# Download ONE file at the end: the artifact rt264_all_<run>.
+name: Runtime test 264
+
+on:
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: "all, or a list like signup_offline,signed_out"
+        required: false
+        default: all
+      backend_ref:
+        description: "localLinkBackend commit or branch"
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  server-flows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - signup_offline
+          - upload_timer
+          - upload_add_open
+          - upload_account_open
+          - upload_refresh
+          - profile_offline
+          - signed_out
+          - blocked_and_update
+          - pairing_needed
+    steps:
+      - name: Pick
+        id: pick
+        run: |
+          if [ "${{ inputs.cases }}" = "all" ] || echo ",${{ inputs.cases }}," | grep -q ",${{ matrix.case }},"; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.pick.outputs.run == 'yes'
+      - uses: actions/checkout@v4
+        if: steps.pick.outputs.run == 'yes'
+        with:
+          repository: sajjad393/localLinkBackend
+          ref: ${{ inputs.backend_ref }}
+          path: backend
+      - uses: actions/setup-go@v5
+        if: steps.pick.outputs.run == 'yes'
+        with:
+          go-version-file: backend/go.mod
+      - name: Build server
+        if: steps.pick.outputs.run == 'yes'
+        run: |
+          mkdir -p out/server
+          cd backend && go build -o ../out/server/locallink ./cmd/server
+      - uses: actions/setup-java@v4
+        if: steps.pick.outputs.run == 'yes'
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        if: steps.pick.outputs.run == 'yes'
+        with:
+          flutter-version: 3.47.7
+          channel: stable
+      - name: Flutter packages
+        if: steps.pick.outputs.run == 'yes'
+        run: flutter pub get
+      - name: Enable KVM
+        if: steps.pick.outputs.run == 'yes'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run on emulator
+        if: steps.pick.outputs.run == 'yes'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash tool/rt264/ci_job.sh ${{ matrix.case }}
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.pick.outputs.run == 'yes'
+        with:
+          name: rt264-${{ matrix.case }}
+          path: out/
+          retention-days: 14
+
+  key-note:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    if: inputs.cases == 'all' || contains(inputs.cases, 'key_note')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: sajjad393/localLinkBackend
+          ref: ${{ inputs.backend_ref }}
+          path: backend
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+      - name: Build server
+        run: |
+          mkdir -p out/server
+          cd backend && go build -o ../out/server/locallink ./cmd/server
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.7
+          channel: stable
+      - run: flutter pub get
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run on 2 emulators
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash tool/rt264/ci_job.sh key_note
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rt264-key_note
+          path: out/
+          retention-days: 14
+
+  pack:
+    runs-on: ubuntu-latest
+    needs: [server-flows, key-note]
+    if: always()
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: all
+          pattern: rt264-*
+      - name: One zip with a summary on top
+        run: |
+          cd all
+          {
+            echo "Runtime test 264 - run ${{ github.run_id }} - commit ${{ github.sha }}"
+            echo "backend_ref=${{ inputs.backend_ref }}"
+            echo
+            for f in */summary_*.txt; do [ -f "$f" ] && { echo "== $f"; cat "$f"; echo; }; done
+          } > SUMMARY.txt
+          cat SUMMARY.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rt264_all_${{ github.run_id }}
+          path: all/
+          retention-days: 14

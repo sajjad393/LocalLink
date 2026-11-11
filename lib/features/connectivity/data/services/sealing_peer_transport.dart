@@ -8,6 +8,7 @@ import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/link_key_refresh_257.dart';
 import 'package:locallink/core/services/link_key_service.dart';
+import 'package:locallink/features/calls/data/services/call_voice_key_266.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/message_seal_service.dart';
 import 'package:locallink/core/services/session_key_service.dart';
@@ -208,6 +209,10 @@ class SealingPeerTransport implements PeerTransportContract {
   static const String voiceKeyField = 'voice_key';
   static const String _capsSetting = 'seal_capable_peers_v1';
 
+  /// Bundle 269 (S-1): friends whose sealed message this phone opened with
+  /// the friend's own saved key - proof their app seals.
+  static const String _provenSetting = 'seal_proven_peers_v1';
+
   /// Bundle 166 (5.2): fresh keys.
   static const String _freshSetting = 'fresh_seal_peers_v1';
   static const String _peerSessionSetting = 'peer_session_keys_v1';
@@ -261,6 +266,9 @@ class SealingPeerTransport implements PeerTransportContract {
   Map<String, List<String>> get friendLinkKeys => _friendLinkKeys;
 
   final Set<String> _capable = <String>{};
+
+  /// Bundle 269 (S-1): see [_provenSetting].
+  final Set<String> _proven = <String>{};
 
   // Bundle 166 (5.2): fresh keys.
   SessionKeyService? _sessions;
@@ -339,7 +347,16 @@ class SealingPeerTransport implements PeerTransportContract {
         case 'peer_connected':
           final peer = event['peer_id']?.toString() ?? '';
           if (event.containsKey('seal')) {
-            _setCapable(peer, event['seal'] == true);
+            final seal = event['seal'] == true;
+            // Bundle 269 (S-1): "seal" is the other phone's own word in its
+            // hello (not covered by the link check), so it can't switch a
+            // friend whose sealed message already opened back to plain.
+            if (!seal && _proven.contains(peer)) {
+              AppLogger.warning('SEAL_DOWNGRADE_IGNORED',
+                  detail: 'peer=${_id6(peer)}');
+            } else {
+              _setCapable(peer, seal);
+            }
           }
           return event;
         case 'route_recovered':
@@ -530,6 +547,8 @@ class SealingPeerTransport implements PeerTransportContract {
           detail: 'type=${inner['type']} from=${_id6(sender)}');
     }
     _setCapable(sender, true);
+    // Bundle 269 (S-1): opened with this friend's own saved key.
+    if (!stranger) _setProven(sender);
     // Bundle 166: the sender's current session key rides inside.
     final sp = stranger
         ? null
@@ -715,6 +734,13 @@ class SealingPeerTransport implements PeerTransportContract {
       final list = jsonDecode(raw);
       if (list is List) _capable.addAll(list.map((e) => e.toString()));
     } catch (_) {}
+    try {
+      final raw = await _keys?.readSetting(_provenSetting);
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw);
+        if (list is List) _proven.addAll(list.map((e) => e.toString()));
+      }
+    } catch (_) {}
     await _loadFresh();
   }
 
@@ -816,6 +842,15 @@ class SealingPeerTransport implements PeerTransportContract {
     while (list.length > 30) {
       list.removeAt(0);
     }
+  }
+
+  void _setProven(String peerId) {
+    if (peerId.isEmpty || !_proven.add(peerId)) return;
+    unawaited(() async {
+      try {
+        await _keys?.writeSetting(_provenSetting, jsonEncode(_proven.toList()));
+      } catch (_) {}
+    }());
   }
 
   Future<void> _saveCapabilities() async {
@@ -1059,6 +1094,31 @@ class SealingPeerTransport implements PeerTransportContract {
       _missLogged257[mark] = now;
       final tail = id.length <= 6 ? id : id.substring(id.length - 6);
       AppLogger.info('LINK_KEY_MISSING', detail: 'peer=$tail why=$why');
+    }
+  }
+
+  /// Bundle 266 (B1): the call voice key both phones work out from the pair
+  /// link key (newest own key + the friend's key). Null = no link key with
+  /// this friend (calls stay nearby-only, as before). Never logged.
+  Future<String?> callVoiceKey266(String peerId, String callId) async {
+    final keys = _keys;
+    final peer = peerId.trim();
+    if (keys == null || peer.isEmpty) return null;
+    try {
+      final self = keys.selfId;
+      if (self == null || self.isEmpty) return null;
+      final theirs = await keys.contactPublicKey(peer);
+      if (theirs == null) return null;
+      final links = await _linkKeys.keysFor(
+        selfId: self,
+        peerId: peer,
+        mine: await keys.ownKeys(),
+        theirPublic: theirs,
+      );
+      if (links.isEmpty) return null;
+      return await CallVoiceKey266.derive(links.first.keyHex, callId);
+    } catch (_) {
+      return null;
     }
   }
 
