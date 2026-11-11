@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:locallink/core/network/session_dead_262.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/server_clock_255.dart';
 import 'package:web_socket_channel/io.dart';
@@ -362,6 +363,7 @@ class WebSocketService {
     final wasReady = _ready;
 
     _ready = true;
+    SessionDead262.instance.ok(); // Bundle 262 (D): the server took my sign-in
     _retryTimer?.cancel(); // Bundle 223 (H)
     _retryTimer = null;
 
@@ -628,6 +630,10 @@ class WebSocketService {
       'generation=$generation '
           'error=${error == null ? 'none' : error.runtimeType}',
     );
+    // Bundle 262 (D): the upgrade was refused with 401 = my sign-in ended.
+    if (error != null && wsUnauthorized262('$error')) {
+      SessionDead262.instance.fail('ws');
+    }
 
     final wasActive = _channel != null || _ready;
 
@@ -700,10 +706,13 @@ class WebSocketService {
 
     final jitterMillis = _random.nextInt(2001);
 
-    final delay = Duration(
-      seconds: baseSeconds,
-      milliseconds: jitterMillis,
-    );
+    // Bundle 262 (D): signed out by the server -> one try per 10 min.
+    final delay = SessionDead262.instance.dead
+        ? SessionDead262.backoff
+        : Duration(
+            seconds: baseSeconds,
+            milliseconds: jitterMillis,
+          );
 
     AppLogger.info(
       'WS_RECONNECT_SCHEDULED',
@@ -860,3 +869,8 @@ class WebSocketService {
     }
   }
 }
+
+/// Bundle 262 (D): `WebSocketException: Connection to '...' was not
+/// upgraded to websocket, HTTP status code: 401`.
+bool wsUnauthorized262(String error) =>
+    error.contains('status code: 401') || error.contains('HTTP status code 401');

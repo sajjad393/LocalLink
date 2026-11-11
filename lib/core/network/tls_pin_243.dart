@@ -32,7 +32,15 @@ abstract final class TlsPin243 {
   static bool _active = false;
   static int _httpPort = 0;
 
-  static bool get active => _active && _host.isNotEmpty && _port > 0 && _sha.length == 64;
+  /// Bundle 262 (C, 11 Nov: "Keep http not https"): the app talks to the
+  /// server over plain HTTP / ws:// only. The saved pin is kept (nothing is
+  /// deleted) but never used, so no certificate check can cut a phone off
+  /// (Note: 9 min of `cert_refused` after a fallback on 11 Nov). Set by the
+  /// app at start (both engines); tests of bundle 243 leave it off.
+  static bool httpOnly262 = false;
+
+  static bool get active =>
+      !httpOnly262 && _active && _host.isNotEmpty && _port > 0 && _sha.length == 64;
   static String get host => _host;
   static int get port => _port;
   static String get sha => _sha;
@@ -82,7 +90,8 @@ abstract final class TlsPin243 {
       _sha = sha;
       _active = m['active'] != false;
       AppLogger.info('TLS_243',
-          detail: 'result=loaded active=$_active port=$_port sha=${_tail(_sha)}');
+          detail: 'result=loaded active=$_active port=$_port sha=${_tail(_sha)}'
+              '${httpOnly262 ? ' http_only=1' : ''}');
     } catch (_) {}
   }
 

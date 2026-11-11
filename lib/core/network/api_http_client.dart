@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:locallink/core/config/app_build.dart';
+import 'package:locallink/core/network/session_dead_262.dart';
 import 'package:locallink/core/services/app_logger.dart';
 
 /// Single entry point for regular HTTP requests made by LocalLink.
@@ -40,6 +41,7 @@ class ApiHttpClient {
     return _send(
       method: 'GET',
       uri: uri,
+      headers: headers,
       operation: () => _client.get(uri, headers: AppBuild.withHeader(headers)),
     );
   }
@@ -53,6 +55,7 @@ class ApiHttpClient {
     return _send(
       method: 'POST',
       uri: uri,
+      headers: headers,
       operation: () => _client.post(
         uri,
         headers: AppBuild.withHeader(headers),
@@ -71,6 +74,7 @@ class ApiHttpClient {
     return _send(
       method: 'PUT',
       uri: uri,
+      headers: headers,
       operation: () => _client.put(
         uri,
         headers: AppBuild.withHeader(headers),
@@ -89,6 +93,7 @@ class ApiHttpClient {
     return _send(
       method: 'DELETE',
       uri: uri,
+      headers: headers,
       operation: () => _client.delete(
         uri,
         headers: AppBuild.withHeader(headers),
@@ -102,7 +107,10 @@ class ApiHttpClient {
     required String method,
     required Uri uri,
     required Future<http.Response> Function() operation,
+    Map<String, String>? headers,
   }) async {
+    // Bundle 262 (D): own sign-in ended -> one try per 10 min.
+    SessionDead262.instance.check(headers);
     final stopwatch = Stopwatch()..start();
 
     AppLogger.info(
@@ -123,6 +131,10 @@ class ApiHttpClient {
             '${response.bodyBytes.length} bytes)',
       );
 
+      try {
+        SessionDead262.instance.onHttp(uri.path, response.statusCode, headers, // Bundle 262 (D)
+            body: response.statusCode == 401 ? response.body : '');
+      } catch (_) {}
       // Bundle 213: this app version is stopped by admin (server gate).
       if (response.statusCode == 426) {
         try {

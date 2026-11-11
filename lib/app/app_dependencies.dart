@@ -1,6 +1,7 @@
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/security/security_code_245.dart';
 import 'package:locallink/core/security/identity_trust_service.dart';
+import 'package:locallink/core/network/session_dead_262.dart';
 import 'package:locallink/core/network/tls_pin_243.dart';
 import 'package:locallink/core/network/tls_upgrade_243.dart';
 import 'package:locallink/core/services/server_reach.dart';
@@ -1360,7 +1361,48 @@ class AppDependencies {
     ServerReach.instance.bind(
         address: () => store.serverAddress, socketUp: () => socket.isConnected);
     // Bundle 243: the pinned HTTPS certificate (both engines).
+    // Bundle 262 (C): HTTP only - the pin is loaded but never used.
+    TlsPin243.httpOnly262 = true;
     unawaited(TlsPin243.load(store.readSetting));
+    _bindSessionDead262();
+  }
+
+  /// Bundle 262 (D): 3x 401 for my own token -> "Sign in again" card; the
+  /// card signs this account in again on this phone (normal login).
+  bool _sessionDeadBound262 = false;
+  void _bindSessionDead262() {
+    final s = SessionDead262.instance
+      ..ownToken = (() => store.deviceToken)
+      ..signIn = _signInAgain262;
+    if (_sessionDeadBound262) return;
+    _sessionDeadBound262 = true;
+    var wasDead = false;
+    s.addListener(() {
+      final dead = s.dead;
+      if (wasDead && !dead) {
+        // The server takes my sign-in again: the socket comes back now
+        // instead of after the 10 min wait.
+        unawaited(api.connectRealtime().catchError((Object _) {}));
+      }
+      wasDead = dead;
+    });
+  }
+
+  Future<void> _signInAgain262(String password) async {
+    final user = (store.username ?? '').trim();
+    if (user.isEmpty || password.isEmpty) {
+      throw StateError('Type your password.');
+    }
+    AppLogger.info('SESSION_DEAD_262', detail: 'sign_in try');
+    await api.loginAccount(
+      username: user,
+      password: password,
+      deviceName: (store.deviceName ?? '').trim().isEmpty ? 'LinkUp phone' : store.deviceName!,
+      deviceId: store.deviceId,
+    );
+    SessionDead262.instance.reset();
+    AppLogger.info('SESSION_DEAD_262', detail: 'sign_in ok');
+    unawaited(api.connectRealtime().catchError((Object _) {}));
   }
 
   /// Bundle 245 (audit S7): Security code + key-change warning.
@@ -1387,6 +1429,14 @@ class AppDependencies {
   TlsUpgrade243? _tls243;
   void _startTls243() {
     _tls243?.stop();
+    if (TlsPin243.httpOnly262) {
+      // Bundle 262 (C): "Keep http not https" - no HTTPS checks, no move to
+      // wss://; a socket still on wss:// goes back to ws://.
+      _tls243 = null;
+      AppLogger.info('TLS_262', detail: 'mode=http_only');
+      _wsPlainSwitch262();
+      return;
+    }
     _tls243 = TlsUpgrade243(
       serverAddress: () => store.serverAddress,
       pairingInfo: api.pairingInfo,
@@ -1404,6 +1454,35 @@ class AppDependencies {
   static void bindServerSaved256() {
     LocalStore.onServerSaved256 =
         () => OfflinePublishTicker256.instance.nudge('server_saved');
+  }
+
+  /// Bundle 262 (C): the live socket is on wss:// while the app is HTTP
+  /// only -> reconnect on ws:// at once (also when it is down: it would
+  /// retry wss:// for ever). After a call when one is going on.
+  void _wsPlainSwitch262() {
+    final now = socket.currentUrl ?? '';
+    if (!now.startsWith('wss://')) return;
+    final String next;
+    try {
+      next = api.wsUrl;
+    } catch (_) {
+      return;
+    }
+    if (!next.startsWith('ws://')) return;
+    var inCall = false;
+    try {
+      inCall = callService.session != null;
+    } catch (_) {
+      inCall = false;
+    }
+    if (inCall) {
+      AppLogger.info('WS_TLS_SWITCH', detail: 'from=wss to=ws wait=call');
+      return;
+    }
+    AppLogger.info('WS_TLS_SWITCH', detail: 'from=wss to=ws');
+    unawaited(api.connectRealtime().catchError((Object e) {
+      AppLogger.warning('WS_TLS_SWITCH', detail: 'to=ws result=failed');
+    }));
   }
 
   void _wssSwitch255() {

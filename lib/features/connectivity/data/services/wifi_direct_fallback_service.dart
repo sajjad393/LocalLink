@@ -12,6 +12,7 @@ import 'package:locallink/features/connectivity/data/services/nearby_friend_link
 import 'package:locallink/features/connectivity/data/services/nearby_ble.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_group_planner.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_local_net_planner.dart';
+import 'package:locallink/features/connectivity/data/services/p2p_pause_262.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 import 'package:locallink/features/connectivity/domain/nearby_group_control.dart';
 
@@ -270,6 +271,11 @@ final class WifiDirectFallbackService {
 
   @visibleForTesting
   Set<String> get joinCooling261 => _coolingUntil.keys.toSet();
+
+  /// Bundle 262 (B2): Wi-Fi Direct switched off by the phone.
+  final P2pPause262 _p2p262 = P2pPause262();
+  @visibleForTesting
+  bool get p2pOff262 => _p2p262.isOff(_clock());
 
   List<String> _lastWanted = const <String>[];
   String _lastPlanReason = '';
@@ -723,6 +729,10 @@ final class WifiDirectFallbackService {
     }
     if (type == 'my_group') {
       _applyMyGroup(event);
+      return;
+    }
+    if (type == 'state') {
+      _onP2pState262(event['enabled'] == true); // Bundle 262 (B2)
       return;
     }
     if (type == 'tag_window') {
@@ -1246,6 +1256,31 @@ final class WifiDirectFallbackService {
     AppLogger.info('NEARBY', detail: 'wifi_gone cool_cleared n=$n');
   }
 
+  /// Bundle 262 (B2): off -> no join / create / search until it is back
+  /// (no busy loop); on -> the old "failed / full" marks are cleared (all
+  /// groups changed while it was off), a search starts and the group is
+  /// decided again at once instead of on the next 20 s tick.
+  void _onP2pState262(bool enabled) {
+    final now = _clock();
+    final change = _p2p262.apply(enabled, now);
+    if (change == 'off') {
+      if (_p2p262.waitLogOnce()) {
+        AppLogger.info('NEARBY', detail: 'group wait why=p2p_off role=${_role.name}');
+      }
+      return;
+    }
+    if (change != 'on') return;
+    final n = _coolingUntil.length;
+    _coolingUntil.clear();
+    _joinFailures.clear();
+    _failedGroup261.clear();
+    AppLogger.info('NEARBY',
+        detail: 'group resume why=p2p_on off_s=${_p2p262.offSeconds(now)} cool_cleared n=$n');
+    if (!groupMode || _disposed) return;
+    unawaited(_groupDiscovery());
+    unawaited(_evaluateGroup());
+  }
+
   Future<void> _groupTick() async {
     if (!groupMode || _disposed) return;
     final now = _clock();
@@ -1331,6 +1366,7 @@ final class WifiDirectFallbackService {
 
   Future<void> _groupDiscovery() async {
     if (_discoveryInFlight || _off()) return;
+    if (_p2p262.isOff(_clock())) return; // Bundle 262 (B2): Wi-Fi Direct is off
     _discoveryInFlight = true;
     try {
       if (!await connectivity.isWifiDirectSupported()) return;
@@ -1371,6 +1407,13 @@ final class WifiDirectFallbackService {
     final self = _selfHash;
     if (group == null || self == null || _disposed) return;
     if (_off()) return;
+    if (_p2p262.isOff(_clock())) {
+      // Bundle 262 (B2): Wi-Fi Direct is off - every try would fail busy.
+      if (_p2p262.waitLogOnce()) {
+        AppLogger.info('NEARBY', detail: 'group wait why=p2p_off role=${_role.name}');
+      }
+      return;
+    }
     if (_groupBusy) {
       // Never drop a user's tap: run again right after this round.
       if (userTap) _pendingUserTap = true;

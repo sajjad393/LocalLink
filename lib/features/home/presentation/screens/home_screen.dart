@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
+import 'package:locallink/core/widgets/session_dead_banner_262.dart';
 import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/groups/data/group_mention_book.dart';
 import 'package:locallink/features/groups/data/group_receipts.dart';
@@ -1403,6 +1404,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   _offlineAccountBanner(),
                 // Bundle 212 (F2): my account blocked by admin (red, no close).
                 const AdminBlockedBanner(),
+                // Bundle 262 (D): the server signed this phone out.
+                const SessionDeadBanner262(),
                 // Bundle 213: old app version (yellow / red) + nearby update.
                 const VersionBanner(),
                 // Bundle 159.1: "Allow nearby devices" / "Turn on Wi-Fi",

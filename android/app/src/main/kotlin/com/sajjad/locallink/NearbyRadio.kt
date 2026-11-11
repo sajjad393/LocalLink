@@ -70,12 +70,23 @@ object NearbyRadio {
     @Volatile private var lastConnDetail = WdGroupLost.detail(null, null, null)
     // Bundle 205 (P6): when the app screen last closed (for WD_GROUP_LOST why=).
     @Volatile private var lastAppCloseAt = 0L
+    // Bundle 262 (B1): last Wi-Fi Direct on/off seen (null = not yet) and when it went off.
+    @Volatile private var lastP2p262: Boolean? = null
+    @Volatile private var p2pOffAt262 = 0L
+    // Bundle 262 (B3): recent "busy" answers to a join / create (main thread only).
+    private val busyAt262 = ArrayList<Long>()
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {
                     p2pEnabled = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1) == WifiP2pManager.WIFI_P2P_STATE_ENABLED
+                    // Bundle 262 (B1): one line when the phone turns Wi-Fi Direct off / on.
+                    val nowMs = SystemClock.elapsedRealtime()
+                    P2pState262.line(lastP2p262, p2pEnabled, p2pOffAt262, nowMs)?.let { Log.i(TAG, it) }
+                    if (lastP2p262 != false && !p2pEnabled) p2pOffAt262 = nowMs
+                    if (p2pEnabled) busyAt262.clear()
+                    lastP2p262 = p2pEnabled
                     emit(mapOf("type" to "state", "enabled" to p2pEnabled))
                     if (!p2pEnabled) {
                         // Wi-Fi Direct is an optional transport. Disabling it must not
@@ -203,6 +214,8 @@ object NearbyRadio {
     /** The engine that is alive gets the events (the last one attached). */
     fun attach(events: EventChannel.EventSink?) {
         sink = events
+        // Bundle 262 (B2): the engine that attaches learns if Wi-Fi Direct is off.
+        lastP2p262?.let { emit(mapOf("type" to "state", "enabled" to it)) }
         requestPeers()
         requestConnectionInfo()
     }
@@ -599,16 +612,16 @@ object NearbyRadio {
                 return@requestConnectionInfo
             }
             val listener = object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { Log.i(TAG, "group create ok"); result.success(null) }
-                override fun onFailure(reason: Int) { Log.w(TAG, "group create failed reason=$reason"); result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: $reason", null) }
+                override fun onSuccess() { Log.i(TAG, "group create ok"); noteBusy262(-1); result.success(null) }
+                override fun onFailure(reason: Int) { Log.w(TAG, "group create failed reason=$reason"); noteBusy262(reason); result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: $reason", null) }
             }
             try {
                 lastGroupChangeAt = System.currentTimeMillis() // Bundle 189 (A)
                 if (Build.VERSION.SDK_INT >= 29) {
                     val name = NearbyGroupPolicy.newNetworkName()
-                    val config = WifiP2pConfig.Builder().setNetworkName(name).setPassphrase(NearbyGroupPolicy.newPassphrase()).enablePersistentMode(false).build()
-                    Log.i(TAG, "group create grp=$name")
-                    m.createGroup(ch, config, listener)
+                    // Bundle 262 (A): on 2.4 GHz (a 2.4-only phone can't see 5 GHz).
+                    Log.i(TAG, GroupBand262.createLine(name, GroupBand262.wants(Build.VERSION.SDK_INT)))
+                    createGroup262(m, ch, name, NearbyGroupPolicy.newPassphrase(), "group create", listener)
                 } else {
                     Log.i(TAG, "group create legacy")
                     // Bundle 224 (A2): the group that forms next is ours.
@@ -645,8 +658,8 @@ object NearbyRadio {
             }
             try {
                 lastGroupChangeAt = System.currentTimeMillis()
-                val config = WifiP2pConfig.Builder().setNetworkName(name!!).setPassphrase(key!!).enablePersistentMode(false).build()
-                m.createGroup(ch, config, listener)
+                // Bundle 262 (A): on 2.4 GHz, like the shared group.
+                createGroup262(m, ch, name!!, key!!, "WD_FRIEND_OPEN", listener)
             } catch (e: Exception) { result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: ${e.message}", null) }
         }
     }
@@ -676,8 +689,8 @@ object NearbyRadio {
             }
             val doJoin = {
                 val listener = object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() { Log.i(TAG, "group join requested"); result.success(null) }
-                    override fun onFailure(reason: Int) { Log.w(TAG, "group join failed reason=$reason"); result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: $reason", null) }
+                    override fun onSuccess() { Log.i(TAG, "group join requested"); noteBusy262(-1); result.success(null) }
+                    override fun onFailure(reason: Int) { Log.w(TAG, "group join failed reason=$reason"); noteBusy262(reason); result.error("WIFI_DIRECT", "Wi-Fi Direct operation failed: $reason", null) }
                 }
                 try {
                     lastGroupChangeAt = System.currentTimeMillis() // Bundle 189 (A)
@@ -701,6 +714,54 @@ object NearbyRadio {
                 })
             } else doJoin()
         }
+    }
+
+    /** Bundle 262 (B3): Wi-Fi Direct answers "busy" to every join while the
+     *  phone says it is ON (TECNO 19:54-19:57, every 20 s). 3 busy answers
+     *  within 90 s with no success between -> the channel is made again with
+     *  the same limit as a dropped channel (3 per 10 min). -1 = a success. */
+    private fun noteBusy262(reason: Int) {
+        main.post {
+            val now = SystemClock.elapsedRealtime()
+            if (reason != GroupBand262.REASON_BUSY) {
+                if (reason < 0) busyAt262.clear()
+                return@post
+            }
+            if (!Busy262.add(busyAt262, now, p2pEnabled)) return@post
+            busyAt262.clear()
+            val n = NearbyBackgroundPolicy.recentReinits(reinitAt, now)
+            if (!NearbyBackgroundPolicy.mayReinit(n)) {
+                Log.w(TAG, "WD_BUSY_REINIT skipped n=$n")
+                return@post
+            }
+            reinitAt.add(now)
+            Log.w(TAG, "WD_BUSY_REINIT n=${Busy262.COUNT}")
+            main.postDelayed({ app?.let { reinit(it) } }, NearbyBackgroundPolicy.REINIT_DELAY_MS)
+        }
+    }
+
+    /** Bundle 262 (A): makes a group on 2.4 GHz so every phone can hear and
+     *  join it (the ZTE Blade A35 has 2.4 GHz only; with the router off the
+     *  C71 picked 5745 MHz and the ZTE never saw it). A phone that refuses
+     *  the band gets one more try without it. The password is never logged. */
+    @androidx.annotation.RequiresApi(29)
+    private fun createGroup262(m: WifiP2pManager, ch: WifiP2pManager.Channel, name: String, pass: String,
+                               what: String, done: WifiP2pManager.ActionListener) {
+        fun config(band: Boolean): WifiP2pConfig {
+            val b = WifiP2pConfig.Builder().setNetworkName(name).setPassphrase(pass).enablePersistentMode(false)
+            if (band) b.setGroupOperatingBand(WifiP2pConfig.GROUP_OWNER_BAND_2GHZ)
+            return b.build()
+        }
+        val withBand = GroupBand262.wants(Build.VERSION.SDK_INT)
+        val first = try { config(withBand) } catch (_: Exception) { config(false) }
+        m.createGroup(ch, first, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() = done.onSuccess()
+            override fun onFailure(reason: Int) {
+                if (!GroupBand262.mayRetry(withBand, reason)) { done.onFailure(reason); return }
+                Log.w(TAG, GroupBand262.retryLine(what, reason))
+                try { m.createGroup(ch, config(false), done) } catch (_: Exception) { done.onFailure(reason) }
+            }
+        })
     }
 
     // Bundle 200 (B): `go` = that phone hosts a Wi-Fi Direct group now.

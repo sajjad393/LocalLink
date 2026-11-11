@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:locallink/core/identity/display_label.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/utils/phone_label_255.dart';
 
 /// Bundle 258 (B2/C1): one rule for the name of a person, on every screen.
 ///
@@ -62,13 +63,17 @@ class NameBook258 {
   String? lastKnown(String id) {
     final key = id.trim();
     if (key.isEmpty) return null;
-    return _names[key];
+    final n = _names[key];
+    // Bundle 262 (E2): an old "My LinkUp phone" kept before is no name.
+    if (n == null || isDefaultPhoneLabel255(n)) return null;
+    return n;
   }
 
   /// Keep [name] for every id given (empty ids are skipped).
   void remember(String name, List<String> ids) {
     final n = name.trim();
     if (n.isEmpty) return;
+    if (isDefaultPhoneLabel255(n)) return; // Bundle 262 (E2): not a person's name
     var changed = false;
     for (final raw in ids) {
       final id = raw.trim();
