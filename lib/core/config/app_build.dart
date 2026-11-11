@@ -4,8 +4,8 @@
 // plain `flutter build apk`, so it can't be trusted. These two constants are
 // kept equal to pubspec.yaml `version:` (a test checks it).
 
-const int kAppBuild = 148;
-const String kAppVersion = '3.0.77';
+const int kAppBuild = 149;
+const String kAppVersion = '3.0.78';
 
 /// HTTP header + socket header with the build (server version gate).
 const String kAppBuildHeader = 'X-LinkUp-Build';

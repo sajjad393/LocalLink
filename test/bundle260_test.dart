@@ -472,12 +472,13 @@ void main() {
       }
       await Future<void>.delayed(const Duration(milliseconds: 100));
       expect(syncRequests(), 1);
+      // Bundle 261 (B1): repeated `state connected` no longer call sync at
+      // all, so there is at most one skip line (was: exactly one).
       expect(
           AppLogFile.instance.pendingForTest
               .where((l) => l.contains('DIR_SYNC_SKIP'))
               .length,
-          1);
-      expect(_logs(), contains('why=cooldown'));
+          lessThanOrEqualTo(1));
     });
 
     test('B1 a real new link (off -> on) inside 5 s waits for the 5 s',

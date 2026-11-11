@@ -1476,7 +1476,14 @@ class LocalLinkApi {
     return ServerStatus.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
-  Future<void> connectRealtime() => socket.connect(wsUrl, headers: wsHeaders);
+  Future<void> connectRealtime() async {
+    // Bundle 261 (D): a phone-only account has no device token - nothing to
+    // connect (wsHeaders threw before a Future existed: uncaught error).
+    final token = store.deviceToken ?? '';
+    final device = store.deviceId ?? '';
+    if (token.isEmpty || device.isEmpty) return;
+    await socket.connect(wsUrl, headers: wsHeaders);
+  }
 
   Map<String, String> _headers() => {
         'Authorization': 'Bearer ${store.deviceToken ?? ''}',

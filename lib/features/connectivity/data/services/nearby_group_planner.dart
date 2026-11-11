@@ -137,6 +137,10 @@ class NearbyGroupInput {
   /// service decides; the planner leaves.
   final bool groupDead;
 
+  /// Bundle 261 (G3): the service allows the "empty and deaf" leave now
+  /// (at most once in 5 min). Old callers default to false.
+  final bool deafLeaveAllowed;
+
   const NearbyGroupInput({
     required this.selfHash,
     required this.now,
@@ -162,6 +166,7 @@ class NearbyGroupInput {
     this.selfCharging = false,
     this.foreignGroup = false,
     this.groupDead = false,
+    this.deafLeaveAllowed = false,
   });
 }
 
@@ -345,6 +350,11 @@ abstract final class NearbyGroupRules {
   /// wanted.
   static const int emptyHostMs = 3 * 60 * 1000;
 
+  /// Bundle 261 (G3): an empty group closes after this long when this host
+  /// hears members of another group but not their host (a host phone may
+  /// not hear other hosts; as a plain phone it can).
+  static const int emptyDeafHostMs = 60 * 1000;
+
   /// The Pair target hasn't come into our group by itself after this long:
   /// invite it once the classic way.
   static const int pairInviteAfterMs = 25 * 1000;
@@ -513,6 +523,28 @@ NearbyGroupAction planNearbyGroup(NearbyGroupInput input) {
           input.hostSince > 0 &&
           hostedFor >= NearbyGroupRules.emptyHostMs) {
         return const NearbyGroupAction.leave('empty_group_closed');
+      }
+      // Bundle 261 (G3): alone for 60 s, members of another group are heard
+      // but not their host: this host can't hear it - close the empty group
+      // so this phone (no longer a host) hears that host and joins it.
+      if (input.deafLeaveAllowed &&
+          input.myMembers == 0 &&
+          input.pairTarget == null &&
+          !input.busy &&
+          input.hostSince > 0 &&
+          hostedFor >= NearbyGroupRules.emptyDeafHostMs) {
+        final hostGroups = <String>{
+          for (final t in fresh)
+            if (t.host && t.group != null) t.group!,
+        };
+        final deaf = fresh.any((t) =>
+            t.member &&
+            !t.host &&
+            t.group != null &&
+            t.group!.isNotEmpty &&
+            t.group != input.myGroup &&
+            !hostGroups.contains(t.group));
+        if (deaf) return const NearbyGroupAction.leave('empty_group_deaf');
       }
       return const NearbyGroupAction.none('host_waits');
 

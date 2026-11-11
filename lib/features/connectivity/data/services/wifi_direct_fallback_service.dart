@@ -252,6 +252,25 @@ final class WifiDirectFallbackService {
   int _pendingSince = 0;
   final Map<String, int> _coolingUntil = <String, int>{};
   final Map<String, int> _joinFailures = <String, int>{};
+
+  // ------------------------------------------ Bundle 261 (G)
+  /// G1: the group name tried in the pending join, and per host address the
+  /// group name whose join failed. A host seen later with ANOTHER group
+  /// name (it made a new group) is not "full" any more.
+  String? _pendingGroup261;
+  final Map<String, String> _failedGroup261 = <String, String>{};
+
+  /// G3: the "empty and deaf" leave: when it was last done, and no own new
+  /// group (create) for 60 s after it.
+  static const int deafLeaveEveryMs261 = 5 * 60 * 1000;
+  static const int deafNoCreateMs261 = 60 * 1000;
+  int _deafLeftAt261 = 0;
+  int _noCreateUntil261 = 0;
+  String _createHeldLogged261 = '';
+
+  @visibleForTesting
+  Set<String> get joinCooling261 => _coolingUntil.keys.toSet();
+
   List<String> _lastWanted = const <String>[];
   String _lastPlanReason = '';
   int _lastGroupDiscoveryAt = 0;
@@ -994,6 +1013,7 @@ final class WifiDirectFallbackService {
     if (!c.wifiNetwork) _wifiSince = 0;
     // Bundle 205 (P2): the router went away - look for phones at once.
     if (!c.wifiNetwork && _onWifiNetwork) _searchSoon = true;
+    if (!c.wifiNetwork && _onWifiNetwork) _wifiGone261(); // Bundle 261 (G2)
     _onWifiNetwork = c.wifiNetwork;
     _setRole(!c.connected
         ? NearbyGroupRole.none
@@ -1076,6 +1096,8 @@ final class WifiDirectFallbackService {
     if (done) {
       _backoff.succeeded();
       if (_pendingHost != null) _joinFailures.remove(_pendingHost);
+      if (_pendingHost != null) _failedGroup261.remove(_pendingHost);
+      _pendingGroup261 = null;
       final reason = _pendingReason;
       // Bundle 200 (B): the friend group is up.
       if (reason == 'friend_join' || reason == 'friend_open') {
@@ -1173,9 +1195,55 @@ final class WifiDirectFallbackService {
       _joinFailures[host] = n;
       // Two failed joins: treat that host as full for 10 minutes (D9).
       _coolingUntil[host] = now + (n >= 2 ? 10 * 60 * 1000 : 20 * 1000);
+      // Bundle 261 (G1): remember which group name failed.
+      final tried = _pendingGroup261;
+      if (tried != null && tried.isNotEmpty) _failedGroup261[host] = tried;
     }
+    _pendingGroup261 = null;
     _pendingKind = null;
     _pendingHost = null;
+  }
+
+  /// Bundle 261 (G1): a host whose join failed now shows ANOTHER group name
+  /// (it made a new group after the Wi-Fi went off): the failures were for
+  /// the old name only - it is not "full", try it again.
+  void _forgetRenamedHosts261(int now) {
+    if (_failedGroup261.isEmpty) return;
+    final cleared = <String, NearbyTag>{};
+    _failedGroup261.forEach((address, failedGroup) {
+      NearbyTag? tag = _tags[address];
+      if (tag == null) {
+        final low = address.toLowerCase();
+        for (final t in _tags.values) {
+          if (t.address.toLowerCase() == low) {
+            tag = t;
+            break;
+          }
+        }
+      }
+      final t = tag;
+      if (t == null || !t.host || t.fromName) return;
+      final g = t.group ?? '';
+      if (g.isEmpty || now - t.seenAt > NearbyGroupRules.freshMs) return;
+      if (g != failedGroup) cleared[address] = t;
+    });
+    cleared.forEach((address, t) {
+      _failedGroup261.remove(address);
+      _joinFailures.remove(address);
+      _coolingUntil.remove(address);
+      final id = t.idHash.length > 8 ? t.idHash.substring(0, 8) : t.idHash;
+      AppLogger.info('NEARBY', detail: 'group renamed host=$id cool_cleared');
+    });
+  }
+
+  /// Bundle 261 (G2): the Wi-Fi went off - every group name changes now, so
+  /// the old "failed / full" marks say nothing (the same as an app restart).
+  void _wifiGone261() {
+    final n = _coolingUntil.length;
+    _coolingUntil.clear();
+    _joinFailures.clear();
+    _failedGroup261.clear();
+    AppLogger.info('NEARBY', detail: 'wifi_gone cool_cleared n=$n');
   }
 
   Future<void> _groupTick() async {
@@ -1315,6 +1383,7 @@ final class WifiDirectFallbackService {
     }
     try {
       final now = _clock();
+      _noteGroupTick261(now); // Bundle 261 (C1)
       try {
         _applyConnection(await connectivity.wifiDirectConnectionInfo());
       } catch (_) {}
@@ -1334,6 +1403,7 @@ final class WifiDirectFallbackService {
       }
       final groupDead = _groupDeadNow(now, busy);
       _coolDeadGroups(now);
+      _forgetRenamedHosts261(now); // Bundle 261 (G1)
       final plan = planNearbyGroup(NearbyGroupInput(
         selfHash: self,
         now: now,
@@ -1359,6 +1429,9 @@ final class WifiDirectFallbackService {
         selfCharging: _selfCharging,
         foreignGroup: _foreignGroup,
         groupDead: groupDead,
+        deafLeaveAllowed: _deafLeftAt261 <= 0 ||
+            now - _deafLeftAt261 >= deafLeaveEveryMs261 ||
+            now < _deafLeftAt261,
       ));
       if (plan.reason != _lastPlanReason) {
         _lastPlanReason = plan.reason;
@@ -1390,12 +1463,47 @@ final class WifiDirectFallbackService {
         }
         return;
       }
+      // Bundle 261 (G3): right after the "empty and deaf" leave, no own new
+      // group for 60 s (joins still go; the user's Pair tap too).
+      if (plan.kind == NearbyGroupActionKind.create &&
+          plan.reason != 'pair_create' &&
+          now < _noCreateUntil261) {
+        if (_createHeldLogged261 != plan.reason) {
+          _createHeldLogged261 = plan.reason;
+          AppLogger.info('NEARBY',
+              detail: 'group create_held reason=${plan.reason} why=deaf_leave');
+        }
+        return;
+      }
       if (!_backoff.mayAct(now, userTap: userTap)) return;
       if (plan.reason == 'group_dead') _markGroupDead(now);
+      if (plan.reason == 'empty_group_deaf') {
+        _deafLeftAt261 = now;
+        _noCreateUntil261 = now + deafNoCreateMs261;
+        _createHeldLogged261 = '';
+      }
       await _runGroupAction(group, plan, now);
     } finally {
       _groupBusy = false;
       if (_pendingUserTap && !_disposed) unawaited(_evaluateGroup());
+    }
+  }
+
+  /// Bundle 261 (C1): the group check did not run for this long (the phone
+  /// froze the app; the normal tick is 5 s): that time is not "no link".
+  static const int groupTickGapMs261 = 45 * 1000;
+  int _groupTickAt261 = 0;
+
+  /// Bundle 261 (C1): after a gap the 30 s "no link" count starts again, so
+  /// a phone that just woke up first gets 30 s to hear its group.
+  void _noteGroupTick261(int now) {
+    final last = _groupTickAt261;
+    _groupTickAt261 = now;
+    if (last <= 0 || now < last || now - last <= groupTickGapMs261) return;
+    if (_role == NearbyGroupRole.member && _groupLinkSeenAt > 0) {
+      _groupLinkSeenAt = now;
+      AppLogger.info('NEARBY',
+          detail: 'group tick_gap s=${(now - last) ~/ 1000} dead_count_restart');
     }
   }
 
@@ -1881,6 +1989,7 @@ final class WifiDirectFallbackService {
       await _stopBridge('group_closed');
     }
     _pendingHost = plan.host?.address ?? plan.address;
+    _pendingGroup261 = plan.host?.group; // Bundle 261 (G1)
     AppLogger.info('NEARBY',
         detail: 'group do=${plan.kind.name} reason=${plan.reason}'
             '${plan.host != null ? ' host=${plan.host!.idHash} '

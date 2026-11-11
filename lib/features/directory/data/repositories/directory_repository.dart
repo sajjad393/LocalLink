@@ -33,6 +33,7 @@ import 'package:locallink/features/directory/domain/directory_repository_contrac
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 import 'package:locallink/features/directory/data/services/duplicate_guard_235.dart';
 import 'package:locallink/features/messaging/data/services/not_on_server_218.dart';
+import 'package:locallink/core/services/own_profile_261.dart';
 
 class DirectoryRepository implements DirectoryRepositoryContract {
   static const Duration _periodicSyncInterval = Duration(minutes: 2);
@@ -764,7 +765,11 @@ class DirectoryRepository implements DirectoryRepositoryContract {
     final phone = canRevealPhone ? normalizedPhone : '';
 
     final unsigned = DirectoryProfile(
-      userId: profile.userId,
+      // Bundle 261 (A2): my card always carries my account id (a stale
+      // offline row made it carry the old id; friends refused the card).
+      userId: OwnProfile261.isServerId(store.accountId)
+          ? store.accountId!.trim()
+          : profile.userId,
       deviceId: deviceId,
       username: profile.username,
       displayName: profile.displayName,
@@ -854,10 +859,12 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       final connected = event['connected'] == true;
       final edge = connected && _stateConnected260 != true;
       _stateConnected260 = connected;
+      // Bundle 261 (B1): only a real new link syncs (the 2-min timer does
+      // the rest) - every `state connected` still asked ~1000 times an hour.
       if (edge) {
         _syncAgainSoon260(schedule: true);
+        unawaited(sync());
       }
-      if (connected) unawaited(sync());
       return;
     }
     if (eventType == 'connection') {
@@ -865,10 +872,11 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       final connected = connection is Map && connection['connected'] == true;
       final edge = connected && _wdConnected260 != true;
       _wdConnected260 = connected;
+      // Bundle 261 (B1): the same for the Wi-Fi Direct link.
       if (edge) {
         _syncAgainSoon260(schedule: true);
+        unawaited(sync());
       }
-      if (connected) unawaited(sync());
       return;
     }
 
@@ -1662,6 +1670,9 @@ class DirectoryRepository implements DirectoryRepositoryContract {
 
   Future<bool> _moveOfflineIds218(DirectoryProfile profile) async {
     if (profile.userId.startsWith('offline_')) return false;
+    // Bundle 261 (A3): never move my own old id (my own phone).
+    final self261 = store.deviceId ?? '';
+    if (self261.isNotEmpty && profile.deviceId == self261) return false;
     var moved = false;
     try {
       for (final row in await store.directoryProfilesByDevice218(profile.deviceId)) {
@@ -1722,13 +1733,33 @@ class DirectoryRepository implements DirectoryRepositoryContract {
       return;
     }
     final ids = <String>{};
+    // Bundle 261 (A3): my own old offline card (my own phone) is dropped,
+    // not moved - moving it made ID_MOVED run on every start.
+    final ownOld261 = <String>{};
+    try {
+      final self261 = store.deviceId ?? '';
+      if (self261.isNotEmpty) {
+        for (final row in await store.directoryProfilesByDevice218(self261)) {
+          final id = row['user_id']?.toString() ?? '';
+          if (id.startsWith('offline_') && id != store.accountId) {
+            ownOld261.add(id);
+          }
+        }
+      }
+    } catch (_) {}
+    for (final id in ownOld261) {
+      try {
+        await store.dropDirectoryProfile235(id);
+        AppLogger.info('OWN_OLD_CARD_DROPPED_261', detail: 'old=${_tail6(id)}');
+      } catch (_) {}
+    }
     try {
       for (final id in await store.rawContactUserIds()) {
-        if (id.startsWith('offline_')) ids.add(id);
+        if (id.startsWith('offline_') && !ownOld261.contains(id)) ids.add(id);
       }
       for (final row in await store.directoryProfiles()) {
         final id = row['user_id']?.toString() ?? '';
-        if (id.startsWith('offline_')) ids.add(id);
+        if (id.startsWith('offline_') && !ownOld261.contains(id)) ids.add(id);
       }
     } catch (_) {}
     if (ids.isEmpty) return;
@@ -1747,7 +1778,10 @@ class DirectoryRepository implements DirectoryRepositoryContract {
           if (id.startsWith('offline_')) oldId = id;
         }
       }
-      if (oldId.isNotEmpty && oldId != store.accountId) {
+      if (oldId.isNotEmpty &&
+          oldId != store.accountId &&
+          !ownOld261.contains(oldId) &&
+          device != (store.deviceId ?? '')) {
         await moveFriendId218(oldId, userId);
       }
       // Bundle 218d: the server knows this phone now.

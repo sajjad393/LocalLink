@@ -37,6 +37,7 @@ import 'package:locallink/core/services/message_delete_book.dart';
 import 'package:locallink/core/services/person_phones_237.dart';
 import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/own_profile_261.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/features/calls/data/transport/network_policy.dart';
 
@@ -211,6 +212,7 @@ class LocalStore {
     await _loadMediaBook();
     await _migrateLegacySharedPreferences();
     await _ensureStableDeviceId();
+    await repairOwnProfile261(); // Bundle 261 (A1)
   }
 
   // A per-install random device id made every reinstall register a duplicate
@@ -1713,8 +1715,49 @@ class LocalStore {
   }
 
   Future<void> saveProfile(LocalProfile profile) async {
-    await _db.insert('profile_cache', profile.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    // Bundle 261 (A1): one own row only - the one for my account. An old
+    // offline id saved while I have a server id goes under my server id,
+    // and no second row is left behind (it made my card carry the old id).
+    var own = profile;
+    if (OwnProfile261.isServerId(_accountId) &&
+        own.userId.startsWith('offline_')) {
+      own = own.copyWith(userId: _accountId!.trim());
+    }
+    await _db.transaction((txn) async {
+      await txn.insert('profile_cache', own.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      if (own.userId.isNotEmpty) {
+        await txn.delete('profile_cache',
+            where: 'user_id<>?', whereArgs: [own.userId]);
+      }
+    });
+  }
+
+  /// Bundle 261 (A1): two own rows (an offline id and my server id) become
+  /// one row under my server id, one version higher. Runs at every start;
+  /// does nothing when the table is already right.
+  Future<void> repairOwnProfile261() async {
+    try {
+      final me = _accountId?.trim() ?? '';
+      final rows = [
+        for (final r in await _db.query('profile_cache'))
+          Map<String, dynamic>.from(r)
+      ];
+      final keep = OwnProfile261.repair(rows, me,
+          now: DateTime.now().toUtc().toIso8601String());
+      if (keep == null) return;
+      await _db.transaction((txn) async {
+        await txn.insert('profile_cache', keep,
+            conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.delete('profile_cache',
+            where: 'user_id<>?', whereArgs: [me]);
+      });
+      final old = OwnProfile261.oldId(rows, me);
+      AppLogger.info('OWN_PROFILE_FIXED_261',
+          detail: 'rows=${rows.length} old=${old.length > 6 ? old.substring(old.length - 6) : old}');
+    } catch (e) {
+      AppLogger.warning('OWN_PROFILE_FIX_FAILED_261', detail: '$e');
+    }
   }
 
   Future<void> setPendingProfileUpdate(String displayName, String username,
@@ -1837,10 +1880,13 @@ class LocalStore {
   }
 
   Future<LocalProfile?> profile() async {
-    final rows = await _db.query('profile_cache', limit: 1);
-    return rows.isEmpty
-        ? null
-        : LocalProfile.fromJson(Map<String, dynamic>.from(rows.first));
+    // Bundle 261 (A1): the row for my account first (was: any first row).
+    final rows = [
+      for (final r in await _db.query('profile_cache'))
+        Map<String, dynamic>.from(r)
+    ];
+    final row = OwnProfile261.pick(rows, _accountId);
+    return row == null ? null : LocalProfile.fromJson(row);
   }
 
   Future<void> clearProfile() async => _db.delete('profile_cache');
