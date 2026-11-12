@@ -1049,6 +1049,9 @@ class LocalStore {
 
   Future<List<Map<String, dynamic>>> groupFileSends(
       {String? msgId, String? memberId}) async {
+    // Bundle 271 (D-271-1): the 8 s group file pump can fire before init()
+    // finishes on a slow first open after an update. Nothing to read yet.
+    if (!_databaseOpened) return const [];
     final where = <String>[];
     final args = <Object?>[];
     if (msgId != null) {
@@ -1077,10 +1080,12 @@ class LocalStore {
           where: 'msg_id=? AND file_id=? AND member_id=?',
           whereArgs: [row['msg_id'], row['file_id'], row['member_id']]);
 
-  Future<void> purgeGroupFileSends(int olderThanMs) async => _db.delete(
-      'group_file_sends',
-      where: 'created_at<?',
-      whereArgs: [olderThanMs]);
+  Future<void> purgeGroupFileSends(int olderThanMs) async {
+    // Bundle 271 (D-271-1): same guard as touchDevicePresence.
+    if (!_databaseOpened) return;
+    await _db.delete('group_file_sends',
+        where: 'created_at<?', whereArgs: [olderThanMs]);
+  }
 
   /// Keeps the first delivered / read time (read also means delivered).
   Future<void> putGroupReceipt(String messageId, String groupId,
