@@ -54,19 +54,19 @@ class MeshFinalRecipientDeliveryTest {
         val d = router("D", routes["D"]!!)
 
         assertEquals(MeshRouteResult.FORWARDED, a.route(original))
-        val atB = sent.removeFirst().second
+        val atB = sent.removeAt(0).second
         assertEquals("A", atB.sourceNodeId)
         assertEquals("D", atB.destinationNodeId)
         assertEquals("B", atB.nextHopNodeId)
         assertEquals(1, atB.hopCount)
         assertEquals(MeshRouteResult.FORWARDED, b.route(atB, incomingPeerId = "A"))
-        val atC = sent.removeFirst().second
+        val atC = sent.removeAt(0).second
         assertEquals("A", atC.sourceNodeId)
         assertEquals("D", atC.destinationNodeId)
         assertEquals("C", atC.nextHopNodeId)
         assertEquals(2, atC.hopCount)
         assertEquals(MeshRouteResult.FORWARDED, c.route(atC, incomingPeerId = "B"))
-        val atD = sent.removeFirst().second
+        val atD = sent.removeAt(0).second
         assertEquals("A", atD.sourceNodeId)
         assertEquals("D", atD.destinationNodeId)
         assertEquals("D", atD.nextHopNodeId)

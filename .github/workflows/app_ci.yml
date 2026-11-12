@@ -69,7 +69,8 @@ jobs:
         run: flutter build apk --debug
       - name: Kotlin unit tests
         working-directory: android
-        run: ./gradlew testDebugUnitTest --no-daemon
+        # Bundle 270: only the app's own tests (plugin tests are not ours).
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
       - name: Release APK with the standard command (R268-1, signed with this machine's debug key - not for phones)
         if: success() || failure()
         run: flutter build apk --release --dart-define=LOCLINK_ALLOW_INSECURE_HTTP=true
@@ -77,5 +78,5 @@ jobs:
         if: always()
         with:
           name: kotlin-test-results
-          path: android/app/build/reports/tests/
+          path: build/app/reports/tests/
           retention-days: 14

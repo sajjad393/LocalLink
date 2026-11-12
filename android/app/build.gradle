@@ -22,7 +22,13 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    testOptions { unitTests.returnDefaultValues = true }
+    testOptions {
+        unitTests.returnDefaultValues = true
+        // Bundle 270: the source-check tests read "main/kotlin/..." (relative
+        // to src/, as the local test runner does). Gradle starts tests in the
+        // module folder, so they could not find the files.
+        unitTests.all { workingDir = file("src") }
+    }
 
     signingConfigs {
         release {

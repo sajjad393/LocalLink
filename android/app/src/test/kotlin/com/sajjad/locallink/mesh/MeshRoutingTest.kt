@@ -389,15 +389,15 @@ class MeshRoutingTest {
         val d = MeshRouter({ "D" }, tables["D"]!!, peers["D"]!!, transportFor("D"))
 
         assertEquals(MeshRouteResult.FORWARDED, a.route(original))
-        val atB = forwarded.removeFirst()
+        val atB = forwarded.removeAt(0)
         assertEquals("mesh-final-test", atB.packetId)
         assertEquals("B", atB.nextHopNodeId)
         assertEquals(MeshRouteResult.FORWARDED, b.route(atB, incomingPeerId = "A"))
-        val atC = forwarded.removeFirst()
+        val atC = forwarded.removeAt(0)
         assertEquals("mesh-final-test", atC.packetId)
         assertEquals("C", atC.nextHopNodeId)
         assertEquals(MeshRouteResult.FORWARDED, c.route(atC, incomingPeerId = "B"))
-        val atD = forwarded.removeFirst()
+        val atD = forwarded.removeAt(0)
         assertEquals("mesh-final-test", atD.packetId)
         assertEquals("D", atD.nextHopNodeId)
 
