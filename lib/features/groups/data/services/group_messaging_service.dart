@@ -76,16 +76,106 @@ class GroupMessagingService {
     if (body.isEmpty && nearbyFiles.isEmpty) return;
     final group = await store.groupById(groupId);
     if (group == null || !group.worksNearby || !group.isActive) return;
+    final id = row['id'].toString();
     if (group.nearbyOnly || !socket.isConnected) {
+      _handedOff277.add(id);
       try {
-        await near.fanOut(groupId, row['id'].toString(), body,
+        await near.fanOut(groupId, id, body,
             row['created_at']?.toString() ?? '',
             files: nearbyFiles);
       } catch (error) {
+        _handedOff277.remove(id);
         AppLogger.warning('GROUP_NEARBY_FANOUT_FAILED', detail: '$error');
       }
+      return;
+    }
+    // Bundle 277 (A-2): a voice note / photo also goes Nearby at once to the
+    // members who are near now (the server copy still goes; when all have
+    // it the G7 rule skips the upload).
+    if (nearbyFiles.isEmpty) return;
+    try {
+      final c = await near.card(groupId);
+      final self = store.deviceId ?? '';
+      final nearIds = <String>{
+        for (final m in c?.members ?? const [])
+          if (m.id != self && (near.nearNow?.call(m.id) ?? false)) m.id
+      };
+      if (nearIds.isEmpty) return;
+      await near.fanOut(groupId, id, body, row['created_at']?.toString() ?? '',
+          files: nearbyFiles, only: nearIds);
+      AppLogger.info('GROUP_NEAR_FIRST_277', detail: 'files=${nearbyFiles.length} near=${nearIds.length}');
+    } catch (error) {
+      AppLogger.warning('GROUP_NEARBY_FANOUT_FAILED', detail: '$error');
     }
   }
+
+  // ---------------------------------------- Bundle 277 hand-off to Nearby
+
+  /// Most time one upload may hold the group send loop (send + reply).
+  static const Duration uploadDeadlineDefault277 = Duration(seconds: 45);
+  static Duration uploadDeadline277 = uploadDeadlineDefault277; // tests may shorten
+
+  /// Message ids already given to Nearby for ALL members (this run).
+  final Set<String> _handedOff277 = <String>{};
+
+  static String uploadReason277(Object e) {
+    if (e is TimeoutException) return 'timeout';
+    final t = e.runtimeType.toString();
+    if (t.contains('Socket')) return 'socket';
+    if (t.contains('Http') || t.contains('Client')) return 'http';
+    final m = e.toString();
+    final code = RegExp(r'\b([1-5]\d\d)\b').firstMatch(m)?.group(1);
+    if (code != null) return 'http_$code';
+    return t.length > 30 ? t.substring(0, 30) : t;
+  }
+
+  /// Bundle 277 (A-1): a waiting group message goes to Nearby (once), like a
+  /// message written with the server off. It stays in the server outbox
+  /// too (members drop the second copy by id). True = handed off now.
+  Future<bool> _handOff277(String id) async {
+    final near = nearby;
+    if (near == null || id.isEmpty || _handedOff277.contains(id)) return false;
+    final rows = (await store.groupOutbox()).where((r) => r['id']?.toString() == id).toList();
+    if (rows.isEmpty) return false;
+    final row = rows.first;
+    final gid = row['group_id']?.toString() ?? '';
+    if (gid.isEmpty) return false;
+    final group = await store.groupById(gid);
+    if (group == null || !group.worksNearby || !group.isActive || group.nearbyOnly) return false;
+    final body = row['body']?.toString() ?? '';
+    if (body.startsWith(GroupNearbyService.cardBodyPrefix) || GroupSenderKeys.isKeyNote(body)) return false;
+    final msg = await store.groupMessageById(id);
+    if (msg != null && msg.nearbySent) return false; // a member already has it
+    final files = [
+      for (final a in msg?.attachments ?? const <Attachment>[])
+        if (a.size <= GroupFileWire.maxBytes) GroupNearbyFile.fromAttachment(a)
+    ];
+    if (body.isEmpty && files.isEmpty) return false;
+    _handedOff277.add(id);
+    try {
+      await near.fanOut(gid, id, body, row['created_at']?.toString() ?? '', files: files);
+      return true;
+    } catch (error) {
+      _handedOff277.remove(id);
+      AppLogger.warning('GROUP_NEARBY_FANOUT_FAILED', detail: '$error');
+      return false;
+    }
+  }
+
+  /// Bundle 277 (A-1): every waiting group message to Nearby (server gone).
+  Future<int> handOffQueued277(String why) async {
+    var n = 0;
+    try {
+      for (final row in await store.groupOutbox()) {
+        if (await _handOff277(row['id']?.toString() ?? '')) n++;
+      }
+    } catch (_) {}
+    if (n > 0) AppLogger.info('GROUP_HANDOFF_277', detail: 'why=$why n=$n');
+    return n;
+  }
+
+  /// Tests only.
+  Future<bool> debugHandOff277(String id) => _handOff277(id);
 
   /// Bundle G3: a member's message / reaction / delete note / system line
   /// that came Nearby.
@@ -879,6 +969,11 @@ class GroupMessagingService {
   void start() {
     _socketSub ??= socket.messages.listen(_onMessage);
     _connectionSub ??= socket.connectionState.listen((connected) async {
+      // Bundle 277 (A-1): server gone - waiting group messages go Nearby.
+      if (!connected) {
+        unawaited(handOffQueued277('server_down'));
+        return;
+      }
       if (connected) {
         await bridge();
         await flush();
@@ -1073,6 +1168,7 @@ class GroupMessagingService {
             remoteIds.add(remote);
             continue;
           }
+          final took = Stopwatch()..start();
           try {
             final picked = PickedFile(
               path: attachment['local_path'].toString(),
@@ -1080,11 +1176,20 @@ class GroupMessagingService {
               contentType: attachment['content_type'].toString(),
               size: int.tryParse(attachment['size'].toString()) ?? 0,
             );
-            final uploaded = await files.uploadForGroupMessage(picked, groupId: groupId, messageId: id, createdAt: createdAt, clientFileId: attachment['id']?.toString() ?? '', operationId: id);
+            // Bundle 277 (A-3): one upload holds the send loop 45 s at most.
+            final uploaded = await files
+                .uploadForGroupMessage(picked, groupId: groupId, messageId: id, createdAt: createdAt, clientFileId: attachment['id']?.toString() ?? '', operationId: id)
+                .timeout(uploadDeadline277);
             await store.setPendingGroupRemoteFile(attachment['id'].toString(), uploaded.id);
             remoteIds.add(uploaded.id);
-          } catch (_) {
+          } catch (e) {
             uploadFailed = true;
+            AppLogger.warning('GROUP_FILE_UPLOAD_FAILED',
+                detail: 'reason=${uploadReason277(e)} ms=${took.elapsedMilliseconds}');
+            // Bundle 277 (A-1): the server did not take it - Nearby now.
+            unawaited(_handOff277(id).then((ok) {
+              if (ok) AppLogger.info('GROUP_HANDOFF_277', detail: 'why=upload_fail n=1');
+            }));
             break;
           }
         }

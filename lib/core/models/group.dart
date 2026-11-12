@@ -1,7 +1,25 @@
 import 'package:locallink/core/utils/phone_label_255.dart';
+
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/group_extras.dart';
 import 'package:locallink/core/models/message_envelope.dart';
+
+/// Bundle 277 (B-1): group chat order = time written (like 1:1), then the
+/// server number, then the id. A message that never reached the server
+/// (Nearby only, or still waiting: server number 0) stays in its time place
+/// instead of jumping to the top.
+int compareGroupOrder277(String aAt, int aSeq, String aId, String bAt, int bSeq, String bId) {
+  final ta = DateTime.tryParse(aAt)?.millisecondsSinceEpoch;
+  final tb = DateTime.tryParse(bAt)?.millisecondsSinceEpoch;
+  if (ta != null && tb != null && ta != tb) return ta.compareTo(tb);
+  if (aSeq != bSeq) {
+    if (aSeq == 0) return 1; // not on the server yet: after the server ones
+    if (bSeq == 0) return -1;
+    return aSeq.compareTo(bSeq);
+  }
+  return aId.compareTo(bId);
+}
+
 class LocalGroup {
   final String id;
   final String name;

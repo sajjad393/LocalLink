@@ -29,7 +29,7 @@ CallSession _s({CallState state = CallState.connected, bool direct = true, bool 
 
 void main() {
   test('only a connected nearby call shows it', () {
-    expect(showVideoButton248(_s()), isTrue);
+    expect(showVideoButton248(_s()), isFalse); // Bundle 277: video button hidden
     expect(showVideoButton248(_s(state: CallState.connecting)), isFalse);
     expect(showVideoButton248(_s(state: CallState.ringing)), isFalse);
     expect(showVideoButton248(_s(direct: false)), isFalse);
@@ -40,13 +40,11 @@ void main() {
     final bloc = CallBloc(service: gw, repository: HistoryRepository());
     addTearDown(bloc.close);
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: CallActionBar(controller: bloc, session: _s()))));
-    expect(find.byKey(const Key('call_video_toggle_248')), findsOneWidget);
-    expect(find.byIcon(Icons.videocam_off_rounded), findsOneWidget);
-    await tester.tap(find.byKey(const Key('call_video_toggle_248')));
-    await tester.pump();
-    expect(gw.videos, 1);
+    // Bundle 277: no camera button in any call state.
+    expect(find.byKey(const Key('call_video_toggle_248')), findsNothing);
+    expect(gw.videos, 0);
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: CallActionBar(controller: bloc, session: _s(video: true)))));
-    expect(find.byIcon(Icons.videocam_rounded), findsOneWidget);
+    expect(find.byKey(const Key('call_video_toggle_248')), findsNothing);
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: CallActionBar(controller: bloc, session: _s(state: CallState.connecting)))));
     expect(find.byKey(const Key('call_video_toggle_248')), findsNothing);
   });

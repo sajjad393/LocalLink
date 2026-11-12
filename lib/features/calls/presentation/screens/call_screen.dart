@@ -182,9 +182,11 @@ class _CallScreenState extends State<CallScreen> {
             session.answeredAt != null &&
             !session.videoEnabled) {
           _switchDialogOpen = true;
+          // Bundle 277 (C-1): video is stopped - no "Switch to video call?"
+          // question; an old phone's camera request is declined quietly.
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            _showVideoSwitchDialog(session);
+            unawaited(widget.controller.declineVideoSwitch());
           });
         }
         if (!session.videoSwitchRequested && _switchDialogOpen) {
@@ -308,6 +310,8 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
+  // Bundle 277 (C-1): kept for when video comes back; not shown now.
+  // ignore: unused_element
   Future<void> _showVideoSwitchDialog(CallSession session) async {
     final name = session.peerName.isEmpty ? 'Your contact' : session.peerName;
     await showDialog<void>(

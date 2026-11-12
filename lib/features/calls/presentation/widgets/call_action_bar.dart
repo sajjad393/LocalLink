@@ -125,9 +125,10 @@ class CallActionBar extends StatelessWidget {
   }
 }
 
-/// Bundle 248: the camera button shows only in a connected nearby call.
-bool showVideoButton248(CallSession session) =>
-    session.state == CallState.connected && session.directMode && !session.isFinished;
+/// Bundle 248: the camera button showed only in a connected nearby call.
+/// Bundle 277 (C-1): video is stopped - the button is hidden for caller and
+/// callee.
+bool showVideoButton248(CallSession session) => false;
 
 class _CallCircleButton extends StatelessWidget {
   final IconData icon;

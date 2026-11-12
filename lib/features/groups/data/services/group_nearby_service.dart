@@ -538,7 +538,7 @@ class GroupNearbyService {
 
   /// My message (or reaction / delete note) to every member Nearby.
   Future<void> fanOut(String gid, String id, String body, String createdAt,
-      {List<GroupNearbyFile> files = const []}) async {
+      {List<GroupNearbyFile> files = const [], Set<String>? only}) async {
     final c = await card(gid);
     if (c == null || !c.has(_self)) return;
     // Bundle G7: only files up to 50 MB go Nearby (like 1:1).
@@ -586,10 +586,12 @@ class GroupNearbyService {
       if (sig2.isNotEmpty) 'sig2': sig2,
       if (sig3.isNotEmpty) 'sig3': sig3,
     };
+    // Bundle 277 (A-2): [only] = just these members (the ones near now).
     final others = [
       for (final m in c.members)
-        if (m.id != _self) m.id
+        if (m.id != _self && (only == null || only.contains(m.id))) m.id
     ];
+    if (others.isEmpty) return;
     if (att.isNotEmpty) {
       await this.files?.queue(gid, id, att, others);
       AppLogger.info('GROUP_FILE_QUEUED',

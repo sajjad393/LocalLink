@@ -4524,6 +4524,10 @@ class LocalStore {
           .toList();
       out.add(copy);
     }
+    // Bundle 277 (B-1): by time, not by server number.
+    int seq(Map<String, dynamic> r) => int.tryParse(r['server_seq']?.toString() ?? '') ?? 0;
+    out.sort((a, b) => compareGroupOrder277('${a['created_at'] ?? ''}', seq(a), '${a['id'] ?? ''}',
+        '${b['created_at'] ?? ''}', seq(b), '${b['id'] ?? ''}'));
     return out;
   }
 
