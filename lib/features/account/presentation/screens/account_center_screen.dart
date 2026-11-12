@@ -1,3 +1,4 @@
+import 'package:locallink/core/identity/person_name_276.dart';
 import 'dart:async';
 
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
@@ -177,7 +178,8 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       bloc: _controller,
       builder: (context, state) {
         final profile = state.profile;
-        final displayName = profile?.displayName.isNotEmpty == true ? profile!.displayName : (widget.store.deviceName ?? 'LinkUp user');
+        // Bundle 276: display name -> username (no @) -> "LinkUp user"; never the phone name.
+        final displayName = personName276(profile?.displayName, profile?.username, widget.store.username);
         final username = profile?.username.isNotEmpty == true
             ? '@${profile!.username}'
             : 'LinkUp account';

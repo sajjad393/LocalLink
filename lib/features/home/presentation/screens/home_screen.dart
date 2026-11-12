@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:locallink/core/identity/person_name_276.dart';
+import 'package:locallink/features/contacts/presentation/widgets/my_links_map_273.dart';
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
 import 'package:locallink/core/diagnostics/ui_hidden_263.dart';
@@ -288,6 +290,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _view273 = widget.viewMode.stream.listen((v) => _serverOn273.value = v.serverConnected); // Bundle 273
     _registerForwardHub(); // Bundle 197a
     // Bundle 202 (P4): one time - phone number follows the Private switch.
     unawaited(PhoneVisibilityAlign.runOnce(
@@ -599,6 +602,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _view273?.cancel(); // Bundle 273
+    _serverOn273.dispose();
     if (identical(ForwardHub.instance, _forwardHub)) ForwardHub.instance = null;
     OfflinePublishTicker256.instance.stop(); // Bundle 256 B1
     _mediaLifecycle?.dispose();
@@ -1212,6 +1217,43 @@ class _HomeScreenState extends State<HomeScreen> {
         .whenComplete(_refreshUnreadCounts);
   }
 
+  // ---- Bundle 273: "My links" card ----
+  late final ValueNotifier<bool> _serverOn273 =
+      ValueNotifier<bool>(widget.viewMode.state.serverConnected);
+  StreamSubscription<AppViewModeState>? _view273;
+
+  Future<List<MyLinkContact273>> _myLinkContacts273() async {
+    final rows = await widget.store.contacts();
+    final me = widget.store.deviceId ?? '';
+    return [
+      for (final r in rows)
+        if ('${r['device_id'] ?? ''}'.trim().isNotEmpty &&
+            '${r['device_id']}'.trim() != me &&
+            !BlockHub.instance.isBlockedDevice('${r['device_id']}'.trim()))
+          MyLinkContact273(
+            deviceId: '${r['device_id']}'.trim(),
+            userId: '${r['user_id'] ?? ''}'.trim(),
+            name: personName276(
+                '${r['custom_name'] ?? ''}'.trim().isNotEmpty
+                    ? '${r['custom_name']}'
+                    : '${r['display_name'] ?? ''}',
+                '${r['username'] ?? ''}'),
+          ),
+    ];
+  }
+
+  Future<void> _openMyLink273(String deviceId) async {
+    final d = _controller.devices.where((d) => d.id == deviceId).firstOrNull ??
+        await widget.store.deviceById(deviceId);
+    if (!mounted) return;
+    if (d == null) {
+      setState(() => _index = 2); // no chat yet: People
+      return;
+    }
+    await Navigator.push<void>(context, _chatRoute(d))
+        .whenComplete(_refreshUnreadCounts);
+  }
+
   Widget _chatsTab() {
     return Scaffold(
       // Bundle 183 (L/P): the shared tab top bar - title only, the Wi-Fi
@@ -1286,6 +1328,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Bundle 159.1: "Allow nearby devices" / "Turn on Wi-Fi",
                 // only when nearby chat can't work.
                 const NearbyReadyCard(),
+                // Bundle 273: "My links" - my contacts and how they link now.
+                MyLinksCard273(
+                  loadContacts: _myLinkContacts273,
+                  serverOnline: _serverOn273,
+                  onOpenChat: (id) => unawaited(_openMyLink273(id)),
+                  selfId: widget.store.deviceId,
+                ),
                 // Bundle 153 / 183 (O): the shared small grey CAPITALS title
                 // ("CONVERSATIONS"), 12 below the top bar.
                 const MessengerGroupLabel('Conversations', top: 12),

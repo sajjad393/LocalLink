@@ -1,3 +1,4 @@
+import 'package:locallink/core/identity/person_name_276.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/groups/data/group_nearby_files.dart';
@@ -142,11 +143,11 @@ class LocalGroupNearbyStore
   Future<String> selfName() async {
     try {
       final p = await store.directoryProfileByDeviceId(selfId);
-      final n = p?['display_name']?.toString().trim() ?? '';
-      if (n.isNotEmpty) return n;
+      // Bundle 276: this name is SENT to group members - never the phone name.
+      final n = personName276(p?['display_name']?.toString(), p?['username']?.toString(), store.username);
+      if (n != 'LinkUp user') return n;
     } catch (_) {}
-    final d = store.deviceName?.trim() ?? '';
-    return d.isEmpty ? 'LinkUp user' : d;
+    return personName276(null, store.username);
   }
   @override
   Future<LocalGroup?> group(String gid) => store.groupById(gid);

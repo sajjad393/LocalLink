@@ -72,6 +72,13 @@ object AppShareNative {
                     Intent(Settings.ACTION_WIFI_SETTINGS),
                 )))
                 "openLocationSettings" -> result.success(openFirst(activity, listOf(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))))
+                // Bundle 275: quiet nearby update (download is done in Dart).
+                "updateDir275" -> result.success(UpdateInstall275.dir(activity))
+                "checkApk275" -> result.success(UpdateInstall275.check(activity,
+                    call.argument<String>("path") ?: "", (call.argument<Number>("size") ?: 0).toLong()))
+                "canInstall275" -> result.success(UpdateInstall275.canInstall(activity))
+                "openInstallSettings275" -> result.success(UpdateInstall275.openSettings(activity))
+                "installApk275" -> result.success(UpdateInstall275.install(activity, call.argument<String>("path") ?: ""))
                 else -> result.notImplemented()
             }
         } catch (e: Exception) {

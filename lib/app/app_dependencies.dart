@@ -1,3 +1,6 @@
+import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/features/share_app/domain/silent_update_275.dart';
+import 'package:locallink/features/contacts/presentation/widgets/my_links_map_273.dart';
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/security/security_code_245.dart';
 import 'package:locallink/core/security/identity_trust_service.dart';
@@ -1203,6 +1206,36 @@ class AppDependencies {
     );
   }
 
+  /// Bundle 275: the old phone's quiet update (popup by itself, no names).
+  SilentUpdate275? silentUpdate275;
+  Timer? _silent275;
+
+  void _startSilentUpdate275() {
+    if (_silent275 != null) return;
+    UpdateRequestService.inCall = () {
+      final s = callService.session;
+      return s != null && !s.isFinished;
+    };
+    final silent = silentUpdate275 ??= SilentUpdate275(
+      requests: updateRequests,
+      read: store.readSetting,
+      write: store.writeSetting,
+      minBuild: () => VersionGuard.instance.rule?.minBuild ?? 0,
+    );
+    SilentUpdate275.instance = silent;
+    unawaited(SilentUpdate275.cleanAtStart(read: store.readSetting, write: store.writeSetting)
+        .then((updated) {
+      if (updated) SilentUpdate275.onUpdated?.call();
+    }).catchError((Object _) {}));
+    // A nearby phone with a newer build: the popup opens by itself (the
+    // gate keeps it to once per build per day). First look after 20 s.
+    _silent275 = Timer(const Duration(seconds: 20), () {
+      unawaited(silent.check().catchError((Object _) => false));
+      _silent275 = Timer.periodic(const Duration(seconds: 60),
+          (_) => unawaited(silent.check().catchError((Object _) => false)));
+    });
+  }
+
   void _buildUpdateRequests() {
     final link = directTransport;
     final plain = link is SealingPeerTransport ? link.inner : link;
@@ -1545,6 +1578,7 @@ class AppDependencies {
     adminActions.start(); // Bundle 220
     _start221(); // Bundle 221
     updateRequests.start(); // Bundle 213
+    _startSilentUpdate275(); // Bundle 275
     _startAutoFetch(); // Bundle 208 (E)
     calls.start();
     await _loadReadReceiptsSetting();
@@ -1574,6 +1608,11 @@ class AppDependencies {
   Future<void> _loadReadReceiptsSetting() async {
     try {
       await ReadReceiptsSetting.instance
+          .load(read: store.readSetting, write: store.writeSetting);
+    } catch (_) {}
+    // Bundle 273: the "My links" card switch.
+    try {
+      await MyLinksSetting273.instance
           .load(read: store.readSetting, write: store.writeSetting);
     } catch (_) {}
     // Bundle 199: chat text size (pinch), same settings table.
@@ -1620,6 +1659,7 @@ class AppDependencies {
     adminActions.start(); // Bundle 220
     _start221(); // Bundle 221
     updateRequests.start(); // Bundle 213
+    _startSilentUpdate275(); // Bundle 275
     _startTls243(); // Bundle 243
     _startAutoFetch(); // Bundle 208 (E)
     calls.start();
@@ -1792,6 +1832,8 @@ class AppDependencies {
       await sub.cancel();
     }
     _late221.clear();
+    _silent275?.cancel(); // Bundle 275
+    _silent275 = null;
     await updateRequests.stop(); // Bundle 213
     await directoryRepository.dispose();
     await messaging.dispose();

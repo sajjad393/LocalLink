@@ -56,6 +56,14 @@ enum AskStatus { asking, notNow, noAnswer, sharing, qr, failed }
 
 /// Bundle 213 (E): "Update" gets the new app from a nearby phone.
 ///
+/// Bundle 275: QUIET. No names go either way (not in the frames, not on the
+/// download page). The phone with the new app shows NOTHING: it serves the
+/// app by itself only when [shareRule275] says yes (same Wi-Fi / Wi-Fi
+/// Direct, battery >= 30 % or charging, not in a call, 1 share at a time,
+/// 1 per asker per 2 min), else it answers "not now" quietly. The old phone's
+/// popup ([SilentUpdate275]) downloads inside LinkUp - no browser.
+///
+/// Old Bundle 213 text kept for history:
 /// Ali taps Ask next to Sumaira → `app_update_request` (one step) →
 /// Sumaira sees "Ali wants the new LinkUp" → Share → her phone serves the
 /// app (the 210 download page) on the Wi-Fi both phones are on →
@@ -87,16 +95,34 @@ class UpdateRequestService extends ChangeNotifier {
 
   static UpdateRequestService? instance;
 
-  /// The app shows "X wants the new LinkUp" (true = Share). Null result or
-  /// no hook = not now.
-  static Future<bool?> Function(UpdateAsk ask, ApkInfo apk, ShareBattery battery)? confirm;
+  /// Bundle 275: is this phone in a call now? (set by the app; null = no).
+  static bool Function()? inCall;
 
-  /// No shared Wi-Fi: the app opens the 210 Share LinkUp (QR) screen.
-  static void Function(String ownerName)? openShareScreen;
+  /// Bundle 275: the minimum battery to share without a charger.
+  static const int minBattery275 = 30;
+
+  /// Bundle 275: one share at a time - a share counts as running this long.
+  static const Duration shareBusy275 = Duration(minutes: 10);
+
+  /// Bundle 275 (U-2): the quiet sharer's rule. Null = share, else the
+  /// reason for a silent "not now".
+  static String? shareRule275({
+    required bool sameNetwork,
+    required ShareBattery battery,
+    required bool inCall,
+    required bool busyWithOther,
+  }) {
+    if (busyWithOther) return 'busy';
+    if (inCall) return 'in_call';
+    if (!battery.charging && battery.level >= 0 && battery.level < minBattery275) return 'battery';
+    if (!sameNetwork) return 'no_same_net';
+    return null;
+  }
 
   final Future<void> Function(String peerId, Map<String, dynamic> payload) send;
   final Stream<Map<String, dynamic>> events;
   final String Function() selfDeviceId;
+  /// Bundle 275: no longer sent (kept for the app wiring).
   final String Function() myName;
   final Future<String> Function(String peerId) peerName;
 
@@ -116,15 +142,22 @@ class UpdateRequestService extends ChangeNotifier {
   final Map<String, AskStatus> _status = <String, AskStatus>{};
   final Map<String, Timer> _waits = <String, Timer>{};
   UpdateOffer? _offer;
-  final Set<String> _opened = <String>{};
-  bool _dialogOpen = false;
   ApkShareServer? _server;
   StreamSubscription<Map<String, dynamic>>? _sub;
   final Map<String, String> _names = <String, String>{};
+  String? _sharingTo; // Bundle 275: 1 share at a time
+  DateTime? _sharingAt;
 
   UpdateOffer? get offer => _offer;
   AskStatus? statusOf(String peerId) => _status[peerId];
   String nameOf(String peerId) => _names[peerId] ?? 'Nearby phone';
+
+  /// Bundle 275: the popup asks again for the next build (fresh state).
+  void forget(String peerId) {
+    _status.remove(peerId);
+    _waits.remove(peerId)?.cancel();
+    if (_offer?.peerId == peerId) _offer = null;
+  }
 
   void start() {
     if (_sub != null) return;
@@ -152,24 +185,12 @@ class UpdateRequestService extends ChangeNotifier {
     for (final e in peerBuilds().entries) {
       if (e.value.build < need) continue;
       if (now.difference(e.value.at) > const Duration(minutes: 10)) continue;
-      final name = await _name(e.key);
+      // Bundle 275: no names.
       out.add(UpdateCandidate(
-          peerId: e.key, name: name, version: e.value.version, build: e.value.build));
+          peerId: e.key, name: '', version: e.value.version, build: e.value.build));
     }
     out.sort((a, b) => b.build != a.build ? b.build.compareTo(a.build) : a.name.compareTo(b.name));
     return out;
-  }
-
-  Future<String> _name(String id) async {
-    final known = _names[id];
-    if (known != null) return known;
-    var name = '';
-    try {
-      name = (await peerName(id)).trim();
-    } catch (_) {}
-    if (name.isEmpty) name = 'Nearby phone';
-    _names[id] = name;
-    return name;
   }
 
   /// Ask. False when asked this phone less than 2 min ago.
@@ -196,8 +217,7 @@ class UpdateRequestService extends ChangeNotifier {
     notifyListeners();
     try {
       await send(peerId, {
-        'type': requestType,
-        'name': myName(),
+        'type': requestType, // Bundle 275: no name
         'ips': ips.take(8).toList(),
         'build': AppBuild.sent,
       });
@@ -287,20 +307,18 @@ class UpdateRequestService extends ChangeNotifier {
     final build = msg['build'] is int ? msg['build'] as int : int.tryParse('${msg['build']}') ?? 0;
     final now = _clock();
     final last = _askedMeAt[from];
-    if (_dialogOpen || (last != null && now.difference(last) < askGap)) return;
+    if (last != null && now.difference(last) < askGap) return;
     if (build >= kAppBuild) {
       await _answer(from, false, 'not_newer');
       return;
     }
     _askedMeAt[from] = now;
-    final name = (msg['name']?.toString() ?? '').trim();
     final ask = UpdateAsk(
       peerId: from,
-      name: name.isEmpty ? await _name(from) : name,
+      name: '', // Bundle 275: never shown, never needed
       ips: [for (final x in (msg['ips'] as List? ?? const [])) '$x'].take(8).toList(),
       build: build,
     );
-    AppLogger.info('APP_UPDATE_ASKED', detail: 'from=${_tail(from)}');
     ApkInfo apk;
     try {
       apk = await native.apkInfo();
@@ -308,6 +326,7 @@ class UpdateRequestService extends ChangeNotifier {
       apk = const ApkInfo(ok: false, path: '', size: 0, version: '', split: false, reason: 'error');
     }
     if (!apk.ok) {
+      _silentLog(from, 'skip=${apk.reason ?? 'no_apk'}');
       await _answer(from, false, apk.reason ?? 'no_apk');
       return;
     }
@@ -317,54 +336,65 @@ class UpdateRequestService extends ChangeNotifier {
     } catch (_) {
       battery = const ShareBattery(charging: false, level: 100);
     }
-    final hook = confirm;
-    bool? yes;
-    if (hook != null) {
-      _dialogOpen = true;
-      try {
-        yes = await hook(ask, apk, battery);
-      } catch (_) {
-        yes = null;
-      } finally {
-        _dialogOpen = false;
-      }
-    }
-    if (yes != true) {
+    final busyAt = _sharingAt;
+    final busy = _sharingTo != null &&
+        _sharingTo != from &&
+        busyAt != null &&
+        now.difference(busyAt) < shareBusy275 &&
+        (_server?.running ?? startServer != null);
+    final ip = await _sameNetIp(ask.ips);
+    final why = shareRule275(
+      sameNetwork: ip != null,
+      battery: battery,
+      inCall: inCall?.call() ?? false,
+      busyWithOther: busy,
+    );
+    if (why != null) {
+      _silentLog(from, 'skip=$why');
       await _answer(from, false, 'not_now');
       return;
     }
-    await share(ask, apk);
+    await share(ask, apk, ip: ip);
   }
 
-  /// Share tapped: serve the app on the Wi-Fi the asker is on, or the QR.
-  Future<void> share(UpdateAsk ask, ApkInfo apk) async {
-    String? ip;
+  void _silentLog(String to, String what) =>
+      AppLogger.info('APP_UPDATE_SILENT_SHARE', detail: 'to=${_tail(to)} $what');
+
+  Future<String?> _sameNetIp(List<String> theirs) async {
     try {
       final a = await native.addresses();
-      ip = sameNetworkIp(
+      return sameNetworkIp(
           mine: [
             if (a.wifiIp != null) a.wifiIp!,
             for (final x in a.list) x.ip,
           ],
-          theirs: ask.ips);
-    } catch (_) {}
+          theirs: theirs);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Bundle 275: serve the app quietly on the network the asker is on.
+  /// No same network = a silent "not now" (no QR: it needs a person).
+  Future<void> share(UpdateAsk ask, ApkInfo apk, {String? ip}) async {
+    ip ??= await _sameNetIp(ask.ips);
     final version = apk.version.isEmpty ? kAppVersion : apk.version;
     if (ip == null) {
-      AppLogger.info('APP_UPDATE_SHARE', detail: 'way=qr');
-      await _sendOffer(ask.peerId, {'qr': true, 'version': version, 'size': apk.size});
-      openShareScreen?.call(myName());
+      _silentLog(ask.peerId, 'skip=no_same_net');
+      await _answer(ask.peerId, false, 'not_now');
       return;
     }
     try {
       final url = startServer != null
-          ? await startServer!(apk, ip, myName())
+          ? await startServer!(apk, ip, '') // Bundle 275: no owner name
           : await _serve(apk, ip, version);
-      AppLogger.info('APP_UPDATE_SHARE', detail: 'way=wifi');
+      _sharingTo = ask.peerId;
+      _sharingAt = _clock();
+      _silentLog(ask.peerId, 'ok');
       await _sendOffer(ask.peerId, {'url': url, 'version': version, 'size': apk.size});
     } catch (e) {
-      AppLogger.warning('APP_UPDATE_SHARE', detail: 'fail=$e');
-      await _sendOffer(ask.peerId, {'qr': true, 'version': version, 'size': apk.size});
-      openShareScreen?.call(myName());
+      _silentLog(ask.peerId, 'skip=serve_fail');
+      await _answer(ask.peerId, false, 'not_now');
     }
   }
 
@@ -372,10 +402,13 @@ class UpdateRequestService extends ChangeNotifier {
     var server = _server;
     if (server == null || !server.running) {
       server = ApkShareServer(
-          apkPath: apk.path, apkSize: apk.size, version: version, ownerName: myName());
+          apkPath: apk.path, apkSize: apk.size, version: version, ownerName: ''); // Bundle 275
       server.onIdle = () {
         unawaited(server!.stop());
-        if (identical(_server, server)) _server = null;
+        if (identical(_server, server)) {
+          _server = null;
+          _sharingTo = null;
+        }
       };
       _server = server;
     }
@@ -385,7 +418,7 @@ class UpdateRequestService extends ChangeNotifier {
 
   Future<void> _sendOffer(String to, Map<String, dynamic> fields) async {
     try {
-      await send(to, {'type': offerType, 'name': myName(), ...fields});
+      await send(to, {'type': offerType, ...fields}); // Bundle 275: no name
     } catch (_) {}
   }
 
@@ -411,11 +444,9 @@ class UpdateRequestService extends ChangeNotifier {
     final url = msg['url']?.toString() ?? '';
     final qr = msg['qr'] == true || url.isEmpty;
     if (!qr && !_safeUrl(url)) return;
-    final name = (msg['name']?.toString() ?? '').trim();
-    if (name.isNotEmpty) _names[from] = name;
     _offer = UpdateOffer(
       peerId: from,
-      name: name.isEmpty ? await _name(from) : name,
+      name: '', // Bundle 275: no names
       version: msg['version']?.toString() ?? '',
       size: msg['size'] is int ? msg['size'] as int : 0,
       url: qr ? '' : url,
@@ -424,8 +455,7 @@ class UpdateRequestService extends ChangeNotifier {
     _status[from] = qr ? AskStatus.qr : AskStatus.sharing;
     AppLogger.info('APP_UPDATE_OFFER', detail: 'from=${_tail(from)} qr=$qr');
     notifyListeners();
-    // The download opens by itself (once per address).
-    if (!qr && _opened.add(url)) await _open(url);
+    // Bundle 275: no browser - the popup downloads it inside LinkUp.
   }
 
   /// Only a plain local address of a phone (http://10.x / 192.168.x / ...).
@@ -455,8 +485,7 @@ class UpdateRequestService extends ChangeNotifier {
 
   @visibleForTesting
   static void resetHooksForTest() {
-    confirm = null;
-    openShareScreen = null;
+    inCall = null;
     instance = null;
   }
 }

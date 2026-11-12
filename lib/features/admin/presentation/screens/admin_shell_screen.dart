@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/services/locallink_api.dart';
@@ -5,6 +7,7 @@ import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/data/admin_permissions.dart';
 import 'package:locallink/features/admin/data/models/admin_session.dart';
+import 'package:locallink/features/admin/data/services/admin_live_hint_274.dart';
 import 'package:locallink/features/admin/data/services/admin_session_store.dart';
 import 'package:locallink/features/admin/domain/admin_repository_contract.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_audit_screen.dart';
@@ -53,14 +56,31 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
   String _searchQuery = '';
   ThemeMode? _themeOverride;
 
+  // Bundle 274 (D-4): the server said "the map changed" - re-read the live
+  // numbers quietly (at most once a second; no spinner).
+  Timer? _hint274;
+  DateTime _last274 = DateTime.fromMillisecondsSinceEpoch(0);
+  void _onHint274() {
+    if (_hint274?.isActive ?? false) return;
+    final wait = const Duration(seconds: 1) - DateTime.now().difference(_last274);
+    _hint274 = Timer(wait.isNegative ? Duration.zero : wait, () {
+      if (!mounted) return;
+      _last274 = DateTime.now();
+      unawaited(_bloc.refreshLive274().catchError((_) => false));
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _bloc = AdminBloc(widget.repository, adminRole: widget.session.role)..load();
+    AdminLiveHint274.tick.addListener(_onHint274); // Bundle 274 (D-4)
   }
 
   @override
   void dispose() {
+    AdminLiveHint274.tick.removeListener(_onHint274);
+    _hint274?.cancel();
     _bloc.close();
     _searchController.dispose();
     super.dispose();

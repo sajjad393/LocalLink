@@ -125,7 +125,7 @@ void main() {
     expect(read('lib/features/connectivity/presentation/widgets/nearby_test_switches.dart'), isNot(contains('Pretend')));
     final app = read('lib/app/local_link_app.dart');
     expect(app, contains('VersionGuard.openUpdate = openUpdateSheet;'));
-    expect(app, contains('UpdateRequestService.confirm = '));
+    expect(app, contains('SilentUpdate275.showPopup = ')); // Bundle 275: quiet update popup
   });
 
   test('Android: version frames go one step; http links open in the browser', () {

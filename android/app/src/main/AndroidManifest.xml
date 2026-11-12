@@ -33,6 +33,9 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <!-- Bundle 275: open Android's own "Update" screen for a LinkUp APK from a nearby phone.
+         Android asks the user once ("Allow from this source"); it never installs silently. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <!-- Bundle 185 (B2): ZTE's own power manager, opened from "Keep LinkUp running". -->
     <queries>
@@ -105,5 +108,15 @@
             </intent-filter>
         </activity>
         <meta-data android:name="flutterEmbedding" android:value="2" />
+        <!-- Bundle 275: only <cache>/update275/ goes to the installer. -->
+        <provider
+            android:name=".UpdateFileProvider275"
+            android:authorities="${applicationId}.update275"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths_275" />
+        </provider>
     </application>
 </manifest>

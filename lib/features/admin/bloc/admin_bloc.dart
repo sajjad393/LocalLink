@@ -274,6 +274,29 @@ final class AdminBloc extends Cubit<AdminState> {
     }
   }
 
+  /// Bundle 274 (A-2 / D-4): quiet live re-read of the map, network and
+  /// summary (no spinner, no error banner; null keeps the old value).
+  /// True when the link map was read.
+  Future<bool> refreshLive274() async {
+    final repo = repository;
+    final results = await Future.wait<dynamic>([
+      if (repo is AdminExtraReads216) _safe((repo as AdminExtraReads216).linkMap()) else Future<dynamic>.value(null),
+      _safe(repository.network()),
+      _safe(repository.summary()),
+    ]);
+    if (isClosed) return false;
+    final map = _mapOrNull(results[0]);
+    final net = _mapOrNull(results[1]);
+    final sum = _mapOrNull(results[2]);
+    if (map == null && net == null && sum == null) return false;
+    emit(state.copyWith(
+      linkMapData: map ?? state.linkMapData,
+      networkData: net ?? state.networkData,
+      summaryData: sum ?? state.summaryData,
+    ));
+    return map != null;
+  }
+
   /// Switches the analytics window and reloads the dashboard series.
   Future<void> setAnalyticsRange(String range) => loadDashboard(range: range);
 

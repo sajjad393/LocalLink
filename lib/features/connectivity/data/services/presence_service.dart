@@ -72,7 +72,10 @@ class PresenceService {
     // Bundle 144: a new direct link gets our presence at once (no-server mode
     // otherwise showed the peer "offline" for up to 30s, or forever).
     _transportSub = directTransport.events.listen((event) {
-      if (event['type'] == 'peer_connected') unawaited(publish(force: true));
+      // Bundle 274 (A-1): a lost link is told at once too (admin map live).
+      if (event['type'] == 'peer_connected' || event['type'] == 'peer_disconnected') {
+        unawaited(publish(force: true));
+      }
     }, onError: (Object _) {});
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       unawaited(_refreshWifiDirect());

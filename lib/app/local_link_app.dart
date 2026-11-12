@@ -2,8 +2,7 @@ import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminActionSignOut;
 import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
-import 'package:locallink/features/share_app/domain/update_request_service.dart';
-import 'package:locallink/features/share_app/presentation/share_app_entry.dart';
+import 'package:locallink/features/share_app/domain/silent_update_275.dart';
 import 'package:locallink/features/share_app/presentation/update_sheet.dart';
 import 'dart:async';
 
@@ -117,16 +116,15 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     AdminActionSignOut.onSignedOut = () async {
       await _signedOut(); // Bundle 227 (F2): opens Welcome itself.
     };
-    UpdateRequestService.confirm = (ask, apk, battery) async {
+    // Bundle 275: no question on the phone that has the new app (it shares
+    // quietly); the old phone gets ONE popup that starts by itself.
+    SilentUpdate275.showPopup = (s) {
       final ctx = _navigatorKey.currentState?.overlay?.context;
-      if (!mounted || ctx == null) return null;
-      return showUpdateAskDialog(ctx, ask, apk, battery);
+      if (!mounted || ctx == null || _update275Open) return;
+      _update275Open = true;
+      unawaited(showSilentUpdateSheet275(ctx, s).whenComplete(() => _update275Open = false));
     };
-    UpdateRequestService.openShareScreen = (ownerName) {
-      final ctx = _navigatorKey.currentState?.overlay?.context;
-      if (!mounted || ctx == null) return;
-      openShareApp(ctx, ownerName: ownerName);
-    };
+    SilentUpdate275.onUpdated = () => _showAppSnackBar('LinkUp updated to $kAppVersion');
     // Bundle 126: pairing diagnostics are demoted to logcat-only (the
     // service still prints every PAIR_DIAG line). While bring-up was broken,
     // toasting every stage line was worth it; now each packet produced 1–3
@@ -139,6 +137,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   /// from this state. LocalLinkApp's own build context sits ABOVE
   /// MaterialApp (no ScaffoldMessenger ancestor — the 122 snackbar crashed
   /// on exactly that); the navigator overlay context always has one.
+  bool _update275Open = false; // Bundle 275
+
   void _showAppSnackBar(String message, {Duration? duration}) {
     if (!mounted) return;
     final navigator = _navigatorKey.currentState;

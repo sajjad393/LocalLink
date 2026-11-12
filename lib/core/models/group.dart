@@ -1,3 +1,4 @@
+import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/group_extras.dart';
 import 'package:locallink/core/models/message_envelope.dart';
@@ -135,7 +136,7 @@ class GroupMember {
   final String userId;
   const GroupMember({required this.groupId,required this.deviceId,required this.role,required this.joinedAt,required this.name,this.addedBy='',this.userId=''});
   bool get isAdmin => role == 'owner' || role == 'admin';
-  factory GroupMember.fromJson(Map<String,dynamic> j)=>GroupMember(groupId:j['group_id']?.toString()??'',deviceId:j['device_id']?.toString()??'',role:j['role']?.toString()??'member',joinedAt:j['joined_at']?.toString()??'',name:j['name']?.toString()??'',addedBy:j['added_by']?.toString()??'',userId:j['user_id']?.toString()??'');
+  factory GroupMember.fromJson(Map<String,dynamic> j)=>GroupMember(groupId:j['group_id']?.toString()??'',deviceId:j['device_id']?.toString()??'',role:j['role']?.toString()??'member',joinedAt:j['joined_at']?.toString()??'',name:_memberName276(j),addedBy:j['added_by']?.toString()??'',userId:j['user_id']?.toString()??'');
 }
 
 class GroupMessage {
@@ -166,4 +167,14 @@ class GroupMessage {
   bool get forwarded => envelope.forwarded;
   DateTime get createdTime => DateTime.tryParse(createdAt)?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0);
   factory GroupMessage.fromJson(Map<String,dynamic> j)=>GroupMessage(id:j['id']?.toString()??'',groupId:j['group_id']?.toString()??'',senderId:j['sender_id']?.toString()??'',body:j['body']?.toString()??'',createdAt:j['created_at']?.toString()??'',serverSeq:int.tryParse(j['server_seq']?.toString()??'')??0,attachments:(j['attachments'] as List? ?? []).map((e)=>Attachment.fromJson(Map<String,dynamic>.from(e as Map))).toList(),nearbySent:j['nearby_sent']==1||j['nearby_sent']==true);
+}
+
+/// Bundle 276: a member's saved name is never a phone's default name
+/// ("My Android Phone (1a2b)"); then the username, else '' (resolved later).
+String _memberName276(Map<String, dynamic> j) {
+  final n = j['name']?.toString().trim() ?? '';
+  if (n.isNotEmpty && !isDefaultPhoneLabel255(n)) return n;
+  final u = (j['username']?.toString().trim() ?? '').replaceFirst(RegExp(r'^@+'), '');
+  if (u.isNotEmpty && !isDefaultPhoneLabel255(u)) return u;
+  return '';
 }

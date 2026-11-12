@@ -140,7 +140,7 @@ abstract final class A216 {
   static const online = Color(0xFF12B76A);
   static const okText = Color(0xFF079455);
 
-  static const linkServer = Color(0xFF12A150);
+  static const linkServer = Color(0xFF3B82C4); // Bundle 272 (A-1): server = blue, same as the maps
   static const linkWifiDirect = Color(0xFFE8A317);
   static const linkMesh = Color(0xFF7C5CDB);
   static const linkLan = Color(0xFF14A3A0);

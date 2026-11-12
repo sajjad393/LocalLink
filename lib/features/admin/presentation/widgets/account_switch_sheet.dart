@@ -1,3 +1,4 @@
+import 'package:locallink/core/identity/person_name_276.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -37,15 +38,9 @@ class AccountSwitchDeps {
   });
 }
 
-/// My name for the sheet: nickname first, then the phone name.
-String accountSwitchUserName(LocalStore store) {
-  final nick = store.username?.trim() ?? '';
-  if (nick.isNotEmpty) return nick;
-  final pending = store.offlinePending?['username']?.toString().trim() ?? '';
-  if (pending.isNotEmpty) return pending;
-  final device = store.deviceName?.trim() ?? '';
-  return device.isNotEmpty ? device : 'LinkUp user';
-}
+/// My name for the sheet: nickname first (Bundle 276: never the phone name).
+String accountSwitchUserName(LocalStore store) =>
+    personName276(store.username, store.offlinePending?['username']?.toString());
 
 /// Bundle 211 (C2/C4) / 214: open the Admin panel with the saved admin
 /// session (made by the phone itself, no password).

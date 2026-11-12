@@ -1,3 +1,4 @@
+import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -145,7 +146,7 @@ class _AdminRecoveryScreenState extends State<AdminRecoveryScreen> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(name, style: t.custom(15, FontWeight.w600, c.ink)),
                     const SizedBox(height: 3),
-                    Text('New phone: ${r['target_device_name'] ?? 'not named'}', style: t.cardSub),
+                    Text('New phone: ${phoneTitle255('${r['target_device_name'] ?? ''}', name, fallback: 'not named')}', style: t.cardSub), // Bundle 276
                   ]),
                 ),
                 const AdminTag216('Waiting', A216Tone.orange, dot: true),
@@ -216,7 +217,7 @@ class _AdminRecoveryScreenState extends State<AdminRecoveryScreen> {
                       hasAvatar: r['has_avatar'] == true),
                   title: personName216(r, fallback: 'Someone'),
                   subtitle:
-                      'New phone: ${r['target_device_name'] ?? 'not named'} · ${whenSub216(r['created_at'])}',
+                      'New phone: ${phoneTitle255('${r['target_device_name'] ?? ''}', personName216(r), fallback: 'not named')} · ${whenSub216(r['created_at'])}', // Bundle 276
                   trailing: Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: '${r['status']}' == 'rejected'

@@ -1,3 +1,4 @@
+import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
@@ -30,7 +31,9 @@ List<SecurityItem216> securityItems216(List<Map<String, dynamic>> events, int al
       failed.putIfAbsent('${e['user_id'] ?? e['username'] ?? ''}|$day', () => []).add(e);
       continue;
     }
-    final phone = '${e['device_name'] ?? ''}';
+    final phone = '${e['device_name'] ?? ''}'.trim().isEmpty
+        ? ''
+        : phoneTitle255('${e['device_name']}', personName216(e)); // Bundle 276
     final whoPhone = phone.isEmpty ? who(e) : '${who(e)} · $phone';
     final when = whenSub216(e['created_at']);
     SecurityItem216 item(String title, String level, {bool withPhone = false}) =>

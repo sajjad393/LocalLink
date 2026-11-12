@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/features/admin/data/services/admin_live_hint_274.dart';
 import 'package:flutter/foundation.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/admin/data/models/admin_badge.dart';
@@ -137,6 +138,7 @@ class AdminRoleService {
       final type = m['type']?.toString();
       if (type == 'admin_role_changed') unawaited(refresh(reason: 'push'));
       if (type == 'admin_badge_changed') onBadgeChanged?.call();
+      AdminLiveHint274.onMessage(m); // Bundle 274 (A-2)
     });
     unawaited(Future<void>.delayed(const Duration(seconds: 6), () async {
       if (_started) await refresh(reason: 'start');

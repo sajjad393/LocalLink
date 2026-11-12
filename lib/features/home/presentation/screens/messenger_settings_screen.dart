@@ -1,3 +1,5 @@
+import 'package:locallink/features/contacts/presentation/widgets/my_links_map_273.dart';
+import 'package:locallink/core/identity/person_name_276.dart';
 import 'dart:async';
 
 import 'package:locallink/features/share_app/presentation/share_app_entry.dart';
@@ -177,10 +179,8 @@ class MessengerSettingsScreen extends StatelessWidget {
     final nickname = (store.username?.trim().isNotEmpty == true)
         ? store.username!.trim()
         : pendingUsername;
-    final deviceLabel = store.deviceName?.trim() ?? '';
-    final displayName = nickname.isNotEmpty
-        ? nickname
-        : (deviceLabel.isNotEmpty ? deviceLabel : 'LinkUp user');
+    // Bundle 276: never the phone's name.
+    final displayName = personName276(nickname);
     final colors = Theme.of(context).colorScheme;
     // Bundle 183 (A2/A3): "@username · Account, phones, backup" - never the
     // default phone name.
@@ -388,6 +388,7 @@ class MessengerSettingsScreen extends StatelessWidget {
               key: ValueKey('settings_privacy_label')),
           MessengerListGroup(dividerIndent: 66, children: [
             const ReadReceiptsRow(), // Bundle 198
+            const MyLinksRow273(), // Bundle 273
             ListenableBuilder(
               listenable: BlockHub.instance,
               builder: (context, _) => MessengerSettingsRow(

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
@@ -59,7 +60,26 @@ class LinkPathsFullScreen extends StatefulWidget {
     this.selfName = 'You',
     this.selfId,
     this.selfUserId,
+    this.extraEdges = const [],
+    this.live,
+    this.userMode = false,
+    this.onUserTap,
+    this.title = 'Link paths',
+    this.userSubtitle,
   });
+
+  /// Bundle 272 (B-3): lines between other phones / server -> phone.
+  final List<LinkEdge> extraEdges;
+
+  /// Bundle 272 / 274: stays live while open (null = [nodes] as given).
+  final ValueListenable<LinkMapLive272>? live;
+
+  /// Bundle 273: "My links" for every user - no filters, no block marks,
+  /// a tap opens the chat ([onUserTap]); a relay explains itself.
+  final bool userMode;
+  final ValueChanged<LinkNode>? onUserTap;
+  final String title;
+  final String? userSubtitle;
 
   /// Bundle 216 (C): me in the middle (photo + 'You').
   final String selfName;
@@ -136,10 +156,33 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     super.dispose();
   }
 
+  List<LinkNode> get _srcNodes => widget.live?.value.nodes ?? widget.nodes;
+  List<LinkEdge> get _srcEdges => widget.live?.value.edges ?? widget.extraEdges;
+
+  /// Bundle 273: a tap in user mode opens the chat; a relay explains itself.
+  void _userTap(LinkNode n) {
+    if (n.relay) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+          content: Text("A LinkUp phone helping to pass your messages. It can't read them.")));
+      return;
+    }
+    widget.onUserTap?.call(n);
+  }
+
+  void _onNode(LinkNode n) {
+    if (widget.userMode) {
+      _userTap(n);
+      return;
+    }
+    setState(() => _selected = n.id);
+    _sheet(n);
+  }
+
   List<LinkNode> get _nodes {
+    if (widget.userMode) return _srcNodes; // Bundle 273: no admin block marks
     final book = AdminBlockBook.instance;
     return [
-      for (final n in widget.nodes)
+      for (final n in _srcNodes)
         n.copyWith(
             blocked: n.blocked || book.isBlocked(n.id) || book.isBlocked(n.userId)),
     ];
@@ -245,8 +288,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
       }
     }
     if (best == null) return;
-    setState(() => _selected = best!.id);
-    _sheet(best);
+    _onNode(best);
   }
 
   Future<void> _sheet(LinkNode node) async {
@@ -404,15 +446,16 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: AdminBlockBook.instance,
+        listenable: Listenable.merge([AdminBlockBook.instance, if (widget.live != null) widget.live!]),
         builder: (context, _) {
           final all = _nodes;
           final shown = [for (final n in all) if (linkMapFilterMatches(_filter, n)) n];
           final blockedCount = all.where((n) => n.blocked).length;
           return AdminPage216(
-            title: 'Link paths',
-            subtitle:
-                '${linkMapUserCount(all)} users · $blockedCount blocked · server ${widget.serverOnline ? 'online' : 'offline'}',
+            title: widget.title,
+            subtitle: widget.userMode
+                ? (widget.userSubtitle ?? '${linkMapUserCount(all)} contacts')
+                : '${linkMapUserCount(all)} users · $blockedCount blocked · server ${widget.serverOnline ? 'online' : 'offline'}',
             right: AdminBarAction216(
               tooltip: 'Small map',
               fill: const Color(0xFFEEF3FF),
@@ -432,14 +475,15 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                     onSubmitted: _find,
                   ),
                 ),
-                SizedBox(
-                  height: 34,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: [for (final f in LinkMapFilter.values) _chip(f, all)],
+                if (!widget.userMode)
+                  SizedBox(
+                    height: 34,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: [for (final f in LinkMapFilter.values) _chip(f, all)],
+                    ),
                   ),
-                ),
                 const SizedBox(height: 10),
                 Expanded(
                   child: LayoutBuilder(builder: (context, box) {
@@ -484,10 +528,15 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                                     selfName: widget.selfName,
                                     selfId: widget.selfId,
                                     selfUserId: widget.selfUserId,
-                                    onNodeTap: (n) {
-                                      setState(() => _selected = n.id);
-                                      _sheet(n);
-                                    },
+                                    onNodeTap: _onNode,
+                                    extraEdges: [
+                                      for (final e in _srcEdges)
+                                        if (_filter == LinkMapFilter.all ||
+                                            (_filter != LinkMapFilter.blocked &&
+                                                linkMapFilterMatches(
+                                                    _filter, LinkNode(id: '', label: '', tag: e.tag))))
+                                          e,
+                                    ],
                                   ),
                                 ),
                               ),

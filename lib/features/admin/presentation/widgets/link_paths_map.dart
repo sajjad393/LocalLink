@@ -30,6 +30,18 @@ class LinkNode {
   /// Bundle 216: admin known from the data itself (UI check data, link map).
   final bool admin;
 
+  /// Bundle 273: a phone that passes messages but is not a contact - drawn
+  /// as the LinkUp logo, no name, no photo ([hiddenMore] = "+N" phones).
+  final bool relay;
+  final int hiddenMore;
+
+  /// Bundle 273: a contact that is offline now - grey, no line.
+  final bool offline;
+
+  /// Bundle 272 / 273: no default line from You / the server (its lines
+  /// come from the extra edges only).
+  final bool noLine;
+
   const LinkNode({
     required this.id,
     required this.label,
@@ -37,6 +49,10 @@ class LinkNode {
     this.blocked = false,
     this.userId = '',
     this.admin = false,
+    this.relay = false,
+    this.hiddenMore = 0,
+    this.offline = false,
+    this.noLine = false,
   });
 
   LinkNode copyWith({bool? blocked}) => LinkNode(
@@ -45,7 +61,45 @@ class LinkNode {
       tag: tag,
       blocked: blocked ?? this.blocked,
       userId: userId,
-      admin: admin);
+      admin: admin,
+      relay: relay,
+      hiddenMore: hiddenMore,
+      offline: offline,
+      noLine: noLine);
+}
+
+/// Bundle 272 (B-3): one extra line on the map, between any two ends.
+/// [from] / [to] are node ids, or [self] (this phone) / [server].
+class LinkEdge {
+  const LinkEdge(this.from, this.to, this.tag, {this.blocked = false});
+
+  static const String self = '#self';
+  static const String server = '#server';
+
+  final String from;
+  final String to;
+  final LinkTag tag;
+  final bool blocked;
+
+  /// Same line either way round.
+  String get key {
+    final a = from.compareTo(to) <= 0 ? from : to;
+    final b = identical(a, from) ? to : from;
+    return '$a|$b|${tag.name}${blocked ? '|b' : ''}';
+  }
+
+  @override
+  bool operator ==(Object other) => other is LinkEdge && other.key == key;
+
+  @override
+  int get hashCode => key.hashCode;
+}
+
+/// Bundle 272 / 274: what the full-screen map shows while it is open (live).
+class LinkMapLive272 {
+  const LinkMapLive272(this.nodes, this.edges);
+  final List<LinkNode> nodes;
+  final List<LinkEdge> edges;
 }
 
 /// Bundle 216 (C): one map node per phone / person. Rules:
@@ -118,7 +172,7 @@ const Color kLinkBlockedRed = Color(0xFFD92D20);
 /// Tints matching the app’s transport language (chips / dividers).
 /// Bundle 216: the UI_SPEC_216 link colours.
 const kLinkTagColors = <LinkTag, Color>{
-  LinkTag.server: Color(0xFF12A150),
+  LinkTag.server: Color(0xFF3B82C4), // Bundle 272 (A-1): server = blue
   LinkTag.wifiDirect: Color(0xFFE8A317),
   LinkTag.mesh: Color(0xFF7C5CDB),
   LinkTag.localWifi: Color(0xFF14A3A0),
@@ -162,6 +216,12 @@ class LinkPathsMap extends StatelessWidget {
   final String? title;
   final String? subtitle;
 
+  /// Bundle 272 (B-3): lines between other phones / server -> phone.
+  final List<LinkEdge> extraEdges;
+
+  /// Bundle 273: the grey note with nobody on the map.
+  final String emptyText;
+
   const LinkPathsMap({
     this.title,
     this.subtitle,
@@ -174,19 +234,25 @@ class LinkPathsMap extends StatelessWidget {
     this.selfId,
     this.selfUserId,
     this.onNodeTap,
+    this.extraEdges = const [],
+    this.emptyText = 'No other phones linked',
   });
 
-  static Set<A216Link> linksOf(List<LinkNode> nodes, bool serverOnline) => {
+  static Set<A216Link> linksOf(List<LinkNode> nodes, bool serverOnline,
+          [List<LinkEdge> extraEdges = const []]) =>
+      {
         if (serverOnline) A216Link.server,
         for (final n in nodes)
-          if (!n.blocked) linkOfTag216(n.tag),
+          if (!n.blocked && !n.offline) linkOfTag216(n.tag),
+        for (final e in extraEdges)
+          if (!e.blocked) linkOfTag216(e.tag),
       };
 
   @override
   Widget build(BuildContext context) {
     AdminPersonAvatar216.noteYouName(selfName); // Bundle 254 (21.5)
     final c = A216.colors(context);
-    final links = linksOf(nodes, serverOnline);
+    final links = linksOf(nodes, serverOnline, extraEdges);
     final t = A216Text(c);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -242,6 +308,7 @@ class LinkPathsMap extends StatelessWidget {
                       selfId: selfId,
                       selfUserId: selfUserId,
                       onNodeTap: onNodeTap,
+                      extraEdges: extraEdges,
                     ),
             ),
             if (linkMapUserCount(nodes) == 0)
@@ -250,7 +317,7 @@ class LinkPathsMap extends StatelessWidget {
                 top: 0,
                 bottom: 0,
                 child: Center(
-                  child: Text('No other phones linked',
+                  child: Text(emptyText,
                       key: const ValueKey('link_paths_empty'),
                       style: A216Text(c).note),
                 ),
@@ -373,6 +440,9 @@ class LinkPathsCanvas extends StatefulWidget {
   final String? selfUserId;
   final ValueChanged<LinkNode>? onNodeTap;
 
+  /// Bundle 272 (B-3): extra lines (other phones, server -> phone).
+  final List<LinkEdge> extraEdges;
+
   const LinkPathsCanvas(
       {super.key,
       required this.nodes,
@@ -384,7 +454,8 @@ class LinkPathsCanvas extends StatefulWidget {
       this.selfName = 'You',
       this.selfId,
       this.selfUserId,
-      this.onNodeTap});
+      this.onNodeTap,
+      this.extraEdges = const []});
 
   @override
   State<LinkPathsCanvas> createState() => LinkPathsCanvasState();
@@ -392,8 +463,8 @@ class LinkPathsCanvas extends StatefulWidget {
   /// Bundle 217 (§2.1): control point of the aerial line p → q, bowing away
   /// from [centre]; k = 0.60 (full map) or 0.36 ([small] card).
   @visibleForTesting
-  static Offset aerialControl(Offset p, Offset q, Offset centre, {bool small = false}) {
-    final k = small ? 0.36 : 0.60;
+  static Offset aerialControl(Offset p, Offset q, Offset centre, {bool small = false, double? bow}) {
+    final k = bow ?? (small ? 0.36 : 0.60); // Bundle 272 (M-3): phone<->phone 0.25
     final d = q - p;
     final len = math.max(1.0, d.distance);
     final mid = Offset((p.dx + q.dx) / 2, (p.dy + q.dy) / 2);
@@ -426,6 +497,7 @@ class LinkPathsCanvas extends StatefulWidget {
         motion: motion,
         dark: c.dark,
         small: small,
+        extraEdges: extraEdges,
       );
       final place = painter._placements(size);
       final self = painter._self(size);
@@ -433,16 +505,35 @@ class LinkPathsCanvas extends StatefulWidget {
       Widget person(Offset at, {required String id, String userId = '', required String name,
           bool blocked = false, bool admin = false, bool me = false, LinkNode? node}) {
         final r = nodeRadius;
-        final avatar = AdminPersonAvatar216(
-          name: name,
-          deviceId: id.isEmpty ? null : id,
-          userId: userId.isEmpty ? null : userId,
-          radius: r,
-          admin: admin,
-          blocked: blocked,
-          background: bg,
-        );
-        final label = small
+        // Bundle 273: a non-contact relay = the LinkUp logo (no name/photo);
+        // an offline contact = grey.
+        final Widget avatar = node != null && node.relay
+            ? LinkRelayAvatar273(radius: r, more: node.hiddenMore, background: bg)
+            : node != null && node.offline
+                ? Opacity(
+                    opacity: 0.45,
+                    child: ColorFiltered(
+                      colorFilter: kLinkGreyFilter273,
+                      child: AdminPersonAvatar216(
+                          name: name,
+                          deviceId: id.isEmpty ? null : id,
+                          userId: userId.isEmpty ? null : userId,
+                          radius: r,
+                          background: bg),
+                    ))
+                : AdminPersonAvatar216(
+                    name: name,
+                    deviceId: id.isEmpty ? null : id,
+                    userId: userId.isEmpty ? null : userId,
+                    radius: r,
+                    admin: admin,
+                    blocked: blocked,
+                    background: bg,
+                  );
+        final noLabel = node != null && node.relay && name.trim().isEmpty;
+        final label = noLabel
+            ? const SizedBox.shrink()
+            : small
             ? Text(name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -628,6 +719,7 @@ class _LinkPathsPainter extends CustomPainter {
     this.motion = false,
     this.dark = false,
     this.small = false,
+    this.extraEdges = const [],
   })  : crownKey = [
           for (final n in nodes)
             if (!n.blocked && AdminCrown.showFor(n.id)) n.id,
@@ -641,6 +733,9 @@ class _LinkPathsPainter extends CustomPainter {
   final bool motion;
   final bool dark;
   final bool small;
+
+  /// Bundle 272 (B-3): extra lines drawn after the default ones.
+  final List<LinkEdge> extraEdges;
 
   /// Bundle 214 (D6): who gets a crown 👑 above the node (snapshot).
   final String crownKey;
@@ -670,11 +765,21 @@ class _LinkPathsPainter extends CustomPainter {
     final sorted = [...nodes]..sort((a, b) => a.id.compareTo(b.id));
     final byTag = <LinkTag, List<LinkNode>>{
       for (final tag in LinkTag.values)
-        tag: [for (final n in sorted) if (n.tag == tag) n],
+        tag: [for (final n in sorted) if (n.tag == tag && !n.offline) n],
     };
     final result = <String, Offset>{};
     final s = _self(size);
     final sv = _server(size);
+    // Bundle 273: offline contacts sit on an upper arc, grey, no line.
+    final off = [for (final n in sorted) if (n.offline) n];
+    for (var i = 0; i < off.length; i++) {
+      final f = off.length == 1 ? 0.5 : i / (off.length - 1);
+      final angle = (200 + 140 * f) * math.pi / 180;
+      final r = (118.0 + 22 * (i % 2)) * spread;
+      final x = s.dx + math.cos(angle) * r * 1.25;
+      final y = s.dy + math.sin(angle) * r * 0.82;
+      result[off[i].id] = Offset(x.clamp(16.0, size.width - 16.0), y.clamp(16.0, size.height - 34.0));
+    }
 
     // sector definitions: (startAngleDeg, endAngleDeg) with screen coords
     // (0deg = right, 90deg = down, 180deg = left, 270deg = up).
@@ -865,7 +970,7 @@ class _LinkPathsPainter extends CustomPainter {
 
     // Green arcs: server → the devices it reaches.
     for (final n in nodes) {
-      if (n.tag != LinkTag.server) continue;
+      if (n.tag != LinkTag.server || n.noLine || n.offline) continue;
       final pos = place[n.id]!;
       if (n.blocked) {
         _dashed(canvas, _aerial(sv, pos, centre), kLinkBlockedGrey);
@@ -876,7 +981,8 @@ class _LinkPathsPainter extends CustomPainter {
 
     // Purple mesh CHAINS: sorted links node→node marching inward to self.
     final meshNodes = [
-      for (final n in nodes) if (n.tag == LinkTag.mesh) place[n.id]!
+      for (final n in nodes)
+        if (n.tag == LinkTag.mesh && !n.noLine && !n.offline) place[n.id]!
     ];
     if (meshNodes.isNotEmpty) {
       meshNodes.sort((a, b) => (b - s).distance.compareTo((a - s).distance));
@@ -892,12 +998,43 @@ class _LinkPathsPainter extends CustomPainter {
     // Yellow / teal: self → device.
     for (final n in nodes) {
       if (n.tag == LinkTag.mesh || n.tag == LinkTag.server) continue;
+      if (n.noLine || n.offline) continue; // Bundle 272 / 273
       if (n.blocked) {
         // Bundle 212: grey dashed = relays others' messages only (no motion).
         _dashed(canvas, _aerial(s, place[n.id]!, centre), kLinkBlockedGrey);
         continue;
       }
       _flowLine(canvas, _aerial(s, place[n.id]!, centre), kLinkTagColors[n.tag]!, index++);
+    }
+
+    // Bundle 272 (B-3 / M-3): extra lines. Phone<->phone lines bow away
+    // from the centre of the phones only, a smaller bow (0.25); server lines
+    // use the normal centre. Blocked = grey dashed.
+    if (extraEdges.isNotEmpty) {
+      final phones = <Offset>[s, ...place.values];
+      var px = 0.0, py = 0.0;
+      for (final o in phones) {
+        px += o.dx;
+        py += o.dy;
+      }
+      final phoneCentre = Offset(px / phones.length, py / phones.length);
+      Offset? at(String id) => id == LinkEdge.self ? s : (id == LinkEdge.server ? sv : place[id]);
+      for (final e in extraEdges) {
+        final a = at(e.from), b = at(e.to);
+        if (a == null || b == null || a == b) continue;
+        final viaServer = e.from == LinkEdge.server || e.to == LinkEdge.server;
+        final ctrl = viaServer
+            ? LinkPathsCanvas.aerialControl(a, b, centre, small: small)
+            : LinkPathsCanvas.aerialControl(a, b, phoneCentre, small: small, bow: 0.25);
+        final path = Path()
+          ..moveTo(a.dx, a.dy)
+          ..quadraticBezierTo(ctrl.dx, ctrl.dy, b.dx, b.dy);
+        if (e.blocked) {
+          _dashed(canvas, path, kLinkBlockedGrey);
+        } else {
+          _flowLine(canvas, path, kLinkTagColors[e.tag]!, index++);
+        }
+      }
     }
 
     // ---- server cloud --------------------------------------------------
@@ -1060,6 +1197,67 @@ class _LinkPathsPainter extends CustomPainter {
       old.nodeR != nodeR ||
       old.crownKey != crownKey || // Bundle 214
       old.motion != motion || old.dark != dark || old.small != small || // Bundle 217
-      old.nodes.map((e) => '${e.id}${e.blocked}').join(',') !=
-          nodes.map((e) => '${e.id}${e.blocked}').join(',');
+      old.nodes.map((e) => '${e.id}${e.blocked}${e.offline}${e.noLine}').join(',') !=
+          nodes.map((e) => '${e.id}${e.blocked}${e.offline}${e.noLine}').join(',') ||
+      old.extraEdges.map((e) => e.key).join(',') != extraEdges.map((e) => e.key).join(','); // Bundle 272
+}
+
+/// Bundle 273: grey for an offline contact's photo.
+const ColorFilter kLinkGreyFilter273 = ColorFilter.matrix(<double>[
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0, 0, 0, 1, 0,
+]);
+
+/// Bundle 273: a LinkUp phone that passes messages (not a contact): the
+/// LinkUp logo, no name, no photo; "+N" when more phones are in between.
+class LinkRelayAvatar273 extends StatelessWidget {
+  const LinkRelayAvatar273({super.key, required this.radius, this.more = 0, this.background});
+
+  final double radius;
+  final int more;
+  final Color? background;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = radius * 2;
+    return SizedBox(
+      key: const ValueKey('link_relay_logo'),
+      width: d,
+      height: d,
+      child: Stack(clipBehavior: Clip.none, children: [
+        Container(
+          width: d,
+          height: d,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: background ?? Colors.white,
+            border: Border.all(color: kLinkTagColors[LinkTag.mesh]!, width: 1.6),
+          ),
+          child: ClipOval(
+            child: Padding(
+              padding: EdgeInsets.all(radius * 0.22),
+              child: Image.asset('assets/brand/splash_logo.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) =>
+                      Icon(Icons.hub_rounded, size: radius, color: kLinkTagColors[LinkTag.mesh])),
+            ),
+          ),
+        ),
+        if (more > 0)
+          Positioned(
+            right: -6,
+            top: -4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                  color: kLinkTagColors[LinkTag.mesh], borderRadius: BorderRadius.circular(8)),
+              child: Text('+$more',
+                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
+            ),
+          ),
+      ]),
+    );
+  }
 }

@@ -7,6 +7,8 @@ import 'package:locallink/features/admin/data/admin_permissions.dart';
 import 'package:locallink/features/admin/presentation/theme/admin_theme.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_charts.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_components.dart';
+import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
+import 'package:locallink/features/admin/presentation/widgets/link_ways_274.dart';
 
 /// Operations dashboard for the LocalLink administration surface.
 ///
@@ -685,6 +687,9 @@ class _NetworkOverview extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AdminPalette.of(context);
     final network = state.networkData;
+    // Bundle 274 (D-3): each phone once, from the link map, map colours.
+    final ways = LinkWays274.of(state.linkMapData);
+    if (ways != null) return _ways274(context, palette, ways);
 
     if (network == null) {
       return AdminPanel(
@@ -758,6 +763,61 @@ class _NetworkOverview extends StatelessWidget {
                   label: 'Wi-Fi Direct', value: adminFormatNumber(wifiDirect)),
               _MiniStat(label: 'Mesh', value: adminFormatNumber(mesh)),
               _MiniStat(label: 'Registered', value: adminFormatNumber(registered)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+extension _Ways274 on _NetworkOverview {
+  Widget _ways274(BuildContext context, AdminPalette palette, LinkWays274 w) {
+    final segments = <AdminDonutSegment>[
+      AdminDonutSegment('On the server', w.server.toDouble(), kLinkTagColors[LinkTag.server]!),
+      AdminDonutSegment('Local Wi-Fi only', w.lan.toDouble(), kLinkTagColors[LinkTag.localWifi]!),
+      AdminDonutSegment('Wi-Fi Direct only', w.wifiDirect.toDouble(), kLinkTagColors[LinkTag.wifiDirect]!),
+      AdminDonutSegment('Mesh only', w.mesh.toDouble(), kLinkTagColors[LinkTag.mesh]!),
+      AdminDonutSegment('Offline', w.offline.toDouble(), kLinkBlockedGrey),
+    ];
+    return AdminPanel(
+      title: 'Live network',
+      subtitle: 'Each phone once, by how it is linked now',
+      actions: [
+        TextButton(
+            onPressed: () => onNavigate('Network & Mesh'),
+            child: const Text('Open Network Topology')),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              AdminDonutChart(
+                segments: segments,
+                centerValue: adminFormatNumber(w.online.toDouble()),
+                centerLabel: 'online',
+                size: 140,
+              ),
+              const SizedBox(width: AdminSpace.lg),
+              Expanded(
+                child: AdminChartLegend(items: segments, formatValue: adminFormatNumber),
+              ),
+            ],
+          ),
+          const SizedBox(height: AdminSpace.md),
+          Divider(color: palette.border, height: 1),
+          const SizedBox(height: AdminSpace.md),
+          Wrap(
+            spacing: AdminSpace.xxl,
+            runSpacing: AdminSpace.sm,
+            children: [
+              _MiniStat(label: 'Server links', value: adminFormatNumber(w.serverLinks.toDouble())),
+              _MiniStat(label: 'Wi-Fi links', value: adminFormatNumber(w.lanLinks.toDouble())),
+              _MiniStat(label: 'Wi-Fi Direct links', value: adminFormatNumber(w.wifiDirectLinks.toDouble())),
+              _MiniStat(label: 'Mesh links', value: adminFormatNumber(w.meshLinks.toDouble())),
+              _MiniStat(label: 'Phones', value: adminFormatNumber(w.phones.toDouble())),
             ],
           ),
         ],

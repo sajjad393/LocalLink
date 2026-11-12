@@ -132,7 +132,7 @@ String linkWord216(Object? link) => switch ('$link') {
     if (nodes is List) {
       for (final n in nodes) {
         if (n is Map && '${n['device_id']}' == id) {
-          return personName216(Map<String, dynamic>.from(n), fallback: '${n['device_name'] ?? ''}');
+          return personName216(Map<String, dynamic>.from(n)); // Bundle 276: no phone-name fallback
         }
       }
     }

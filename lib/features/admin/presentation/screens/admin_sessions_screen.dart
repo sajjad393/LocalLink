@@ -1,3 +1,4 @@
+import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -93,7 +94,7 @@ class AdminSessionsScreen extends StatelessWidget {
                     hasAvatar: usersByName['${s['username']}']?['has_avatar'] == true,
                   ),
                   title: personName216(s, fallback: '${s['user_id'] ?? ''}'),
-                  subtitle: '${s['device_name'] ?? 'Phone'} · since ${since(s['created_at'])}',
+                  subtitle: '${phoneTitle255('${s['device_name'] ?? ''}', personName216(s))} · since ${since(s['created_at'])}', // Bundle 276
                   trailing: thisDeviceId != null && '${s['device_id']}' == thisDeviceId
                       ? const Padding(
                           padding: EdgeInsets.only(right: 4),

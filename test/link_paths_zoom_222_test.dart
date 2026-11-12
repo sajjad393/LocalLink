@@ -97,6 +97,6 @@ void main() {
     final src = File('lib/features/admin/presentation/widgets/link_paths_map.dart').readAsStringSync();
     final part = src.substring(src.indexOf('/// Bundle 217: when the map lines may move')).replaceAll('\r\n', '\n');
     expect(sha256.convert(utf8.encode(part)).toString(),
-        '798158082d36f3183093544595c93ca6b4d75a24c5c3ed333f428b41ea5159ad');
+        '462d447fb022426c75708fe2e80aeef6315e933c6d73819c02b77813ef1450a4'); // Bundle 272: relay/offline nodes + extra lines
   });
 }

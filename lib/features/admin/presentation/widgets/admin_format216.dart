@@ -2,6 +2,8 @@
 /// Pure functions, no Flutter imports, so they are easy to test.
 library;
 
+import 'package:locallink/core/utils/phone_label_255.dart';
+
 const List<String> _months = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -175,8 +177,10 @@ String levelRights216(String level) => switch (level) {
 /// Name shown for a person: display name → @username → fallback.
 String personName216(Map<String, dynamic> m, {String fallback = ''}) {
   for (final k in const ['display_name', 'name', 'username']) {
-    final v = m[k]?.toString().trim() ?? '';
-    if (v.isNotEmpty) return v;
+    var v = m[k]?.toString().trim() ?? '';
+    if (k == 'username') v = v.replaceFirst(RegExp(r'^@+'), '');
+    // Bundle 276: a phone's default name is never a person's name.
+    if (v.isNotEmpty && !isDefaultPhoneLabel255(v)) return v;
   }
   return fallback;
 }

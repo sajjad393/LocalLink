@@ -36,6 +36,8 @@ import 'package:locallink/features/admin/presentation/screens/admin_users_screen
 import 'package:locallink/features/admin/data/models/admin_badge.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/admin/presentation/ui_check/admin_ui_check216.dart';
+import 'package:locallink/features/admin/data/services/admin_live_hint_274.dart';
+import 'package:locallink/features/admin/presentation/widgets/link_map_network_272.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
@@ -172,6 +174,67 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     _tick = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
     _expiredSub = _realBloc.stream.listen(_onBlocState);
     _viewSub = widget.viewMode.stream.listen(_onView);
+    // Bundle 272 / 274: the server map, live (hint + 60 s safety poll).
+    _mapSub272 = _realBloc.stream.listen(_onMapState272);
+    _liveTimer274 = Timer.periodic(const Duration(seconds: 60), (_) => unawaited(_readLive274('poll')));
+    AdminLiveHint274.tick.addListener(_onHint274);
+  }
+
+  // ------------------------------------------------- Bundle 272 / 274
+  StreamSubscription<AdminState>? _mapSub272;
+  Timer? _liveTimer274;
+  Timer? _hintTimer274;
+  bool _liveBusy274 = false;
+  DateTime _lastLive274 = DateTime.fromMillisecondsSinceEpoch(0);
+  Map<String, dynamic>? _lastMap272;
+  DateTime? _mapAt272;
+  final ValueNotifier<LinkMapLive272> _fullLive272 = ValueNotifier(const LinkMapLive272([], []));
+
+  void _onMapState272(AdminState st) {
+    final m = st.linkMapData;
+    if (m == null || identical(m, _lastMap272)) return;
+    _lastMap272 = m;
+    _mapAt272 = DateTime.now();
+    if (mounted) setState(() {});
+  }
+
+  /// Bundle 274 (A-2): max 1 read per second on the server's hint.
+  void _onHint274() {
+    if (_hintTimer274?.isActive ?? false) return;
+    final wait = const Duration(seconds: 1) - DateTime.now().difference(_lastLive274);
+    _hintTimer274 = Timer(wait.isNegative ? Duration.zero : wait, () {
+      unawaited(_readLive274('hint'));
+    });
+  }
+
+  Future<void> _readLive274(String why) async {
+    if (!mounted || _liveBusy274 || _check) return;
+    if (!widget.viewMode.state.serverConnected) return;
+    _liveBusy274 = true;
+    _lastLive274 = DateTime.now();
+    try {
+      await _realBloc.refreshLive274();
+    } catch (_) {
+      // Ignored: the map keeps what it shows; the next hint / poll retries.
+    } finally {
+      _liveBusy274 = false;
+    }
+  }
+
+  /// Bundle 272 (B-2): own view + the server map (server connected only).
+  LinkMapNetwork272 _network272(List<Device> devices, bool online) {
+    final own = widget.store.deviceId;
+    final r = LinkMapNetwork272.merge(
+      own: _nodesFor(devices),
+      serverMap: _lastMap272 ?? _realBloc.state.linkMapData,
+      serverOnline: online,
+      fetchedAt: _mapAt272,
+      selfIds: {if (own != null && own.isNotEmpty) own},
+      noFlag: {for (final d in devices) if (_flagTag(d) == null) d.id},
+      hidden: {..._blockedIds, for (final d in _devices) if (_isBlockedDevice(d.id)) d.id},
+    );
+    r.log();
+    return r;
   }
 
   StreamSubscription<AdminState>? _expiredSub;
@@ -247,6 +310,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     _backTimer?.cancel();
     unawaited(_viewSub?.cancel());
     unawaited(_expiredSub?.cancel());
+    unawaited(_mapSub272?.cancel()); // Bundle 272 / 274
+    _liveTimer274?.cancel();
+    _hintTimer274?.cancel();
+    AdminLiveHint274.tick.removeListener(_onHint274);
+    _fullLive272.dispose();
     unawaited(_realBloc.close());
     unawaited(_checkBloc?.close());
     super.dispose();
@@ -360,11 +428,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       ];
 
   void _openFullMap(List<Device> devices, bool online) {
-    final nodes = AdminUiCheck216.on.value ? _checkNodes : _nodesFor(devices);
+    final net = AdminUiCheck216.on.value ? null : _network272(devices, online);
+    final nodes = net?.nodes ?? _checkNodes;
     logMapNodes216(nodes.length, _hiddenDupes);
+    _fullLive272.value = LinkMapLive272(nodes, net?.extraEdges ?? const []);
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => LinkPathsFullScreen(
         nodes: nodes,
+        extraEdges: net?.extraEdges ?? const [],
+        live: net == null ? null : _fullLive272, // Bundle 272 / 274: stays live while open
         serverOnline: online,
         service: _blocks,
         targetFor: (n) => _targetForDevice(n.id, n.label),
@@ -388,14 +460,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   static bool _hubNearby(String id) => adminHubNearby254(id);
   static LinkTag? _hubTag(String id) => adminHubTag254(id);
 
-  LinkTag _tagFor(Device d) {
+  LinkTag _tagFor(Device d) => _flagTag(d) ?? LinkTag.mesh; // reachable only through relays
+
+  /// Bundle 272 (A-3): the way this phone itself knows (null = no flag).
+  LinkTag? _flagTag(Device d) {
     final hub = _hubTag(d.id);
     if (hub != null) return hub;
     if (d.wifiDirectConnected) return LinkTag.wifiDirect;
     if (d.meshAvailable) return LinkTag.mesh;
     if (d.lanAvailable) return LinkTag.localWifi;
     if (d.serverConnected) return LinkTag.server;
-    return LinkTag.mesh; // reachable only through relays
+    return null;
   }
 
   Set<String> get _blockedIds =>
@@ -829,15 +904,24 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   }
 
   Widget _mapCard(bool online, List<Device> devices) {
-    final nodes = _check ? _checkNodes : _nodesFor(devices);
+    final net = _check ? null : _network272(devices, online);
+    final nodes = net?.nodes ?? _checkNodes;
+    final edges = net?.extraEdges ?? const <LinkEdge>[];
+    if (net != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _fullLive272.value = LinkMapLive272(nodes, edges);
+      });
+    }
     return AdminCard216(
       key: const ValueKey('a216_map_card'),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
       child: LinkPathsMap(
         title: 'Link paths',
-        subtitle: 'Who is linked to whom, live',
+        // Bundle 272 (B-4): without the server only this phone's links.
+        subtitle: online || _check ? 'Who is linked to whom, live' : 'Server off - your links only',
         height: 104,
         nodes: nodes,
+        extraEdges: edges,
         serverOnline: online,
         selfName: _myName,
         selfId: widget.store.deviceId,
