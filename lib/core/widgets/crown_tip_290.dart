@@ -39,7 +39,8 @@ abstract final class CrownTip290 {
         _ => 'Helps run LinkUp.',
       };
 
-  static const Duration shownFor = Duration(seconds: 3);
+  /// Bundle 298 (H): 7 s (3 s was too short to read the line).
+  static const Duration shownFor = Duration(seconds: 7);
 
   static OverlayEntry? _entry;
   static Timer? _timer;

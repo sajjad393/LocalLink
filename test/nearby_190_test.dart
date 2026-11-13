@@ -288,7 +288,7 @@ void main() {
   group('Bundle 192 version', () {
     test('pubspec and stamp', () {
       expect(File('pubspec.yaml').readAsStringSync(),
-          contains('version: 3.0.94+165'));
+          contains('version: 3.0.95+166'));
       expect(File('lib/app/local_link_app.dart').readAsStringSync(),
           contains('AppBuild.stamp')); // Bundle 223 (Q18): made from kAppVersion
     });

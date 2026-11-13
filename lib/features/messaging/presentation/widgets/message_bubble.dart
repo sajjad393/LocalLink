@@ -18,6 +18,7 @@ import 'bubble_layout.dart';
 import 'bubble_media.dart';
 import 'message_options.dart';
 import 'pinch_text_zoom.dart';
+import 'route_mark_298.dart';
 
 class MessageBubble extends StatelessWidget {
   final Message message;
@@ -231,6 +232,8 @@ class MessageBubble extends StatelessWidget {
       Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Bundle 298 (E): the way a received message came (tiny icon).
+          if (!isMine) RouteMark298(channel: message.channel, onMedia: onMedia),
           Text(
             _time(message.createdAt),
             style: theme.textTheme.labelSmall?.copyWith(

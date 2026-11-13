@@ -134,8 +134,10 @@ void main() {
     expect(CrownTip290.showing, isTrue);
     expect(find.text('Admin · Security'), findsOneWidget);
     expect(find.text(CrownTip290.line('security')), findsOneWidget);
-    // Closes by itself after 3 s.
-    await tester.pump(const Duration(seconds: 3));
+    // Bundle 298 (H): stays 7 s (was 3 s), then closes by itself.
+    await tester.pump(const Duration(seconds: 6));
+    expect(CrownTip290.showing, isTrue);
+    await tester.pump(const Duration(seconds: 1));
     expect(CrownTip290.showing, isFalse);
     expect(find.byKey(const ValueKey('crown_tip_bubble')), findsNothing);
   });

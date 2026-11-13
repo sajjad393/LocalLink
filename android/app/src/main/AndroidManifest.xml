@@ -118,5 +118,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/update_paths_275" />
         </provider>
+        <!-- Bundle 298 (I): only <cache>/share298/ (the recovery code card) to WhatsApp. -->
+        <provider
+            android:name=".ShareFileProvider298"
+            android:authorities="${applicationId}.share298"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/share_paths_298" />
+        </provider>
     </application>
 </manifest>

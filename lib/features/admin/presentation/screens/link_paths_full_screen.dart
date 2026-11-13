@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart';
@@ -113,6 +114,27 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   bool _wholeTag = false;
   Timer? _wholeTimer;
 
+  /// Bundle 298 (A): full screen - only the map, the zoom buttons and
+  /// "Exit full screen"; the phone's own top and bottom bars hide too.
+  bool _full = false;
+  List<LinkNode> _shown298 = const [];
+
+  void _setFull(bool on) {
+    if (_full == on) return;
+    setState(() => _full = on);
+    unawaited((on
+            ? SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky)
+            : SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values))
+        .catchError((Object _) {}));
+    // The map box changes size: centre everyone again (same size as the
+    // first view, not the far-out "whole map") once it has its new size.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _view.width > 0 && _view.height > 0) {
+        _frameGroup(_shown298, linkMapCanvasSize(_view, widget.nodes.length));
+      }
+    });
+  }
+
   double get _fit => linkMapFitScale(_view, linkMapCanvasSize(_view, widget.nodes.length));
 
   bool get _atFit => _zoom.value.getMaxScaleOnAxis() <= _fit + 0.005;
@@ -153,6 +175,11 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   @override
   void dispose() {
     _wholeTimer?.cancel();
+    if (_full) {
+      // Bundle 298: leaving the map gives the phone its bars back.
+      unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values)
+          .catchError((Object _) {}));
+    }
     _zoom.dispose();
     super.dispose();
   }
@@ -163,7 +190,8 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   /// Bundle 273: a tap in user mode opens the chat; a relay explains itself.
   void _userTap(LinkNode n) {
     if (n.relay) {
-      LinkToast.show(context, "A LinkUp phone helping to pass your messages. It can't read them.", kind: LinkToastKind.info);
+      LinkToast.show(context, "A LinkUp phone helping to pass your messages. It can't read them.",
+          kind: LinkToastKind.info);
       return;
     }
     widget.onUserTap?.call(n);
@@ -182,9 +210,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     if (widget.userMode) return _srcNodes; // Bundle 273: no admin block marks
     final book = AdminBlockBook.instance;
     return [
-      for (final n in _srcNodes)
-        n.copyWith(
-            blocked: n.blocked || book.isBlocked(n.id) || book.isBlocked(n.userId)),
+      for (final n in _srcNodes) n.copyWith(blocked: n.blocked || book.isBlocked(n.id) || book.isBlocked(n.userId)),
     ];
   }
 
@@ -213,8 +239,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
 
   void _centreOn(Offset p, {double scale = 1.5}) {
     _zoom.value = Matrix4.identity()
-      ..translateByDouble(
-          _view.width / 2 - p.dx * scale, _view.height / 2 - p.dy * scale, 0, 1)
+      ..translateByDouble(_view.width / 2 - p.dx * scale, _view.height / 2 - p.dy * scale, 0, 1)
       ..scaleByDouble(scale, scale, scale, 1);
   }
 
@@ -238,12 +263,8 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     const margin = 44.0;
     double axis(double lo, double hi, double view) =>
         hi - lo + 2 * margin <= view ? view / 2 - (lo + hi) / 2 : margin - lo;
-    final dx = axis(minX, maxX, _view.width)
-        .clamp(math.min(0.0, _view.width - canvas.width), 0.0)
-        .toDouble();
-    final dy = axis(minY, maxY, _view.height)
-        .clamp(math.min(0.0, _view.height - canvas.height), 0.0)
-        .toDouble();
+    final dx = axis(minX, maxX, _view.width).clamp(math.min(0.0, _view.width - canvas.width), 0.0).toDouble();
+    final dy = axis(minY, maxY, _view.height).clamp(math.min(0.0, _view.height - canvas.height), 0.0).toDouble();
     _zoom.value = Matrix4.identity()..translateByDouble(dx, dy, 0, 1);
   }
 
@@ -264,7 +285,10 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     }
     // Hidden by the chip filter: show everyone again, then find.
     if (!linkMapFilterMatches(_filter, hit)) _filter = LinkMapFilter.all;
-    final shown = [for (final n in nodes) if (linkMapFilterMatches(_filter, n)) n];
+    final shown = [
+      for (final n in nodes)
+        if (linkMapFilterMatches(_filter, n)) n
+    ];
     final canvas = linkMapCanvasSize(_view, widget.nodes.length);
     final place = LinkPathsCanvas.placements(shown, canvas, spread: _spread);
     setState(() => _selected = hit.id);
@@ -302,8 +326,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
           final blocked = AdminBlockBook.instance.isBlocked(node.id) ||
               AdminBlockBook.instance.isBlocked(target.userId) ||
               node.blocked;
-          final entry = widget.service?.entryFor(target.userId) ??
-              widget.service?.entryFor(node.id);
+          final entry = widget.service?.entryFor(target.userId) ?? widget.service?.entryFor(node.id);
           return Column(
             key: const ValueKey('link_map_sheet'),
             mainAxisSize: MainAxisSize.min,
@@ -349,8 +372,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                         style: t.cardSub),
                   ]),
                 ),
-                AdminTag216(blocked ? 'Blocked' : 'Active',
-                    blocked ? A216Tone.red : A216Tone.green),
+                AdminTag216(blocked ? 'Blocked' : 'Active', blocked ? A216Tone.red : A216Tone.green),
               ]),
               if (blocked && entry != null) ...[
                 const SizedBox(height: 14),
@@ -374,8 +396,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                           foregroundColor: blocked ? c.ink : Colors.white,
                           shape: const StadiumBorder(),
                           textStyle: t.custom(14, FontWeight.w600, c.ink)),
-                      onPressed: () => runAdminBlock(sheet,
-                          service: widget.service, target: target, block: !blocked),
+                      onPressed: () => runAdminBlock(sheet, service: widget.service, target: target, block: !blocked),
                       child: Text(blocked ? 'Unblock' : 'Block'),
                     ),
                   ),
@@ -391,8 +412,8 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                           shape: const StadiumBorder(),
                           textStyle: t.custom(14, FontWeight.w600, c.ink)),
                       onPressed: () {
-                        Navigator.of(sheet).push(MaterialPageRoute<void>(
-                            builder: (_) => AdminBlockedListScreen(service: widget.service)));
+                        Navigator.of(sheet).push(
+                            MaterialPageRoute<void>(builder: (_) => AdminBlockedListScreen(service: widget.service)));
                       },
                       child: const Text('Blocked list'),
                     ),
@@ -414,8 +435,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
       padding: const EdgeInsets.only(right: 8),
       child: ChoiceChip(
         key: ValueKey('link_map_filter_${f.name}'),
-        label: Text(
-            '${linkMapFilterLabel(f)} ${all.where((n) => linkMapFilterMatches(f, n)).length}'),
+        label: Text('${linkMapFilterLabel(f)} ${all.where((n) => linkMapFilterMatches(f, n)).length}'),
         labelStyle: t.custom(12.5, on ? FontWeight.w600 : FontWeight.w500, on ? c.blue : c.ink2),
         selected: on,
         showCheckmark: false,
@@ -449,162 +469,202 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
         listenable: Listenable.merge([AdminBlockBook.instance, if (widget.live != null) widget.live!]),
         builder: (context, _) {
           final all = _nodes;
-          final shown = [for (final n in all) if (linkMapFilterMatches(_filter, n)) n];
+          final shown = [
+            for (final n in all)
+              if (linkMapFilterMatches(_filter, n)) n
+          ];
           final blockedCount = all.where((n) => n.blocked).length;
-          return AdminPage216(
-            title: widget.title,
-            subtitle: widget.userMode
-                ? (widget.userSubtitle ?? '${linkMapUserCount(all)} contacts')
-                : '${linkMapUserCount(all)} users · $blockedCount blocked · server ${widget.serverOnline ? 'online' : 'offline'}',
-            right: AdminBarAction216(
-              tooltip: 'Small map',
-              fill: const Color(0xFFEEF3FF),
-              onTap: () => Navigator.of(context).maybePop(),
-              child: Icon(Icons.close_fullscreen_rounded,
-                  size: 18, color: A216.colors(context).blue),
-            ),
-            body: Builder(builder: (context) {
-              final c = A216.colors(context);
-              final t = A216Text(c);
-              return Column(children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: AdminSearch216(
-                    hint: 'Find a person',
-                    fieldKey: const ValueKey('link_map_search'),
-                    onSubmitted: _find,
-                  ),
-                ),
-                if (!widget.userMode)
-                  SizedBox(
-                    height: 34,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      children: [for (final f in LinkMapFilter.values) _chip(f, all)],
+          // Bundle 298 (A): Back leaves full screen first.
+          return PopScope(
+            canPop: !_full,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop && _full) _setFull(false);
+            },
+            child: _full
+                ? Scaffold(
+                    key: const ValueKey('link_map_full_298'),
+                    backgroundColor: A216.colors(context).bgMap,
+                    body: _mapArea(context, shown),
+                  )
+                : AdminPage216(
+                    title: widget.title,
+                    subtitle: widget.userMode
+                        ? (widget.userSubtitle ?? '${linkMapUserCount(all)} contacts')
+                        : '${linkMapUserCount(all)} users · $blockedCount blocked · server ${widget.serverOnline ? 'online' : 'offline'}',
+                    right: AdminBarAction216(
+                      tooltip: 'Small map',
+                      fill: const Color(0xFFEEF3FF),
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: Icon(Icons.close_fullscreen_rounded, size: 18, color: A216.colors(context).blue),
                     ),
+                    body: Builder(builder: (context) {
+                      return Column(children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          child: AdminSearch216(
+                            hint: 'Find a person',
+                            fieldKey: const ValueKey('link_map_search'),
+                            onSubmitted: _find,
+                          ),
+                        ),
+                        if (!widget.userMode)
+                          SizedBox(
+                            height: 34,
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              children: [for (final f in LinkMapFilter.values) _chip(f, all)],
+                            ),
+                          ),
+                        const SizedBox(height: 10),
+                        Expanded(child: _mapArea(context, shown)),
+                      ]);
+                    }),
                   ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: LayoutBuilder(builder: (context, box) {
-                    _view = Size(box.maxWidth, box.maxHeight);
-                    final canvas = linkMapCanvasSize(_view, widget.nodes.length);
-                    if (!_framed && _view.width > 0 && _view.height > 0) {
-                      _framed = true;
-                      _frameGroup(shown, canvas);
-                    }
-                    return Stack(children: [
-                      Positioned.fill(
-                        child: ColoredBox(
-                          color: c.bgMap,
-                          child: GestureDetector(
-                            onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
-                            // Bundle 222: double tap = whole map <-> 2x.
-                            onDoubleTap: () {
-                              if (_atFit) {
-                                _setScale(2 / _zoom.value.getMaxScaleOnAxis(), focus: _doubleTapAt);
-                              } else {
-                                _showWhole();
-                              }
-                            },
-                            child: InteractiveViewer(
-                              key: const ValueKey('link_map_viewer'),
-                              transformationController: _zoom,
-                              constrained: false,
-                              boundaryMargin: const EdgeInsets.all(80),
-                              minScale: linkMapFitScale(_view, canvas),
-                              maxScale: 4,
-                              child: GestureDetector(
-                                onTapUp: (d) => _tapAt(d.localPosition, shown, canvas),
-                                child: SizedBox(
-                                  width: canvas.width,
-                                  height: canvas.height,
-                                  child: LinkPathsCanvas(
-                                    nodes: shown,
-                                    serverOnline: widget.serverOnline,
-                                    selectedId: _selected,
-                                    spread: _spread,
-                                    nodeRadius: 24,
-                                    selfName: widget.selfName,
-                                    selfId: widget.selfId,
-                                    selfUserId: widget.selfUserId,
-                                    onNodeTap: _onNode,
-                                    extraEdges: [
-                                      for (final e in _srcEdges)
-                                        if (_filter == LinkMapFilter.all ||
-                                            (_filter != LinkMapFilter.blocked &&
-                                                linkMapFilterMatches(
-                                                    _filter, LinkNode(id: '', label: '', tag: e.tag))))
-                                          e,
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (_wholeTag)
-                        Positioned(
-                          left: 76,
-                          right: 12,
-                          bottom: 18,
-                          child: Center(
-                            child: Container(
-                              key: const ValueKey('link_map_whole_tag'),
-                              padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1F2733),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text('Whole map', style: t.custom(13, FontWeight.w600, Colors.white)),
-                            ),
-                          ),
-                        ),
-                      if (_hint && !_wholeTag)
-                        Positioned(
-                          left: 76,
-                          right: 12,
-                          bottom: 22,
-                          child: Center(
-                            child: Text('Drag to scroll · pinch to zoom',
-                                key: const ValueKey('link_map_hint'),
-                                style: t.custom(11, FontWeight.w400, c.grey)),
-                          ),
-                        ),
-                      Positioned(
-                        left: 14,
-                        bottom: 16,
-                        child: Container(
-                          width: 44,
-                          decoration: BoxDecoration(
-                            color: c.surface,
-                            borderRadius: BorderRadius.circular(22),
-                            boxShadow: const [A216.pillShadow],
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 0),
-                          child: Column(mainAxisSize: MainAxisSize.min, children: [
-                            _zoomButton(const ValueKey('link_map_zoom_in'), 'Zoom in',
-                                Icons.add_rounded, () => _setScale(1.5)),
-                            ListenableBuilder(
-                              listenable: _zoom,
-                              builder: (context, _) => _zoomButton(
-                                  const ValueKey('link_map_zoom_out'),
-                                  _atFit ? 'Whole map' : 'Zoom out',
-                                  Icons.remove_rounded,
-                                  _atFit ? null : () => _setScale(1 / 1.5)),
-                            ),
-                            _zoomButton(const ValueKey('link_map_centre'), 'This phone',
-                                Icons.my_location_rounded, _centre),
-                          ]),
-                        ),
-                      ),
-                    ]);
-                  }),
-                ),
-              ]);
-            }),
           );
         },
       );
+
+  /// The map with its buttons (the same in the page and in full screen).
+  Widget _mapArea(BuildContext context, List<LinkNode> shown) {
+    _shown298 = shown;
+    final c = A216.colors(context);
+    final t = A216Text(c);
+    return LayoutBuilder(builder: (context, box) {
+      _view = Size(box.maxWidth, box.maxHeight);
+      final canvas = linkMapCanvasSize(_view, widget.nodes.length);
+      if (!_framed && _view.width > 0 && _view.height > 0) {
+        _framed = true;
+        _frameGroup(shown, canvas);
+      }
+      return Stack(children: [
+        Positioned.fill(
+          child: ColoredBox(
+            color: c.bgMap,
+            child: GestureDetector(
+              onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
+              // Bundle 222: double tap = whole map <-> 2x.
+              onDoubleTap: () {
+                if (_atFit) {
+                  _setScale(2 / _zoom.value.getMaxScaleOnAxis(), focus: _doubleTapAt);
+                } else {
+                  _showWhole();
+                }
+              },
+              child: InteractiveViewer(
+                key: const ValueKey('link_map_viewer'),
+                transformationController: _zoom,
+                constrained: false,
+                boundaryMargin: const EdgeInsets.all(80),
+                minScale: linkMapFitScale(_view, canvas),
+                maxScale: 4,
+                child: GestureDetector(
+                  onTapUp: (d) => _tapAt(d.localPosition, shown, canvas),
+                  child: SizedBox(
+                    width: canvas.width,
+                    height: canvas.height,
+                    child: LinkPathsCanvas(
+                      nodes: shown,
+                      serverOnline: widget.serverOnline,
+                      selectedId: _selected,
+                      spread: _spread,
+                      nodeRadius: 24,
+                      selfName: widget.selfName,
+                      selfId: widget.selfId,
+                      selfUserId: widget.selfUserId,
+                      onNodeTap: _onNode,
+                      extraEdges: [
+                        for (final e in _srcEdges)
+                          if (_filter == LinkMapFilter.all ||
+                              (_filter != LinkMapFilter.blocked &&
+                                  linkMapFilterMatches(_filter, LinkNode(id: '', label: '', tag: e.tag))))
+                            e,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (_wholeTag)
+          Positioned(
+            left: 76,
+            right: 12,
+            bottom: 18,
+            child: Center(
+              child: Container(
+                key: const ValueKey('link_map_whole_tag'),
+                padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F2733),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text('Whole map', style: t.custom(13, FontWeight.w600, Colors.white)),
+              ),
+            ),
+          ),
+        if (_hint && !_wholeTag)
+          Positioned(
+            left: 76,
+            right: 12,
+            bottom: 22,
+            child: Center(
+              child: Text('Drag to scroll · pinch to zoom',
+                  key: const ValueKey('link_map_hint'), style: t.custom(11, FontWeight.w400, c.grey)),
+            ),
+          ),
+        Positioned(
+          left: 14,
+          bottom: 16,
+          child: Container(
+            width: 44,
+            decoration: BoxDecoration(
+              color: c.surface,
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: const [A216.pillShadow],
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 0),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _zoomButton(const ValueKey('link_map_zoom_in'), 'Zoom in', Icons.add_rounded, () => _setScale(1.5)),
+              ListenableBuilder(
+                listenable: _zoom,
+                builder: (context, _) => _zoomButton(const ValueKey('link_map_zoom_out'),
+                    _atFit ? 'Whole map' : 'Zoom out', Icons.remove_rounded, _atFit ? null : () => _setScale(1 / 1.5)),
+              ),
+              _zoomButton(const ValueKey('link_map_centre'), 'This phone', Icons.my_location_rounded, _centre),
+              // Bundle 298 (A): full screen (hidden while in it).
+              if (!_full)
+                _zoomButton(const ValueKey('link_map_full_298_open'), 'Full screen', Icons.fullscreen_rounded,
+                    () => _setFull(true)),
+            ]),
+          ),
+        ),
+        if (_full)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 12,
+            right: 12,
+            child: Material(
+              color: c.surface,
+              shape: StadiumBorder(side: BorderSide(color: c.line)),
+              elevation: 0,
+              shadowColor: Colors.transparent,
+              child: InkWell(
+                key: const ValueKey('link_map_full_298_exit'),
+                customBorder: const StadiumBorder(),
+                onTap: () => _setFull(false),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 9, 16, 9),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.close_rounded, size: 18, color: c.ink2),
+                    const SizedBox(width: 6),
+                    Text('Exit full screen', style: t.custom(13.5, FontWeight.w600, c.ink2)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+      ]);
+    });
+  }
 }

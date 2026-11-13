@@ -1,5 +1,6 @@
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/search_pill_298.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
@@ -169,21 +170,12 @@ class _ForwardScreenState extends State<ForwardScreen> {
           if (widget.items.isNotEmpty) _card(colors),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: TextField(
-              key: const ValueKey('forward_search'),
+            // Bundle 298 (B): the shared pill (the old focus ring had square corners).
+            child: SearchPill298(
+              fieldKey: const ValueKey('forward_search'),
               controller: _search,
+              hint: 'Search',
               onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'Search',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: colors.surfaceContainerHighest,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(LocalLinkRadius.pill),
-                  borderSide: BorderSide.none,
-                ),
-              ),
             ),
           ),
           Expanded(

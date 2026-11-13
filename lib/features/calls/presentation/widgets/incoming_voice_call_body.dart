@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
 import 'package:locallink/features/calls/presentation/widgets/swipe_to_answer_button.dart';
 
@@ -33,7 +34,10 @@ class IncomingVoiceCallBody extends StatelessWidget {
     return LayoutBuilder(builder: (context, c) {
       final h = c.maxHeight.isFinite ? c.maxHeight : 900.0;
       final r = h < 620 ? 52.0 : 78.0;
-      final base = r * 2 + 24 + 28 + 36 + 10 + 22 + 20 + 72 + 100;
+      // Bundle 298 (C): a crowned caller needs room above the photo, or the
+      // crown covers "LinkUp voice call".
+      final crown = AdminCrown.showFor(peerId) ? AdminCrownRoom.extraFor(r, already: 12) : 0.0;
+      final base = r * 2 + 24 + 28 + 36 + 10 + 22 + 20 + 72 + 100 + crown;
       final distance = (h - base - 16).clamp(50.0, 140.0).toDouble();
       final column = _column(r, distance);
       if (h >= base + 16 + 50) return column;
@@ -52,7 +56,11 @@ class IncomingVoiceCallBody extends StatelessWidget {
     return Column(
       children: [
         const Spacer(),
-        Container(
+        AdminCrownRoom(
+          id: peerId,
+          radius: radius,
+          already: 12, // the soft ring around the photo
+          child: Container(
           key: const Key('incoming_photo_ring'),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -60,6 +68,7 @@ class IncomingVoiceCallBody extends StatelessWidget {
             shape: BoxShape.circle,
           ),
           child: AccountAvatar(name: peerName, radius: radius, iconSize: radius * .72, peerId: peerId),
+        ),
         ),
         const SizedBox(height: 28),
         Text(

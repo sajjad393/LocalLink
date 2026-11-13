@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/search_pill_298.dart';
 
 import 'package:locallink/features/share_app/presentation/share_app_entry.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart' show PresenceAvatar;
@@ -225,16 +226,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, LocalLinkSpacing.md, LocalLinkSpacing.lg, 0),
-                  child: TextField(
+                  // Bundle 298 (B): the same grey pill as every search.
+                  child: SearchPill298(
                     controller: _searchController,
+                    hint: 'Search people',
+                    height: 48,
                     onChanged: (value) => setState(() => _query = value),
-                    decoration: InputDecoration(
-                      hintText: 'Search people',
-                      prefixIcon: const Icon(Icons.search),
-                      // Bundle 183 (N3/N4): the sliders icon is a real
-                      // button now - All / Nearby / Online.
-                      suffixIcon: _filterButton(colors),
-                    ),
+                    // Bundle 183 (N3/N4): the sliders icon is a real
+                    // button now - All / Nearby / Online.
+                    trailing: _filterButton(colors),
                   ),
                 ),
                 if (filtered)

@@ -35,6 +35,8 @@ import 'package:locallink/features/messaging/data/services/not_on_server_218.dar
 import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
 import 'package:locallink/features/messaging/presentation/widgets/chat_composer.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_bubble.dart';
+import 'package:locallink/features/messaging/presentation/widgets/call_bubble_298.dart';
+import 'package:locallink/core/models/call.dart';
 import 'package:locallink/features/messaging/presentation/widgets/pending_attachment_strip.dart';
 import 'package:locallink/features/messaging/presentation/widgets/peer_offline_builder.dart';
 import 'package:locallink/features/messaging/data/services/voice_note_service.dart';
@@ -124,6 +126,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     SecurityCode245.instance.addListener(_onKeys263); // Bundle 263 (C5)
+    // Bundle 298 (F): the call bubbles follow the Calls history.
+    _history298 = widget.calls?.state.history;
+    _callsSub298 = widget.calls?.stream.listen((s) {
+      if (identical(s.history, _history298)) return;
+      _history298 = s.history;
+      if (mounted) setState(() {});
+    });
     _transferController = FileTransferBloc(repository: widget.files);
     widget.notifications?.setActiveDirectConversation(widget.controller.device.id);
     _voice = VoiceRecorderController(
@@ -932,6 +941,39 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  // Bundle 298 (F): calls inside the chat.
+  StreamSubscription<Object?>? _callsSub298;
+  List<CallRecord>? _history298;
+
+  /// This friend's calls, oldest first (none while searching).
+  List<CallRecord> _calls298(String selfId, String peerId, bool searching) {
+    final bloc = widget.calls;
+    if (bloc == null || searching) return const <CallRecord>[];
+    final live = bloc.state.session;
+    return CallBubble298.forChat(bloc.state.history,
+        selfId: selfId, peerId: peerId, liveId: live != null && !live.isFinished ? live.id : null);
+  }
+
+  /// Call bubbles (with a date line when the day changes) for [calls];
+  /// [day] = the day of the row above (null = none). Returns the rows and
+  /// the day of the last one.
+  (List<Widget>, DateTime?) _callRows298(
+      List<CallRecord> calls, DateTime? day, String selfId, bool canCall) {
+    final rows = <Widget>[];
+    for (final c in calls) {
+      if (day == null || !_sameDay(day, c.startedAt)) {
+        rows.add(_DateDivider(date: c.startedAt));
+        day = c.startedAt;
+      }
+      rows.add(CallBubble298(
+          key: ValueKey<String>('call:${c.id}'),
+          call: c,
+          selfId: selfId,
+          onCallBack: canCall ? _startCall : null));
+    }
+    return (rows, day);
+  }
+
   /// Bundle 196 (10.3 / 12.6): the bar that replaces the message box.
   Widget _blockedBar(BuildContext context, Device device,
       {required bool mine}) {
@@ -1004,6 +1046,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     SecurityCode245.instance.removeListener(_onKeys263); // Bundle 263
+    _callsSub298?.cancel();
     _flashTimer?.cancel();
     _composerFocus.dispose();
     _textController.dispose();
@@ -1042,6 +1085,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ? SecurityCode245.instance.eventsFor(device.id)
             : const <KeyEvent263>[];
         final matches = _searchMatches(state.messages, searchQuery);
+        final calls298 = _calls298(state.localDeviceId, device.id, searchQuery.isNotEmpty);
         _maybeAutoScroll(
           visibleMessages.length,
           lastIsMine: visibleMessages.isNotEmpty &&
@@ -1109,6 +1153,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       hintText: 'Search messages',
                       filled: false,
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none, // Bundle 298 (B)
+                      focusedBorder: InputBorder.none,
                     ),
                   )
                 : Row(
@@ -1240,6 +1286,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 // shows for the very first paint (no messages at all).
                 child: (state.isLoading && visibleMessages.isEmpty)
                     ? const LocalLinkLoadingView(message: 'Loading messages…')
+                    : (visibleMessages.isEmpty && calls298.isNotEmpty)
+                        // Bundle 298 (F): only calls so far.
+                        ? ListView(
+                            key: const ValueKey('chat_calls_only_298'),
+                            padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.md, LocalLinkSpacing.lg),
+                            children: _callRows298(calls298, null, state.localDeviceId,
+                                    widget.onStartCall != null && !iBlocked && !blockedMe && adminBar == null)
+                                .$1,
+                          )
                     : visibleMessages.isEmpty
                         ? LocalLinkEmptyView(
                             icon: searchQuery.isEmpty ? Icons.forum_outlined : Icons.search_off,
@@ -1271,13 +1326,26 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     return _blockedChip(context, device);
                                   }
                                   final message = visibleMessages[index];
-                                  final showDate = index == 0 || !_sameDay(visibleMessages[index - 1].createdAt, message.createdAt);
-                                  // Bundle 132 (G): a transport section label
-                                  // renders where the RECEIVE transport of
-                                  // incoming history changes (walking back to
-                                  // the previous labeled row). Untagged rows
-                                  // and outgoing rows never open a section.
-                                  final sectionLabel = _transportSectionLabelAt(visibleMessages, index, state.localDeviceId);
+                                  // Bundle 298 (E): no more way lines between
+                                  // messages (132 G); a received bubble shows
+                                  // a tiny way icon by its time (RouteMark298).
+                                  // Bundle 298 (F): calls made between the row
+                                  // above and this message, with date lines.
+                                  final canCall298 = widget.onStartCall != null && !iBlocked && !blockedMe && adminBar == null;
+                                  final (callsAbove298, dayAbove298) = _callRows298(
+                                      CallBubble298.between(calls298,
+                                          index == 0 ? null : visibleMessages[index - 1].createdAt, message.createdAt),
+                                      index == 0 ? null : visibleMessages[index - 1].createdAt,
+                                      state.localDeviceId,
+                                      canCall298);
+                                  // The date line when the row above (a call or
+                                  // the message before) is another day.
+                                  final dateHere298 = dayAbove298 == null || !_sameDay(dayAbove298, message.createdAt);
+                                  final callsBelow298 = index == visibleMessages.length - 1
+                                      ? _callRows298(CallBubble298.after(calls298, message.createdAt), message.createdAt,
+                                              state.localDeviceId, canCall298)
+                                          .$1
+                                      : const <Widget>[];
                                   final reply = message.replyTo;
                                   final picked = _selected.contains(message.id);
                                   final bubble = PeerOfflineBuilder(
@@ -1345,9 +1413,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     // media state when new messages arrive.
                                     key: ValueKey<String>('msg:${message.id}'),
                                     children: [
-                                      if (sectionLabel != null)
-                                        _TransportDivider(label: sectionLabel),
-                                      if (showDate) _DateDivider(date: message.createdAt),
+                                      ...callsAbove298,
+                                      if (dateHere298) _DateDivider(date: message.createdAt),
                                       // Bundle 263 (C2/C5): security code
                                       // notes made before this message.
                                       if (keyEventsBefore263(keyEvents, visibleMessages, index).isNotEmpty)
@@ -1379,6 +1446,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                           keyEventsAfterLast263(keyEvents, visibleMessages).isNotEmpty)
                                         _autoKeyLine258(context, device,
                                             keyEventsAfterLast263(keyEvents, visibleMessages)),
+                                      ...callsBelow298,
                                     ],
                                   );
                                 },
@@ -1463,38 +1531,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final b = y.toLocal();
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
-
-  /// Bundle 132 (G): transport label for ONE message — null when the row is
-  /// untagged (pre-132 history) or outgoing (own rows never wear a label).
-  static String? _transportLabel(Message m, String localDeviceId) {
-    if (m.senderId == localDeviceId) return null;
-    switch (m.channel) {
-      case 'server':
-        return 'Online';
-      case 'wifi_direct':
-        return 'Wi-Fi Direct';
-      case 'mesh':
-        return 'Mesh';
-      case 'lan':
-      case 'direct': // pre-132 value, no finer claim available
-        return 'Local Wi-Fi';
-      default:
-        return null;
-    }
-  }
-
-  /// The label rendering above visible[index] when the receive-transport
-  /// section changes at that row (walking back to the previous LABELED row).
-  static String? _transportSectionLabelAt(
-      List<Message> visible, int index, String localDeviceId) {
-    final label = _transportLabel(visible[index], localDeviceId);
-    if (label == null) return null;
-    for (var i = index - 1; i >= 0; i--) {
-      final prev = _transportLabel(visible[i], localDeviceId);
-      if (prev != null) return prev == label ? null : label;
-    }
-    return label; // first labeled row opens its section
-  }
 }
 
 class _DateDivider extends StatelessWidget {
@@ -1525,44 +1561,6 @@ class _DateDivider extends StatelessWidget {
 /// transport delivered the messages below. Approved visual: hairline both
 /// sides of a small colored label, no pill. Online=green, Wi-Fi Direct=
 /// yellow, Mesh=purple, Local Wi-Fi=teal.
-class _TransportDivider extends StatelessWidget {
-  final String label;
-  const _TransportDivider({required this.label});
-
-  static const Map<String, Color> _labelColors = {
-    'Online': Color(0xFF16A34A), // green-600
-    'Wi-Fi Direct': Color(0xFFCA8A04), // yellow-600
-    'Mesh': Color(0xFF7C3AED), // purple-600
-    'Local Wi-Fi': Color(0xFF0D9488), // teal-600
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = _labelColors[label] ?? scheme.outline;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: LocalLinkSpacing.sm),
-      child: Row(
-        children: [
-          Expanded(child: Container(height: 1, color: scheme.outlineVariant)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.md),
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.4,
-                  ),
-            ),
-          ),
-          Expanded(child: Container(height: 1, color: scheme.outlineVariant)),
-        ],
-      ),
-    );
-  }
-}
-
 /// Bundle 136: compact green chip in the chat app bar — only for a LIVE call
 /// with THIS peer — reopening the (still running) CallScreen.
 class _ReturnToCallChip extends StatelessWidget {

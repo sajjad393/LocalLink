@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/core/widgets/presence_way.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
@@ -29,7 +30,12 @@ class CallHeader extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AccountAvatar(name: session.peerName, radius: 78, iconSize: 56, peerId: session.peerId),
+        // Bundle 298 (C): room for a crown above the photo.
+        AdminCrownRoom(
+          id: session.peerId,
+          radius: 78,
+          child: AccountAvatar(name: session.peerName, radius: 78, iconSize: 56, peerId: session.peerId),
+        ),
         const SizedBox(height: 28),
         Text(
           session.peerName.isEmpty ? 'LinkUp user' : session.peerName,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/search_pill_298.dart';
 
 /// Bundle 163 (4.9): admin lists used to stop at 50 with no hint. Now they
 /// show 50 at a time with a search box and "Show 50 more (N left)".
@@ -39,17 +40,33 @@ class AdminListSearch extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: TextField(
-          onChanged: onChanged,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: const Icon(Icons.search_rounded, size: 20),
-            hintText: hint,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
-          ),
-        ),
+        // Bundle 298 (B): the shared pill (the old focus ring had other corners).
+        child: _AdminListSearchPill(onChanged: onChanged, hint: hint),
       );
+}
+
+/// Bundle 298: [SearchPill298] needs a controller; this keeps one.
+class _AdminListSearchPill extends StatefulWidget {
+  final ValueChanged<String> onChanged;
+  final String hint;
+  const _AdminListSearchPill({required this.onChanged, required this.hint});
+
+  @override
+  State<_AdminListSearchPill> createState() => _AdminListSearchPillState();
+}
+
+class _AdminListSearchPillState extends State<_AdminListSearchPill> {
+  final TextEditingController _c = TextEditingController();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SearchPill298(
+      controller: _c, hint: widget.hint, onChanged: widget.onChanged);
 }
 
 /// "Show 50 more (250 left)" under an admin list. Nothing when all shown.

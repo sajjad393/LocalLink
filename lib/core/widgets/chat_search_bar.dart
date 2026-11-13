@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/search_pill_298.dart';
 
 /// Bundle 207 (L2, mock 207 page 5 screen 14): the search top bar inside a
 /// chat (groups since G1, now 1:1 too): back, a rounded box, "2 of 3",
@@ -55,36 +56,14 @@ class ChatSearchBar extends StatelessWidget implements PreferredSizeWidget {
         icon: const Icon(Icons.arrow_back),
       ),
       titleSpacing: 0,
-      title: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.search, size: 18, color: colors.onSurfaceVariant),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                key: ValueKey('${keyPrefix}_search_field'),
-                controller: controller,
-                autofocus: true,
-                textInputAction: TextInputAction.search,
-                onChanged: onChanged,
-                onSubmitted: (_) => onGo(i),
-                decoration: InputDecoration(
-                  hintText: hint,
-                  filled: false,
-                  isDense: true,
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ),
-          ],
-        ),
+      // Bundle 298 (B): the shared pill - no blue box inside it.
+      title: SearchPill298(
+        fieldKey: ValueKey('${keyPrefix}_search_field'),
+        controller: controller,
+        hint: hint,
+        autofocus: true,
+        onChanged: onChanged,
+        onSubmitted: (_) => onGo(i),
       ),
       actions: [
         if (typed)

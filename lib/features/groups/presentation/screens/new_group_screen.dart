@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/search_pill_298.dart';
 
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
@@ -202,34 +203,13 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                     // Bundle 207 (M2): the search box sits on top.
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-                      child: Container(
+                      // Bundle 298 (B): the shared pill.
+                      child: SearchPill298(
+                        fieldKey: const ValueKey('new_group_search'),
+                        controller: _search,
+                        hint: 'Search friends',
                         height: 46,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        decoration: BoxDecoration(
-                          color: colors.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.search,
-                                size: 20, color: colors.onSurfaceVariant),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: TextField(
-                                key: const ValueKey('new_group_search'),
-                                controller: _search,
-                                onChanged: (_) => setState(() {}),
-                                decoration: const InputDecoration(
-                                  hintText: 'Search friends',
-                                  filled: false,
-                                  isDense: true,
-                                  border: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                        onChanged: (_) => setState(() {}),
                       ),
                     ),
                     if (_picked.isNotEmpty) _chips(context),

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_apart_291.dart';
+import 'package:locallink/features/admin/presentation/widgets/link_balance_298.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
@@ -228,6 +229,11 @@ class LinkPathsMap extends StatelessWidget {
   /// Bundle 273: the grey note with nobody on the map.
   final String emptyText;
 
+  /// Bundle 298 (D): wraps the canvas (Chats card: pinch zoom) and an item
+  /// at the right end of the legend row (its "Reset"). None = as before.
+  final Widget Function(Widget canvas)? wrapCanvas;
+  final Widget? legendEnd;
+
   const LinkPathsMap({
     this.title,
     this.subtitle,
@@ -242,6 +248,8 @@ class LinkPathsMap extends StatelessWidget {
     this.onNodeTap,
     this.extraEdges = const [],
     this.emptyText = 'No other phones linked',
+    this.wrapCanvas,
+    this.legendEnd,
   });
 
   static Set<A216Link> linksOf(List<LinkNode> nodes, bool serverOnline,
@@ -305,7 +313,7 @@ class LinkPathsMap extends StatelessWidget {
             // Bundle 222 (mock M-1): always You + Server, like the full map;
             // with nobody else a small grey note sits on the right.
             Positioned.fill(
-              child: LinkPathsCanvas(
+              child: (wrapCanvas ?? (Widget w) => w)(LinkPathsCanvas(
                       nodes: nodes,
                       serverOnline: serverOnline,
                       nodeRadius: 14,
@@ -315,7 +323,7 @@ class LinkPathsMap extends StatelessWidget {
                       selfUserId: selfUserId,
                       onNodeTap: onNodeTap,
                       extraEdges: extraEdges,
-                    ),
+                    )),
             ),
             if (linkMapUserCount(nodes) == 0)
               Positioned(
@@ -331,14 +339,19 @@ class LinkPathsMap extends StatelessWidget {
           ]),
         ),
         const SizedBox(height: 6),
-        Wrap(
-          spacing: 14,
-          runSpacing: 4,
-          children: [
-            LinkLegend216(links: links),
-            if (nodes.any((n) => n.blocked)) const LinkBlockedLegend(),
-          ],
-        ),
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Expanded(
+            child: Wrap(
+              spacing: 14,
+              runSpacing: 4,
+              children: [
+                LinkLegend216(links: links),
+                if (nodes.any((n) => n.blocked)) const LinkBlockedLegend(),
+              ],
+            ),
+          ),
+          if (legendEnd != null) Padding(padding: const EdgeInsets.only(right: 8), child: legendEnd),
+        ]),
       ],
     );
   }
@@ -776,14 +789,25 @@ class _LinkPathsPainter extends CustomPainter {
 
   /// Bundle 291 (B-4): what the spots depend on (cache key).
   String _key291(Size size) => '${size.width.toStringAsFixed(1)}x${size.height.toStringAsFixed(1)}'
-      '|$spread|$_r291|$small|${[for (final n in nodes) '${n.id}:${n.tag.index}:${n.offline ? 1 : 0}'].join(',')}';
+      '|$spread|$_r291|$small|${[for (final n in nodes) '${n.id}:${n.tag.index}:${n.offline ? 1 : 0}'].join(',')}'
+      '${small ? '|${[for (final e in extraEdges) e.key].join(',')}' : ''}'; // Bundle 298: lines move groups
 
   /// Bundle 291 (B-4): the 212 spots, then pushed apart so no two people
   /// (photo + name) and nobody and me / the server sit on top of each other.
   Map<String, Offset> _placements(Size size) => LinkApart291.cached(
       _key291(size),
-      () => LinkApart291.apart(_placements212(size), size,
+      () => LinkApart291.apart(small ? _balanced298(size) : _placements212(size), size,
           r: _r291, fixed: [_self(size), _server(size)], small: small));
+
+  /// Bundle 298 (D): small cards - people on both sides of me, over the
+  /// whole width (see [LinkBalance298]). The big map keeps the 212 spots.
+  Map<String, Offset> _balanced298(Size size) => LinkBalance298.balance(_placements212(size), size,
+      self: _self(size),
+      movable: {for (final n in nodes) if (!n.offline && n.tag != LinkTag.server) n.id},
+      links: [
+        for (final e in extraEdges)
+          if (!e.from.startsWith('#') && !e.to.startsWith('#')) (e.from, e.to),
+      ]);
 
   Map<String, Offset> _placements212(Size size) {
     final sorted = [...nodes]..sort((a, b) => a.id.compareTo(b.id));

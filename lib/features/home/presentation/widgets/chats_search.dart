@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/search_pill_298.dart';
 import 'package:locallink/core/models/message_search_hit.dart';
 import 'package:locallink/core/services/app_logger.dart';
 
@@ -55,45 +56,24 @@ class ChatsSearchBar extends StatelessWidget implements PreferredSizeWidget {
       titleSpacing: 0,
       title: Padding(
         padding: const EdgeInsets.only(right: 12),
-        child: Container(
-          height: 44,
-          padding: const EdgeInsets.only(left: 14),
-          decoration: BoxDecoration(
-            color: colors.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.search, size: 20, color: colors.onSurfaceVariant),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('chats_search_field'),
-                  controller: controller,
-                  autofocus: true,
-                  textInputAction: TextInputAction.search,
-                  decoration: const InputDecoration(
-                    hintText: 'Search chats and messages',
-                    filled: false,
-                    isDense: true,
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
+        // Bundle 298 (B): the shared pill - no blue box inside it.
+        child: SearchPill298(
+          fieldKey: const ValueKey('chats_search_field'),
+          controller: controller,
+          hint: 'Search chats and messages',
+          autofocus: true,
+          trailing: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => controller.text.isEmpty
+                ? const SizedBox(width: 10)
+                : IconButton(
+                    key: const ValueKey('chats_search_clear'),
+                    tooltip: 'Clear',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: controller.clear,
+                    icon: Icon(Icons.close,
+                        size: 20, color: colors.onSurfaceVariant),
                   ),
-                ),
-              ),
-              ListenableBuilder(
-                listenable: controller,
-                builder: (context, _) => controller.text.isEmpty
-                    ? const SizedBox(width: 12)
-                    : IconButton(
-                        key: const ValueKey('chats_search_clear'),
-                        tooltip: 'Clear',
-                        onPressed: controller.clear,
-                        icon: Icon(Icons.close,
-                            size: 20, color: colors.onSurfaceVariant),
-                      ),
-              ),
-            ],
           ),
         ),
       ),

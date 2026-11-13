@@ -3,6 +3,7 @@ import 'package:locallink/features/groups/presentation/widgets/group_media_strip
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/search_pill_298.dart';
 
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
@@ -1344,15 +1345,13 @@ class _GroupAddMembersScreenState extends State<GroupAddMembersScreen> {
       appBar: AppBar(
         titleSpacing: 0,
         title: _searching
-            ? TextField(
-                key: const ValueKey('add_members_search'),
+            // Bundle 298 (B): a pill, no blue box in the top bar.
+            ? SearchPill298(
+                fieldKey: const ValueKey('add_members_search'),
                 controller: _search,
+                hint: 'Search friends',
                 autofocus: true,
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                    hintText: 'Search friends',
-                    filled: false,
-                    border: InputBorder.none),
               )
             : NewGroupTitle(
                 title: 'Add members',

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:locallink/core/widgets/link_kit_290.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
+import 'package:locallink/features/recovery/presentation/widgets/recovery_card_298.dart';
 
 /// Bundle 235 (addition, mock_235_whatsapp v3): every NEW recovery code is
 /// shown hidden (dots) in one soft blue box with Show / Copy (/ Share), and
@@ -27,6 +28,36 @@ class WhatsAppShare235 {
     return who.isEmpty
         ? 'My LinkUp recovery code: $code - keep it private.'
         : 'My LinkUp recovery code (@$who): $code - keep it private.';
+  }
+
+  /// Bundle 298 (I): the caption under the card picture - only the code
+  /// (user, 14 Nov: "just show code text nothing else").
+  static String caption(String code) => code.trim();
+
+  /// Bundle 298 (I): the card picture (RecoveryCard298) with only the code
+  /// as its caption. Picture fails (old phone, no room...) -> only the code
+  /// as text too (298-I: one rule everywhere). False when WhatsApp is not
+  /// there. [debugOpen] still gets the old line (bundle235 test unchanged).
+  static Future<bool> openCard(String code, {String username = ''}) async {
+    final text = message(code, username: username);
+    final fake = debugOpen;
+    if (fake != null) return fake(text);
+    try {
+      final png = await RecoveryCard298.png(code: code, username: username);
+      final ok = await _channel.invokeMethod<bool>('shareImageToWhatsApp', {'png': png, 'text': caption(code)});
+      if (ok == true) return true;
+    } catch (_) {
+      // fall back to text: only the code
+    }
+    return open(caption(code));
+  }
+
+  /// Bundle 298 (I): the card file is removed once LinkUp is back in front.
+  static Future<void> clearCard() async {
+    if (debugOpen != null) return;
+    try {
+      await _channel.invokeMethod<bool>('clearShare298');
+    } catch (_) {}
   }
 
   /// Opens WhatsApp (then WhatsApp Business) with [text] ready to send.
@@ -265,8 +296,8 @@ class _SaveOnWhatsApp235State extends State<SaveOnWhatsApp235> {
     setState(() => _busy = true);
     try {
       final wait = _BackToFront235();
-      final opened = await WhatsAppShare235.open(
-          WhatsAppShare235.message(widget.code, username: widget.username));
+      // Bundle 298 (I): the card picture + the text line.
+      final opened = await WhatsAppShare235.openCard(widget.code, username: widget.username);
       if (!opened) {
         wait.stop();
         await Clipboard.setData(ClipboardData(text: widget.code));
@@ -278,6 +309,7 @@ class _SaveOnWhatsApp235State extends State<SaveOnWhatsApp235> {
       _wait = wait;
       if (mounted) setState(() {});
       await wait.future;
+      unawaited(WhatsAppShare235.clearCard());
       if (!identical(_wait, wait)) return; // a newer tap took over
       _wait = null;
       if (!mounted) return;

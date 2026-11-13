@@ -97,6 +97,6 @@ void main() {
     final src = File('lib/features/admin/presentation/widgets/link_paths_map.dart').readAsStringSync();
     final part = src.substring(src.indexOf('/// Bundle 217: when the map lines may move')).replaceAll('\r\n', '\n');
     expect(sha256.convert(utf8.encode(part)).toString(),
-        'f3e46e291cc19cff779c1cb3a2ed4ed41c070175e2b2bf039380a542e10418f6'); // Bundle 291 (B-4): people kept apart + lines routed (was 462d447f... from 272)
+        '2365d7d50c2f960a2871a955a0222de58fa1f0076e9cca7c697eafe10558e65b'); // Bundle 298 (D): small map spread - people on both sides of You (was f3e46e29... from 291 B-4)
   });
 }

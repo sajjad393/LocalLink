@@ -112,16 +112,75 @@ class AdminPage216 extends StatelessWidget {
   }
 }
 
-/// Bundle 255 A3: pinned warning while the server PC clock is over 1 h off.
-class ServerClockBar255 extends StatelessWidget {
+/// Bundle 255 A3: warning while the server PC clock is over 1 h off.
+/// Bundle 298 (G): shows for [shownFor] each time a page opens (or the
+/// clock turns wrong), then slides away. Back to right = gone at once.
+class ServerClockBar255 extends StatefulWidget {
   const ServerClockBar255({super.key});
 
+  static const Duration shownFor = Duration(seconds: 3);
+
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<Duration?>(
-        valueListenable: ServerClock255.wrong,
-        builder: (context, offset, _) => offset == null
-            ? const SizedBox.shrink()
-            : Container(
+  State<ServerClockBar255> createState() => _ServerClockBar255State();
+}
+
+class _ServerClockBar255State extends State<ServerClockBar255> with SingleTickerProviderStateMixin {
+  late final AnimationController _out =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
+  Timer? _timer;
+  bool _wasWrong = false;
+
+  @override
+  void initState() {
+    super.initState();
+    ServerClock255.wrong.addListener(_changed);
+    _note();
+  }
+
+  @override
+  void dispose() {
+    ServerClock255.wrong.removeListener(_changed);
+    _timer?.cancel();
+    _out.dispose();
+    super.dispose();
+  }
+
+  void _note() {
+    final wrong = ServerClock255.wrong.value != null;
+    if (wrong && !_wasWrong) {
+      _out.value = 0;
+      _timer?.cancel();
+      _timer = Timer(ServerClockBar255.shownFor, () {
+        if (mounted) _out.forward();
+      });
+    }
+    if (!wrong) _timer?.cancel();
+    _wasWrong = wrong;
+  }
+
+  void _changed() {
+    _note();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final offset = ServerClock255.wrong.value;
+    if (offset == null) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: _out,
+      builder: (context, child) {
+        if (_out.isCompleted) return const SizedBox.shrink();
+        final t = Curves.easeIn.transform(_out.value);
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: 1 - t,
+            child: Opacity(opacity: 1 - t, child: child),
+          ),
+        );
+      },
+      child: Container(
                 key: const ValueKey('server_clock_bar_255'),
                 margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -158,7 +217,8 @@ class ServerClockBar255 extends StatelessWidget {
                   ],
                 ),
               ),
-      );
+    );
+  }
 }
 
 /// The 60 dp app bar (§1.5). With [viewMode] the subtitle turns into
@@ -697,7 +757,7 @@ class AdminChips216 extends StatelessWidget {
 
 // --------------------------------------------------------------- 9. search
 
-class AdminSearch216 extends StatelessWidget {
+class AdminSearch216 extends StatefulWidget {
   final String hint;
   final TextEditingController? controller;
   final ValueChanged<String>? onChanged;
@@ -714,6 +774,33 @@ class AdminSearch216 extends StatelessWidget {
   });
 
   @override
+  State<AdminSearch216> createState() => _AdminSearch216State();
+}
+
+class _AdminSearch216State extends State<AdminSearch216> {
+  // Bundle 298 (B): the ring follows the pill while typing; the field itself
+  // draws no line (the theme's blue focus box was a square inside the pill).
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_redraw);
+  }
+
+  void _redraw() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _focus
+      ..removeListener(_redraw)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = A216.colors(context);
     final t = A216Text(c);
@@ -724,23 +811,34 @@ class AdminSearch216 extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: c.line),
       ),
+      // Always a ring (clear when not typing): the tree stays the same, so
+      // the field keeps its state and the keyboard when focus changes.
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _focus.hasFocus ? c.blue : Colors.transparent, width: 2),
+      ),
       child: Row(children: [
         const SizedBox(width: 13),
         Icon(Icons.search_rounded, size: 18, color: c.grey),
         const SizedBox(width: 11),
         Expanded(
           child: TextField(
-            key: fieldKey,
-            controller: controller,
-            onChanged: onChanged,
-            onSubmitted: onSubmitted,
+            key: widget.fieldKey,
+            controller: widget.controller,
+            focusNode: _focus,
+            onChanged: widget.onChanged,
+            onSubmitted: widget.onSubmitted,
             textInputAction: TextInputAction.search,
             style: t.search,
             cursorColor: c.blue,
             decoration: InputDecoration(
               isCollapsed: true,
+              filled: false,
+              contentPadding: EdgeInsets.zero, // Bundle 298: no theme gap after the icon
               border: InputBorder.none,
-              hintText: hint,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              hintText: widget.hint,
               hintStyle: t.searchHint,
             ),
           ),

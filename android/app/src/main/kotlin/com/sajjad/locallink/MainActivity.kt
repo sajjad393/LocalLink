@@ -265,6 +265,52 @@ class MainActivity : FlutterActivity() {
         return false
     }
 
+    /**
+     * Bundle 298 (I): the recovery code card picture + the text line as its
+     * caption, to WhatsApp (then Business). The PNG goes to
+     * <cache>/share298/ only (ShareFileProvider298); the old one is removed
+     * first and [clearShare298] removes it when LinkUp is back in front.
+     * Never logged.
+     */
+    private fun shareImageToWhatsApp298(png: ByteArray?, text: String): Boolean {
+        if (png == null || png.isEmpty()) return false
+        val uri = try {
+            clearShare298()
+            val dir = File(cacheDir, "share298").apply { mkdirs() }
+            val file = File(dir, "linkup_recovery_code.png")
+            FileOutputStream(file).use { it.write(png) }
+            androidx.core.content.FileProvider.getUriForFile(this, "$packageName.share298", file)
+        } catch (e: Exception) {
+            return false
+        }
+        for (pkg in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+            try {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/png"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    if (text.isNotEmpty()) putExtra(Intent.EXTRA_TEXT, text)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    setPackage(pkg)
+                }
+                startActivity(send)
+                return true
+            } catch (e: Exception) {
+                // Not installed - try the next one.
+            }
+        }
+        clearShare298()
+        return false
+    }
+
+    private fun clearShare298(): Boolean {
+        return try {
+            File(cacheDir, "share298").listFiles()?.forEach { it.delete() }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         // Bundle 149: run the one-time Opus self-test early, in the background,
@@ -294,6 +340,11 @@ class MainActivity : FlutterActivity() {
             } else if (call.method == "shareToWhatsApp") {
                 // Bundle 235 addition: "Save on WhatsApp" for a new recovery code.
                 result.success(shareToWhatsApp235(call.argument<String>("text") ?: ""))
+            } else if (call.method == "shareImageToWhatsApp") {
+                // Bundle 298 (I): the recovery code card picture.
+                result.success(shareImageToWhatsApp298(call.argument<ByteArray>("png"), call.argument<String>("text") ?: ""))
+            } else if (call.method == "clearShare298") {
+                result.success(clearShare298())
             } else {
                 result.notImplemented()
             }

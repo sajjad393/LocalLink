@@ -8,6 +8,7 @@ import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/admin/presentation/screens/link_paths_full_screen.dart';
+import 'package:locallink/features/contacts/presentation/widgets/mini_map_zoom_298.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_block_confirm.dart' show BlockTarget;
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
 
@@ -238,9 +239,13 @@ class _MyLinksCard273State extends State<MyLinksCard273> {
     } catch (_) {}
   }
 
+  /// Bundle 298 (D): pinch zoom of the small map ("Reset" shows when moved).
+  final TransformationController _zoom298 = TransformationController();
+
   @override
   void dispose() {
     _reload?.cancel();
+    _zoom298.dispose();
     super.dispose();
   }
 
@@ -315,6 +320,8 @@ class _MyLinksCard273State extends State<MyLinksCard273> {
                     selfUserId: widget.selfUserId,
                     emptyText: 'No contacts yet',
                     onNodeTap: (n) => n.relay ? _relayNote() : widget.onOpenChat(n.id),
+                    wrapCanvas: (canvas) => MiniMapZoomBox298(controller: _zoom298, child: canvas),
+                    legendEnd: MiniMapReset298(controller: _zoom298),
                   ),
                   Positioned(
                     right: 0,
