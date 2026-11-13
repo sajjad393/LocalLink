@@ -910,6 +910,22 @@ class LocalLinkApi {
     return {for (final e in raw) if (e is Map && e['peer_id'] != null && e['public_key'] != null) e['peer_id'].toString(): e['public_key'].toString()};
   }
 
+  /// Bundle 291 (TODO_291 A-1): send my X25519 lock key to the server so
+  /// admin cards / chat requests can be boxed for this phone. The server
+  /// keeps the first key: 200 = stored (or the same key), 409 = another key
+  /// is already bound (only the rotate flow may change it). Returns the
+  /// status; a network error throws.
+  Future<int> putIdentityKey291(String publicKey) async {
+    final response = await httpClient
+        .put(
+          Uri.parse('$baseUrl/api/v1/device-key'),
+          headers: {..._headers(), 'Content-Type': 'application/json'},
+          body: jsonEncode({'public_key': publicKey}),
+        )
+        .timeout(const Duration(seconds: 8));
+    return response.statusCode;
+  }
+
   Future<List<Map<String, dynamic>>> identityKeyHistory() async {
     final response = await http.get(Uri.parse('$baseUrl/api/v1/device-key/history'), headers: _headers()).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) throw Exception(_error(response));

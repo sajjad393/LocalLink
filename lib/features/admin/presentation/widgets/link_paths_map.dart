@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'dart:math' as math;
 
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/admin/presentation/widgets/link_apart_291.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
@@ -620,13 +621,17 @@ class LinkPathsCanvas extends StatefulWidget {
   }
 
   /// Where each node sits on a canvas of [size] (tap test on full screen).
+  /// Bundle 291: [nodeRadius] = the photo size the map draws (24 on the
+  /// full screen), so taps find the same (pushed apart) spots.
   static Map<String, Offset> placements(List<LinkNode> nodes, Size size,
-          {double spread = 1.0}) =>
+          {double spread = 1.0, double nodeRadius = 24}) =>
       _LinkPathsPainter(
               nodes: nodes,
               serverOnline: true,
               labelColor: Colors.black,
-              spread: spread)
+              spread: spread,
+              drawNodes: false,
+              nodeR: nodeRadius)
           ._placements(size);
 }
 
@@ -766,7 +771,21 @@ class _LinkPathsPainter extends CustomPainter {
 
   /// Deterministic placement: yellow WD fan to the left, purple mesh chains
   /// up-right, teal LAN down-right, green cloud near the server.
-  Map<String, Offset> _placements(Size size) {
+  /// Bundle 291 (B-4): photo radius the people are drawn with.
+  double get _r291 => drawNodes ? _nodeRadius : nodeR;
+
+  /// Bundle 291 (B-4): what the spots depend on (cache key).
+  String _key291(Size size) => '${size.width.toStringAsFixed(1)}x${size.height.toStringAsFixed(1)}'
+      '|$spread|$_r291|$small|${[for (final n in nodes) '${n.id}:${n.tag.index}:${n.offline ? 1 : 0}'].join(',')}';
+
+  /// Bundle 291 (B-4): the 212 spots, then pushed apart so no two people
+  /// (photo + name) and nobody and me / the server sit on top of each other.
+  Map<String, Offset> _placements(Size size) => LinkApart291.cached(
+      _key291(size),
+      () => LinkApart291.apart(_placements212(size), size,
+          r: _r291, fixed: [_self(size), _server(size)], small: small));
+
+  Map<String, Offset> _placements212(Size size) {
     final sorted = [...nodes]..sort((a, b) => a.id.compareTo(b.id));
     final byTag = <LinkTag, List<LinkNode>>{
       for (final tag in LinkTag.values)
@@ -829,8 +848,11 @@ class _LinkPathsPainter extends CustomPainter {
   }
 
   /// Bundle 217 (§2.1): quadratic aerial path p → q bowing away from [centre].
-  Path _aerial(Offset p, Offset q, Offset centre) {
-    final ctrl = LinkPathsCanvas.aerialControl(p, q, centre, small: small);
+  Path _aerial(Offset p, Offset q, Offset centre, [LinkRoute291? route]) {
+    // Bundle 291 (B-4): the router keeps the line off third photos / lines.
+    final ctrl = route == null
+        ? LinkPathsCanvas.aerialControl(p, q, centre, small: small)
+        : route.pick(p, q, centre, small ? 0.36 : 0.60);
     return Path()
       ..moveTo(p.dx, p.dy)
       ..quadraticBezierTo(ctrl.dx, ctrl.dy, q.dx, q.dy);
@@ -964,10 +986,18 @@ class _LinkPathsPainter extends CustomPainter {
 
     // ---- edges (Bundle 217: aerial moving lines) -------------------------
     final centre = _centre(s, sv, place);
+    // Bundle 291 (B-4): one router per picture (same bows every frame).
+    final route = LinkRoute291.of(
+        '${_key291(size)}|$serverOnline|$small|'
+        '${[for (final n in nodes) '${n.noLine ? 1 : 0}${n.blocked ? 1 : 0}'].join()}|'
+        '${[for (final e in extraEdges) '${e.from}>${e.to}:${e.tag.index}:${e.blocked ? 1 : 0}'].join(',')}',
+        obstacles: [s, sv, ...place.values],
+        clear: _r291 + 10,
+        midGap: small ? 12 : 16);
     var index = 0;
     // Server link from self (dashed red/grey when down, green when up).
     if (serverOnline) {
-      _flowLine(canvas, _aerial(s, sv, centre), kLinkTagColors[LinkTag.server]!, index++);
+      _flowLine(canvas, _aerial(s, sv, centre, route), kLinkTagColors[LinkTag.server]!, index++);
     } else {
       _dashedServerLink(canvas, s, sv, centre);
       index++;
@@ -978,10 +1008,10 @@ class _LinkPathsPainter extends CustomPainter {
       if (n.tag != LinkTag.server || n.noLine || n.offline) continue;
       final pos = place[n.id]!;
       if (n.blocked) {
-        _dashed(canvas, _aerial(sv, pos, centre), kLinkBlockedGrey);
+        _dashed(canvas, _aerial(sv, pos, centre, route), kLinkBlockedGrey);
         continue;
       }
-      _flowLine(canvas, _aerial(sv, pos, centre), kLinkTagColors[LinkTag.server]!, index++);
+      _flowLine(canvas, _aerial(sv, pos, centre, route), kLinkTagColors[LinkTag.server]!, index++);
     }
 
     // Purple mesh CHAINS: sorted links node→node marching inward to self.
@@ -993,11 +1023,11 @@ class _LinkPathsPainter extends CustomPainter {
       meshNodes.sort((a, b) => (b - s).distance.compareTo((a - s).distance));
       var from = meshNodes.first;
       for (var i = 1; i < meshNodes.length; i++) {
-        _flowLine(canvas, _aerial(from, meshNodes[i], centre),
+        _flowLine(canvas, _aerial(from, meshNodes[i], centre, route),
             kLinkTagColors[LinkTag.mesh]!, index++);
         from = meshNodes[i];
       }
-      _flowLine(canvas, _aerial(from, s, centre), kLinkTagColors[LinkTag.mesh]!, index++);
+      _flowLine(canvas, _aerial(from, s, centre, route), kLinkTagColors[LinkTag.mesh]!, index++);
     }
 
     // Yellow / teal: self → device.
@@ -1006,10 +1036,10 @@ class _LinkPathsPainter extends CustomPainter {
       if (n.noLine || n.offline) continue; // Bundle 272 / 273
       if (n.blocked) {
         // Bundle 212: grey dashed = relays others' messages only (no motion).
-        _dashed(canvas, _aerial(s, place[n.id]!, centre), kLinkBlockedGrey);
+        _dashed(canvas, _aerial(s, place[n.id]!, centre, route), kLinkBlockedGrey);
         continue;
       }
-      _flowLine(canvas, _aerial(s, place[n.id]!, centre), kLinkTagColors[n.tag]!, index++);
+      _flowLine(canvas, _aerial(s, place[n.id]!, centre, route), kLinkTagColors[n.tag]!, index++);
     }
 
     // Bundle 272 (B-3 / M-3): extra lines. Phone<->phone lines bow away
@@ -1029,8 +1059,8 @@ class _LinkPathsPainter extends CustomPainter {
         if (a == null || b == null || a == b) continue;
         final viaServer = e.from == LinkEdge.server || e.to == LinkEdge.server;
         final ctrl = viaServer
-            ? LinkPathsCanvas.aerialControl(a, b, centre, small: small)
-            : LinkPathsCanvas.aerialControl(a, b, phoneCentre, small: small, bow: 0.25);
+            ? route.pick(a, b, centre, small ? 0.36 : 0.60)
+            : route.pick(a, b, phoneCentre, 0.25); // Bundle 291 (B-4)
         final path = Path()
           ..moveTo(a.dx, a.dy)
           ..quadraticBezierTo(ctrl.dx, ctrl.dy, b.dx, b.dy);

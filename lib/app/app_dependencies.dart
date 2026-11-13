@@ -8,6 +8,7 @@ import 'package:locallink/core/network/session_dead_262.dart';
 import 'package:locallink/core/network/tls_pin_243.dart';
 import 'package:locallink/core/network/tls_upgrade_243.dart';
 import 'package:locallink/core/services/server_reach.dart';
+import 'package:locallink/core/services/identity_key_upload_291.dart';
 import 'package:locallink/features/admin/data/services/version_rule_service.dart';
 import 'package:locallink/features/admin/data/services/admin_badge_service.dart';
 import 'package:locallink/features/admin/data/services/admin_role_server.dart';
@@ -214,6 +215,10 @@ class AppDependencies {
           unawaited(adminBadges.syncWithServer().catchError((Object _) {}));
           // Bundle 220: admin action cards + done receipts to / from the server.
           unawaited(adminActions.syncWithServer().catchError((Object _) {}));
+          // Bundle 291 (A-2): my lock key, so admin cards can reach this phone.
+          unawaited(keyUpload291
+              .maybeUpload(reason: 'connect')
+              .catchError((Object _) => 'fail'));
         }
       },
     );
@@ -759,6 +764,13 @@ class AppDependencies {
 
   /// Bundle 212: admin block / unblock of any user with no internet.
   late final AdminBlockService adminBlocks;
+
+  /// Bundle 291 (TODO_291 A-2): my lock key to the server, by itself.
+  late final IdentityKeyUpload291 keyUpload291 = IdentityKeyUpload291(
+    put: api.putIdentityKey291,
+    publicKey: crypto.publicKey,
+    deviceId: () => store.deviceId,
+  );
 
   /// Bundle 213: the admin's minimum app version (works with no internet).
   late final VersionRuleService versionRules;
@@ -1650,6 +1662,12 @@ class AppDependencies {
     primeTrustedRoutes();
     await routePolicy.start();
     await directoryRepository.start();
+    // Bundle 291 (A-2): the key is ready now; the socket may already be up.
+    if (socket.isConnected) {
+      unawaited(keyUpload291
+          .maybeUpload(reason: 'start')
+          .catchError((Object _) => 'fail'));
+    }
     messaging.start();
     groupMessagingService.start();
     unawaited(adminBlocks.start().catchError((Object _) {})); // Bundle 212
