@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/crown_tip_290.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminActionSignOut;
@@ -764,9 +765,10 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   }
 
   /// Bundle 290 (S-2): text grows at most 1.3x with the phone's font size,
-  /// so every screen keeps the mock layout on every phone.
+  /// so every screen keeps the mock layout on every phone. TODO 290: the
+  /// crown tap areas (tip bubble) work on every screen.
   static Widget _look290(BuildContext context, Widget? child) => MediaQuery(
         data: LocalLinkLook.clampScaler(MediaQuery.of(context)),
-        child: child ?? const SizedBox.shrink(),
+        child: CrownTapScope290(child: child ?? const SizedBox.shrink()),
       );
 }

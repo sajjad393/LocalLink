@@ -69,6 +69,7 @@ class LinkMapNetwork272 {
             blocked: n.blocked,
             userId: n.userId,
             admin: n.admin,
+            adminRole: n.adminRole,
             relay: n.relay,
             hiddenMore: n.hiddenMore,
             offline: n.offline,
@@ -91,6 +92,7 @@ class LinkMapNetwork272 {
         blocked: m['blocked'] == true,
         userId: user,
         admin: '${m['admin_role'] ?? ''}'.isNotEmpty,
+        adminRole: '${m['admin_role'] ?? ''}',
       ));
       ids.add(id);
       if (user.isNotEmpty) users.add(user);

@@ -30,6 +30,9 @@ class LinkNode {
   /// Bundle 216: admin known from the data itself (UI check data, link map).
   final bool admin;
 
+  /// TODO 290: the admin level from the data ('' = from the admin cards).
+  final String adminRole;
+
   /// Bundle 273: a phone that passes messages but is not a contact - drawn
   /// as the LinkUp logo, no name, no photo ([hiddenMore] = "+N" phones).
   final bool relay;
@@ -53,6 +56,7 @@ class LinkNode {
     this.hiddenMore = 0,
     this.offline = false,
     this.noLine = false,
+    this.adminRole = '',
   });
 
   LinkNode copyWith({bool? blocked}) => LinkNode(
@@ -65,7 +69,8 @@ class LinkNode {
       relay: relay,
       hiddenMore: hiddenMore,
       offline: offline,
-      noLine: noLine);
+      noLine: noLine,
+      adminRole: adminRole);
 }
 
 /// Bundle 272 (B-3): one extra line on the map, between any two ends.

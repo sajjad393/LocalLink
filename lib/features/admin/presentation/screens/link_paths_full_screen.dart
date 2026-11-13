@@ -319,6 +319,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                     radius: 28,
                     admin: node.admin,
                     blocked: blocked,
+                    adminRole: node.adminRole,
                   )
                 else
                   // Live crown: shows / goes when the admin card changes.

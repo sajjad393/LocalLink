@@ -6,10 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 
 void main() {
-  test('sizes: 0.9 x radius, never under 11 (256 F1); height 0.88 x width', () {
+  test('sizes: 0.9 x radius, never under 11 (256 F1); height 0.50 x width (290 crown C)', () {
     expect(AdminCrown.sizeFor(40), closeTo(36, 1e-9));
     expect(AdminCrown.sizeFor(5), 11);
-    expect(CrownPainter216.heightFor(50), closeTo(44, 1e-9));
+    expect(CrownPainter216.heightFor(50), closeTo(25, 1e-9));
   });
 
   testWidgets('decorate: crown centred, band on the ring, bottom touches the photo', (tester) async {
@@ -53,7 +53,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Center(child: AdminCrown.mark(20))));
     expect(find.byKey(const ValueKey('admin_crown')), findsOneWidget);
     expect(tester.getSize(find.byKey(const ValueKey('admin_crown'))).height,
-        closeTo(17.6, 0.01));
+        closeTo(10.0, 0.01));
     expect(kCrownFill216, const Color(0xFFFFC727));
     expect(kCrownBand216, const Color(0xFFEFA300));
     expect(kCrownLine216, const Color(0xFFA87400));

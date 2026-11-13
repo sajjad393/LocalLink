@@ -1605,6 +1605,10 @@ class AdminPersonAvatar216 extends StatelessWidget {
   /// False = never draw the crown here (the caller wraps it in AdminCrown).
   final bool crown;
 
+  /// TODO 290: the admin level when the caller knows it (server rows);
+  /// null/'' = from the admin cards (unknown = gold).
+  final String? adminRole;
+
   /// Bundle 254 (21.5): the map labels me "You"; the letter / colour / photo
   /// must still come from my real name (same as the top card), not "Y".
   static String youName = '';
@@ -1627,6 +1631,7 @@ class AdminPersonAvatar216 extends StatelessWidget {
     this.background,
     this.photo,
     this.crown = true,
+    this.adminRole,
   });
 
   @override
@@ -1700,7 +1705,8 @@ class AdminPersonAvatar216 extends StatelessWidget {
             ((userId ?? '').isNotEmpty || (deviceId ?? '').isNotEmpty) &&
             AdminCrown.showFor(userId, deviceId));
     if (showCrown) {
-      return AdminCrown.decorate(radius: radius, child: photo, background: bg);
+      final role = (adminRole ?? '').isNotEmpty ? adminRole : AdminCrown.roleFor(userId, deviceId);
+      return AdminCrown.decorate(radius: radius, child: photo, background: bg, role: role);
     }
     return photo;
   }

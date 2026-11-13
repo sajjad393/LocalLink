@@ -649,7 +649,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                   deviceId: n.id,
                   radius: 28,
                   admin: n.admin,
-                  blocked: blocked),
+                  blocked: blocked,
+                  adminRole: n.adminRole),
               const SizedBox(height: 10),
               Text(n.label, style: t.sheetTitle),
               const SizedBox(height: 3),
@@ -806,7 +807,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     child: SizedBox(
                         width: 36,
                         height: 36,
-                        child: Center(child: AdminCrown.mark(15, halo: null))),
+                        child: Center(
+                            child: AdminCrown.mark(15, halo: null, role: widget.session.role))),
                   ),
                 ),
               ),
@@ -876,6 +878,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
             radius: 22,
             admin: true,
             background: Colors.white,
+            adminRole: _check ? 'owner' : widget.session.role,
           ),
           name: _myName,
           sub: '${_check ? 'Owner' : level} · ${levelRights216(_check ? 'Owner' : level)}',

@@ -180,10 +180,13 @@ class _AdminActionsScreenState extends State<AdminActionsScreen> {
         message: 'Admin · $level',
         child: Material(
           key: const ValueKey('admin_actions_role'),
-          color: const Color(0xFFFFF6DB),
-          shape: const CircleBorder(side: BorderSide(color: Color(0xFFF2D27A))),
+          // TODO 290: my admin level's colours (empty role = owner gold).
+          color: CrownColors290.of(widget.role).tagBg,
+          shape: CircleBorder(side: BorderSide(color: CrownColors290.of(widget.role).tagBorder)),
           child: SizedBox(
-              width: 36, height: 36, child: Center(child: AdminCrown.mark(15, halo: null))),
+              width: 36,
+              height: 36,
+              child: Center(child: AdminCrown.mark(15, halo: null, role: widget.role))),
         ),
       ),
       onRefresh: _loadServer,

@@ -195,6 +195,7 @@ class ServerPersonAvatar216 extends StatefulWidget {
     this.blocked = false,
     this.online = false,
     this.grey = false,
+    this.adminRole,
   });
 
   final String name;
@@ -208,6 +209,9 @@ class ServerPersonAvatar216 extends StatefulWidget {
 
   /// Not active (suspended / off): grey photo without the red ring.
   final bool grey;
+
+  /// TODO 290: the server's admin level (crown colour); null = from cards.
+  final String? adminRole;
 
   @override
   State<ServerPersonAvatar216> createState() => _ServerPersonAvatar216State();
@@ -245,6 +249,7 @@ class _ServerPersonAvatar216State extends State<ServerPersonAvatar216> {
       blocked: widget.blocked,
       online: widget.online,
       photo: b == null ? null : MemoryImage(b),
+      adminRole: widget.adminRole,
     );
     if (widget.grey && !widget.blocked) {
       a = Opacity(opacity: 0.55, child: a);

@@ -176,11 +176,12 @@ class AccountSwitchSheet extends StatelessWidget {
                 key: const ValueKey('switch_admin'),
                 minTileHeight: 68,
                 enabled: !blocked || current == AccountSwitchPlace.admin,
-                // Bundle 216 (A): gold circle with the painted crown.
+                // Bundle 216 (A): circle with the painted crown; TODO 290:
+                // in my admin level's colours.
                 leading: CircleAvatar(
                   radius: 22,
-                  backgroundColor: const Color(0xFFFFF6DB),
-                  child: AdminCrown.mark(20, halo: null),
+                  backgroundColor: CrownColors290.of(s.role).tagBg,
+                  child: AdminCrown.mark(20, halo: null, role: s.role),
                 ),
                 title: const Text('Admin',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
