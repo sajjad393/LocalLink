@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/share_app/data/apk_share_page.dart' show shareApkPath;
+import 'package:locallink/features/share_app/data/app_latest_server_299.dart';
 import 'package:locallink/features/share_app/domain/update_request_service.dart';
 
 /// Bundle 275: native install helpers (channel `locallink/app_share`).
@@ -83,6 +85,9 @@ class SilentUpdate275 extends ChangeNotifier {
     this.download,
     DateTime Function()? clock,
     this.minBuild,
+    this.server,
+    this.hashFile,
+    this.appBuild,
   })  : native = native ?? const UpdateInstallNative275(),
         _clock = clock ?? DateTime.now;
 
@@ -108,6 +113,22 @@ class SilentUpdate275 extends ChangeNotifier {
   final Future<void> Function(String url, String path, int size, void Function(int got) progress)? download;
   final DateTime Function() _clock;
 
+  /// Bundle 299 (C): the LinkUp server is asked first; nearby phones are
+  /// the fallback (no server, no APK there, or a bad file).
+  final AppLatestSource299? server;
+
+  /// sha256 (hex) of a file; tests replace it.
+  final Future<String> Function(String path)? hashFile;
+
+  /// This app's build (tests replace it; default [AppBuild.sent], like phones).
+  final int Function()? appBuild;
+
+  /// The server is asked at most every 6 h (plus after a reconnect / the
+  /// Update button); in between the last answer is used.
+  static const Duration serverEvery = Duration(hours: 6);
+  DateTime? _serverAt;
+  ServerApk299? _serverApk;
+
   SilentStage275 _stage = SilentStage275.idle;
   int _target = 0;
   String _version = '';
@@ -126,8 +147,50 @@ class SilentUpdate275 extends ChangeNotifier {
   String? get path => _path;
   bool get running => _stage == SilentStage275.getting || _stage == SilentStage275.nextPhone;
 
+  /// Bundle 299 (C): true while the file comes from the LinkUp server
+  /// (http://<server>/linkup) instead of a nearby phone. The server is
+  /// tried first; nearby phones stay the fallback (no server / no Wi-Fi).
+  bool fromServer = false;
+
+  /// Bundle 299: tests / shots set a stage directly.
+  @visibleForTesting
+  void debugShow(SilentStage275 stage, {String version = '', int size = 0, int got = 0, bool server = false}) {
+    _version = version;
+    _size = size;
+    _got = got;
+    fromServer = server;
+    _setStage(stage);
+  }
+
   static String _day(DateTime t) =>
       '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+
+  /// Bundle 299: the app reconnected to the server -> ask it again.
+  void serverAgain() => _serverAt = null;
+
+  /// The server's APK when it is newer than this app, else null.
+  Future<ServerApk299?> _serverNewer(bool manual) async {
+    final src = server;
+    if (src == null) return null;
+    final now = _clock();
+    final at = _serverAt;
+    if (manual || at == null || now.difference(at) >= serverEvery || now.isBefore(at)) {
+      try {
+        _serverApk = await src.latest();
+        _serverAt = now;
+      } catch (e) {
+        // Server not reached: try again next time; phones are used now.
+        AppLogger.info('APP_UPDATE_SERVER', detail: 'unreachable=${e.runtimeType}');
+        return null;
+      }
+    }
+    final apk = _serverApk;
+    if (apk == null) return null;
+    final mine = appBuild?.call() ?? AppBuild.sent;
+    if (apk.build <= mine || apk.build < (minBuild?.call() ?? 0)) return null;
+    if (src.fileUrl(apk).isEmpty) return null;
+    return apk;
+  }
 
   /// Auto check (timer / new peer build). [manual] = the Update button.
   Future<bool> check({bool manual = false}) async {
@@ -136,6 +199,32 @@ class SilentUpdate275 extends ChangeNotifier {
       return false;
     }
     if (!manual && (UpdateRequestService.inCall?.call() ?? false)) return false;
+    final fromSrv = await _serverNewer(manual);
+    if (fromSrv != null) {
+      if (running || _stage == SilentStage275.ready) return false;
+      final gate = '${fromSrv.build}|${_day(_clock())}';
+      if (!manual) {
+        String? last;
+        try {
+          last = await read(gateKey);
+        } catch (_) {}
+        if (last == gate) return false;
+      }
+      try {
+        await write(gateKey, gate);
+      } catch (_) {}
+      _target = fromSrv.build;
+      _version = fromSrv.version;
+      AppLogger.info('APP_UPDATE_SERVER', detail: 'popup build=${fromSrv.build} manual=$manual');
+      _cancelled = false;
+      needsAllow = false;
+      fromServer = true;
+      _setStage(SilentStage275.getting);
+      showPopup?.call(this);
+      unawaited(_runServer(fromSrv));
+      return true;
+    }
+    fromServer = false;
     final list = await requests.candidates(minBuild: minBuild?.call() ?? 0);
     if (list.isEmpty) {
       if (manual) {
@@ -167,9 +256,28 @@ class SilentUpdate275 extends ChangeNotifier {
     return true;
   }
 
-  Future<void> _runAll(List<UpdateCandidate> list) async {
+  /// Bundle 299: from the server; a failure falls back to nearby phones.
+  Future<void> _runServer(ServerApk299 apk) async {
     final run = ++_run;
-    var first = true;
+    final url = server!.fileUrl(apk);
+    final ok = await _fetchUrl(url, apk.size, apk.version, apk.build, sha256: apk.sha256);
+    if (_cancelled || run != _run || ok) return;
+    AppLogger.info('APP_UPDATE_SERVER', detail: 'fallback=phones');
+    fromServer = false;
+    _setStage(SilentStage275.nextPhone);
+    final list = await requests.candidates(minBuild: minBuild?.call() ?? 0);
+    if (_cancelled || run != _run) return;
+    if (list.isEmpty) {
+      AppLogger.info('APP_UPDATE_SILENT', detail: 'none');
+      _setStage(SilentStage275.none);
+      return;
+    }
+    await _runAll(list, startNext: true);
+  }
+
+  Future<void> _runAll(List<UpdateCandidate> list, {bool startNext = false}) async {
+    final run = ++_run;
+    var first = !startNext;
     for (final c in list) {
       if (_cancelled || run != _run) return;
       if (!first) _setStage(SilentStage275.nextPhone);
@@ -219,17 +327,23 @@ class SilentUpdate275 extends ChangeNotifier {
     return r;
   }
 
-  Future<bool> _fetch(UpdateOffer o, int build) async {
+  Future<bool> _fetch(UpdateOffer o, int build) {
+    final url = Uri.parse(o.url).resolve(shareApkPath.substring(1)).toString();
+    return _fetchUrl(url, o.size, o.version, build);
+  }
+
+  /// Downloads [url] (size limit), checks [sha256] when given (server file),
+  /// then size + package; ready or false (file deleted).
+  Future<bool> _fetchUrl(String url, int size, String version, int build, {String? sha256}) async {
     final dir = await native.updateDir();
     if (dir.isEmpty) return false;
     final file = '$dir/LinkUp-$build.apk';
-    _size = o.size;
+    _size = size;
     _got = 0;
-    if (o.version.isNotEmpty) _version = o.version;
+    if (version.isNotEmpty) _version = version;
     notifyListeners();
     try {
-      final url = Uri.parse(o.url).resolve(shareApkPath.substring(1)).toString();
-      await (download ?? _httpDownload)(url, file, o.size, (g) {
+      await (download ?? _httpDownload)(url, file, size, (g) {
         _got = g;
         notifyListeners();
       });
@@ -237,7 +351,15 @@ class SilentUpdate275 extends ChangeNotifier {
         await _delete(file, 'cancel');
         return true;
       }
-      final bad = await native.checkApk(file, o.size);
+      if (sha256 != null) {
+        final got = await (hashFile ?? _sha256Of)(file);
+        if (got.toLowerCase() != sha256.toLowerCase()) {
+          AppLogger.warning('APP_UPDATE_SERVER', detail: 'sha=mismatch');
+          await _delete(file, 'sha');
+          return false;
+        }
+      }
+      final bad = await native.checkApk(file, size);
       if (bad != null) {
         AppLogger.warning('APP_UPDATE_SILENT', detail: 'check=$bad');
         await _delete(file, 'bad');
@@ -248,7 +370,8 @@ class SilentUpdate275 extends ChangeNotifier {
         await write(fileKey, '$file|$build');
       } catch (_) {}
       needsAllow = !await native.canInstall();
-      AppLogger.info('APP_UPDATE_SILENT', detail: 'ready size=${o.size} allow=${needsAllow ? 'needed' : 'ok'}');
+      AppLogger.info('APP_UPDATE_SILENT',
+          detail: 'ready size=$size allow=${needsAllow ? 'needed' : 'ok'} from=${sha256 != null ? 'server' : 'phone'}');
       _setStage(SilentStage275.ready);
       showPopup?.call(this); // re-opens if it was swiped away
       return true;
@@ -257,6 +380,11 @@ class SilentUpdate275 extends ChangeNotifier {
       await _delete(file, 'fail');
       return false;
     }
+  }
+
+  static Future<String> _sha256Of(String path) async {
+    final d = await crypto.sha256.bind(File(path).openRead()).first;
+    return d.toString();
   }
 
   static Future<void> _httpDownload(String url, String path, int size, void Function(int got) progress) async {

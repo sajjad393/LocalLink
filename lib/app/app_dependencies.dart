@@ -1,5 +1,6 @@
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/share_app/domain/silent_update_275.dart';
+import 'package:locallink/features/share_app/data/app_latest_server_299.dart';
 import 'package:locallink/features/contacts/presentation/widgets/my_links_map_273.dart';
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/core/security/security_code_245.dart';
@@ -209,6 +210,8 @@ class AppDependencies {
           unawaited(adminBlocks.syncWithServer().catchError((Object _) {}));
           // Bundle 213: the minimum app version to / from the server.
           unawaited(versionRules.syncWithServer().catchError((Object _) {}));
+          // Bundle 299 (C): back on the server -> ask it for a new LinkUp.
+          silentUpdate275?.serverAgain();
           // Bundle 214 (B2/C4): my admin role + everyone's crown cards.
           unawaited(adminRoles.refresh(reason: 'connect')
               .catchError((Object _) => AdminRoleResult.keep));
@@ -1250,6 +1253,12 @@ class AppDependencies {
       read: store.readSetting,
       write: store.writeSetting,
       minBuild: () => VersionGuard.instance.rule?.minBuild ?? 0,
+      // Bundle 299 (C): the server first, nearby phones second.
+      server: HttpAppLatestServer299(
+        baseUrl: () => api.baseUrl,
+        deviceId: () => store.deviceId ?? '',
+        deviceToken: () => store.deviceToken ?? '',
+      ),
     );
     SilentUpdate275.instance = silent;
     unawaited(SilentUpdate275.cleanAtStart(read: store.readSetting, write: store.writeSetting)

@@ -1,15 +1,14 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
+import 'package:locallink/features/groups/data/group_photo_book.dart';
+import 'package:locallink/features/share_app/presentation/qr_card_share_299.dart';
+import 'package:locallink/features/share_app/presentation/qr_share_card_299.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart'
     show QrCode, QrErrorCorrectLevel, QrImage;
-import 'package:share_plus/share_plus.dart';
 
 import 'package:locallink/core/models/group_join_code.dart';
 import 'package:locallink/core/services/app_logger.dart';
@@ -140,20 +139,20 @@ class _GroupInviteQrScreenState extends State<GroupInviteQrScreen> {
   }
 
   Future<void> _share() async {
-    try {
-      final boundary = _cardKey.currentContext?.findRenderObject();
-      if (boundary is! RenderRepaintBoundary) return;
-      final image = await boundary.toImage(pixelRatio: 3.0);
-      final png = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (png == null) return;
-      final file = File(
-          '${Directory.systemTemp.path}/linkup_group_qr_${DateTime.now().millisecondsSinceEpoch}.png');
-      await file.writeAsBytes(png.buffer.asUint8List(), flush: true);
-      await Share.shareXFiles([XFile(file.path, mimeType: 'image/png')],
-          text: 'Scan this code in LinkUp to join "${widget.groupName}"');
-    } catch (error) {
-      AppLogger.error('GROUP_QR_SHARE_FAILED', error: error);
-    }
+    // Bundle 299 (Q): the card picture (recovery-card look); the caption is
+    // only the code (llgq1:...).
+    final code = _code;
+    if (code == null) return;
+    final photo = widget.photoVersion > 0
+        ? GroupPhotoBook.instance.fileFor(widget.groupId, widget.photoVersion)?.path
+        : null;
+    await QrCardShare299.share(
+      kind: QrCardKind299.group,
+      data: code.encode(),
+      name: widget.groupName,
+      sub: code.count > 0 ? '${code.count} ${code.count == 1 ? 'member' : 'members'}' : '',
+      photoPath: photo,
+    );
   }
 
   @override

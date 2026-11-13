@@ -50,6 +50,8 @@ class SilentUpdateSheet275 extends StatelessWidget {
                   'No nearby phone could share it'),
               SilentStage275.nextPhone => (Icons.download_rounded, const Color(0xFF3B82C4),
                   'Getting it from another phone', sub),
+              // Bundle 299 (C): the server has it.
+              _ when s.fromServer => (Icons.dns_rounded, const Color(0xFF3B82C4), 'New LinkUp on the server', sub),
               _ => (Icons.download_rounded, const Color(0xFF3B82C4), 'New LinkUp found nearby', sub),
             };
             final getting = s.stage == SilentStage275.getting || s.stage == SilentStage275.nextPhone;
@@ -76,7 +78,10 @@ class SilentUpdateSheet275 extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(children: [
                     Expanded(
-                        child: Text(s.stage == SilentStage275.nextPhone ? 'Trying again…' : 'Getting it…',
+                        child: Text(
+                            s.stage == SilentStage275.nextPhone
+                                ? 'Trying again…'
+                                : (s.fromServer ? 'Getting it from the server…' : 'Getting it…'),
                             key: const ValueKey('update275_getting'), style: muted)),
                     Text(
                         s.stage == SilentStage275.nextPhone

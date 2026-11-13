@@ -2,11 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
+import 'package:locallink/features/share_app/presentation/qr_card_share_299.dart';
+import 'package:locallink/features/share_app/presentation/qr_share_card_299.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
-import 'package:flutter/rendering.dart';
-import 'package:share_plus/share_plus.dart';
 
 import 'package:flutter/material.dart';
 
@@ -572,23 +571,16 @@ class _QrCardWithShareState extends State<_QrCardWithShare> {
     if (_sharing) return;
     setState(() => _sharing = true);
     try {
-      final boundaryContext = _cardKey.currentContext;
-      final boundary = boundaryContext?.findRenderObject();
-      if (boundaryContext == null || boundary is! RenderRepaintBoundary) {
-        return;
-      }
-      final image = await boundary.toImage(pixelRatio: 3.0);
-      final png = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (png == null) return;
-      final file = File(
-          '${Directory.systemTemp.path}/locallink_qr_${DateTime.now().millisecondsSinceEpoch}.png');
-      await file.writeAsBytes(png.buffer.asUint8List(), flush: true);
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'image/png')],
-        text: 'Scan this code to add me on LinkUp',
+      // Bundle 299 (Q): the card picture (recovery-card look); the caption
+      // is only the code.
+      await QrCardShare299.share(
+        kind: QrCardKind299.contact,
+        data: widget.payload,
+        name: widget.name,
+        sub: '@${widget.username.isNotEmpty ? widget.username : 'linkup'}',
+        photoPath: widget.hasAvatar ? widget.avatarPath : null,
+        made: DateTime.now(),
       );
-    } catch (error) {
-      AppLogger.error('QR_SHARE_IMAGE_FAILED', error: error);
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
