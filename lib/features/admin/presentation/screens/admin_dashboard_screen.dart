@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
@@ -145,12 +146,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     try {
       final result = await bloc.backup();
       final path = result?['path']?.toString();
-      messenger.showSnackBar(SnackBar(
-          content: Text(
-              path == null ? 'Backup completed.' : 'Backup written to $path')));
+      LinkToast.maybeOn(messenger, path == null ? 'Backup completed.' : 'Backup written to $path', kind: LinkToastKind.done);
     } catch (error) {
-      messenger.showSnackBar(
-          const SnackBar(content: Text('Backup could not be created.')));
+      LinkToast.maybeOn(messenger, 'Backup could not be created.', kind: LinkToastKind.error);
     }
   }
 }

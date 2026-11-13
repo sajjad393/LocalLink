@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/attachment.dart';
@@ -44,7 +45,7 @@ class MediaMessageActions {
     for (final a in attachments) {
       text = await MediaStorageService.instance.saveToPhone(a);
     }
-    if (text != null) messenger?.showSnackBar(SnackBar(content: Text(text)));
+    if (text != null) LinkToast.maybeOn(messenger, text, kind: LinkToast.guess(text));
   }
 
   /// K4: forwarding counts as opening.

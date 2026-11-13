@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
@@ -337,8 +338,7 @@ Future<ForwardTarget?> runForwardFlow(
       await hub.filesFor(item);
     }
   } on ForwardFileMissing {
-    messenger.showSnackBar(const SnackBar(
-        content: Text('This file is no longer on your phone')));
+    LinkToast.maybeOn(messenger, 'This file is no longer on your phone', kind: LinkToastKind.error);
     return null;
   }
   if (!context.mounted) return null;
@@ -351,20 +351,17 @@ Future<ForwardTarget?> runForwardFlow(
   try {
     final chats = await hub.forward(items, picks);
     UiSounds.play(UiSound.messageSent); // Bundle 198: soft "tick"
-    messenger.showSnackBar(SnackBar(
-        content: Text(chats == 1
+    LinkToast.maybeOn(messenger, chats == 1
             ? 'Sent to ${picks.first.name}'
-            : 'Sent to $chats chats')));
+            : 'Sent to $chats chats', kind: LinkToastKind.done);
     if (tooBig.isNotEmpty && context.mounted) {
       await showFileTooBigDialog(context, tooBig, forward: true);
     }
   } on ForwardFileMissing {
-    messenger.showSnackBar(const SnackBar(
-        content: Text('This file is no longer on your phone')));
+    LinkToast.maybeOn(messenger, 'This file is no longer on your phone', kind: LinkToastKind.error);
     return null;
   } catch (_) {
-    messenger.showSnackBar(
-        const SnackBar(content: Text('Could not forward. Try again.')));
+    LinkToast.maybeOn(messenger, 'Could not forward. Try again.', kind: LinkToastKind.error);
     return null;
   }
   return picks.length == 1 ? picks.first : null;

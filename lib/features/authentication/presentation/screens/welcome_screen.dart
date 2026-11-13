@@ -1,13 +1,13 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminActionDoers;
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
-import 'package:locallink/core/widgets/gradient_pill_button.dart';
-import 'package:locallink/core/widgets/locallink_logo_mark.dart';
-import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/link_kit_290.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/features/authentication/presentation/screens/setup_screen.dart';
@@ -110,10 +110,10 @@ class WelcomeScreen extends StatelessWidget {
   }
 }
 
-/// Bundle 152 (approved mock: Option A + Animation 1 "Mesh"): light welcome
-/// screen with a soft blue glow, the faint mesh animation behind the logo,
-/// three short cards that say what the app does, "Create account" as the
-/// main button and "Log in" as a link under it.
+/// Bundle 152 (approved mock: Option A + Animation 1 "Mesh").
+/// Bundle 288 (mock 288 welcome): live mesh at the top, gradient logo
+/// badge, "LinkUp" gradient title, app-style feature cards, gradient
+/// "Create account" + outlined "I already have an account".
 class WelcomeView extends StatelessWidget {
   final VoidCallback onCreateAccount;
   final VoidCallback onLogIn;
@@ -126,32 +126,28 @@ class WelcomeView extends StatelessWidget {
 
   static const String tagline = 'Chat and call, even without internet';
 
+  /// Space above the logo (mock: 92 on a 800 dp phone; less on small ones).
+  static double logoTop(double height) => (height * 0.115).clamp(28.0, 110.0);
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final dark = theme.brightness == Brightness.dark;
-    final background = dark ? theme.scaffoldBackgroundColor : Colors.white;
+    final p = LinkKit.of(context);
+    final dark = p.isDark;
     final topInset = MediaQuery.paddingOf(context).top;
-    // Tall phones: move the logo block down a little (and grow the mesh
-    // with it) so the screen does not look top-heavy with a big empty gap.
-    final extraTop =
-        ((MediaQuery.sizeOf(context).height - 720) * 0.4).clamp(0.0, 90.0);
+    final top = logoTop(MediaQuery.sizeOf(context).height);
+    // The mesh middle sits behind the logo middle (mock: box 330 high).
+    final meshTop = topInset + top + 42 - 330 * 0.52;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       child: Scaffold(
-        backgroundColor: background,
+        backgroundColor: p.screen,
         body: Stack(
           children: [
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(painter: _WelcomeGlowPainter()),
-              ),
-            ),
             Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: topInset + 205 + extraTop,
+              top: meshTop,
+              left: -6,
+              right: -6,
+              height: 330,
               child: const IgnorePointer(child: WelcomeMeshBackground()),
             ),
             SafeArea(
@@ -170,7 +166,7 @@ class WelcomeView extends StatelessWidget {
                               : 0,
                         ),
                         child: _WelcomeContent(
-                          extraTop: extraTop,
+                          logoTop: top,
                           onCreateAccount: onCreateAccount,
                           onLogIn: onLogIn,
                         ),
@@ -188,42 +184,35 @@ class WelcomeView extends StatelessWidget {
 }
 
 class _WelcomeContent extends StatelessWidget {
-  final double extraTop;
+  final double logoTop;
   final VoidCallback onCreateAccount;
   final VoidCallback onLogIn;
 
   const _WelcomeContent({
-    required this.extraTop,
+    required this.logoTop,
     required this.onCreateAccount,
     required this.onLogIn,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final textTheme = theme.textTheme;
-    final muted = theme.colorScheme.onSurfaceVariant;
+    final p = LinkKit.of(context);
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        LocalLinkSpacing.screen,
-        44 + extraTop,
-        LocalLinkSpacing.screen,
-        LocalLinkSpacing.lg,
-      ),
+      padding: EdgeInsets.fromLTRB(22, logoTop, 22, 26),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Center(child: LocalLinkLogoMark(width: 96)),
-          const SizedBox(height: LocalLinkSpacing.lg),
+          const Center(child: _WelcomeLogo288()),
+          const SizedBox(height: 16),
           Center(
             child: ShaderMask(
               blendMode: BlendMode.srcIn,
               shaderCallback: (rect) => const LinearGradient(
-                colors: [LocalLinkBrand.gradientStart, Color(0xFF16B8D6)],
+                colors: [Color(0xFF4D7DFF), Color(0xFF23D3E0)],
               ).createShader(rect),
-              child: Text(
+              child: const Text(
                 'LinkUp',
-                style: textTheme.headlineLarge?.copyWith(
+                style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.3,
@@ -232,67 +221,115 @@ class _WelcomeContent extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: LocalLinkSpacing.xs),
+          const SizedBox(height: 4),
           Text(
             WelcomeView.tagline,
             textAlign: TextAlign.center,
-            style: textTheme.bodyMedium?.copyWith(color: muted),
+            style: TextStyle(fontSize: 14, color: p.muted),
           ),
-          const SizedBox(height: LocalLinkSpacing.xxl),
+          const SizedBox(height: 20),
           const _FeatureCard(
             icon: Icons.chat_bubble_rounded,
-            iconColor: LocalLinkBrand.gradientStart,
-            iconBackground: Color(0xFFE3ECFF),
+            iconColor: Color(0xFF8EA6FF),
+            iconBackground: Color(0x2E1E5BFF),
             title: 'Messages, photos, videos',
             subtitle: 'Nearby, Online or Offline',
           ),
-          const SizedBox(height: LocalLinkSpacing.md),
           const _FeatureCard(
             icon: Icons.call_rounded,
-            iconColor: Color(0xFF12A79D),
-            iconBackground: Color(0xFFDFF8F6),
+            iconColor: Color(0xFF2DD4BF),
+            iconBackground: Color(0x2E14A3A0),
             title: 'Voice calls',
             subtitle: 'Clear calls with people near you',
           ),
-          const SizedBox(height: LocalLinkSpacing.md),
           const _FeatureCard(
             icon: Icons.lock_rounded,
-            iconColor: Color(0xFF7C5CFF),
-            iconBackground: Color(0xFFEFE9FF),
+            iconColor: Color(0xFFB8A6FF),
+            iconBackground: Color(0x337C5CFF),
             title: 'Private and secure',
             subtitle: 'Your account, your chats',
           ),
           const Spacer(),
-          const SizedBox(height: LocalLinkSpacing.xxl),
-          GradientPillButton(
+          const SizedBox(height: 20),
+          BrandButton290(
+            key: const ValueKey('welcome288-create'),
             onPressed: onCreateAccount,
-            child: const Text('Create account'),
+            text: 'Create account',
           ),
-          const SizedBox(height: LocalLinkSpacing.sm),
+          const SizedBox(height: 10),
+          // Bundle 288: outlined second button (still a TextButton).
           TextButton(
+            key: const ValueKey('welcome288-login'),
             onPressed: onLogIn,
             style: TextButton.styleFrom(
-              foregroundColor: LocalLinkBrand.gradientStart,
-              minimumSize: const Size(0, 48),
-            ),
-            child: Text.rich(
-              const TextSpan(
-                children: [
-                  TextSpan(text: 'I already have an account \u00b7 '),
-                  TextSpan(
-                    text: 'Log in',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ],
+              minimumSize: const Size.fromHeight(52),
+              backgroundColor: p.isDark ? Colors.transparent : Colors.white,
+              foregroundColor: p.isDark ? const Color(0xFFDBE3FF) : const Color(0xFF1E3A8A),
+              shape: StadiumBorder(
+                side: BorderSide(
+                    color: p.isDark ? const Color(0xFF343A55) : const Color(0xFFC7CCE0), width: 1.5),
               ),
-              textAlign: TextAlign.center,
-              style: textTheme.bodyMedium?.copyWith(
-                color: LocalLinkBrand.gradientStart,
-                fontWeight: FontWeight.w600,
-              ),
+              textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 15, fontWeight: FontWeight.w700),
             ),
+            child: const Text('I already have an account'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Mock `.logo`: 84 gradient badge (radius 26) with a soft ring, breathing.
+class _WelcomeLogo288 extends StatefulWidget {
+  const _WelcomeLogo288();
+
+  @override
+  State<_WelcomeLogo288> createState() => _WelcomeLogo288State();
+}
+
+class _WelcomeLogo288State extends State<_WelcomeLogo288> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 3600));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (LinkKit.calm(context)) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'LinkUp logo',
+      image: true,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (_, child) =>
+            Transform.scale(scale: 1 + 0.04 * math.sin(_c.value * math.pi), child: child),
+        child: Container(
+          key: const ValueKey('welcome288-logo'),
+          width: 84,
+          height: 84,
+          decoration: BoxDecoration(
+            gradient: LinkKit.brandGradient,
+            borderRadius: BorderRadius.circular(26),
+            boxShadow: const [
+              BoxShadow(color: Color(0x1A23E0D8), spreadRadius: 7),
+              BoxShadow(color: Color(0x731E5BFF), blurRadius: 30, offset: Offset(0, 12)),
+            ],
+          ),
+          child: const Icon(Icons.forum_rounded, size: 42, color: Colors.white),
+        ),
       ),
     );
   }
@@ -315,80 +352,39 @@ class _FeatureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final dark = theme.brightness == Brightness.dark;
-    return DecoratedBox(
+    final p = LinkKit.of(context);
+    return Container(
+      margin: const EdgeInsets.only(top: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
       decoration: BoxDecoration(
-        color: dark
-            ? Colors.white.withValues(alpha: 0.07)
-            : const Color(0xFFF4F7FC).withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(LocalLinkRadius.lg),
+        color: p.card,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: p.cardShadow,
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: dark ? iconColor.withValues(alpha: 0.18) : iconBackground,
-                borderRadius: BorderRadius.circular(LocalLinkRadius.sm),
-              ),
-              child: Icon(icon, size: 20, color: iconColor),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: iconBackground,
+              borderRadius: BorderRadius.circular(13),
             ),
-            const SizedBox(width: LocalLinkSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
+            child: Icon(icon, size: 21, color: iconColor),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.text)),
+                const SizedBox(height: 1),
+                Text(subtitle, style: TextStyle(fontSize: 12, color: p.muted)),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
-}
-
-/// Soft cyan/blue glow at the top (wide ellipse fading to nothing).
-class _WelcomeGlowPainter extends CustomPainter {
-  const _WelcomeGlowPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (size.isEmpty) return;
-    final rx = size.width * 1.3;
-    final ry = size.height * 0.55;
-    canvas.save();
-    canvas.translate(size.width / 2, 0);
-    canvas.scale(1, ry / rx);
-    final paint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          LocalLinkBrand.gradientEnd.withValues(alpha: 0.30),
-          LocalLinkBrand.gradientStart.withValues(alpha: 0.14),
-          LocalLinkBrand.gradientStart.withValues(alpha: 0),
-        ],
-        stops: const [0, 0.45, 0.75],
-      ).createShader(Rect.fromCircle(center: Offset.zero, radius: rx));
-    canvas.drawCircle(Offset.zero, rx, paint);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_WelcomeGlowPainter oldDelegate) => false;
 }

@@ -90,7 +90,8 @@ void main() {
     test('B-1/B-2 profile snacks are the same online or not', () {
       final p = _src('lib/features/account/presentation/screens/profile_screen.dart');
       expect(p, isNot(contains('it will sync when available')));
-      expect(p, contains("const SnackBar(content: Text('Profile saved'))"));
+      // Bundle 289 (listed change): same words, new toast look.
+      expect(p, contains("LinkToast.show(context, 'Profile saved', kind: LinkToastKind.done)"));
       final c = _src('lib/features/account/presentation/widgets/private_profile_card.dart');
       expect(c, isNot(contains('will update when online')));
     });

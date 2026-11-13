@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter/material.dart';
@@ -269,8 +270,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
     } catch (_) {}
     if (!ok && mounted) {
       MediaTransferActions.instance.markCancelled(widget.messageId);
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-          content: Text('Could not reach the sender. Try again when nearby.')));
+      LinkToast.show(context, 'Could not reach the sender. Try again when nearby.', kind: LinkToastKind.error);
     }
   }
 
@@ -690,8 +690,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
   Future<void> _download() async {
     if (_arrivingDirect) {
       // Bundle 150: nothing to download from the server; it is on its way.
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-          content: Text('Still receiving over Wi-Fi. It will appear by itself.')));
+      LinkToast.show(context, 'Still receiving over Wi-Fi. It will appear by itself.', kind: LinkToastKind.info);
       return;
     }
     // Bundle 208 (E6): a tap goes to the front of the background line
@@ -735,9 +734,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
     } catch (error) {
       if (mounted) {
         setState(() => _activeOperation = null);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(friendlyErrorMessage(error))),
-        );
+        LinkToast.show(context, friendlyErrorMessage(error), kind: LinkToastKind.error);
       }
     }
   }
@@ -815,7 +812,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
         }
       }
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyErrorMessage(error))));
+      if (mounted) LinkToast.show(context, friendlyErrorMessage(error), kind: LinkToastKind.error);
     }
   }
 

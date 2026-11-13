@@ -1,3 +1,5 @@
+import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:image_picker/image_picker.dart';
@@ -165,8 +167,7 @@ Future<GroupPhotoPick?> showGroupPhotoSheet(BuildContext context,
     final bytes = await file.readAsBytes();
     if (bytes.length > kGroupPhotoMaxBytes) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('This photo is too big. Try another one.')));
+        LinkToast.show(context, 'This photo is too big. Try another one.', kind: LinkToastKind.error);
       }
       return null;
     }
@@ -591,7 +592,7 @@ class _EditGroupSheetState extends State<_EditGroupSheet> {
                 style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                     shape: const StadiumBorder(),
-                    textStyle: const TextStyle(
+                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, 
                         fontSize: 15.5, fontWeight: FontWeight.w700)),
                 child: const Text('Save'),
               ),

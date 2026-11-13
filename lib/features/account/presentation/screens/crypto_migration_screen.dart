@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/widgets/error_toast.dart';
@@ -54,9 +55,7 @@ class _CryptoMigrationScreenState extends State<CryptoMigrationScreen> {
     try {
       await _controller.rotate();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Identity key rotated to version ${_controller.currentVersion}.')),
-      );
+      LinkToast.show(context, 'Identity key rotated to version ${_controller.currentVersion}.', kind: LinkToastKind.done);
     } catch (_) {
       // The controller exposes the user-facing error state.
     }

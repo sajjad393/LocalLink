@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
@@ -268,15 +269,13 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     if (length == null || !mounted) return;
     final ok = await GroupExtrasHub.pin?.call(widget.group.id, m.id, length) ?? false;
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Only admins can pin messages')));
+      LinkToast.show(context, 'Only admins can pin messages', kind: LinkToastKind.error);
     }
   }
 
   Future<void> _newPoll() async {
     if (!_rules.canSend) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(_cantSendText)));
+      LinkToast.show(context, _cantSendText, kind: LinkToastKind.error);
       return;
     }
     final poll = await Navigator.of(context).push<GroupPoll>(
@@ -287,8 +286,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       await GroupExtrasHub.sendPoll?.call(widget.group.id, poll);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(friendlyErrorMessage(error))));
+        LinkToast.show(context, friendlyErrorMessage(error), kind: LinkToastKind.error);
       }
     }
   }
@@ -307,15 +305,13 @@ class _GroupChatScreenState extends State<GroupChatScreen>
           ? null
           : (i) {
               if (!_rules.canSend) {
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text(_cantSendText)));
+                LinkToast.show(context, _cantSendText, kind: LinkToastKind.error);
                 return;
               }
               // Bundle 207 (K4): after 3 minutes the vote is final.
               final left = tally.changeLeft(widget.localDeviceId, DateTime.now());
               if (left != null && left <= Duration.zero) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text("Votes can't be changed after 3 minutes")));
+                LinkToast.show(context, "Votes can't be changed after 3 minutes", kind: LinkToastKind.error);
                 return;
               }
               unawaited(GroupExtrasHub.vote?.call(widget.group.id, m.id,
@@ -642,8 +638,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       if ((result.action == MessageAction.react ||
               result.action == MessageAction.reply) &&
           !_rules.canSend) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_cantSendText)));
+        LinkToast.show(context, _cantSendText, kind: LinkToastKind.error);
         return;
       }
       switch (result.action) {
@@ -694,10 +689,9 @@ class _GroupChatScreenState extends State<GroupChatScreen>
             .join('\n');
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(withText.length == 1
+    LinkToast.show(context, withText.length == 1
             ? 'Message copied'
-            : '${withText.length} messages copied')));
+            : '${withText.length} messages copied', kind: LinkToastKind.done);
   }
 
   Future<void> _forward(List<GroupMessage> messages) async {
@@ -793,8 +787,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       final ok = await _controller.deleteForEveryone(ids);
       if (!mounted) return;
       if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Too late to delete for everyone')));
+        LinkToast.show(context, 'Too late to delete for everyone', kind: LinkToastKind.error);
       }
     } else {
       await _controller.deleteForMe(ids);
@@ -826,8 +819,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
   void _jumpTo(String id) {
     final index = _controller.messages.indexWhere((m) => m.id == id);
     if (index < 0 || !_scrollController.hasClients) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Message not found')));
+      LinkToast.show(context, 'Message not found', kind: LinkToastKind.error);
       return;
     }
     setState(() {
@@ -1202,8 +1194,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
         widget.localDeviceId,
         emoji);
     if (kind != ReactionTapKind.remove && !_rules.canSend) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(_cantSendText)));
+      LinkToast.show(context, _cantSendText, kind: LinkToastKind.error);
       return;
     }
     AppLogger.info('REACTION_TAP', detail: '${kind.name} chat=group');

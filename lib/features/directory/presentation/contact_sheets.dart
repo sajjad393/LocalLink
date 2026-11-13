@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/presence/block_hub.dart';
@@ -538,8 +539,7 @@ Future<ChatInfoChoice?> showChatInfoSheet(
 
 void _snack(BuildContext context, String text) {
   if (!context.mounted) return;
-  ScaffoldMessenger.maybeOf(context)
-      ?.showSnackBar(SnackBar(content: Text(text)));
+  LinkToast.show(context, text, kind: LinkToast.guess(text));
 }
 
 /// Block sheet, then block (+ block state) and "<name> blocked".

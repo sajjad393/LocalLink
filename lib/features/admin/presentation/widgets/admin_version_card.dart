@@ -1,6 +1,7 @@
 // Bundle 213 (mock pages 1-3): App version card, Minimum version page,
 // "Save for everyone" confirm, and the testers' "Pretend old build" switch.
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/features/admin/data/models/version_rule.dart';
@@ -216,11 +217,11 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       await job();
-      messenger?.showSnackBar(SnackBar(content: Text(done)));
+      LinkToast.maybeOn(messenger, done, kind: LinkToastKind.done);
       if (mounted) Navigator.of(context).maybePop();
     } catch (e) {
       final text = e is StateError ? e.message : 'Could not save: $e';
-      messenger?.showSnackBar(SnackBar(content: Text(text)));
+      LinkToast.maybeOn(messenger, text, kind: LinkToastKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -31,7 +31,11 @@ abstract class PeopleSource267 {
 abstract final class PeopleToAdd267 {
   static const String titleServer = 'People you can add';
   static const String titleNearby = 'People nearby phones know';
-  static const String emptyServer = 'Everyone is already in your contacts.';
+  // Bundle 283 (mock section 1): the empty screen has a title + words.
+  static const String emptyServerTitle = "You've added everyone";
+  static const String emptyServer =
+      'Everyone on LinkUp is already in your contacts. To add someone new, search their name or use a QR code.';
+  static const String emptyNearbyTitle = 'Find people to add';
   static const String emptyNearby =
       'No one to show yet. Search a name or scan a QR code.';
   static const String waitLine = 'Please wait a few seconds';

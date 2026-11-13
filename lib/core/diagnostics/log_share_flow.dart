@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/diagnostics/log_share_service.dart';
@@ -73,7 +74,7 @@ Future<void> runLogShare(
   }
   if (path == null) {
     AppLogger.warning('LOG_SHARE_FAILED', detail: 'error=${failure ?? 'no_file'}');
-    messenger?.showSnackBar(const SnackBar(content: Text('Could not prepare logs')));
+    LinkToast.maybeOn(messenger, 'Could not prepare logs', kind: LinkToastKind.error);
     return;
   }
   try {
@@ -81,6 +82,6 @@ Future<void> runLogShare(
     AppLogger.info('LOG_SHARE_OPENED');
   } catch (e) {
     AppLogger.warning('LOG_SHARE_FAILED', detail: 'error=$e');
-    messenger?.showSnackBar(const SnackBar(content: Text('Could not share logs')));
+    LinkToast.maybeOn(messenger, 'Could not share logs', kind: LinkToastKind.error);
   }
 }

@@ -14,7 +14,7 @@ import 'package:locallink/features/directory/data/services/pairing_service.dart'
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/nearby_people_section.dart';
 import 'package:locallink/features/directory/presentation/nearby_list_plan.dart';
-import 'package:locallink/features/directory/presentation/nearby_search_animation.dart';
+import 'package:locallink/features/directory/presentation/add_contact_ui283.dart';
 
 import 'support/phase5_fakes.dart';
 
@@ -272,11 +272,11 @@ void main() {
       // Bundle 170: a name (or "Nearby LocalLink user"), never a short id,
       // and no transport words.
       expect(find.text('Nearby LinkUp user'), findsOneWidget);
-      expect(find.text('Nearby · not added yet'), findsOneWidget);
+      expect(find.text('Near you'), findsOneWidget); // Bundle 283 (mock E)
       expect(find.textContaining('0000ali1'), findsNothing);
       expect(find.textContaining('Same Wi-Fi'), findsNothing);
       expect(find.textContaining('Paired'), findsNothing);
-      expect(find.text('Nearby'), findsOneWidget);
+      expect(find.text('NEARBY'), findsOneWidget); // Bundle 283: small capitals
       await finish(tester, deps);
     });
 
@@ -286,19 +286,20 @@ void main() {
       ], paired: [
         'paired-bilal-0001'
       ]);
-      expect(find.text('Everyone nearby is already in your contacts.'),
+      // Bundle 283 (mock C): one quiet line, no "See contacts".
+      expect(find.text('Everyone nearby is already in your contacts'),
           findsOneWidget);
-      expect(find.text('See contacts'), findsOneWidget);
+      expect(find.text('See contacts'), findsNothing);
       expect(find.text('Add friend'), findsNothing);
       await finish(tester, deps);
     });
 
     testWidgets('nothing found', (tester) async {
       final deps = await pump(tester, meshPeers: const [], paired: const []);
-      // Bundle 170: the mesh animation replaces the radar.
-      expect(find.text('Looking for LinkUp phones…'), findsOneWidget);
-      expect(find.text('Both phones need Wi-Fi on'), findsOneWidget);
-      expect(find.byType(NearbySearchAnimation), findsOneWidget);
+      // Bundle 283 (mock D): the new search scene.
+      expect(find.text('Looking for phones near you'), findsOneWidget);
+      expect(find.text('Keep Wi-Fi on, on both phones'), findsOneWidget);
+      expect(find.byType(NearbyScene283), findsOneWidget);
       expect(find.text('Allow'), findsNothing);
       await finish(tester, deps);
     });
@@ -307,10 +308,11 @@ void main() {
         (tester) async {
       final deps = await pump(tester,
           meshPeers: const [], paired: const [], granted: false);
-      expect(find.text('Allow nearby to see phones around you'),
-          findsOneWidget);
+      // Bundle 283 (mock F): "Find phones near you" card.
+      expect(find.text('Find phones near you'), findsOneWidget);
+      expect(find.text('LinkUp needs your OK once'), findsOneWidget);
       expect(find.text('Allow'), findsOneWidget);
-      expect(find.text('Looking for LinkUp phones…'), findsNothing);
+      expect(find.text('Looking for phones near you'), findsNothing);
       await finish(tester, deps);
     });
 
@@ -320,7 +322,7 @@ void main() {
         {'node_id': 'myother-00000002', 'state': 'DISCOVERED', 'transport': 'lan'},
       ], paired: const [], selfUserId: 'me-user');
       expect(find.text('Add friend'), findsNothing);
-      expect(find.text('Looking for LinkUp phones…'), findsOneWidget);
+      expect(find.text('Looking for phones near you'), findsOneWidget);
       await finish(tester, deps);
     });
 
@@ -349,7 +351,7 @@ void main() {
 
       deps = await pump(tester, meshPeers: peers, paired: const [], filter: 'qq');
       expect(find.text('Add friend'), findsNothing);
-      expect(find.text('Nearby'), findsNothing);
+      expect(find.text('NEARBY'), findsNothing);
       await finish(tester, deps);
     });
   });

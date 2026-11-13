@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/widgets/link_toast.dart';
+
 /// Bundle G2: an error whose [friendly] text can be shown as it is.
 abstract interface class FriendlyError {
   String get friendly;
@@ -51,30 +53,6 @@ String friendlyErrorMessage(Object? error) {
 
 /// Transient top-anchored toast for failures (never leaks exception detail).
 void showErrorToast(BuildContext context, {Object? error, String? message}) {
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  if (messenger == null) return;
-  messenger.hideCurrentSnackBar();
-  messenger.showSnackBar(
-    SnackBar(
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: Theme.of(context).colorScheme.errorContainer,
-      content: Row(
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 18,
-            color: Theme.of(context).colorScheme.onErrorContainer,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message ?? friendlyErrorMessage(error),
-              style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
-            ),
-          ),
-        ],
-      ),
-      duration: const Duration(seconds: 3),
-    ),
-  );
+  // Bundle 289 (T-1): the same toast card as everywhere, with the red sign.
+  LinkToast.show(context, message ?? friendlyErrorMessage(error), kind: LinkToastKind.error);
 }

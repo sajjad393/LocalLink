@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
@@ -162,8 +163,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   /// Bundle 273: a tap in user mode opens the chat; a relay explains itself.
   void _userTap(LinkNode n) {
     if (n.relay) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-          content: Text("A LinkUp phone helping to pass your messages. It can't read them.")));
+      LinkToast.show(context, "A LinkUp phone helping to pass your messages. It can't read them.", kind: LinkToastKind.info);
       return;
     }
     widget.onUserTap?.call(n);
@@ -259,8 +259,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     final nodes = _nodes;
     final hit = nodes.where((n) => n.label.toLowerCase().contains(t)).firstOrNull;
     if (hit == null) {
-      ScaffoldMessenger.maybeOf(context)
-          ?.showSnackBar(SnackBar(content: Text('No one called "$q" on the map')));
+      LinkToast.show(context, 'No one called "$q" on the map', kind: LinkToastKind.info);
       return;
     }
     // Hidden by the chip filter: show everyone again, then find.

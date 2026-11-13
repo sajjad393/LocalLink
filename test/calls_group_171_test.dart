@@ -41,7 +41,9 @@ void main() {
     expect(groups.first.latest.id, h.first.id); // the newest is shown
   });
 
-  test('someone else in between starts a new row', () {
+  test('someone else in between: still one row per person (285 C-1)', () {
+    // Bundle 285 (listed change, was [2, 1, 1] "starts a new row"):
+    // ONE row per person per day.
     expect(
         _sizes([
           _call('sajjad', t),
@@ -49,7 +51,7 @@ void main() {
           _call('ali', t.subtract(const Duration(minutes: 2))),
           _call('sajjad', t.subtract(const Duration(minutes: 3))),
         ]),
-        [2, 1, 1]);
+        [3, 1]);
   });
 
   test('a new day starts a new row', () {
@@ -63,19 +65,55 @@ void main() {
         [2, 1]);
   });
 
-  test('missed calls back to back share one red row (255 B5)', () {
-    expect(
-        _sizes([
-          _call('sajjad', t),
-          _call('sajjad', t.subtract(const Duration(minutes: 1)),
-              out: false, status: 'missed'),
-          _call('sajjad', t.subtract(const Duration(minutes: 2)),
-              out: false, status: 'missed'),
-          _call('sajjad', t.subtract(const Duration(minutes: 3))),
-        ]),
-        // Bundle 255 B5 (replaces 174 (1)): the 2 missed calls = one row;
-        // they never join the answered calls around them.
-        [1, 2, 1]);
+  test('missed calls are inside the person\'s one row (285 C-1)', () {
+    final h = [
+      _call('sajjad', t),
+      _call('sajjad', t.subtract(const Duration(minutes: 1)),
+          out: false, status: 'missed'),
+      _call('sajjad', t.subtract(const Duration(minutes: 2)),
+          out: false, status: 'missed'),
+      _call('sajjad', t.subtract(const Duration(minutes: 3))),
+    ];
+    // Bundle 285 (listed change, was [1, 2, 1] from 255 B5): missed and
+    // answered calls with the same person on one day = ONE row, 2 missed.
+    expect(_sizes(h), [4]);
+    final g = groupCallHistory(h, selfId: 'me', isMissed: _missed).single;
+    expect(g.missed, 2);
+    expect(g.latest.id, h.first.id);
+  });
+
+  test('285: the 12 Nov screenshot order = 2 rows today', () {
+    // TODAY was: noshad (5), Ibrahim, noshad, Ibrahim, noshad (2),
+    // Ibrahim (2), noshad (2) - 7 rows for 2 people.
+    final h = <CallRecord>[];
+    var m = 0;
+    void add(String who, int n) {
+      for (var i = 0; i < n; i++) {
+        h.add(_call(who, t.subtract(Duration(minutes: m++))));
+      }
+    }
+
+    add('noshad', 5);
+    add('ibrahim', 1);
+    add('noshad', 1);
+    add('ibrahim', 1);
+    add('noshad', 2);
+    add('ibrahim', 2);
+    add('noshad', 2);
+    final g = groupCallHistory(h, selfId: 'me', isMissed: _missed);
+    expect(g.map((e) => e.latest.peerId('me')).toList(), ['noshad', 'ibrahim']);
+    expect(g.map((e) => e.count).toList(), [10, 4]);
+    expect(g.expand((e) => e.calls).length, h.length, reason: 'no call lost');
+  });
+
+  test('285: the row position is the person\'s newest call', () {
+    final g = groupCallHistory([
+      _call('ali', t),
+      _call('sajjad', t.subtract(const Duration(minutes: 1))),
+      _call('ali', t.subtract(const Duration(minutes: 2))),
+    ], selfId: 'me', isMissed: _missed);
+    expect(g.map((e) => e.latest.peerId('me')).toList(), ['ali', 'sajjad']);
+    expect(g.map((e) => e.missed).toList(), [0, 0]);
   });
 
   test('incoming and outgoing (not missed) share a row; order kept', () {
@@ -121,6 +159,26 @@ void main() {
     expect(calls, 0);
     await tester.tap(find.byTooltip('Call back'));
     expect(calls, 1);
+  });
+
+  testWidgets('285: a row with missed calls inside is red + "· 2 missed"',
+      (tester) async {
+    await tester.pumpWidget(host(CallHistoryTile(
+      call: _call('ibrahim', t),
+      title: 'Ibrahim',
+      status: 'No answer',
+      date: '1:29 PM',
+      duration: null,
+      selfId: 'me',
+      count: 4,
+      missedInside: 2,
+      onOpen: () {},
+    )));
+    final ctx = tester.element(find.text('Ibrahim'));
+    final red = Theme.of(ctx).colorScheme.error;
+    expect(tester.widget<Text>(find.text('Ibrahim')).style?.color, red);
+    expect(tester.widget<Text>(find.text('(4)')).style?.color, red);
+    expect(find.text('No answer, 1:29 PM · 2 missed', findRichText: true), findsOneWidget);
   });
 
   testWidgets('a single call has no count and the row calls back',

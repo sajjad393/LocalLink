@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/features/share_app/presentation/share_app_entry.dart';
@@ -105,7 +106,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Future<void> _chat(DirectoryProfile p) async {
     if (p.deviceId.isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This person is not currently available.')));
+      if (mounted) LinkToast.show(context, 'This person is not currently available.', kind: LinkToastKind.error);
       return;
     }
     final device = _device(p);
@@ -495,8 +496,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   /// Bundle 196 (5.1): the same call as the chat's call button.
   Future<void> _call(DirectoryProfile p) async {
     if (p.deviceId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('This person is not currently available.')));
+      LinkToast.show(context, 'This person is not currently available.', kind: LinkToastKind.error);
       return;
     }
     final device = _device(p);
@@ -610,10 +610,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       await accept(r.deviceId);
       await bloc.load();
-      messenger.showSnackBar(SnackBar(content: Text('${r.name} added')));
+      LinkToast.maybeOn(messenger, '${r.name} added', kind: LinkToastKind.done);
     } catch (e) {
-      messenger.showSnackBar(
-          SnackBar(content: Text('Could not add ${r.name}. Try again.')));
+      LinkToast.maybeOn(messenger, 'Could not add ${r.name}. Try again.', kind: LinkToastKind.error);
     }
   }
 
@@ -626,8 +625,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       } else {
         await FriendRequestBook.instance.decline(r.deviceId);
       }
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Request declined')));
+      LinkToast.maybeOn(messenger, 'Request declined', kind: LinkToastKind.done);
     } catch (_) {}
   }
 }

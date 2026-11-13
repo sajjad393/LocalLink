@@ -1,3 +1,5 @@
+import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/diagnostics/ui_hidden_263.dart';
 import 'dart:async';
@@ -6,9 +8,8 @@ import 'package:flutter/material.dart';
 
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/locallink_api.dart';
-import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
-import 'package:locallink/core/widgets/local_link_text_field.dart';
+import 'package:locallink/core/widgets/link_kit_290.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/presentation/screens/profile_screen.dart';
 import 'package:locallink/features/authentication/bloc/authentication_bloc.dart';
@@ -19,6 +20,7 @@ import 'package:locallink/features/authentication/domain/authentication_reposito
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
 import 'package:locallink/features/recovery/presentation/screens/account_recovery_screen.dart';
+import 'package:locallink/features/recovery/presentation/screens/recovery_code_286.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 
 class SetupScreen extends StatefulWidget {
@@ -62,6 +64,26 @@ class _SetupScreenState extends State<SetupScreen> {
       widget.authentication,
       registerMode: widget.initialRegisterMode,
     );
+    // Bundle 288: the button wakes up as soon as both fields are filled.
+    _username.addListener(_typed);
+    _password.addListener(_typed);
+  }
+
+  void _typed() {
+    if (mounted) setState(() {});
+  }
+
+  /// Bundle 288: the username rule of the server (3-32: a-z 0-9 . _ -).
+  static bool usernameOk288(String text) =>
+      RegExp(r'^[a-z0-9_][a-z0-9_.-]{2,31}$').hasMatch(text.trim().toLowerCase());
+
+  /// Bundle 288 (mock: red border on the wrong field): which field an
+  /// error is about. "username and password do not match" = the password.
+  static int wrongField288(String? error) {
+    final e = (error ?? '').toLowerCase();
+    if (e.contains('password')) return 1;
+    if (e.contains('username')) return 0;
+    return -1;
   }
 
   Future<void> _submit() async {
@@ -85,6 +107,11 @@ class _SetupScreenState extends State<SetupScreen> {
         // Bundle 263 (B7): no "Saved on this phone" dialog any more - the
         // account goes up to the server by itself (log line only).
         if (outcome.madeOffline) UiHidden263.note('signup_saved');
+        // Bundle 286 (R-1): a new account shows the recovery code card on
+        // Home (no password there: it was just typed).
+        if (_controller.registerMode) {
+          await RecoveryFlags286.markNew(widget.store, username: _username.text);
+        }
         if (_controller.registerMode && mounted) {
           await Navigator.push(
             context,
@@ -109,32 +136,6 @@ class _SetupScreenState extends State<SetupScreen> {
     }
   }
 
-  /// Bundle 256 A4: what happens while the button spins.
-  Widget _stage256(BuildContext context, String? stage) {
-    if (stage == null) return const SizedBox.shrink();
-    final tt = Theme.of(context).textTheme;
-    return Padding(
-      key: ValueKey('signup_stage_$stage'),
-      padding: const EdgeInsets.only(top: LocalLinkSpacing.md),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          // Bundle 263 (B8): the spinner until it is done (no "Server found").
-          child: const SizedBox(
-              width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Bundle 263 (B8): plain words, no server words.
-            Text(_controller.registerMode ? 'Creating your account…' : 'Signing you in…',
-                style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-          ]),
-        ),
-      ]),
-    );
-  }
-
   // Bundle 110: the old manual "Create account offline" panel is gone —
   // Register/Login fall back silently inside AuthenticationBloc.submit.
   Future<void> _completeAuthentication(AuthResult result) async {
@@ -148,6 +149,10 @@ class _SetupScreenState extends State<SetupScreen> {
     // Bundle 110: no recovery-code dialog at account creation — the code
     // stays reachable from Profile → Recovery code anytime, and works in
     // place of the password on the login form while offline.
+    // Bundle 286 (R-1): the Home card shows the new code until it is saved.
+    if (_controller.registerMode) {
+      await RecoveryFlags286.markNew(widget.store, username: _username.text);
+    }
     if (_controller.registerMode && mounted) {
       await Navigator.push(
         context,
@@ -269,8 +274,7 @@ class _SetupScreenState extends State<SetupScreen> {
         );
         if (!mounted) return;
         Navigator.of(context, rootNavigator: true).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Your conversations and contacts are restored.')));
+        LinkToast.show(context, 'Your conversations and contacts are restored.', kind: LinkToastKind.done);
         return;
       } catch (error) {
         if (!mounted) return;
@@ -342,6 +346,8 @@ class _SetupScreenState extends State<SetupScreen> {
 
   @override
   void dispose() {
+    _username.removeListener(_typed);
+    _password.removeListener(_typed);
     _controller.close();
     _username.dispose();
     _password.dispose();
@@ -354,100 +360,117 @@ class _SetupScreenState extends State<SetupScreen> {
       bloc: _controller,
       builder: (context, state) {
         final register = state.registerMode;
+        final p = LinkKit.of(context);
+        final busy = state.busy;
+        final filled = _username.text.trim().isNotEmpty && _password.text.isNotEmpty;
+        final wrong = wrongField288(state.error);
+        // Bundle 288 (mock 288): ONE loading only - inside the button.
+        final label = busy
+            ? (register ? 'Creating your account…' : 'Signing you in…')
+            : (register ? 'Create account' : 'Log in');
         return Scaffold(
+          backgroundColor: p.screen,
           appBar: AppBar(
-            title: Text(register ? 'Register' : 'Log in'),
+            // Bundle 288: "Create account" (was "Register").
+            title: Text(register ? 'Create account' : 'Log in'),
+            backgroundColor: p.screen,
+            surfaceTintColor: Colors.transparent,
+            foregroundColor: p.text,
           ),
           body: SafeArea(
             child: ListView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(
-                LocalLinkSpacing.screen,
-                LocalLinkSpacing.xxl,
-                LocalLinkSpacing.screen,
-                LocalLinkSpacing.xxxl,
-              ),
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 32),
               children: [
-                Icon(
-                  Icons.forum_rounded,
-                  size: 54,
-                  color: Theme.of(context).colorScheme.primary,
+                LinkHead290(
+                  icon: Icons.forum_rounded,
+                  title: register ? 'Create your account' : 'Welcome back',
+                  subtitle: register ? 'Pick a username your friends know' : 'Log in to your account',
                 ),
-                const SizedBox(height: LocalLinkSpacing.lg),
-                Text(
-                  register ? 'Create your account' : 'Welcome back',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: LocalLinkSpacing.xxl),
-                LocalLinkTextField(
-                  controller: _username,
-                  maxLength: 32,
-                  autocorrect: false,
-                  textInputAction: TextInputAction.next,
-                  labelText: 'Username',
-                  hintText: 'Username',
-                  prefixIcon: const Icon(Icons.person_outline),
-                  onChanged: (_) => _controller.clearError(),
-                ),
-                const SizedBox(height: LocalLinkSpacing.sm),
-                LocalLinkTextField(
-                  controller: _password,
-                  obscureText: _obscurePassword,
-                  textInputAction: TextInputAction.done,
-                  labelText: 'Password',
-                  hintText: register ? 'At least 8 characters' : 'Password',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(
-                    tooltip: _obscurePassword ? 'Show password' : 'Hide password',
-                    onPressed: () => setState(
-                      () => _obscurePassword = !_obscurePassword,
+                // Bundle 288: the error is a red card above the fields
+                // (same words as before).
+                if (state.error != null && !busy)
+                  LinkErrorCard290(state.error!, key: const ValueKey('auth288-error')),
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: busy ? 0.55 : 1,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    LinkField290(
+                      fieldKey: const ValueKey('auth288-username'),
+                      controller: _username,
+                      label: 'Username',
+                      icon: Icons.person_outline_rounded,
+                      maxLength: 32,
+                      enabled: !busy,
+                      error: wrong == 0,
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [AutofillHints.username],
+                      trailing: register && usernameOk288(_username.text) ? const LinkOkMark290() : null,
+                      onChanged: (_) => _controller.clearError(),
                     ),
-                    icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
+                    if (register)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: LinkRules290(rules: [
+                          LinkRule290('3–32 letters, numbers, . _ -', ok: usernameOk288(_username.text)),
+                        ]),
+                      )
+                    else
+                      const SizedBox(height: 10),
+                    LinkField290(
+                      fieldKey: const ValueKey('auth288-password'),
+                      controller: _password,
+                      label: 'Password',
+                      icon: Icons.lock_outline_rounded,
+                      obscureText: _obscurePassword,
+                      enabled: !busy,
+                      error: wrong == 1,
+                      textInputAction: TextInputAction.done,
+                      autofillHints: [register ? AutofillHints.newPassword : AutofillHints.password],
+                      trailing: LinkEye290(
+                        hidden: _obscurePassword,
+                        onTap: busy ? null : () => setState(() => _obscurePassword = !_obscurePassword),
+                      ),
+                      onSubmitted: (_) {
+                        if (filled && !busy) _submit();
+                      },
+                      onChanged: (_) => _controller.clearError(),
                     ),
-                  ),
-                  onSubmitted: (_) => _submit(),
-                  onChanged: (_) => _controller.clearError(),
+                    if (register) ...[
+                      if (_password.text.isNotEmpty) LinkStrength290(password: _password.text) else const SizedBox(height: 6),
+                      LinkRules290(rules: [
+                        LinkRule290('At least 8 characters', ok: _password.text.length >= 8),
+                      ]),
+                    ],
+                    if (!register)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          key: const ValueKey('forgot-password-222'),
+                          onPressed: busy ? null : _openRecovery,
+                          style: TextButton.styleFrom(
+                            foregroundColor: p.link,
+                            disabledForegroundColor: p.link.withValues(alpha: 0.5),
+                            textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 13.5, fontWeight: FontWeight.w600),
+                          ),
+                          child: const Text('Forgot password?'),
+                        ),
+                      ),
+                  ]),
                 ),
-                if (!register)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      key: const ValueKey('forgot-password-222'),
-                      onPressed: state.busy ? null : _openRecovery,
-                      child: const Text('Forgot password?'),
-                    ),
-                  ),
-                if (state.error != null) ...[
-                  const SizedBox(height: LocalLinkSpacing.md),
-                  Text(
-                    state.error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: LocalLinkSpacing.lg),
-                FilledButton(
-                  onPressed: state.busy ? null : _submit,
-                  child: state.busy
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(register ? 'Register' : 'Log in'),
+                const SizedBox(height: 6),
+                BrandButton290(
+                  key: const ValueKey('auth288-submit'),
+                  onPressed: filled ? _submit : null,
+                  text: label,
+                  loading: busy,
                 ),
-                if (state.busy) _stage256(context, state.stage),
-                const SizedBox(height: LocalLinkSpacing.md),
-                TextButton(
-                  onPressed: state.busy ? null : _switchMode,
-                  child: Text(
-                    register ? 'Log in instead' : 'Create an account',
-                  ),
+                const SizedBox(height: 8),
+                LinkAltLine290(
+                  key: const ValueKey('auth288-switch'),
+                  lead: register ? 'Have an account?' : 'New here?',
+                  action: register ? 'Log in' : 'Create an account',
+                  onTap: busy ? null : _switchMode,
                 ),
               ],
             ),

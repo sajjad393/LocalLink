@@ -27,6 +27,10 @@ class CallHistoryTile extends StatelessWidget {
   /// When null the row tap calls back, as before.
   final VoidCallback? onOpen;
 
+  /// Bundle 285: missed calls inside this row (one row per person per
+  /// day). More than 0 = the name is red and the line ends "· 2 missed".
+  final int missedInside;
+
   const CallHistoryTile({
     super.key,
     required this.call,
@@ -39,7 +43,11 @@ class CallHistoryTile extends StatelessWidget {
     this.onCall,
     this.count = 1,
     this.onOpen,
+    this.missedInside = 0,
   });
+
+  /// Bundle 285: the name is red when this call or one inside is missed.
+  bool get _red => missed || missedInside > 0;
 
   // 'Completed' is the default happy path, so it stays silent (mock 99):
   // completed rows show "12:48 AM · 2:50"; everything else keeps its label.
@@ -132,15 +140,34 @@ class CallHistoryTile extends StatelessWidget {
             arrow,
             const SizedBox(width: 5),
             Expanded(
-              child: Text(
-                _statusLine(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: missed ? colors.error : colors.onSurfaceVariant,
-                ),
-              ),
+              child: missedInside > 0
+                  // Bundle 285 (mock 285): "No answer, 1:29 PM · 2 missed".
+                  ? Text.rich(
+                      TextSpan(children: [
+                        TextSpan(text: '${_statusLine()} · '),
+                        TextSpan(
+                          text: '$missedInside missed',
+                          style: TextStyle(color: colors.error, fontWeight: FontWeight.w600),
+                        ),
+                      ]),
+                      // A long line wraps once, so "N missed" never hides
+                      // behind the "…".
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: missed ? colors.error : colors.onSurfaceVariant,
+                      ),
+                    )
+                  : Text(
+                      _statusLine(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: missed ? colors.error : colors.onSurfaceVariant,
+                      ),
+                    ),
             ),
           ],
         ),
@@ -166,7 +193,7 @@ class CallHistoryTile extends StatelessWidget {
       // Bundle 153: bold name, same style as the Chats list.
       style: Theme.of(context).textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w700,
-            color: missed ? colors.error : colors.onSurface,
+            color: _red ? colors.error : colors.onSurface,
           ),
     );
     if (count <= 1) return name;
@@ -179,7 +206,7 @@ class CallHistoryTile extends StatelessWidget {
           '($count)',
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w400,
-                color: missed ? colors.error : colors.onSurfaceVariant,
+                color: _red ? colors.error : colors.onSurfaceVariant,
               ),
         ),
       ],

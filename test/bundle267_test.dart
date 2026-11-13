@@ -110,11 +110,12 @@ void main() {
       [_p('u-ali', 'Ali'), _p('u-bilal', 'Bilal')]
     ]);
     await _open(tester, dir);
-    expect(find.text(PeopleToAdd267.titleServer), findsOneWidget);
+    // Bundle 283: section titles are small capitals (mock `.sec`).
+    expect(find.text(PeopleToAdd267.titleServer.toUpperCase()), findsOneWidget);
     expect(find.text('Ali'), findsOneWidget);
     expect(find.text('Bilal'), findsOneWidget);
-    expect(find.text('People nearby'), findsNothing);
-    expect(find.text('Nearby'), findsNothing);
+    expect(find.text('PEOPLE NEARBY'), findsNothing);
+    expect(find.text('NEARBY'), findsNothing);
     expect(dir.asked, [0]);
   });
 
@@ -132,7 +133,7 @@ void main() {
       [_p('u-zara', 'Zara')]
     ], source: 'nearby');
     await _open(tester, dir);
-    expect(find.text(PeopleToAdd267.titleNearby), findsOneWidget);
+    expect(find.text(PeopleToAdd267.titleNearby.toUpperCase()), findsOneWidget);
     expect(find.text('Zara'), findsOneWidget);
     expect(dir.syncs, 1);
     expect(dir.asked, [0, 0]);
@@ -145,11 +146,11 @@ void main() {
     dir.search = [_p('u-sara', 'Sara')];
     await _open(tester, dir);
     await _type(tester, 'sar');
-    expect(find.text('Results'), findsOneWidget);
+    expect(find.text('RESULTS'), findsOneWidget);
     expect(find.text('Sara'), findsOneWidget);
     expect(find.text('Bilal'), findsNothing);
-    expect(find.text(PeopleToAdd267.titleServer), findsNothing);
-    expect(find.text('People nearby'), findsNothing);
+    expect(find.text(PeopleToAdd267.titleServer.toUpperCase()), findsNothing);
+    expect(find.text('PEOPLE NEARBY'), findsNothing);
   });
 
   testWidgets('5 no match -> "No one called", list hidden; clear -> list back', (tester) async {
@@ -158,7 +159,8 @@ void main() {
     ]);
     await _open(tester, dir);
     await _type(tester, 'qqq');
-    expect(find.text('No one called "qqq" found.'), findsOneWidget);
+    // Bundle 283 (mock `.nf`): the small not-found card.
+    expect(find.text('No one called "qqq" on LinkUp'), findsOneWidget);
     expect(find.text('Bilal'), findsNothing);
     await _type(tester, '');
     expect(find.text('Bilal'), findsOneWidget);
@@ -213,8 +215,9 @@ void main() {
     expect(s, isNot(contains("title: noMatch ? 'People nearby' : 'Nearby'")));
     expect(s, isNot(contains('Type at least 2 characters to search.')));
     final n = _src('lib/features/directory/presentation/nearby_people_section.dart');
-    expect(n, contains('Looking for LinkUp phones…'));
-    expect(n, contains('Both phones need Wi-Fi on'));
+    // Bundle 283 (mock D): new words, same key on the second line.
+    expect(n, contains("'Looking for phones near you'"));
+    expect(n, contains("'Keep Wi-Fi on, on both phones'"));
     expect(n, contains("key: const ValueKey('nearby_wait_267')"));
     expect(PeopleToAdd267.waitLine, 'Please wait a few seconds');
   });
@@ -272,9 +275,9 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(NearbyPeopleSection), findsOneWidget);
-    expect(find.text('People nearby'), findsOneWidget);
-    expect(find.text('Looking for LinkUp phones…'), findsOneWidget);
-    expect(find.text('Please wait a few seconds'), findsOneWidget);
+    expect(find.text('PEOPLE NEARBY'), findsOneWidget);
+    expect(find.text('Looking for phones near you'), findsOneWidget);
+    expect(find.text('Keep Wi-Fi on, on both phones'), findsOneWidget);
     expect(conn.searches, 1);
 
     await _type(tester, '');

@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/features/groups/domain/group_repository_contract.dart';
@@ -116,7 +117,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
 
   void _showMessage(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    LinkToast.show(context, text, kind: LinkToast.guess(text));
   }
 
   @override

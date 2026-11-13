@@ -7,6 +7,10 @@ import 'package:locallink/features/account/data/own_profile_signal.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:locallink/core/widgets/link_toast.dart';
+import 'package:locallink/core/widgets/link_kit_290.dart';
+import 'package:locallink/features/account/presentation/widgets/photo_save_ring284.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -20,7 +24,6 @@ import 'package:locallink/features/account/presentation/widgets/photo_tap_overla
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
-import 'package:locallink/core/widgets/gradient_pill_button.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
 import 'package:locallink/features/account/bloc/account_bloc.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
@@ -36,7 +39,7 @@ import 'package:locallink/features/authentication/domain/authentication_reposito
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/features/transfer/presentation/screens/account_transfer_screen.dart';
-import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
+import 'package:locallink/features/recovery/presentation/screens/recovery_code_286.dart';
 
 class ProfileScreen extends StatefulWidget {
   final AccountRepositoryContract accountRepository;
@@ -91,6 +94,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// Bundle 211 (A3): the camera circle is showing on my photo.
   bool _cameraShowing = false;
+
+  /// Bundle 284: a picked / removed photo is being saved (ring on the
+  /// photo), then the green tick shows for 3 s.
+  bool _photoSaving = false;
+  bool _photoDone = false;
+  Timer? _photoDoneTimer;
+  bool _nextSaveIsPhoto = false;
   LocalProfile? profile;
   // Bundle 105: discovery toggles removed from the UI — they stay ON
   // permanently so friends can find you by phone/username and the profile
@@ -133,7 +143,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (note.isEmpty) return;
       await widget.store.writeSetting(LocalLinkApi.profileNoteKey256, '');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(note)));
+      LinkToast.show(context, note, kind: LinkToast.guess(note));
     } catch (_) {}
   }
 
@@ -162,6 +172,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Bundle 105: in-profile Admin View switch removed with the Advanced
   // section — the Admin panel lives in Settings now.
   Future<void> save() async {
+    // Bundle 284: a photo picked / removed is saved at once with the ring
+    // on the photo; the button's own save shows the loading in the button.
+    final photo = _nextSaveIsPhoto && _photoSavesAtOnce;
+    _nextSaveIsPhoto = false;
     // Bundle 128: display name + phone are mandatory whenever the account
     // already exists (update path AND the post-registration "Your profile"
     // screen — see _usernameLocked). True first-time setup stays lenient so
@@ -172,18 +186,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (phone.text.trim().isEmpty) 'Phone number',
       ];
       if (missing.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(missing.length == 1
+        LinkToast.show(context, missing.length == 1
               ? '${missing.first} is required — fill it in before saving.'
-              : '${missing.join(' and ')} are required — fill them in before saving.'),
-        ));
+              : '${missing.join(' and ')} are required — fill them in before saving.', kind: LinkToastKind.info);
         return;
       }
     }
     // Bundle 256 D1: never send a number the server refuses (400).
     if (!phoneOk256(phone.text)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(phoneHint256)));
+      LinkToast.show(context, phoneHint256, kind: LinkToast.guess(phoneHint256));
       return;
+    }
+    if (photo) {
+      _photoDoneTimer?.cancel();
+      setState(() {
+        _photoSaving = true;
+        _photoDone = false;
+      });
     }
     try {
       final synced = await bloc.saveProfile(
@@ -212,10 +231,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       // Bundle 263 (B1): the same words online or not; it is sent later by itself.
       AppLogger.info('PROFILE_SAVED_263', detail: 'synced=${synced ? 'y' : 'n'}');
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile saved')));
+      if (photo) {
+        // Bundle 284: the ring stops, a green tick pops for 3 s.
+        setState(() {
+          _photoSaving = false;
+          _photoDone = true;
+        });
+        _photoDoneTimer = Timer(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _photoDone = false);
+        });
+      } else {
+        setState(() {});
+      }
+      LinkToast.show(context, 'Profile saved', kind: LinkToastKind.done);
       if (widget.onboarding) Navigator.pop(context);
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
+      if (!mounted) return;
+      if (photo) {
+        // Bundle 284: the save failed - the old photo comes back and the
+        // ring stops (no endless loading).
+        AppLogger.info('PROFILE_PHOTO_SAVE_FAILED_284');
+        setState(() {
+          _photoSaving = false;
+          image = null;
+          _removePhoto = false;
+        });
+      } else {
+        setState(() {});
+      }
+      LinkToast.show(context, _cleanError(error), kind: LinkToastKind.error);
     }
   }
 
@@ -224,6 +268,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Bundle 211 (A4): "Tap photo to change" / "Tap photo to add one" /
   /// "Tap the camera to choose a photo" (while the camera shows).
   String _photoHint(LocalProfile? value) {
+    if (_photoSaving) return 'Saving photo…';
     if (_cameraShowing) return 'Tap the camera to choose a photo';
     final hasPhoto = image != null ||
         (!_removePhoto && (value?.localAvatarPath ?? '').isNotEmpty);
@@ -247,6 +292,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         image = null;
         _removePhoto = true;
       });
+      _nextSaveIsPhoto = true;
       if (_photoSavesAtOnce) await save();
       return;
     }
@@ -263,99 +309,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           image = picked;
           _removePhoto = false;
         });
+        _nextSaveIsPhoto = true;
         if (_photoSavesAtOnce) await save();
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Could not open the camera or gallery.')));
+        LinkToast.show(context, 'Could not open the camera or gallery.', kind: LinkToastKind.error);
       }
-    }
-  }
-
-  Future<void> _showRecovery() async {
-    bool configured = false;
-    try {
-      final status = await widget.accountRepository.recoveryCodeStatus();
-      configured = status.configured;
-    } catch (_) {
-      // Offline: status query needs the server; local recovery may still
-      // exist, so offer a rotation that works fully on-device (Bundle 110).
-      configured = (widget.store.localRecoveryCode ?? '').isNotEmpty;
-    }
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Recovery code'),
-        content: Text(configured ? 'A recovery code is already configured. Generate a new one to replace it.' : 'No recovery code is configured yet.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final code = await _rotateRecovery();
-              if (code == null || !mounted) return;
-              // Bundle 235 addition (mock v3): the code hidden in one box
-              // (Show / Copy), "Save on WhatsApp" closes after WhatsApp.
-              await showDialog<void>(
-                context: context,
-                builder: (dialogContext) => AlertDialog(
-                  key: const ValueKey('profile235-new-code'),
-                  icon: const Icon(Icons.key_outlined),
-                  title: const Text('New recovery code'),
-                  content: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        RecoveryCodeBox235(code: code, compact: true),
-                        const SizedBox(height: 14),
-                        const RecoveryCodeNotes235(),
-                        const SizedBox(height: 8),
-                        SaveOnWhatsApp235(
-                          buttonKey: const ValueKey('profile235-whatsapp'),
-                          code: code,
-                          username: widget.store.username?.trim() ?? '',
-                          height: 48,
-                          onSaved: () async {
-                            if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Close')),
-                  ],
-                ),
-              );
-            },
-            child: Text(configured ? 'Replace code' : 'Generate code'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Server-first rotation with a silent local fallback (Bundle 110): offline
-  /// the new code is stored on this phone only and syncs with the account.
-  Future<String?> _rotateRecovery() async {
-    try {
-      final code = await widget.accountRepository.rotateRecoveryCode();
-      // Bundle 222: the phone keeps the same code as the server, so
-      // "Forgot password" with no server (and its later sync) uses it.
-      try {
-        await widget.store.updateLocalRecoveryCode(code);
-      } catch (_) {}
-      return code;
-    } catch (_) {} // offline or server hiccup — rotate locally instead
-    try {
-      final code = await widget.store.rotateLocalRecoveryCode();
-      return code;
-    } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
-      return null;
     }
   }
 
@@ -409,6 +369,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    _photoDoneTimer?.cancel();
     bloc.close();
     name.dispose();
     username.dispose();
@@ -463,7 +424,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 valueListenable: ProfilePrivacyRule.ownPrivate,
                 builder: (context, own, _) {
                   final locked = own ?? ProfilePrivacyRule.isPrivate(value);
-                  return PhotoTapOverlay(
+                  // Bundle 284: ONE ring around the photo while it is saved.
+                  return PhotoSaveRing284(
+                    saving: _photoSaving,
+                    done: _photoDone,
+                    radius: 52,
+                    child: PhotoTapOverlay(
                     radius: 52,
                     innerRadius: PhotoTapOverlay.innerFor(52, locked: locked),
                     onCamera: _pickImage,
@@ -477,6 +443,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         localPath: image?.path ?? (_removePhoto ? '' : value?.localAvatarPath ?? ''),
                         radius: 52,
                         locked: own ?? ProfilePrivacyRule.isPrivate(value)),
+                    ),
                   );
                 },
               ),
@@ -495,7 +462,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _photoHint(value),
                 key: const ValueKey('profile_photo_hint'),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary),
+                    color: _photoSaving
+                        ? (LinkKit.of(context).isDark ? const Color(0xFF5EEAD4) : const Color(0xFF0F766E))
+                        : Theme.of(context).colorScheme.primary),
               ),
             ),
           ),
@@ -571,15 +540,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           const SizedBox(height: LocalLinkSpacing.md),
-          SizedBox(
-            width: double.infinity,
-            // Bundle 105: brand gradient CTA (matches the profile redesign).
-            child: GradientPillButton(
-              onPressed: bloc.isSaving || !phoneOk256(phone.text) ? null : save,
-              child: bloc.isSaving
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Save changes'),
-            ),
+          // Bundle 284: the button follows the save state itself, so its
+          // loading always stops. A photo save shows the ring on the photo
+          // only (the button is faded, no second loading).
+          BlocBuilder<AccountBloc, AccountState>(
+            bloc: bloc,
+            builder: (context, state) {
+              final busy = state.isSaving || _photoSaving;
+              final inButton = state.isSaving && !_photoSaving;
+              return BrandButton290(
+                key: const ValueKey('profile284_save'),
+                onPressed: busy || !phoneOk256(phone.text) ? null : save,
+                text: inButton ? 'Saving…' : 'Save changes',
+                loading: inButton,
+              );
+            },
           ),
           if (!widget.onboarding) ...[
             const SizedBox(height: LocalLinkSpacing.section),
@@ -615,7 +590,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 title: const Text('Recovery code'),
                 subtitle: const Text('Protect your account when this phone is lost.'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: _showRecovery,
+                // Bundle 286 (R-3): the same password + code screens as
+                // Settings > Account > Recovery code.
+                onTap: () => RecoveryCode286.open(context, store: widget.store, accounts: widget.accountRepository),
               ),
             ),
             Card(

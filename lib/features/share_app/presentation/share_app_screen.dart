@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -482,8 +483,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
   void _copy(String text, String done) {
     if (text.isEmpty) return;
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.maybeOf(context)
-        ?.showSnackBar(SnackBar(content: Text(done)));
+    LinkToast.show(context, done, kind: LinkToast.guess(done));
   }
 
   /// Bundle 223 (E): no address yet. Never "Tap the one..." with nothing to

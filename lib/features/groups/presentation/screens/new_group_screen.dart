@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/group.dart';
@@ -122,8 +123,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
       if (_isPicked(f)) {
         _picked.removeWhere((p) => p.deviceId == f.deviceId);
       } else if (_picked.length >= kNewGroupMax) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('You can add up to $kNewGroupMax people')));
+        LinkToast.show(context, 'You can add up to $kNewGroupMax people', kind: LinkToastKind.error);
       } else {
         _picked.add(f);
       }
@@ -474,8 +474,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
       if (!mounted) return;
       setState(() => _busy = false);
       if (error is GroupCreateError) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+        LinkToast.show(context, error.message, kind: LinkToastKind.error);
       } else {
         showErrorToast(context, error: error);
       }

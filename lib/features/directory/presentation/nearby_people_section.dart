@@ -1,7 +1,7 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,6 +13,7 @@ import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/link_kit_290.dart';
 import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
@@ -25,7 +26,7 @@ import 'package:locallink/features/directory/data/services/pairing_service.dart'
 import 'package:locallink/features/directory/data/friend_requests.dart';
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 import 'package:locallink/features/directory/presentation/nearby_list_plan.dart';
-import 'package:locallink/features/directory/presentation/nearby_search_animation.dart';
+import 'package:locallink/features/directory/presentation/add_contact_ui283.dart';
 import 'package:locallink/features/directory/presentation/profile_view_rules.dart';
 
 /// Bundle 170: the Nearby list now lives INSIDE Add Contact (the separate
@@ -68,6 +69,9 @@ class NearbyPeopleSection extends StatefulWidget {
   /// This account's user id — phones of the same account are hidden.
   final String selfUserId;
 
+  /// Bundle 283: my first letter in the middle of the search scene.
+  final String meInitial;
+
   const NearbyPeopleSection({
     super.key,
     required this.connectivity,
@@ -79,6 +83,7 @@ class NearbyPeopleSection extends StatefulWidget {
     this.filter = '',
     this.selfUserId = '',
     this.waitLine,
+    this.meInitial = '',
   });
 
   @override
@@ -108,10 +113,8 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
 
   // Bundle 226 (B5): the Bluetooth cards (× hides one for 7 days).
   static const String _bleAllowHideKey = 'ble_card_allow_hidden_until';
-  static const String _bleOffHideKey = 'ble_card_off_hidden_until';
   static const String _bleBlockedKey = 'ble_perm_blocked';
   int _bleAllowHiddenUntil = 0;
-  int _bleOffHiddenUntil = 0;
   bool _bleBlocked = false;
   bool _bleAsking = false;
 
@@ -160,25 +163,16 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     } catch (_) {}
   }
 
-  Widget _wifiCard256(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Card(
+  /// Bundle 283 (mock F): "Wi-Fi is off" - the button only opens the
+  /// Android Wi-Fi settings (the app never turns Wi-Fi on).
+  Widget _wifiCard256(BuildContext context) => WarnCard283(
         key: const ValueKey<String>('nearby_wifi_card_256'),
-        color: scheme.tertiaryContainer.withValues(alpha: .6),
-        child: ListTile(
-          title: const Text('Wi-Fi went off'),
-          subtitle: const Text(
-              "Phones on your Wi-Fi can't see you. Still looking with Wi-Fi Direct."),
-          trailing: FilledButton(
-            onPressed: _openWifi256,
-            child: const Text('Wi-Fi'),
-          ),
-        ),
-      ),
-    );
-  }
+        kind: WarnKind283.wifi,
+        title: 'Wi-Fi is off',
+        text: 'Turn it on to find phones near you',
+        action: 'Turn on',
+        onPressed: _openWifi256,
+      );
 
   Widget _keptCard256(({String id, String? name, MeshPeer peer, int ageMs}) k) {
     return Opacity(
@@ -188,9 +182,9 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         initial: initialOf(k.name ?? nearbyUnknownName),
         title: k.name ?? nearbyUnknownName,
         subtitle: nearbySeenLabel256(k.ageMs),
-        action: FilledButton.tonal(
+        action: GradientChip283(
+          text: 'Add friend',
           onPressed: () => _pairSheet(k.peer),
-          child: const Text('Add friend'),
         ),
       ),
     );
@@ -247,9 +241,73 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         granted = await c.hasWifiDirectPermission();
       } catch (_) {}
     }
+    // Bundle 283 (owner chose a): no Bluetooth card any more - the
+    // Bluetooth permission is asked with the same Allow tap ("Nearby
+    // devices" on Android 12+; 13+ grants it with no second pop-up).
+    if (askPermission) await _askBle283();
     if (!mounted) return;
     setState(() => _permission = granted);
     if (granted) unawaited(c.discoverWifiDirect());
+  }
+
+  /// Bundle 283: Bluetooth still needs its OK (Android 12+, not answered
+  /// "never" in the last 7 days) -> the one "Find phones near you" card.
+  bool get _bleNeedsOk283 {
+    if (NearbyBleActions.control == null) return false;
+    final status = NearbyBleStatus.instance;
+    return bleCardFor(
+          state: status.state,
+          sdk: status.sdk,
+          wifiCardShown: false,
+          now: DateTime.now().millisecondsSinceEpoch,
+          allowHiddenUntil: _bleAllowHiddenUntil,
+        ) ==
+        BleCard.allow;
+  }
+
+  /// Bundle 283: asks the Bluetooth permission (no pop-up by itself: only
+  /// from the Allow tap). Denied -> the card rests 7 days; "Don't ask
+  /// again" before -> the app settings open instead.
+  Future<void> _askBle283() async {
+    final control = NearbyBleActions.control;
+    if (control == null || _bleAsking || !_bleNeedsOk283) return;
+    if (_bleBlocked) {
+      AppLogger.info('NEARBY', detail: 'BLE_PERM open_settings');
+      try {
+        await control.openBluetoothSettings(app: true);
+      } catch (_) {}
+      await _bleRest283();
+      return;
+    }
+    _bleAsking = true;
+    try {
+      AppLogger.info('NEARBY', detail: 'BLE_PERM with_nearby');
+      final r = await control
+          .askBlePermission()
+          .timeout(const Duration(seconds: 60));
+      NearbyBleStatus.instance.updateFrom(r);
+      if (r['blocked'] == true) {
+        _bleBlocked = true;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool(_bleBlockedKey, true);
+        } catch (_) {}
+      }
+      if (_bleNeedsOk283) await _bleRest283();
+    } catch (_) {
+      // No answer: the card stays; the next tap asks again.
+    } finally {
+      _bleAsking = false;
+    }
+  }
+
+  Future<void> _bleRest283() async {
+    final until = DateTime.now().millisecondsSinceEpoch + BleRules.cardHideMs;
+    if (mounted) setState(() => _bleAllowHiddenUntil = until);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_bleAllowHideKey, until);
+    } catch (_) {}
   }
 
   Future<void> _refreshTrusted() async {
@@ -330,8 +388,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
 
   void _snack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    LinkToast.show(context, message, kind: LinkToast.guess(message));
   }
 
   /// Bundle 118: one-tap Pair for a Wi-Fi Direct peer — the transport link
@@ -343,7 +400,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     AppLogger.info('PAIR_UI', detail: 'stage=pair_button peer=${peer.name}');
     final c = widget.connectivity;
     if (!await c.isWifiDirectSupported()) {
-      _snack('This phone does not support Wi-Fi Direct.');
+      _snack('This phone cannot reach that phone directly.');
       return;
     }
     if (!await c.hasWifiDirectPermission()) {
@@ -561,8 +618,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
       bloc: widget.connectivity,
       listenWhen: (prev, next) =>
           next.error != null && next.error != prev.error,
-      listener: (context, state) => ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(friendlyErrorMessage(state.error!)))),
+      listener: (context, state) => LinkToast.show(context, friendlyErrorMessage(state.error!), kind: LinkToastKind.error),
       child: BlocBuilder<ConnectivityBloc, ConnectivityState>(
         bloc: widget.connectivity,
         builder: (context, state) => ListenableBuilder(
@@ -626,7 +682,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _header(context, dots: true),
+          _header(context, live: true),
           for (final e in shown) _card(state, e),
         ],
       );
@@ -678,29 +734,21 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
       wifi: wifi,
       bleState: bleState,
     );
+    // Bundle 283 (mock 283 C-F): no chips and no Bluetooth cards; a card
+    // only when something is needed (Wi-Fi off / the OK missing).
+    final needsOk = _permission == false || _bleNeedsOk283;
+    final searchingNow = _permission != false && wifi != false;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _header(context, dots: any && !_celebrating),
-        // Bundle 256 E6: why the list may be empty, at a glance.
-        AnimatedBuilder(
-          animation: NearbyBleStatus.instance,
-          builder: (context, _) => NearbyChips256(
-            chips: nearbyChips256(
-              wifi: wifi,
-              wifiDirectOn: _permission == true && state.snapshot.wifiDirectSupported,
-              ble: NearbyBleActions.control == null ? 'unknown' : NearbyBleStatus.instance.state,
-            ),
-          ),
-        ),
+        _header(context, live: searchingNow),
         // Bundle 256 E7: Wi-Fi went off (only opens Android Wi-Fi settings).
-        if (wifi == false) _wifiCard256(context),
-        if (_permission == false) _permissionCard(context),
-        // Bundle 226 (B5): one Bluetooth card at most (the Wi-Fi card wins).
-        ListenableBuilder(
-          listenable: NearbyBleStatus.instance,
-          builder: (context, _) => _bleCardFor(context, listEmpty: !any),
-        ),
+        if (wifi == false) SlideIn283(child: _wifiCard256(context)),
+        if (needsOk)
+          SlideIn283(
+            delay: const Duration(milliseconds: 120),
+            child: _permissionCard(context),
+          ),
         if (_celebrating)
           _lookingBox(context,
               foundProgress: _found.value, initial: _celebrateInitial)
@@ -708,15 +756,11 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
           for (final k in kept) _keptCard256(k),
         ] else if (!any) ...[
           if (plan.emptyState == NearbyEmptyState.everyoneAdded)
-            _NearbyInfoCard(
-              icon: Icons.how_to_reg_rounded,
-              text: 'Everyone nearby is already in your contacts.',
-              action: TextButton(
-                onPressed: () => Navigator.maybePop(context),
-                child: const Text('See contacts'),
-              ),
+            const SlideIn283(
+              delay: Duration(milliseconds: 150),
+              child: QuietLine283('Everyone nearby is already in your contacts'),
             )
-          else if (_permission != false)
+          else if (searchingNow)
             _lookingBox(context),
         ] else ...[
           for (final e in entries) _card(state, e),
@@ -726,76 +770,58 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     );
   }
 
-  Widget _header(BuildContext context, {required bool dots}) => Padding(
-        padding: const EdgeInsets.only(
-            top: LocalLinkSpacing.sm, bottom: LocalLinkSpacing.sm),
-        child: Row(
-          children: [
-            Text(
-              widget.title,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(width: 8),
-            if (dots) const NearbyMiniMesh(),
-          ],
-        ),
-      );
+  /// Bundle 283 (mock `.sec`): small grey capitals + live "Searching".
+  Widget _header(BuildContext context, {required bool live}) =>
+      SectionTitle283(widget.title, live: live);
 
+  /// Bundle 283 (mock 283 D/E): the new search scene. [foundProgress] > 0 =
+  /// the curved line reaches the person, "Found someone!", then the card.
   Widget _lookingBox(BuildContext context,
       {double foundProgress = 0, String initial = ''}) {
-    final scheme = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
+    final p = LinkKit.of(context);
+    final found = initial.isNotEmpty && foundProgress > .5;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          height: 170,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: scheme.primaryContainer.withValues(alpha: .35),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: NearbySearchAnimation(
-              foundProgress: foundProgress,
-              foundInitial: initial,
-            ),
-          ),
+        NearbyScene283(
+          found: foundProgress,
+          foundInitial: initial,
+          meInitial: widget.meInitial,
         ),
-        const SizedBox(height: LocalLinkSpacing.sm),
-        Text('Looking for LinkUp phones…',
-            textAlign: TextAlign.center, style: text.titleSmall),
-        if (widget.waitLine != null && initial.isEmpty) ...[
-          const SizedBox(height: 2),
-          Text(widget.waitLine!,
+        const SizedBox(height: 14),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: found
+              ? Text('Found someone!',
+                  key: const ValueKey('nearby_found_283'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ok))
+              : const LookingText283('Looking for phones near you',
+                  key: ValueKey('nearby_looking_283')),
+        ),
+        if (!found) ...[
+          const SizedBox(height: 4),
+          Text('Keep Wi-Fi on, on both phones',
               key: const ValueKey('nearby_wait_267'),
               textAlign: TextAlign.center,
-              style: text.bodyMedium),
+              style: TextStyle(fontSize: 12.5, color: p.muted)),
         ],
-        const SizedBox(height: 2),
-        Text('Both phones need Wi-Fi on',
-            textAlign: TextAlign.center, style: text.bodySmall),
       ],
     );
   }
 
-  Widget _permissionCard(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      color: scheme.tertiaryContainer.withValues(alpha: .6),
-      child: ListTile(
-        title: const Text('Allow nearby to see phones around you'),
-        subtitle: const Text('Only asked when you tap Allow'),
-        trailing: FilledButton(
-          onPressed: () => _startSearch(askPermission: true),
-          child: const Text('Allow'),
-        ),
-      ),
-    );
-  }
+  /// Bundle 283 (mock F): one card for the Nearby OK (Wi-Fi Direct and,
+  /// on Android 12+, Bluetooth - both in "Nearby devices").
+  Widget _permissionCard(BuildContext context) => WarnCard283(
+        key: const ValueKey<String>('nearby_allow_card_283'),
+        kind: WarnKind283.nearby,
+        title: 'Find phones near you',
+        text: 'LinkUp needs your OK once',
+        action: 'Allow',
+        onPressed: () => _startSearch(askPermission: true),
+      );
 
+  // ------------------------------------- Bundle 226 (B5) Bluetooth state
   // ---------------------------------------------- Bundle 226 (B5) cards
 
   Future<void> _loadBle() async {
@@ -809,119 +835,8 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
       if (!mounted) return;
       setState(() {
         _bleAllowHiddenUntil = prefs.getInt(_bleAllowHideKey) ?? 0;
-        _bleOffHiddenUntil = prefs.getInt(_bleOffHideKey) ?? 0;
         _bleBlocked = prefs.getBool(_bleBlockedKey) ?? false;
       });
-    } catch (_) {}
-  }
-
-  Widget _bleCardFor(BuildContext context, {bool listEmpty = false}) {
-    if (NearbyBleActions.control == null) return const SizedBox.shrink();
-    final status = NearbyBleStatus.instance;
-    final kind = bleCardFor(
-      state: status.state,
-      sdk: status.sdk,
-      wifiCardShown: _permission == false,
-      now: DateTime.now().millisecondsSinceEpoch,
-      // Bundle 256 E9: while nobody is listed the Allow card stays on top
-      // (× hides it only while the list has people).
-      allowHiddenUntil: listEmpty ? 0 : _bleAllowHiddenUntil,
-      offHiddenUntil: _bleOffHiddenUntil,
-    );
-    if (kind == BleCard.none) return const SizedBox.shrink();
-    return _bleCard(context, kind);
-  }
-
-  /// Built like [_permissionCard], plus a small × after the button and an
-  /// 8 dp gap under the card.
-  Widget _bleCard(BuildContext context, BleCard kind) {
-    final scheme = Theme.of(context).colorScheme;
-    final allow = kind == BleCard.allow;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Card(
-        key: ValueKey<String>(allow ? 'ble_allow_card' : 'ble_off_card'),
-        color: scheme.tertiaryContainer.withValues(alpha: .6),
-        child: ListTile(
-          title: Text(allow ? 'Faster connect with Bluetooth' : 'Bluetooth is off'),
-          subtitle: Text(
-              allow ? 'Find friends in seconds.' : 'Turn it on for faster connect'),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FilledButton(
-                onPressed: _bleAsking ? null : (allow ? _bleAllow : _bleTurnOn),
-                child: Text(allow ? 'Allow' : 'Turn on'),
-              ),
-              IconButton(
-                key: ValueKey<String>(allow ? 'ble_allow_hide' : 'ble_off_hide'),
-                tooltip: 'Hide',
-                visualDensity: VisualDensity.compact,
-                icon: Icon(Icons.close_rounded,
-                    size: 18, color: scheme.onSurfaceVariant),
-                onPressed: () => _bleHide(kind),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _bleAllow() async {
-    final control = NearbyBleActions.control;
-    if (control == null || _bleAsking) return;
-    // "Don't ask again" before: Android shows nothing - open the settings.
-    if (_bleBlocked) {
-      AppLogger.info('NEARBY', detail: 'BLE_PERM open_settings');
-      try {
-        await control.openBluetoothSettings(app: true);
-      } catch (_) {}
-      return;
-    }
-    setState(() => _bleAsking = true);
-    try {
-      final r = await control
-          .askBlePermission()
-          .timeout(const Duration(seconds: 60));
-      NearbyBleStatus.instance.updateFrom(r);
-      if (r['blocked'] == true) {
-        _bleBlocked = true;
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool(_bleBlockedKey, true);
-        } catch (_) {}
-      }
-    } catch (_) {
-      // No answer: the card stays; the next tap asks again.
-    } finally {
-      if (mounted) setState(() => _bleAsking = false);
-    }
-  }
-
-  Future<void> _bleTurnOn() async {
-    final control = NearbyBleActions.control;
-    if (control == null) return;
-    AppLogger.info('NEARBY', detail: 'BLE open_bluetooth_settings');
-    try {
-      await control.openBluetoothSettings();
-    } catch (_) {}
-  }
-
-  Future<void> _bleHide(BleCard kind) async {
-    final until =
-        DateTime.now().millisecondsSinceEpoch + BleRules.cardHideMs;
-    setState(() {
-      if (kind == BleCard.allow) {
-        _bleAllowHiddenUntil = until;
-      } else {
-        _bleOffHiddenUntil = until;
-      }
-    });
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(
-          kind == BleCard.allow ? _bleAllowHideKey : _bleOffHideKey, until);
     } catch (_) {}
   }
 
@@ -935,38 +850,37 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
       action = ListenableBuilder(
         listenable: FriendRequestBook.instance,
         builder: (context, _) => FriendRequestBook.instance.isSent(mesh.nodeId)
-            ? FilledButton.tonal(
+            ? GradientChip283(
                 key: ValueKey('nearby_requested_${mesh.nodeId}'),
+                text: 'Requested',
+                icon: Icons.schedule_rounded,
                 onPressed: null,
-                child: const Text('Requested'),
               )
-            : FilledButton.tonal(
+            : GradientChip283(
+                text: 'Add friend',
                 onPressed: () => _pairSheet(mesh),
-                child: const Text('Add friend'),
               ),
       );
     } else {
-      action = FilledButton.tonal(
-        onPressed: state.busy || wifi == null
-            ? null
-            : () => _pairWithWifiPeer(wifi),
-        child: state.busy
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2))
-            : const Text('Add friend'),
-      );
+      action = state.busy
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : GradientChip283(
+              text: 'Add friend',
+              onPressed: wifi == null ? null : () => _pairWithWifiPeer(wifi),
+            );
     }
     // Bundle 170: each new card slides up into the list.
     return TweenAnimationBuilder<double>(
       key: ValueKey<String>(e.key),
       tween: Tween<double>(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 380),
-      curve: Curves.easeOutCubic,
+      duration: const Duration(milliseconds: 550),
+      curve: AddUi283.easeOut,
       builder: (context, v, child) => Opacity(
         opacity: v,
-        child: Transform.translate(offset: Offset(0, 24 * (1 - v)), child: child),
+        child: Transform.translate(offset: Offset(0, 26 * (1 - v)), child: child),
       ),
       child: _NearbyCard(
         initial: initialOf(e.name ?? nearbyUnknownName),
@@ -990,36 +904,6 @@ class _NearbyEntry {
 /// Bundle 148: node id == device id, so a paired phone shows its person.
 String? _personName(String nodeId) => PresenceHub.instance.nameOf(nodeId);
 
-/// Bundle 154: one simple info card (empty states) — icon, one line, and an
-/// optional small action.
-class _NearbyInfoCard extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Widget? action;
-  const _NearbyInfoCard({required this.icon, required this.text, this.action});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(LocalLinkSpacing.lg),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: scheme.secondaryContainer,
-              child: Icon(icon, color: scheme.onSecondaryContainer),
-            ),
-            const SizedBox(width: LocalLinkSpacing.md),
-            Expanded(child: Text(text)),
-            if (action != null) action!,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Bundle 118 + 170: single compact card per nearby phone — the person's
 /// initial, their name, one short subtitle and the Pair button.
 class _NearbyCard extends StatelessWidget {
@@ -1035,14 +919,11 @@ class _NearbyCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(child: Text(initial)),
-        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+  Widget build(BuildContext context) => PersonCard283(
+        avatar: LetterAvatar283(
+            name: title, initial: initial, gradient: AddUi283.purpleGradient),
+        title: title,
+        subtitle: Text(subtitle),
         trailing: action,
-      ),
-    );
-  }
+      );
 }

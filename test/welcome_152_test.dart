@@ -60,7 +60,10 @@ void main() {
           find.textContaining('I already have an account', findRichText: true),
           findsOneWidget);
       expect(find.text('Messages that work anywhere'), findsNothing);
-      expect(find.byType(LocalLinkLogoMark), findsOneWidget);
+      // Bundle 288 (listed change): the logo is the gradient badge of the
+      // approved mock 288 (was LocalLinkLogoMark).
+      expect(find.byKey(const ValueKey('welcome288-logo')), findsOneWidget);
+      expect(find.byType(LocalLinkLogoMark), findsNothing);
       expect(find.byType(WelcomeMeshBackground), findsOneWidget);
       await _dispose(tester);
     });

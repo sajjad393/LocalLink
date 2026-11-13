@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/diagnostics/ui_hidden_263.dart';
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/features/directory/presentation/add_friend_256.dart';
@@ -7,9 +8,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
-import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
-import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/features/directory/bloc/directory_bloc.dart';
@@ -24,6 +23,8 @@ import 'package:locallink/features/directory/data/directory_search_merge.dart';
 import 'package:locallink/features/directory/data/people_to_add_267.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/directory/presentation/nearby_people_section.dart';
+import 'package:locallink/features/directory/presentation/add_contact_ui283.dart';
+import 'package:locallink/core/widgets/link_kit_290.dart';
 import 'package:locallink/features/directory/presentation/profile_view_rules.dart';
 
 class AddContactScreen extends StatefulWidget {
@@ -82,6 +83,12 @@ class _AddContactScreenState extends State<AddContactScreen> {
   bool? _serverUp267;
   StreamSubscription<ConnectivityState>? _serverSub267;
 
+  /// Bundle 283: "Find people nearby" on the empty screen was tapped.
+  bool _nearbyAsked283 = false;
+
+  /// Bundle 283: my first letter for the middle of the search scene.
+  String _meInitial283 = '';
+
   @override
   void initState() {
     super.initState();
@@ -109,6 +116,16 @@ class _AddContactScreenState extends State<AddContactScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _autoFind263();
     });
+    unawaited(_loadMe283());
+  }
+
+  Future<void> _loadMe283() async {
+    try {
+      final me = await widget.pairing?.ownQrProfile242();
+      if (me == null || !mounted) return;
+      final name = me.displayName.trim().isNotEmpty ? me.displayName.trim() : me.username.trim();
+      if (name.isNotEmpty) setState(() => _meInitial283 = name[0].toUpperCase());
+    } catch (_) {}
   }
 
   Future<void> _loadContacts() async {
@@ -162,9 +179,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
         )));
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Contact added')),
-      );
+      LinkToast.show(context, 'Contact added', kind: LinkToastKind.done);
     } catch (e) {
       logFriendAddFail256(source, e);
       if (mounted) _showError(friendAddFailText256(e));
@@ -262,7 +277,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    LinkToast.show(context, message, kind: LinkToast.guess(message));
   }
 
   Future<void> _open(DirectoryProfile profile) async {
@@ -304,6 +319,8 @@ class _AddContactScreenState extends State<AddContactScreen> {
         builder: (_) => ContactQrScannerScreen(
           crypto: widget.crypto,
           repository: widget.repository,
+          // Bundle 283 (Q-2): the scanner's "My QR code" shows my code.
+          myProfile: widget.pairing?.ownQrProfile242,
           onFound: (profile) {
             Navigator.pop(context);
             _open(profile);
@@ -314,82 +331,52 @@ class _AddContactScreenState extends State<AddContactScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          title: const Text('Add Contact'),
-          // Bundle 242 (mock 242): My QR at the top right.
-          actions: [
+  Widget build(BuildContext context) {
+    // Bundle 283 (mock 283): same look on every phone, dark + light.
+    final p = LinkKit.of(context);
+    return Scaffold(
+      backgroundColor: p.screen,
+      appBar: addBar283(
+        context,
+        title: 'Add Contact',
+        // Bundle 242 (mock 242): My QR at the top right.
+        actions: [
+          RoundTopButton283(
+            key: const ValueKey('add_contact_my_qr_242'),
+            tooltip: 'My QR code',
+            icon: Icons.qr_code_2_rounded,
+            onPressed: _openMyQr242,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: IconButton.filledTonal(
-                key: const ValueKey('add_contact_my_qr_242'),
-                tooltip: 'My QR code',
-                onPressed: _openMyQr242,
-                icon: const Icon(Icons.qr_code_2_rounded),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SearchBox283(
+                controller: query,
+                busy: searching,
+                onClear: () => query.clear(), // listener re-syncs state
               ),
+            ),
+            // Bundle 196 (11.3): blocked matches change with BlockHub.
+            Expanded(
+              child: ListenableBuilder(
+                listenable: BlockHub.instance,
+                builder: (context, _) => _buildResults(context),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              child: ScanButton283(onPressed: searching ? null : _scan),
             ),
           ],
         ),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  controller: query,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: 'Search name or @username',
-                    filled: true,
-                    prefixIcon: searching
-                        ? const Padding(
-                            padding: EdgeInsets.all(12),
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : const Icon(Icons.search),
-                    suffixIcon: query.text.isEmpty
-                        ? null
-                        : IconButton(
-                            onPressed: searching
-                                ? null
-                                : () => query.clear(), // listener re-syncs state
-                            icon: const Icon(Icons.close),
-                            tooltip: 'Clear',
-                          ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(28),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 14,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Bundle 196 (11.3): blocked matches change with BlockHub.
-                Expanded(
-                  child: ListenableBuilder(
-                    listenable: BlockHub.instance,
-                    builder: (context, _) => _buildResults(context),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: searching ? null : _scan,
-                  icon: const Icon(Icons.qr_code_scanner),
-                  label: const Text('Scan QR code'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      ),
+    );
+  }
 
   /// Bundle 170: search results first. Bundle 267: an empty box shows the
   /// people to add (server, or what nearby phones shared); Nearby appears
@@ -411,23 +398,16 @@ class _AddContactScreenState extends State<AddContactScreen> {
         .toList();
     final noMatch =
         typing && _noMatch && !searching && blockedMatches.isEmpty;
-    final theme = Theme.of(context);
     // A Column (not a lazy list) so the Nearby part keeps its state while
     // results come and go above it.
     final scroll = SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (typing && (results.isNotEmpty || blockedMatches.isNotEmpty)) ...[
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              'Results',
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-          ),
+          const SectionTitle283('Results'),
           for (final person in blockedMatches)
             BlockedResultCard(
               key: ValueKey('search_blocked_${person.userId}'),
@@ -435,62 +415,43 @@ class _AddContactScreenState extends State<AddContactScreen> {
               onUnblock: () => runUnblockFlow(context, person, from: 'search'),
             ),
           // Bundle 173: same card as Nearby + status dot + Add button.
-          for (final profile in results)
-            SearchResultCard(
-              key: ValueKey('search_result_${profile.userId}'),
-              profile: profile,
-              initial: _initial(profile),
-              isContact: _contactIds.contains(profile.userId),
-              onOpen: () => _open(profile),
-              onAdd: () => _addFromResults(profile),
+          for (var i = 0; i < results.length; i++)
+            SlideIn283(
+              key: ValueKey('search_in_${results[i].userId}'),
+              delay: Duration(milliseconds: 120 * (i < 4 ? i : 4)),
+              child: SearchResultCard(
+                key: ValueKey('search_result_${results[i].userId}'),
+                profile: results[i],
+                initial: _initial(results[i]),
+                isContact: _contactIds.contains(results[i].userId),
+                onOpen: () => _open(results[i]),
+                onAdd: () => _addFromResults(results[i]),
+              ),
             ),
-          const SizedBox(height: 8),
         ],
-        if (noMatch)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              'No one called "$text" found.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
+        if (noMatch) SlideIn283(child: NotFoundCard283(query: text)),
         // Bundle 195a: the server could not be asked -> say how to find more.
         if (_lastSearchByName &&
             DirectorySearchInfo.showOfflineHint(noMatch: noMatch))
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(top: 12),
             child: Text(
               DirectorySearchInfo.offlineHint,
               key: const ValueKey('search_offline_hint'),
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall,
+              style: TextStyle(fontSize: 12.5, color: LinkKit.of(context).muted),
             ),
           ),
-        if (!typing) ..._people267Section(theme),
+        if (!typing && !(_nearbyAsked283 && _hasNearby)) ..._people267Section(),
         // Bundle 267: Nearby only after a search found no one; it starts
-        // its search the moment it is shown.
+        // its search the moment it is shown. Bundle 283: or when the empty
+        // screen's "Find people nearby" was tapped.
         if (_hasNearby && noMatch)
-          NearbyPeopleSection(
-            key: _nearbyKey,
-            connectivity: widget.connectivity!,
-            mesh: widget.mesh!,
-            directory: widget.repository,
-            crypto: widget.crypto,
-            pairing: widget.pairing!,
-            selfUserId: widget.selfUserId,
-            title: 'People nearby',
-            waitLine: PeopleToAdd267.waitLine,
-          ),
-        if (noMatch)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text(
-              'Or ask them to show their QR code',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
+          _nearby283()
+        else if (_hasNearby && _nearbyAsked283 && !typing)
+          _nearby283(),
+        if (noMatch) const SlideIn283(delay: Duration(milliseconds: 300), child: QrHint283()),
+        const SizedBox(height: 12),
       ],
       ),
     );
@@ -512,8 +473,22 @@ class _AddContactScreenState extends State<AddContactScreen> {
     );
   }
 
+  Widget _nearby283() => NearbyPeopleSection(
+        key: _nearbyKey,
+        connectivity: widget.connectivity!,
+        mesh: widget.mesh!,
+        directory: widget.repository,
+        crypto: widget.crypto,
+        pairing: widget.pairing!,
+        selfUserId: widget.selfUserId,
+        title: 'People nearby',
+        waitLine: PeopleToAdd267.waitLine,
+        meInitial: _meInitial283,
+      );
+
   /// Bundle 267: the people-to-add list (same cards as the search results).
-  List<Widget> _people267Section(ThemeData theme) {
+  /// Bundle 283: nobody to show = the empty screen with two actions.
+  List<Widget> _people267Section() {
     final shown = [
       for (final p in _people267)
         if (!_contactIds.contains(p.userId) &&
@@ -523,46 +498,49 @@ class _AddContactScreenState extends State<AddContactScreen> {
     final server = _peopleSource267 == 'server';
     return [
       if (shown.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            server ? PeopleToAdd267.titleServer : PeopleToAdd267.titleNearby,
-            key: const ValueKey('people267_title'),
-            style:
-                theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+        SectionTitle283(
+          server ? PeopleToAdd267.titleServer : PeopleToAdd267.titleNearby,
+          key: const ValueKey('people267_title'),
+        ),
+      for (var i = 0; i < shown.length; i++)
+        SlideIn283(
+          key: ValueKey('people267_in_${shown[i].userId}'),
+          delay: Duration(milliseconds: 120 * (i < 4 ? i : 4)),
+          child: SearchResultCard(
+            key: ValueKey('people267_${shown[i].userId}'),
+            profile: shown[i],
+            initial: _initial(shown[i]),
+            isContact: false,
+            onOpen: () => _open(shown[i]),
+            onAdd: () => _addFromResults(shown[i]),
           ),
         ),
-      for (final profile in shown)
-        SearchResultCard(
-          key: ValueKey('people267_${profile.userId}'),
-          profile: profile,
-          initial: _initial(profile),
-          isContact: false,
-          onOpen: () => _open(profile),
-          onAdd: () => _addFromResults(profile),
-        ),
       if (_peopleLoading267)
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
           child: Center(
             child: SizedBox(
               width: 22,
               height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(strokeWidth: 2, color: LinkKit.of(context).focus),
             ),
           ),
         )
       else if (shown.isEmpty)
-        Padding(
-          padding: const EdgeInsets.only(top: 24),
-          child: Text(
-            server ? PeopleToAdd267.emptyServer : PeopleToAdd267.emptyNearby,
-            key: const ValueKey('people267_empty'),
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall,
-          ),
+        EmptyAdd283(
+          title: server ? PeopleToAdd267.emptyServerTitle : PeopleToAdd267.emptyNearbyTitle,
+          text: server ? PeopleToAdd267.emptyServer : PeopleToAdd267.emptyNearby,
+          textKey: const ValueKey('people267_empty'),
+          icon: server ? Icons.check : Icons.person_search_rounded,
+          onMyQr: _openMyQr242,
+          onNearby: _hasNearby ? _openNearby283 : null,
         ),
     ];
+  }
+
+  void _openNearby283() {
+    UiHidden263.note('add_nearby', 'from=empty');
+    setState(() => _nearbyAsked283 = true);
   }
 
   // ------------------------------------------------------- Bundle 263 B5
@@ -686,22 +664,14 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
         return;
       }
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contact added')),
-        );
+        LinkToast.show(context, 'Contact added', kind: LinkToastKind.done);
         setState(() => _isContact = true);
         _loadPrivacy();
       }
     } catch (e) {
       logFriendAddFail256('profile', e); // Bundle 256 E2
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            friendAddFailText256(e),
-          ),
-        ),
-      );
+      LinkToast.show(context, friendAddFailText256(e), kind: LinkToastKind.error);
     }
   }
 
@@ -745,13 +715,12 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       }
       await hub.reload();
       if (mounted) setState(() => _isContact = addBack ? true : _isContact);
-      messenger.showSnackBar(SnackBar(
-          content: Text(addBack
+      LinkToast.maybeOn(messenger, addBack
               ? '${person.label} unblocked and added back'
-              : '${person.label} unblocked')));
+              : '${person.label} unblocked', kind: LinkToastKind.done);
       _loadPrivacy();
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(cleanBlocError(e))));
+      LinkToast.maybeOn(messenger, cleanBlocError(e), kind: LinkToastKind.error);
     }
   }
 
@@ -1001,59 +970,49 @@ class SearchResultCard extends StatelessWidget {
         _ => 'Offline',
       };
 
+  /// Bundle 283 (mock): teal dot = nearby, blue dot = online, none = offline.
+  static Color? dotColor(String channel) => switch (channel) {
+        'nearby' => const Color(0xFF14A3A0),
+        'server' => const Color(0xFF3B82C4),
+        _ => null,
+      };
+
   @override
   Widget build(BuildContext context) {
-    final avatar = CircleAvatar(child: Text(initial));
     final name =
         profile.displayName.isEmpty ? profile.username : profile.displayName;
     final hasDevice = profile.deviceId.trim().isNotEmpty;
-    final now = DateTime.now().toUtc().toIso8601String();
-    return Card(
-      child: ListTile(
-        onTap: onOpen,
-        leading: hasDevice
-            ? PresenceAvatar(
-                avatar: avatar,
-                device: Device(
-                  id: profile.deviceId,
-                  name: name,
-                  platform: '',
-                  createdAt: now,
-                  lastSeenAt: now,
+    // Bundle 283 (mock): one card look; "✓ Contact" pill or gradient Add.
+    return ListenableBuilder(
+      listenable: PresenceHub.instance,
+      builder: (context, _) {
+        final channel =
+            hasDevice ? PresenceHub.instance.channelOf(profile.deviceId) : '';
+        final status = hasDevice ? statusWord(channel) : 'Offline';
+        return PersonCard283(
+          onTap: onOpen,
+          avatar: LetterAvatar283(
+              name: name, initial: initial, dot: hasDevice ? dotColor(channel) : null),
+          title: name,
+          subtitle: Text(isContact
+              ? '@${profile.username}'
+              : '@${profile.username} · $status'),
+          trailing: isContact
+              ? const ContactPill283('Contact', key: Key('search_result_added'))
+              : GradientChip283(
+                  key: const Key('search_result_add'),
+                  text: 'Add',
+                  onPressed: onAdd,
                 ),
-              )
-            : avatar,
-        title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: ListenableBuilder(
-          listenable: PresenceHub.instance,
-          builder: (context, _) {
-            final status = isContact
-                ? 'Contact'
-                : hasDevice
-                    ? statusWord(
-                        PresenceHub.instance.channelOf(profile.deviceId))
-                    : 'Offline';
-            return Text('@${profile.username} · $status',
-                maxLines: 1, overflow: TextOverflow.ellipsis);
-          },
-        ),
-        trailing: isContact
-            ? Text('Added',
-                key: const Key('search_result_added'),
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant))
-            : FilledButton.tonal(
-                key: const Key('search_result_add'),
-                onPressed: onAdd,
-                child: const Text('Add'),
-              ),
-      ),
+        );
+      },
     );
   }
 }
 
 /// Bundle 196 (11.3): a person I blocked in the search results (local only):
 /// muted avatar, "@user" + Blocked pill, outlined "Unblock".
+/// Bundle 283: same card shape as the other results.
 class BlockedResultCard extends StatelessWidget {
   final BlockedPerson person;
   final VoidCallback onUnblock;
@@ -1063,29 +1022,26 @@ class BlockedResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      child: ListTile(
-        onTap: onUnblock,
-        leading: MutedAvatar(name: person.label, radius: 20),
-        title: Text(person.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: scheme.onSurfaceVariant)),
-        subtitle: Align(
-          alignment: Alignment.centerLeft,
-          child: BlockedUserLine(username: person.username),
+    final p = LinkKit.of(context);
+    return PersonCard283(
+      onTap: onUnblock,
+      avatar: MutedAvatar(name: person.label, radius: 22),
+      title: person.label,
+      titleColor: p.muted,
+      subtitle: Align(
+        alignment: Alignment.centerLeft,
+        child: BlockedUserLine(username: person.username),
+      ),
+      trailing: OutlinedButton(
+        key: const Key('search_result_unblock'),
+        onPressed: onUnblock,
+        style: OutlinedButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          foregroundColor: p.text,
+          side: BorderSide(color: AddUi283.chevron(p)),
+          shape: const StadiumBorder(),
         ),
-        trailing: OutlinedButton(
-          key: const Key('search_result_unblock'),
-          onPressed: onUnblock,
-          style: OutlinedButton.styleFrom(
-            visualDensity: VisualDensity.compact,
-            side: BorderSide(color: scheme.outline),
-            shape: const StadiumBorder(),
-          ),
-          child: const Text('Unblock'),
-        ),
+        child: const Text('Unblock'),
       ),
     );
   }

@@ -2399,9 +2399,26 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
     return t.length <= 6 ? t : t.substring(t.length - 6);
   }
 
+  /// Bundle 280: my user id for friend links. A phone-only account (made
+  /// with no server) has no `store.accountId` yet; its id is the profile's
+  /// `offline_...` id (218 moves it to the server id after publish).
+  Future<String> _myUserId() async {
+    final id = (store.accountId ?? '').trim();
+    if (id.isNotEmpty) return id;
+    try {
+      final own = (await store.profile())?.userId.trim() ?? '';
+      if (own.startsWith('offline_')) return own;
+    } catch (_) {}
+    return '';
+  }
+
   Future<void> publishContactEdge(String op, String toUserId) async {
     try {
-      final fromUserId = store.accountId ?? '';
+      final fromUserId = await _myUserId(); // Bundle 280
+      if (fromUserId.isEmpty) {
+        AppLogger.info('CONTACT_EDGE_SKIP', detail: 'reason=no_self_id');
+        return;
+      }
       final fromDeviceId = store.deviceId ?? '';
       final edgedTs = DateTime.now().toUtc().millisecondsSinceEpoch;
       final edge = ContactEdge(
@@ -2453,7 +2470,7 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
         type: 'CONTACT_EDGE',
         syncId: syncId,
         originId: store.deviceId,
-        originUserId: store.accountId,
+        originUserId: edge.fromUserId, // Bundle 280
       ),
       ...edge.toMap(),
       'edge_sig': signature,
@@ -2509,7 +2526,7 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
               .millisecondsSinceEpoch,
           'gossip_ttl': 1, // for this phone only, never passed on
           'origin_id': store.deviceId,
-          'origin_user_id': store.accountId,
+          'origin_user_id': await _myUserId(), // Bundle 280
           ...fields,
         },
       );
@@ -2661,7 +2678,7 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
     try {
       final waiting = await _waitingLinks();
       if (waiting.isEmpty) return;
-      final me = store.accountId ?? '';
+      final me = await _myUserId(); // Bundle 280
       final myDevice = store.deviceId ?? '';
       if (me.isEmpty) return;
       final friends = await _connectedFriendCount();
@@ -2739,7 +2756,7 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
   Future<void> _sendEdgeAck(ContactEdge edge) async {
     try {
       if (!transport.isStarted) return;
-      final me = store.accountId ?? '';
+      final me = await _myUserId(); // Bundle 280
       final myDevice = store.deviceId ?? '';
       if (me.isEmpty) return;
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -2807,7 +2824,7 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
     final ts = int.tryParse(message['edge_ts']?.toString() ?? '') ?? 0;
     if (from.isEmpty || to.isEmpty || from == to || ts <= 0) return;
     await _forwardGossip(message);
-    final me = store.accountId ?? '';
+    final me = await _myUserId(); // Bundle 280
     if (me.isEmpty || to != me) return; // only passed on
     final waiting = await _waitingLinks();
     final w = waiting[from];
@@ -2871,7 +2888,7 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
             'type': NameQuestionPolicy.questionType,
             'request_id': requestId,
             'query': query,
-            'origin_user_id': store.accountId ?? '',
+            'origin_user_id': await _myUserId(), // Bundle 280
             'created_at': now,
             'expires_at': now + 30 * 1000,
           });
@@ -3004,7 +3021,7 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
       await _forwardGossip(message);
     }
 
-    final me = store.accountId ?? '';
+    final me = await _myUserId(); // Bundle 280
     if (me.isEmpty || edge.toUserId != me) {
       // Bundle 195a: this phone only passed it on (Bilal between two people).
       final ttl = int.tryParse(message['gossip_ttl']?.toString() ?? '') ?? 0;
@@ -3012,6 +3029,11 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
         AppLogger.info('CONTACT_EDGE_FORWARDED',
             detail: 'from=${_tail6(edge.fromUserId)} to=${_tail6(edge.toUserId)} '
                 'ttl=${ttl - 1}');
+      } else if (me.isEmpty) {
+        // Bundle 280: a silent drop shows in the logs (no ids).
+        AppLogger.info('CONTACT_EDGE_SKIP', detail: 'reason=no_self_id');
+      } else {
+        AppLogger.info('CONTACT_EDGE_NOT_MINE', detail: 'ttl=$ttl');
       }
       return; // not addressed to us
     }

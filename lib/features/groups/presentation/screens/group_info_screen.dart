@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_media_strip.dart';
 import 'dart:async';
 
@@ -441,8 +442,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         final messenger = ScaffoldMessenger.maybeOf(context);
         final ok = await _run('retry', () => retry(_group.id, m.deviceId));
         if (ok) {
-          messenger?.showSnackBar(
-              SnackBar(content: Text('Sending the group to $name again')));
+          LinkToast.maybeOn(messenger, 'Sending the group to $name again', kind: LinkToastKind.info);
         }
       case GroupMemberChoice.remove:
         final name = _nameOf(m.deviceId);
@@ -1325,8 +1325,7 @@ class _GroupAddMembersScreenState extends State<GroupAddMembersScreen> {
       if (_isPicked(f)) {
         _picked.removeWhere((p) => p.deviceId == f.deviceId);
       } else if (_others + _picked.length >= kNewGroupMax) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('You can add up to $kNewGroupMax people')));
+        LinkToast.show(context, 'You can add up to $kNewGroupMax people', kind: LinkToastKind.error);
       } else {
         _picked.add(f);
       }

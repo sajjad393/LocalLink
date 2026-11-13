@@ -1,3 +1,4 @@
+import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 
 /// Centralised, semantic design tokens for the LocalLink administration
@@ -329,15 +330,22 @@ abstract final class AdminTheme {
               : const Color(0xFF1F2733),
           borderRadius: BorderRadius.circular(AdminRadius.xs),
         ),
-        textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+        textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, color: Colors.white, fontSize: 12),
       ),
+      // Bundle 289 (T-3): the same toast card as the rest of the app.
       snackBarTheme: SnackBarThemeData(
         backgroundColor:
-            brightness == Brightness.dark ? palette.surfaceRaised : const Color(0xFF1F2733),
-        contentTextStyle: const TextStyle(color: Colors.white, fontSize: 13),
+            brightness == Brightness.dark ? const Color(0xFF2A2D38) : const Color(0xFF1F2937),
+        contentTextStyle: TextStyle(
+            color: brightness == Brightness.dark ? const Color(0xFFECEBF2) : Colors.white,
+            fontSize: 14,
+            height: 1.35,
+            fontWeight: FontWeight.w500),
+        actionTextColor: const Color(0xFF8EA6FF),
+        elevation: 6,
+        insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AdminRadius.sm)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: palette.surface,

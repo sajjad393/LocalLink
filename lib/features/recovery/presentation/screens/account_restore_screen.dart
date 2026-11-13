@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/widgets/error_toast.dart';
@@ -100,7 +101,7 @@ class _AccountRestoreScreenState extends State<AccountRestoreScreen> {
                                 final pass = await _passphraseDialog(title: 'Create encrypted key backup', confirm: true);
                                 if (pass == null) return;
                                 if (await _controller.createBackup(pass) && context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Encrypted identity backup saved to the LinkUp server')));
+                                  LinkToast.show(context, 'Encrypted identity backup saved to the LinkUp server', kind: LinkToastKind.done);
                                 }
                               },
                         icon: const Icon(Icons.lock_outline),
@@ -114,7 +115,7 @@ class _AccountRestoreScreenState extends State<AccountRestoreScreen> {
                                 if (m.cryptoBackupAvailable) pass = await _passphraseDialog(title: 'Restore encrypted identity backup', confirm: false);
                                 if (!context.mounted) return;
                                 if (await _controller.restore(passphrase: pass) && context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account data restored')));
+                                  LinkToast.show(context, 'Account data restored', kind: LinkToastKind.done);
                                 }
                               },
                         icon: const Icon(Icons.restore),

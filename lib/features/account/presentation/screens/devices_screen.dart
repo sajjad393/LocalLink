@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 
@@ -67,9 +68,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
     if (ok != true || !mounted) return;
     try {
       await _controller.revoke(device);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone removed')));
+      if (mounted) LinkToast.show(context, 'Phone removed', kind: LinkToastKind.done);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(cleanBlocError(e))));
+      if (mounted) LinkToast.show(context, cleanBlocError(e), kind: LinkToastKind.error);
     }
   }
 

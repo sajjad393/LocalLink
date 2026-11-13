@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/widgets/link_toast.dart';
 
 /// Bundle 206: where the round button sits. [left] = on the left edge;
 /// [y] = height inside the allowed area (0.0 top … 1.0 bottom).
@@ -60,6 +61,15 @@ abstract final class FabPlaceRules {
     final span = bottom - top;
     final y = span <= 0 ? 1.0 : ((dropped.dy - top) / span).clamp(0.0, 1.0);
     return FabPosition(left: centerX < area.width / 2, y: y);
+  }
+
+  /// Bundle 289 (T-5): while a toast shows at the bottom ([lift] > 0) a
+  /// button that would sit behind it moves up above it; a higher button stays.
+  static Offset liftFor(Offset rest, Size area, double size, double lift) {
+    if (lift <= 0) return rest;
+    final limit = area.height - lift - size;
+    if (rest.dy <= limit) return rest;
+    return Offset(rest.dx, limit < margin ? margin : limit);
   }
 
   /// The top-left while dragging, kept inside the area.
@@ -175,6 +185,7 @@ class _MovableFabAreaState extends State<MovableFabArea> {
   void initState() {
     super.initState();
     _place.addListener(_onPlace);
+    LinkToastHub.lift.addListener(_onPlace);
     unawaited(_place.load());
   }
 
@@ -190,6 +201,7 @@ class _MovableFabAreaState extends State<MovableFabArea> {
   @override
   void dispose() {
     _place.removeListener(_onPlace);
+    LinkToastHub.lift.removeListener(_onPlace);
     super.dispose();
   }
 
@@ -202,7 +214,8 @@ class _MovableFabAreaState extends State<MovableFabArea> {
     return LayoutBuilder(builder: (context, constraints) {
       final area = Size(constraints.maxWidth, constraints.maxHeight);
       final size = widget.fabSize;
-      final rest = FabPlaceRules.offsetFor(_place.value, area, size);
+      final rest = FabPlaceRules.liftFor(
+          FabPlaceRules.offsetFor(_place.value, area, size), area, size, LinkToastHub.lift.value);
       final at = _drag ?? rest;
       final moving = _drag != null;
       return Stack(

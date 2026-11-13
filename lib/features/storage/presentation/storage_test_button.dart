@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/features/storage/data/media_storage_service.dart';
@@ -40,10 +41,9 @@ class _StorageTestButtonState extends State<StorageTestButton> {
     final removed = await _service.runAutoClean(trigger: 'test', test: true);
     if (!mounted) return;
     setState(() => _running = false);
-    messenger?.showSnackBar(SnackBar(
-        content: Text(!_service.autoClean
+    LinkToast.maybeOn(messenger, !_service.autoClean
             ? 'Free up space automatically is OFF. Nothing removed.'
-            : 'Test clean-up: $removed ${removed == 1 ? 'file' : 'files'} removed')));
+            : 'Test clean-up: $removed ${removed == 1 ? 'file' : 'files'} removed', kind: LinkToastKind.done);
   }
 
   @override

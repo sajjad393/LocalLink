@@ -20,6 +20,8 @@ class LocalLinkTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
+      // Bundle 290 (S-1): the bundled Roboto everywhere.
+      fontFamily: LocalLinkLook.fontFamily,
       visualDensity: VisualDensity.adaptivePlatformDensity,
     );
 
@@ -27,6 +29,7 @@ class LocalLinkTheme {
 
     return base.copyWith(
       scaffoldBackgroundColor: scheme.surface,
+      primaryTextTheme: base.primaryTextTheme.apply(fontFamily: LocalLinkLook.fontFamily),
       textTheme: base.textTheme.copyWith(
         // Every level must carry an explicit color: colorless replacements
         // render as opaque white in the light theme (invisible on white
@@ -56,7 +59,7 @@ class LocalLinkTheme {
             color: scheme.onSurfaceVariant, fontSize: 12, height: 1.35),
         labelLarge: TextStyle(
             color: scheme.onSurface, fontSize: 14, fontWeight: FontWeight.w700),
-      ),
+      ).apply(fontFamily: LocalLinkLook.fontFamily),
       appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: 0,
@@ -122,7 +125,7 @@ class LocalLinkTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontWeight: FontWeight.w700, fontSize: 15),
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.xl),
           shape: RoundedRectangleBorder(
@@ -132,7 +135,7 @@ class LocalLinkTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontWeight: FontWeight.w700, fontSize: 15),
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.xl),
           shape: RoundedRectangleBorder(
@@ -150,8 +153,20 @@ class LocalLinkTheme {
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(minimumSize: const Size.square(LocalLinkSizes.iconButton)),
       ),
+      // Bundle 289 (T-3): the toast card of mock 286 (LinkToast).
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
+        backgroundColor: dark ? const Color(0xFF2A2D38) : const Color(0xFF1F2937),
+        contentTextStyle: TextStyle(
+          fontFamily: LocalLinkLook.fontFamily,
+          fontSize: 14,
+          height: 1.35,
+          fontWeight: FontWeight.w500,
+          color: dark ? const Color(0xFFECEBF2) : Colors.white,
+        ),
+        actionTextColor: const Color(0xFF8EA6FF),
+        elevation: 6,
+        insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(LocalLinkRadius.md),
         ),

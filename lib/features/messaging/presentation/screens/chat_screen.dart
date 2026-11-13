@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/core/widgets/messenger_date_divider.dart' show chatDayLabel255;
 import 'package:locallink/core/security/security_code_245.dart';
@@ -199,8 +200,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
     if (!mounted) return;
     if (userId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Open this person from People to block them.')));
+      LinkToast.show(context, 'Open this person from People to block them.', kind: LinkToastKind.info);
       return;
     }
     await runBlockFlow(context,
@@ -296,7 +296,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
+      LinkToast.show(context, _cleanError(error), kind: LinkToastKind.error);
     }
   }
 
@@ -312,7 +312,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     // No microphone permission: Android asks by itself, no extra message.
     if (error is PlatformException && error.code == 'PERMISSION') return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
+    LinkToast.show(context, _cleanError(error), kind: LinkToastKind.error);
   }
 
   @override
@@ -477,10 +477,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             .join('\n');
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(withText.length == 1
+    LinkToast.show(context, withText.length == 1
             ? 'Message copied'
-            : '${withText.length} messages copied')));
+            : '${withText.length} messages copied', kind: LinkToastKind.done);
   }
 
   static String _clock(DateTime raw) {
@@ -561,8 +560,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final ok = await widget.controller.deleteForEveryone(ids);
       if (!mounted) return;
       if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Too late to delete for everyone')));
+        LinkToast.show(context, 'Too late to delete for everyone', kind: LinkToastKind.error);
       }
     } else {
       await widget.controller.deleteForMe(ids);
@@ -609,8 +607,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _jumpTo(String id, List<Message> visible) {
     final index = visible.indexWhere((m) => m.id == id);
     if (index < 0 || !_scrollController.hasClients) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Message not found')));
+      LinkToast.show(context, 'Message not found', kind: LinkToastKind.error);
       return;
     }
     setState(() {
@@ -710,7 +707,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       await callback(widget.controller.device);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_cleanError(error))));
+      LinkToast.show(context, _cleanError(error), kind: LinkToastKind.error);
     }
   }
 
@@ -796,8 +793,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (choice == 'resend') {
       final ok = await bloc.resendFailed(messageId);
       if (!mounted || ok) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This message cannot be resent')));
+      LinkToast.show(context, 'This message cannot be resent', kind: LinkToastKind.error);
     } else if (choice == 'delete') {
       await bloc.deleteFailed(messageId);
     }
@@ -970,7 +966,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   key: const ValueKey('chat_blocked_unblock'),
                   onPressed: () => _unblock(device),
                   style: TextButton.styleFrom(
-                    textStyle: const TextStyle(
+                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, 
                         fontSize: 14.5, fontWeight: FontWeight.w700),
                   ),
                   child: const Text('Unblock'),

@@ -38,7 +38,7 @@ String maskPhone(String raw) {
 const String nearbyUnknownName = 'Nearby LinkUp user';
 
 /// Subtitle of every nearby card (no transport words).
-const String nearbyCardSubtitle = 'Nearby · not added yet';
+const String nearbyCardSubtitle = 'Near you'; // Bundle 283 (mock E)
 
 /// Typing in Add Contact narrows the Nearby list. Only real names match —
 /// the "Nearby LocalLink user" placeholder never does.

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -155,16 +156,13 @@ class _PrivateProfileCardState extends State<PrivateProfileCard> {
       AppLogger.info('PRIVATE_PROFILE',
           detail: 'on=${makePrivate ? 'y' : 'n'} saved=y synced=${synced ? 'y' : 'n'} '
               'phone=${ProfilePrivacyRule.phoneVisibilityFor(private: makePrivate)}');
-      messenger.showSnackBar(SnackBar(
-        // Bundle 263 (B2): the same words online or not.
-        content: Text(makePrivate
+      LinkToast.maybeOn(messenger, makePrivate
             ? 'Your profile is private'
-            : 'Your profile is public again'),
-      ));
+            : 'Your profile is public again', kind: LinkToastKind.done);
     } catch (e) {
       if (mounted) setState(() => _private = !makePrivate);
       ProfilePrivacyRule.ownPrivate.value = !makePrivate;
-      messenger.showSnackBar(SnackBar(content: Text(cleanBlocError(e))));
+      LinkToast.maybeOn(messenger, cleanBlocError(e), kind: LinkToastKind.error);
     } finally {
       if (mounted) setState(() => _saving = false);
     }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/identity/person_name_276.dart';
 import 'package:locallink/features/contacts/presentation/widgets/my_links_map_273.dart';
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
@@ -83,6 +84,9 @@ import 'package:locallink/features/messaging/domain/messaging_repository_contrac
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
 import 'package:locallink/features/home/presentation/screens/messenger_settings_screen.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
+import 'package:locallink/features/recovery/presentation/screens/recovery_code_286.dart';
+import 'package:locallink/features/admin/data/services/admin_block_book.dart';
+import 'package:locallink/core/network/session_dead_262.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
 import 'package:locallink/core/models/group.dart';
@@ -520,6 +524,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   .catchError((Object _) {}));
             },
           ),
+        // Bundle 286 (R-1): "Save your recovery code" on top of Chats, above
+        // My links, until it is saved. One card at a time: the cards above
+        // and the blocked / signed-out notes go first.
+        ListenableBuilder(
+          listenable: Listenable.merge([AdminBlockBook.instance, SessionDead262.instance]),
+          builder: (context, _) => RecoveryHomeCard286(
+            key: const ValueKey('rc286-home'),
+            store: widget.store,
+            accounts: widget.accountRepository,
+            hidden: _pwdOnlyHere222 ||
+                (_join218 != null && _join218!['kind']?.toString() == 'renamed') ||
+                _recovery218 != null ||
+                AdminBlockBook.instance.selfBlocked ||
+                (SessionDead262.instance.dead && SessionDead262.instance.signIn != null),
+          ),
+        ),
       ];
 
   // ---------------- Bundle 102: offline-account publish flow ---------------
@@ -785,8 +805,7 @@ class _HomeScreenState extends State<HomeScreen> {
           source: 'group',
         )));
       } else if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Contact added')));
+        LinkToast.show(context, 'Contact added', kind: LinkToastKind.done);
       }
     } catch (error) {
       if (context.mounted) showErrorToast(context, error: error);
@@ -944,9 +963,8 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         if (!mounted || result == null) return;
         if (result.skipped.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Not added yet: ${result.skipped.join(', ')}. '
-                  'They need to open LinkUp Online once.')));
+          LinkToast.show(context, 'Not added yet: ${result.skipped.join(', ')}. '
+                  'They need to open LinkUp Online once.', kind: LinkToastKind.done);
         }
         unawaited(Navigator.push<void>(context, _groupRoute(result.group))
             .whenComplete(_refreshUnreadCounts));
@@ -1102,9 +1120,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_cleanError(error))),
-      );
+      LinkToast.show(context, _cleanError(error), kind: LinkToastKind.error);
     }
   }
 
@@ -1578,13 +1594,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         final messenger = ScaffoldMessenger.of(context);
         messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('Press back again to exit'),
-            duration: Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        LinkToast.maybeOn(messenger, 'Press back again to exit', kind: LinkToastKind.info, duration: const Duration(seconds: 2));
       },
       child: Scaffold(
         body: IndexedStack(

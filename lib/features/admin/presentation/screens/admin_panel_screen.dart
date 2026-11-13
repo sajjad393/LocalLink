@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/features/storage/presentation/storage_test_button.dart';
 import 'package:flutter/material.dart';
@@ -293,13 +294,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     }
     if (result == AdminRoleResult.notAdmin) {
       widget.viewMode.setAdminCapability(false);
-      messenger?.showSnackBar(const SnackBar(
-          key: ValueKey('admin_no_longer'),
-          content: Text('You are no longer an admin')));
+      LinkToast.maybeOn(messenger, 'You are no longer an admin', kind: LinkToastKind.error, key: const ValueKey('admin_no_longer'));
     } else {
-      messenger?.showSnackBar(const SnackBar(
-          key: ValueKey('admin_not_available'),
-          content: Text('Admin tools are not available right now')));
+      LinkToast.maybeOn(messenger, 'Admin tools are not available right now', kind: LinkToastKind.error, key: const ValueKey('admin_not_available'));
     }
     if (nav.canPop()) nav.pop();
   }
@@ -399,8 +396,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     final service = _blocks;
     if (service == null || _readiness != AdminBlockReadiness.ready) {
       if (block) return _confirmBlock(d);
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-          content: Text('Connect to the server once to turn on offline blocking.')));
+      LinkToast.show(context, 'Connect to the server once to turn on offline blocking.', kind: LinkToastKind.info);
       return;
     }
     await runAdminBlock(context,

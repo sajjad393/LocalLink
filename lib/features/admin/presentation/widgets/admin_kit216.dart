@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
@@ -1435,10 +1436,9 @@ Future<bool> confirmAdmin216(
   return r == true;
 }
 
+/// Bundle 289: the one toast look (kind from the words; it hides the old one).
 void adminSnack216(BuildContext context, String text) {
-  ScaffoldMessenger.maybeOf(context)
-    ?..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(text)));
+  LinkToast.show(context, text, kind: LinkToast.guess(text));
 }
 
 // --------------------------------------------------------- 19. locked rows

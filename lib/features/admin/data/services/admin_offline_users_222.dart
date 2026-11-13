@@ -165,9 +165,13 @@ abstract final class AdminOfflineUsers222 {
         moves: parseMoves(await s.readSetting(idMovesKey)),
         selfUserId: s.accountId ?? '',
       );
+      // Bundle 279 (A-1): the same rule as the app's own list (238) - a
+      // phone that now has a server card is on the server, so its old
+      // offline card is not sent (no "Not on server yet" twin on the web).
+      final (shown, _) = split238(list, directory: await _allDirectory238(s));
       final now = DateTime.now().toUtc();
       final out = <Map<String, Object>>[];
-      for (final u in list) {
+      for (final u in shown) {
         final t = DateTime.tryParse(u.seenAt);
         if (t == null || now.difference(t.toUtc()) > within || u.deviceId.isEmpty) continue;
         if (carries != null && await carries(u.deviceId).catchError((Object _) => false)) carried.add(u.deviceId);

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:flutter/services.dart';
@@ -299,8 +300,7 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
       unawaited(_closeQuietly(controller));
       if (mounted) {
         setState(() => _starting = false);
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-            const SnackBar(content: Text("Can't play this video")));
+        LinkToast.show(context, "Can't play this video", kind: LinkToastKind.error);
       }
       return;
     }

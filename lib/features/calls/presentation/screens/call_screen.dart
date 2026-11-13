@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/app_logger.dart';
 
@@ -156,8 +157,7 @@ class _CallScreenState extends State<CallScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             widget.controller.clearError();
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text(_cleanError(error))));
+            LinkToast.show(context, _cleanError(error), kind: LinkToastKind.error);
           });
         }
         if (session.isFinished && session.id == _session.id) {

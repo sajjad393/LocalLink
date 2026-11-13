@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_offline.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart';
@@ -202,8 +203,7 @@ Future<bool> runAdminBlock(BuildContext context,
     required bool block}) async {
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (service == null) {
-    messenger?.showSnackBar(const SnackBar(
-        content: Text('Offline blocking is not ready yet.')));
+    LinkToast.maybeOn(messenger, 'Offline blocking is not ready yet.', kind: LinkToastKind.error);
     return false;
   }
   if (!await showAdminBlockConfirm(context, target: target, block: block)) {
@@ -224,15 +224,14 @@ Future<bool> runAdminBlock(BuildContext context,
       devices: target.deviceIds,
       inner: record.blob,
     ));
-    messenger?.showSnackBar(SnackBar(
-        content: Text(block
+    LinkToast.maybeOn(messenger, block
             ? '${target.name} is blocked for everyone.'
-            : '${target.name} is unblocked for everyone.')));
+            : '${target.name} is unblocked for everyone.', kind: LinkToastKind.done);
     return true;
   } on StateError catch (e) {
-    messenger?.showSnackBar(SnackBar(content: Text(e.message)));
+    LinkToast.maybeOn(messenger, e.message, kind: LinkToastKind.error);
   } catch (e) {
-    messenger?.showSnackBar(SnackBar(content: Text('Could not save: $e')));
+    LinkToast.maybeOn(messenger, 'Could not save: $e', kind: LinkToastKind.error);
   }
   return false;
 }

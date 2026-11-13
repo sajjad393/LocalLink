@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:locallink/core/services/local_store.dart';
@@ -255,7 +256,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
   }
 
   void _toast(String text) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    LinkToast.show(context, text, kind: LinkToast.guess(text));
   }
 
   Future<void> _enableKeepAlive() async {

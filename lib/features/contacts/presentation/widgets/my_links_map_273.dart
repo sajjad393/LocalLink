@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/identity/person_name_276.dart';
@@ -245,8 +246,7 @@ class _MyLinksCard273State extends State<MyLinksCard273> {
 
   MyLinks273 _build() => MyLinks273.build(contacts: _contacts, wayOf: _hub.wayInfoOf, userOf: _hub.userOf);
 
-  void _relayNote() => ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text("A LinkUp phone helping to pass your messages. It can't read them.")));
+  void _relayNote() => LinkToast.show(context, "A LinkUp phone helping to pass your messages. It can't read them.", kind: LinkToastKind.info);
 
   void _openFull(bool online) {
     AppLogger.info('MYMAP_273', detail: 'full_open');

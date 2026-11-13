@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -649,7 +650,7 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
                           shape: const StadiumBorder(),
                           side: BorderSide(color: colors.outlineVariant),
                           disabledForegroundColor: colors.onSurface,
-                          textStyle: const TextStyle(
+                          textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, 
                               fontSize: 15.5, fontWeight: FontWeight.w700),
                         ),
                         child: const Text('Requested ✓'),
@@ -673,7 +674,7 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                     shape: const StadiumBorder(),
-                    textStyle: const TextStyle(
+                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, 
                         fontSize: 15.5, fontWeight: FontWeight.w700),
                   ),
                   child: const Text('Ask to join'),

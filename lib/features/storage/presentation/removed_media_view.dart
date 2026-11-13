@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/attachment.dart';
@@ -108,10 +109,9 @@ class _RemovedMediaViewState extends State<RemovedMediaView> {
         break;
       case RemovedTap.gone:
         if (widget.mine) setState(() => _alive = false);
-        messenger?.showSnackBar(SnackBar(
-            content: Text(widget.mine
+        LinkToast.maybeOn(messenger, widget.mine
                 ? RemovedMediaView.goneMine(_kind)
-                : RemovedMediaView.goneTheirs(widget.senderName))));
+                : RemovedMediaView.goneTheirs(widget.senderName), kind: LinkToastKind.info);
     }
   }
 

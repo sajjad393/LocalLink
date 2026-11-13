@@ -49,7 +49,10 @@ object LocalLinkNotificationManager {
     // Devices that created v2 while the bundled wav resource was absent are
     // stuck with a silent channel forever, so a fresh channel id is the only
     // reliable way to re-enable sound on upgrades.
-    private const val MESSAGE_CHANNEL_ID = "locallink_messages_v4"
+    // Bundle 282: v5 = the new message tone (Salacia). A channel keeps its
+    // first sound forever, so the tone needs a new id; v4 is only deleted.
+    internal const val MESSAGE_CHANNEL_ID = "locallink_messages_v5"
+    internal const val OLD_MESSAGE_CHANNEL_ID = "locallink_messages_v4"
     private const val SYSTEM_CHANNEL_ID = "locallink_system_v4"
     private const val FRIENDS_CHANNEL_ID = "locallink_friends_v1"
     private const val MESSAGE_TAG = "locallink_message"
@@ -88,6 +91,8 @@ object LocalLinkNotificationManager {
             }
         }
         manager.createNotificationChannel(messageChannel)
+        // Bundle 282: the old channel (old tone) goes away on upgrade.
+        try { manager.deleteNotificationChannel(OLD_MESSAGE_CHANNEL_ID) } catch (_: Exception) {}
 
         val systemChannel = NotificationChannel(
             SYSTEM_CHANNEL_ID,

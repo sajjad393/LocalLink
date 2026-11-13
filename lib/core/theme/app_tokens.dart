@@ -91,6 +91,20 @@ abstract final class LocalLinkMotion {
   static const slow = Duration(milliseconds: 360);
 }
 
+/// Bundle 290 (TODO_283 S-1/S-2/S-5): the same look on every phone - the
+/// bundled Roboto for the whole app (no phone maker font), text grows at
+/// most 1.3x with the phone's font setting, fixed brand colours (no
+/// wallpaper colours).
+abstract final class LocalLinkLook {
+  static const String fontFamily = 'Roboto216';
+  static const double maxTextScale = 1.3;
+  static const int seed = 0xFF1E5BFF;
+
+  /// [data] with the text size capped at [maxTextScale].
+  static MediaQueryData clampScaler(MediaQueryData data) =>
+      data.copyWith(textScaler: data.textScaler.clamp(minScaleFactor: 1.0, maxScaleFactor: maxTextScale));
+}
+
 /// Lottie animation + brand assets that ship with the app. Referenced by the
 /// shared state views so every module shows the same motion language.
 abstract final class LocalLinkAssets {

@@ -1,3 +1,4 @@
+import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/group_join_code.dart';
@@ -383,7 +384,7 @@ Future<void> showAddingPeopleSheet(
                 style: TextButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                     shape: const StadiumBorder(),
-                    textStyle: const TextStyle(
+                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, 
                         fontSize: 15.5,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0)),

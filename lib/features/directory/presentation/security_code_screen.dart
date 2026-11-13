@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -68,8 +69,7 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
     });
   }
 
-  void _snack(String text) => ScaffoldMessenger.maybeOf(context)
-      ?.showSnackBar(SnackBar(content: Text(text)));
+  void _snack(String text) => LinkToast.show(context, text, kind: LinkToast.guess(text));
 
   Future<void> _setVerified(bool on) async {
     final v = _view;

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/services/locallink_api.dart';
@@ -202,8 +203,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
 
   Future<void> _handleSessionExpiry() async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Admin session expired. Please sign in again.')));
+    LinkToast.show(context, 'Admin session expired. Please sign in again.', kind: LinkToastKind.error);
     await _sessionStore.clear();
     widget.viewMode.reset();
     if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();

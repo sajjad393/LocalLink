@@ -215,7 +215,8 @@ void main() {
       await pump(tester, _Repo());
       expect(find.text('Forgot password'), findsOneWidget);
       expect(find.text('Server connected'), findsOneWidget);
-      expect(find.text('I have my recovery code'), findsOneWidget);
+      // Bundle 287 (listed change, mock 287): short switch words.
+      expect(find.text('I have a code'), findsOneWidget);
       expect(find.text("I don't have it"), findsOneWidget);
       for (final label in ['Username', 'Recovery code', 'New password', 'New password again']) {
         expect(find.text(label), findsWidgets);
@@ -231,7 +232,8 @@ void main() {
 
     testWidgets('R-3: no server chip and note', (tester) async {
       await pump(tester, _Repo()..online = false);
-      expect(find.text('No server \u00b7 works on this phone only'), findsOneWidget);
+      // Bundle 287 (listed change, mock 287): small live pill words.
+      expect(find.text('Offline \u00b7 works on this phone'), findsOneWidget);
       expect(find.text('Uses the code saved on this phone. The new password goes to the server when it is back.'), findsOneWidget);
     });
 
@@ -256,7 +258,8 @@ void main() {
       await tester.pump();
       expect(find.text('P3HD8-LKWT6-MZQA2-RX7YB'), findsOneWidget);
       expect(find.text('Copy'), findsOneWidget);
-      expect(find.text('Share'), findsOneWidget);
+      // Bundle 287 (listed change, mock 287 done): Show / Copy only.
+      expect(find.text('Share'), findsNothing);
       await tester.tap(find.text('Save on WhatsApp'));
       await tester.pump();
       expect(finished, 0);
@@ -280,7 +283,10 @@ void main() {
       await tester.pump();
       expect(find.text('@sajjad'), findsOneWidget);
       expect(find.text('Waiting'), findsOneWidget);
-      expect(find.text('Request sent to the admin. Ask the admin for a one-time code.'), findsOneWidget);
+      // Bundle 287 (listed change, mock 287): the sentence became steps.
+      expect(find.text('Request sent'), findsOneWidget);
+      expect(find.text('Waiting for the admin'), findsOneWidget);
+      expect(find.text('Ask the admin to approve it'), findsOneWidget);
       expect(find.text('One-time code from the admin'), findsWidgets);
       expect(find.text('Cancel request'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());

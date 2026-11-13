@@ -213,7 +213,7 @@ void main() {
         {'node_id': 'stranger-000000a1', 'state': 'CONNECTED', 'transport': 'lan'},
       ], paired: const []);
       expect(find.text('Add friend'), findsOneWidget);
-      expect(find.text('Everyone nearby is already in your contacts.'),
+      expect(find.text('Everyone nearby is already in your contacts'),
           findsNothing);
       await finish(tester, deps);
     });
@@ -238,7 +238,7 @@ void main() {
         });
         await tester.pump();
         expect(find.text('Add friend'), findsOneWidget);
-        expect(find.text('Everyone nearby is already in your contacts.'),
+        expect(find.text('Everyone nearby is already in your contacts'),
             findsNothing);
         // Link status update -> CONNECTED.
         await tester.runAsync(() async {
@@ -252,7 +252,7 @@ void main() {
         });
         await tester.pump();
         expect(find.text('Add friend'), findsOneWidget);
-        expect(find.text('Everyone nearby is already in your contacts.'),
+        expect(find.text('Everyone nearby is already in your contacts'),
             findsNothing);
       }
       await finish(tester, deps);
@@ -266,9 +266,9 @@ void main() {
       ], paired: [
         'paired-bilal-0001'
       ]);
-      expect(find.text('Everyone nearby is already in your contacts.'),
+      expect(find.text('Everyone nearby is already in your contacts'),
           findsOneWidget);
-      expect(find.text('Looking for LinkUp phones…'), findsNothing);
+      expect(find.text('Looking for phones near you'), findsNothing);
       await finish(tester, deps);
     });
 
@@ -279,7 +279,7 @@ void main() {
         'paired-bilal-0001'
       ]);
       expect(find.text('Add friend'), findsNothing);
-      expect(find.text('Everyone nearby is already in your contacts.'),
+      expect(find.text('Everyone nearby is already in your contacts'),
           findsOneWidget);
       await finish(tester, deps);
     });
@@ -288,7 +288,7 @@ void main() {
   group('Bundle 192 version', () {
     test('pubspec and stamp', () {
       expect(File('pubspec.yaml').readAsStringSync(),
-          contains('version: 3.0.86+157'));
+          contains('version: 3.0.90+161'));
       expect(File('lib/app/local_link_app.dart').readAsStringSync(),
           contains('AppBuild.stamp')); // Bundle 223 (Q18): made from kAppVersion
     });

@@ -72,51 +72,41 @@ void main() {
     });
   });
 
-  group('226-B5 the card in code (your words, same look as the Wi-Fi card)',
-      () {
+  // Bundle 283 (owner chose a): the Bluetooth cards left the screen; the
+  // Bluetooth OK is asked with the one Nearby "Allow" tap. The rules stay:
+  // never a pop-up by itself, the app never turns Bluetooth on, "Don't ask
+  // again" opens the app settings, and nothing without the native control.
+  group('283 Bluetooth without a card', () {
     final src = File('lib/features/directory/presentation/nearby_people_section.dart')
         .readAsStringSync();
-    test('texts', () {
-      expect(src, contains("'Faster connect with Bluetooth'"));
-      expect(src, contains("'Find friends in seconds.'"));
-      expect(src, contains("'Bluetooth is off'"));
-      expect(src, contains("'Turn it on for faster connect'"));
-      expect(src, contains("'Allow'"));
-      expect(src, contains("'Turn on'"));
-      // Your rule: the Bluetooth card never talks about Wi-Fi for calls.
-      final card = src.substring(src.indexOf('Widget _bleCard('),
-          src.indexOf('Future<void> _bleAllow()'));
-      expect(card.toLowerCase(), isNot(contains('wi-fi')));
-      expect(card.toLowerCase(), isNot(contains('call')));
+    test('no Bluetooth card or words on the screen', () {
+      expect(src, isNot(contains('Widget _bleCard(')));
+      expect(src, isNot(contains("'Faster connect with Bluetooth'")));
+      expect(src, isNot(contains("'Bluetooth is off'")));
+      expect(src, isNot(contains('NearbyChips256')));
     });
-    test('built like the Wi-Fi card + × + 8 dp gap', () {
-      final card = src.substring(src.indexOf('Widget _bleCard('),
-          src.indexOf('Future<void> _bleAllow()'));
-      expect(card, contains('scheme.tertiaryContainer.withValues(alpha: .6)'));
-      expect(card, contains('ListTile('));
-      expect(card, contains('FilledButton('));
-      expect(card, contains('Icons.close_rounded'));
-      expect(card, contains('EdgeInsets.only(bottom: 8)'));
-    });
-    test('right under the Wi-Fi card, above the looking box', () {
-      final wifi = src.indexOf('if (_permission == false) _permissionCard(context),');
-      final ble = src.indexOf('listenable: NearbyBleStatus.instance');
-      final looking = src.indexOf('_lookingBox(context,\n');
-      expect(wifi, greaterThan(0));
-      expect(ble, greaterThan(wifi));
-      expect(looking, greaterThan(ble));
+    test('asked only from the Allow tap (with Nearby), then rests 7 days', () {
+      final start = src.substring(src.indexOf('Future<void> _startSearch('),
+          src.indexOf('bool get _bleNeedsOk283'));
+      expect(start, contains('if (askPermission) await _askBle283();'));
+      final ask = src.substring(src.indexOf('Future<void> _askBle283()'),
+          src.indexOf('Future<void> _bleRest283()'));
+      expect(ask, contains('.askBlePermission()'));
+      expect(ask, contains('.timeout(const Duration(seconds: 60))'));
+      expect(ask, contains('await _bleRest283();'));
+      expect(src, contains('BleRules.cardHideMs'));
     });
     test('never a pop-up by itself; the app never turns Bluetooth on', () {
       final init = src.substring(
           src.indexOf('void initState()'), src.indexOf('void _onWaiting('));
       expect(init, isNot(contains('askBlePermission')));
-      expect(src, contains('control.openBluetoothSettings()'));
+      expect(init, isNot(contains('_askBle283')));
+      expect(src, isNot(contains('control.openBluetoothSettings()')));
       expect(src, contains('openBluetoothSettings(app: true)'),
           reason: '"Don\'t ask again" opens the app settings');
     });
-    test('no card in tests / without the native control', () {
-      expect(src, contains(
-          'if (NearbyBleActions.control == null) return const SizedBox.shrink();'));
+    test('nothing without the native control (tests, other platforms)', () {
+      expect(src, contains('if (NearbyBleActions.control == null) return false;'));
     });
   });
 }

@@ -303,10 +303,17 @@ abstract final class AdminTheme216 {
       primaryTextTheme: base.primaryTextTheme.apply(fontFamily: kAdminFont216),
       colorScheme: base.colorScheme.copyWith(primary: c.blue),
       dividerColor: c.div,
+      // Bundle 289 (T-3): the same toast card as the rest of the app.
       snackBarTheme: base.snackBarTheme.copyWith(
         behavior: SnackBarBehavior.floating,
-        contentTextStyle: const TextStyle(
-            fontFamily: kAdminFont216, fontSize: 13.5, color: Colors.white),
+        backgroundColor: dark ? const Color(0xFF2A2D38) : const Color(0xFF1F2937),
+        contentTextStyle: TextStyle(
+            fontFamily: kAdminFont216,
+            fontSize: 14,
+            height: 1.35,
+            fontWeight: FontWeight.w500,
+            color: dark ? const Color(0xFFECEBF2) : Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }

@@ -33,6 +33,7 @@ import 'package:locallink/features/connectivity/presentation/widgets/nearby_test
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/recovery/presentation/screens/account_restore_screen.dart';
+import 'package:locallink/features/recovery/presentation/screens/recovery_code_286.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/features/transfer/presentation/screens/account_transfer_screen.dart';
 
@@ -153,23 +154,6 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
       ),
     );
     await _controller.load();
-  }
-
-  /// Grey rounded note (offline box, recovery note), 16 from the edges.
-  Widget _note(
-      {required Key key, required Widget child, double vertical = 16}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        key: key,
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: vertical),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: child,
-      ),
-    );
   }
 
   @override
@@ -304,6 +288,9 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                       // Bundle 183 (B6): extra nearby safety is a normal row.
                       const MessengerGroupLabel('Backup and safety'),
                       MessengerListGroup(dividerIndent: 66, children: [
+                        // Bundle 286 (R-2): first row, Not saved / Saved tag
+                        // (replaces the old grey recovery note).
+                        RecoveryRow286(store: widget.store, accounts: widget.accountRepository),
                         MessengerSettingsRow(
                           icon: Icons.restore_outlined,
                           title: 'Backup and restore',
@@ -319,32 +306,6 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                         const ExtraNearbySafetySwitch(),
                       ]),
                       const SizedBox(height: 24),
-                      _note(
-                        key: const ValueKey('account_recovery_note'),
-                        vertical: 16,
-                        child: Row(
-                          children: [
-                            Icon(Icons.lock_outline,
-                                size: 24, color: colors.onSurfaceVariant),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Keep your recovery code private',
-                                      style: text.titleSmall),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                      'QR transfer if the old phone is here, recovery if it is lost.',
-                                      style: text.bodySmall?.copyWith(
-                                          color: colors.onSurfaceVariant,
-                                              letterSpacing: 0)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ],
                   ),
           ),

@@ -404,7 +404,8 @@ void main() {
   test('T2 back button on a tab still asks "Press back again to exit"', () {
     final src = _src('lib/features/home/presentation/screens/home_screen.dart');
     expect(src.contains('canPop: false'), isTrue);
-    expect(src.contains("Text('Press back again to exit')"), isTrue);
+    // Bundle 289: the toast is LinkToast now (same words, 2 s).
+    expect(src.contains("LinkToast.maybeOn(messenger, 'Press back again to exit'"), isTrue);
   });
 
   // ================================================================ T3
@@ -798,10 +799,12 @@ void main() {
         'My phones',
         'Move to a new phone',
         'BACKUP AND SAFETY',
+        // Bundle 286 (listed change, mock 286): the Recovery code row is
+        // first; the old note "Keep your recovery code private" is gone.
+        'Recovery code',
         'Backup and restore',
         'Security key',
         'Extra nearby safety',
-        'Keep your recovery code private',
       ];
       double? last;
       for (final t in order) {
@@ -811,6 +814,7 @@ void main() {
         if (last != null) expect(y, greaterThan(last), reason: t);
         last = y;
       }
+      expect(find.text('Keep your recovery code private', skipOffstage: false), findsNothing);
       for (final old in [
         'Trusted devices',
         'Transfer account',

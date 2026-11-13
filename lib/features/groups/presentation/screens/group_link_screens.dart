@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -50,8 +52,7 @@ class _GroupInviteLinkScreenState extends State<GroupInviteLinkScreen> {
       final t = await s.token(_g, reset: reset);
       if (mounted) setState(() => _token = t);
       if (reset && mounted) {
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-            const SnackBar(content: Text('New link made. The old one stops working.')));
+        LinkToast.show(context, 'New link made. The old one stops working.', kind: LinkToastKind.done);
       }
     } catch (error) {
       if (mounted) showErrorToast(context, error: error);
@@ -63,8 +64,7 @@ class _GroupInviteLinkScreenState extends State<GroupInviteLinkScreen> {
   Future<void> _copy() async {
     await Clipboard.setData(ClipboardData(text: GroupInviteLink.link(_token)));
     if (!mounted) return;
-    ScaffoldMessenger.maybeOf(context)
-        ?.showSnackBar(const SnackBar(content: Text('Link copied')));
+    LinkToast.show(context, 'Link copied', kind: LinkToastKind.done);
   }
 
   Future<void> _share() async {
@@ -357,7 +357,7 @@ class _JoinGroupByLinkScreenState extends State<JoinGroupByLinkScreen> {
     final big = FilledButton.styleFrom(
       minimumSize: const Size.fromHeight(48),
       shape: const StadiumBorder(),
-      textStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
+      textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 15.5, fontWeight: FontWeight.w700),
     );
     final ghost = OutlinedButton.styleFrom(
       minimumSize: const Size.fromHeight(48),
@@ -365,7 +365,7 @@ class _JoinGroupByLinkScreenState extends State<JoinGroupByLinkScreen> {
       side: BorderSide(color: colors.outlineVariant),
       foregroundColor: colors.onSurface,
       disabledForegroundColor: colors.onSurface,
-      textStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
+      textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 15.5, fontWeight: FontWeight.w700),
     );
     return Scaffold(
       appBar: AppBar(titleSpacing: 0, title: const Text('Join group')),

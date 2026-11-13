@@ -94,12 +94,14 @@ void main() {
       expect(added, 1);
     });
 
-    testWidgets('a contact: shows Added, tap opens the profile',
+    testWidgets('a contact: shows the Contact pill, tap opens the profile',
         (tester) async {
       var opened = 0;
       await pump(tester, isContact: true, onOpen: () => opened++);
-      expect(find.text('Added'), findsOneWidget);
-      expect(find.text('@sara · Contact'), findsOneWidget);
+      // Bundle 283 (mock B): green "✓ Contact" pill, "@user" under the name.
+      expect(find.byKey(const Key('search_result_added')), findsOneWidget);
+      expect(find.text('Contact'), findsOneWidget);
+      expect(find.text('@sara'), findsOneWidget);
       expect(find.byKey(const Key('search_result_add')), findsNothing);
       await tester.tap(find.text('Sara Ahmed'));
       expect(opened, 1);

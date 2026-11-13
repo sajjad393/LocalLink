@@ -1,0 +1,13 @@
+LinkUp (com.sajjad.linkup)
+
+Sounds
+------
+The ringtone (locallink_ringtone.wav, "Triton"), the message tone
+(locallink_message.wav, "Salacia"), the in-chat arrived sound
+(message_received.wav, "NFC Start") and the sent sound (message_sent.wav,
+"Volume blip") in android/app/src/main/res/raw/ are from the Android Open
+Source Project (platform/frameworks/base/data/sounds), converted to WAV.
+
+Android Code Copyright 2005-2008 The Android Open Source Project
+Licensed under the Apache License, Version 2.0:
+http://www.apache.org/licenses/LICENSE-2.0

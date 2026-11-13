@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'dart:async';
@@ -146,9 +147,7 @@ class _CallsScreenState extends State<CallsScreen> {
       );
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_cleanError(error))),
-        );
+        LinkToast.show(context, _cleanError(error), kind: LinkToastKind.error);
       }
       return;
     } finally {
@@ -229,6 +228,7 @@ class _CallsScreenState extends State<CallsScreen> {
       // One filled card per date bucket (Settings-style grouping): rows live
       // together inside a rounded white container with hairline dividers.
       // Bundle 171: back-to-back calls with the same person share a row.
+      // Bundle 285: ONE row per person per day, missed calls inside.
       final rows = <Widget>[];
       String? firstPeer;
       for (final group in groupCallHistory(records,
@@ -246,6 +246,7 @@ class _CallsScreenState extends State<CallsScreen> {
               : null,
           missed: _isMissed(call),
           count: group.count,
+          missedInside: group.count > 1 ? group.missed : 0,
           onCall: () => _redial(call),
           onOpen: group.count > 1 ? () => _openGroup(group) : null,
         ));
@@ -303,8 +304,17 @@ class _CallsScreenState extends State<CallsScreen> {
                     style: theme.textTheme.titleMedium
                         ?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  subtitle: Text(
-                      '${_dayLabel(call.startedAt)} · ${group.count} calls'),
+                  // Bundle 285 (mock 285): "Today · 4 calls · 2 missed".
+                  subtitle: Text.rich(TextSpan(children: [
+                    TextSpan(text: '${_dayLabel(call.startedAt)} · ${group.count} calls'),
+                    if (group.missed > 0) ...[
+                      const TextSpan(text: ' · '),
+                      TextSpan(
+                        text: '${group.missed} missed',
+                        style: TextStyle(color: colors.error, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ])),
                   trailing: MessengerCallButton(
                     tooltip: 'Call back',
                     onPressed: () {

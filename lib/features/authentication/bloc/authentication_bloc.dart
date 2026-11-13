@@ -184,10 +184,19 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
       return const AuthOutcome.offline(madeOffline: true);
     }
     // Bundle 223 (J): the password check runs off the screen thread.
+    // Bundle 278: with the reason, so a phone with nothing saved does not
+    // say "do not match".
     final repo = repository;
-    final byPassword = repo is AsyncOfflineLogin
-        ? await (repo as AsyncOfflineLogin).verifyOfflineLoginAsync(user, password)
-        : repository.verifyOfflineLogin(user, password);
+    String? reason278;
+    final bool byPassword;
+    if (repo is OfflineLoginReason278) {
+      reason278 = await (repo as OfflineLoginReason278).offlineLoginReason278(user, password);
+      byPassword = reason278 == 'ok';
+    } else {
+      byPassword = repo is AsyncOfflineLogin
+          ? await (repo as AsyncOfflineLogin).verifyOfflineLoginAsync(user, password)
+          : repository.verifyOfflineLogin(user, password);
+    }
     if (byPassword || repository.verifyOfflineRecovery(user, password)) {
       // Bundle 214 (G6): log line only (no behaviour change).
       AppLogger.info('AUTH_OFFLINE_LOGIN',
@@ -200,9 +209,13 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
     }
     // Known receiver: the credential simply did not match — say so plainly,
     // with a single fixed message and no connectivity chatter.
-    AppLogger.info('AUTH_OFFLINE_LOGIN', detail: 'bad');
-    emit(state.copyWith(error: 'That username and password do not match.'));
-    throw Exception('That username and password do not match.');
+    // Bundle 278: the words say why (nothing saved / another account /
+    // wrong password); the log has the reason, never a name.
+    final why278 = reason278 ?? 'bad_password';
+    AppLogger.info('AUTH_OFFLINE_LOGIN', detail: 'bad reason=$why278');
+    final text278 = offlineLoginText278(why278);
+    emit(state.copyWith(error: text278));
+    throw Exception(text278);
   }
 
   /// Register without a reachable server (Bundle 102). Returns the recovery

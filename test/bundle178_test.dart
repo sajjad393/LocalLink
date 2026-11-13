@@ -110,7 +110,11 @@ void main() {
     test('notification channel ids and log names unchanged', () {
       final n = _read(
           'android/app/src/main/kotlin/com/sajjad/locallink/LocalLinkNotificationManager.kt');
-      expect(n, contains('locallink_messages_v4'));
+      // Bundle 282 (listed change): new tone = new message channel v5;
+      // the old v4 id stays only to delete it.
+      expect(n, contains('MESSAGE_CHANNEL_ID = "locallink_messages_v5"'));
+      expect(n, contains('OLD_MESSAGE_CHANNEL_ID = "locallink_messages_v4"'));
+      expect(n, contains('deleteNotificationChannel(OLD_MESSAGE_CHANNEL_ID)'));
       expect(n, contains('locallink_system_v4'));
       expect(
           _read(

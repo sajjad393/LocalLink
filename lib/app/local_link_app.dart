@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminActionSignOut;
 import 'package:locallink/core/widgets/version_banner.dart';
@@ -15,6 +16,7 @@ import 'package:locallink/core/services/memory_trim.dart';
 import 'package:locallink/core/routing/app_routes.dart';
 import 'package:locallink/core/routing/app_router.dart';
 import 'package:locallink/core/theme/app_theme.dart';
+import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_splash.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
@@ -145,10 +147,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     final ctx = navigator?.overlay?.context;
     if (ctx == null) return;
     final messenger = ScaffoldMessenger.maybeOf(ctx);
-    messenger?.showSnackBar(SnackBar(
-      content: Text(message),
-      duration: duration ?? const Duration(seconds: 4),
-    ));
+    LinkToast.maybeOn(messenger, message, kind: LinkToast.guess(message), duration: duration ?? const Duration(seconds: 4));
   }
 
   void _showPairComplete(String displayName) {
@@ -695,6 +694,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         theme: LocalLinkTheme.light(),
         darkTheme: LocalLinkTheme.dark(),
         themeMode: _themeMode,
+        builder: _look290,
         home: const LocalLinkSplashScreen(),
       );
     }
@@ -705,6 +705,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         theme: LocalLinkTheme.light(),
         darkTheme: LocalLinkTheme.dark(),
         themeMode: _themeMode,
+        builder: _look290,
         home: Scaffold(
           body: Center(
             child: Padding(
@@ -747,15 +748,25 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       onGenerateRoute: _router.onGenerateRoute,
       // Bundle 147: floating mini video player above every screen; while
       // Android shows the PiP window only the video is drawn.
-      builder: (context, child) => DupBlockGate235(
-        // Bundle 235: "Confirm your account" covers the app while this
-        // phone's new account waits for proof of the old one.
-        actions: _deps.confirmAccount235,
-        child: ChatVideoShell(
-          hub: ChatVideoHub.instance,
-          child: child ?? const SizedBox.shrink(),
+      builder: (context, child) => _look290(
+        context,
+        DupBlockGate235(
+          // Bundle 235: "Confirm your account" covers the app while this
+          // phone's new account waits for proof of the old one.
+          actions: _deps.confirmAccount235,
+          child: ChatVideoShell(
+            hub: ChatVideoHub.instance,
+            child: child ?? const SizedBox.shrink(),
+          ),
         ),
       ),
     );
   }
+
+  /// Bundle 290 (S-2): text grows at most 1.3x with the phone's font size,
+  /// so every screen keeps the mock layout on every phone.
+  static Widget _look290(BuildContext context, Widget? child) => MediaQuery(
+        data: LocalLinkLook.clampScaler(MediaQuery.of(context)),
+        child: child ?? const SizedBox.shrink(),
+      );
 }

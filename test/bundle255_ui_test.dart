@@ -139,7 +139,9 @@ void main() {
     expect(calls, contains('AdminCrownRoom.extraFor(20, already: 12)'));
   });
 
-  test('missed calls back to back = one row; never with answered (B5)', () {
+  // Bundle 285 (listed change): B5 is replaced by one row per person per
+  // day - the missed calls are inside it (was [3, 1]).
+  test('missed calls with one person = inside one row (285 replaces B5)', () {
     CallRecord c(String id, int min, String status, {int dur = 0}) => CallRecord(
         id: id, callerId: saj, calleeId: 'me', status: status, durationSeconds: dur,
         startedAt: DateTime(2026, 11, 10, 11, 45 - min), peerName: 'Sajjad');
@@ -147,7 +149,8 @@ void main() {
     final g = groupCallHistory(
         [c('a', 0, 'missed'), c('b', 1, 'missed'), c('d', 2, 'missed'), c('e', 3, 'ended', dur: 30)],
         selfId: 'me', isMissed: missed);
-    expect(g.map((x) => x.count).toList(), [3, 1]);
+    expect(g.map((x) => x.count).toList(), [4]);
+    expect(g.single.missed, 3);
   });
 
   test('default phone names become "<owner>\'s phone" (B7/B9)', () {

@@ -81,3 +81,23 @@ class PasswordKdf {
 abstract interface class AsyncOfflineLogin {
   Future<bool> verifyOfflineLoginAsync(String username, String password);
 }
+
+/// Bundle 278: why an offline sign-in did (not) work, so the screen can say
+/// it plainly. No names are in it. `ok` | `no_copy` (nothing saved on this
+/// phone) | `other_user` (this phone saved another account) | `bad_password`.
+abstract interface class OfflineLoginReason278 {
+  Future<String> offlineLoginReason278(String username, String password);
+}
+
+/// Bundle 278: the words for each reason (the same words as before for a
+/// wrong password).
+String offlineLoginText278(String reason) {
+  switch (reason) {
+    case 'no_copy':
+      return 'This phone has no saved sign-in yet. Turn the server on and sign in once.';
+    case 'other_user':
+      return 'This phone can sign in offline only with the last account used on it.';
+    default:
+      return 'That username and password do not match.';
+  }
+}

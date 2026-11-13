@@ -16,7 +16,7 @@ import 'package:locallink/features/connectivity/data/models/discovered_server.da
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 
 class AuthenticationRepository
-    implements AuthenticationRepositoryContract, AsyncOfflineLogin {
+    implements AuthenticationRepositoryContract, AsyncOfflineLogin, OfflineLoginReason278 {
   final LocalLinkApi _api;
   final LocalStore _store;
   final ConnectivityRepositoryContract _connectivity;
@@ -368,6 +368,31 @@ class AuthenticationRepository
           mirror['pwd_salt']?.toString() ?? '',
           mirror['pwd_hash']?.toString() ?? '',
         );
+  }
+
+  /// Bundle 278: the same check as [verifyOfflineLoginAsync], with the reason
+  /// when it fails (nothing saved / another account / wrong password).
+  @override
+  Future<String> offlineLoginReason278(String username, String password) async {
+    final user = username.trim().toLowerCase();
+    final pending = _store.offlinePending;
+    final mirror = _store.offlineLoginAccount;
+    if (pending == null && mirror == null) return 'no_copy';
+    var known = false;
+    for (final copy in [pending, mirror]) {
+      if (copy == null) continue;
+      if (user.isEmpty || copy['username']?.toString().trim().toLowerCase() != user) continue;
+      known = true;
+      if (password.isNotEmpty &&
+          await PasswordKdf.verifyAsync(
+            password,
+            copy['pwd_salt']?.toString() ?? '',
+            copy['pwd_hash']?.toString() ?? '',
+          )) {
+        return 'ok';
+      }
+    }
+    return known ? 'bad_password' : 'other_user';
   }
 
   @override

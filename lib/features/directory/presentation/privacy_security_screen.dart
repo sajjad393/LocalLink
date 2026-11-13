@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/profile.dart';
@@ -56,14 +57,12 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
           directorySyncEnabled: sync);
       await widget.directoryRepository?.publishOwnProfile();
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(saved
+        LinkToast.show(context, saved
                 ? 'Privacy settings saved'
-                : 'Saved locally; will sync when available')));
+                : 'Saved locally; will sync when available', kind: LinkToastKind.done);
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(cleanBlocError(e))));
+        LinkToast.show(context, cleanBlocError(e), kind: LinkToastKind.error);
     } finally {
       if (mounted) setState(() => saving = false);
     }

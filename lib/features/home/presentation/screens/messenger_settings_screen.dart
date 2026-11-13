@@ -1,3 +1,4 @@
+import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/features/contacts/presentation/widgets/my_links_map_273.dart';
 import 'package:locallink/core/identity/person_name_276.dart';
 import 'dart:async';
@@ -118,8 +119,7 @@ class MessengerSettingsScreen extends StatelessWidget {
     } catch (_) {}
     if (!context.mounted) return;
     if (value == null || value.userId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Your profile is not ready yet.')));
+      LinkToast.show(context, 'Your profile is not ready yet.', kind: LinkToastKind.error);
       return;
     }
     await Navigator.push<void>(

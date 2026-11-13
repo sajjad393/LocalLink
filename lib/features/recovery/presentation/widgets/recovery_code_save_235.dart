@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:locallink/core/widgets/link_kit_290.dart';
+import 'package:locallink/core/widgets/link_toast.dart';
 
 /// Bundle 235 (addition, mock_235_whatsapp v3): every NEW recovery code is
 /// shown hidden (dots) in one soft blue box with Show / Copy (/ Share), and
@@ -79,6 +81,18 @@ class RecoveryCodeBox235 extends StatefulWidget {
   final Key? copyKey;
   final String copiedText;
 
+  /// Bundle 286: the words at the top left ("@sajjad" on the code screen).
+  final String label;
+
+  /// Bundle 286 (mock `.bigcode`): the big code of the code screen.
+  final bool big;
+
+  /// Bundle 286: opens shown (right after the password).
+  final bool startShown;
+
+  /// Bundle 286 (mock `.rc .cbox`): sits inside the Home card.
+  final bool onCard;
+
   const RecoveryCodeBox235({
     super.key,
     required this.code,
@@ -86,22 +100,27 @@ class RecoveryCodeBox235 extends StatefulWidget {
     this.compact = false,
     this.copyKey,
     this.copiedText = 'Code copied',
+    this.label = 'Recovery code',
+    this.big = false,
+    this.startShown = false,
+    this.onCard = false,
   });
 
-  static const String dots = '\u2022\u2022\u2022\u2022\u2022 \u2022\u2022\u2022\u2022\u2022 '
-      '\u2022\u2022\u2022\u2022\u2022 \u2022\u2022\u2022\u2022\u2022';
+  /// Bundle 286 (mock): the hidden code keeps its dashes.
+  static const String dots = '\u2022\u2022\u2022\u2022\u2022-\u2022\u2022\u2022\u2022\u2022-'
+      '\u2022\u2022\u2022\u2022\u2022-\u2022\u2022\u2022\u2022\u2022';
 
   @override
   State<RecoveryCodeBox235> createState() => _RecoveryCodeBox235State();
 }
 
 class _RecoveryCodeBox235State extends State<RecoveryCodeBox235> {
-  bool _shown = false;
+  late bool _shown = widget.startShown;
 
   @override
   void didUpdateWidget(covariant RecoveryCodeBox235 oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.code != widget.code) _shown = false;
+    if (oldWidget.code != widget.code) _shown = widget.startShown;
   }
 
   Widget _action(Key key, IconData icon, String label, VoidCallback onTap, Color color) {
@@ -110,11 +129,11 @@ class _RecoveryCodeBox235State extends State<RecoveryCodeBox235> {
       borderRadius: BorderRadius.circular(8),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 16, color: color),
+          Icon(icon, size: 15, color: color),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0)),
+          Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0)),
         ]),
       ),
     );
@@ -122,28 +141,31 @@ class _RecoveryCodeBox235State extends State<RecoveryCodeBox235> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    // Bundle 286 (mock `.cbox`): blue glass box, small blue top line,
+    // monospace code in the middle. Same parts, keys and words as 235.
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final tint = dark
-        ? scheme.primaryContainer.withValues(alpha: .35)
-        : Color.alphaBlend(scheme.primary.withValues(alpha: .07), scheme.surface);
-    final line = dark
-        ? scheme.outlineVariant
-        : Color.alphaBlend(scheme.primary.withValues(alpha: .16), scheme.surface);
-    final c = scheme.primary;
+    final bg = widget.onCard
+        ? (dark ? const Color(0x590A0C14) : Colors.white)
+        : (dark ? const Color(0x1F1E5BFF) : const Color(0xFFEEF2FF));
+    final line = dark ? const Color(0x4D8EA6FF) : const Color(0xFFC7D2FE);
+    final c = dark ? const Color(0xFFA9B8FF) : const Color(0xFF1E3A8A);
+    final ink = dark ? Colors.white : const Color(0xFF111827);
+    final size = widget.big ? 18.0 : 15.0;
     return Container(
       key: const ValueKey('rc235-box'),
-      padding: EdgeInsets.fromLTRB(16, 8, 10, widget.compact ? 14 : 18),
+      padding: EdgeInsets.fromLTRB(14, 8, 10, widget.compact ? 10 : 12),
       decoration: BoxDecoration(
-        color: tint,
+        color: bg,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: line),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           Expanded(
-            child: Text('Recovery code',
-                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0)),
+            child: Text(widget.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: c, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0)),
           ),
           _action(
             const ValueKey('rc235-show'),
@@ -152,41 +174,47 @@ class _RecoveryCodeBox235State extends State<RecoveryCodeBox235> {
             () => setState(() => _shown = !_shown),
             c,
           ),
-          const SizedBox(width: 6),
-          _action(widget.copyKey ?? const ValueKey('rc235-copy'), Icons.content_copy_outlined, 'Copy', () async {
+          const SizedBox(width: 10),
+          _action(widget.copyKey ?? const ValueKey('rc235-copy'), Icons.content_copy_rounded, 'Copy', () async {
             await Clipboard.setData(ClipboardData(text: widget.code));
             if (!context.mounted) return;
-            ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(widget.copiedText)));
+            LinkToast.show(context, widget.copiedText, kind: LinkToastKind.done);
           }, c),
           if (widget.share) ...[
-            const SizedBox(width: 6),
+            const SizedBox(width: 10),
             _action(const ValueKey('rc235-share'), Icons.share_outlined, 'Share', () => Share.share(widget.code), c),
           ],
         ]),
-        SizedBox(height: widget.compact ? 6 : 10),
-        if (_shown)
-          SelectableText(
-            widget.code,
-            key: const ValueKey('rc235-code'),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: scheme.onSurface,
-                fontWeight: FontWeight.w800,
-                fontSize: widget.compact ? 17 : 20,
-                letterSpacing: 0.4),
-          )
-        else
-          Text(
-            RecoveryCodeBox235.dots,
-            key: const ValueKey('rc235-dots'),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: scheme.onSurface,
-                fontWeight: FontWeight.w900,
-                fontSize: widget.compact ? 18 : 22,
-                height: 1.1,
-                letterSpacing: 1.5),
-          ),
+        SizedBox(height: widget.big ? 10 : 8),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: _shown
+              ? SelectableText(
+                  widget.code,
+                  key: const ValueKey('rc235-code'),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  style: TextStyle(
+                      fontFamily: LinkKit.mono,
+                      color: ink,
+                      fontWeight: FontWeight.w600,
+                      fontSize: size,
+                      letterSpacing: widget.big ? 0.5 : 0),
+                )
+              : Text(
+                  RecoveryCodeBox235.dots,
+                  key: const ValueKey('rc235-dots'),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  style: TextStyle(
+                      fontFamily: LinkKit.mono,
+                      color: ink,
+                      fontWeight: FontWeight.w600,
+                      fontSize: size,
+                      letterSpacing: widget.big ? 0.5 : 0),
+                ),
+        ),
+        if (widget.big) const SizedBox(height: 2),
       ]),
     );
   }
@@ -243,8 +271,7 @@ class _SaveOnWhatsApp235State extends State<SaveOnWhatsApp235> {
         wait.stop();
         await Clipboard.setData(ClipboardData(text: widget.code));
         if (mounted) {
-          ScaffoldMessenger.maybeOf(context)
-              ?.showSnackBar(const SnackBar(content: Text(WhatsAppShare235.notInstalled)));
+          LinkToast.show(context, WhatsAppShare235.notInstalled, kind: LinkToastKind.info);
         }
         return;
       }
@@ -262,32 +289,17 @@ class _SaveOnWhatsApp235State extends State<SaveOnWhatsApp235> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    // Bundle 286 (mock `.btn.wa`): green gradient pill like the brand
+    // button, chat icon, the hint under it.
+    final muted = LinkKit.of(context).muted;
     final small = widget.height < 50;
     final button = SizedBox(
       height: widget.height,
-      child: FilledButton(
+      child: _WaButton286(
         key: widget.buttonKey ?? const ValueKey('rc235-whatsapp'),
         onPressed: _busy && _wait == null ? null : _tap,
-        style: FilledButton.styleFrom(
-          backgroundColor: SaveOnWhatsApp235.green,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: SaveOnWhatsApp235.green.withValues(alpha: .6),
-          disabledForegroundColor: Colors.white,
-          shape: const StadiumBorder(),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          // A round chat bubble with a phone: reads as WhatsApp (no logo).
-          Container(
-            width: small ? 20 : 22,
-            height: small ? 20 : 22,
-            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-            child: Icon(Icons.phone, size: small ? 13 : 14, color: SaveOnWhatsApp235.green),
-          ),
-          const SizedBox(width: 10),
-          Text('Save on WhatsApp',
-              style: TextStyle(fontSize: small ? 14 : 16, fontWeight: FontWeight.w700, letterSpacing: 0)),
-        ]),
+        small: small,
+        height: widget.height,
       ),
     );
     if (!widget.hint) return button;
@@ -296,8 +308,57 @@ class _SaveOnWhatsApp235State extends State<SaveOnWhatsApp235> {
       const SizedBox(height: 8),
       Text(WhatsAppShare235.hint,
           textAlign: TextAlign.center,
-          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5, letterSpacing: 0)),
+          style: TextStyle(color: muted, fontSize: 12, letterSpacing: 0)),
     ]);
+  }
+}
+
+/// Bundle 286: the green pill itself (faded while it waits).
+class _WaButton286 extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final bool small;
+  final double height;
+  const _WaButton286({super.key, required this.onPressed, required this.small, required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    final r = height / 2;
+    return Semantics(
+      button: true,
+      enabled: onPressed != null,
+      child: Opacity(
+        opacity: onPressed == null ? 0.6 : 1,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinkKit.whatsAppGradient,
+            borderRadius: BorderRadius.circular(r),
+            boxShadow: [
+              BoxShadow(
+                  color: const Color(0x4D22C55E), blurRadius: small ? 16 : 22, offset: Offset(0, small ? 6 : 8)),
+            ],
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(r),
+              onTap: onPressed,
+              child: Center(
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.chat_bubble, size: small ? 17 : 19, color: Colors.white),
+                  SizedBox(width: small ? 7 : 9),
+                  Text('Save on WhatsApp',
+                      style: TextStyle(
+                          fontSize: small ? 13.5 : 15.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: 0)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
