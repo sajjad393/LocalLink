@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:locallink/core/network/api_http_client.dart';
+import 'package:locallink/core/presence/reach_check_296.dart';
 
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
 import 'package:locallink/core/services/websocket_service.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
+import 'package:locallink/features/connectivity/data/services/sealing_peer_transport.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_service.dart';
 import 'wifi_radio_control_service.dart';
 import 'package:locallink/features/connectivity/domain/peer_transport_contract.dart';
@@ -41,16 +44,122 @@ class PresenceService {
       : httpClient = httpClient ?? ApiHttpClient(),
         wifiRadio = wifiRadio ?? WifiRadioControlService();
 
+  // ------------------------------------------------ Bundle 296 (H2 + H4)
+  /// H4: proven links go to the server in their own frame every 15 s and
+  /// at once on a change (2 s wait to group changes). Checked every 5 s
+  /// while LinkUp is open on screen, every 15 s in the background.
+  static const Duration linkReportEvery = Duration(seconds: 15);
+  static const Duration linkCheckEvery = Duration(seconds: 5);
+  static const Duration linkBatch = Duration(seconds: 2);
+  static const String linkReportType = 'link_report_296';
+  Timer? _linkTimer;
+  Timer? _linkBatchTimer;
+  String? _linkSig;
+  DateTime? _linkSentAt;
+  bool _linkBusy = false;
+  bool _linkOff = false; // an old server said it does not know the frame
+  int _linkTick = 0;
+  bool _foreground = false;
+  ReachCheck296? _reach;
+
+  /// H2: "are you there" for friends through other phones (open on screen).
+  ReachCheck296 get reach => _reach ??= ReachCheck296(
+        transport: directTransport,
+        selfId: () => store.deviceId,
+        friendIds: () async => [
+          for (final d in await store.localDevices())
+            if (d.revokedAt.isEmpty && d.id != store.deviceId) d.id,
+        ],
+        sealCapable: directTransport is SealingPeerTransport
+            ? (directTransport as SealingPeerTransport).isSealCapable
+            : null,
+        loadCapable: () => store.readSetting(ReachCheck296.settingKey),
+        saveCapable: (json) =>
+            store.writeSetting(ReachCheck296.settingKey, json),
+      );
+
+  /// LinkUp open on screen (true) or not (false).
+  void setForeground(bool on) {
+    _foreground = on;
+    if (_running) reach.setForeground(on);
+    if (on) _scheduleLinkReport();
+  }
+
+  void _scheduleLinkReport() {
+    if (!_running || _linkOff) return;
+    _linkBatchTimer ??= Timer(linkBatch, () {
+      _linkBatchTimer = null;
+      unawaited(sendLinkReport());
+    });
+  }
+
+  /// H4: sends the proven links when they changed or 15 s passed. Returns
+  /// true when a frame went out.
+  Future<bool> sendLinkReport() async {
+    if (!_running || _linkOff || _linkBusy) return false;
+    final id = store.deviceId;
+    if (id == null || store.deviceToken == null || !socket.isConnected) {
+      return false;
+    }
+    _linkBusy = true;
+    try {
+      var list = const <Map<String, String>>[];
+      if (directTransport.isStarted) {
+        try {
+          list = presenceNeighbors216(await directTransport.topology(),
+              selfId: id,
+              isBlocked: AdminBlockBook.instance.isBlocked,
+              nowMs: DateTime.now().millisecondsSinceEpoch);
+        } catch (_) {
+          return false; // no fresh answer: send nothing rather than guess
+        }
+      }
+      final sig = [for (final n in list) '${n['device_id']}:${n['link']}'].join(',');
+      final now = DateTime.now();
+      final step = linkReportStep296(
+          sig: sig, lastSig: _linkSig, lastAt: _linkSentAt, now: now);
+      if (step == 'skip') return false;
+      if (step == 'wait') {
+        _scheduleLinkReport();
+        return false;
+      }
+      socket.send(<String, dynamic>{
+        'type': linkReportType,
+        'device_id': id,
+        'neighbors': list,
+      });
+      if (sig != _linkSig) {
+        AppLogger.info('LINK_REPORT', detail: 'links=${list.length}');
+      }
+      _linkSig = sig;
+      _linkSentAt = now;
+      return true;
+    } finally {
+      _linkBusy = false;
+    }
+  }
+
   Future<void> start() async {
     if (_running) return;
     _running = true;
-    _socketSub = socket.connectionState.listen((connected) =>
-        unawaited(publish(force: connected)));
+    _socketSub = socket.connectionState.listen((connected) {
+      unawaited(publish(force: connected));
+      // Bundle 296 (H4): a new server session gets the links at once.
+      if (connected) {
+        _linkSig = null;
+        _scheduleLinkReport();
+      }
+    });
     // The server throttles presence_update (PRESENCE_RATE_LIMITED +
     // retry_after). Field [_rateLimitedUntil] was checked on every publish
     // but never set, so the app kept bursting into rejections. Honour the
     // server's window now, exactly like the other rate-limit feedback loops.
     _serverErrorSub = socket.messages.listen((message) {
+      if (message['type'] == 'error' &&
+          (message['error']?.toString() ?? '').contains(linkReportType)) {
+        _linkOff = true; // Bundle 296: an old server (frame unknown)
+        return;
+      }
       if (message['type'] != 'error' ||
           message['error_code'] != 'PRESENCE_RATE_LIMITED') return;
       final seconds =
@@ -75,12 +184,22 @@ class PresenceService {
       // Bundle 274 (A-1): a lost link is told at once too (admin map live).
       if (event['type'] == 'peer_connected' || event['type'] == 'peer_disconnected') {
         unawaited(publish(force: true));
+        _scheduleLinkReport(); // Bundle 296 (H4)
       }
     }, onError: (Object _) {});
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       unawaited(_refreshWifiDirect());
       unawaited(publish());
     });
+    // Bundle 296 (H4): proven links, every 5 s on screen / 15 s behind.
+    _linkTimer = Timer.periodic(linkCheckEvery, (_) {
+      _linkTick++;
+      if (_foreground || _linkTick % 3 == 0) unawaited(sendLinkReport());
+    });
+    // Bundle 296 (H2).
+    unawaited(reach.start().then((_) {
+      if (_running) reach.setForeground(_foreground);
+    }));
     await _refreshWifiDirect();
     await publish();
   }
@@ -207,6 +326,13 @@ class PresenceService {
     _timer = null;
     _forceRetry?.cancel();
     _forceRetry = null;
+    _linkTimer?.cancel();
+    _linkTimer = null;
+    _linkBatchTimer?.cancel();
+    _linkBatchTimer = null;
+    _linkSig = null;
+    _linkSentAt = null;
+    await _reach?.stop();
     await _transportSub?.cancel();
     _transportSub = null;
     await _serverErrorSub?.cancel();
@@ -221,9 +347,29 @@ class PresenceService {
   Future<void> dispose() => stop();
 }
 
+/// Bundle 296 (H4): what to do with a link report now.
+/// 'send' = changed (and 2 s since the last frame) or 15 s passed;
+/// 'wait' = changed inside 2 s (sent right after); 'skip' = nothing new.
+String linkReportStep296({
+  required String sig,
+  required String? lastSig,
+  required DateTime? lastAt,
+  required DateTime now,
+}) {
+  if (lastAt == null) return 'send';
+  final gap = now.difference(lastAt);
+  final due = gap >=
+      PresenceService.linkReportEvery - const Duration(milliseconds: 500);
+  if (sig == lastSig && !due) return 'skip';
+  if (gap < PresenceService.linkBatch) return 'wait';
+  return 'send';
+}
+
 /// Bundle 216g: phones this phone reaches directly, for the server's link
-/// map. Max 32, only links seen in the last 4 minutes, never blocked phones,
-/// never itself. link = wifi_direct | lan | mesh.
+/// map. Max 32, never blocked phones, never itself.
+/// link = wifi_direct | lan | mesh.
+/// Bundle 296 (H4): only proven links (own pong in the last 10 s). A
+/// snapshot without the `proven` flag keeps the old "seen in 4 min" rule.
 List<Map<String, String>> presenceNeighbors216(
   Map<String, dynamic> topology, {
   required String selfId,
@@ -239,8 +385,13 @@ List<Map<String, String>> presenceNeighbors216(
     final id = '${p['node_id'] ?? p['peer_id'] ?? ''}'.trim();
     if (id.isEmpty || id == selfId || out.containsKey(id) || isBlocked(id)) continue;
     if (p['direct'] == false) continue;
-    final seen = p['last_seen_at'];
-    if (seen is num && seen > 0 && nowMs - seen > fourMin) continue;
+    final proven = p['proven'];
+    if (proven is bool) {
+      if (!proven) continue; // Bundle 296 (H4)
+    } else {
+      final seen = p['last_seen_at'];
+      if (seen is num && seen > 0 && nowMs - seen > fourMin) continue;
+    }
     final kind = '${p['path_kind'] ?? p['transport'] ?? ''}'.toLowerCase();
     out[id] = switch (kind) {
       'wifi_direct' || 'local_net' => 'wifi_direct',

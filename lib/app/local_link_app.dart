@@ -97,7 +97,15 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       initialRoutes: [
         for (final r in _deps.routePolicy.routes.values) presenceRouteOf(r),
       ],
+      // Bundle 296 (H1): a direct link counts only while proven.
+      linkProofs: _deps.routePolicy.proofChanges,
+      initialLinkProofs: _deps.routePolicy.proofs.entries,
     );
+    // Bundle 296 (H2): the app opens on screen (no lifecycle event may come).
+    final life = WidgetsBinding.instance.lifecycleState;
+    _deps.presence.setForeground(life == null ||
+        life == AppLifecycleState.resumed ||
+        life == AppLifecycleState.inactive);
     _router = AppRouter(
       dependencies: _deps,
       onSaved: _finishOnboarding,
@@ -649,6 +657,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     _deps.calls.onAppLifecycleState(state);
     // Bundle 159 (battery): slower nearby search while the app is hidden.
     _deps.wifiDirectFallback.setForeground(state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive);
+    // Bundle 296 (H2): far-friend checks only while LinkUp is open on screen.
+    _deps.presence.setForeground(state == AppLifecycleState.resumed ||
         state == AppLifecycleState.inactive);
     if (state != AppLifecycleState.resumed) {
       unawaited(_deps.files.cleanupSensitiveArtifacts());

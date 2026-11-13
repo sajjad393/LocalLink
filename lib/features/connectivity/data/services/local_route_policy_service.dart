@@ -23,6 +23,14 @@ final class LocalRoutePolicyService {
       StreamController<LocalRouteResult>.broadcast();
   final Map<String, LocalRouteResult> _routes = {};
 
+  /// Bundle 296 (H1): is the direct link to a peer proven (own pong in the
+  /// last 10 s)? For the maps only - [select] and routing do not read it.
+  final StreamController<MapEntry<String, bool>> _proofChanges =
+      StreamController<MapEntry<String, bool>>.broadcast();
+  final Map<String, bool> _proofs = {};
+  Stream<MapEntry<String, bool>> get proofChanges => _proofChanges.stream;
+  Map<String, bool> get proofs => Map.unmodifiable(_proofs);
+
   /// Bundle 158: LocalLink phones seen on this Wi-Fi (from the topology).
   Set<String> _lanPeerIds = const <String>{};
   Set<String> get lanPeerIds => _lanPeerIds;
@@ -81,6 +89,7 @@ final class LocalRoutePolicyService {
     _disposed = true;
     await _subscription?.cancel();
     await _routeChanges.close();
+    await _proofChanges.close();
   }
 
   static LocalRouteResult select({
@@ -185,6 +194,14 @@ final class LocalRoutePolicyService {
       };
     } else if (topology.isEmpty) {
       _lanPeerIds = const <String>{};
+    }
+    // Bundle 296 (H1): link proof (maps only).
+    for (final peer in _maps(topology['peers'])) {
+      final id = _peerId(peer);
+      final proven = peer['proven'];
+      if (id.isEmpty || proven is! bool || _proofs[id] == proven) continue;
+      _proofs[id] = proven;
+      _proofChanges.add(MapEntry(id, proven));
     }
     final peerIds = <String>{
       ..._maps(topology['peers']).map(_peerId),

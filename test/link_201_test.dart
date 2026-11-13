@@ -391,13 +391,13 @@ void main() {
       expect(hub.labelOf('a'), 'Nearby', reason: 'old label unchanged');
     });
 
-    test('grace = Connecting (status stays Nearby); then Offline / Online', () {
+    // Bundle 296 (H3): no grace - no "Connecting…" for a lost way.
+    test('way lost = Offline / Online at once (Bundle 296, was Connecting)', () {
       hub.notePath('a', up: true);
       hub.noteRoute(const PresenceRoute('a', 'wifi_direct'));
       hub.notePath('a', up: false);
-      expect(hub.wayOf('a'), PresenceWay.connecting);
-      expect(hub.wayLabelOf('a'), 'Connecting…');
-      expect(hub.statusOf('a'), PresenceStatus.nearby);
+      expect(hub.wayOf('a'), PresenceWay.offline);
+      expect(hub.statusOf('a'), PresenceStatus.offline);
       t = t.add(const Duration(seconds: 21));
       expect(hub.wayLabelOf('a'), 'Offline');
       hub.noteServer('a');

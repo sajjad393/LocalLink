@@ -2167,6 +2167,8 @@ class LocalLinkTransportService : Service() {
                     continue
                 } ?: break
                 connection.lastSeenAt = System.currentTimeMillis()
+                // Bundle 296 (H1): a file / big locked message coming in proves the link too.
+                if (line.length >= LinkProof296.BULK_LINE_CHARS) connection.lastBulkInAt = connection.lastSeenAt
                 // Never tear the socket over one fat line: video keyframes ride
                 // this channel, and breaking here every ~2s produced the
                 // Reconnecting/PEER_UNAVAILABLE loop with zero inbound frames.
@@ -4850,9 +4852,16 @@ class LocalLinkTransportService : Service() {
 
     private fun meshTopologySnapshot(): Map<String, Any?> {
         val stats = meshQueueStats()
+        val proofNow = System.currentTimeMillis()
         val peers = transportPeers.values.map { peer ->
             val links = peerLinks[peer.peerId]?.values.orEmpty()
+            // Bundle 296 (H1): proven = an own pong (or bulk data in) in the last 10 s
+            // on any open link to this phone. For the maps; routing does not read it.
+            val open = (links + peer).filter { !it.socket.isClosed }
             mapOf(
+                "proven" to open.any { LinkProof296.proven(proofNow, it.connectedAt, it.lastPongAt, it.lastBulkInAt) },
+                "last_pong_at" to (open.maxOfOrNull { LinkProof296.lastPong(it.connectedAt, it.lastPongAt) } ?: 0L),
+            ) + mapOf(
                 "peer_id" to peer.peerId,
                 "node_id" to peer.peerId,
                 "direct" to true,
@@ -5366,6 +5375,8 @@ class LocalLinkTransportService : Service() {
         @Volatile var lastSeenAt: Long = connectedAt,
         @Volatile var lastPongAt: Long = connectedAt,
         @Volatile var lastPingAt: Long = 0L,
+        // Bundle 296 (H1): bulk data last came in on this link (0 = never).
+        @Volatile var lastBulkInAt: Long = 0L,
         @Volatile var writeStrikes: Int = 0,
         // Bundle 156: CONTACT (as before) or RELAY (stranger, sealed only).
         @Volatile var trust: String = MeshRelayPolicy.TRUST_CONTACT,

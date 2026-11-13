@@ -91,9 +91,15 @@ class _Seen {
 ///
 /// Bundle 158 (true status): once the mesh reports paths, **Nearby** means
 /// "there is a local path to them right now" — direct (same Wi-Fi / Wi-Fi
-/// Direct) or relayed through other phones. When the path goes away they stay
-/// Nearby for [pathGrace] (20 s: a group host change or a route switch never
-/// flickers), then Online (server) or Offline.
+/// Direct) or relayed through other phones.
+///
+/// Bundle 296 (H, true live data): a path is not enough any more.
+/// * A direct link counts only while it is proven (our own pong in the last
+///   10 s, [noteLinkProof]).
+/// * A friend through other phones counts, while LinkUp is open on screen,
+///   only with an answer (or anything else from them) in the last 15 s
+///   ([reachProof]). Background and old apps keep the path rule.
+/// * No grace any more: proof gone = Online / Offline at once.
 class PresenceHub extends ChangeNotifier {
   PresenceHub({
     DateTime Function()? clock,
@@ -118,15 +124,34 @@ class PresenceHub extends ChangeNotifier {
 
   /// Bundle 201 (F): last route report per device (words only).
   final Map<String, PresenceRoute> _routeOf = <String, PresenceRoute>{};
-  final Map<String, DateTime> _pathDownAt = <String, DateTime>{};
+
+  /// Bundle 296 (H1): direct link proof from the native side (null = no
+  /// report, e.g. an old snapshot: the path rule stays).
+  final Map<String, bool> _linkProof = <String, bool>{};
+
+  /// Bundle 296 (H2): phones whose app answers the reach check.
+  final Set<String> _reachCapable = <String>{};
+
+  /// Bundle 296 (H2): the real way the last answer took (via / hops).
+  final Map<String, PresenceRoute> _reachWay = <String, PresenceRoute>{};
+  final Map<String, DateTime> _reachWayAt = <String, DateTime>{};
+
+  /// Bundle 296 (H2): reach checks run since (LinkUp open on screen).
+  DateTime? _reachSince;
 
   /// Bundle 205 (P4): the shown way per person ('u:<user>' / 'd:<device>').
   final Map<String, WayShowState> _wayShown = <String, WayShowState>{};
   final Map<String, String> _wayDevice = <String, String>{};
   final Map<String, PresenceWay> _loggedWay = <String, PresenceWay>{};
 
-  /// Bundle 158: Nearby is kept this long after the last local path ended.
-  static const Duration pathGrace = Duration(seconds: 20);
+  /// Bundle 158: Nearby was kept 20 s after the last local path ended.
+  /// Bundle 296 (H3): no grace - lost proof shows at once.
+  static const Duration pathGrace = Duration.zero;
+
+  /// Bundle 296 (H2): a friend through other phones is Nearby (LinkUp open)
+  /// only with an answer or packet from them this recent. One check every
+  /// 10 s, so one lost answer never makes them flicker.
+  static const Duration reachProof = Duration(seconds: 15);
 
   /// Bundle 295 (G1): a call to these devices got no answer in 6 s while a
   /// way was stored. They are not Nearby (no grace) until proof comes FROM
@@ -162,6 +187,10 @@ class PresenceHub extends ChangeNotifier {
     // Bundle 201 (F): route kind + hops (words / badge only).
     Stream<PresenceRoute>? localRoutes,
     Iterable<PresenceRoute> initialRoutes = const <PresenceRoute>[],
+    // Bundle 296 (H1): direct link proof.
+    Stream<MapEntry<String, bool>>? linkProofs,
+    Iterable<MapEntry<String, bool>> initialLinkProofs =
+        const <MapEntry<String, bool>>[],
   }) {
     this.localDeviceId = localDeviceId ?? this.localDeviceId;
     this.userResolver = userResolver ?? this.userResolver;
@@ -176,6 +205,15 @@ class PresenceHub extends ChangeNotifier {
     }
     if (localRoutes != null) {
       _subs.add(localRoutes.listen(noteRoute, onError: (Object _) {}));
+    }
+    for (final p in initialLinkProofs) {
+      noteLinkProof(p.key, proven: p.value);
+    }
+    if (linkProofs != null) {
+      _subs.add(linkProofs.listen(
+        (p) => noteLinkProof(p.key, proven: p.value),
+        onError: (Object _) {},
+      ));
     }
     if (localPaths != null) {
       _subs.add(
@@ -214,7 +252,10 @@ class PresenceHub extends ChangeNotifier {
     _resolving.clear();
     _lastShown.clear();
     _pathUp.clear();
-    _pathDownAt.clear();
+    _linkProof.clear();
+    _reachCapable.clear();
+    _reachWay.clear();
+    _reachWayAt.clear();
     _routeOf.clear();
     _wayShown.clear();
     _wayDevice.clear();
@@ -238,12 +279,16 @@ class PresenceHub extends ChangeNotifier {
     _resolving.clear();
     _lastShown.clear();
     _pathUp.clear();
-    _pathDownAt.clear();
+    _linkProof.clear();
+    _reachCapable.clear();
+    _reachWay.clear();
+    _reachWayAt.clear();
     _routeOf.clear();
     _wayShown.clear();
     _wayDevice.clear();
     _loggedWay.clear();
     _unproven.clear();
+    _reachSince = null;
     _tickCount = 0;
     refreshPaths = null;
     userResolver = null;
@@ -292,13 +337,64 @@ class PresenceHub extends ChangeNotifier {
     final was = _pathUp[deviceId];
     if (was == up) return;
     _pathUp[deviceId] = up;
-    if (up) {
-      _pathDownAt.remove(deviceId);
-    } else if (was == true) {
-      _pathDownAt[deviceId] = _now();
-    }
     _changed(deviceId);
   }
+
+  /// Bundle 296 (H1): the native side says the direct link to [deviceId] is
+  /// ([proven]) or is not proven (no own pong in the last 10 s).
+  void noteLinkProof(String deviceId, {required bool proven}) {
+    if (!_accept(deviceId)) return;
+    if (_linkProof[deviceId] == proven) return;
+    _linkProof[deviceId] = proven;
+    _changed(deviceId);
+  }
+
+  /// Bundle 296 (H2): reach checks run (true, LinkUp open on screen) or
+  /// stop (false, background: the path rule again, no extra packets).
+  void setReachActive(bool active) {
+    if (active == (_reachSince != null)) return;
+    _reachSince = active ? _now() : null;
+    AppLogger.info('REACH_CHECK', detail: active ? 'on' : 'off');
+    _changed(null);
+  }
+
+  bool get reachActive => _reachSince != null;
+
+  /// Bundle 296 (H2): the phone's app answers reach checks (also learned
+  /// from a saved list after a restart).
+  void noteReachCapable(String deviceId) {
+    if (!_accept(deviceId)) return;
+    if (_reachCapable.add(deviceId)) _changed(deviceId);
+  }
+
+  Set<String> get reachCapableIds => Set.unmodifiable(_reachCapable);
+
+  /// Bundle 296 (H2): an answer to our reach check (or their own check) came
+  /// from [deviceId]. [path] = the phones it passed ([sender, relay, ...]);
+  /// the last relay is the phone next to us = the real "via".
+  void noteReachAnswer(String deviceId, {List<String> path = const []}) {
+    if (!_accept(deviceId)) return;
+    _reachCapable.add(deviceId);
+    final clean = <String>[
+      for (final p in path)
+        if (p.trim().isNotEmpty) p.trim(),
+    ];
+    if (clean.isNotEmpty && clean.first != deviceId) clean.insert(0, deviceId);
+    if (clean.length >= 2) {
+      _reachWay[deviceId] =
+          PresenceRoute(deviceId, 'mesh', hops: clean.length, via: clean.last);
+      _reachWayAt[deviceId] = _now();
+    }
+    noteNearby(deviceId);
+  }
+
+  /// Bundle 296 (H2): the local way to [deviceId] goes through other phones
+  /// right now (reach checks go only to these).
+  bool isMeshPath(String deviceId) =>
+      _pathUp[deviceId] == true && _routeOf[deviceId]?.kind == 'mesh';
+
+  @visibleForTesting
+  PresenceRoute? reachWayForTest(String deviceId) => _reachWay[deviceId];
 
   /// Bundle 295 (G1): a call to [deviceId] was not answered in 6 s and the
   /// stored way was dropped: not Nearby any more, at once (no 20 s grace).
@@ -401,8 +497,8 @@ class PresenceHub extends ChangeNotifier {
   PresenceStatus statusOfDevice(String deviceId) => _deviceStatus(deviceId);
 
   /// Bundle 201 (F): HOW the person is reached (best of their devices:
-  /// Wi-Fi, then Wi-Fi Direct, then Mesh). "Connecting" = the local path just
-  /// ended and the 20 s grace runs (the status is still Nearby for logic).
+  /// Wi-Fi, then Wi-Fi Direct, then Mesh). Bundle 296 (H3): no grace, so
+  /// "Connecting" no longer shows for a lost way (Online / Offline at once).
   ///
   /// Bundle 205 (P4): the shown way follows [SwitchRules] (a better way
   /// must stay up 5 s first; a worse way shows at once).
@@ -470,9 +566,20 @@ class PresenceHub extends ChangeNotifier {
       'wifi_direct' => const PresenceWayInfo(PresenceWay.wifiDirect),
       // Bundle 205 (P1): a linked group / hotspot is phone to phone too.
       'local_net' => const PresenceWayInfo(PresenceWay.wifiDirect),
-      'mesh' => PresenceWayInfo(PresenceWay.mesh, hops: r!.hops, via: r.via),
+      'mesh' => _meshWay(id, r!),
       _ => const PresenceWayInfo(PresenceWay.nearby),
     };
+  }
+
+  /// Bundle 296 (H2): the "via" is the way the last answer really took (when
+  /// fresh), not a guess from the route table.
+  PresenceWayInfo _meshWay(String id, PresenceRoute r) {
+    final real = _reachWay[id];
+    final at = _reachWayAt[id];
+    if (real != null && at != null && _now().difference(at) <= reachProof) {
+      return PresenceWayInfo(PresenceWay.mesh, hops: real.hops, via: real.via);
+    }
+    return PresenceWayInfo(PresenceWay.mesh, hops: r.hops, via: r.via);
   }
 
   String channelOf(String deviceId) => statusOf(deviceId).channel;
@@ -553,18 +660,29 @@ class PresenceHub extends ChangeNotifier {
   bool _nearbyNow(String id, _Seen? seen, bool? path, DateTime now) {
     // Bundle 295 (G1): no proof since the unanswered call.
     if (_unproven.contains(id)) return false;
-    if (path == true) return true;
-    if (path == false) {
-      // Bundle 158: the mesh knows there is no path. Keep Nearby for 20 s
-      // after the path (or the last thing received directly) ended.
-      DateTime? last = _pathDownAt[id];
-      final got = seen?.nearbyAt;
-      if (got != null && (last == null || got.isAfter(last))) last = got;
-      return last != null && now.difference(last) < pathGrace;
+    if (path == true) {
+      if (_routeOf[id]?.kind == 'mesh') return _meshProven(id, seen, now);
+      // Bundle 296 (H1): a direct link needs a fresh own pong.
+      return _linkProof[id] != false;
     }
+    // Bundle 296 (H3): the mesh knows there is no path: not Nearby, at once
+    // (the 20 s grace is gone).
+    if (path == false) return false;
     // No path report yet (mesh not running): what we received directly.
     final at = seen?.nearbyAt;
     return at != null && now.difference(at) <= window;
+  }
+
+  /// Bundle 296 (H2): a friend through other phones.
+  bool _meshProven(String id, _Seen? seen, DateTime now) {
+    final since = _reachSince;
+    // Background or an app without reach checks: the path rule (no false
+    // grey for old apps).
+    if (since == null || !_reachCapable.contains(id)) return true;
+    final at = seen?.nearbyAt;
+    if (at != null && now.difference(at) <= reachProof) return true;
+    // Just opened: the first answers are on their way.
+    return now.difference(since) < reachProof;
   }
 
   bool _accept(String deviceId) {

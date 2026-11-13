@@ -429,13 +429,12 @@ void main() {
       expect(hub.statusOf('bob'), PresenceStatus.nearby);
     });
 
-    test('path gone: Nearby for 20 s, then Offline', () {
+    // Bundle 296 (H3): the 20 s grace is gone - lost path = Offline at once.
+    test('path gone: Offline at once (Bundle 296, was 20 s grace)', () {
       hub.notePath('bob', up: true);
       hub.notePath('bob', up: false);
-      clock.advance(const Duration(seconds: 15));
-      expect(hub.statusOf('bob'), PresenceStatus.nearby,
-          reason: 'no flicker during a host change');
-      clock.advance(const Duration(seconds: 6));
+      expect(hub.statusOf('bob'), PresenceStatus.offline);
+      clock.advance(const Duration(seconds: 21));
       expect(hub.statusOf('bob'), PresenceStatus.offline);
     });
 

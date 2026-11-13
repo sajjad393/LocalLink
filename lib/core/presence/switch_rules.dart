@@ -7,15 +7,15 @@ import 'package:locallink/core/presence/presence_hub.dart';
 /// * A better way shows at once after "Connecting…" / plain "Nearby";
 ///   otherwise it must stay up [betterSteady] (5 s) first, or [flapSteady]
 ///   (10 s) when the way got worse less than [noFlap] (30 s) ago.
-/// * "Connecting…" lasts at most [connectingMax] (the 20 s path grace), then
-///   Online / Offline.
+/// * "Connecting…" lasts at most [connectingMax] (the path grace), then
+///   Online / Offline. Bundle 296 (H3): no grace any more (0).
 class SwitchRules {
   const SwitchRules._();
 
   static const Duration betterSteady = Duration(seconds: 5);
   static const Duration noFlap = Duration(seconds: 30);
   static const Duration flapSteady = Duration(seconds: 10);
-  static const Duration connectingMax = Duration(seconds: 20);
+  static const Duration connectingMax = Duration.zero;
 
   /// A words message still only "sending" over a nearby way after this long
   /// is also sent through the server (when online).
