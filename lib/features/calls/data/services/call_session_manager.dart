@@ -56,6 +56,34 @@ final class CallSessionManager implements CallGateway {
   StreamSubscription<CallNotificationAction>? _notificationActionSub;
   StreamSubscription<LocalRouteResult>? _routeSub;
   Timer? _ringTimer;
+
+  // Bundle 295 (A): ghost ring. The caller repeats its invite every 5 s
+  // while it calls (also after "Ringing…"); the called phone stops ringing
+  // when no repeat came for 12 s (the cancel could not arrive) -> Missed.
+  // Only for an invite that says it repeats (an older caller does not).
+  static const String ringAliveField295 = 'ring_alive_295';
+  static const String ringAliveRepeatField295 = 'ring_alive_repeat_295';
+  static Duration ringAliveEvery295 = const Duration(seconds: 5);
+  static Duration ringAliveLimit295 = const Duration(seconds: 12);
+  Timer? _ringAliveWatch295;
+  Timer? _ringAliveSend295;
+  Map<String, dynamic>? _lastInvite295;
+
+  // Bundle 295 (G1): the call answer is the proof. No answer 6 s after an
+  // invite went out on a stored way -> that way is dropped (native), the
+  // friend is grey at once and the call becomes an away call ("Waiting for
+  // <name> to connect…", Nearby search, 60 s).
+  static Duration proofWait295 = const Duration(seconds: 6);
+  Timer? _proofTimer295;
+  String? _proofArmedFor295;
+  final Set<String> _unproven295 = <String>{};
+
+  /// Bundle 295 (G1): drops the stored way to the friend and greys them.
+  /// True = dropped (a direct link is kept and counts as proof).
+  Future<bool> Function(String peerId)? routeUnproven295;
+
+  @visibleForTesting
+  bool unprovenForTest(String callId) => _unproven295.contains(callId);
   Timer? _statsTimer;
   Timer? _heartbeatTimer;
   Timer? _meshRouteRecoveryTimer;
@@ -1179,7 +1207,8 @@ final class CallSessionManager implements CallGateway {
   }
 
   Future<void> _handleLocalCallSignal(Map<String, dynamic> msg) async {
-    _noteLifecycleInbound(msg);
+    // Bundle 295 (A): a ring repeat says nothing about our accept / end.
+    if (msg[ringAliveRepeatField295] != true) _noteLifecycleInbound(msg);
     if (_disposed) return;
     final type = msg['type']?.toString() ?? '';
     // Dual-channel delivery (mesh + server relay) means the same logical
@@ -1284,6 +1313,19 @@ final class CallSessionManager implements CallGateway {
           _voiceKeys[callId] != lateKey) {
         _voiceKeys[callId] = lateKey;
         AppLogger.info('CALL_VOICE_KEY_FROM_INVITE', detail: 'call=$callId');
+      }
+      // Bundle 295 (A): the caller still calls - keep ringing.
+      if (ringing != null &&
+          ringing.id == callId &&
+          ringing.direction == CallDirection.incoming &&
+          ringing.state == CallState.ringing &&
+          _ringAliveWatch295 != null) {
+        _ringAliveWatch295?.cancel();
+        _ringAliveWatch295 = null;
+        if (msg['server'] != true && !_serverKnown.contains(callId)) {
+          _ringAliveWatch295 =
+              Timer(ringAliveLimit295, () => _onRingAliveLost295(callId));
+        }
       }
       AppLogger.info('CALL_INVITE_DUPLICATE_IGNORED', detail: 'call=$callId');
       return;
@@ -1432,6 +1474,7 @@ final class CallSessionManager implements CallGateway {
     }
     await _persistSession();
     _startRingTimer(outgoing: false);
+    _armRingAlive295(msg, callId);
     // Bundle 176 (3): if this engine stops while ringing, the next one rings on.
     unawaited(handover?.park(callId, msg));
     // Bundle 266 (D1): rang through the server, no nearby way -> Nearby
@@ -1997,6 +2040,7 @@ final class CallSessionManager implements CallGateway {
     _stopRouteWaitTimer();
     _setSession(session.copyWith(state: CallState.ringing, signalingConnected: true));
     _startRingTimer(outgoing: true);
+    _startRingAliveSend295(session.id);
     // WhatsApp-style ringback: the peer's phone is now actually ringing, so
     // let the caller hear it too. Stops on answer/end in _markConnected /
     // _finishLocal.
@@ -2027,7 +2071,10 @@ final class CallSessionManager implements CallGateway {
       return;
     }
     // Bundle 225 (P1): a link (LAN, Wi-Fi Direct or mesh) is back.
-    if (CallNearbyWait.instance.waitingFor(session.id)) {
+    // Bundle 295 (G1): not for a call that proved the way dead (only an
+    // answer from the friend ends that wait).
+    if (CallNearbyWait.instance.waitingFor(session.id) &&
+        !_unproven295.contains(session.id)) {
       CallNearbyWait.instance.stop('route');
     }
     unawaited(_trySendPendingInvite());
@@ -2066,9 +2113,11 @@ final class CallSessionManager implements CallGateway {
     // combined with the 5s route-wait resend — makes invites resilient to
     // link flapping instead of silently never leaving this device.
     final routeAvailable = route.isAvailable;
+    // Bundle 295 (G1): a way the call already proved dead is not a way.
+    final unproven = _unproven295.contains(session.id);
     final latest = _session;
     if (latest != null && latest.id == session.id) {
-      _syncAwayCall(latest, routeAvailable: routeAvailable);
+      _syncAwayCall(latest, routeAvailable: routeAvailable && !unproven);
     }
     if (!routeAvailable) {
       AppLogger.info(
@@ -2097,6 +2146,8 @@ final class CallSessionManager implements CallGateway {
         // Bundle 172: an invite waits in the send queue 60 s at most, so a
         // cancelled call never rings hours later.
         queueLifetimeField: inviteQueueLifetime.inMilliseconds,
+        // Bundle 295 (A): this caller repeats while it calls.
+        ringAliveField295: true,
         // Bundle 159: locks the call sound (travels only inside a sealed
         // invite; SealingPeerTransport drops it otherwise).
         if (_voiceKeyForInvite(session) case final key?)
@@ -2106,7 +2157,23 @@ final class CallSessionManager implements CallGateway {
       // Bundle 266 (A1): and through the server (once per call), so a
       // friend the server reaches rings now whatever the nearby state.
       _sendInviteViaServer266(session.id, invite);
-      AppLogger.info('CALL_INVITE_SENT', detail: 'transport=${route.kind.name} queued=${!routeAvailable}');
+      _lastInvite295 = invite;
+      // Bundle 295 (B): say whether a way was there and whether it is
+      // proven: a direct link is (its own heartbeat), a stored mesh way is
+      // not until the friend answers.
+      final mesh = route.kind == LocalRouteKind.mesh;
+      final way = !routeAvailable
+          ? 'none'
+          : (unproven || mesh ? 'unproven' : 'ok');
+      AppLogger.info('CALL_INVITE_SENT', detail: 'transport=${route.kind.name} queued=${!routeAvailable} route=$way');
+      // Bundle 295 (G1): first invite on a stored mesh way -> 6 s for the
+      // answer.
+      if (routeAvailable && mesh && !unproven && _proofArmedFor295 != session.id) {
+        _proofArmedFor295 = session.id;
+        _proofTimer295?.cancel();
+        final id = session.id;
+        _proofTimer295 = Timer(proofWait295, () => unawaited(_onProofTimeout295(id)));
+      }
       // Bundle 186 (A3): first invite of this call (repeats keep the time).
       if (_inviteSentAt?.$1 != session.id) {
         _inviteSentAt = (session.id, Stopwatch()..start());
@@ -2674,6 +2741,13 @@ final class CallSessionManager implements CallGateway {
   }
 
   void _cancelCallTimers() {
+    // Bundle 295 (A/G1)
+    _ringAliveWatch295?.cancel();
+    _ringAliveWatch295 = null;
+    _ringAliveSend295?.cancel();
+    _ringAliveSend295 = null;
+    _proofTimer295?.cancel();
+    _proofTimer295 = null;
     _noNearbyTimer?.cancel();
     _noNearbyTimer = null;
     _noNearbyCallId = null;
@@ -2823,6 +2897,94 @@ final class CallSessionManager implements CallGateway {
       await _presentIncomingCall(session, revision);
     else
       await _clearIncomingPresentation(revision);
+  }
+
+  /// Bundle 295 (A): the called phone watches the caller's repeats.
+  void _armRingAlive295(Map<String, dynamic> msg, String callId) {
+    _ringAliveWatch295?.cancel();
+    _ringAliveWatch295 = null;
+    // An older caller does not repeat after "Ringing…": its call rings 30 s.
+    if (msg[ringAliveField295] != true) return;
+    // The server knows the call: its end arrives through the server.
+    if (msg['server'] == true || _serverKnown.contains(callId)) return;
+    _ringAliveWatch295 =
+        Timer(ringAliveLimit295, () => _onRingAliveLost295(callId));
+  }
+
+  void _onRingAliveLost295(String callId) {
+    _ringAliveWatch295 = null;
+    final session = _session;
+    if (_disposed ||
+        session == null ||
+        session.id != callId ||
+        session.isFinished ||
+        session.direction != CallDirection.incoming ||
+        session.state != CallState.ringing ||
+        _serverKnown.contains(callId)) return;
+    AppLogger.info('CALL_RING_ALIVE_LOST',
+        detail: 'call=$callId after_s=${ringAliveLimit295.inSeconds}');
+    unawaited(_sendSignal({
+      'type': 'call_end',
+      'call_id': session.id,
+      'recipient_id': session.peerId,
+      'reason': 'missed'
+    }));
+    unawaited(_finishLocal(CallState.missed, 'missed', notifyServer: false));
+  }
+
+  /// Bundle 295 (A): the caller repeats the invite every 5 s while their
+  /// phone rings (the called phone ignores the copies).
+  void _startRingAliveSend295(String callId) {
+    _ringAliveSend295?.cancel();
+    _ringAliveSend295 = null;
+    final invite = _lastInvite295;
+    if (invite == null || invite['call_id']?.toString() != callId) return;
+    _ringAliveSend295 = Timer.periodic(ringAliveEvery295, (timer) {
+      final s = _session;
+      if (_disposed ||
+          s == null ||
+          s.id != callId ||
+          s.isFinished ||
+          s.direction != CallDirection.outgoing ||
+          s.state != CallState.ringing ||
+          s.answeredAt != null) {
+        timer.cancel();
+        if (identical(_ringAliveSend295, timer)) _ringAliveSend295 = null;
+        return;
+      }
+      unawaited(_sendSignal(<String, dynamic>{
+        ...invite,
+        ringAliveRepeatField295: true,
+      }));
+    });
+  }
+
+  /// Bundle 295 (G1): 6 s after the first invite on a stored way.
+  Future<void> _onProofTimeout295(String callId) async {
+    _proofTimer295 = null;
+    bool stillCalling(CallSession? s) =>
+        !_disposed &&
+        s != null &&
+        s.id == callId &&
+        !s.isFinished &&
+        s.direction == CallDirection.outgoing &&
+        s.state == CallState.connecting &&
+        !s.signalingConnected &&
+        s.answeredAt == null;
+    final session = _session;
+    if (!stillCalling(session)) return;
+    var dropped = false;
+    try {
+      dropped = await (routeUnproven295?.call(session!.peerId) ??
+          Future<bool>.value(false));
+    } catch (_) {}
+    AppLogger.info('CALL_ROUTE_UNPROVEN',
+        detail: 'call=$callId after_ms=${proofWait295.inMilliseconds} '
+            'dropped=${dropped ? 1 : 0}');
+    final latest = _session;
+    if (!dropped || !stillCalling(latest)) return;
+    _addBounded(_unproven295, callId, 16);
+    _syncAwayCall(latest!, routeAvailable: false);
   }
 
   void _startRingTimer({required bool outgoing}) {

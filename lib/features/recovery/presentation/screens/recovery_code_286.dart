@@ -778,7 +778,8 @@ class _RecoveryPasswordScreen286State extends State<RecoveryPasswordScreen286> {
             if (_error != null)
               LinkUnderLine290(_error!, key: const ValueKey('rc286-wrong'), error: true)
             else
-              const SizedBox(height: 0),
+              // 295-E: 10 px between the password box and "Show my code" (they touched).
+              const SizedBox(key: ValueKey('rc295-gap'), height: 10),
             BrandButton290(
               key: const ValueKey('rc286-show'),
               onPressed: _password.text.isEmpty ? null : () => unawaited(_check()),

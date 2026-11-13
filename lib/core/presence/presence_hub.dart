@@ -128,6 +128,12 @@ class PresenceHub extends ChangeNotifier {
   /// Bundle 158: Nearby is kept this long after the last local path ended.
   static const Duration pathGrace = Duration(seconds: 20);
 
+  /// Bundle 295 (G1): a call to these devices got no answer in 6 s while a
+  /// way was stored. They are not Nearby (no grace) until proof comes FROM
+  /// them: a packet they sent or a direct link ([noteNearby]). A neighbour's
+  /// "I can reach them" (a path report) is not proof.
+  final Set<String> _unproven = <String>{};
+
   /// Bundle 158: re-reads the mesh paths (routes also expire silently).
   Future<void> Function()? refreshPaths;
   int _tickCount = 0;
@@ -213,6 +219,7 @@ class PresenceHub extends ChangeNotifier {
     _wayShown.clear();
     _wayDevice.clear();
     _loggedWay.clear();
+    _unproven.clear();
     _queueNotify();
   }
 
@@ -236,6 +243,7 @@ class PresenceHub extends ChangeNotifier {
     _wayShown.clear();
     _wayDevice.clear();
     _loggedWay.clear();
+    _unproven.clear();
     _tickCount = 0;
     refreshPaths = null;
     userResolver = null;
@@ -269,6 +277,10 @@ class PresenceHub extends ChangeNotifier {
   /// We received something from [deviceId] over the direct link.
   void noteNearby(String deviceId) {
     if (!_accept(deviceId)) return;
+    // Bundle 295 (G1): proof from them.
+    if (_unproven.remove(deviceId)) {
+      AppLogger.info('PRESENCE_PROVEN', detail: 'peer=${_short(deviceId)}');
+    }
     (_seen[deviceId] ??= _Seen()).nearbyAt = _now();
     _changed(deviceId);
   }
@@ -287,6 +299,18 @@ class PresenceHub extends ChangeNotifier {
     }
     _changed(deviceId);
   }
+
+  /// Bundle 295 (G1): a call to [deviceId] was not answered in 6 s and the
+  /// stored way was dropped: not Nearby any more, at once (no 20 s grace).
+  void markUnproven(String deviceId) {
+    if (!_accept(deviceId)) return;
+    if (!_unproven.add(deviceId)) return;
+    AppLogger.info('PRESENCE_UNPROVEN', detail: 'peer=${_short(deviceId)}');
+    _changed(deviceId);
+  }
+
+  @visibleForTesting
+  bool isUnprovenForTest(String deviceId) => _unproven.contains(deviceId);
 
   /// We received something from [deviceId] through the server.
   /// Bundle 201 (F): how the local path goes. Tells listeners only when the
@@ -487,6 +511,7 @@ class PresenceHub extends ChangeNotifier {
       ..._seen.keys,
       ..._lastShown.keys,
       ..._pathUp.keys,
+      ..._unproven,
     }) {
       final now = _deviceStatus(id);
       final before = _lastShown[id];
@@ -526,6 +551,8 @@ class PresenceHub extends ChangeNotifier {
   }
 
   bool _nearbyNow(String id, _Seen? seen, bool? path, DateTime now) {
+    // Bundle 295 (G1): no proof since the unanswered call.
+    if (_unproven.contains(id)) return false;
     if (path == true) return true;
     if (path == false) {
       // Bundle 158: the mesh knows there is no path. Keep Nearby for 20 s

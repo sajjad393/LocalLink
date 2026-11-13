@@ -428,6 +428,14 @@ class MainActivity : FlutterActivity() {
                         }
                     }, "locallink-topology").start()
                     "flushQueue" -> Thread({ LocalLinkTransportService.flushQueue(); runOnUiThread { result.success(null) } }, "locallink-flush").start() // Bundle 117: off UI thread
+                    // Bundle 295 (G1): a call got no answer in 6 s - drop that stored way.
+                    "dropUnprovenRoute" -> {
+                        val target = call.argument<String>("recipient_id")?.trim().orEmpty()
+                        Thread({
+                            val out = try { LocalLinkTransportService.dropUnprovenRoute295(target) } catch (e: Exception) { mapOf("dropped" to false, "reason" to "error") }
+                            runOnUiThread { result.success(out) }
+                        }, "locallink-unproven").start()
+                    }
                     "resume" -> { NearbyRadio.requestConnectionInfo(); result.success(null) }
                     "clearStorage" -> { LocalLinkTransportService.clearStorage(); result.success(null) }
                     "stop" -> { LocalLinkTransportService.stop(this); NearbyRadio.shutdown("logout"); result.success(null) } // Bundle 177 (2.8): only Log out stops Nearby

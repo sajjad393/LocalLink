@@ -96,6 +96,17 @@ class WifiDirectTransportService implements PeerTransportContract {
 
   Future<void> flushQueue() => _channel.invokeMethod('flushQueue');
 
+  /// Bundle 295 (G1): a call to [peerId] got no answer in 6 s. The native
+  /// side drops its stored mesh way (not a direct link), does not believe
+  /// the same next phone for 15 s and asks the neighbours again. True =
+  /// dropped (the friend is not proven), false = a direct link was kept or
+  /// the native side could not do it.
+  Future<bool> dropUnprovenRoute(String peerId) async {
+    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+        'dropUnprovenRoute', {'recipient_id': peerId});
+    return raw?['dropped'] == true;
+  }
+
   Future<void> resume() async {
     await _channel.invokeMethod('resume');
     _started = true;

@@ -13,6 +13,7 @@ import 'package:locallink/features/connectivity/data/services/nearby_ble.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_group_planner.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_local_net_planner.dart';
 import 'package:locallink/features/connectivity/data/services/p2p_pause_262.dart';
+import 'package:locallink/features/connectivity/data/services/host_rehost_295.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 import 'package:locallink/features/connectivity/domain/nearby_group_control.dart';
 
@@ -274,6 +275,8 @@ final class WifiDirectFallbackService {
 
   /// Bundle 262 (B2): Wi-Fi Direct switched off by the phone.
   final P2pPause262 _p2p262 = P2pPause262();
+  // Bundle 295 (C): the host makes its group again at once after a short off.
+  final HostRehost295 _rehost295 = HostRehost295();
   @visibleForTesting
   bool get p2pOff262 => _p2p262.isOff(_clock());
 
@@ -1037,6 +1040,7 @@ final class WifiDirectFallbackService {
     if (before == role) return;
     final now = _clock();
     _role = role;
+    if (before == NearbyGroupRole.host) _rehost295.hostLeft(now); // Bundle 295 (C)
     if (role == NearbyGroupRole.host) _hostSince = now;
     if (role != NearbyGroupRole.host) _hostSince = 0;
     // Bundle 260 (A1): when this phone became a member (and of whom).
@@ -1264,6 +1268,7 @@ final class WifiDirectFallbackService {
     final now = _clock();
     final change = _p2p262.apply(enabled, now);
     if (change == 'off') {
+      _rehost295.p2pOff(wasHost: _role == NearbyGroupRole.host, now: now);
       if (_p2p262.waitLogOnce()) {
         AppLogger.info('NEARBY', detail: 'group wait why=p2p_off role=${_role.name}');
       }
@@ -1274,8 +1279,10 @@ final class WifiDirectFallbackService {
     _coolingUntil.clear();
     _joinFailures.clear();
     _failedGroup261.clear();
+    final rehost = _rehost295.p2pOn(now);
     AppLogger.info('NEARBY',
-        detail: 'group resume why=p2p_on off_s=${_p2p262.offSeconds(now)} cool_cleared n=$n');
+        detail: 'group resume why=p2p_on off_s=${_p2p262.offSeconds(now)} cool_cleared n=$n'
+            '${rehost ? ' rehost=1' : ''}');
     if (!groupMode || _disposed) return;
     unawaited(_groupDiscovery());
     unawaited(_evaluateGroup());
@@ -1447,7 +1454,7 @@ final class WifiDirectFallbackService {
       final groupDead = _groupDeadNow(now, busy);
       _coolDeadGroups(now);
       _forgetRenamedHosts261(now); // Bundle 261 (G1)
-      final plan = planNearbyGroup(NearbyGroupInput(
+      final planned = planNearbyGroup(NearbyGroupInput(
         selfHash: self,
         now: now,
         role: _role,
@@ -1476,6 +1483,8 @@ final class WifiDirectFallbackService {
             now - _deafLeftAt261 >= deafLeaveEveryMs261 ||
             now < _deafLeftAt261,
       ));
+      // Bundle 295 (C): back from a short Wi-Fi Direct off as the host.
+      final plan = _rehost295.choose(planned, now: now, role: _role, hasGroup: _myGroup != null);
       if (plan.reason != _lastPlanReason) {
         _lastPlanReason = plan.reason;
         AppLogger.info('NEARBY',
@@ -1525,6 +1534,7 @@ final class WifiDirectFallbackService {
         _noCreateUntil261 = now + deafNoCreateMs261;
         _createHeldLogged261 = '';
       }
+      if (plan.reason == HostRehost295.reason) _rehost295.used();
       await _runGroupAction(group, plan, now);
     } finally {
       _groupBusy = false;

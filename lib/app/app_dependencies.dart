@@ -451,6 +451,23 @@ class AppDependencies {
       // Bundle 176 (3): ringing calls move between the app and the no-screen engine.
       handover: const CallHandoverPlatformService(),
     );
+    // Bundle 295 (G1): a call not answered in 6 s on a stored way: native
+    // drops that way, the friend is grey at once, the route is read again
+    // (so the Nearby search is not skipped as "reachable").
+    callService.routeUnproven295 = (peerId) async {
+      var dropped = false;
+      try {
+        dropped = await WifiDirectTransportService()
+            .dropUnprovenRoute(peerId)
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {}
+      if (!dropped) return false;
+      PresenceHub.instance.markUnproven(peerId);
+      try {
+        await routePolicy.refresh().timeout(const Duration(seconds: 3));
+      } catch (_) {}
+      return true;
+    };
     calls = CallBloc(service: callService, repository: callRepository);
     // Bundle 157: a group is never dissolved (merge) during a call.
     // Bundle 167 (5.5): also not while someone else's call passes through

@@ -204,6 +204,9 @@ class LocalLinkTransportService : Service() {
         fun allowFile(fileId:String){instance?.allowFileTransportInternal(fileId)}
         fun topology(): Map<String, Any?> = instance?.meshTopologySnapshot() ?: emptyMap()
         fun flushQueue(){instance?.flushMeshQueue()}
+        /** Bundle 295 (G1): the call to [destination] got no answer in 6 s. */
+        fun dropUnprovenRoute295(destination: String): Map<String, Any?> =
+            instance?.dropUnprovenRoute(destination) ?: mapOf("dropped" to false, "reason" to "not_running")
         fun clearStorage(){instance?.clearTransportStorage()}
         /** Bundle 164 (4.3): after a reboot. Returns the reason when Android said no (null = started). */
         fun startFromBoot(context: Context): String? = startCommand(context, null)
@@ -283,6 +286,8 @@ class LocalLinkTransportService : Service() {
     private val peerFileKeys = ConcurrentHashMap<String, MeshLinkAuth.LinkKey>()
     private val linkVerified = ConcurrentHashMap.newKeySet<String>()
     private val routeStabilityPolicy = com.sajjad.locallink.mesh.MeshRouteStabilityPolicy()
+    // Bundle 295 (G1): ways to a friend that a call proved dead (15 s hold).
+    private val unproven295 = com.sajjad.locallink.mesh.MeshUnproven295()
     private val transportSendFailures = AtomicLong(0)
     /** Peer roster used for routing/admission decisions. Message content is not
      * encrypted between devices; packets carry the canonical plaintext envelope. */
@@ -400,6 +405,28 @@ class LocalLinkTransportService : Service() {
             allPhysicalPeerLinks().filter { !it.socket.isClosed && it.routeDelta }
                 .forEach { requestFullRoutes(it.peerId, "full_map_again") }
         }
+    }
+
+    /** Bundle 295 (G1): a call to [destination] got no answer in 6 s while a
+     *  stored way existed. Not for a direct link (it is proven by its own
+     *  heartbeat): the stored ways are dropped, the same next phones are not
+     *  believed for 15 s, and the neighbours are asked again. */
+    private fun dropUnprovenRoute(destination: String): Map<String, Any?> {
+        val self = transportDeviceId ?: return mapOf("dropped" to false, "reason" to "no_self")
+        if (!validTransportId(destination) || destination == self) return mapOf("dropped" to false, "reason" to "bad_id")
+        if (activePeerConnection(destination) != null) {
+            Log.i("ROUTES", "unproven dest=${destination.take(8)} kept=direct")
+            return mapOf("dropped" to false, "reason" to "direct")
+        }
+        val now = System.currentTimeMillis()
+        val removed = routeTable.remove(destination)
+        val hops = removed.map { it.nextHopNodeId }.distinct()
+        unproven295.hold(destination, hops, now)
+        routeStabilityPolicy.reset(destination)
+        Log.i("ROUTES", "unproven dest=${destination.take(8)} dropped=${removed.size} via=${hops.joinToString(",") { it.take(8) }.ifEmpty { "-" }} hold_s=${com.sajjad.locallink.mesh.MeshUnproven295.HOLD_MS / 1000}")
+        if (removed.isNotEmpty()) transportEvent("topology", meshTopologySnapshot())
+        routerNoRoute(destination)
+        return mapOf("dropped" to true, "routes" to removed.size)
     }
 
     /** Bundle 160: no route at all to [destination]. Ask the neighbours who
@@ -1967,6 +1994,8 @@ class LocalLinkTransportService : Service() {
         val self = transportDeviceId ?: ""
         val directVersion = directRouteVersions.computeIfAbsent(connection.peerId) { AtomicLong(now) }.incrementAndGet()
         val previousDirect = routeTable[connection.peerId]
+        // Bundle 295 (G1): a direct link to the friend is proof.
+        if (unproven295.proven(connection.peerId)) Log.i("ROUTES", "unproven cleared dest=${connection.peerId.take(8)} why=direct")
         routeTable.upsert(connection.peerId, MeshRoute(destinationNodeId = connection.peerId, nextHopNodeId = connection.peerId, hopCount = 1, expiresAt = now + DIRECT_ROUTE_TTL_MS, lastSeenAt = now, routeVersion = directVersion, path = listOf(self, connection.peerId)))
         val directRecovery = routeRecovery.markRecovered(connection.peerId)
         // Bundle 160: a new neighbour starts from a full map (pages of 128).
@@ -2450,6 +2479,8 @@ class LocalLinkTransportService : Service() {
             ))
             return
         }
+        // Bundle 295 (G1): a packet from the friend is proof - the hold ends.
+        if (unproven295.proven(packet.sourceNodeId)) Log.i("ROUTES", "unproven cleared dest=${packet.sourceNodeId.take(8)} why=packet")
         val payload = packet.toApplicationPayload()
         // Bundle 165: a plain file packet from a newer phone says it can
         // take locked ones too.
@@ -4091,6 +4122,11 @@ class LocalLinkTransportService : Service() {
         if (hops !in 1..(MeshLimits.MAX_HOPS - 1) || path.size != hops + 1) return
         if (path.firstOrNull() != peerId || path.lastOrNull() != target || path.contains(self) || path.distinct().size != path.size) return
         if (version <= 0L || version > now + MeshLimits.MAX_ROUTE_VERSION_FUTURE_SKEW_MS) return
+        // Bundle 295 (G1): this next phone's way to the friend just failed a call.
+        if (unproven295.blocks(target, peerId, now)) {
+            Log.i("ROUTES", "unproven answer_skipped dest=${target.take(8)} via=${peerId.take(8)}")
+            return
+        }
         val pending = routeLookup.onAnswer(queryId, target, now) ?: return
         val fullPath = buildList { add(self); addAll(path) }
         val before = routeTable[target]
@@ -4193,6 +4229,8 @@ class LocalLinkTransportService : Service() {
             if (advertisedPath.size > MeshLimits.MAX_HOPS || advertisedPath.distinct().size != advertisedPath.size) continue
             val fullPath = buildList { add(self); addAll(advertisedPath) }
             if (fullPath.distinct().size != fullPath.size || fullPath.size != advertisedHops + 2) continue
+            // Bundle 295 (G1): not the way that just failed a call (15 s).
+            if (unproven295.blocks(destination, peerId, now)) continue
             val currentRoutes = routeTable.allFor(destination, now)
             val currentMaxVersion = currentRoutes.maxOfOrNull { it.routeVersion }
             if (currentMaxVersion != null && version > currentMaxVersion + MeshLimits.MAX_ROUTE_VERSION_ADVANCE_MS) continue

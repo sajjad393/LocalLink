@@ -267,6 +267,11 @@ class BackgroundChannels(
             }
             "topology" -> background("topology", result) { LocalLinkTransportService.topology() }
             "flushQueue" -> background("flush", result) { LocalLinkTransportService.flushQueue(); null }
+            // Bundle 295 (G1): a call got no answer in 6 s - drop that stored way.
+            "dropUnprovenRoute" -> {
+                val target = call.argument<String>("recipient_id")?.trim().orEmpty()
+                background("unproven", result) { LocalLinkTransportService.dropUnprovenRoute295(target) }
+            }
             // No Wi-Fi Direct in the background: nothing to re-read.
             "resume" -> result.success(null)
             else -> result.notImplemented()

@@ -11,6 +11,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/widgets/link_kit_290.dart';
 import 'package:locallink/features/account/presentation/widgets/photo_save_ring284.dart';
+import 'package:locallink/features/account/presentation/widgets/profile_shimmer_295.dart';
+import 'package:locallink/core/identity/person_name_276.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -102,6 +104,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Timer? _photoDoneTimer;
   bool _nextSaveIsPhoto = false;
   LocalProfile? profile;
+  // Bundle 295 (F): true until the first load finished. With nothing saved
+  // yet the header and boxes shimmer; a saved copy shows at once.
+  bool _loading295 = true;
+  StreamSubscription<AccountState>? _sub295;
+  LocalProfile? _filled295;
   // Bundle 105: discovery toggles removed from the UI — they stay ON
   // permanently so friends can find you by phone/username and the profile
   // syncs whenever a trusted connection is available.
@@ -121,19 +128,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     bloc = AccountBloc(widget.accountRepository);
     _refreshAdminCapability();
+    // Bundle 295 (F): the saved copy arrives first, the server copy later.
+    _sub295 = bloc.stream.listen((state) {
+      final value = state.profile;
+      if (value != null && !identical(value, _filled295)) _fill295(value);
+    });
     bloc.load().then((_) {
       if (!mounted) return;
       final value = bloc.profile;
+      if (value != null && !identical(value, _filled295)) _fill295(value);
+      setState(() => _loading295 = false);
       if (value == null) return;
-      setState(() {
-        profile = value;
-        name.text = value.displayName;
-        username.text = value.username;
-        phone.text = value.phoneNumber;
-      });
       unawaited(_readPhoneLocal218());
     });
     unawaited(_showProfileNote256());
+  }
+
+  /// Bundle 295 (F): put a loaded profile in the boxes. A box the user has
+  /// already changed (since the saved copy was shown) is left alone.
+  void _fill295(LocalProfile value) {
+    if (!mounted) return;
+    final before = _filled295;
+    void put(TextEditingController c, String? old, String next) {
+      if (old == null || c.text == old) c.text = next;
+    }
+
+    setState(() {
+      profile = value;
+      put(name, before?.displayName, value.displayName);
+      put(username, before?.username, value.username);
+      put(phone, before?.phoneNumber, value.phoneNumber);
+    });
+    _filled295 = value;
   }
 
   /// Bundle 256 D3: the server refused a saved change - say it once.
@@ -370,6 +396,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _photoDoneTimer?.cancel();
+    _sub295?.cancel();
     bloc.close();
     name.dispose();
     username.dispose();
@@ -380,7 +407,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final value = bloc.profile ?? profile;
-    final displayName = value?.displayName.isNotEmpty == true ? value!.displayName : 'LinkUp user';
+    // Bundle 295 (F): nothing saved yet and still loading -> shimmer.
+    final shimmer = _loading295 && value == null;
+    // Bundle 295 (F): no display name -> username without @ (rule 276).
+    final displayName = personName276(value?.displayName, value?.username, username.text);
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.onboarding ? 'Your profile' : 'Profile'),
@@ -410,6 +440,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(LocalLinkSpacing.lg, LocalLinkSpacing.md, LocalLinkSpacing.lg, LocalLinkSpacing.xxxl),
         children: [
+          if (shimmer)
+            const Center(child: ProfileShimmer295.header(radius: 52))
+          else ...[
           // Bundle 222 (C-1): room for my crown under the list's top edge.
           AdminCrownRoom(
            id: AdminBadgeBook.instance.selfUserId,
@@ -468,9 +501,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           ),
+          ],
           const SizedBox(height: LocalLinkSpacing.section),
           Text('Profile information', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: LocalLinkSpacing.sm),
+          if (shimmer)
+            const ProfileShimmer295.fields()
+          else ...[
           LocalLinkTextField(controller: name, labelText: 'Display name', hintText: 'How other people see you'),
           const SizedBox(height: LocalLinkSpacing.sm),
           // Bundle 127/128: username is immutable once set — the field is
@@ -524,7 +561,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-          if (!phoneOk256(phone.text))
+          ],
+          if (!shimmer && !phoneOk256(phone.text))
             Padding(
               key: const ValueKey('profile_phone_bad_256'),
               padding: const EdgeInsets.only(top: 6),
@@ -550,7 +588,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               final inButton = state.isSaving && !_photoSaving;
               return BrandButton290(
                 key: const ValueKey('profile284_save'),
-                onPressed: busy || !phoneOk256(phone.text) ? null : save,
+                onPressed: busy || shimmer || !phoneOk256(phone.text) ? null : save,
                 text: inButton ? 'Saving…' : 'Save changes',
                 loading: inButton,
               );

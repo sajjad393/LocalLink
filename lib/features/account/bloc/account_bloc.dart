@@ -18,6 +18,15 @@ final class AccountBloc extends Cubit<AccountState> {
   Future<void> load() async {
     if (isClosed) return;
     emit(state.copyWith(isLoading: true, clearError: true));
+    // 295-F: the copy saved on this phone shows at once; the server sync +
+    // refresh below run after it (they wait 6 s each when the server is off).
+    if (state.profile == null) {
+      try {
+        final saved = await repository.cachedProfile();
+        if (isClosed) return;
+        if (saved != null) emit(state.copyWith(profile: saved));
+      } catch (_) {}
+    }
     try {
       final result = await repository.loadProfile();
       if (isClosed) return;
