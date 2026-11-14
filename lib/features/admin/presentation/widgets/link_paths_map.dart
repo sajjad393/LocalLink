@@ -974,7 +974,44 @@ class _LinkPathsPainter extends CustomPainter {
         d = end + 5.5;
         red = !red;
       }
+      // Bundle 308: a red X + "Off" in the middle, so a down server never
+      // reads as a link (small map too).
+      final mid = metric.getTangentForOffset(total / 2);
+      if (mid != null) _serverOffMark(canvas, mid.position, mid.vector);
     }
+  }
+
+  void _serverOffMark(Canvas canvas, Offset at, Offset dir) {
+    final r = small || !drawNodes ? 6.5 : 7.5;
+    canvas.drawCircle(at, r + 1.6, Paint()..color = dark ? const Color(0xFF161B22) : Colors.white);
+    canvas.drawCircle(at, r, Paint()..color = const Color(0xFFD6453B));
+    final x = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+    final k = r * 0.45;
+    canvas.drawLine(at + Offset(-k, -k), at + Offset(k, k), x);
+    canvas.drawLine(at + Offset(-k, k), at + Offset(k, -k), x);
+    final tp = TextPainter(
+      text: TextSpan(
+        text: L.en('Off'),
+        style: const TextStyle(
+            inherit: false,
+            fontFamily: 'Roboto216', fontFamilyFallback: L.fontFallback,
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFFD6453B)),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    // Beside the line (not on it): across the line, on the upper side.
+    var side = Offset(-dir.dy, dir.dx);
+    if (side.distance < 0.01) side = const Offset(0, -1);
+    side = side / side.distance;
+    if (side.dy > 0) side = -side;
+    final c = at + side * (r + 3 + tp.height / 2 + (tp.width / 2) * side.dx.abs());
+    tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
   }
 
   void _dashed(Canvas canvas, Path path, Color color) {

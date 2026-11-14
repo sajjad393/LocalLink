@@ -11,6 +11,7 @@ import 'package:locallink/features/admin/presentation/screens/link_paths_full_sc
 import 'package:locallink/features/contacts/presentation/widgets/mini_map_zoom_298.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_block_confirm.dart' show BlockTarget;
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
+import 'package:locallink/features/admin/presentation/widgets/own_links_308.dart';
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 273: "My links" - a small map at the top of Chats for EVERY user:
@@ -45,7 +46,7 @@ class MyLinks273 {
   final List<LinkEdge> edges;
   final int live, offline, relaysKnown, relaysLogo;
 
-  static const String relayPrefix = 'relay:';
+  static const String relayPrefix = OwnLinks308.relayPrefix;
 
   /// Pure: contacts + their live ways -> map nodes and lines.
   static MyLinks273 build({
@@ -110,41 +111,21 @@ class MyLinks273 {
         case PresenceWay.nearby:
           live++;
           nodes.add(LinkNode(id: c.deviceId, label: name, tag: LinkTag.mesh, userId: c.userId, noLine: true));
-          final via = (info.via ?? '').trim();
-          if (info.way != PresenceWay.mesh || via.isEmpty || via == c.deviceId) {
-            edges.add(LinkEdge(LinkEdge.self, c.deviceId, LinkTag.mesh));
-            continue;
-          }
-          final between = info.phonesBetween ?? 1;
-          final friend = contactOf(via);
-          if (friend != null && friend.deviceId != c.deviceId) {
-            known++;
-            edges.add(LinkEdge(friend.deviceId, c.deviceId, LinkTag.mesh));
-            edges.add(LinkEdge(LinkEdge.self, friend.deviceId, LinkTag.mesh));
-          } else {
-            final id = '$relayPrefix$via';
-            if (!relayNodes.containsKey(id)) {
-              logo++;
-              relayNodes[id] = LinkNode(
-                  id: id,
-                  label: '',
-                  tag: LinkTag.mesh,
-                  relay: true,
-                  noLine: true,
-                  hiddenMore: between >= 2 ? between - 1 : 0);
-              edges.add(LinkEdge(LinkEdge.self, id, LinkTag.mesh));
-            }
-            edges.add(LinkEdge(id, c.deviceId, LinkTag.mesh));
-          }
+          // Bundle 308: the same mesh rule as the admin map (OwnLinks308).
+          final kind = OwnLinks308.meshLines(
+            id: c.deviceId,
+            info: info,
+            friendOf: (via) => contactOf(via)?.deviceId,
+            edges: edges,
+            relays: relayNodes,
+          );
+          if (kind == 'known') known++;
+          if (kind == 'logo') logo++;
       }
     }
     nodes.addAll(relayNodes.values);
     // A friend relay with its own line from You needs no second one.
-    final seen = <String>{};
-    final clean = <LinkEdge>[
-      for (final e in edges)
-        if (!(e.from == LinkEdge.self && ownLine.contains(e.to)) && seen.add(e.key)) e,
-    ];
+    final clean = OwnLinks308.clean(edges, ownLine);
     return MyLinks273(nodes: nodes, edges: clean, live: live, offline: off, relaysKnown: known, relaysLogo: logo);
   }
 

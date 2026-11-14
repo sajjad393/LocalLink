@@ -43,6 +43,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_format216.da
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
+import 'package:locallink/features/admin/presentation/widgets/own_links_308.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_block_users_screen.dart';
@@ -226,8 +227,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   /// Bundle 272 (B-2): own view + the server map (server connected only).
   LinkMapNetwork272 _network272(List<Device> devices, bool online) {
     final own = widget.store.deviceId;
+    // Bundle 308: the same lines as My links (real Mesh "via", no guess).
+    final mine = OwnLinks308.admin(
+      nodes: _nodesFor(devices),
+      wayOf: PresenceHub.instance.wayInfoOf,
+      userOf: PresenceHub.instance.userOf,
+    );
     final r = LinkMapNetwork272.merge(
-      own: _nodesFor(devices),
+      own: mine.nodes,
+      ownEdges: mine.edges,
       serverMap: _lastMap272 ?? _realBloc.state.linkMapData,
       serverOnline: online,
       fetchedAt: _mapAt272,
@@ -354,9 +362,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       }
       final ready = await service.readiness();
       final profiles = <String, ({String userId, String username, String name})>{};
-      for (final p in await widget.store.directoryProfiles()) {
-        final device = p['device_id']?.toString() ?? '';
-        if (device.isEmpty) continue;
+      // Bundle 308 (309 G2): one card per phone - server card, then newest.
+      final cards = adminCardPerPhone309(await widget.store.directoryProfiles());
+      for (final MapEntry(key: device, value: p) in cards.entries) {
         final display = p['display_name']?.toString().trim() ?? '';
         final username = p['username']?.toString().trim() ?? '';
         profiles[device] = (
@@ -454,8 +462,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     return DateTime.now().toUtc().difference(at.toUtc()).inMinutes < 4;
   }
 
-  static bool _hubNearby(String id) => adminHubNearby254(id);
-  static LinkTag? _hubTag(String id) => adminHubTag254(id);
+  // Bundle 308: the PERSON (any of their phones), like My links.
+  static bool _hubNearby(String id) => adminPersonNear308(id);
+  static LinkTag? _hubTag(String id) => adminPersonTag308(id);
 
   LinkTag _tagFor(Device d) => _flagTag(d) ?? LinkTag.mesh; // reachable only through relays
 
@@ -500,12 +509,22 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           d,
     ];
     final own = widget.store.deviceId;
+    final now = DateTime.now().toUtc();
     final r = dedupeNodes<Device>(
       raw,
       deviceId: (d) => d.id,
-      userId: (d) => _profiles[d.id]?.userId ?? '',
+      // Bundle 308 (309 G3): a phone near now merges only on the hub's word.
+      userId: (d) => adminDupeUser309(
+          phoneNear: adminHubNearby254(d.id),
+          hubUser: PresenceHub.instance.userOf(d.id),
+          cardUser: _profiles[d.id]?.userId),
       phoneName: (d) => d.name,
-      seenAt: (d) => DateTime.tryParse(d.presenceLocalAt),
+      // Bundle 308: a phone near NOW is live (never hidden as a stale twin).
+      seenAt: (d) => adminSeenAt308(
+          presenceLocalAt: d.presenceLocalAt,
+          phoneNear: adminHubNearby254(d.id),
+          personNear: _hubNearby(d.id),
+          now: now),
       revoked: (d) => d.status == 'revoked' || d.revokedAt.isNotEmpty,
       ownIds: {if (own != null && own.isNotEmpty) own},
     );

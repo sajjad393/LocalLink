@@ -31,9 +31,11 @@ class LinkMapNetwork272 {
   /// [own] = nodes this phone sees; [noFlag] = own nodes with no transport
   /// flag of their own (A-3: the server's "online" makes them Server);
   /// [selfIds] = this phone's ids; [hidden] = ids never added (blocked /
-  /// duplicates of this phone).
+  /// duplicates of this phone). [ownEdges] = Bundle 308: this phone's own
+  /// lines (Mesh through the real next phone), kept with or without server.
   static LinkMapNetwork272 merge({
     required List<LinkNode> own,
+    List<LinkEdge> ownEdges = const [],
     required Map<String, dynamic>? serverMap,
     required bool serverOnline,
     required DateTime? fetchedAt,
@@ -46,7 +48,7 @@ class LinkMapNetwork272 {
     final age = fetchedAt == null ? -1 : t.difference(fetchedAt).inSeconds;
     final raw = serverMap?['nodes'];
     if (!serverOnline || raw is! List || fetchedAt == null || t.difference(fetchedAt) > maxAge) {
-      return LinkMapNetwork272(nodes: own, extraEdges: const [], src: 'own', ageS: age);
+      return LinkMapNetwork272(nodes: own, extraEdges: List.unmodifiable(ownEdges), src: 'own', ageS: age);
     }
     final srv = <String, Map>{};
     for (final n in raw) {
@@ -57,6 +59,7 @@ class LinkMapNetwork272 {
     bool onlineOf(String id) => srv[id]?['online'] == true;
 
     final out = <LinkNode>[];
+    final toServer = <String>{};
     final ids = <String>{};
     final users = <String>{};
     for (final n in own) {
@@ -72,8 +75,8 @@ class LinkMapNetwork272 {
             adminRole: n.adminRole,
             relay: n.relay,
             hiddenMore: n.hiddenMore,
-            offline: n.offline,
-            noLine: n.noLine);
+            offline: n.offline);
+        toServer.add(n.id); // Bundle 308: its line is the server's now
       }
       out.add(node);
       ids.add(n.id);
@@ -97,7 +100,10 @@ class LinkMapNetwork272 {
       ids.add(id);
       if (user.isNotEmpty) users.add(user);
     }
-    final edges = <LinkEdge>{};
+    final edges = <LinkEdge>{
+      for (final e in ownEdges)
+        if (!toServer.contains(e.from) && !toServer.contains(e.to)) e,
+    };
     // Server -> phone for phones linked another way here but on the server too.
     for (final n in out) {
       if (n.tag != LinkTag.server && onlineOf(n.id)) {
