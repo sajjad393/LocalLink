@@ -5,6 +5,8 @@ import 'package:locallink/core/widgets/messenger_date_divider.dart' show chatDay
 import 'package:locallink/core/security/security_code_245.dart';
 import 'package:locallink/features/directory/presentation/security_code_screen.dart';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
+import 'package:locallink/core/widgets/chat_notice_bar_302.dart';
+import 'package:locallink/core/widgets/peer_mark_302.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/storage/presentation/media_message_actions.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
@@ -812,7 +814,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _showConversationInfo() async {
     final device = widget.controller.device;
     final hub = BlockHub.instance;
-    final iBlocked = hub.isBlockedDevice(device.id);
+    // Bundle 302 (A): Unblock only for my own block (not admin / old app).
+    final iBlocked = hub.isBlockedDevice(device.id) &&
+        peerMark302(device.id, userId: _peerUserId) == PeerMark302.blocked;
     final blockedMe = !iBlocked && hub.hasBlockedMe(device.id);
     final presence = _presenceLabel(device);
     final choice = await showChatInfoSheet(
@@ -975,48 +979,50 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   /// Bundle 196 (10.3 / 12.6): the bar that replaces the message box.
+  /// Bundle 302 (B): the rounded card (mock labels_footer_302.html).
   Widget _blockedBar(BuildContext context, Device device,
       {required bool mine}) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
+    return ChatNoticeBar302(
       key: const ValueKey('chat_blocked_bar'),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        border: Border(top: BorderSide(color: colors.outlineVariant)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(18, mine ? 6 : 16, 8, mine ? 6 : 16),
-          child: Row(
-            children: [
-              Icon(Icons.block, size: 16, color: colors.onSurfaceVariant),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  mine
-                      ? 'You blocked ${_peerName(device)}.'
-                      : "You can't message ${_peerName(device)}.",
-                  style: TextStyle(
-                      fontSize: 14,
-                      color: colors.onSurfaceVariant,
-                      letterSpacing: 0),
-                ),
-              ),
-              if (mine)
-                TextButton(
-                  key: const ValueKey('chat_blocked_unblock'),
-                  onPressed: () => _unblock(device),
-                  style: TextButton.styleFrom(
-                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, 
-                        fontSize: 14.5, fontWeight: FontWeight.w700),
-                  ),
-                  child: const Text('Unblock'),
-                ),
-            ],
+      tone: mine ? NoticeTone302.red : NoticeTone302.grey,
+      icon: mine ? Icons.block : Icons.lock_rounded,
+      title: mine
+          ? 'You blocked ${_peerName(device)}.'
+          : "You can't message ${_peerName(device)}.",
+      line: mine ? "They can't message or call you." : '',
+      action: mine
+          ? NoticeButton302(
+              key: const ValueKey('chat_blocked_unblock'),
+              label: 'Unblock',
+              filled: false,
+              onPressed: () => _unblock(device),
+            )
+          : null,
+    );
+  }
+
+  /// Bundle 302 (A): the header line for an admin block / an old app.
+  Widget _markSubtitle302(BuildContext context, PeerMark302 mark) {
+    final admin = mark == PeerMark302.admin;
+    final ink = admin ? Theme.of(context).colorScheme.error : oldInk302(context);
+    return Row(
+      key: ValueKey(admin ? 'chat_admin_subtitle_302' : 'chat_old_subtitle_302'),
+      children: [
+        Icon(admin ? Icons.shield_rounded : Icons.system_update_rounded,
+            size: 12, color: ink),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            admin ? 'Blocked by admin' : 'Old LinkUp',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: ink, fontWeight: FontWeight.w700),
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -1098,7 +1104,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               Listenable.merge([BlockHub.instance, AdminBlockBook.instance]),
           builder: (context, _) {
         final hub = BlockHub.instance;
-        final iBlocked = hub.isBlockedDevice(device.id);
+        final hubBlocked = hub.isBlockedDevice(device.id);
+        // Bundle 302 (A): "Blocked" / "You blocked" only when I blocked
+        // them; admin blocks and stopped app versions get their own words.
+        final mark = peerMark302(device.id, userId: _peerUserId);
+        final iBlocked = hubBlocked && mark == PeerMark302.blocked;
+        final mutedPhoto = iBlocked || mark == PeerMark302.admin;
         // My own block wins over theirs (13.2).
         final blockedMe = !iBlocked && hub.hasBlockedMe(device.id);
         // Bundle 212 (F1/F2): blocked by admin (them, or my own account).
@@ -1118,7 +1129,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final selecting = _selected.isNotEmpty;
         final scaffold = Scaffold(
           appBar: selecting
-              ? _selectBar(context, iBlocked || blockedMe)
+              ? _selectBar(context, hubBlocked || blockedMe)
               : _searching
                   ? ChatSearchBar(
                       keyPrefix: 'chat',
@@ -1134,7 +1145,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             titleSpacing: 0,
             // Bundle 255 B2: taller only for a crowned friend, so the 56 dp
             // bar never cuts the crown (photo radius 20, 8 dp above it).
-            toolbarHeight: !iBlocked && AdminCrown.showFor(device.id)
+            toolbarHeight: !mutedPhoto && AdminCrown.showFor(device.id)
                 ? kToolbarHeight + AdminCrownRoom.extraFor(20, already: 8)
                 : null,
             leading: _searching
@@ -1162,7 +1173,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       // Bundle 130: presence badge rides ON the avatar's
                       // upper-right edge — the standalone status icon is gone
                       // from the app-bar actions.
-                      if (iBlocked)
+                      if (mutedPhoto)
                         MutedAvatar(name: device.name, radius: 20)
                       else
                         // Bundle 255 B2: room for the crown above the photo.
@@ -1209,6 +1220,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   ),
                                 ],
                               )
+                            else if (mark == PeerMark302.admin ||
+                                mark == PeerMark302.old)
+                              // Bundle 302 (A): admin block / old app words.
+                              _markSubtitle302(context, mark)
                             else
                               // Bundle 201 (F, mock ST S1): icon + way words.
                               PresenceWayLine(
@@ -1471,7 +1486,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               // Bundle 196 (10.3 / 12.6): the message box is replaced on
               // both phones; the draft stays in the controllers.
               if (adminBar != null)
-                AdminBlockedBar(text: adminBar)
+                // Bundle 302 (B): title + line card.
+                AdminBlockedBar(
+                    text: adminBar,
+                    notice: chatNotice302(_peerName(device),
+                        peerId: device.id, peerUserId: _peerUserId))
               else if (iBlocked)
                 _blockedBar(context, device, mine: true)
               else if (blockedMe)

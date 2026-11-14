@@ -1140,7 +1140,11 @@ class SealingPeerTransport implements PeerTransportContract {
       );
       _logMissing257(keys, self, peerIds, map);
       try {
-        final blocked = (await keys.blockedPeerIds()).toSet();
+        // Bundle 302 (E): a phone with a stopped app version keeps its link
+        // keys (the app still refuses its messages and calls).
+        final source = linkBlockedSource302;
+        final blocked =
+            (source != null ? await source() : await keys.blockedPeerIds()).toSet();
         _friendLinkKeys = <String, List<String>>{
           for (final e in map.entries)
             if (!blocked.contains(e.key))
@@ -1172,13 +1176,21 @@ class SealingPeerTransport implements PeerTransportContract {
     }
   }
 
+  /// Bundle 302 (E): the ids the native link layer cuts (set by the app to
+  /// [LocalStore.linkBlockedPeerIds]: my blocks + admin blocks, without
+  /// phones whose app version is stopped - they keep the link so they can
+  /// still get the update). Null = [SealKeySource.blockedPeerIds] (old way).
+  static Future<Set<String>> Function()? linkBlockedSource302;
+
   /// Blocked people are never used as relays (native side).
   Future<void> _pushBlocked() async {
     final base = inner;
     final keys = _keys;
     if (base is! WifiDirectTransportService || keys == null) return;
     try {
-      await base.updateBlockedPeers((await keys.blockedPeerIds()).toList());
+      final source = linkBlockedSource302;
+      final ids = source != null ? await source() : await keys.blockedPeerIds();
+      await base.updateBlockedPeers(ids.toList());
     } catch (_) {}
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/chat_notice_bar_302.dart';
 import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminClosedFlag;
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
@@ -85,45 +86,36 @@ class AdminBlockedTop extends StatelessWidget {
 /// look as the 196 blocked bar), no Unblock.
 /// Bundle 213: + an Update button when this app version is stopped.
 class AdminBlockedBar extends StatelessWidget {
-  const AdminBlockedBar({super.key, required this.text});
+  const AdminBlockedBar({super.key, required this.text, this.notice});
 
+  /// The 212/213 words ([adminBlockBarText]); shown as the title when no
+  /// [notice] is given.
   final String text;
+
+  /// Bundle 302 (B): title + line + tone for the new card.
+  final ChatNotice302? notice;
 
   static bool get _showUpdate =>
       VersionGuard.instance.stopped && !AdminBlockBook.instance.selfBlocked;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
+    final n = notice;
+    final update = _showUpdate
+        ? NoticeButton302(
+            key: const ValueKey('chat_version_update'),
+            label: 'Update',
+            onPressed: () => VersionGuard.openUpdate?.call(context),
+          )
+        : null;
+    // Bundle 302 (B): the floating card instead of the flat strip.
+    return ChatNoticeBar302(
       key: const ValueKey('chat_admin_blocked_bar'),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        border: Border(top: BorderSide(color: colors.outlineVariant)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
-          child: Row(children: [
-            Icon(Icons.block, size: 16, color: colors.onSurfaceVariant),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(text,
-                  style: TextStyle(
-                      fontSize: 14,
-                      color: colors.onSurfaceVariant,
-                      letterSpacing: 0)),
-            ),
-            if (_showUpdate)
-              TextButton(
-                key: const ValueKey('chat_version_update'),
-                onPressed: () => VersionGuard.openUpdate?.call(context),
-                child: const Text('Update'),
-              ),
-          ]),
-        ),
-      ),
+      tone: n?.tone ?? NoticeTone302.red,
+      icon: n?.icon ?? (_showUpdate ? Icons.system_update_rounded : Icons.block),
+      title: n?.title ?? text,
+      line: n?.line ?? '',
+      action: update,
     );
   }
 }

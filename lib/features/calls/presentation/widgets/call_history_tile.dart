@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/presence/block_hub.dart';
+import 'package:locallink/core/widgets/peer_mark_302.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
@@ -84,8 +85,13 @@ class CallHistoryTile extends StatelessWidget {
 
   Widget _row(BuildContext context) {
     final peerId = call.peerId(selfId);
-    final blocked = BlockHub.instance.isBlockedDevice(peerId);
-    final blockedMe = !blocked && BlockHub.instance.hasBlockedMe(peerId);
+    final hubBlocked = BlockHub.instance.isBlockedDevice(peerId);
+    // Bundle 302 (A): an old app version is not a block ("Old LinkUp" on a
+    // normal row); an admin block says "Admin blocked" and has no Unblock.
+    final mark = hubBlocked ? peerMark302(peerId) : PeerMark302.none;
+    final blocked = hubBlocked && mark != PeerMark302.old;
+    final mine = blocked && mark == PeerMark302.blocked;
+    final blockedMe = !hubBlocked && BlockHub.instance.hasBlockedMe(peerId);
     final outgoing = call.isOutgoing(selfId);
     final colors = Theme.of(context).colorScheme;
     const whatsGreen = Color(0xFF25D366);
@@ -128,10 +134,16 @@ class CallHistoryTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                const BlockedPill(),
+                markPill302(mark) ?? const BlockedPill(),
               ],
             )
-          : _title(context, colors),
+          : mark == PeerMark302.old
+              ? Row(children: [
+                  Flexible(child: _title(context, colors)),
+                  const SizedBox(width: 6),
+                  const OldAppPill302(),
+                ])
+              : _title(context, colors),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 2),
         child: Row(
@@ -176,12 +188,12 @@ class CallHistoryTile extends StatelessWidget {
       // row tap keeps calling too).
       // Bundle 196: no call-back for a blocked person (either side); a tap
       // on a row I blocked opens the Unblock sheet instead of calling.
-      trailing: (blocked || blockedMe)
+      trailing: (hubBlocked || blockedMe)
           ? null
           : MessengerCallButton(tooltip: 'Call back', onPressed: onCall),
-      onTap: blocked
+      onTap: mine
           ? () => _openUnblock(context, peerId)
-          : (onOpen ?? (blockedMe ? null : onCall)),
+          : (onOpen ?? (blockedMe || hubBlocked ? null : onCall)),
     );
   }
 

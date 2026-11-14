@@ -38,6 +38,10 @@ class MessengerConversationTile extends StatelessWidget {
   /// grey name + Blocked pill, no call button.
   final bool blocked;
 
+  /// Bundle 302 (A): a small label after the name - "Old LinkUp" on a
+  /// normal row, "Admin blocked" instead of "Blocked" on a [blocked] row.
+  final Widget? label;
+
   /// Bundle G1 (mock 10): muted group - bell with a line, grey count, the
   /// time stays grey.
   final bool muted;
@@ -65,6 +69,7 @@ class MessengerConversationTile extends StatelessWidget {
     this.time,
     this.subtitleIcon,
     this.blocked = false,
+    this.label,
     this.muted = false,
     this.subtitleBlue = false,
     this.mentioned = false,
@@ -94,14 +99,31 @@ class MessengerConversationTile extends StatelessWidget {
       leading: device == null ? avatar : PresenceAvatar(avatar: avatar, device: device!),
       title: Row(
         children: [
-          Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          if (label == null)
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            )
+          else
+            // Bundle 302 (A): name + label, the time stays on the right.
+            Expanded(
+              child: Row(children: [
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                label!,
+              ]),
             ),
-          ),
           if (time != null && time!.isNotEmpty) ...[
             const SizedBox(width: 8),
             Text(
@@ -170,7 +192,7 @@ class MessengerConversationTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 6),
-          const BlockedPill(),
+          label ?? const BlockedPill(),
           const Spacer(),
           if (time != null && time!.isNotEmpty)
             Text(

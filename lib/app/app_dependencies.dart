@@ -172,6 +172,9 @@ class AppDependencies {
         crypto = IdentityCryptoService(secureStorage: secureStorage ?? const SecureStorageService()) {
     final sealing = directTransport;
     if (sealing is SealingPeerTransport) {
+      // Bundle 302 (E): the link layer cuts my blocks + admin blocks only;
+      // a phone with a stopped app version keeps its link for the update.
+      SealingPeerTransport.linkBlockedSource302 = store.linkBlockedPeerIds;
       // Bundle 166 (5.2): fresh keys (daily session key + one-time key).
       sealing.bind(
         StoreSealKeySource(store: store, crypto: crypto),

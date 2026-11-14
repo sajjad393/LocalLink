@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
+import 'package:locallink/core/widgets/chat_notice_bar_302.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/core/widgets/chat_search_bar.dart';
@@ -1458,11 +1459,16 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                 return GroupMentionList(choices: choices, onPick: _pickMention);
               }),
             // Bundle 212 (F2): my account is blocked by admin.
+            // Bundle 302 (B): the same rounded card as in a chat.
             if (AdminBlockBook.instance.selfBlocked)
-              const AdminBlockedBar(text: "Blocked by admin. You can't send.")
+              const AdminBlockedBar(
+                  text: "Blocked by admin. You can't send.",
+                  notice: ChatNotice302.selfAdmin)
             else if (VersionGuard.instance.stopped)
               // Bundle 213: this app version is stopped by admin.
-              const AdminBlockedBar(text: 'Old version. Update to send.')
+              const AdminBlockedBar(
+                  text: 'Old version. Update to send.',
+                  notice: ChatNotice302.selfOld)
             else
             // Bundle G2 (mock 25 / 26): no message box when I can't post.
             if (_rules.canSend)

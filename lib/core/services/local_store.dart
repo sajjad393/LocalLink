@@ -2616,7 +2616,17 @@ class LocalStore {
   /// Bundle 154: every id that counts as blocked for a nearby phone — the
   /// blocked user ids themselves (device ids land here too via
   /// blockDeviceAndUser) plus the device ids of blocked users' profiles.
-  Future<Set<String>> blockedPeerIds() async {
+  Future<Set<String>> blockedPeerIds() async => {
+        ...await linkBlockedPeerIds(),
+        // Bundle 213: phones with an app version stopped by admin.
+        ...VersionGuard.instance.droppedPeers,
+      };
+
+  /// Bundle 302 (E): the ids the LINK layer cuts - my blocks + admin blocks,
+  /// but NOT phones whose app version is stopped by admin: they keep the
+  /// link so they can still get the new LinkUp. Their messages and calls are
+  /// still refused in the app ([isBlockedPeer] / [blockedPeerIds]).
+  Future<Set<String>> linkBlockedPeerIds() async {
     final rows = await _db.rawQuery(
         'SELECT user_id AS id FROM blocked_users '
         'UNION SELECT p.device_id AS id FROM blocked_users b '
@@ -2626,8 +2636,6 @@ class LocalStore {
         if ((row['id']?.toString() ?? '').isNotEmpty) row['id'].toString(),
       // Bundle 212: plus everyone blocked by admin (and their phones).
       ...await _adminBlockedIds(),
-      // Bundle 213: phones with an app version stopped by admin.
-      ...VersionGuard.instance.droppedPeers,
     };
   }
 

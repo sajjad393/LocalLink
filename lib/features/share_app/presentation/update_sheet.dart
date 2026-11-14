@@ -1,9 +1,12 @@
+import 'dart:async';
+
 // Bundle 213 (E) -> Bundle 275 (mock LinkUp_mock_275_silent_update.html):
 // ONE popup on the old phone, no names. It starts by itself; the phone with
 // the new app shows nothing. The Bundle 213 list with names + Ask and the
 // "X wants the new LinkUp" Share / Not now question are gone.
 
 import 'package:flutter/material.dart';
+import 'package:locallink/core/widgets/chat_notice_bar_302.dart';
 import 'package:locallink/features/share_app/domain/silent_update_275.dart';
 
 /// The Update button (version banner): the same quiet flow.
@@ -56,26 +59,45 @@ class SilentUpdateSheet275 extends StatelessWidget {
             };
             final getting = s.stage == SilentStage275.getting || s.stage == SilentStage275.nextPhone;
             final frac = s.size > 0 ? (s.got / s.size).clamp(0.0, 1.0) : null;
+            // Bundle 302 (D): bigger round icon, clear progress, pill buttons
+            // and Try again (mock labels_footer_302.html).
+            final pct = frac == null ? '' : ' · ${(frac * 100).round()}%';
             return Column(
               key: const ValueKey('update275_sheet'),
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(children: [
-                  CircleAvatar(radius: 20, backgroundColor: tint, child: Icon(icon, color: Colors.white, size: 22)),
-                  const SizedBox(width: 12),
+                  CircleAvatar(
+                      radius: 23,
+                      backgroundColor: s.stage == SilentStage275.none
+                          ? theme.colorScheme.surfaceContainerHighest
+                          : tint,
+                      child: Icon(icon,
+                          color: s.stage == SilentStage275.none
+                              ? theme.colorScheme.onSurfaceVariant
+                              : Colors.white,
+                          size: 24)),
+                  const SizedBox(width: 13),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(title, key: const ValueKey('update275_title'), style: theme.textTheme.titleMedium),
+                      Text(title,
+                          key: const ValueKey('update275_title'),
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 2),
                       Text(line, style: muted),
                     ]),
                   ),
                 ]),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 if (getting) ...[
-                  LinearProgressIndicator(
-                      value: s.stage == SilentStage275.nextPhone || s.got == 0 ? null : frac),
-                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                        minHeight: 8,
+                        value: s.stage == SilentStage275.nextPhone || s.got == 0 ? null : frac),
+                  ),
+                  const SizedBox(height: 8),
                   Row(children: [
                     Expanded(
                         child: Text(
@@ -86,10 +108,10 @@ class SilentUpdateSheet275 extends StatelessWidget {
                     Text(
                         s.stage == SilentStage275.nextPhone
                             ? 'Next phone'
-                            : (s.got > 0 && s.size > 0 ? '${_mb(s.got)} of ${_mb(s.size)}' : 'Starting'),
-                        style: muted),
+                            : (s.got > 0 && s.size > 0 ? '${(s.got / (1024 * 1024)).toStringAsFixed(1)} of ${_mb(s.size)}$pct' : 'Starting'),
+                        style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
                   ]),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   Text(
                       s.stage == SilentStage275.nextPhone
                           ? 'This happens by itself.'
@@ -102,7 +124,7 @@ class SilentUpdateSheet275 extends StatelessWidget {
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(10)),
+                        borderRadius: BorderRadius.circular(12)),
                     child: Text.rich(TextSpan(children: [
                       const TextSpan(text: 'One time only\n', style: TextStyle(fontWeight: FontWeight.w600)),
                       TextSpan(
@@ -111,42 +133,54 @@ class SilentUpdateSheet275 extends StatelessWidget {
                     ])),
                   ),
                 if (s.stage == SilentStage275.none) Text('LinkUp tries again later by itself.', style: muted),
-                const SizedBox(height: 10),
+                const SizedBox(height: 14),
                 Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                   if (getting)
-                    TextButton(
+                    NoticeButton302(
                       key: const ValueKey('update275_cancel'),
+                      label: 'Cancel',
+                      filled: false,
                       onPressed: () {
                         s.cancel();
                         Navigator.of(context).maybePop();
                       },
-                      child: const Text('Cancel'),
                     ),
                   if (s.stage == SilentStage275.ready) ...[
-                    TextButton(
+                    NoticeButton302(
                       key: const ValueKey('update275_later'),
+                      label: 'Later',
+                      filled: false,
                       onPressed: () {
                         s.cancel();
                         Navigator.of(context).maybePop();
                       },
-                      child: const Text('Later'),
                     ),
                     const SizedBox(width: 8),
-                    FilledButton(
+                    NoticeButton302(
                       key: const ValueKey('update275_install'),
+                      label: 'Install',
                       onPressed: s.install,
-                      child: const Text('Install'),
                     ),
                   ],
                   if (s.stage == SilentStage275.none || s.stage == SilentStage275.idle)
-                    TextButton(
+                    NoticeButton302(
                       key: const ValueKey('update275_ok'),
+                      label: 'OK',
+                      filled: false,
                       onPressed: () {
                         s.close();
                         Navigator.of(context).maybePop();
                       },
-                      child: const Text('OK'),
                     ),
+                  // Bundle 302 (D): ask the server / nearby phones again now.
+                  if (s.stage == SilentStage275.none) ...[
+                    const SizedBox(width: 8),
+                    NoticeButton302(
+                      key: const ValueKey('update275_retry'),
+                      label: 'Try again',
+                      onPressed: () => unawaited(s.check(manual: true)),
+                    ),
+                  ],
                 ]),
               ],
             );

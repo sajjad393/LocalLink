@@ -35,6 +35,7 @@ import 'package:locallink/core/widgets/movable_fab.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
+import 'package:locallink/core/widgets/peer_mark_302.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/core/widgets/tab_top_bar.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
@@ -1435,11 +1436,19 @@ class _HomeScreenState extends State<HomeScreen> {
           // Bundle 196 (10.1 / 12.7): blocked rows follow BlockHub live.
           listenable:
               Listenable.merge([PresenceHub.instance, BlockHub.instance]),
-          builder: (context, _) => MessengerConversationTile(
-            key: BlockHub.instance.isBlockedDevice(device.id)
+          builder: (context, _) {
+            final hubBlocked = BlockHub.instance.isBlockedDevice(device.id);
+            // Bundle 302 (A): an old app version is not a block (amber
+            // "Old LinkUp" on a normal row); an admin block says so.
+            final mark =
+                hubBlocked ? peerMark302(device.id) : PeerMark302.none;
+            final rowBlocked = hubBlocked && mark != PeerMark302.old;
+            return MessengerConversationTile(
+            key: rowBlocked
                 ? ValueKey('chats_blocked_${device.id}')
                 : null,
-            blocked: BlockHub.instance.isBlockedDevice(device.id),
+            blocked: rowBlocked,
+            label: markPill302(mark),
             // People-facing titles show the profile nickname; a
             // device label ("My Android Phone") is never a person.
             title: state.deviceLabels[device.id] ?? NameBook258.noName,
@@ -1457,11 +1466,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 device, state.deviceLabels[device.id] ?? NameBook258.noName),
             // Bundle 196: no call button when I blocked them, or when
             // they blocked me (their signed block state).
-            onCall: BlockHub.instance.isBlockedDevice(device.id) ||
+            onCall: hubBlocked ||
                     BlockHub.instance.hasBlockedMe(device.id)
                 ? null
                 : () => _call(device),
-          ),
+            );
+          },
         ),
         device.id,
       ));
