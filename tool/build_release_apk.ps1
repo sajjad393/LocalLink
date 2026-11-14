@@ -12,6 +12,8 @@
 # Run from the app folder:  powershell -ExecutionPolicy Bypass -File tool\build_release_apk.ps1
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
-flutter build apk --release --dart-define=LOCLINK_ALLOW_INSECURE_HTTP=true
+# Bundle 301: ARM 32 + ARM 64 only (also fixed in android/app/build.gradle).
+flutter build apk --release --dart-define=LOCLINK_ALLOW_INSECURE_HTTP=true --target-platform android-arm,android-arm64
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-Write-Host "APK: build\app\outputs\flutter-apk\app-release.apk"
+$apk = "build\app\outputs\flutter-apk\app-release.apk"
+Write-Host ("APK: {0}  ({1:N1} MB)" -f $apk, ((Get-Item $apk).Length / 1MB))

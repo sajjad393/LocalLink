@@ -15,6 +15,15 @@ android {
         targetSdk flutter.targetSdkVersion
         versionCode flutter.versionCode
         versionName flutter.versionName
+        // Bundle 301: ARM 32 + ARM 64 only (every LinkUp phone, one APK for
+        // all; x86_64 is only PC emulators / Chromebooks). The Flutter Gradle
+        // plugin already put armeabi-v7a, arm64-v8a AND x86_64 here when it
+        // was applied (plugins block, before this file's android block), so
+        // clear its list and set ours; adding alone would keep x86_64.
+        ndk {
+            abiFilters.clear()
+            abiFilters.addAll(['armeabi-v7a', 'arm64-v8a'])
+        }
     }
 
     compileOptions {
@@ -42,6 +51,15 @@ android {
                 keyAlias keyAliasValue
                 keyPassword keyPasswordValue
             }
+        }
+    }
+
+    // Bundle 301: smaller APK. Native code (.so) is stored compressed in the
+    // APK and unpacked once at install. Before, Android Gradle stored it raw
+    // (minSdk 24), so the download / share size was the full raw size.
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
         }
     }
 

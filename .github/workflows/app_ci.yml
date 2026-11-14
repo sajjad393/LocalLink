@@ -73,7 +73,12 @@ jobs:
         run: ./gradlew :app:testDebugUnitTest --no-daemon
       - name: Release APK with the standard command (R268-1, signed with this machine's debug key - not for phones)
         if: success() || failure()
-        run: flutter build apk --release --dart-define=LOCLINK_ALLOW_INSECURE_HTTP=true
+        run: flutter build apk --release --dart-define=LOCLINK_ALLOW_INSECURE_HTTP=true --target-platform android-arm,android-arm64
+      - name: APK size (Bundle 301, report only)
+        if: success()
+        run: |
+          ls -l build/app/outputs/flutter-apk/app-release.apk
+          unzip -v build/app/outputs/flutter-apk/app-release.apk | grep 'lib/'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
