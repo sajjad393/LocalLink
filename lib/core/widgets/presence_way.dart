@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 201 (F, mock ST): the look of each way - colour, small icon,
 /// words. Online globe blue, Wi-Fi green, Wi-Fi Direct two phones teal,
@@ -28,10 +29,10 @@ abstract final class PresenceWayStyle {
 
   /// Call screen chip words (null = no chip).
   static String? callChip(PresenceWay way) => switch (way) {
-        PresenceWay.wifi || PresenceWay.nearby => 'Wi-Fi call',
-        PresenceWay.wifiDirect => 'Wi-Fi Direct call',
-        PresenceWay.mesh => 'Mesh call',
-        PresenceWay.online => 'Online call',
+        PresenceWay.wifi || PresenceWay.nearby => L.t.wiFiCall,
+        PresenceWay.wifiDirect => L.t.wiFiDirectCall,
+        PresenceWay.mesh => L.t.meshCall,
+        PresenceWay.online => L.t.onlineCall,
         PresenceWay.connecting || PresenceWay.offline => null,
       };
 
@@ -41,40 +42,36 @@ abstract final class PresenceWayStyle {
       case PresenceWay.wifi:
       case PresenceWay.nearby:
         return (
-          'Connected by Wi-Fi',
-          'You are on the same Wi-Fi router. Messages and calls go straight '
-              'between your phones.'
+          L.t.connectedByWiFi,
+          L.t.youAreOnTheSameWi
         );
       case PresenceWay.wifiDirect:
         return (
-          'Connected by Wi-Fi Direct',
-          'Phone to phone, no router needed. Messages and calls go straight '
-              'between your phones.'
+          L.t.connectedByWiFiDirect,
+          L.t.phoneToPhoneNoRouterNeeded
         );
       case PresenceWay.mesh:
         final n = info.phonesBetween ?? 1;
-        final phones = n == 1 ? '1 other LinkUp phone' : '$n other LinkUp phones';
+        final phones = n == 1 ? L.t.t1OtherLinkupPhone : L.t.otherLinkupPhones(n);
         final who = (viaName ?? '').trim();
         if (n == 1 && who.isNotEmpty) {
           return (
-            'Connected by Mesh',
-            "Your messages hop through $phones ($who's). They stay locked; "
-                "$who can't read them. Calls may be a bit slower."
+            L.t.connectedByMesh,
+            L.t.yourMessagesHopThroughSThey(phones, who, who)
           );
         }
         return (
-          'Connected by Mesh',
-          'Your messages hop through $phones. They stay locked; nobody in '
-              'between can read them. Calls may be a bit slower.'
+          L.t.connectedByMesh,
+          L.t.yourMessagesHopThroughTheyStay(phones)
         );
       case PresenceWay.connecting:
-        return ('Connecting…', 'The link was lost. Looking for a way again.');
+        return (L.t.connecting, L.t.theLinkWasLostLookingFor);
       case PresenceWay.online:
-        return ('Connected Online', 'Over the internet, through the LinkUp server.');
+        return (L.t.connectedOnline, L.t.overTheInternetThroughTheLinkup);
       case PresenceWay.offline:
         return (
-          'Not connected',
-          'No way to reach right now. Messages wait and go when a way opens.'
+          L.t.notConnected,
+          L.t.noWayToReachRightNow
         );
     }
   }

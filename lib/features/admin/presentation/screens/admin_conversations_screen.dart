@@ -11,6 +11,7 @@ import 'package:locallink/features/admin/presentation/screens/admin_chat_request
 import 'package:locallink/features/admin/presentation/screens/admin_chat_viewer_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 221 (mock A-1): the Owner's chat list. Online it is the server's
 /// list (who / how many / when, no text); offline the chats this phone
@@ -98,7 +99,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     if (s == null) return;
     final sent = await showChatRequestSheet(context, service: s, preset: pick, online: _online);
     if (sent == true && mounted) {
-      adminSnack216(context, _online ? 'Request sent by the server' : 'Request sent to nearby phones');
+      adminSnack216(context, _online ? L.t.requestSentByTheServer : L.t.requestSentToNearbyPhones);
       setState(() => _tab = 1);
       unawaited(_load());
     }
@@ -114,15 +115,15 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
 
   Future<void> _cancel(ChatRequestRow221 r) async {
     final ok = await confirmAdmin216(context,
-        title: 'Cancel this request?',
-        body: "Phones that haven't answered yet won't answer.",
-        yes: 'Cancel request',
+        title: L.t.cancelThisRequest,
+        body: L.t.phonesThatHavenTAnsweredYet,
+        yes: L.t.cancelRequest,
         danger: true,
         yesKey: const ValueKey('chat_request_cancel_yes'));
     if (!ok || !mounted) return;
     try {
       await (_svc?.actions ?? AdminActionService.instance)?.cancel(r.id);
-      if (mounted) adminSnack216(context, 'Cancelled');
+      if (mounted) adminSnack216(context, L.t.cancelled);
     } catch (error) {
       if (mounted) adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
     }
@@ -141,7 +142,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
         LinkBanner221(online: _online),
         const SizedBox(height: 12),
         Tabs221(
-          labels: ['Chats', requests.isEmpty ? 'Requests' : 'Requests ${requests.length}'],
+          labels: [L.t.chats, requests.isEmpty ? L.t.requests : L.t.requests2(requests.length)],
           selected: _tab,
           onSelected: (i) => setState(() => _tab = i),
         ),
@@ -153,24 +154,24 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
           )
         else if (_tab == 0)
           _chats.isEmpty
-              ? const AdminEmptyState216(
+              ? AdminEmptyState216(
                   key: ValueKey('chats221_empty'),
                   icon: Icons.forum_outlined,
                   tone: A216Tone.blue,
-                  title: 'No chats yet',
-                  body: 'Use New request to ask the phones of 2 people or a group.',
+                  title: L.t.noChatsYet,
+                  body: L.t.useNewRequestToAskThe,
                 )
               : ListCard221(key: const ValueKey('chats221_list'), children: [
                   for (final chat in _chats) _chatRow(chat),
                 ])
         else
           requests.isEmpty
-              ? const AdminEmptyState216(
+              ? AdminEmptyState216(
                   key: ValueKey('requests221_empty'),
                   icon: Icons.pending_actions_rounded,
                   tone: A216Tone.orange,
-                  title: 'No requests',
-                  body: 'Requests wait here until a phone answers. There is no time limit.',
+                  title: L.t.noRequests,
+                  body: L.t.requestsWaitHereUntilAPhone,
                 )
               : ListCard221(key: const ValueKey('requests221_list'), children: [
                   for (final r in requests) _requestRow(r),
@@ -178,7 +179,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
         const SizedBox(height: 16),
         SizedBox(
           height: 52,
-          child: AdminButton216('New request',
+          child: AdminButton216(L.t.newRequest,
               key: const ValueKey('chats221_new_request'), height: 52, onTap: () => _ask()),
         ),
         const SizedBox(height: 8),
@@ -195,16 +196,16 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     final last = DateTime.tryParse('${chat['last_message_at'] ?? ''}')?.toLocal();
     final members = chat['member_count'] is int ? chat['member_count'] as int : 0;
     final sub = group
-        ? 'Group · $members members'
+        ? L.t.groupMembers(members)
         : [
-            '$count messages',
+            L.t.messages3(count),
             if (last != null) _when(last),
           ].join(' · ');
     final req = _requestOf(chat);
     final pick = chatPickOfRow(chat);
     final Widget right;
     if (req == null) {
-      right = AdminButton216('Ask phones',
+      right = AdminButton216(L.t.askPhones,
           key: ValueKey('chats221_ask_${chat['id']}'),
           kind: A216ButtonKind.tonal,
           height: 40,
@@ -223,7 +224,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(group ? (chat['group_name']?.toString() ?? 'Group') : names.join(' & '),
+              Text(group ? (chat['group_name']?.toString() ?? L.t.group) : names.join(' & '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: t.custom(16, FontWeight.w600, c.ink, 1.25)),
@@ -246,7 +247,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     final since = DateTime.tryParse(r.madeAt)?.toLocal();
     final status = [
       r.tag,
-      if (!r.ready && since != null) 'since ${dMMM216(since)}',
+      if (!r.ready && since != null) L.t.since(dMMM216(since)),
       if (r.words.isNotEmpty) r.words.replaceFirst('Get chat \u00b7 ', ''),
     ].join(' · ');
     final tone = _toneOf(r);
@@ -262,7 +263,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
             const SizedBox(width: 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(r.label.isEmpty ? 'Chat' : r.label,
+                Text(r.label.isEmpty ? L.t.chat : r.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: t.custom(16, FontWeight.w600, c.ink, 1.25)),
@@ -277,15 +278,15 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
               TextButton(
                 key: ValueKey('requests221_cancel_${r.id}'),
                 onPressed: () => _cancel(r),
-                child: Text('Cancel', style: t.custom(15, FontWeight.w600, c.blue)),
+                child: Text(L.t.cancel, style: t.custom(15, FontWeight.w600, c.blue)),
               ),
           ]),
           if (r.offline && !r.ready) ...[
             const SizedBox(height: 10),
             Text(
                 r.half
-                    ? 'Half can be read now · the rest is on the way'
-                    : 'Sent by Wi-Fi Direct · passes phone to phone\nNo time limit · goes to the server log later',
+                    ? L.t.halfCanBeReadNowThe
+                    : L.t.sentByWiFiDirectPasses,
                 style: t.custom(13, FontWeight.w400, c.grey, 1.45)),
           ],
           if (r.half) ...[
@@ -329,7 +330,7 @@ ChatPick221? chatPickOfRow(Map<String, dynamic> chat) {
 }
 
 List<String> chatNamesOfRow(Map<String, dynamic> chat) {
-  if (chat['kind'] == 'group') return [chat['group_name']?.toString() ?? 'Group'];
+  if (chat['kind'] == 'group') return [chat['group_name']?.toString() ?? L.t.group];
   return [
     for (final x in (chat['participants'] as List? ?? const []))
       if (x is Map)
@@ -337,7 +338,7 @@ List<String> chatNamesOfRow(Map<String, dynamic> chat) {
             ? x['name'].toString()
             : (x['username']?.toString() ?? '').isNotEmpty
                 ? x['username'].toString()
-                : 'Someone',
+                : L.t.someone,
   ];
 }
 
@@ -432,7 +433,7 @@ class OwnerChip221 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Tooltip(
-        message: 'Owner only',
+        message: L.t.ownerOnly,
         child: Material(
           key: const ValueKey('chats221_owner'),
           color: const Color(0xFFFFF6DB),
@@ -462,7 +463,7 @@ class LinkBanner221 extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-              online ? 'Server connected · requests go by the server' : 'No server · requests go by Wi-Fi Direct / mesh',
+              online ? L.t.serverConnectedRequestsGoByThe : L.t.noServerRequestsGoByWi,
               style: t.custom(13, FontWeight.w600, fg)),
         ),
       ]),

@@ -16,6 +16,7 @@ import 'chat_video_player.dart';
 import 'media_grid.dart';
 import 'prepare_ring.dart';
 import 'media_view_cache.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 202: one page of the swipe viewer.
 class GalleryItem {
@@ -243,7 +244,7 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
   Widget build(BuildContext context) {
     final count = _items.length;
     final review = widget.onRemove != null;
-    final title = review ? 'Ready to send' : widget.title;
+    final title = review ? L.t.readyToSend : widget.title;
     return Scaffold(
       key: const Key('media_gallery_viewer'),
       backgroundColor: Colors.black,
@@ -321,7 +322,7 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
                 key: const Key('media_gallery_remove'),
                 onPressed: _remove,
                 icon: const Icon(Icons.delete_outline, color: Colors.white),
-                label: const Text('Remove', style: TextStyle(color: Colors.white)),
+                label: Text(L.t.remove, style: TextStyle(color: Colors.white)),
               ),
           ]),
         ),
@@ -341,7 +342,7 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
       if (ForwardHub.instance != null)
         IconButton(
           key: const Key('media_gallery_forward'),
-          tooltip: 'Forward',
+          tooltip: L.t.forward,
           icon: const Icon(Icons.shortcut_rounded, color: Colors.white),
           onPressed: () {
             MediaMessageActions.markOpened([a]);
@@ -352,7 +353,7 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
       if (canSave)
         IconButton(
           key: const Key('media_gallery_save'),
-          tooltip: 'Save to phone',
+          tooltip: L.t.saveToPhone,
           icon: const Icon(Icons.download_rounded, color: Colors.white),
           onPressed: () => unawaited(MediaMessageActions.save(context, [a])),
         ),
@@ -360,8 +361,8 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
         key: const Key('media_gallery_more'),
         icon: const Icon(Icons.more_vert, color: Colors.white),
         onSelected: (_) => _showInfo(a),
-        itemBuilder: (_) => const [
-          PopupMenuItem(value: 'info', child: Text('File info')),
+        itemBuilder: (_) => [
+          PopupMenuItem(value: 'info', child: Text(L.t.fileInfo)),
         ],
       ),
     ];
@@ -371,7 +372,7 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
     unawaited(showDialog<void>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('File info'),
+        title: Text(L.t.fileInfo),
         content: Text(
             '${a.originalName}\n${FileSizeRule.sizeLabel(a.size)}'
             '${widget.subtitle.isEmpty ? '' : '\n${widget.subtitle}'}',
@@ -501,11 +502,11 @@ class _MediaGalleryViewerState extends State<MediaGalleryViewer> {
               attachmentId: item.attachment?.id ?? '',
               fallback: const SizedBox.shrink()),
         ),
-        const Center(
+        Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.download_rounded, color: Colors.white70, size: 40),
             SizedBox(height: 8),
-            Text('Not downloaded yet',
+            Text(L.t.notDownloadedYet,
                 key: Key('media_gallery_not_ready'),
                 style: TextStyle(color: Colors.white70, fontSize: 14)),
           ]),

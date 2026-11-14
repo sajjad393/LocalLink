@@ -10,6 +10,7 @@ import 'package:locallink/features/files/presentation/widgets/chat_photo.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/features/storage/domain/media_clean_policy.dart';
 import 'package:locallink/core/identity/person_name_258.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Colours of the bar / legend (mock 12).
 const Map<MediaKind, Color> kStorageColors = {
@@ -19,11 +20,11 @@ const Map<MediaKind, Color> kStorageColors = {
   MediaKind.voice: Color(0xFF9B6BF0),
 };
 
-const Map<MediaKind, String> kStorageNames = {
-  MediaKind.photo: 'Photos',
-  MediaKind.video: 'Videos',
-  MediaKind.document: 'Documents',
-  MediaKind.voice: 'Voice',
+Map<MediaKind, String> get kStorageNames => {
+  MediaKind.photo: L.t.photos,
+  MediaKind.video: L.t.videos,
+  MediaKind.document: L.t.documents,
+  MediaKind.voice: L.t.voice,
 };
 
 /// Chat / group names for the Storage screen (key = `d:<id>` / `g:<id>`).
@@ -41,7 +42,7 @@ Future<Map<String, String>> loadStorageNames(LocalStore store) async {
   } catch (_) {}
   try {
     for (final g in await store.groups()) {
-      out['g:${g['id']}'] = g['name']?.toString() ?? 'Group';
+      out['g:${g['id']}'] = g['name']?.toString() ?? L.t.group;
     }
   } catch (_) {}
   return out;
@@ -56,9 +57,9 @@ String storageLastCleanLabel(DateTime at, int count, int bytes, {DateTime? now})
   final h = local.hour % 12 == 0 ? 12 : local.hour % 12;
   final time = '$h:${local.minute.toString().padLeft(2, '0')} ${local.hour >= 12 ? 'PM' : 'AM'}';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  final dayText = diff == 0 ? 'today' : (diff == 1 ? 'yesterday' : '${local.day} ${months[local.month - 1]}');
-  final what = count == 0 ? 'nothing removed' : '$count ${count == 1 ? 'file' : 'files'}, ${formatStorageBytes(bytes)}';
-  return 'Last clean-up: $dayText, $time · $what';
+  final dayText = diff == 0 ? L.t.todayLower304 : (diff == 1 ? L.t.yesterdayLower304 : '${local.day} ${L.en(months[local.month - 1])}');
+  final what = count == 0 ? L.t.nothingRemoved : '$count ${count == 1 ? L.t.fileWord304 : L.t.filesWord304}, ${formatStorageBytes(bytes)}';
+  return L.t.lastCleanUp(dayText, time, what);
 }
 
 /// U1: Settings › THIS PHONE › Storage row.
@@ -102,8 +103,8 @@ class _StorageSettingsRowState extends State<StorageSettingsRow> {
     return MessengerSettingsRow(
       key: const ValueKey('settings_storage'),
       icon: Icons.sd_storage_outlined,
-      title: 'Storage',
-      subtitle: bytes == null ? 'Checking…' : 'LinkUp uses ${formatStorageBytes(bytes)}',
+      title: L.t.storage,
+      subtitle: bytes == null ? L.t.checking : L.t.linkupUses(formatStorageBytes(bytes)),
       onTap: () async {
         await Navigator.push<void>(
           context,
@@ -165,7 +166,7 @@ class _StorageScreenState extends State<StorageScreen> {
   }
 
   String _nameOf(ChatStorage c) =>
-      _names['${c.isGroup ? 'g' : 'd'}:${c.chatId}'] ?? (c.isGroup ? 'Group' : 'LinkUp user');
+      _names['${c.isGroup ? 'g' : 'd'}:${c.chatId}'] ?? (c.isGroup ? L.t.group : 'LinkUp user');
 
   @override
   Widget build(BuildContext context) {
@@ -176,7 +177,7 @@ class _StorageScreenState extends State<StorageScreen> {
     final service = widget.service;
     final last = service.lastCleanAt;
     return Scaffold(
-      appBar: AppBar(title: const Text('Storage')),
+      appBar: AppBar(title: Text(L.t.storage)),
       body: files == null
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -189,9 +190,9 @@ class _StorageScreenState extends State<StorageScreen> {
                     MessengerSettingsRow(
                       key: const ValueKey('storage_auto_switch'),
                       icon: Icons.cloud_off_rounded,
-                      title: 'Free up space automatically',
+                      title: L.t.freeUpSpaceAutomatically,
                       subtitle:
-                          'When the phone is more than 70% full, remove photos, videos and documents not opened for 10 days. Voice notes stay.',
+                          L.t.whenThePhoneIsMoreThan,
                       trailing: Switch(
                         key: const ValueKey('storage_auto_switch_toggle'),
                         value: service.autoClean,
@@ -210,7 +211,7 @@ class _StorageScreenState extends State<StorageScreen> {
                       ),
                     ),
                   if (summary.chats.isNotEmpty) ...[
-                    const MessengerGroupLabel('Chats, biggest first'),
+                    MessengerGroupLabel(L.t.chatsBiggestFirst),
                     MessengerListGroup(dividerIndent: 72, children: [
                       for (final c in summary.chats)
                         ListTile(
@@ -223,7 +224,7 @@ class _StorageScreenState extends State<StorageScreen> {
                             ),
                           ),
                           title: Text(_nameOf(c), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text(c.isGroup ? 'Group' : 'Chat'),
+                          subtitle: Text(c.isGroup ? L.t.group : L.t.chat),
                           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                             Text(formatStorageBytes(c.bytes),
                                 style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant)),
@@ -259,7 +260,7 @@ class _StorageScreenState extends State<StorageScreen> {
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('LinkUp on this phone', style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
+          Text(L.t.linkupOnThisPhone, style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
           const SizedBox(height: 2),
           Text(formatStorageBytes(total),
               key: const ValueKey('storage_total'),
@@ -295,7 +296,7 @@ class _StorageScreenState extends State<StorageScreen> {
           ]),
           if (_phone.known) ...[
             const SizedBox(height: 10),
-            Text('Phone: ${_phone.usedPercent}% full · ${formatStorageBytes(_phone.free)} free',
+            Text(L.t.phoneFullFree(_phone.usedPercent, formatStorageBytes(_phone.free)),
                 key: const ValueKey('storage_phone_line'),
                 style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
           ],
@@ -381,7 +382,7 @@ class _ChatStorageScreenState extends State<ChatStorageScreen> {
             padding: const EdgeInsets.fromLTRB(22, 0, 22, 8),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('Biggest first. Tap to open, hold to pick.',
+              child: Text(L.t.biggestFirstTapToOpenHold,
                   style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13)),
             ),
           ),
@@ -391,10 +392,10 @@ class _ChatStorageScreenState extends State<ChatStorageScreen> {
           child: Row(children: [
             for (final entry in <MediaKind?, String>{
               null: 'All',
-              MediaKind.photo: 'Photos',
-              MediaKind.video: 'Videos',
-              MediaKind.document: 'Docs',
-              MediaKind.voice: 'Voice',
+              MediaKind.photo: L.t.photos,
+              MediaKind.video: L.t.videos,
+              MediaKind.document: L.t.docs,
+              MediaKind.voice: L.t.voice,
             }.entries)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -441,7 +442,7 @@ class _ChatStorageScreenState extends State<ChatStorageScreen> {
                   style: FilledButton.styleFrom(backgroundColor: colors.error, foregroundColor: colors.onError),
                   onPressed: _delete,
                   child: Text(
-                      'Delete ${_picked.length} ${_picked.length == 1 ? 'file' : 'files'} (${formatStorageBytes(_pickedBytes)})'),
+                      L.t.delete3(_picked.length, _picked.length == 1 ? L.t.fileWord304 : L.t.filesWord304, formatStorageBytes(_pickedBytes))),
                 ),
               ),
             ),
@@ -567,18 +568,18 @@ Future<bool?> showDeleteFilesSheet(BuildContext context,
               Expanded(child: Text(text, style: theme.textTheme.bodyMedium)),
             ]),
           );
-      final files = count == 1 ? 'file' : 'files';
+      final files = count == 1 ? L.t.fileWord304 : L.t.filesWord304;
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Delete $count $files?',
+            Text(L.t.delete4(count, files),
                 key: const ValueKey('storage_delete_title'),
                 style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
-            point('The $files ${count == 1 ? 'is' : 'are'} deleted from this phone (${formatStorageBytes(bytes)}).'),
-            point('The messages stay in the chat with a small picture and "Removed to save space".'),
-            point('$peerName still has ${count == 1 ? 'a' : 'their'} copy. Photos you saved to your Gallery stay.'),
+            point(L.t.theDeletedFromThisPhone(files, count == 1 ? 'is' : 'are', formatStorageBytes(bytes))),
+            point(L.t.theMessagesStayInTheChat),
+            point(L.t.stillHasCopyPhotosYouSaved(peerName, count == 1 ? 'a' : 'their')),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
@@ -586,7 +587,7 @@ Future<bool?> showDeleteFilesSheet(BuildContext context,
                 key: const ValueKey('storage_delete_confirm'),
                 style: FilledButton.styleFrom(backgroundColor: colors.error, foregroundColor: colors.onError),
                 onPressed: () => Navigator.pop(sheetContext, true),
-                child: const Text('Delete files'),
+                child: Text(L.t.deleteFiles),
               ),
             ),
             const SizedBox(height: 6),
@@ -595,7 +596,7 @@ Future<bool?> showDeleteFilesSheet(BuildContext context,
               child: TextButton(
                 key: const ValueKey('storage_delete_cancel'),
                 onPressed: () => Navigator.pop(sheetContext, false),
-                child: const Text('Cancel'),
+                child: Text(L.t.cancel),
               ),
             ),
           ]),

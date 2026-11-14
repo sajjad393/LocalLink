@@ -6,6 +6,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_format216.da
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_version_card.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (page 25): "Dashboard — today at a glance". The old
 /// `AdminDashboardScreen` stays for the wide shell and its tests.
@@ -40,7 +41,7 @@ class _AdminDashboard216ScreenState extends State<AdminDashboard216Screen> {
   Widget build(BuildContext context) {
     return AdminToolPage216(
       title: 'Dashboard',
-      subtitle: (_) => 'Today at a glance',
+      subtitle: (_) => L.t.todayAtAGlance,
       module: 'Dashboard',
       withDashboard: true,
       builder: (context, state) {
@@ -63,8 +64,8 @@ class _AdminDashboard216ScreenState extends State<AdminDashboard216Screen> {
               key: const ValueKey('a216_look_security'),
               height: 58,
               leading: const AdminToneIcon216(Icons.shield_outlined, A216Tone.red),
-              title: plural216(alerts, 'security warning'),
-              subtitle: 'Open Security',
+              title: plural216(alerts, L.t.securityWarning),
+              subtitle: L.t.openSecurity,
               onTap: () => widget.onNavigate('Security Center'),
             ),
           if (waiting > 0)
@@ -72,8 +73,8 @@ class _AdminDashboard216ScreenState extends State<AdminDashboard216Screen> {
               key: const ValueKey('a216_look_recovery'),
               height: 58,
               leading: const AdminToneIcon216(Icons.restore_rounded, A216Tone.orange),
-              title: '${people216(waiting)} waiting',
-              subtitle: 'Open Recovery',
+              title: L.t.waiting2(people216(waiting)),
+              subtitle: L.t.openRecovery,
               onTap: () => widget.onNavigate('Recovery'),
             ),
           if (old > 0)
@@ -81,8 +82,8 @@ class _AdminDashboard216ScreenState extends State<AdminDashboard216Screen> {
               key: const ValueKey('a216_look_version'),
               height: 58,
               leading: const AdminToneIcon216(Icons.system_update_outlined, A216Tone.purple),
-              title: '${plural216(old, 'phone')} on an old app',
-              subtitle: 'Open App version',
+              title: L.t.onAnOldApp(plural216(old, 'phone')),
+              subtitle: L.t.openAppVersion,
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => const AdminMinVersionScreen())),
             ),
@@ -91,14 +92,14 @@ class _AdminDashboard216ScreenState extends State<AdminDashboard216Screen> {
         return [
           AdminStatGrid216([
             AdminStatTile216(count216(_int(s['users'])), 'Users', A216Tone.blue, Icons.group_outlined),
-            AdminStatTile216(count216(_int(s['online_devices'])), 'Online now', A216Tone.green,
+            AdminStatTile216(count216(_int(s['online_devices'])), L.t.onlineNow, A216Tone.green,
                 Icons.wifi_tethering_rounded),
           ], perRow: 2),
           const SizedBox(height: 10),
           AdminStatGrid216([
-            AdminStatTile216(count216(msgTotal), 'Messages today', A216Tone.purple,
+            AdminStatTile216(count216(msgTotal), L.t.messagesToday, A216Tone.purple,
                 Icons.chat_bubble_outline_rounded),
-            AdminStatTile216(count216(callTotal), 'Calls today', A216Tone.teal, Icons.call_outlined),
+            AdminStatTile216(count216(callTotal), L.t.callsToday, A216Tone.teal, Icons.call_outlined),
           ], perRow: 2),
           const SizedBox(height: 14),
           AdminCard216(
@@ -107,22 +108,22 @@ class _AdminDashboard216ScreenState extends State<AdminDashboard216Screen> {
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(children: [
-                Expanded(child: Text('Messages today', style: t.cardTitle)),
+                Expanded(child: Text(L.t.messagesToday, style: t.cardTitle)),
                 Text(count216(msgTotal), style: t.custom(14, FontWeight.w600, c.blue)),
               ]),
               const SizedBox(height: 10),
               Expanded(
                 child: msgs.isEmpty
-                    ? Center(child: Text('No messages yet today', style: t.note))
+                    ? Center(child: Text(L.t.noMessagesYetToday, style: t.note))
                     : AdminChartBars216(msgs, highlightIndex: hi),
               ),
             ]),
           ),
-          const AdminSection216('Needs a look'),
+          AdminSection216(L.t.needsALook),
           if (looks.isEmpty)
-            const AdminBanner216(A216BannerKind.success, 'All good',
+            AdminBanner216(A216BannerKind.success, L.t.allGood,
                 key: ValueKey('a216_dash_ok'),
-                body: 'Nothing needs a look right now.',
+                body: L.t.nothingNeedsALookRightNow,
                 icon: Icons.check_circle_outline_rounded)
           else
             AdminListCard216(looks),

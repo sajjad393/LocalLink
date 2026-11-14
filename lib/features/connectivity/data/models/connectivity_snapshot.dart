@@ -1,5 +1,6 @@
 import 'package:locallink/features/connectivity/data/models/network_snapshot.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class ConnectivitySnapshot {
   final bool serverConnected;
@@ -50,9 +51,9 @@ class ConnectivitySnapshot {
   );
 
   String get statusLabel {
-    if (wifiDirectConnected) return 'Wi-Fi Direct';
-    if (network.connected) return serverConnected ? 'LAN / Server connected' : 'LAN available';
-    if (serverConnected) return 'Server connected';
-    return 'Server disconnected';
+    if (wifiDirectConnected) return L.t.wiFiDirect;
+    if (network.connected) return serverConnected ? L.t.lanServerConnected : L.t.lanAvailable;
+    if (serverConnected) return L.t.serverConnected;
+    return L.t.serverDisconnected;
   }
 }

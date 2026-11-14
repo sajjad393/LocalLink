@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (page 22): Privacy & access — what admins can never see.
 class AdminPrivacyScreen extends StatelessWidget {
@@ -10,9 +11,9 @@ class AdminPrivacyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AdminToolPage216(
-      title: 'Privacy & access',
+      title: L.t.privacyAccess,
       module: 'Privacy & Access',
-      subtitle: (_) => 'What admins can never see',
+      subtitle: (_) => L.t.whatAdminsCanNeverSee,
       builder: (context, state) {
         final c = A216.colors(context);
         final t = A216Text(c);
@@ -20,14 +21,14 @@ class AdminPrivacyScreen extends StatelessWidget {
         if (p == null) return [if (state.loading) const AdminLoading216()];
         bool hidden(String k) => p[k] != true;
         final never = <(String, String, IconData)>[
-          if (hidden('passwords_exposed')) ('passwords', 'Passwords', Icons.password_rounded),
-          if (hidden('private_keys_exposed')) ('keys', 'Private keys', Icons.key_rounded),
+          if (hidden('passwords_exposed')) ('passwords', L.t.passwords, Icons.password_rounded),
+          if (hidden('private_keys_exposed')) ('keys', L.t.privateKeys, Icons.key_rounded),
           if (hidden('private_call_audio_exposed') && hidden('decrypted_call_media_exposed'))
-            ('audio', 'Call audio', Icons.call_outlined),
+            ('audio', L.t.callAudio, Icons.call_outlined),
           if (hidden('private_file_contents_exposed'))
-            ('files', 'File contents', Icons.description_outlined),
+            ('files', L.t.fileContents, Icons.description_outlined),
           if (hidden('private_message_bodies_exposed'))
-            ('messages', 'Message text', Icons.chat_bubble_outline_rounded),
+            ('messages', L.t.messageText, Icons.chat_bubble_outline_rounded),
         ];
         final ownerOnly = p['private_message_bodies_exposed'] == true;
         AdminRow216 row(String key, String title, String? sub, IconData icon, A216Tone tone,
@@ -55,39 +56,39 @@ class AdminPrivacyScreen extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Private things stay private', style: t.custom(14.5, FontWeight.w600, c.ink)),
+                  Text(L.t.privateThingsStayPrivate, style: t.custom(14.5, FontWeight.w600, c.ink)),
                   const SizedBox(height: 3),
-                  Text('Checked by the server for every admin', style: t.cardSub),
+                  Text(L.t.checkedByTheServerForEvery, style: t.cardSub),
                 ]),
               ),
             ]),
           ),
-          const AdminSection216('Never shown to admins'),
+          AdminSection216(L.t.neverShownToAdmins),
           AdminListCard216([
-            for (final n in never) row(n.$1, n.$2, null, n.$3, A216Tone.green, 'Never shown'),
+            for (final n in never) row(n.$1, n.$2, null, n.$3, A216Tone.green, L.t.neverShown),
           ]),
           if (ownerOnly) ...[
-            const AdminSection216('Owner only'),
+            AdminSection216(L.t.ownerOnly),
             AdminListCard216([
               row(
                   'message_text',
-                  'Message text',
+                  L.t.messageText,
                   p['message_body_access_audited'] == true
-                      ? 'Owner can read; every open is saved'
-                      : 'Owner can read',
+                      ? L.t.ownerCanReadEveryOpenIs
+                      : L.t.ownerCanRead,
                   Icons.chat_bubble_outline_rounded,
                   A216Tone.orange,
                   'Owner'),
             ]),
           ],
-          const AdminSection216('Always'),
+          AdminSection216(L.t.always),
           AdminListCard216([
             if (p['administrative_actions_audited'] != false)
-              row('audited', 'Admin actions saved', null, Icons.list_alt_rounded, A216Tone.blue,
-                  'Always'),
+              row('audited', L.t.adminActionsSaved, null, Icons.list_alt_rounded, A216Tone.blue,
+                  L.t.always),
             if (p['server_side_role_checks'] != false)
-              row('roles', 'Rights checked by the server', null, Icons.shield_outlined,
-                  A216Tone.blue, 'Always'),
+              row('roles', L.t.rightsCheckedByTheServer, null, Icons.shield_outlined,
+                  A216Tone.blue, L.t.always),
           ]),
         ];
       },

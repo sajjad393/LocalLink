@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/group_extras.dart';
 import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G5b: pin + poll widgets (mock G5b P2-P3, Q2-Q4).
 
@@ -44,7 +45,7 @@ class _PinLengthSheetState extends State<_PinLengthSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Pin for how long?',
+            Text(L.t.pinForHowLong,
                 style: Theme.of(context)
                     .textTheme
                     .titleLarge
@@ -91,8 +92,7 @@ class _PinLengthSheetState extends State<_PinLengthSheet> {
                 ),
               ),
             Text(
-                'Everyone in the group sees it at the top of the chat. Only one '
-                'message is pinned at a time; a new pin replaces the old one.',
+                L.t.everyoneInTheGroupSeesIt,
                 style: TextStyle(
                     fontSize: 12.5, height: 1.4, color: colors.onSurfaceVariant)),
             const SizedBox(height: 14),
@@ -101,7 +101,7 @@ class _PinLengthSheetState extends State<_PinLengthSheet> {
               style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(48)),
               onPressed: () => Navigator.pop(context, lengths[_picked]),
-              child: const Text('Pin',
+              child: Text(L.t.pin,
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
             ),
             const SizedBox(height: 6),
@@ -109,7 +109,7 @@ class _PinLengthSheetState extends State<_PinLengthSheet> {
               style:
                   TextButton.styleFrom(minimumSize: const Size.fromHeight(44)),
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel',
+              child: Text(L.t.cancel,
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
             ),
           ],
@@ -160,7 +160,7 @@ class GroupPinnedBar extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Pinned message',
+                    Text(L.t.pinnedMessage,
                         style: TextStyle(
                             fontSize: 12,
                             color: _blue,
@@ -270,7 +270,7 @@ class _NewPollScreenState extends State<NewPollScreen> {
         );
     final poll = _poll;
     return Scaffold(
-      appBar: AppBar(title: const Text('New poll')),
+      appBar: AppBar(title: Text(L.t.newPoll)),
       body: SafeArea(
         child: Column(
           children: [
@@ -287,7 +287,7 @@ class _NewPollScreenState extends State<NewPollScreen> {
                       minLines: 1,
                       maxLines: 3,
                       textCapitalization: TextCapitalization.sentences,
-                      decoration: field('Ask a question'),
+                      decoration: field(L.t.askAQuestion),
                     ),
                   ),
                   section('OPTIONS'),
@@ -299,11 +299,11 @@ class _NewPollScreenState extends State<NewPollScreen> {
                         controller: _options[i],
                         maxLength: GroupPoll.maxOption,
                         textCapitalization: TextCapitalization.sentences,
-                        decoration: field('Option ${i + 1}',
+                        decoration: field(L.t.option(i + 1),
                             suffix: _options.length > GroupPoll.minOptions
                                 ? IconButton(
                                     key: ValueKey('poll_option_remove_$i'),
-                                    tooltip: 'Remove option',
+                                    tooltip: L.t.removeOption,
                                     icon: const Icon(Icons.close_rounded,
                                         size: 18),
                                     onPressed: () => _removeOption(i),
@@ -329,7 +329,7 @@ class _NewPollScreenState extends State<NewPollScreen> {
                             Icon(Icons.add_rounded,
                                 size: 20, color: colors.onSurfaceVariant),
                             const SizedBox(width: 10),
-                            Text('Add option',
+                            Text(L.t.addOption,
                                 style: TextStyle(
                                     fontSize: 15,
                                     color: colors.onSurfaceVariant)),
@@ -357,16 +357,15 @@ class _NewPollScreenState extends State<NewPollScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text.rich(
-                            const TextSpan(children: [
-                              TextSpan(text: 'Everyone picks '),
+                            TextSpan(children: L.spans([
+                              TextSpan(text: L.t.everyonePicks),
                               TextSpan(
-                                  text: 'one',
+                                  text: L.t.oneLower304,
                                   style:
                                       TextStyle(fontWeight: FontWeight.w700)),
                               TextSpan(
-                                  text: ' answer. They can change it for 3 '
-                                      "minutes after voting, then it's final."),
-                            ]),
+                                  text: L.t.answerTheyCanChangeItFor),
+                            ])),
                             style: TextStyle(
                                 fontSize: 13.5,
                                 height: 1.4,
@@ -387,7 +386,7 @@ class _NewPollScreenState extends State<NewPollScreen> {
                     minimumSize: const Size.fromHeight(50)),
                 onPressed:
                     poll == null ? null : () => Navigator.pop(context, poll),
-                child: const Text('Send poll',
+                child: Text(L.t.sendPoll,
                     style:
                         TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
               ),
@@ -505,8 +504,8 @@ class _GroupPollViewState extends State<GroupPollView> {
             const SizedBox(width: 4),
             Text(
                 poll.multi
-                    ? 'POLL · CHOOSE ONE OR MORE'
-                    : 'POLL · CHOOSE ONE',
+                    ? L.t.pollChooseOneOrMore
+                    : L.t.pollChooseOne,
                 key: const ValueKey('poll_kind'),
                 style: TextStyle(
                     fontSize: 11.5,
@@ -537,9 +536,8 @@ class _GroupPollViewState extends State<GroupPollView> {
                 Expanded(
                   child: Text(
                     left > Duration.zero
-                        ? 'You can change your vote for '
-                            '${GroupPollView.clock(left)}'
-                        : 'Your vote is final',
+                        ? L.t.youCanChangeYourVoteFor(GroupPollView.clock(left))
+                        : L.t.yourVoteIsFinal,
                     key: const ValueKey('poll_change_line'),
                     style: TextStyle(
                         fontSize: 12.5,
@@ -554,16 +552,16 @@ class _GroupPollViewState extends State<GroupPollView> {
             padding: const EdgeInsets.only(top: 6, bottom: 2),
             child: Row(children: [
               if (widget.members > 0)
-                Text('${tally.voters} of ${widget.members} voted',
+                Text(L.t.ofVoted(tally.voters, widget.members),
                     key: const ValueKey('poll_voted_count'),
                     style: TextStyle(fontSize: 12.5, color: soft)),
               Expanded(
                 child: InkWell(
                   key: const ValueKey('poll_view_votes'),
                   onTap: widget.onViewVotes,
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 4),
-                    child: Text('View votes',
+                    child: Text(L.t.viewVotes,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             color: _blue,
@@ -737,7 +735,7 @@ Future<void> showPollVotesSheet(
       }
 
       Widget person(String v, String key, {String time = ''}) {
-        final name = v == self ? 'You' : nameOf(v);
+        final name = v == self ? L.t.you3 : nameOf(v);
         return Padding(
           key: ValueKey(key),
           padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
@@ -816,7 +814,7 @@ Future<void> showPollVotesSheet(
         rows.add(Padding(
           key: const ValueKey('poll_votes_not_yet'),
           padding: const EdgeInsets.only(top: 14, bottom: 2),
-          child: Text('Not voted yet',
+          child: Text(L.t.notVotedYet,
               style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -836,12 +834,12 @@ Future<void> showPollVotesSheet(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Votes',
+                Text(L.t.votes,
                     style: theme.textTheme.titleLarge
                         ?.copyWith(fontSize: 20, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(
-                    '${poll.question} · ${tally.voters} of $members voted',
+                    L.t.ofVoted2(poll.question, tally.voters, members),
                     key: const ValueKey('poll_votes_hint'),
                     style: TextStyle(
                         fontSize: 13.5, color: colors.onSurfaceVariant)),
@@ -849,10 +847,8 @@ Future<void> showPollVotesSheet(
                 const SizedBox(height: 14),
                 Text(
                     poll.multi
-                        ? 'Tap an option in the chat to vote; tap it again to '
-                            'take your vote back. Works Nearby and Online.'
-                        : 'One answer each. A vote can be changed for 3 '
-                            "minutes, then it's final.",
+                        ? L.t.tapAnOptionInTheChat
+                        : L.t.oneAnswerEachAVoteCan,
                     style: TextStyle(
                         fontSize: 13, color: colors.onSurfaceVariant)),
               ],

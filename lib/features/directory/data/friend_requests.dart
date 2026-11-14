@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 196 (12b): a Nearby "Add friend" that waits for the private
 /// person's answer. Example: sumaira is private, Ali taps Add friend.
@@ -129,7 +130,7 @@ class FriendRequestRules {
   static String age(int atMs, int nowMs) {
     final m = ((nowMs - atMs) / 60000).floor();
     if (m < 1) return '<1 min';
-    if (m < 60) return '$m min';
+    if (m < 60) return L.t.min(m);
     return '${(m / 60).floor()} h';
   }
 }

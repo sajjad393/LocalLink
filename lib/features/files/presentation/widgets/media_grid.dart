@@ -10,6 +10,7 @@ import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 
 import 'media_tile_look.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 202: true for a video file (by type or by name).
 bool isVideoAttachment(Attachment a) {
@@ -71,7 +72,7 @@ String mediaSummary(List<Attachment> attachments) {
   return [
     if (photos > 0) n(photos, 'photo'),
     if (videos > 0) n(videos, 'video'),
-    if (voice > 0) n(voice, 'voice message'),
+    if (voice > 0) n(voice, L.t.voiceMessage),
     if (files > 0) n(files, 'file'),
   ].join(', ');
 }

@@ -7,6 +7,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_block_confir
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_list_page.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// One person the admin can pick (E2).
 class BlockCandidate {
@@ -21,11 +22,11 @@ String seenLabel(String iso, {DateTime? now}) {
   final at = DateTime.tryParse(iso);
   if (at == null) return '';
   final d = (now ?? DateTime.now()).toUtc().difference(at.toUtc());
-  if (d.inMinutes < 2) return 'seen just now';
-  if (d.inHours < 1) return 'seen ${d.inMinutes} min ago';
-  if (d.inDays < 1) return 'seen ${d.inHours} h ago';
-  if (d.inDays == 1) return 'seen yesterday';
-  return 'seen ${d.inDays} days ago';
+  if (d.inMinutes < 2) return L.t.seenJustNow;
+  if (d.inHours < 1) return L.t.seenMinAgo2(d.inMinutes);
+  if (d.inDays < 1) return L.t.seenHAgo(d.inHours);
+  if (d.inDays == 1) return L.t.seenYesterday;
+  return L.t.seenDaysAgo(d.inDays);
 }
 
 /// Everyone this phone has seen (saved profiles + phones) and who is
@@ -60,7 +61,7 @@ Future<List<BlockCandidate>> loadBlockCandidates(LocalStore store) async {
         name: name,
         username: username,
         seen: near(d)
-            ? 'nearby now'
+            ? L.t.nearbyNow2
             : seenLabel(d?.presenceLocalAt.isNotEmpty == true
                 ? d!.presenceLocalAt
                 : (p['synced_at'] ?? p['updated_at'] ?? '').toString()),
@@ -75,7 +76,7 @@ Future<List<BlockCandidate>> loadBlockCandidates(LocalStore store) async {
         userId: d.id,
         deviceIds: [d.id],
         name: d.name.trim().isEmpty ? d.id : d.name,
-        seen: near(d) ? 'nearby now' : seenLabel(d.presenceLocalAt),
+        seen: near(d) ? L.t.nearbyNow2 : seenLabel(d.presenceLocalAt),
       ),
     );
   }
@@ -132,8 +133,8 @@ class _AdminBlockUsersScreenState extends State<AdminBlockUsersScreen> {
     final seen = [for (final c in page.visible) if (!c.nearby) c];
     // Bundle 216 (page 8): 216 look; keys, texts and the confirm kept.
     return AdminPage216(
-      title: 'Block or unblock a user',
-      subtitle: 'Anyone this phone has seen, or nearby',
+      title: L.t.blockOrUnblockAUser,
+      subtitle: L.t.anyoneThisPhoneHasSeenOr,
       body: ListenableBuilder(
         listenable: AdminBlockBook.instance,
         builder: (context, _) => ListView(
@@ -141,7 +142,7 @@ class _AdminBlockUsersScreenState extends State<AdminBlockUsersScreen> {
           children: [
             AdminSearch216(
               key: const ValueKey('admin_block_search'),
-              hint: 'Search name or @username',
+              hint: L.t.searchNameOrUsername,
               onChanged: (q) => setState(() {
                 _query = q;
                 _shown = kAdminListPage;
@@ -154,18 +155,18 @@ class _AdminBlockUsersScreenState extends State<AdminBlockUsersScreen> {
               )
             else if (page.matched == 0) ...[
               const SizedBox(height: 14),
-              const AdminEmptyState216(
+              AdminEmptyState216(
                   icon: Icons.search_rounded,
                   tone: A216Tone.grey,
-                  title: 'No one found',
-                  body: 'Try another name.'),
+                  title: L.t.noOneFound,
+                  body: L.t.tryAnotherName),
             ],
             if (nearby.isNotEmpty) ...[
-              const AdminSection216('Nearby now'),
+              AdminSection216(L.t.nearbyNow),
               _card(nearby),
             ],
             if (seen.isNotEmpty) ...[
-              const AdminSection216('Seen before'),
+              AdminSection216(L.t.seenBefore),
               _card(seen),
             ],
             const SizedBox(height: 6),
@@ -175,8 +176,8 @@ class _AdminBlockUsersScreenState extends State<AdminBlockUsersScreen> {
               onPressed: () => setState(() => _shown += kAdminListPage),
             ),
             const SizedBox(height: 10),
-            const AdminNote216(
-                'Only people this phone has seen are listed. Others can be blocked from the web panel.',
+            AdminNote216(
+                L.t.onlyPeopleThisPhoneHasSeen,
                 card: false,
                 align: TextAlign.center),
           ],
@@ -217,12 +218,12 @@ class _AdminBlockUsersScreenState extends State<AdminBlockUsersScreen> {
       subtitle: [
         if (t.username.isNotEmpty) '@${t.username}',
         if (blocked)
-          waiting ? 'Blocked · server later' : (when.isEmpty ? 'blocked' : 'blocked $when')
+          waiting ? L.t.blockedServerLater : (when.isEmpty ? 'blocked' : L.t.blocked3(when))
         else if (t.seen.isNotEmpty)
           t.seen,
       ].join(' · '),
       trailing: AdminPillButton216(
-          blocked ? 'Unblock' : 'Block', blocked ? A216Tone.grey : A216Tone.red, go),
+          blocked ? L.t.unblock : L.t.block, blocked ? A216Tone.grey : A216Tone.red, go),
       onTap: go,
     );
   }

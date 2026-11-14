@@ -49,8 +49,9 @@ import 'package:locallink/features/transfer/domain/account_transfer_repository_c
 import 'call_fix_146_test.dart'
     show FakeGateway, HistoryRepository, FakeConnectivityRepository;
 import 'support/phase5_fakes.dart' show FakePeerTransport;
+import 'support/l10n_source_304.dart';
 
-String _src(String path) => File(path).readAsStringSync();
+String _src(String path) => readEnglish304(path);
 
 // ----------------------------------------------------------------- fakes
 
@@ -898,24 +899,24 @@ void main() {
   test('F10 titles of the screens that open match the rows', () {
     expect(
         _src('lib/features/account/presentation/screens/devices_screen.dart')
-            .contains("title: const Text('My phones')"),
+            .contains("title: Text('My phones')"),
         isTrue);
     expect(
         _src('lib/features/account/presentation/screens/devices_screen.dart')
-            .contains("title: const Text('Remove this phone?')"),
+            .contains("title: Text('Remove this phone?')"),
         isTrue);
     expect(
         _src('lib/features/transfer/presentation/screens/account_transfer_screen.dart')
-            .contains("title: const Text('Move to a new phone')"),
+            .contains("title: Text('Move to a new phone')"),
         isTrue);
     expect(
         _src('lib/features/recovery/presentation/screens/account_restore_screen.dart')
-            .contains("title: const Text('Backup and restore')"),
+            .contains("title: Text('Backup and restore')"),
         isTrue);
     final key = _src(
         'lib/features/account/presentation/screens/crypto_migration_screen.dart');
-    expect(key.contains("title: const Text('Security key')"), isTrue);
-    expect(key.contains("title: const Text('Change security key?')"), isTrue);
+    expect(key.contains("title: Text('Security key')"), isTrue);
+    expect(key.contains("title: Text('Change security key?')"), isTrue);
   });
 
   // ================================================================ T6

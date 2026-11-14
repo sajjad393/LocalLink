@@ -1,7 +1,6 @@
 // Bundle 207: no gray press overlay on the floating buttons (shrink to 95 %
 // instead), the video player closes when a video plays to the end, and a
 // tap on an emoji chip adds / removes my reaction.
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,8 +19,9 @@ import 'package:locallink/features/messaging/data/services/reliable_messaging_se
 
 import 'support/chat_video_fakes.dart';
 import 'support/phase5_fakes.dart';
+import 'support/l10n_source_304.dart';
 
-String _read(String path) => File(path).readAsStringSync();
+String _read(String path) => readEnglish304(path);
 
 MessageReaction _r(String who, String emoji) => MessageReaction(
     messageId: 'm1', reactorId: who, emoji: emoji, createdAt: DateTime(2026));

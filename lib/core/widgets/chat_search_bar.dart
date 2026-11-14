@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/search_pill_298.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 207 (L2, mock 207 page 5 screen 14): the search top bar inside a
 /// chat (groups since G1, now 1:1 too): back, a rounded box, "2 of 3",
@@ -51,7 +52,7 @@ class ChatSearchBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       key: ValueKey('${keyPrefix}_search_bar'),
       leading: IconButton(
-        tooltip: 'Close search',
+        tooltip: L.t.closeSearch,
         onPressed: onClose,
         icon: const Icon(Icons.arrow_back),
       ),
@@ -60,7 +61,7 @@ class ChatSearchBar extends StatelessWidget implements PreferredSizeWidget {
       title: SearchPill298(
         fieldKey: ValueKey('${keyPrefix}_search_field'),
         controller: controller,
-        hint: hint,
+        hint: L.en(hint),
         autofocus: true,
         onChanged: onChanged,
         onSubmitted: (_) => onGo(i),
@@ -78,13 +79,13 @@ class ChatSearchBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         IconButton(
           key: ValueKey('${keyPrefix}_search_older'),
-          tooltip: 'Older',
+          tooltip: L.t.older,
           onPressed: count == 0 || i >= count - 1 ? null : () => onGo(i + 1),
           icon: const Icon(Icons.keyboard_arrow_up_rounded),
         ),
         IconButton(
           key: ValueKey('${keyPrefix}_search_newer'),
-          tooltip: 'Newer',
+          tooltip: L.t.newer,
           onPressed: count == 0 || i == 0 ? null : () => onGo(i - 1),
           icon: const Icon(Icons.keyboard_arrow_down_rounded),
         ),

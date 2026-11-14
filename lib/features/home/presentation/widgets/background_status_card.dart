@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 175 (10): the STATUS card on "Keep LocalLink running" (approved
 /// mock `mocks/bundle175_mock.svg`). Green = running. Red = stopped by the
@@ -25,12 +26,12 @@ class BackgroundStatusCard extends StatelessWidget {
   /// call alerts row (approved mock `mocks/bundle179_mock.svg`).
   static (Color, String, String, bool)? callAlertsRow(String? state) =>
       switch (state) {
-        'ok' => (green, 'Call alerts on', 'Calls ring with Accept / Reject',
+        'ok' => (green, L.t.callAlertsOn, L.t.callsRingWithAcceptReject,
             false),
-        'category_off' => (red, 'Call alerts off - tap to turn on',
-            'Calls ring, but no Accept button', true),
-        'lockscreen_off' => (orange, 'Lock-screen calls off - turn on',
-            'Android 14+: full screen when locked', true),
+        'category_off' => (red, L.t.callAlertsOffTapToTurn,
+            L.t.callsRingButNoAcceptButton, true),
+        'lockscreen_off' => (orange, L.t.lockScreenCallsOffTurnOn,
+            L.t.android14FullScreenWhenLocked, true),
         _ => null,
       };
 
@@ -51,13 +52,13 @@ class BackgroundStatusCard extends StatelessWidget {
 
   /// Bundle 177 (10.2): (dot colour, title, subtitle) for the Nearby row.
   static (Color, String, String?)? nearbyRow(String? state) => switch (state) {
-        'on' => (green, 'Nearby while closed: On',
-            'Friends without Wi-Fi can reach you'),
-        'no_permission' => (orange, 'Nearby while closed: Needs permission',
+        'on' => (green, L.t.nearbyWhileClosedOn,
+            L.t.friendsWithoutWiFiCanReach),
+        'no_permission' => (orange, L.t.nearbyWhileClosedNeedsPermission,
             null),
-        'no_location' => (orange, 'Nearby while closed: Needs location', null),
-        'battery_low' => (orange, 'Nearby while closed: Battery low', null),
-        'admin_off' => (grey, 'Nearby while closed: Off by admin', null),
+        'no_location' => (orange, L.t.nearbyWhileClosedNeedsLocation, null),
+        'battery_low' => (orange, L.t.nearbyWhileClosedBatteryLow, null),
+        'admin_off' => (grey, L.t.nearbyWhileClosedOffByAdmin, null),
         _ => null,
       };
 
@@ -84,14 +85,14 @@ class BackgroundStatusCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(running ? 'Running now' : 'Stopped by your phone',
+                Text(running ? L.t.runningNow : L.t.stoppedByYourPhone,
                     style: const TextStyle(
                         fontWeight: FontWeight.w700, fontSize: 15)),
                 const SizedBox(height: 2),
                 Text(
                     running
-                        ? 'Messages arrive when the app is closed'
-                        : 'Messages wait until it runs again',
+                        ? L.t.messagesArriveWhenTheAppIs
+                        : L.t.messagesWaitUntilItRunsAgain,
                     style: TextStyle(fontSize: 12, color: muted)),
               ],
             ),
@@ -105,7 +106,7 @@ class BackgroundStatusCard extends StatelessWidget {
                 : FilledButton(
                     key: const ValueKey('background-status-start'),
                     onPressed: onStart,
-                    child: const Text('Start'),
+                    child: Text(L.t.start),
                   ),
         ]),
         const SizedBox(height: 12),
@@ -118,8 +119,8 @@ class BackgroundStatusCard extends StatelessWidget {
             Expanded(
               child: Text(
                   notifications
-                      ? 'Notifications on'
-                      : 'Notifications off - tap to allow',
+                      ? L.t.notificationsOn
+                      : L.t.notificationsOffTapToAllow,
                   style: const TextStyle(
                       fontWeight: FontWeight.w700, fontSize: 15)),
             ),

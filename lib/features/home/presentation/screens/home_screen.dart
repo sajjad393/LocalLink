@@ -101,6 +101,7 @@ import 'package:locallink/features/authentication/data/services/offline_account_
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
 import 'package:locallink/features/account/presentation/widgets/private_profile_card.dart';
 import 'package:locallink/core/identity/person_name_258.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class HomeScreen extends StatefulWidget {
   final LocalLinkApi api;
@@ -493,8 +494,8 @@ class _HomeScreenState extends State<HomeScreen> {
           JoinCard218(
             key: const ValueKey('pwd_reset_only_here_222'),
             icon: JoinIcon218.warn,
-            title: 'Your new password is only on this phone',
-            body: 'The server did not take it (your recovery code was changed). Use Forgot password again when online.',
+            title: L.t.yourNewPasswordIsOnlyOn,
+            body: L.t.theServerDidNotTakeIt,
             buttons: [
               JoinButton218(const ValueKey('pwd_reset_only_here_ok_222'), 'OK', () {
                 setState(() => _pwdOnlyHere222 = false);
@@ -738,7 +739,7 @@ class _HomeScreenState extends State<HomeScreen> {
         name: group.name,
         isGroup: true,
         subtitle: preview == null
-            ? 'Group'
+            ? L.t.group
             : chatPreviewText(preview,
                 localDeviceId: localId, senderName: labels[preview.senderId]),
         lastAt: preview?.createdAt,
@@ -815,7 +816,7 @@ class _HomeScreenState extends State<HomeScreen> {
           source: 'group',
         )));
       } else if (context.mounted) {
-        LinkToast.show(context, 'Contact added', kind: LinkToastKind.done);
+        LinkToast.show(context, L.t.contactAdded, kind: LinkToastKind.done);
       }
     } catch (error) {
       if (context.mounted) showErrorToast(context, error: error);
@@ -905,7 +906,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final me = widget.store.deviceId ?? '';
         final rules = GroupRules(group, members, me);
         final next = rules.isOwner ? rules.nextOwner : null;
-        var myName = 'You';
+        var myName = L.t.you3;
         for (final m in members) {
           if (m.deviceId == me && m.name.trim().isNotEmpty) myName = m.name.trim();
         }
@@ -916,7 +917,7 @@ class _HomeScreenState extends State<HomeScreen> {
           owner: rules.isOwner,
           nextOwner: next == null
               ? ''
-              : (next.name.trim().isEmpty ? 'Group member' : next.name.trim()),
+              : (next.name.trim().isEmpty ? L.t.groupMember : next.name.trim()),
           nextIsAdmin: next?.role == 'admin',
         );
         if (!ok || !mounted) return;
@@ -973,8 +974,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         if (!mounted || result == null) return;
         if (result.skipped.isNotEmpty) {
-          LinkToast.show(context, 'Not added yet: ${result.skipped.join(', ')}. '
-                  'They need to open LinkUp Online once.', kind: LinkToastKind.done);
+          LinkToast.show(context, L.t.notAddedYetTheyNeedTo(result.skipped.join(', ')), kind: LinkToastKind.done);
         }
         unawaited(Navigator.push<void>(context, _groupRoute(result.group))
             .whenComplete(_refreshUnreadCounts));
@@ -1020,8 +1020,7 @@ class _HomeScreenState extends State<HomeScreen> {
       picked = people.where((p) => known.contains(p.deviceId)).toList();
       if (picked.isEmpty) {
         throw GroupCreateError(
-            '${people.map((p) => p.name).join(', ')} can\'t be added yet. '
-            'They need to open LinkUp Online once.');
+            L.t.cantAddYetOnline304(people.map((p) => p.name).join(', ')));
       }
     } on GroupCreateError {
       rethrow;
@@ -1041,14 +1040,13 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } on NoNearbyMembersException {
       throw GroupCreateError(
-          '${people.map((p) => p.name).join(', ')} can\'t be added yet. '
-          'They need to be Online or Nearby with you once.');
+          L.t.cantAddYetNearby304(people.map((p) => p.name).join(', ')));
     } on GroupActionException catch (error) {
       throw GroupCreateError(error.friendly);
     } catch (error) {
       AppLogger.warning('GROUP_CREATE_FAILED', detail: '$error');
-      throw const GroupCreateError(
-          'Making a group needs Online for now. Try again when Online.');
+      throw GroupCreateError(
+          L.t.makingAGroupNeedsOnlineFor);
     }
     Set<String> inGroup;
     try {
@@ -1199,7 +1197,7 @@ class _HomeScreenState extends State<HomeScreen> {
       chats: chats,
       search: (q) => widget.store.searchMessages(q),
       titleOf: (h) => h.group
-          ? (groupsById[h.chatId]?.name ?? 'Group')
+          ? (groupsById[h.chatId]?.name ?? L.t.group)
           : (state.deviceLabels[h.chatId] ?? NameBook258.noName),
       avatarOf: (h) => h.group
           ? GroupAvatar(
@@ -1211,7 +1209,7 @@ class _HomeScreenState extends State<HomeScreen> {
               radius: 26,
               peerId: h.chatId),
       prefixOf: (h) => h.senderId == localId
-          ? 'You: '
+          ? L.t.you
           : h.group
               ? '${state.deviceLabels[h.senderId] ?? 'Someone'}: '
               : '',
@@ -1294,12 +1292,12 @@ class _HomeScreenState extends State<HomeScreen> {
           key: const ValueKey('chats_title_taps'),
           behavior: HitTestBehavior.opaque,
           onTap: _onChatsTitleTap,
-          child: const Text('Chats'),
+          child: Text(L.t.chats),
         ),
         actions: [
           IconButton(
             key: const ValueKey('chats_search_open'),
-            tooltip: 'Search',
+            tooltip: L.t.search,
             onPressed: _openChatsSearch,
             icon: const Icon(Icons.search_rounded),
           ),
@@ -1309,10 +1307,10 @@ class _HomeScreenState extends State<HomeScreen> {
       // Bundle 206: the round button can be moved (hold, drag, let go);
       // one place for Chats, Calls and People.
       body: MovableFabArea(
-        label: 'New conversation',
+        label: L.t.newConversation,
         fab: BrandGradientFab(
           heroTag: 'home_fab',
-          tooltip: 'New conversation',
+          tooltip: L.t.newConversation,
           // Bundle 104: brand-gradient FAB (People tab look) + modern icon.
           icon: Icons.chat_bubble_outline_rounded,
           // Bundle G1 (mock 2): + opens the Start sheet.
@@ -1324,8 +1322,8 @@ class _HomeScreenState extends State<HomeScreen> {
           if (_chatsSearching) return _chatsSearchBody(state);
           if (state.syncNotice != null) UiHidden263.note('sync_notice'); // Bundle 263 (A5)
           if (state.loading && state.devices.isEmpty && state.groups.isEmpty) {
-            return const LocalLinkLoadingView(
-                message: 'Loading your conversations…');
+            return LocalLinkLoadingView(
+                message: L.t.loadingYourConversations);
           }
           return RefreshIndicator(
             onRefresh: _refresh,
@@ -1363,16 +1361,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 // Bundle 153 / 183 (O): the shared small grey CAPITALS title
                 // ("CONVERSATIONS"), 12 below the top bar.
-                const MessengerGroupLabel('Conversations', top: 12),
+                MessengerGroupLabel(L.t.conversations, top: 12),
                 if (_visibleDevices(state).isEmpty && state.groups.isEmpty)
-                  const SizedBox(
+                  SizedBox(
                     height: 420,
                     child: LocalLinkEmptyView(
                       icon: Icons.forum_outlined,
                       lottieAsset: LocalLinkAssets.lottieEmptyInbox,
-                      title: 'No conversations yet',
+                      title: L.t.noConversationsYet,
                       message:
-                          'Find a nearby person or create a group to start chatting.',
+                          L.t.findANearbyPersonOrCreate,
                     ),
                   )
                 else
@@ -1409,7 +1407,7 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context, _) {
           final typing = (GroupReceiptHub.typing?.call(group.id) ?? const <String>[])
               .where((id) => id != localId)
-              .map((id) => state.deviceLabels[id] ?? 'Someone')
+              .map((id) => state.deviceLabels[id] ?? L.t.someone)
               .toList();
           return MessengerConversationTile(
           muted: GroupMuteBook.instance.isMuted(group.id),
@@ -1509,10 +1507,10 @@ class _HomeScreenState extends State<HomeScreen> {
   String _emptyGroupLine(LocalGroup group, HomeState state) {
     final me = widget.store.deviceId ?? '';
     if (group.ownerId.isNotEmpty && group.ownerId == me) {
-      return 'You created this group';
+      return L.t.youCreatedThisGroup;
     }
     final owner = state.deviceLabels[group.ownerId]?.trim() ?? '';
-    return owner.isEmpty ? 'Group conversation' : '$owner added you';
+    return owner.isEmpty ? L.t.groupConversation : L.t.addedYou(owner);
   }
 
   static IconData? _previewIcon(ChatPreview? preview) =>
@@ -1613,7 +1611,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         final messenger = ScaffoldMessenger.of(context);
         messenger.hideCurrentSnackBar();
-        LinkToast.maybeOn(messenger, 'Press back again to exit', kind: LinkToastKind.info, duration: const Duration(seconds: 2));
+        LinkToast.maybeOn(messenger, L.t.pressBackAgainToExit, kind: LinkToastKind.info, duration: const Duration(seconds: 2));
       },
       child: Scaffold(
         body: IndexedStack(
@@ -1628,23 +1626,23 @@ class _HomeScreenState extends State<HomeScreen> {
         bottomNavigationBar: NavigationBar(
           selectedIndex: _index,
           onDestinationSelected: (value) => setState(() => _index = value),
-          destinations: const [
+          destinations: [
             NavigationDestination(
                 icon: Icon(Icons.chat_bubble_outline),
                 selectedIcon: Icon(Icons.chat_bubble),
-                label: 'Chats'),
+                label: L.t.chats),
             NavigationDestination(
                 icon: Icon(Icons.call_outlined),
                 selectedIcon: Icon(Icons.call),
-                label: 'Calls'),
+                label: L.t.calls2),
             NavigationDestination(
                 icon: Icon(Icons.people_outline),
                 selectedIcon: Icon(Icons.people),
-                label: 'People'),
+                label: L.t.people),
             NavigationDestination(
                 icon: Icon(Icons.settings_outlined),
                 selectedIcon: Icon(Icons.settings),
-                label: 'Settings'),
+                label: L.t.settings),
           ],
         ),
       ),
@@ -1737,7 +1735,7 @@ class _OngoingCallBarState extends State<_OngoingCallBar> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('Call in progress',
+                      Text(L.t.callInProgress,
                           style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
@@ -1745,8 +1743,8 @@ class _OngoingCallBarState extends State<_OngoingCallBar> {
                       const SizedBox(height: 1),
                       Text(
                           session.answeredAt == null
-                              ? '${session.peerName} · Calling… — Tap to return'
-                              : '${session.peerName} · ${_clock(session)} — Tap to return',
+                              ? L.t.callingTapToReturn(session.peerName)
+                              : L.t.tapToReturn(session.peerName, _clock(session)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(

@@ -22,6 +22,7 @@ import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/directory/data/peer_photo_book.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class MyQrScreen extends StatelessWidget {
   final DirectoryProfile profile;
@@ -86,11 +87,11 @@ class MyQrScreen extends StatelessWidget {
       backgroundColor: p.screen,
       appBar: addBar283(
         context,
-        title: 'My QR code',
+        title: L.t.myQrCode,
         actions: [
           RoundTopButton283(
             key: const ValueKey('my_qr_scan_283'),
-            tooltip: 'Scan QR code',
+            tooltip: L.t.scanQrCode,
             icon: Icons.qr_code_scanner,
             onPressed: repository == null ? null : () => _openScanner(context),
           ),
@@ -103,7 +104,7 @@ class MyQrScreen extends StatelessWidget {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('Could not create your QR code. ${snapshot.error}',
+                child: Text(L.t.couldNotCreateYourQrCode(snapshot.error),
                     style: TextStyle(color: p.text)),
               ),
             );
@@ -180,7 +181,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
     final me = load == null ? null : await load();
     if (!mounted) return;
     if (me == null) {
-      LinkToast.show(context, 'Your profile is not ready yet.', kind: LinkToastKind.error);
+      LinkToast.show(context, L.t.yourProfileIsNotReadyYet, kind: LinkToastKind.error);
       return;
     }
     AppLogger.info('QR_UI', detail: 'scanner_my_qr');
@@ -223,7 +224,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
     if (!mounted || !picked) return;
     AppLogger.info('QR_UI', detail: 'from_photo found=${raw == null ? 'n' : 'y'}');
     if (raw == null) {
-      LinkToast.show(context, 'No QR code found in this picture', kind: LinkToastKind.error);
+      LinkToast.show(context, L.t.noQrCodeFoundInThis, kind: LinkToastKind.error);
       return;
     }
     await _handle(raw);
@@ -306,7 +307,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
       // Bundle 116: verbatim reason — cleanBlocError() would squash this into
       // "Something went wrong" / a server sentence and hide the real cause.
       setState(() {
-        error = 'QR import failed ($stage): $e';
+        error = L.t.qrImportFailed(stage, e);
       });
     } finally {
       if (mounted) setState(() => resolving = false);
@@ -318,24 +319,24 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
     final value = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Paste contact code'),
+        title: Text(L.t.pasteContactCode),
         content: TextField(
           controller: controller,
           maxLines: 4,
           minLines: 2,
-          decoration: const InputDecoration(
-            hintText: 'Paste the shared code text here',
+          decoration: InputDecoration(
+            hintText: L.t.pasteTheSharedCodeTextHere,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+            child: Text(L.t.cancel),
           ),
           FilledButton(
             onPressed: () =>
                 Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: const Text('Add'),
+            child: Text(L.t.add),
           ),
         ],
       ),
@@ -353,7 +354,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Scan QR code',
+        title: Text(L.t.scanQrCode,
             style: TextStyle(fontSize: 19, fontWeight: FontWeight.w600, color: Colors.white)),
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
@@ -361,7 +362,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
         elevation: 0,
         actions: [
           IconButton(
-            tooltip: 'Flashlight',
+            tooltip: L.t.flashlight,
             icon: Icon(torchOn ? Icons.flash_on : Icons.flash_off_outlined),
             onPressed: () {
               scanner.toggleTorch();
@@ -398,8 +399,8 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
                 top: window.bottom + 17,
                 left: 20,
                 right: 20,
-                child: const Text(
-                  "Point at your friend's QR code",
+                child: Text(
+                  L.t.pointAtYourFriendSQr,
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Color(0xFFE5E7EB), fontSize: 14),
                 ),
@@ -438,7 +439,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
                           key: const ValueKey('scan_my_qr_283'),
                           filled: true,
                           icon: Icons.qr_code_2_rounded,
-                          text: 'My QR code',
+                          text: L.t.myQrCode,
                           onPressed: _openMyQr,
                         ),
                       ),
@@ -448,7 +449,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
                           key: const ValueKey('scan_from_photo_283'),
                           filled: false,
                           icon: Icons.image_outlined,
-                          text: 'From photo',
+                          text: L.t.fromPhoto,
                           onPressed: busy ? null : _fromPhoto,
                         ),
                       ),
@@ -460,7 +461,7 @@ class _ContactQrScannerScreenState extends State<ContactQrScannerScreen> {
                     style: TextButton.styleFrom(foregroundColor: Colors.white70),
                     onPressed: busy ? null : _pasteCode,
                     icon: const Icon(Icons.content_paste, size: 16),
-                    label: const Text('Paste code', style: TextStyle(fontSize: 13)),
+                    label: Text(L.t.pasteCode, style: TextStyle(fontSize: 13)),
                   ),
                 ]),
               ),
@@ -643,9 +644,7 @@ class _QrCardWithShareState extends State<_QrCardWithShare> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '1. Open LinkUp on the other phone\n'
-                  '2. Tap Scan QR code and point at this\n'
-                  '3. You are added instantly',
+                  L.t.t1OpenLinkupOnTheOther,
                   key: const ValueKey('my_qr_steps_283'),
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12.5, height: 1.6, color: p.muted),
@@ -677,7 +676,7 @@ class _QrCardWithShareState extends State<_QrCardWithShare> {
                               )
                             : const Icon(Icons.ios_share_rounded, size: 18, color: Colors.white),
                         const SizedBox(width: 8),
-                        Text(_sharing ? 'Preparing…' : 'Share my QR',
+                        Text(_sharing ? L.t.preparing : L.t.shareMyQr,
                             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
                       ]),
                     ),
@@ -695,11 +694,11 @@ class _QrCardWithShareState extends State<_QrCardWithShare> {
                     foregroundColor: p.isDark ? const Color(0xFFC9CBD6) : const Color(0xFF374151),
                     side: BorderSide(color: AddUi283.chevron(p), width: 1.5),
                     shape: const StadiumBorder(),
-                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 14, fontWeight: FontWeight.w700),
+                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, fontSize: 14, fontWeight: FontWeight.w700),
                   ),
                   onPressed: widget.canScan ? widget.onScan : null,
                   icon: const Icon(Icons.qr_code_scanner, size: 18),
-                  label: const Text('Scan instead'),
+                  label: Text(L.t.scanInstead),
                 ),
               ),
             ),

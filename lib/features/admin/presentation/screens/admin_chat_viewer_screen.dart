@@ -9,6 +9,7 @@ import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 221 (mock A-3): the copy of a chat the phones sent. Route tag per
 /// message, grey "Deleted by user", greyed "Outside the dates (phone
@@ -19,9 +20,9 @@ import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart'
 abstract final class AdminChatViewerScreenRoutes {
   static String word(String r) => switch (r) {
         'server' => 'Server',
-        'wifi_direct' || 'direct' => 'Wi-Fi Direct',
+        'wifi_direct' || 'direct' => L.t.wiFiDirect,
         'lan' => 'Local Wi-Fi',
-        'mesh' => 'Mesh',
+        'mesh' => L.t.mesh,
         _ => '',
       };
 }
@@ -69,7 +70,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
       final v = await widget.service.open(widget.request);
       if (mounted) setState(() => _view = v);
     } catch (error) {
-      if (mounted) setState(() => _error = '$error'.replaceFirst('Bad state: ', ''));
+      if (mounted) setState(() => _error = L.en('$error'.replaceFirst('Bad state: ', '')));
     }
   }
 
@@ -81,10 +82,10 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
 
   String get _sub {
     final r = widget.request;
-    final range = r.from.isEmpty ? 'Full chat' : '${_day(r.from)} - ${_day(r.to)}';
+    final range = r.from.isEmpty ? L.t.fullChat : '${_day(r.from)} - ${_day(r.to)}';
     final v = _view;
     final from = v == null ? '' : _owner255(v);
-    return from.isEmpty ? range : "$range · from $from's phone";
+    return from.isEmpty ? range : L.t.fromSPhone(range, from);
   }
 
   /// Bundle 255 B7: the answering phone's owner: its name in the answer,
@@ -145,7 +146,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           fileId: a['file_id']?.toString() ?? '',
           messageId: m['id']?.toString() ?? '',
           name: a['name']?.toString() ?? '');
-      if (mounted) adminSnack216(context, 'Asked the phone for the full file');
+      if (mounted) adminSnack216(context, L.t.askedThePhoneForTheFull);
     } catch (error) {
       if (mounted) adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
     }
@@ -168,7 +169,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           key: const ValueKey('viewer221_copy'),
           contentPadding: EdgeInsets.zero,
           leading: Icon(Icons.copy_rounded, color: c.ink2),
-          title: Text('Copy text', style: t.custom(17, FontWeight.w500, c.ink)),
+          title: Text(L.t.copyText, style: t.custom(17, FontWeight.w500, c.ink)),
           onTap: () => Navigator.of(ctx).pop('copy'),
         ),
         Divider(height: 1, color: c.div),
@@ -176,8 +177,8 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           key: const ValueKey('viewer221_delete_one'),
           contentPadding: EdgeInsets.zero,
           leading: Icon(Icons.delete_outline_rounded, color: c.red),
-          title: Text('Delete completely', style: t.custom(17, FontWeight.w600, c.red)),
-          subtitle: Text('From every phone, also deleted copies', style: t.custom(14, FontWeight.w400, c.grey)),
+          title: Text(L.t.deleteCompletely, style: t.custom(17, FontWeight.w600, c.red)),
+          subtitle: Text(L.t.fromEveryPhoneAlsoDeletedCopies, style: t.custom(14, FontWeight.w400, c.grey)),
           onTap: () => Navigator.of(ctx).pop('delete'),
         ),
       ]);
@@ -185,7 +186,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     if (!mounted) return;
     if (pick == 'copy') {
       await Clipboard.setData(ClipboardData(text: body));
-      if (mounted) adminSnack216(context, 'Copied');
+      if (mounted) adminSnack216(context, L.t.copied);
     } else if (pick == 'delete') {
       await _delete(scope: 'message', ids: [m['id']?.toString() ?? ''], count: 1);
     }
@@ -201,9 +202,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     }
 
     final options = <(String, String, int)>[
-      ('full', 'Full chat', msgs.length),
-      ('7', 'Last 7 days', countSince(7)),
-      ('30', 'Last 30 days', countSince(30)),
+      ('full', L.t.fullChat, msgs.length),
+      ('7', L.t.last7Days, countSince(7)),
+      ('30', L.t.last30Days, countSince(30)),
     ];
     var sel = 0;
     final choice = await showAdminSheet216<int>(context, builder: (ctx) {
@@ -211,9 +212,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
         final c = A216.colors(ctx);
         final t = A216Text(c);
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Delete completely', style: t.custom(20, FontWeight.w700, c.ink)),
+          Text(L.t.deleteCompletely, style: t.custom(20, FontWeight.w700, c.ink)),
           const SizedBox(height: 6),
-          Text('From every phone of this chat, also copies users deleted. This cannot be undone.',
+          Text(L.t.fromEveryPhoneOfThisChat,
               style: t.custom(14, FontWeight.w400, c.grey, 1.4)),
           const SizedBox(height: 12),
           for (var i = 0; i < options.length; i++)
@@ -226,7 +227,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
                   AdminRadio216(sel == i),
                   const SizedBox(width: 12),
                   Expanded(child: Text(options[i].$2, style: t.custom(16, FontWeight.w500, c.ink))),
-                  Text(known ? '${options[i].$3}' : 'count unknown', style: t.custom(14, FontWeight.w400, c.grey)),
+                  Text(known ? '${options[i].$3}' : L.t.countUnknown, style: t.custom(14, FontWeight.w400, c.grey)),
                 ]),
               ),
             ),
@@ -234,7 +235,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           SizedBox(
             height: 52,
             child: AdminButton216(
-                known ? 'Delete ${options[sel].$3} messages completely' : 'Delete completely',
+                known ? L.t.deleteMessagesCompletely(options[sel].$3) : L.t.deleteCompletely,
                 key: const ValueKey('viewer221_delete_go'),
                 kind: A216ButtonKind.danger,
                 height: 52,
@@ -253,9 +254,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final pick = _pick;
     if (pick == null) return;
     final ok = await confirmAdmin216(context,
-        title: count < 0 ? 'Delete completely?' : 'Delete $count message${count == 1 ? '' : 's'} completely?',
-        body: 'Gone from every phone and the server, also copies users deleted. Users see nothing.',
-        yes: 'Delete completely',
+        title: count < 0 ? L.t.deleteCompletely2 : L.t.deleteMessageCompletely(count, count == 1 ? '' : 's'),
+        body: L.t.goneFromEveryPhoneAndThe,
+        yes: L.t.deleteCompletely,
         danger: true,
         yesKey: const ValueKey('viewer221_delete_yes'));
     if (!ok || !mounted) return;
@@ -293,7 +294,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(widget.request.label.isEmpty ? 'Chat' : widget.request.label,
+              Text(widget.request.label.isEmpty ? L.t.chat : widget.request.label,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(18, FontWeight.w600, c.ink)),
               Text(_sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(13, FontWeight.w400, c.grey)),
             ]),
@@ -303,9 +304,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           PopupMenuButton<String>(
             key: const ValueKey('viewer221_menu'),
             onSelected: (x) => x == 'delete' ? _deleteSheet() : _close(),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'delete', child: Text('Delete chat completely')),
-              PopupMenuItem(value: 'close', child: Text('Close (delete this copy)')),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'delete', child: Text(L.t.deleteChatCompletely)),
+              PopupMenuItem(value: 'close', child: Text(L.t.closeDeleteThisCopy)),
             ],
           ),
         ],
@@ -323,10 +324,10 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final c = A216.colors(context);
     final t = A216Text(c);
     if (v.forAdminPhone) {
-      return _note('This request was made on the admin phone. The answer opens there.');
+      return _note(L.t.madeOnAdminPhone304);
     }
     if (v.empty) {
-      return _note('Waiting for a phone of this chat. There is no time limit.');
+      return _note(L.t.waitingForPhoneOfChat304);
     }
     final items = <Widget>[];
     String lastDay = '';
@@ -353,8 +354,8 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
           children: [
             if (v.trimmed)
-              _info('Some old pictures were left out to keep the copy small.'),
-            if (v.messages.isEmpty) _info('No messages in these dates.'),
+              _info(L.t.someOldPicturesWereLeftOut),
+            if (v.messages.isEmpty) _info(L.t.noMessagesInTheseDates),
             ...items,
           ],
         ),
@@ -366,7 +367,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
           decoration: BoxDecoration(color: c.blueSel, borderRadius: BorderRadius.circular(14)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('${v.parts} of ${v.of} parts · the rest is on the way',
+            Text(L.t.ofPartsTheRestIsOn(v.parts, v.of),
                 style: t.custom(14.5, FontWeight.w600, c.blue)),
             const SizedBox(height: 8),
             PartsBar221(have: v.parts, of: v.of),
@@ -428,7 +429,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Row(mainAxisSize: MainAxisSize.min, children: [
             Flexible(
-                child: Text(name.isEmpty ? 'Someone' : name,
+                child: Text(name.isEmpty ? L.t.someone : name,
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(13.5, FontWeight.w600, nameColor))),
             const SizedBox(width: 10),
             if (route.isNotEmpty) ...[tag(route), const SizedBox(width: 8)],
@@ -451,7 +452,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           ],
           if (outside) ...[
             const SizedBox(height: 4),
-            Text('Outside the dates (phone clock)', style: t.custom(12, FontWeight.w500, c.grey)),
+            Text(L.t.outsideTheDatesPhoneClock, style: t.custom(12, FontWeight.w500, c.grey)),
           ],
         ]),
       ),
@@ -464,9 +465,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
 
   static String _deletedWords(String iso) {
     final t = DateTime.tryParse(iso)?.toLocal();
-    if (t == null) return 'Deleted by user';
+    if (t == null) return L.t.deletedByUser;
     final hm = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-    return 'Deleted by user · ${dMMM216(t)} $hm';
+    return L.t.deletedByUser2(dMMM216(t), hm);
   }
 
   Widget _attachment(Map<String, dynamic> m, Map<String, dynamic> a) {
@@ -496,14 +497,14 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
               Icon(media ? Icons.image_outlined : Icons.insert_drive_file_outlined, color: c.grey, size: 20),
               const SizedBox(width: 6),
               Flexible(
-                  child: Text(a['name']?.toString() ?? 'File',
+                  child: Text(a['name']?.toString() ?? L.t.file,
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(13, FontWeight.w500, c.ink2))),
             ]),
           ),
         if (gone)
-          Text('File removed after 60 days · thumbnail only', style: t.custom(12.5, FontWeight.w500, c.grey))
+          Text(L.t.fileRemovedAfter60DaysThumbnail, style: t.custom(12.5, FontWeight.w500, c.grey))
         else
-          AdminButton216(type.startsWith('video/') ? 'Get full video' : (media ? 'Get full photo' : 'Get file'),
+          AdminButton216(type.startsWith('video/') ? L.t.getFullVideo : (media ? L.t.getFullPhoto : L.t.getFile),
               key: ValueKey('viewer221_getfile_${a['file_id']}'),
               kind: A216ButtonKind.tonal,
               height: 40,

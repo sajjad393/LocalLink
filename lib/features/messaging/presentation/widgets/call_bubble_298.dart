@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/calls/presentation/call_history_groups.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 298 (F): calls with this friend inside the chat, WhatsApp style.
 ///
@@ -47,19 +48,19 @@ class CallBubble298 extends StatelessWidget {
   static bool missed(CallRecord c, String selfId) => isMissedIncoming(c, selfId);
 
   /// First line.
-  static String title(CallRecord c, String selfId) => missed(c, selfId) ? 'Missed voice call' : 'Voice call';
+  static String title(CallRecord c, String selfId) => missed(c, selfId) ? L.t.missedVoiceCall : L.t.voiceCall;
 
   /// Second line: length, or what happened (Calls tab words).
   static String detail(CallRecord c, String selfId) {
-    if (missed(c, selfId)) return 'Tap to call back';
+    if (missed(c, selfId)) return L.t.tapToCallBack;
     if (c.durationSeconds > 0) {
       return '${c.durationSeconds ~/ 60}:${(c.durationSeconds % 60).toString().padLeft(2, '0')}';
     }
     return switch (c.status) {
-      'rejected' => c.endReason == 'busy' ? 'Busy' : 'Declined',
-      'canceled' => 'Canceled',
-      'failed' => 'Failed',
-      _ => 'No answer',
+      'rejected' => c.endReason == 'busy' ? L.t.busy : L.t.declined,
+      'canceled' => L.t.canceled,
+      'failed' => L.t.failed,
+      _ => L.t.noAnswer,
     };
   }
 

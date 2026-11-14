@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/presentation/screens/link_paths_full_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_block_confirm.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
+import 'support/l10n_source_304.dart';
 
 /// Bundle 222 (mock M-2): zoom out until the whole map fits; lines unchanged.
 void main() {
@@ -94,9 +94,9 @@ void main() {
   });
 
   test('map lines, colours and motion are exactly the 217 code', () {
-    final src = File('lib/features/admin/presentation/widgets/link_paths_map.dart').readAsStringSync();
+    final src = readEnglish304('lib/features/admin/presentation/widgets/link_paths_map.dart');
     final part = src.substring(src.indexOf('/// Bundle 217: when the map lines may move')).replaceAll('\r\n', '\n');
     expect(sha256.convert(utf8.encode(part)).toString(),
-        '2365d7d50c2f960a2871a955a0222de58fa1f0076e9cca7c697eafe10558e65b'); // Bundle 298 (D): small map spread - people on both sides of You (was f3e46e29... from 291 B-4)
+        '845b290a6efd746d3f9672ba8922888f6748cc3848b697828a1d16a2351e1e5b'); // 304 (H3): words only (L.en, Urdu font fallback, no const on the Blocked tag); was 2365d7d5... from Bundle 298 (D): small map spread - people on both sides of You (was f3e46e29... from 291 B-4)
   });
 }

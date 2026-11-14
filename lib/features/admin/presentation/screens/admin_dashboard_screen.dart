@@ -10,6 +10,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_charts.dart'
 import 'package:locallink/features/admin/presentation/widgets/admin_components.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_ways_274.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Operations dashboard for the LocalLink administration surface.
 ///
@@ -136,19 +137,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showAdminConfirmation(
       context,
-      title: 'Create database backup',
+      title: L.t.createDatabaseBackup,
       message:
-          'A consistent copy of the LinkUp database will be written to the server backup directory.',
-      confirmLabel: 'Create backup',
+          L.t.aConsistentCopyOfTheLinkup,
+      confirmLabel: L.t.createBackup,
     );
     if (!confirmed || !context.mounted) return;
     final bloc = context.read<AdminBloc>();
     try {
       final result = await bloc.backup();
       final path = result?['path']?.toString();
-      LinkToast.maybeOn(messenger, path == null ? 'Backup completed.' : 'Backup written to $path', kind: LinkToastKind.done);
+      LinkToast.maybeOn(messenger, path == null ? L.t.backupCompleted : L.t.backupWrittenTo(path), kind: LinkToastKind.done);
     } catch (error) {
-      LinkToast.maybeOn(messenger, 'Backup could not be created.', kind: LinkToastKind.error);
+      LinkToast.maybeOn(messenger, L.t.backupCouldNotBeCreated, kind: LinkToastKind.error);
     }
   }
 }
@@ -180,15 +181,14 @@ class _PageHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Overview',
+              Text(L.t.overview,
                   style:
                       AdminText.pageTitle.copyWith(color: palette.textPrimary)),
               const SizedBox(height: AdminSpace.xxs),
               Text(
                 generatedAt == null
-                    ? 'Operational metadata from the LinkUp server.'
-                    : 'Updated ${adminRelativeTime(generatedAt)}'
-                        '${refreshSeconds == null ? '' : ' · auto-refresh every ${refreshSeconds}s'}',
+                    ? L.t.operationalMetadataFromTheLinkupServer
+                    : L.t.updated2(adminRelativeTime(generatedAt), refreshSeconds == null ? '' : ' · auto-refresh every ${refreshSeconds}s'),
                 style:
                     AdminText.caption.copyWith(color: palette.textSecondary),
               ),
@@ -197,7 +197,7 @@ class _PageHeader extends StatelessWidget {
         ),
         const SizedBox(width: AdminSpace.md),
         IconButton(
-          tooltip: 'Refresh now',
+          tooltip: L.t.refreshNow,
           onPressed: loading ? null : onRefresh,
           icon: loading
               ? const SizedBox(
@@ -254,22 +254,22 @@ class _OverviewSection extends StatelessWidget {
 
     final cards = <Widget>[
       AdminMetricCard(
-        label: 'Total users',
+        label: L.t.totalUsers,
         value: adminFormatNumber((summary?['users'] as num?) ?? 0),
         icon: Icons.group_outlined,
         contextLabel: '+${adminFormatNumber((totals['users'] as num?) ?? 0)} $windowLabel',
         sparkline: spark('users'),
       ),
       AdminMetricCard(
-        label: 'Online devices',
+        label: L.t.onlineDevices,
         value: adminFormatNumber((summary?['online_devices'] as num?) ?? 0),
         icon: Icons.sensors_outlined,
         accent: AdminPalette.of(context).success,
         contextLabel:
-            'of ${adminFormatNumber((summary?['devices'] as num?) ?? 0)} registered',
+            L.t.ofRegistered(adminFormatNumber((summary?['devices'] as num?) ?? 0)),
       ),
       AdminMetricCard(
-        label: 'Registered devices',
+        label: L.t.registeredDevices,
         value: adminFormatNumber((summary?['devices'] as num?) ?? 0),
         icon: Icons.devices_other_outlined,
         contextLabel:
@@ -277,7 +277,7 @@ class _OverviewSection extends StatelessWidget {
         sparkline: spark('devices'),
       ),
       AdminMetricCard(
-        label: 'Messages',
+        label: L.t.messages,
         value: adminFormatNumber((summary?['messages'] as num?) ?? 0),
         icon: Icons.forum_outlined,
         contextLabel:
@@ -285,34 +285,34 @@ class _OverviewSection extends StatelessWidget {
         sparkline: spark('messages'),
       ),
       AdminMetricCard(
-        label: 'Active calls',
+        label: L.t.activeCalls,
         value: adminFormatNumber((summary?['active_calls'] as num?) ?? 0),
         icon: Icons.call_outlined,
         accent: AdminPalette.of(context).info,
         contextLabel:
-            '${adminFormatNumber((totals['calls'] as num?) ?? 0)} started $windowLabel',
+            L.t.started(adminFormatNumber((totals['calls'] as num?) ?? 0), windowLabel),
       ),
       AdminMetricCard(
-        label: 'Active sessions',
+        label: L.t.activeSessions,
         value: adminFormatNumber((summary?['active_sessions'] as num?) ?? 0),
         icon: Icons.vpn_key_outlined,
-        contextLabel: 'Authenticated device sessions',
+        contextLabel: L.t.authenticatedDeviceSessions,
       ),
       AdminMetricCard(
-        label: 'Storage used',
+        label: L.t.storageUsed,
         value: adminFormatBytes((summary?['file_storage_bytes'] as num?) ?? 0),
         icon: Icons.cloud_outlined,
         contextLabel:
-            'Database ${adminFormatBytes((summary?['db_bytes'] as num?) ?? 0)}',
+            L.t.database2(adminFormatBytes((summary?['db_bytes'] as num?) ?? 0)),
       ),
       AdminMetricCard(
-        label: 'Security alerts',
+        label: L.t.securityAlerts,
         value: adminFormatNumber((summary?['security_alerts'] as num?) ?? 0),
         icon: Icons.shield_outlined,
         accent: ((summary?['security_alerts'] as num?) ?? 0) > 0
             ? AdminPalette.of(context).warning
             : AdminPalette.of(context).success,
-        contextLabel: 'Events in the last 24 hours',
+        contextLabel: L.t.eventsInTheLast24Hours,
         sparkline: spark('security_events'),
       ),
     ];
@@ -321,15 +321,15 @@ class _OverviewSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         AdminSectionHeader(
-          title: 'Overview',
+          title: L.t.overview,
           subtitle:
-              'Live platform totals with the activity recorded in the selected window',
+              L.t.livePlatformTotalsWithTheActivity,
           actions: [
             if (AdminPermissions.canManageUsers(
                 context.read<AdminBloc>().adminRole))
               TextButton(
                 onPressed: () => onNavigate('Users'),
-                child: const Text('Manage users'),
+                child: Text(L.t.manageUsers),
               ),
           ],
         ),
@@ -421,13 +421,13 @@ class _AnalyticsSection extends StatelessWidget {
         builder: (context, constraints) {
           final stacked = constraints.maxWidth < 760;
           final primary = AdminChartCard(
-            title: 'Message activity',
-            subtitle: 'Messages accepted by the server per bucket',
+            title: L.t.messageActivity,
+            subtitle: L.t.messagesAcceptedByTheServerPer,
             actions: [rangeSelector],
             isEmpty: !state.dashboardLoading &&
                 (messagePoints.isEmpty ||
                     messagePoints.every((p) => p.value == 0)),
-            emptyMessage: 'No messages were exchanged in this window.',
+            emptyMessage: L.t.noMessagesWereExchangedInThis,
             child: AdminLineChart(
               points: messagePoints,
               color: palette.primary,
@@ -436,13 +436,13 @@ class _AnalyticsSection extends StatelessWidget {
             ),
           );
           final secondary = AdminChartCard(
-            title: 'Server traffic',
+            title: L.t.serverTraffic,
             subtitle: runtimeAvailable
-                ? 'Response bytes served per bucket'
-                : 'Requires the runtime metrics sampler',
+                ? L.t.responseBytesServedPerBucket
+                : L.t.requiresTheRuntimeMetricsSampler,
             isEmpty: runtimeAvailable &&
                 (bytesPoints.isEmpty || bytesPoints.every((p) => p.value == 0)),
-            emptyMessage: 'No response traffic recorded yet.',
+            emptyMessage: L.t.noResponseTrafficRecordedYet,
             child: runtimeAvailable
                 ? AdminLineChart(
                     points: bytesPoints,
@@ -450,11 +450,11 @@ class _AnalyticsSection extends StatelessWidget {
                     height: 200,
                     longRange: longRange,
                   )
-                : const AdminEmptyState(
+                : AdminEmptyState(
                     icon: Icons.speed_outlined,
-                    title: 'Traffic metrics unavailable',
+                    title: L.t.trafficMetricsUnavailable,
                     message:
-                        'This server build does not expose the runtime sampler.',
+                        L.t.thisServerBuildDoesNotExpose,
                   ),
           );
           if (stacked) {
@@ -481,9 +481,9 @@ class _AnalyticsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const AdminSectionHeader(
-          title: 'Activity analytics',
-          subtitle: 'Rollups computed from platform tables and the runtime sampler',
+        AdminSectionHeader(
+          title: L.t.activityAnalytics,
+          subtitle: L.t.rollupsComputedFromPlatformTablesAnd,
           icon: Icons.query_stats_outlined,
         ),
         chartBlock,
@@ -512,9 +512,9 @@ class _HealthSection extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const AdminSectionHeader(
-              title: 'Server health',
-              subtitle: 'Live subsystem readings',
+          AdminSectionHeader(
+              title: L.t.serverHealth,
+              subtitle: L.t.liveSubsystemReadings,
               icon: Icons.monitor_heart_outlined),
           AdminPanel(
             child: Column(
@@ -547,23 +547,23 @@ class _HealthSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         AdminSectionHeader(
-          title: 'Server health',
+          title: L.t.serverHealth,
           subtitle: gauges.isEmpty
-              ? 'Subsystem state reported by the server'
-              : 'Percentages are live readings; the tick marks the alert threshold',
+              ? L.t.subsystemStateReportedByTheServer
+              : L.t.percentagesAreLiveReadingsTheTick,
           icon: Icons.monitor_heart_outlined,
           actions: [
             AdminStatusBadge.status(overall, palette,
-                label: 'Overall: ${AdminStatusStyle.of(overall, palette).label}'),
+                label: L.t.overall(AdminStatusStyle.of(overall, palette).label)),
           ],
         ),
         AdminPanel(
           child: components.isEmpty
-              ? const AdminEmptyState(
+              ? AdminEmptyState(
                   icon: Icons.monitor_heart_outlined,
-                  title: 'No health readings',
+                  title: L.t.noHealthReadings,
                   message:
-                      'The server did not return subsystem readings for this request.',
+                      L.t.theServerDidNotReturnSubsystem,
                 )
               : LayoutBuilder(
             builder: (context, constraints) {
@@ -691,11 +691,11 @@ class _NetworkOverview extends StatelessWidget {
 
     if (network == null) {
       return AdminPanel(
-        title: 'Live network',
+        title: L.t.liveNetwork,
         actions: [
           TextButton(
               onPressed: () => onNavigate('Network & Mesh'),
-              child: const Text('Open Network Topology')),
+              child: Text(L.t.openNetworkTopology)),
         ],
         child: const AdminLoadingSkeleton(height: 120, radius: AdminRadius.md),
       );
@@ -711,20 +711,20 @@ class _NetworkOverview extends StatelessWidget {
         (registered - online).clamp(0.0, double.infinity).toDouble();
 
     final segments = <AdminDonutSegment>[
-      AdminDonutSegment('Server connected', server, palette.success),
-      AdminDonutSegment('LAN available', lan, palette.primary),
-      AdminDonutSegment('Wi-Fi Direct', wifiDirect, palette.info),
-      AdminDonutSegment('Mesh capable', mesh, palette.warning),
-      AdminDonutSegment('Offline / idle', offline, palette.borderStrong),
+      AdminDonutSegment(L.t.serverConnected, server, palette.success),
+      AdminDonutSegment(L.t.lanAvailable, lan, palette.primary),
+      AdminDonutSegment(L.t.wiFiDirect, wifiDirect, palette.info),
+      AdminDonutSegment(L.t.meshCapable, mesh, palette.warning),
+      AdminDonutSegment(L.t.offlineIdle, offline, palette.borderStrong),
     ];
 
     return AdminPanel(
-      title: 'Live network',
-      subtitle: 'Transport state reported by connected devices',
+      title: L.t.liveNetwork,
+      subtitle: L.t.transportStateReportedByConnectedDevices,
       actions: [
         TextButton(
             onPressed: () => onNavigate('Network & Mesh'),
-            child: const Text('Open Network Topology')),
+            child: Text(L.t.openNetworkTopology)),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -755,12 +755,12 @@ class _NetworkOverview extends StatelessWidget {
             runSpacing: AdminSpace.sm,
             children: [
               _MiniStat(
-                  label: 'Server links', value: adminFormatNumber(server)),
+                  label: L.t.serverLinks, value: adminFormatNumber(server)),
               _MiniStat(label: 'LAN', value: adminFormatNumber(lan)),
               _MiniStat(
-                  label: 'Wi-Fi Direct', value: adminFormatNumber(wifiDirect)),
-              _MiniStat(label: 'Mesh', value: adminFormatNumber(mesh)),
-              _MiniStat(label: 'Registered', value: adminFormatNumber(registered)),
+                  label: L.t.wiFiDirect, value: adminFormatNumber(wifiDirect)),
+              _MiniStat(label: L.t.mesh, value: adminFormatNumber(mesh)),
+              _MiniStat(label: L.t.registered, value: adminFormatNumber(registered)),
             ],
           ),
         ],
@@ -772,19 +772,19 @@ class _NetworkOverview extends StatelessWidget {
 extension _Ways274 on _NetworkOverview {
   Widget _ways274(BuildContext context, AdminPalette palette, LinkWays274 w) {
     final segments = <AdminDonutSegment>[
-      AdminDonutSegment('On the server', w.server.toDouble(), kLinkTagColors[LinkTag.server]!),
-      AdminDonutSegment('Local Wi-Fi only', w.lan.toDouble(), kLinkTagColors[LinkTag.localWifi]!),
-      AdminDonutSegment('Wi-Fi Direct only', w.wifiDirect.toDouble(), kLinkTagColors[LinkTag.wifiDirect]!),
-      AdminDonutSegment('Mesh only', w.mesh.toDouble(), kLinkTagColors[LinkTag.mesh]!),
-      AdminDonutSegment('Offline', w.offline.toDouble(), kLinkBlockedGrey),
+      AdminDonutSegment(L.t.onTheServer, w.server.toDouble(), kLinkTagColors[LinkTag.server]!),
+      AdminDonutSegment(L.t.localWiFiOnly, w.lan.toDouble(), kLinkTagColors[LinkTag.localWifi]!),
+      AdminDonutSegment(L.t.wiFiDirectOnly, w.wifiDirect.toDouble(), kLinkTagColors[LinkTag.wifiDirect]!),
+      AdminDonutSegment(L.t.meshOnly, w.mesh.toDouble(), kLinkTagColors[LinkTag.mesh]!),
+      AdminDonutSegment(L.t.offline, w.offline.toDouble(), kLinkBlockedGrey),
     ];
     return AdminPanel(
-      title: 'Live network',
-      subtitle: 'Each phone once, by how it is linked now',
+      title: L.t.liveNetwork,
+      subtitle: L.t.eachPhoneOnceByHowIt,
       actions: [
         TextButton(
             onPressed: () => onNavigate('Network & Mesh'),
-            child: const Text('Open Network Topology')),
+            child: Text(L.t.openNetworkTopology)),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -811,11 +811,11 @@ extension _Ways274 on _NetworkOverview {
             spacing: AdminSpace.xxl,
             runSpacing: AdminSpace.sm,
             children: [
-              _MiniStat(label: 'Server links', value: adminFormatNumber(w.serverLinks.toDouble())),
-              _MiniStat(label: 'Wi-Fi links', value: adminFormatNumber(w.lanLinks.toDouble())),
-              _MiniStat(label: 'Wi-Fi Direct links', value: adminFormatNumber(w.wifiDirectLinks.toDouble())),
-              _MiniStat(label: 'Mesh links', value: adminFormatNumber(w.meshLinks.toDouble())),
-              _MiniStat(label: 'Phones', value: adminFormatNumber(w.phones.toDouble())),
+              _MiniStat(label: L.t.serverLinks, value: adminFormatNumber(w.serverLinks.toDouble())),
+              _MiniStat(label: L.t.wiFiLinks, value: adminFormatNumber(w.lanLinks.toDouble())),
+              _MiniStat(label: L.t.wiFiDirectLinks, value: adminFormatNumber(w.wifiDirectLinks.toDouble())),
+              _MiniStat(label: L.t.meshLinks, value: adminFormatNumber(w.meshLinks.toDouble())),
+              _MiniStat(label: L.t.phones, value: adminFormatNumber(w.phones.toDouble())),
             ],
           ),
         ],
@@ -860,8 +860,8 @@ class _SecurityOverview extends StatelessWidget {
     final security = state.securitySummaryData;
 
     if (security == null) {
-      return const AdminPanel(
-        title: 'Security overview',
+      return AdminPanel(
+        title: L.t.securityOverview,
         child: AdminLoadingSkeleton(height: 120, radius: AdminRadius.md),
       );
     }
@@ -878,7 +878,7 @@ class _SecurityOverview extends StatelessWidget {
     final headline = critical > 0
         ? _SecurityHeadline(
             icon: Icons.error_outline,
-            label: '$critical critical alert${critical == 1 ? '' : 's'} in 24h',
+            label: L.t.criticalAlertIn24h(critical, critical == 1 ? '' : 's'),
             foreground: palette.danger,
             background: palette.dangerSoft,
           )
@@ -886,27 +886,27 @@ class _SecurityOverview extends StatelessWidget {
             ? _SecurityHeadline(
                 icon: Icons.warning_amber_rounded,
                 label:
-                    '$failedLogins failed login${failedLogins == 1 ? '' : 's'} in 24h',
+                    L.t.failedLoginIn24h(failedLogins, failedLogins == 1 ? '' : 's'),
                 foreground: palette.warning,
                 background: palette.warningSoft,
               )
             : _SecurityHeadline(
                 icon: Icons.verified_user_outlined,
-                label: 'No critical security alerts in 24h',
+                label: L.t.noCriticalSecurityAlertsIn24h,
                 foreground: palette.success,
                 background: palette.successSoft,
               );
 
     return AdminPanel(
-      title: 'Security overview',
-      subtitle: 'Audited events, sessions and outstanding recovery work',
+      title: L.t.securityOverview,
+      subtitle: L.t.auditedEventsSessionsAndOutstandingRecovery,
       actions: [
         TextButton(
             onPressed: () => onNavigate('Security Center'),
-            child: const Text('View Security Center')),
+            child: Text(L.t.viewSecurityCenter)),
         TextButton(
             onPressed: () => onNavigate('Audit Log'),
-            child: const Text('View Audit Log')),
+            child: Text(L.t.viewAuditLog)),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -918,15 +918,15 @@ class _SecurityOverview extends StatelessWidget {
             runSpacing: AdminSpace.md,
             children: [
               _MiniStat(
-                  label: 'Failed logins 24h',
+                  label: L.t.failedLogins24h,
                   value: adminFormatNumber(failedLogins)),
-              _MiniStat(label: 'Locked users', value: adminFormatNumber(lockedUsers)),
+              _MiniStat(label: L.t.lockedUsers, value: adminFormatNumber(lockedUsers)),
               _MiniStat(
-                  label: 'Revoked devices', value: adminFormatNumber(revokedDevices)),
+                  label: L.t.revokedDevices, value: adminFormatNumber(revokedDevices)),
               _MiniStat(
-                  label: 'Active sessions', value: adminFormatNumber(sessions)),
+                  label: L.t.activeSessions, value: adminFormatNumber(sessions)),
               _MiniStat(
-                  label: 'Pending recoveries',
+                  label: L.t.pendingRecoveries,
                   value: adminFormatNumber(pendingRecoveries)),
             ],
           ),
@@ -934,7 +934,7 @@ class _SecurityOverview extends StatelessWidget {
             const SizedBox(height: AdminSpace.md),
             Divider(color: palette.border, height: 1),
             const SizedBox(height: AdminSpace.sm),
-            Text('RECENT SECURITY EVENTS',
+            Text(L.t.recentSecurityEvents,
                 style: AdminText.tableHeader
                     .copyWith(color: palette.textTertiary, letterSpacing: 0.5)),
             const SizedBox(height: AdminSpace.sm),
@@ -956,7 +956,7 @@ class _SecurityOverview extends StatelessWidget {
   }
 
   String _humanise(String? action) {
-    if (action == null || action.isEmpty) return 'Security event';
+    if (action == null || action.isEmpty) return L.t.securityEvent;
     final spaced = action.replaceAll('_', ' ');
     return spaced[0].toUpperCase() + spaced.substring(1);
   }
@@ -1029,7 +1029,7 @@ class _ActivitySection extends StatelessWidget {
       for (final event in events)
         if (event is Map)
           AdminTimelineEntry(
-            title: event['title']?.toString() ?? 'Event',
+            title: event['title']?.toString() ?? L.t.event,
             detail: (event['detail']?.toString().isNotEmpty ?? false)
                 ? event['detail'].toString()
                 : null,
@@ -1040,12 +1040,12 @@ class _ActivitySection extends StatelessWidget {
     ];
 
     return AdminPanel(
-      title: 'Recent activity',
-      subtitle: 'Newest first, merged across users, devices, files, calls and audit sources',
+      title: L.t.recentActivity,
+      subtitle: L.t.newestFirstMergedAcrossUsersDevices,
       actions: [
         TextButton(
             onPressed: () => onNavigate('Audit Log'),
-            child: const Text('Open audit log')),
+            child: Text(L.t.openAuditLog)),
       ],
       child: state.dashboardLoading && activity == null
           ? const Column(
@@ -1060,7 +1060,7 @@ class _ActivitySection extends StatelessWidget {
           : AdminActivityTimeline(
               entries: entries,
               emptyMessage:
-                  'No operational events have been recorded on this server yet.',
+                  L.t.noOperationalEventsHaveBeenRecorded,
               maxEntries: 10,
             ),
     );
@@ -1086,25 +1086,25 @@ class _QuickActionsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = <_QuickAction>[
       if (AdminPermissions.canManageUsers(role))
-        _QuickAction('Manage users', Icons.group_outlined, () => onNavigate('Users')),
+        _QuickAction(L.t.manageUsers, Icons.group_outlined, () => onNavigate('Users')),
       if (AdminPermissions.canManageDevices(role))
-        _QuickAction('Manage devices', Icons.devices_other_outlined,
+        _QuickAction(L.t.manageDevices, Icons.devices_other_outlined,
             () => onNavigate('Devices')),
-      _QuickAction('Review reports', Icons.flag_outlined,
+      _QuickAction(L.t.reviewReports, Icons.flag_outlined,
           () => onNavigate('Security Center')),
-      _QuickAction('View network', Icons.hub_outlined,
+      _QuickAction(L.t.viewNetwork, Icons.hub_outlined,
           () => onNavigate('Network & Mesh')),
-      _QuickAction('Security center', Icons.security_outlined,
+      _QuickAction(L.t.securityCenter, Icons.security_outlined,
           () => onNavigate('Security Center')),
-      _QuickAction('Audit log', Icons.fact_check_outlined,
+      _QuickAction(L.t.auditLog, Icons.fact_check_outlined,
           () => onNavigate('Audit Log')),
       if (AdminPermissions.canManageRecovery(role))
-        _QuickAction('Recovery queue', Icons.restore_outlined,
+        _QuickAction(L.t.recoveryQueue, Icons.restore_outlined,
             () => onNavigate('Recovery')),
-      _QuickAction('System health', Icons.monitor_heart_outlined,
+      _QuickAction(L.t.systemHealth, Icons.monitor_heart_outlined,
           () => onNavigate('Diagnostics')),
       if (AdminPermissions.canBackup(role))
-        _QuickAction('Create backup', Icons.backup_outlined, onBackup),
+        _QuickAction(L.t.createBackup, Icons.backup_outlined, onBackup),
     ];
 
     if (actions.isEmpty) return const SizedBox.shrink();
@@ -1112,9 +1112,9 @@ class _QuickActionsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const AdminSectionHeader(
-          title: 'Quick actions',
-          subtitle: 'Only actions your admin role permits',
+        AdminSectionHeader(
+          title: L.t.quickActions,
+          subtitle: L.t.onlyActionsYourAdminRolePermits,
           icon: Icons.bolt_outlined,
         ),
         _ResponsiveGrid(
@@ -1195,13 +1195,12 @@ class _PrivacyBoundaryNote extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Privacy boundary',
+                Text(L.t.privacyBoundary,
                     style: AdminText.cardTitle
                         .copyWith(color: palette.textPrimary)),
                 const SizedBox(height: AdminSpace.xxs),
                 Text(
-                  'Operational metadata only. Passwords, private keys, message bodies, '
-                  'call audio and decrypted media are never exposed to this dashboard.',
+                  L.t.operationalMetadataOnlyPasswordsPrivateKeys,
                   style: AdminText.caption.copyWith(color: palette.textSecondary),
                 ),
               ],

@@ -11,6 +11,7 @@ import 'package:locallink/features/admin/presentation/screens/link_paths_full_sc
 import 'package:locallink/features/contacts/presentation/widgets/mini_map_zoom_298.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_block_confirm.dart' show BlockTarget;
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 273: "My links" - a small map at the top of Chats for EVERY user:
 /// You in the middle, only your contacts around you, a line per contact by
@@ -147,7 +148,7 @@ class MyLinks273 {
     return MyLinks273(nodes: nodes, edges: clean, live: live, offline: off, relaysKnown: known, relaysLogo: logo);
   }
 
-  String get summary => '$live live · $offline offline';
+  String get summary => L.t.liveOffline(live, offline);
 }
 
 /// Bundle 273: Settings › Privacy › "Show My links map" (on by default).
@@ -251,7 +252,7 @@ class _MyLinksCard273State extends State<MyLinksCard273> {
 
   MyLinks273 _build() => MyLinks273.build(contacts: _contacts, wayOf: _hub.wayInfoOf, userOf: _hub.userOf);
 
-  void _relayNote() => LinkToast.show(context, "A LinkUp phone helping to pass your messages. It can't read them.", kind: LinkToastKind.info);
+  void _relayNote() => LinkToast.show(context, L.t.aLinkupPhoneHelpingToPass, kind: LinkToastKind.info);
 
   void _openFull(bool online) {
     AppLogger.info('MYMAP_273', detail: 'full_open');
@@ -265,7 +266,7 @@ class _MyLinksCard273State extends State<MyLinksCard273> {
             extraEdges: now.edges,
             serverOnline: online,
             userMode: true,
-            title: 'My links',
+            title: L.t.myLinks,
             userSubtitle: now.summary,
             onUserTap: (n) {
               Navigator.of(context).maybePop();
@@ -309,7 +310,7 @@ class _MyLinksCard273State extends State<MyLinksCard273> {
                 padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
                 child: Stack(children: [
                   LinkPathsMap(
-                    title: 'My links',
+                    title: L.t.myLinks,
                     subtitle: m.summary,
                     height: 110,
                     nodes: m.nodes,
@@ -318,7 +319,7 @@ class _MyLinksCard273State extends State<MyLinksCard273> {
                     selfName: widget.selfName,
                     selfId: widget.selfId,
                     selfUserId: widget.selfUserId,
-                    emptyText: 'No contacts yet',
+                    emptyText: L.t.noContactsYet,
                     onNodeTap: (n) => n.relay ? _relayNote() : widget.onOpenChat(n.id),
                     wrapCanvas: (canvas) => MiniMapZoomBox298(controller: _zoom298, child: canvas),
                     legendEnd: MiniMapReset298(controller: _zoom298),
@@ -328,15 +329,15 @@ class _MyLinksCard273State extends State<MyLinksCard273> {
                     top: -6,
                     child: PopupMenuButton<String>(
                       key: const ValueKey('my_links_menu_273'),
-                      tooltip: 'More',
+                      tooltip: L.t.more2,
                       icon: Icon(Icons.more_vert_rounded, size: 18, color: scheme.onSurfaceVariant),
                       onSelected: (v) {
                         if (v == 'hide') unawaited(MyLinksSetting273.instance.set(false));
                         if (v == 'open') _openFull(online);
                       },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'open', child: Text('Full map')),
-                        PopupMenuItem(value: 'hide', child: Text('Hide map')),
+                      itemBuilder: (_) => [
+                        PopupMenuItem(value: 'open', child: Text(L.t.fullMap)),
+                        PopupMenuItem(value: 'hide', child: Text(L.t.hideMap)),
                       ],
                     ),
                   ),
@@ -362,8 +363,8 @@ class MyLinksRow273 extends StatelessWidget {
       builder: (context, _) => MessengerSettingsRow(
         key: const ValueKey('settings_my_links'),
         icon: Icons.hub_outlined,
-        title: 'Show My links map',
-        subtitle: 'A small map of your contacts at the top of Chats',
+        title: L.t.showMyLinksMap,
+        subtitle: L.t.aSmallMapOfYourContacts,
         onTap: () => s.set(!s.on),
         trailing: Switch(key: const ValueKey('settings_my_links_switch'), value: s.on, onChanged: s.set),
       ),

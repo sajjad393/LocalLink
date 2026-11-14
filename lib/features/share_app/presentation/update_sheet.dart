@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/chat_notice_bar_302.dart';
 import 'package:locallink/features/share_app/domain/silent_update_275.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// The Update button (version banner): the same quiet flow.
 Future<void> showUpdateSheet(BuildContext context) async {
@@ -43,19 +44,19 @@ class SilentUpdateSheet275 extends StatelessWidget {
           listenable: service,
           builder: (context, _) {
             final s = service;
-            final ver = s.version.isEmpty ? 'Version newer' : 'Version ${s.version}';
+            final ver = s.version.isEmpty ? L.t.versionNewer : L.t.version(s.version);
             final size = _mb(s.size);
             final sub = size.isEmpty ? ver : '$ver · $size';
             final (IconData icon, Color tint, String title, String line) = switch (s.stage) {
-              SilentStage275.ready => (Icons.check_circle_rounded, const Color(0xFF12A150), 'Ready to update',
-                  'LinkUp${s.version.isEmpty ? '' : ' ${s.version}'} is downloaded'),
-              SilentStage275.none => (Icons.system_update_rounded, theme.colorScheme.outline, 'Could not get it now',
-                  'No nearby phone could share it'),
+              SilentStage275.ready => (Icons.check_circle_rounded, const Color(0xFF12A150), L.t.readyToUpdate,
+                  L.t.linkupIsDownloaded(s.version.isEmpty ? '' : ' ${s.version}')),
+              SilentStage275.none => (Icons.system_update_rounded, theme.colorScheme.outline, L.t.couldNotGetItNow,
+                  L.t.noNearbyPhoneCouldShareIt),
               SilentStage275.nextPhone => (Icons.download_rounded, const Color(0xFF3B82C4),
-                  'Getting it from another phone', sub),
+                  L.t.gettingItFromAnotherPhone, sub),
               // Bundle 299 (C): the server has it.
-              _ when s.fromServer => (Icons.dns_rounded, const Color(0xFF3B82C4), 'New LinkUp on the server', sub),
-              _ => (Icons.download_rounded, const Color(0xFF3B82C4), 'New LinkUp found nearby', sub),
+              _ when s.fromServer => (Icons.dns_rounded, const Color(0xFF3B82C4), L.t.newLinkupOnTheServer, sub),
+              _ => (Icons.download_rounded, const Color(0xFF3B82C4), L.t.newLinkupFoundNearby, sub),
             };
             final getting = s.stage == SilentStage275.getting || s.stage == SilentStage275.nextPhone;
             final frac = s.size > 0 ? (s.got / s.size).clamp(0.0, 1.0) : null;
@@ -102,20 +103,20 @@ class SilentUpdateSheet275 extends StatelessWidget {
                     Expanded(
                         child: Text(
                             s.stage == SilentStage275.nextPhone
-                                ? 'Trying again…'
-                                : (s.fromServer ? 'Getting it from the server…' : 'Getting it…'),
+                                ? L.t.tryingAgain
+                                : (s.fromServer ? L.t.gettingItFromTheServer : L.t.gettingIt),
                             key: const ValueKey('update275_getting'), style: muted)),
                     Text(
                         s.stage == SilentStage275.nextPhone
-                            ? 'Next phone'
-                            : (s.got > 0 && s.size > 0 ? '${(s.got / (1024 * 1024)).toStringAsFixed(1)} of ${_mb(s.size)}$pct' : 'Starting'),
+                            ? L.t.nextPhone
+                            : (s.got > 0 && s.size > 0 ? '${(s.got / (1024 * 1024)).toStringAsFixed(1)} of ${_mb(s.size)}$pct' : L.t.starting),
                         style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
                   ]),
                   const SizedBox(height: 10),
                   Text(
                       s.stage == SilentStage275.nextPhone
-                          ? 'This happens by itself.'
-                          : 'Started by itself. You can keep using LinkUp.',
+                          ? L.t.thisHappensByItself
+                          : L.t.startedByItselfYouCanKeep,
                       style: muted),
                 ],
                 if (s.stage == SilentStage275.ready && s.needsAllow)
@@ -125,20 +126,20 @@ class SilentUpdateSheet275 extends StatelessWidget {
                     decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(12)),
-                    child: Text.rich(TextSpan(children: [
-                      const TextSpan(text: 'One time only\n', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text.rich(TextSpan(children: L.spans([
+                      TextSpan(text: L.t.oneTimeOnly, style: TextStyle(fontWeight: FontWeight.w600)),
                       TextSpan(
-                          text: 'Android will ask you to allow installs from LinkUp. Turn it on, then come back.',
+                          text: L.t.androidWillAskYouToAllow,
                           style: muted),
-                    ])),
+                    ]))),
                   ),
-                if (s.stage == SilentStage275.none) Text('LinkUp tries again later by itself.', style: muted),
+                if (s.stage == SilentStage275.none) Text(L.t.linkupTriesAgainLaterByItself, style: muted),
                 const SizedBox(height: 14),
                 Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                   if (getting)
                     NoticeButton302(
                       key: const ValueKey('update275_cancel'),
-                      label: 'Cancel',
+                      label: L.t.cancel,
                       filled: false,
                       onPressed: () {
                         s.cancel();
@@ -148,7 +149,7 @@ class SilentUpdateSheet275 extends StatelessWidget {
                   if (s.stage == SilentStage275.ready) ...[
                     NoticeButton302(
                       key: const ValueKey('update275_later'),
-                      label: 'Later',
+                      label: L.t.later,
                       filled: false,
                       onPressed: () {
                         s.cancel();
@@ -158,7 +159,7 @@ class SilentUpdateSheet275 extends StatelessWidget {
                     const SizedBox(width: 8),
                     NoticeButton302(
                       key: const ValueKey('update275_install'),
-                      label: 'Install',
+                      label: L.t.install,
                       onPressed: s.install,
                     ),
                   ],
@@ -177,7 +178,7 @@ class SilentUpdateSheet275 extends StatelessWidget {
                     const SizedBox(width: 8),
                     NoticeButton302(
                       key: const ValueKey('update275_retry'),
-                      label: 'Try again',
+                      label: L.t.tryAgain,
                       onPressed: () => unawaited(s.check(manual: true)),
                     ),
                   ],

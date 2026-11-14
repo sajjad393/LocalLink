@@ -1,0 +1,9 @@
+# 304 (H3): Flutter's standard language system (gen-l10n).
+# English = lib/l10n/app_en.arb (the words of 3.0.99, unchanged), Urdu = app_ur.arb.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-dir: lib/l10n/gen
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+nullable-getter: false
+untranslated-messages-file: build/untranslated_304.txt

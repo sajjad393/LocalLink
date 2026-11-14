@@ -11,6 +11,7 @@ import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/presentation/theme/admin_ui216.dart';
 import 'package:locallink/features/admin/presentation/ui_check/admin_ui_check216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 export 'package:locallink/core/widgets/admin_crown.dart'
     show CrownPainter216, AdminRoleTag216;
@@ -201,14 +202,14 @@ class _ServerClockBar255State extends State<ServerClockBar255> with SingleTicker
                         children: [
                           Text(ServerClock255.title(offset),
                               style: const TextStyle(
-                                  fontFamily: 'Roboto216',
+                                  fontFamily: 'Roboto216', fontFamilyFallback: L.fontFallback,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
                                   color: Color(0xFF93370D))),
                           const SizedBox(height: 2),
-                          const Text(ServerClock255.body,
+                          Text(ServerClock255.body,
                               style: TextStyle(
-                                  fontFamily: 'Roboto216',
+                                  fontFamily: 'Roboto216', fontFamilyFallback: L.fontFallback,
                                   fontSize: 12.5,
                                   color: Color(0xFF93370D))),
                         ],
@@ -277,7 +278,7 @@ class _AdminAppBar216State extends State<AdminAppBar216> {
     final c = A216.colors(context);
     final t = A216Text(c);
     final sub = _lost
-        ? 'Last updated ${_last.hour}:${_last.minute.toString().padLeft(2, '0')}'
+        ? L.t.lastUpdated(_last.hour, _last.minute.toString().padLeft(2, '0'))
         : widget.subtitle;
     final canPop = widget.back && Navigator.of(context).canPop();
     return SizedBox(
@@ -289,7 +290,7 @@ class _AdminAppBar216State extends State<AdminAppBar216> {
             top: 8,
             child: IconButton(
               key: const ValueKey('a216_back'),
-              tooltip: 'Back',
+              tooltip: L.t.back,
               icon: Icon(Icons.arrow_back_rounded, size: 22, color: c.ink),
               onPressed: () => Navigator.of(context).maybePop(),
             ),
@@ -302,7 +303,7 @@ class _AdminAppBar216State extends State<AdminAppBar216> {
           child: sub == null || sub.isEmpty
               ? Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(widget.title,
+                  child: Text(L.en(widget.title),
                       key: const ValueKey('a216_title'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -312,7 +313,7 @@ class _AdminAppBar216State extends State<AdminAppBar216> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 9),
-                    Text(widget.title,
+                    Text(L.en(widget.title),
                         key: const ValueKey('a216_title'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -394,14 +395,14 @@ class AdminSection216 extends StatelessWidget {
           children: [
             const SizedBox(width: 4),
             Expanded(
-                child: Text(text,
+                child: Text(L.en(text),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: t.section)),
             if (right != null)
               Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Text(right!,
+                child: Text(L.en(right!),
                     key: rightKey,
                     style: t.sectionRight
                         .copyWith(color: rightColor ?? t.sectionRight.color)),
@@ -558,7 +559,7 @@ class AdminListCard216 extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(r.title,
+                        Text(L.en(r.title),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: t.rowTitle.copyWith(
@@ -662,7 +663,7 @@ class AdminTag216 extends StatelessWidget {
               decoration: BoxDecoration(color: f, shape: BoxShape.circle)),
           const SizedBox(width: 4),
         ],
-        Text(text, style: A216Text(c).tag(f)),
+        Text(L.en(text), style: A216Text(c).tag(f)),
       ]),
     );
   }
@@ -690,7 +691,7 @@ class AdminPillButton216 extends StatelessWidget {
           height: A216.pillHeight,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           alignment: Alignment.center,
-          child: Text(text, style: A216Text(c).pillBtn(c.toneFg(tone))),
+          child: Text(L.en(text), style: A216Text(c).pillBtn(c.toneFg(tone))),
         ),
       ),
     );
@@ -730,7 +731,7 @@ class AdminChips216 extends StatelessWidget {
           height: A216.chipHeight,
           padding: const EdgeInsets.symmetric(horizontal: 13),
           alignment: Alignment.center,
-          child: Text(items[i], style: A216Text(c).chip(on)),
+          child: Text(L.en(items[i]), style: A216Text(c).chip(on)),
         ),
       ),
     );
@@ -900,7 +901,7 @@ class AdminButton216 extends StatelessWidget {
                   const SizedBox(width: 6),
                 ],
                 Flexible(
-                  child: Text(text,
+                  child: Text(L.en(text),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: A216Text(c).button(fg)),
@@ -1144,7 +1145,7 @@ class AdminStatTile216 extends StatelessWidget {
           left: 12,
           right: 8,
           bottom: 12 - 11.5 * 0.25,
-          child: Text(small,
+          child: Text(L.en(small),
               maxLines: 1, overflow: TextOverflow.ellipsis, style: t.statSmall),
         ),
       ]),
@@ -1268,7 +1269,7 @@ class AdminHeroCard216 extends StatelessWidget {
                       shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 6),
-                Text(wayText,
+                Text(L.en(wayText),
                     style: t.custom(11.5, FontWeight.w600, Colors.white, 1)),
               ]),
             ),
@@ -1287,11 +1288,11 @@ class AdminHeroCard216 extends StatelessWidget {
           top: 87,
           bottom: 0,
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            stat(near, 'Phones near', const ValueKey('a216_stat_near')),
+            stat(near, L.t.phonesNear, const ValueKey('a216_stat_near')),
             Padding(padding: const EdgeInsets.only(top: 13), child: vline()),
-            stat(blocked, 'Blocked', const ValueKey('a216_stat_blocked')),
+            stat(blocked, L.t.blocked, const ValueKey('a216_stat_blocked')),
             Padding(padding: const EdgeInsets.only(top: 13), child: vline()),
-            stat(minVersion, 'Min. version', const ValueKey('a216_stat_min')),
+            stat(minVersion, L.t.minVersion, const ValueKey('a216_stat_min')),
           ]),
         ),
       ]),
@@ -1514,7 +1515,7 @@ Future<bool> confirmAdmin216(
         const SizedBox(height: 20),
         Row(children: [
           Expanded(
-            child: AdminButton216('Cancel',
+            child: AdminButton216(L.t.cancel,
                 kind: A216ButtonKind.outline,
                 height: 42,
                 onTap: () => Navigator.of(ctx).pop(false)),
@@ -1552,8 +1553,7 @@ class AdminLockedRows216 extends StatelessWidget {
   final List<AdminLockedItem216> items;
   const AdminLockedRows216(this.items, {super.key});
 
-  static const String note =
-      'Needs the server. It opens by itself when the server is back.';
+  static String get note => L.t.needsTheServerItOpensBy;
 
   @override
   Widget build(BuildContext context) {
@@ -1567,7 +1567,7 @@ class AdminLockedRows216 extends StatelessWidget {
             leading: AdminToneIcon216(it.icon, A216Tone.grey,
                 bg: c.div, fg: c.grey2),
             title: it.title,
-            subtitle: 'Needs the server',
+            subtitle: L.t.needsTheServer,
             titleColor: c.grey2,
             subtitleColor: c.grey2,
             trailing: Padding(
@@ -1664,11 +1664,11 @@ class _ServerLockGateState extends State<ServerLockGate> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Server lost',
+                      Text(L.t.serverLost,
                           style: t.custom(15, FontWeight.w600, c.ink, 1.25)),
                       const SizedBox(height: 4),
                       Text(
-                          'This page is locked. It opens again by itself when the server is back.',
+                          L.t.thisPageIsLockedItOpens,
                           style: t.note),
                     ],
                   ),
@@ -1847,7 +1847,7 @@ class LinkLegend216 extends StatelessWidget {
                     shape: BoxShape.circle,
                     border: Border.all(color: A216.blockedRed, width: 1.4))),
             const SizedBox(width: 5),
-            Text('Blocked · relays only', style: t.legend),
+            Text(L.t.blockedRelaysOnly, style: t.legend),
           ]),
       ],
     );
@@ -1968,9 +1968,9 @@ class AdminBarRow216 extends StatelessWidget {
         children: [
           Row(children: [
             Expanded(
-                child: Text(label,
+                child: Text(L.en(label),
                     style: t.custom(13, FontWeight.w500, c.ink2, 1.2))),
-            Text(v == null ? 'Not available' : '${v.round()}%',
+            Text(v == null ? L.t.notAvailable : '${v.round()}%',
                 style: t.custom(13, FontWeight.w600,
                     v == null ? c.grey2 : c.ink, 1.2)),
           ]),
@@ -2081,10 +2081,10 @@ class AdminKeyValue216 extends StatelessWidget {
     return SizedBox(
       height: 34,
       child: Row(children: [
-        Text(k, style: t.kvKey),
+        Text(L.en(k), style: t.kvKey),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(v,
+          child: Text(L.en(v),
               textAlign: TextAlign.right,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

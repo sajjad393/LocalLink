@@ -37,9 +37,11 @@ import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/notifications/presentation/screens/notification_settings_screen.dart';
 import 'package:locallink/features/home/presentation/screens/appearance_settings_screen.dart';
+import 'package:locallink/features/home/presentation/screens/language_settings_screen.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class MessengerSettingsScreen extends StatelessWidget {
   final LocalLinkApi api;
@@ -119,7 +121,7 @@ class MessengerSettingsScreen extends StatelessWidget {
     } catch (_) {}
     if (!context.mounted) return;
     if (value == null || value.userId.isEmpty) {
-      LinkToast.show(context, 'Your profile is not ready yet.', kind: LinkToastKind.error);
+      LinkToast.show(context, L.t.yourProfileIsNotReadyYet, kind: LinkToastKind.error);
       return;
     }
     await Navigator.push<void>(
@@ -185,11 +187,11 @@ class MessengerSettingsScreen extends StatelessWidget {
     // Bundle 183 (A2/A3): "@username · Account, phones, backup" - never the
     // default phone name.
     final cardLine = nickname.isNotEmpty
-        ? '@$nickname · Account, phones, backup'
-        : 'Account, phones, backup';
+        ? L.t.accountPhonesBackup(nickname)
+        : L.t.accountPhonesBackup2;
     return Scaffold(
       // Bundle 183 (L): the shared tab top bar - no back arrow.
-      appBar: const TabTopBar(title: Text('Settings')),
+      appBar: TabTopBar(title: Text(L.t.settings)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(0, 12, 0, 28),
         children: [
@@ -261,7 +263,7 @@ class MessengerSettingsScreen extends StatelessWidget {
                         key: const ValueKey('settings_my_qr_242'),
                         onTap: () => _openMyQr242(context),
                         child: Tooltip(
-                          message: 'My QR code',
+                          message: L.t.myQrCode,
                           child: SizedBox(
                             width: 36,
                             height: 36,
@@ -304,12 +306,12 @@ class MessengerSettingsScreen extends StatelessWidget {
               ),
             ),
           ]),
-          const MessengerGroupLabel('General'),
+          MessengerGroupLabel(L.t.general),
           MessengerListGroup(dividerIndent: 66, children: [
             MessengerSettingsRow(
               icon: Icons.notifications_none,
-              title: 'Notifications',
-              subtitle: 'Messages, groups and calls',
+              title: L.t.notifications,
+              subtitle: L.t.messagesGroupsAndCalls,
               onTap: () => Navigator.push<void>(
                 context,
                 MaterialPageRoute(
@@ -320,7 +322,7 @@ class MessengerSettingsScreen extends StatelessWidget {
             ),
             MessengerSettingsRow(
               icon: Icons.palette_outlined,
-              title: 'Appearance',
+              title: L.t.appearance,
               subtitle: _themeLabel(themeMode),
               onTap: () => Navigator.push<void>(
                 context,
@@ -332,13 +334,24 @@ class MessengerSettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
+            // 304 (H3): Phone language / English / اردو.
+            MessengerSettingsRow(
+              key: const ValueKey('settings_language_304'),
+              icon: Icons.translate_rounded,
+              title: L.t.language304,
+              subtitle: LanguageSettingsScreen.label(LanguageBook304.instance.value),
+              onTap: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(builder: (_) => const LanguageSettingsScreen()),
+              ),
+            ),
           ]),
-          const MessengerGroupLabel('This phone'),
+          MessengerGroupLabel(L.t.thisPhone),
           MessengerListGroup(dividerIndent: 66, children: [
             MessengerSettingsRow(
               icon: Icons.power_settings_new_rounded,
-              title: 'Keep LinkUp running',
-              subtitle: 'Get messages and calls when closed',
+              title: L.t.keepLinkupRunning,
+              subtitle: L.t.getMessagesAndCallsWhenClosed,
               onTap: () => Navigator.push<void>(
                 context,
                 MaterialPageRoute(
@@ -352,8 +365,8 @@ class MessengerSettingsScreen extends StatelessWidget {
             ShareAppSettingsRow(ownerName: nickname),
             MessengerSettingsRow(
               icon: Icons.restart_alt,
-              title: 'Reset setup',
-              subtitle: 'Start again on this phone',
+              title: L.t.resetSetup,
+              subtitle: L.t.startAgainOnThisPhone,
               destructive: true,
               onTap: () async {
                 // Bundle 102: an offline-pending account lives only in secure
@@ -363,18 +376,18 @@ class MessengerSettingsScreen extends StatelessWidget {
                   context: context,
                   builder: (context) => AlertDialog(
                     title: Text(offlinePending
-                        ? 'Delete unpublished account?'
-                        : 'Reset setup?'),
+                        ? L.t.deleteUnpublishedAccount
+                        : L.t.resetSetup2),
                     content: Text(offlinePending
-                        ? 'Your account exists ONLY on this phone and has never reached the server. Resetting deletes it permanently — chats, and its recovery code, will be unrecoverable.'
-                        : 'This returns the app to its setup state. Existing local data may be removed.'),
+                        ? L.t.yourAccountExistsOnlyOnThis
+                        : L.t.thisReturnsTheAppToIts),
                     actions: [
                       TextButton(
                           onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Cancel')),
+                          child: Text(L.t.cancel)),
                       FilledButton(
                           onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Reset')),
+                          child: Text(L.t.reset)),
                     ],
                   ),
                 );
@@ -384,7 +397,7 @@ class MessengerSettingsScreen extends StatelessWidget {
           ]),
           // Bundle 196 (6 / 11.4): Blocked people. Bundle 202: Private
           // profile moved to Profile > Privacy.
-          const MessengerGroupLabel('Privacy',
+          MessengerGroupLabel(L.t.privacy,
               key: ValueKey('settings_privacy_label')),
           MessengerListGroup(dividerIndent: 66, children: [
             const ReadReceiptsRow(), // Bundle 198
@@ -394,8 +407,8 @@ class MessengerSettingsScreen extends StatelessWidget {
               builder: (context, _) => MessengerSettingsRow(
                 key: const ValueKey('settings_blocked_people'),
                 icon: Icons.block,
-                title: 'Blocked people',
-                subtitle: 'See and unblock people you blocked',
+                title: L.t.blockedPeople,
+                subtitle: L.t.seeAndUnblockPeopleYouBlocked,
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -424,9 +437,9 @@ class MessengerSettingsScreen extends StatelessWidget {
   }
 
   String _themeLabel(ThemeMode mode) => switch (mode) {
-        ThemeMode.system => 'System default',
-        ThemeMode.light => 'Light theme',
-        ThemeMode.dark => 'Dark theme',
+        ThemeMode.system => L.t.systemDefault,
+        ThemeMode.light => L.t.lightTheme,
+        ThemeMode.dark => L.t.darkTheme,
       };
 }
 
@@ -442,9 +455,8 @@ class ReadReceiptsRow extends StatelessWidget {
       builder: (context, _) => MessengerSettingsRow(
         key: const ValueKey('settings_read_receipts'),
         icon: Icons.done_all_rounded,
-        title: 'Read receipts',
-        subtitle: "If off, you can't see when others read your messages, "
-            "and they can't see when you read theirs.",
+        title: L.t.readReceipts,
+        subtitle: L.t.ifOffYouCanTSee,
         onTap: () => setting.set(!setting.on),
         trailing: Switch(
           key: const ValueKey('settings_read_receipts_switch'),

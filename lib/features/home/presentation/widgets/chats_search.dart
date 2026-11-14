@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/search_pill_298.dart';
 import 'package:locallink/core/models/message_search_hit.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 207 (L1, mock 207 page 5 screens 13 + 15): search on the Chats
 /// tab. One box finds chats (names) and messages (word marked); tap a
@@ -49,7 +50,7 @@ class ChatsSearchBar extends StatelessWidget implements PreferredSizeWidget {
       automaticallyImplyLeading: false,
       leading: IconButton(
         key: const ValueKey('chats_search_close'),
-        tooltip: 'Close search',
+        tooltip: L.t.closeSearch,
         onPressed: onClose,
         icon: const Icon(Icons.arrow_back),
       ),
@@ -60,7 +61,7 @@ class ChatsSearchBar extends StatelessWidget implements PreferredSizeWidget {
         child: SearchPill298(
           fieldKey: const ValueKey('chats_search_field'),
           controller: controller,
-          hint: 'Search chats and messages',
+          hint: L.t.searchChatsAndMessages,
           autofocus: true,
           trailing: ListenableBuilder(
             listenable: controller,
@@ -68,7 +69,7 @@ class ChatsSearchBar extends StatelessWidget implements PreferredSizeWidget {
                 ? const SizedBox(width: 10)
                 : IconButton(
                     key: const ValueKey('chats_search_clear'),
-                    tooltip: 'Clear',
+                    tooltip: L.t.clear,
                     visualDensity: VisualDensity.compact,
                     onPressed: controller.clear,
                     icon: Icon(Icons.close,
@@ -209,7 +210,7 @@ class _ChatsSearchViewState extends State<ChatsSearchView> {
         key: const ValueKey('chats_search_empty'),
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Text('Type a name or a word',
+          child: Text(L.t.typeANameOrAWord,
               style: TextStyle(color: colors.onSurfaceVariant)),
         ),
       );
@@ -238,7 +239,7 @@ class _ChatsSearchViewState extends State<ChatsSearchView> {
       children: [
         _chips(colors),
         if (chats.isNotEmpty) ...[
-          _label('Chats', colors),
+          _label(L.t.chats, colors),
           for (final c in chats)
             _Row(
               key: ValueKey('chats_search_chat_${c.id}'),
@@ -253,7 +254,7 @@ class _ChatsSearchViewState extends State<ChatsSearchView> {
             ),
         ],
         if (hits.isNotEmpty) ...[
-          _label('Messages · ${hits.length}', colors),
+          _label(L.t.messages2(hits.length), colors),
           for (final h in hits)
             _Row(
               key: ValueKey('chats_search_hit_${h.messageId}'),
@@ -287,7 +288,7 @@ class _ChatsSearchViewState extends State<ChatsSearchView> {
             key: const ValueKey('chats_search_none'),
             padding: const EdgeInsets.all(32),
             child: Center(
-              child: Text("No results for '$q'",
+              child: Text(L.t.noResultsFor(q),
                   style: TextStyle(color: colors.onSurfaceVariant)),
             ),
           ),
@@ -320,11 +321,11 @@ class _ChatsSearchViewState extends State<ChatsSearchView> {
   }
 
   Widget _chips(ColorScheme colors) {
-    const names = {
-      ChatsSearchFilter.all: 'All',
-      ChatsSearchFilter.chats: 'Chats',
-      ChatsSearchFilter.messages: 'Messages',
-      ChatsSearchFilter.media: 'Media',
+    final names = {
+      ChatsSearchFilter.all: L.t.all2,
+      ChatsSearchFilter.chats: L.t.chats,
+      ChatsSearchFilter.messages: L.t.messages,
+      ChatsSearchFilter.media: L.t.media,
     };
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),

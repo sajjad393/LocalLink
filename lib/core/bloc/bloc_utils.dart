@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart' show PlatformException;
+import 'package:locallink/l10n/l10n.dart';
 
 /// Converts raw exceptions into short, human-readable text.
 ///
@@ -18,11 +19,11 @@ String cleanBlocError(Object error) {
   // native message directly.
   if (error is PlatformException) {
     final message = (error.message ?? '').trim();
-    if (message.isNotEmpty) return message;
+    if (message.isNotEmpty) return L.en(message);
   }
 
   if (error is TimeoutException || raw.startsWith('TimeoutException')) {
-    return 'The server took too long to respond. It will keep retrying automatically.';
+    return L.t.theServerTookTooLongTo;
   }
   if (error is SocketException ||
       error is HttpException ||
@@ -33,10 +34,10 @@ String cleanBlocError(Object error) {
       raw.startsWith('WebSocketException') ||
       raw.startsWith('HandshakeException') ||
       raw.startsWith('TlsException')) {
-    return 'The server is unreachable. Check that it is running and that this phone is on the same network.';
+    return L.t.theServerIsUnreachableCheckThat;
   }
   if (error is FormatException || raw.startsWith('FormatException')) {
-    return 'The server returned a reply the app could not understand.';
+    return L.t.theServerReturnedAReplyThe;
   }
   // Native call-video failures carry a human-readable "Call video: <reason>"
   // message inside a PlatformException string; surface the reason itself.
@@ -62,7 +63,7 @@ String cleanBlocError(Object error) {
   ];
   if (technicalPrefixes.any(raw.startsWith) ||
       RegExp(r'^[A-Za-z_$][\w$]*(Exception|Error)\b').hasMatch(raw)) {
-    return 'Something went wrong. Please try again.';
+    return L.t.somethingWentWrongPleaseTryAgain;
   }
-  return raw;
+  return L.en(raw);
 }

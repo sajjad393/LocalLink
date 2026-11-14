@@ -4,6 +4,7 @@ import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/admin/data/services/version_rule_service.dart';
 import 'package:locallink/features/share_app/presentation/update_sheet.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 213 (mock pages 4-5): this app version is old.
 /// - Yellow: "Update needed in 3 days ..." + Update + × (hidden for today).
@@ -21,15 +22,15 @@ class VersionBanner extends StatelessWidget {
   static const Color stopInk = Color(0xFFB42318);
 
   static String warnText(int? days) {
-    if (days == null) return 'A newer LinkUp is needed. Please update.';
-    final d = days == 1 ? '1 day' : '$days days';
-    return 'Update needed in $d. After that this version can only read chats.';
+    if (days == null) return L.t.aNewerLinkupIsNeededPlease;
+    final d = days == 1 ? L.t.t1Day : L.t.days(days);
+    return L.t.updateNeededInAfterThatThis(d);
   }
 
   /// Bundle 302 (C): short title + one line (mock labels_footer_302.html).
-  static const String stopTitle = 'Stopped by admin';
-  static const String stopText = 'Read chats only. Update to send and call.';
-  static const String warnTitle = 'Update LinkUp soon';
+  static String get stopTitle => L.t.stoppedByAdmin;
+  static String get stopText => L.t.readChatsOnlyUpdateToSend;
+  static String get warnTitle => L.t.updateLinkupSoon;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -85,13 +86,13 @@ class VersionBanner extends StatelessWidget {
                   const SizedBox(width: 8),
                   NoticeButton302(
                     key: const ValueKey('version_banner_update'),
-                    label: 'Update',
+                    label: L.t.update,
                     onPressed: () => VersionGuard.openUpdate?.call(context),
                   ),
                   if (!stopped)
                     IconButton(
                       key: const ValueKey('version_banner_close'),
-                      tooltip: 'Hide for today',
+                      tooltip: L.t.hideForToday,
                       visualDensity: VisualDensity.compact,
                       onPressed: () {
                         final svc = VersionRuleService.instance;

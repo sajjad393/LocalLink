@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +19,7 @@ import 'package:locallink/features/messaging/data/read_receipts/read_receipts_se
 import 'package:locallink/features/messaging/presentation/widgets/pinch_text_zoom.dart';
 
 import 'support/phase5_fakes.dart';
+import 'support/l10n_source_304.dart';
 
 // Bundle G5: receipts per member, Message info, typing, @mentions.
 
@@ -482,19 +482,16 @@ void main() {
   });
 
   test('source: chat screen uses the new parts', () {
-    final s = File('lib/features/groups/presentation/screens/group_chat_screen.dart')
-        .readAsStringSync();
+    final s = readEnglish304('lib/features/groups/presentation/screens/group_chat_screen.dart');
     expect(s, contains('showGroupMessageInfoSheet('));
     expect(s, contains('GroupMentions.encode('));
     expect(s, contains("ValueKey('group_bar_typing')"));
     expect(s, contains('GroupTypingBubble('));
     expect(s, contains('tick: _tickFor(message)'));
     expect(s, contains("Text('Media, links and docs')"));
-    final info = File('lib/features/groups/presentation/screens/group_info_screen.dart')
-        .readAsStringSync();
+    final info = readEnglish304('lib/features/groups/presentation/screens/group_info_screen.dart');
     expect(info, contains('GroupMediaStrip('));
-    final svc = File('lib/features/groups/data/services/group_messaging_service.dart')
-        .readAsStringSync();
+    final svc = readEnglish304('lib/features/groups/data/services/group_messaging_service.dart');
     expect(svc, contains("'type': 'group_receipt'"));
     expect(svc, contains("'type': 'group_typing'"));
   });

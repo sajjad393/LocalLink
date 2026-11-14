@@ -11,6 +11,7 @@ import 'package:locallink/features/account/bloc/account_bloc.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:locallink/features/directory/presentation/contact_sheets.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 202 (mock page 5): ONE switch decides both name search and who
 /// gets my phone number.
@@ -31,10 +32,8 @@ abstract final class ProfilePrivacyRule {
   static bool matches(LocalProfile p) =>
       p.phoneVisibility == phoneVisibilityFor(private: isPrivate(p));
 
-  static const String offText =
-      'Anyone can find you by name and see your phone number.';
-  static const String onText =
-      'Nobody can find you by name search. Only friends get your phone number.';
+  static String get offText => L.t.anyoneCanFindYouByName;
+  static String get onText => L.t.nobodyCanFindYouByName2;
 }
 
 /// Bundle 202 (P4): one time after the update, saved profiles whose phone
@@ -157,8 +156,8 @@ class _PrivateProfileCardState extends State<PrivateProfileCard> {
           detail: 'on=${makePrivate ? 'y' : 'n'} saved=y synced=${synced ? 'y' : 'n'} '
               'phone=${ProfilePrivacyRule.phoneVisibilityFor(private: makePrivate)}');
       LinkToast.maybeOn(messenger, makePrivate
-            ? 'Your profile is private'
-            : 'Your profile is public again', kind: LinkToastKind.done);
+            ? L.t.yourProfileIsPrivate
+            : L.t.yourProfileIsPublicAgain, kind: LinkToastKind.done);
     } catch (e) {
       if (mounted) setState(() => _private = !makePrivate);
       ProfilePrivacyRule.ownPrivate.value = !makePrivate;
@@ -175,7 +174,7 @@ class _PrivateProfileCardState extends State<PrivateProfileCard> {
       key: const ValueKey('profile_private_card'),
       child: ListTile(
         leading: const Icon(Icons.lock_outline),
-        title: const Text('Private profile'),
+        title: Text(L.t.privateProfile),
         subtitle: Text(
           _private ? ProfilePrivacyRule.onText : ProfilePrivacyRule.offText,
           key: const ValueKey('profile_private_text'),

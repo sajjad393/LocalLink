@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 289 (TODO_289 T-1..T-5, mock 286 toast): ONE toast look for the
 /// whole app. A dark rounded card that floats 16 dp above the bottom, a
@@ -101,7 +102,7 @@ abstract final class LinkToast {
 
   /// The kind from the words, for messages that come from elsewhere.
   static LinkToastKind guess(String text) {
-    final t = text.toLowerCase();
+    final t = englishOf304(text).toLowerCase();
     for (final w in _errorWords) {
       if (t.contains(w)) return LinkToastKind.error;
     }
@@ -205,7 +206,7 @@ abstract final class LinkToast {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              text,
+              L.en(text),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (page 23): Diagnostics — is the server healthy.
 class AdminDiagnosticsScreen extends StatelessWidget {
@@ -13,7 +14,7 @@ class AdminDiagnosticsScreen extends StatelessWidget {
     return AdminToolPage216(
       title: 'Diagnostics',
       module: 'Diagnostics',
-      subtitle: (_) => 'Is the server healthy',
+      subtitle: (_) => L.t.isTheServerHealthy,
       withDashboard: true,
       builder: (context, state) {
         final r = state.runtimeDiagnosticsData;
@@ -32,34 +33,34 @@ class AdminDiagnosticsScreen extends StatelessWidget {
         return [
           if (r == null && state.loading) const AdminLoading216(),
           AdminStatGrid216([
-            AdminStatTile216(show(n(r, 'uptime_seconds'), uptime216), 'Running for',
+            AdminStatTile216(show(n(r, 'uptime_seconds'), uptime216), L.t.runningFor,
                 A216Tone.green, Icons.timer_outlined),
-            AdminStatTile216(show(n(r, 'requests'), count216), 'Requests', A216Tone.blue,
+            AdminStatTile216(show(n(r, 'requests'), count216), L.t.requests, A216Tone.blue,
                 Icons.swap_vert_rounded),
-            AdminStatTile216(show(n(r, 'active_requests'), count216), 'Working now',
+            AdminStatTile216(show(n(r, 'active_requests'), count216), L.t.workingNow,
                 A216Tone.purple, Icons.bolt_rounded),
           ]),
           const SizedBox(height: 10),
           AdminStatGrid216([
-            AdminStatTile216(show(n(r, 'recovered_panics'), count216), 'Auto-fixed',
+            AdminStatTile216(show(n(r, 'recovered_panics'), count216), L.t.autoFixed,
                 A216Tone.orange, Icons.healing_outlined),
-            AdminStatTile216(show(n(s, 'online_devices'), count216), 'Phones live',
+            AdminStatTile216(show(n(s, 'online_devices'), count216), L.t.phonesLive,
                 A216Tone.teal, Icons.smartphone_rounded),
-            AdminStatTile216(show(n(s, 'file_storage_bytes'), size216), 'Files', A216Tone.grey,
+            AdminStatTile216(show(n(s, 'file_storage_bytes'), size216), L.t.files, A216Tone.grey,
                 Icons.folder_outlined),
           ]),
-          const AdminSection216('Server health'),
+          AdminSection216(L.t.serverHealth),
           if (r == null && !state.loading)
-            const AdminNote216('Server health details are off on this server.')
+            AdminNote216(L.t.serverHealthDetailsAreOffOn)
           else
             AdminCard216(
               key: const ValueKey('a216_health'),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Column(children: [
                 AdminBarRow216('CPU', val('cpu'), alert('cpu')),
-                AdminBarRow216('Memory', val('memory'), alert('memory')),
-                AdminBarRow216('Storage', val('storage'), alert('storage')),
-                AdminBarRow216('Database', val('database'), alert('database')),
+                AdminBarRow216(L.t.memory, val('memory'), alert('memory')),
+                AdminBarRow216(L.t.storage, val('storage'), alert('storage')),
+                AdminBarRow216(L.t.database, val('database'), alert('database')),
               ]),
             ),
         ];

@@ -11,6 +11,7 @@ import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/features/files/presentation/widgets/media_grid.dart';
 import 'package:locallink/features/files/domain/file_size_rule.dart';
 import 'package:locallink/features/files/presentation/widgets/file_too_big_dialog.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 197a (mock 11): "Forward to" - pick any number of chats and
 /// groups. Returns the picks (null / empty = cancelled).
@@ -28,13 +29,13 @@ class ForwardScreen extends StatefulWidget {
   static (String, String) cardText(List<ForwardItem> items) {
     final files = <Attachment>[for (final i in items) ...i.attachments];
     final summary = mediaSummary(files);
-    if (items.length > 1) return ('${items.length} messages', summary);
+    if (items.length > 1) return (L.t.messages3(items.length), summary);
     final text = items.isEmpty ? '' : items.first.text.trim();
     if (files.length >= 2) {
-      return ('${files.length} items', '$summary\nSent as one message');
+      return (L.t.items(files.length), L.t.sentAsOneMessage(summary));
     }
     if (files.length == 1) return (summary, text);
-    return ('1 message', text);
+    return (L.t.t1Message, text);
   }
 
   /// Bundle 203 (5): the same items without files over 50 MB (an item
@@ -162,7 +163,7 @@ class _ForwardScreenState extends State<ForwardScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: const Text('Forward to',
+        title: Text(L.t.forwardTo,
             style: TextStyle(fontWeight: FontWeight.w700)),
       ),
       body: Column(
@@ -174,7 +175,7 @@ class _ForwardScreenState extends State<ForwardScreen> {
             child: SearchPill298(
               fieldKey: const ValueKey('forward_search'),
               controller: _search,
-              hint: 'Search',
+              hint: L.t.search,
               onChanged: (_) => setState(() {}),
             ),
           ),
@@ -186,7 +187,7 @@ class _ForwardScreenState extends State<ForwardScreen> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(6, 6, 0, 8),
-                        child: Text('RECENT CHATS',
+                        child: Text(L.t.recentChats,
                             style: TextStyle(
                                 fontSize: 11.5,
                                 letterSpacing: 1.2,
@@ -197,7 +198,7 @@ class _ForwardScreenState extends State<ForwardScreen> {
                         Padding(
                           padding: const EdgeInsets.all(24),
                           child: Center(
-                              child: Text('No chats found',
+                              child: Text(L.t.noChatsFound,
                                   style: TextStyle(color: colors.onSurfaceVariant))),
                         )
                       else
@@ -224,8 +225,7 @@ class _ForwardScreenState extends State<ForwardScreen> {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
                         child: Text(
-                          'Pick as many chats as you want. Photos and videos '
-                          'are sent again as new files.',
+                          L.t.pickAsManyChatsAsYou,
                           style: TextStyle(
                               fontSize: 12.5, color: colors.onSurfaceVariant),
                         ),
@@ -262,7 +262,7 @@ class _ForwardScreenState extends State<ForwardScreen> {
                         ),
                         child: IconButton(
                           key: const ValueKey('forward_send'),
-                          tooltip: 'Send',
+                          tooltip: L.t.send,
                           color: Colors.white,
                           onPressed: () => Navigator.pop(
                               context, List<ForwardTarget>.from(_picked)),
@@ -330,7 +330,7 @@ Future<ForwardTarget?> runForwardFlow(
       await hub.filesFor(item);
     }
   } on ForwardFileMissing {
-    LinkToast.maybeOn(messenger, 'This file is no longer on your phone', kind: LinkToastKind.error);
+    LinkToast.maybeOn(messenger, L.t.thisFileIsNoLongerOn, kind: LinkToastKind.error);
     return null;
   }
   if (!context.mounted) return null;
@@ -344,16 +344,16 @@ Future<ForwardTarget?> runForwardFlow(
     final chats = await hub.forward(items, picks);
     UiSounds.play(UiSound.messageSent); // Bundle 198: soft "tick"
     LinkToast.maybeOn(messenger, chats == 1
-            ? 'Sent to ${picks.first.name}'
-            : 'Sent to $chats chats', kind: LinkToastKind.done);
+            ? L.t.sentTo(picks.first.name)
+            : L.t.sentToChats(chats), kind: LinkToastKind.done);
     if (tooBig.isNotEmpty && context.mounted) {
       await showFileTooBigDialog(context, tooBig, forward: true);
     }
   } on ForwardFileMissing {
-    LinkToast.maybeOn(messenger, 'This file is no longer on your phone', kind: LinkToastKind.error);
+    LinkToast.maybeOn(messenger, L.t.thisFileIsNoLongerOn, kind: LinkToastKind.error);
     return null;
   } catch (_) {
-    LinkToast.maybeOn(messenger, 'Could not forward. Try again.', kind: LinkToastKind.error);
+    LinkToast.maybeOn(messenger, L.t.couldNotForwardTryAgain, kind: LinkToastKind.error);
     return null;
   }
   return picks.length == 1 ? picks.first : null;

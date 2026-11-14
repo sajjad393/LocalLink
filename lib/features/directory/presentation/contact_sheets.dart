@@ -5,6 +5,7 @@ import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/blocked_pill.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 export 'package:locallink/core/widgets/blocked_pill.dart';
 
@@ -304,25 +305,25 @@ Future<ContactSheetChoice?> showContactActionsSheet(
             ContactSheetAction(
               key: const Key('contact_sheet_message'),
               icon: Icons.chat_bubble_outline,
-              label: 'Message',
+              label: L.t.message,
               onTap: () => Navigator.pop(c, ContactSheetChoice.message),
             ),
             ContactSheetAction(
               key: const Key('contact_sheet_call'),
               icon: Icons.call_outlined,
-              label: 'Voice call',
+              label: L.t.voiceCall,
               onTap: () => Navigator.pop(c, ContactSheetChoice.call),
             ),
             ContactSheetAction(
               key: const Key('contact_sheet_remove'),
               icon: Icons.person_remove_outlined,
-              label: 'Remove contact',
+              label: L.t.removeContact,
               onTap: () => Navigator.pop(c, ContactSheetChoice.remove),
             ),
             ContactSheetAction(
               key: const Key('contact_sheet_block'),
               icon: Icons.block,
-              label: 'Block $name',
+              label: L.t.block2(name),
               red: true,
               onTap: () => Navigator.pop(c, ContactSheetChoice.block),
             ),
@@ -348,19 +349,18 @@ Future<bool> showBlockSheet(BuildContext context,
     children: [
       ContactSheetHeader(
           name: name, subtitle: username.isEmpty ? '' : '@$username'),
-      _title('Block $name?'),
+      _title(L.t.block3(name)),
       _points(context, [
-        "$name **can't message or call** you, and their adds are ignored.",
-        '$name is **removed from your contacts**.',
-        'In both chats the message box is replaced by a short text, so '
-            "**$name can see** they can't message you.",
-        'You can unblock them any time.',
+        L.t.canTMessageOrCallYou(name),
+        L.t.isRemovedFromYourContacts(name),
+        L.t.inBothChatsTheMessageBox(name),
+        L.t.youCanUnblockThemAnyTime,
       ]),
       Builder(
-          builder: (c) => _big(c, _Big.red, 'Block', () => Navigator.pop(c, true),
+          builder: (c) => _big(c, _Big.red, L.t.block, () => Navigator.pop(c, true),
               key: const Key('block_sheet_confirm'))),
       Builder(
-          builder: (c) => _big(c, _Big.ghost, 'Cancel', () => Navigator.pop(c, false),
+          builder: (c) => _big(c, _Big.ghost, L.t.cancel, () => Navigator.pop(c, false),
               key: const Key('block_sheet_cancel'))),
     ],
   );
@@ -376,16 +376,16 @@ Future<bool> showRemoveSheet(BuildContext context,
     children: [
       ContactSheetHeader(
           name: name, subtitle: username.isEmpty ? '' : '@$username'),
-      _title('Remove $name from your contacts?'),
-      _points(context, const [
-        'Your chat with them **stays**.',
-        'You can add them again later.',
+      _title(L.t.removeFromYourContacts(name)),
+      _points(context, [
+        L.t.yourChatWithThemStays,
+        L.t.youCanAddThemAgainLater,
       ]),
       Builder(
-          builder: (c) => _big(c, _Big.line, 'Remove', () => Navigator.pop(c, true),
+          builder: (c) => _big(c, _Big.line, L.t.remove, () => Navigator.pop(c, true),
               key: const Key('remove_sheet_confirm'))),
       Builder(
-          builder: (c) => _big(c, _Big.ghost, 'Cancel', () => Navigator.pop(c, false),
+          builder: (c) => _big(c, _Big.ghost, L.t.cancel, () => Navigator.pop(c, false),
               key: const Key('remove_sheet_cancel'))),
     ],
   );
@@ -405,21 +405,21 @@ Future<UnblockChoice?> showUnblockSheet(BuildContext context, BlockedPerson p) {
           name: p.label,
           subtitle: p.username.isEmpty ? '' : '@${p.username}',
           blocked: true),
-      _title('${p.label} is blocked'),
+      _title(L.t.isBlocked(p.label)),
       _points(context, [
-        if (when.isNotEmpty) 'Blocked on $when.',
-        'If you unblock, ${p.label} can message and call you again.',
+        if (when.isNotEmpty) L.t.blockedOn(when),
+        L.t.ifYouUnblockCanMessageAnd(p.label),
       ]),
       Builder(
-          builder: (c) => _big(c, _Big.blue, 'Unblock and add back',
+          builder: (c) => _big(c, _Big.blue, L.t.unblockAndAddBack,
               () => Navigator.pop(c, UnblockChoice.addBack),
               key: const Key('unblock_sheet_add_back'))),
       Builder(
-          builder: (c) => _big(c, _Big.line, 'Unblock only',
+          builder: (c) => _big(c, _Big.line, L.t.unblockOnly,
               () => Navigator.pop(c, UnblockChoice.only),
               key: const Key('unblock_sheet_only'))),
       Builder(
-          builder: (c) => _big(c, _Big.ghost, 'Cancel', () => Navigator.pop(c),
+          builder: (c) => _big(c, _Big.ghost, L.t.cancel, () => Navigator.pop(c),
               key: const Key('unblock_sheet_cancel'))),
     ],
   );
@@ -431,21 +431,19 @@ Future<bool> showPrivateProfileSheet(BuildContext context) async {
     context,
     key: const Key('private_profile_sheet'),
     children: [
-      _title('Make your profile private?'),
-      _points(context, const [
-        '**Nobody can find you** by name search, and no phone shows you to others.',
-        'People who already have you **keep you**. They see a "Private" label '
-            'next to your name.',
-        'People near you must **ask first**, and you accept or decline. '
-            'A **QR code** still adds at once.',
-        'Only you can change this. Turn it off any time.',
+      _title(L.t.makeYourProfilePrivate),
+      _points(context, [
+        L.t.nobodyCanFindYouByName,
+        L.t.peopleWhoAlreadyHaveYouKeep,
+        L.t.peopleNearYouMustAskFirst,
+        L.t.onlyYouCanChangeThisTurn,
       ]),
       Builder(
-          builder: (c) => _big(c, _Big.blue, 'Make private',
+          builder: (c) => _big(c, _Big.blue, L.t.makePrivate,
               () => Navigator.pop(c, true),
               key: const Key('private_profile_confirm'))),
       Builder(
-          builder: (c) => _big(c, _Big.ghost, 'Cancel', () => Navigator.pop(c, false),
+          builder: (c) => _big(c, _Big.ghost, L.t.cancel, () => Navigator.pop(c, false),
               key: const Key('private_profile_cancel'))),
     ],
   );
@@ -487,7 +485,7 @@ Future<ChatInfoChoice?> showChatInfoSheet(
               ContactSheetAction(
                 key: const Key('chat_info_call'),
                 icon: Icons.call_outlined,
-                label: 'Voice call',
+                label: L.t.voiceCall,
                 onTap: () => Navigator.pop(c, ChatInfoChoice.call),
               ),
             // Bundle 245 (S7): the Security code of this chat.
@@ -495,28 +493,28 @@ Future<ChatInfoChoice?> showChatInfoSheet(
               ContactSheetAction(
                 key: const Key('chat_info_security'),
                 icon: securityChanged ? Icons.gpp_maybe_outlined : Icons.verified_user_outlined,
-                label: securityChanged ? 'Security code changed' : 'Security code',
+                label: securityChanged ? L.t.securityCodeChanged : L.t.securityCode,
                 red: securityChanged,
                 onTap: () => Navigator.pop(c, ChatInfoChoice.security),
               ),
             ContactSheetAction(
               key: const Key('chat_info_search'),
               icon: Icons.search,
-              label: 'Search messages',
+              label: L.t.searchMessages,
               onTap: () => Navigator.pop(c, ChatInfoChoice.search),
             ),
             if (blocked)
               ContactSheetAction(
                 key: const Key('chat_info_unblock'),
                 icon: Icons.block,
-                label: 'Unblock $name',
+                label: L.t.unblock2(name),
                 onTap: () => Navigator.pop(c, ChatInfoChoice.unblock),
               )
             else
               ContactSheetAction(
                 key: const Key('chat_info_block'),
                 icon: Icons.block,
-                label: 'Block $name',
+                label: L.t.block2(name),
                 red: true,
                 onTap: () => Navigator.pop(c, ChatInfoChoice.block),
               ),
@@ -524,7 +522,7 @@ Future<ChatInfoChoice?> showChatInfoSheet(
         ),
       ),
       Builder(
-          builder: (c) => _big(c, _Big.ghost, 'Close', () => Navigator.pop(c),
+          builder: (c) => _big(c, _Big.ghost, L.t.close, () => Navigator.pop(c),
               key: const Key('chat_info_close'))),
     ],
   ).then((choice) {
@@ -561,10 +559,10 @@ Future<bool> runBlockFlow(
   try {
     await action(userId);
     await BlockHub.instance.reload();
-    if (context.mounted) _snack(context, '$name blocked');
+    if (context.mounted) _snack(context, L.t.blocked4(name));
     return true;
   } catch (e) {
-    if (context.mounted) _snack(context, 'Could not block $name');
+    if (context.mounted) _snack(context, L.t.couldNotBlock(name));
     return false;
   }
 }
@@ -584,10 +582,10 @@ Future<bool> runRemoveFlow(
   if (action == null) return false;
   try {
     await action(userId);
-    if (context.mounted) _snack(context, '$name removed');
+    if (context.mounted) _snack(context, L.t.removed(name));
     return true;
   } catch (e) {
-    if (context.mounted) _snack(context, 'Could not remove $name');
+    if (context.mounted) _snack(context, L.t.couldNotRemove(name));
     return false;
   }
 }
@@ -608,15 +606,15 @@ Future<UnblockChoice?> runUnblockFlow(
       await hub.unblockAndAdd!(person);
       await hub.reload();
       if (context.mounted) {
-        _snack(context, '${person.label} unblocked and added back');
+        _snack(context, L.t.unblockedAndAddedBack(person.label));
       }
     } else {
       await hub.unblock?.call(person.userId);
       await hub.reload();
-      if (context.mounted) _snack(context, '${person.label} unblocked');
+      if (context.mounted) _snack(context, L.t.unblocked(person.label));
     }
   } catch (e) {
-    if (context.mounted) _snack(context, 'Could not unblock ${person.label}');
+    if (context.mounted) _snack(context, L.t.couldNotUnblock(person.label));
     return null;
   }
   return choice;

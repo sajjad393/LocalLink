@@ -4,6 +4,7 @@ import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminClosedFlag;
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 212 (F2, mock page 8): red banner on the blocked user's own phone
 /// (Chats, Calls, People). Home banner style, red tint, no close button.
@@ -37,8 +38,8 @@ class AdminBlockedBanner extends StatelessWidget {
                   Expanded(
                     child: Text(
                       AdminClosedFlag.closed.value
-                          ? "Account closed by admin. You can read old chats but can't send or call."
-                          : "Your account is blocked by admin. You can read old chats but can't send or call.",
+                          ? L.t.accountClosedByAdminYouCan
+                          : L.t.yourAccountIsBlockedByAdmin2,
                       style: theme.textTheme.bodySmall?.copyWith(color: ink),
                     ),
                   ),
@@ -104,7 +105,7 @@ class AdminBlockedBar extends StatelessWidget {
     final update = _showUpdate
         ? NoticeButton302(
             key: const ValueKey('chat_version_update'),
-            label: 'Update',
+            label: L.t.update,
             onPressed: () => VersionGuard.openUpdate?.call(context),
           )
         : null;

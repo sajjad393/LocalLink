@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/models/group.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class GroupListTile extends StatelessWidget {
   final LocalGroup group;
@@ -12,7 +13,7 @@ class GroupListTile extends StatelessWidget {
     return ListTile(
       leading: const CircleAvatar(child: Icon(Icons.group)),
       title: Text(group.name),
-      subtitle: const Text('Group chat'),
+      subtitle: Text(L.t.groupChat),
       onTap: onTap,
     );
   }

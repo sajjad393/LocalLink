@@ -15,6 +15,7 @@ import 'package:locallink/features/calls/presentation/widgets/call_header.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_video_view.dart';
 import 'package:locallink/features/calls/presentation/widgets/incoming_voice_call_body.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// WhatsApp-style call screen, identical layout on both the caller and the
 /// receiver side once the call is answered.
@@ -79,8 +80,8 @@ class _CallScreenState extends State<CallScreen> {
           _formatDuration(
               DateTime.now().difference(session.answeredAt!).inSeconds),
         CallState.ringing => session.direction == CallDirection.outgoing
-            ? 'Ringing…'
-            : 'Incoming call',
+            ? L.t.ringing
+            : L.t.incomingCall,
         // Bundle 137: plain "Calling…" instead of "Trying to reach…".
         // Bundle 225 (P5): no link at all to the friend yet (not even mesh).
         CallState.connecting
@@ -91,32 +92,32 @@ class _CallScreenState extends State<CallScreen> {
         CallState.connecting =>
           session.direction == CallDirection.outgoing &&
                   !session.signalingConnected
-              ? 'Calling…'
-              : 'Connecting…',
+              ? L.t.calling
+              : L.t.connecting,
         CallState.reconnecting => session.answeredAt == null
-            ? 'Calling…'
-            : 'Reconnecting…',
+            ? L.t.calling
+            : L.t.reconnecting2,
         CallState.connected => _formatDuration(
             (session.endedAt ?? DateTime.now())
                 .difference(session.answeredAt ?? DateTime.now())
                 .inSeconds),
-        CallState.ending => 'Ending…',
+        CallState.ending => L.t.ending,
         CallState.rejected =>
-          session.reason == 'busy' ? 'Busy' : 'Declined',
-        CallState.missed => 'Missed call',
-        CallState.canceled => 'Call canceled',
+          session.reason == 'busy' ? L.t.busy : L.t.declined,
+        CallState.missed => L.t.missedCall,
+        CallState.canceled => L.t.callCanceled,
         CallState.failed => switch (session.reason) {
-            'unreachable' => "Couldn't reach them — try again",
+            'unreachable' => L.t.couldnTReachThemTryAgain,
             'microphone_permission' =>
-              'Microphone permission needed — allow it, then answer again',
+              L.t.microphonePermissionNeededAllowItThen,
             'transport_unavailable' =>
-              'Local calling service unavailable — reconnect and try again',
+              L.t.localCallingServiceUnavailableReconnectAnd,
             'identity_blocked' =>
-              'Identity changed or revoked — verify this user again',
-            _ => 'Call failed',
+              L.t.identityChangedOrRevokedVerifyThis,
+            _ => L.t.callFailed,
           },
         // Bundle 205 (P7): say why when no nearby way came back.
-        CallState.ended => CallEndWords.endedText(session.reason) ?? 'Call ended',
+        CallState.ended => CallEndWords.endedText(session.reason) ?? L.t.callEnded,
       };
 
   /// Bundle 227 (F4): before, every rebuild after the end (call ended ->
@@ -215,8 +216,8 @@ class _CallScreenState extends State<CallScreen> {
 
   Widget _buildAudioLayout(CallSession session, String statusText) {
     final typeLabel = session.videoEnabled || session.peerVideoActive
-        ? 'LinkUp video call'
-        : 'LinkUp voice call';
+        ? L.t.linkupVideoCall
+        : L.t.linkupVoiceCall;
     return Container(
       decoration: const BoxDecoration(gradient: CallPalette.backdrop),
       child: SafeArea(
@@ -225,7 +226,7 @@ class _CallScreenState extends State<CallScreen> {
             Align(
               alignment: Alignment.centerLeft,
               child: IconButton(
-                tooltip: 'Minimize',
+                tooltip: L.t.minimize,
                 icon: const Icon(Icons.keyboard_arrow_down_rounded,
                     color: CallPalette.textPrimary, size: 30),
                 onPressed: () => Navigator.of(context).maybePop(),
@@ -318,21 +319,21 @@ class _CallScreenState extends State<CallScreen> {
   // Bundle 277 (C-1): kept for when video comes back; not shown now.
   // ignore: unused_element
   Future<void> _showVideoSwitchDialog(CallSession session) async {
-    final name = session.peerName.isEmpty ? 'Your contact' : session.peerName;
+    final name = session.peerName.isEmpty ? L.t.yourContact : session.peerName;
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.videocam_rounded, size: 36),
-        title: const Text('Switch to video call?'),
-        content: Text('$name turned on their camera. Accept to switch this call to video.'),
+        title: Text(L.t.switchToVideoCall),
+        content: Text(L.t.turnedOnTheirCameraAcceptTo(name)),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
               widget.controller.declineVideoSwitch();
             },
-            child: const Text('Not now'),
+            child: Text(L.t.notNow),
           ),
           FilledButton.icon(
             onPressed: () {
@@ -340,7 +341,7 @@ class _CallScreenState extends State<CallScreen> {
               widget.controller.acceptVideoSwitch();
             },
             icon: const Icon(Icons.videocam_rounded),
-            label: const Text('Accept'),
+            label: Text(L.t.accept),
           ),
         ],
       ),
@@ -385,7 +386,7 @@ class _CallScreenState extends State<CallScreen> {
                     child: Row(
                       children: [
                         IconButton(
-                          tooltip: 'Minimize',
+                          tooltip: L.t.minimize,
                           icon: const Icon(Icons.keyboard_arrow_down_rounded,
                               color: Colors.white, size: 28),
                           onPressed: () => Navigator.of(context).maybePop(),

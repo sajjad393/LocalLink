@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Quarter-turns the UI must apply so a raw Camera2 sensor buffer reads
 /// upright.
@@ -131,7 +132,7 @@ class _CallVideoViewState extends State<CallVideoView> {
                 sourceHeight: session.remoteVideoHeight,
               )
             else if (showRemote)
-              const _VideoLoading(label: 'Connecting video…')
+              _VideoLoading(label: L.t.connectingVideo)
             else if (showLocalFull && localId != null)
               _FadeTexture(
                 key: ValueKey('local-$localId'),
@@ -142,7 +143,7 @@ class _CallVideoViewState extends State<CallVideoView> {
                 selfPreview: true,
               )
             else if (showLocalFull)
-              const _VideoLoading(label: 'Starting camera…')
+              _VideoLoading(label: L.t.startingCamera)
             else
               const Center(
                 child: Icon(Icons.videocam_off_rounded,
@@ -163,7 +164,7 @@ class _CallVideoViewState extends State<CallVideoView> {
                     style: const TextStyle(
                       color: Colors.white38,
                       fontSize: 10,
-                      fontFamily: 'monospace',
+                      fontFamily: 'monospace', fontFamilyFallback: L.fontFallback,
                       letterSpacing: 0,
                     ),
                   ),
@@ -207,7 +208,7 @@ class _CallVideoViewState extends State<CallVideoView> {
                     _snapToCorner(box, bubble, safe);
                   },
                   child: Semantics(
-                    label: 'Your camera preview. Tap to flip camera, drag to move.',
+                    label: L.t.yourCameraPreviewTapToFlip,
                     child: Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:cryptography/cryptography.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 typedef ProofRead231 = Future<String?> Function(String key);
 typedef ProofWrite231 = Future<void> Function(String key, String value);
@@ -27,8 +28,7 @@ typedef ProofWrite231 = Future<void> Function(String key, String value);
 abstract final class ServerProof231 {
   static const String trustKeySetting = 'server_trust_key';
   static const String seenSetting = 'server_proof_seen_231';
-  static const String identityChanged =
-      'LinkUp server identity changed. Connection was blocked for safety.';
+  static String get identityChanged => L.t.linkupServerIdentityChangedConnectionWas;
 
   static bool _missingLogged = false;
   static bool _differsLogged = false;

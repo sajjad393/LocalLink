@@ -4,6 +4,7 @@ import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
 import 'package:locallink/features/calls/presentation/widgets/swipe_to_answer_button.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 174 (approved call mock): the incoming VOICE call screen body.
 ///
@@ -124,8 +125,8 @@ class IncomingVoiceCallBody extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Decline',
+                      Text(
+                        L.t.decline,
                         style: TextStyle(
                             color: CallPalette.textSecondary, fontSize: 13),
                       ),

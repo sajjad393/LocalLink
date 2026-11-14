@@ -24,13 +24,14 @@ import 'package:locallink/features/share_app/presentation/update_sheet.dart';
 import 'support/b212_fakes.dart';
 import 'support/b216_fonts.dart';
 import 'support/g210_fakes.dart';
+import 'support/l10n_source_304.dart';
 
 /// Bundle 302: the right label for each case (my block / admin block / old
 /// app version), the new footer card, the Chats banner, the update sheet's
 /// Try again, and stopped phones keep their link (E).
 final String? _out = Platform.environment['UI_CHECK_OUT'];
 
-String _src(String p) => File(p).readAsStringSync();
+String _src(String p) => readEnglish304(p);
 
 Future<void> _loadIcons() async {
   final root = Platform.environment['FLUTTER_ROOT'];
@@ -195,7 +196,7 @@ void main() {
       var opened = 0;
       VersionGuard.openUpdate = (_) => opened++;
       guard.update(rule: null, state: const VersionState(VersionStateKind.stopped));
-      await tester.pumpWidget(const MaterialApp(
+      await tester.pumpWidget(MaterialApp(
           home: Scaffold(
               body: AdminBlockedBar(text: 'Old version. Update to send.', notice: ChatNotice302.selfOld))));
       expect(find.text('Your LinkUp is old'), findsOneWidget);

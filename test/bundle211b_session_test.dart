@@ -5,8 +5,9 @@ import 'package:locallink/features/admin/data/models/admin_session.dart';
 import 'package:locallink/features/admin/data/services/admin_service.dart';
 
 import 'support/g211_fakes.dart';
+import 'support/l10n_source_304.dart';
 
-String _src(String p) => File(p).readAsStringSync();
+String _src(String p) => readEnglish304(p);
 
 void main() {
   group('211 B sign-in stays until Sign out', () {

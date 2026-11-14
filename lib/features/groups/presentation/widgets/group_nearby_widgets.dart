@@ -5,6 +5,7 @@ import 'package:locallink/core/models/group_join_code.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/groups/data/services/group_nearby_service.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G3: Nearby group parts of the approved mock (G0 screens 6 / 7).
 ///
@@ -71,9 +72,9 @@ bool groupInvitePending(GroupInviteState? invite) =>
 
 /// Bundle 215 (B3): the line under a pending member's name.
 String groupPendingLine(GroupInviteState invite, {required bool near}) {
-  if (invite.state == 'failed') return 'Not reached in 7 days · tap to try again';
-  if (near) return 'Nearby now · adding…';
-  return 'Gets the group when Nearby or Online';
+  if (invite.state == 'failed') return L.t.notReachedIn7DaysTap;
+  if (near) return L.t.nearbyNowAdding;
+  return L.t.getsTheGroupWhenNearbyOr;
 }
 
 /// Bundle 215 (B3, mock 215 page 3): small orange "Pending" pill.
@@ -100,7 +101,7 @@ class GroupPendingTag extends StatelessWidget {
         children: [
           Icon(Icons.schedule_rounded, size: 12, color: fg),
           const SizedBox(width: 3),
-          Text('Pending',
+          Text(L.t.pending,
               style: TextStyle(
                   fontSize: 11, fontWeight: FontWeight.w700, color: fg)),
         ],
@@ -180,7 +181,7 @@ class GroupAddingBanner extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('Adding ${addingNames(invites)}',
+                        Text(L.t.adding(addingNames(invites)),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -192,8 +193,8 @@ class GroupAddingBanner extends StatelessWidget {
                           Flexible(
                             child: Text(
                                 near
-                                    ? 'Nearby now · a few seconds'
-                                    : 'They are added when Nearby or Online',
+                                    ? L.t.nearbyNowAFewSeconds
+                                    : L.t.theyAreAddedWhenNearbyOr,
                                 key: const ValueKey('group_adding_banner_line'),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -247,7 +248,7 @@ Future<void> showAddingPeopleSheet(
         final near = i.state == 'waiting' && groupMemberNearNow(i.memberId);
         switch (i.state) {
           case 'added':
-            line = 'Added · ${_clock(c, i.atMs)}';
+            line = L.t.added(_clock(c, i.atMs));
             trailing = Container(
               width: 24,
               height: 24,
@@ -257,7 +258,7 @@ Future<void> showAddingPeopleSheet(
                   color: Colors.white, size: 16),
             );
           case 'failed':
-            line = "Couldn't be added";
+            line = L.t.couldnTBeAdded;
             trailing = TextButton(
               key: ValueKey('group_invite_retry_${i.memberId}'),
               onPressed: onRetry == null
@@ -266,11 +267,11 @@ Future<void> showAddingPeopleSheet(
                       Navigator.pop(c);
                       await onRetry(i.memberId);
                     },
-              child: const Text('Try again'),
+              child: Text(L.t.tryAgain),
             );
           default:
             if (near) {
-              line = 'Adding now · Nearby';
+              line = L.t.addingNowNearby;
               trailing = SizedBox(
                 key: ValueKey('group_invite_adding_${i.memberId}'),
                 width: 20,
@@ -281,14 +282,14 @@ Future<void> showAddingPeopleSheet(
                     backgroundColor: ac.ring),
               );
             } else {
-              line = 'Waiting · not near or online yet';
+              line = L.t.waitingNotNearOrOnlineYet;
               trailing = Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
                   color: colors.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text('Waiting',
+                child: Text(L.t.waiting,
                     style: TextStyle(
                         fontSize: 12, color: colors.onSurfaceVariant)),
               );
@@ -337,13 +338,13 @@ Future<void> showAddingPeopleSheet(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
-              child: Text('Adding people',
+              child: Text(L.t.addingPeople,
                   style: Theme.of(c).textTheme.titleLarge?.copyWith(
                       fontSize: 19, fontWeight: FontWeight.w700, height: 1.3)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 0, 2, 6),
-              child: Text('$added of ${invites.length} added',
+              child: Text(L.t.ofAdded(added, invites.length),
                   key: const ValueKey('group_adding_count'),
                   style:
                       TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
@@ -367,8 +368,7 @@ Future<void> showAddingPeopleSheet(
                     Expanded(
                       child: Text(
                           // Bundle 207 (M2): short and clear (mock 207 p2).
-                          'You can write now. They get your messages right '
-                          'after they join.',
+                          L.t.youCanWriteNowTheyGet,
                           style: TextStyle(
                               fontSize: 12.5,
                               height: 1.45,
@@ -384,11 +384,11 @@ Future<void> showAddingPeopleSheet(
                 style: TextButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                     shape: const StadiumBorder(),
-                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, 
+                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, 
                         fontSize: 15.5,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0)),
-                child: const Text('Done'),
+                child: Text(L.t.done2),
               ),
             ),
           ],
@@ -428,7 +428,7 @@ class GroupSealedChip extends StatelessWidget {
               Icon(Icons.lock_rounded, size: 12, color: fg),
               const SizedBox(width: 5),
               Flexible(
-                child: Text('Messages are sealed for group members only',
+                child: Text(L.t.messagesAreSealedForGroupMembers,
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 11.5, color: fg)),
               ),

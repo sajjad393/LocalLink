@@ -5,6 +5,7 @@ import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 110: submit() outcome — either a server-authenticated session or a
 /// silent offline reopen of a locally known account. No message is emitted on
@@ -95,15 +96,15 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
   }) async {
     final user = username.trim().toLowerCase();
     if (user.isEmpty || password.isEmpty) {
-      throw _validation('Enter your username and password.');
+      throw _validation(L.t.enterYourUsernameAndPassword);
     }
     if (!RegExp(r'^[a-z0-9_][a-z0-9_.-]{2,31}$').hasMatch(user)) {
       throw _validation(
-        'Username must be 3–32 characters and use letters, numbers, dot, dash, or underscore.',
+        L.t.usernameMustBe332Characters,
       );
     }
     if (state.registerMode && password.length < 8) {
-      throw _validation('Password must be at least 8 characters.');
+      throw _validation(L.t.passwordMustBeAtLeast8);
     }
 
     final what = state.registerMode ? 'create' : 'sign_in';
@@ -177,7 +178,7 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
   Future<AuthOutcome?> _offlineFallback(String user, String password) async {
     if (state.registerMode) {
       if (password.length < 8) {
-        throw _validation('Password must be at least 8 characters.');
+        throw _validation(L.t.passwordMustBeAtLeast8);
       }
       await repository.registerOffline(username: user, password: password);
       await repository.completeOfflineLogin();
@@ -227,15 +228,15 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
   }) async {
     final user = username.trim().toLowerCase();
     if (user.isEmpty || password.isEmpty) {
-      throw _validation('Enter your username and password.');
+      throw _validation(L.t.enterYourUsernameAndPassword);
     }
     if (!RegExp(r'^[a-z0-9_][a-z0-9_.-]{2,31}$').hasMatch(user)) {
       throw _validation(
-        'Username must be 3–32 characters and use letters, numbers, dot, dash, or underscore.',
+        L.t.usernameMustBe332Characters,
       );
     }
     if (password.length < 8) {
-      throw _validation('Password must be at least 8 characters.');
+      throw _validation(L.t.passwordMustBeAtLeast8);
     }
     emit(state.copyWith(
         busy: true, clearError: true, offlineRegisterAvailable: false));
@@ -269,7 +270,7 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
         lower.contains('network') ||
         lower.contains('connection') ||
         lower.contains('socket')) {
-      return 'Could not connect to LinkUp. Make sure the LinkUp server is available on your private network.';
+      return L.t.couldNotConnectToLinkupMake;
     }
     return value;
   }

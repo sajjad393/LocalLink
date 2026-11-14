@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +6,7 @@ import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
 import 'package:locallink/features/storage/presentation/media_message_actions.dart';
 import 'package:locallink/features/storage/presentation/removed_media_view.dart';
+import 'support/l10n_source_304.dart';
 
 Attachment _a(String id, String type, String name) =>
     Attachment(id: id, originalName: name, contentType: type, size: 10, sha256: '', localPath: '/x/$name');
@@ -78,18 +78,18 @@ void main() {
     });
 
     test('source: hold sheets pass canSave, Forward hidden on removed media, saved chip on tiles', () {
-      final chat = File('lib/features/messaging/presentation/screens/chat_screen.dart').readAsStringSync();
-      final group = File('lib/features/groups/presentation/screens/group_chat_screen.dart').readAsStringSync();
+      final chat = readEnglish304('lib/features/messaging/presentation/screens/chat_screen.dart');
+      final group = readEnglish304('lib/features/groups/presentation/screens/group_chat_screen.dart');
       for (final s in [chat, group]) {
         expect(s, contains('canSave: MediaMessageActions.savable('));
         expect(s, contains('!MediaMessageActions.hasRemoved(message.attachments)'));
         expect(s, contains('case MessageAction.save:'));
         expect(s, contains('MediaMessageActions.markOpened(m.attachments)'));
       }
-      final tile = File('lib/features/files/presentation/widgets/attachment_tile.dart').readAsStringSync();
+      final tile = readEnglish304('lib/features/files/presentation/widgets/attachment_tile.dart');
       expect(tile, contains('_withSaved(saved'));
       expect(tile, contains("· Saved"));
-      final kt = File('android/app/src/main/kotlin/com/sajjad/locallink/MediaStorageNative.kt').readAsStringSync();
+      final kt = readEnglish304('android/app/src/main/kotlin/com/sajjad/locallink/MediaStorageNative.kt');
       expect(kt, contains('IS_PENDING'));
       expect(kt, contains('Build.VERSION.SDK_INT >= 29'));
     });

@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:locallink/core/services/message_seal_service.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G6: end-to-end "sender keys" for group messages that go through
 /// the server.
@@ -40,7 +41,7 @@ class GroupSenderKeys {
   static const askPrefix = 'llskq:v1:';
 
   /// Shown for a message that can't be opened yet.
-  static const waitingText = '🔒 Waiting for this message';
+  static String get waitingText => L.t.waitingForThisMessage;
 
   static bool isLocked(String body) => body.startsWith(lockedPrefix);
   static bool isKeys(String body) => body.startsWith(keysPrefix);

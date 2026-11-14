@@ -16,6 +16,7 @@ import 'package:locallink/features/account/bloc/devices_bloc.dart';
 import 'package:locallink/features/account/presentation/screens/crypto_migration_screen.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/recovery/presentation/screens/account_restore_screen.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class DevicesScreen extends StatefulWidget {
   final AccountRepositoryContract accountRepository;
@@ -57,24 +58,24 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Remove this phone?'),
-        content: Text('“${device.name}” will be signed out and blocked from this account. You can add it again later through the normal login flow.'),
+        title: Text(L.t.removeThisPhone),
+        content: Text(L.t.willBeSignedOutAndBlocked(device.name)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(L.t.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(L.t.remove)),
         ],
       ),
     );
     if (ok != true || !mounted) return;
     try {
       await _controller.revoke(device);
-      if (mounted) LinkToast.show(context, 'Phone removed', kind: LinkToastKind.done);
+      if (mounted) LinkToast.show(context, L.t.phoneRemoved, kind: LinkToastKind.done);
     } catch (e) {
       if (mounted) LinkToast.show(context, cleanBlocError(e), kind: LinkToastKind.error);
     }
   }
 
-  String _seen(String value) => value.isEmpty ? 'Never seen' : 'Last seen $value';
+  String _seen(String value) => value.isEmpty ? L.t.neverSeen : L.t.lastSeen2(value);
 
   @override
   void dispose() {
@@ -87,15 +88,15 @@ class _DevicesScreenState extends State<DevicesScreen> {
     return LocalLinkBlocBuilder(bloc: _controller, builder: (context, state) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My phones'),
+        title: Text(L.t.myPhones),
         actions: [
           IconButton(
-            tooltip: 'Backup and restore',
+            tooltip: L.t.backupAndRestore,
             onPressed: _controller.isLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => AccountRestoreScreen(service: widget.restoreService))),
             icon: const Icon(Icons.restore_outlined),
           ),
           IconButton(
-            tooltip: 'Security key',
+            tooltip: L.t.securityKey,
             onPressed: _controller.isLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => CryptoMigrationScreen(identityRepository: widget.identityRepository))),
             icon: const Icon(Icons.vpn_key_outlined),
           ),
@@ -114,22 +115,22 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      const Text('Devices signed in to this LinkUp account.', style: TextStyle(fontWeight: FontWeight.w600)),
+                      Text(L.t.devicesSignedInToThisLinkup, style: TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 12),
                       ..._controller.devices.map(
                         (device) => Card(
                           child: ListTile(
                             leading: CircleAvatar(child: Icon(device.current ? Icons.smartphone : Icons.devices_other)),
-                            title: Row(children: [Expanded(child: Text(device.name)), if (device.current) const Chip(label: Text('This device'))]),
+                            title: Row(children: [Expanded(child: Text(device.name)), if (device.current) Chip(label: Text(L.t.thisDevice))]),
                             subtitle: Padding(
                               padding: const EdgeInsets.only(top: 8),
                               child: FutureBuilder<IdentityTrustState>(
                                 future: _trust.state(device.id),
-                                builder: (context, snapshot) => Text('${device.platform} • ${device.status}\n${_seen(device.lastSeenAt)}\nIdentity: ${snapshot.data?.label ?? 'Unverified'}${device.identityFingerprint.isNotEmpty ? '\nFingerprint: ${device.identityFingerprint}' : ''}'),
+                                builder: (context, snapshot) => Text(L.t.identity(device.platform, device.status, _seen(device.lastSeenAt), snapshot.data?.label ?? 'Unverified', device.identityFingerprint.isNotEmpty ? '\nFingerprint: ${device.identityFingerprint}' : '')),
                               ),
                             ),
                             isThreeLine: false,
-                            trailing: device.current || device.status != 'active' ? null : IconButton(tooltip: 'Remove', onPressed: () => _revoke(device), icon: const Icon(Icons.logout)),
+                            trailing: device.current || device.status != 'active' ? null : IconButton(tooltip: L.t.remove, onPressed: () => _revoke(device), icon: const Icon(Icons.logout)),
                           ),
                         ),
                       ),

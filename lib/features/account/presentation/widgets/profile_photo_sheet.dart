@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 import 'package:locallink/features/groups/presentation/widgets/group_sheets.dart'
     show GroupSheetAction;
@@ -25,7 +26,7 @@ Future<ProfilePhotoChoice?> showProfilePhotoSheet(BuildContext context,
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 0, 2, 6),
-              child: Text('Profile photo',
+              child: Text(L.t.profilePhoto,
                   style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
@@ -34,20 +35,20 @@ Future<ProfilePhotoChoice?> showProfilePhotoSheet(BuildContext context,
             GroupSheetAction(
               key: const ValueKey('profile_photo_camera'),
               icon: Icons.photo_camera_outlined,
-              title: 'Camera',
+              title: L.t.camera,
               onTap: () => Navigator.pop(c, ProfilePhotoChoice.camera),
             ),
             GroupSheetAction(
               key: const ValueKey('profile_photo_gallery'),
               icon: Icons.photo_library_outlined,
-              title: 'Gallery',
+              title: L.t.gallery,
               onTap: () => Navigator.pop(c, ProfilePhotoChoice.gallery),
             ),
             if (hasPhoto)
               GroupSheetAction(
                 key: const ValueKey('profile_photo_remove'),
                 icon: Icons.delete_outline_rounded,
-                title: 'Remove photo',
+                title: L.t.removePhoto,
                 red: true,
                 onTap: () => Navigator.pop(c, ProfilePhotoChoice.remove),
               ),

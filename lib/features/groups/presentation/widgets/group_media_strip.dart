@@ -8,6 +8,7 @@ import 'package:locallink/features/files/presentation/widgets/chat_photo.dart';
 import 'package:locallink/features/storage/presentation/storage_screen.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/features/storage/domain/media_clean_policy.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G5 (mock d1): "MEDIA, LINKS AND DOCS · 24" in Group info - the
 /// newest 3 photos / videos and a "+21" tile. A photo opens big; a video,
@@ -85,7 +86,7 @@ class _GroupMediaStripState extends State<GroupMediaStrip> {
           key: const ValueKey('group_media_label'),
           behavior: HitTestBehavior.opaque,
           onTap: () => widget.onOpenAll(files),
-          child: MessengerGroupLabel('Media, links and docs · ${files.length}',
+          child: MessengerGroupLabel(L.t.mediaLinksAndDocs2(files.length),
               top: 4),
         ),
         Padding(

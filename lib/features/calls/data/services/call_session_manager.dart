@@ -38,6 +38,7 @@ import 'package:locallink/features/calls/data/services/call_answer_timer.dart';
 import 'package:locallink/features/calls/data/services/call_nearby_wait.dart';
 import 'package:locallink/features/calls/data/services/call_voice_key_266.dart';
 import 'package:locallink/core/identity/person_name_258.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 final class CallSessionManager implements CallGateway {
   final LocalStore store;
@@ -702,9 +703,9 @@ final class CallSessionManager implements CallGateway {
     }
     // Bundle 213: this app version is stopped by admin (read only).
     if (VersionGuard.instance.stopped) {
-      throw const CallPreflightException(
+      throw CallPreflightException(
         CallPreflightCode.peerBlocked,
-        'Old version. Update to call.',
+        L.t.oldVersionUpdateToCall,
       );
     }
     if (await store.isBlockedPeer(device.id)) {
@@ -714,25 +715,25 @@ final class CallSessionManager implements CallGateway {
       );
     }
     if (_session != null && !_session!.isFinished) {
-      throw const CallPreflightException(
+      throw CallPreflightException(
         CallPreflightCode.activeCall,
-        'Another call is already active',
+        L.t.anotherCallIsAlreadyActive,
       );
     }
 
     try {
       await transportFactory.ensureReady();
     } catch (_) {
-      throw const CallPreflightException(
+      throw CallPreflightException(
         CallPreflightCode.transportUnavailable,
-        'Local calling service is unavailable',
+        L.t.localCallingServiceIsUnavailable,
       );
     }
 
     if (!await identityTrust.canEstablishLocalCall(device.id)) {
-      throw const CallPreflightException(
+      throw CallPreflightException(
         CallPreflightCode.identityUnavailable,
-        'This user identity is not trusted for local calling',
+        L.t.thisUserIdentityIsNotTrusted,
       );
     }
     // Bundle 158 (D1): voice calls go at most 3 hops; further away the
@@ -744,9 +745,9 @@ final class CallSessionManager implements CallGateway {
     if (callRoute != null && VoiceCallHopPolicy.tooFar(callRoute)) {
       AppLogger.info('CALL_TOO_FAR',
           detail: 'hops=${callRoute.hopCount} max=${VoiceCallHopPolicy.maxHops}');
-      throw const CallPreflightException(
+      throw CallPreflightException(
         CallPreflightCode.noLocalRoute,
-        "Couldn't reach them — try again",
+        L.t.couldnTReachThemTryAgain,
       );
     }
     final mode = CallTransportSelectionPolicy.select(localRouteAvailable: true);

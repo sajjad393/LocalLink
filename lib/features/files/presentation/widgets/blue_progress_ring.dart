@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// LocalLink brand blue (same as the notification tint).
 const Color kLocalLinkBlue = Color(0xFF209DEB);
@@ -39,7 +40,7 @@ class BlueProgressRing extends StatelessWidget {
     if (onCancel != null) {
       middle = IconButton(
         key: const Key('blue_progress_cancel'),
-        tooltip: 'Cancel download',
+        tooltip: L.t.cancelDownload,
         onPressed: onCancel,
         icon: const Icon(Icons.close, color: Colors.white, size: 22),
       );
@@ -121,17 +122,17 @@ Future<bool> confirmCancelTransfer(BuildContext context,
   final yes = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text('Cancel this $what?'),
+      title: Text(L.t.cancelThis(what)),
       actions: [
         TextButton(
           key: const Key('transfer_cancel_no'),
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('No'),
+          child: Text(L.t.no304),
         ),
         TextButton(
           key: const Key('transfer_cancel_yes'),
           onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Yes'),
+          child: Text(L.t.yes),
         ),
       ],
     ),
@@ -166,7 +167,7 @@ class _MediaWaitingBadgeState extends State<MediaWaitingBadge> {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Waiting. Sends when your friend is online',
+      label: L.t.waitingSendsWhenYourFriendIs,
       button: widget.onCancel != null,
       child: GestureDetector(
         key: const Key('media_waiting'),
@@ -178,13 +179,13 @@ class _MediaWaitingBadgeState extends State<MediaWaitingBadge> {
             color: Colors.black.withValues(alpha: .6),
             borderRadius: BorderRadius.circular(16),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.schedule_rounded, color: Colors.white, size: 16),
               SizedBox(width: 6),
               Text(
-                'Waiting',
+                L.t.waiting,
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 13,
@@ -295,8 +296,8 @@ class _TransferPercentRingState extends State<TransferPercentRing> {
           );
     return Semantics(
       label: widget.paused
-          ? 'Sends after the call'
-          : (text.isEmpty ? 'Transferring' : 'Transferring $text'),
+          ? L.t.sendsAfterTheCall
+          : (text.isEmpty ? L.t.transferring : L.t.transferring2(text)),
       button: widget.onCancel != null,
       child: GestureDetector(
         key: const Key('transfer_percent_ring'),

@@ -9,6 +9,7 @@ import 'package:locallink/features/account/domain/account_repository_contract.da
 import 'package:locallink/features/recovery/presentation/screens/recovery_code_286.dart';
 
 import 'support/g211_fakes.dart';
+import 'support/l10n_source_304.dart';
 
 /// Bundle 286: recovery code card on Home, Settings row, password + code screens.
 const _code = 'K7QM2-XPA9T-RC4WN-E8D3F';
@@ -264,7 +265,7 @@ void main() {
   });
 
   test('source: wired into Home, Settings, Profile, Create account', () {
-    String read(String p) => File(p).readAsStringSync();
+    String read(String p) => readEnglish304(p);
     final home = read('lib/features/home/presentation/screens/home_screen.dart');
     final cards = home.substring(home.indexOf('List<Widget> _joinCards218()'));
     expect(cards.substring(0, cards.indexOf('];')), contains('RecoveryHomeCard286('));

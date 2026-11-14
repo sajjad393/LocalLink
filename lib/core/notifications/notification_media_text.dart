@@ -1,4 +1,5 @@
 import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 151: what a message notification says.
 ///
@@ -30,28 +31,28 @@ NotificationMediaKind notificationMediaKind(Attachment a) {
 
 String notificationBodyFor(String body, List<Attachment> attachments) {
   final caption = body.trim();
-  if (attachments.isEmpty) return caption.isEmpty ? 'New message' : caption;
+  if (attachments.isEmpty) return caption.isEmpty ? L.t.newMessage : caption;
 
   final kinds = attachments.map(notificationMediaKind).toSet();
   final n = attachments.length;
   final String label;
   if (kinds.length > 1) {
-    label = '$n files received';
+    label = L.t.filesReceived(n);
   } else {
     final kind = kinds.single;
     if (n == 1) {
       label = switch (kind) {
-        NotificationMediaKind.image => 'Image received',
-        NotificationMediaKind.video => 'Video received',
-        NotificationMediaKind.voice => 'Voice message received',
-        NotificationMediaKind.document => 'Document received',
+        NotificationMediaKind.image => L.t.imageReceived,
+        NotificationMediaKind.video => L.t.videoReceived,
+        NotificationMediaKind.voice => L.t.voiceMessageReceived,
+        NotificationMediaKind.document => L.t.documentReceived,
       };
     } else {
       label = switch (kind) {
-        NotificationMediaKind.image => '$n images received',
-        NotificationMediaKind.video => '$n videos received',
-        NotificationMediaKind.voice => '$n voice messages received',
-        NotificationMediaKind.document => '$n documents received',
+        NotificationMediaKind.image => L.t.imagesReceived(n),
+        NotificationMediaKind.video => L.t.videosReceived(n),
+        NotificationMediaKind.voice => L.t.voiceMessagesReceived(n),
+        NotificationMediaKind.document => L.t.documentsReceived(n),
       };
     }
   }

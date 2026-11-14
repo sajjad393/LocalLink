@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +7,7 @@ import 'package:locallink/core/theme/app_theme.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_history_tile.dart';
+import 'support/l10n_source_304.dart';
 
 Widget _host(Widget child) => MaterialApp(
       theme: LocalLinkTheme.light(),
@@ -146,8 +146,7 @@ void main() {
 
     test('Chats tab: no gear, no People link, shared label and box', () {
       final src =
-          File('lib/features/home/presentation/screens/home_screen.dart')
-              .readAsStringSync();
+          readEnglish304('lib/features/home/presentation/screens/home_screen.dart');
       final chats = src.substring(
           src.indexOf('Widget _chatsTab()'), src.indexOf('Widget _callsTab()'));
       expect(chats.contains("tooltip: 'Settings'"), isFalse);
@@ -159,8 +158,7 @@ void main() {
 
     test('Calls tab uses the shared label and box', () {
       final src =
-          File('lib/features/calls/presentation/screens/calls_screen.dart')
-              .readAsStringSync();
+          readEnglish304('lib/features/calls/presentation/screens/calls_screen.dart');
       expect(src.contains('MessengerGroupLabel(label, top:'), isTrue);
       expect(src.contains('MessengerListGroup(children: rows)'), isTrue);
     });

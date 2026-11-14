@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:locallink/core/widgets/link_kit_290.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/features/recovery/presentation/widgets/recovery_card_298.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 235 (addition, mock_235_whatsapp v3): every NEW recovery code is
 /// shown hidden (dots) in one soft blue box with Show / Copy (/ Share), and
@@ -20,14 +21,14 @@ class WhatsAppShare235 {
   /// Tests: replaces the native call (true = WhatsApp opened).
   static Future<bool> Function(String text)? debugOpen;
 
-  static const String notInstalled = 'Copied. WhatsApp is not on this phone.';
-  static const String hint = 'Opens WhatsApp \u00b7 choose "Message yourself"';
+  static String get notInstalled => L.t.copiedWhatsappIsNotOnThis;
+  static String get hint => L.t.opensWhatsappChooseMessageYourself;
 
   static String message(String code, {String username = ''}) {
     final who = username.trim().replaceFirst('@', '');
     return who.isEmpty
-        ? 'My LinkUp recovery code: $code - keep it private.'
-        : 'My LinkUp recovery code (@$who): $code - keep it private.';
+        ? L.t.myLinkupRecoveryCodeKeepIt2(code)
+        : L.t.myLinkupRecoveryCodeKeepIt(who, code);
   }
 
   /// Bundle 298 (I): the caption under the card picture - only the code
@@ -193,7 +194,7 @@ class _RecoveryCodeBox235State extends State<RecoveryCodeBox235> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           Expanded(
-            child: Text(widget.label,
+            child: Text(L.en(widget.label),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: c, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0)),
@@ -201,19 +202,19 @@ class _RecoveryCodeBox235State extends State<RecoveryCodeBox235> {
           _action(
             const ValueKey('rc235-show'),
             _shown ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-            _shown ? 'Hide' : 'Show',
+            _shown ? L.t.hideText : L.t.showText,
             () => setState(() => _shown = !_shown),
             c,
           ),
           const SizedBox(width: 10),
-          _action(widget.copyKey ?? const ValueKey('rc235-copy'), Icons.content_copy_rounded, 'Copy', () async {
+          _action(widget.copyKey ?? const ValueKey('rc235-copy'), Icons.content_copy_rounded, L.t.copy, () async {
             await Clipboard.setData(ClipboardData(text: widget.code));
             if (!context.mounted) return;
-            LinkToast.show(context, widget.copiedText, kind: LinkToastKind.done);
+            LinkToast.show(context, L.en(widget.copiedText), kind: LinkToastKind.done);
           }, c),
           if (widget.share) ...[
             const SizedBox(width: 10),
-            _action(const ValueKey('rc235-share'), Icons.share_outlined, 'Share', () => Share.share(widget.code), c),
+            _action(const ValueKey('rc235-share'), Icons.share_outlined, L.t.share, () => Share.share(widget.code), c),
           ],
         ]),
         SizedBox(height: widget.big ? 10 : 8),
@@ -226,7 +227,7 @@ class _RecoveryCodeBox235State extends State<RecoveryCodeBox235> {
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   style: TextStyle(
-                      fontFamily: LinkKit.mono,
+                      fontFamily: LinkKit.mono, fontFamilyFallback: L.fontFallback,
                       color: ink,
                       fontWeight: FontWeight.w600,
                       fontSize: size,
@@ -238,7 +239,7 @@ class _RecoveryCodeBox235State extends State<RecoveryCodeBox235> {
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   style: TextStyle(
-                      fontFamily: LinkKit.mono,
+                      fontFamily: LinkKit.mono, fontFamilyFallback: L.fontFallback,
                       color: ink,
                       fontWeight: FontWeight.w600,
                       fontSize: size,
@@ -378,7 +379,7 @@ class _WaButton286 extends StatelessWidget {
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.chat_bubble, size: small ? 17 : 19, color: Colors.white),
                   SizedBox(width: small ? 7 : 9),
-                  Text('Save on WhatsApp',
+                  Text(L.t.saveOnWhatsapp,
                       style: TextStyle(
                           fontSize: small ? 13.5 : 15.5,
                           fontWeight: FontWeight.w700,
@@ -410,8 +411,8 @@ class RecoveryCodeNotes235 extends StatelessWidget {
           ]),
         );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      row(Icons.lock, 'Keep it private. It lets you set a new password.'),
-      row(Icons.block, 'Your old code no longer works.'),
+      row(Icons.lock, L.t.keepItPrivateItLetsYou),
+      row(Icons.block, L.t.yourOldCodeNoLongerWorks),
     ]);
   }
 }

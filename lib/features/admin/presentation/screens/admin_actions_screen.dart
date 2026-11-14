@@ -9,6 +9,7 @@ import 'package:locallink/features/admin/data/actions/admin_action_service.dart'
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 220 (mock A-4): "Admin actions" - every action an admin made and
 /// whether the phones did it. Pending never expires; tap a row -> Cancel.
@@ -140,9 +141,9 @@ class _AdminActionsScreenState extends State<AdminActionsScreen> {
     }
     final ok = await confirmAdmin216(
       context,
-      title: 'Cancel this action?',
-      body: "Phones that haven't done it yet won't do it. Phones that did it stay as they are.",
-      yes: 'Cancel action',
+      title: L.t.cancelThisAction,
+      body: L.t.phonesThatHavenTDoneIt,
+      yes: L.t.cancelAction,
       danger: true,
       yesKey: const ValueKey('admin_action_cancel_yes'),
     );
@@ -150,7 +151,7 @@ class _AdminActionsScreenState extends State<AdminActionsScreen> {
     try {
       await _service?.cancel(r.id);
       if (!mounted) return;
-      adminSnack216(context, 'Cancelled');
+      adminSnack216(context, L.t.cancelled);
       unawaited(_loadServer());
     } catch (error) {
       if (!mounted) return;
@@ -177,7 +178,7 @@ class _AdminActionsScreenState extends State<AdminActionsScreen> {
       module: 'Admin actions',
       // The 36 px bar slot: the crown, the role on long press.
       right: Tooltip(
-        message: 'Admin · $level',
+        message: L.t.admin2(level),
         child: Material(
           key: const ValueKey('admin_actions_role'),
           // TODO 290: my admin level's colours (empty role = owner gold).
@@ -209,14 +210,14 @@ class _AdminActionsScreenState extends State<AdminActionsScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('No server · requests go by Wi-Fi Direct / mesh',
+                child: Text(L.t.noServerRequestsGoByWi,
                     style: t.custom(13, FontWeight.w600, const Color(0xFF93370D))),
               ),
             ]),
           ),
       children: [
         _Tabs(
-          labels: ['Pending ${pending.length}', 'Done ${done.length}'],
+          labels: [L.t.pending2(pending.length), L.t.done(done.length)],
           selected: _tab,
           onSelected: (i) => setState(() => _tab = i),
         ),
@@ -226,10 +227,10 @@ class _AdminActionsScreenState extends State<AdminActionsScreen> {
             key: const ValueKey('admin_actions_empty'),
             icon: Icons.pending_actions_rounded,
             tone: A216Tone.orange,
-            title: _tab == 0 ? 'Nothing pending' : 'Nothing done yet',
+            title: _tab == 0 ? L.t.nothingPending : L.t.nothingDoneYet,
             body: _tab == 0
-                ? 'Actions wait here until each phone does it. There is no time limit.'
-                : 'Actions the phones did show here.',
+                ? L.t.actionsWaitHereUntilEachPhone
+                : L.t.actionsThePhonesDidShowHere,
           )
         else
           Container(
@@ -295,7 +296,7 @@ class _ActionTile extends StatelessWidget {
                 // Bundle 254 (21.9): show that a pending row can be stopped.
                 if (row.canCancel) ...[
                   const SizedBox(height: 4),
-                  Text('Tap to cancel',
+                  Text(L.t.tapToCancel,
                       key: ValueKey('admin_action_cancel_hint_${row.id}'),
                       style: t.custom(13, FontWeight.w600, c.blue, 1.3)),
                 ],
@@ -384,45 +385,45 @@ String _date(String iso) {
 }
 
 String _via(String v) => switch (v) {
-      'server' => 'via server',
-      'wifi' => 'via Wi-Fi',
-      'wifi_direct' => 'via Wi-Fi Direct',
-      'mesh' => 'via mesh',
-      'carried' => 'carried by a phone',
+      'server' => L.t.viaServer,
+      'wifi' => L.t.viaWiFi,
+      'wifi_direct' => L.t.viaWiFiDirect,
+      'mesh' => L.t.viaMesh,
+      'carried' => L.t.carriedByAPhone,
       _ => '',
     };
 
 /// Sub line + tag for a row (mock A-4 words).
 (String, String, A216Tone) adminActionLook(AdminActionRow r) {
-  final phones = r.need > 1 ? '${r.done} of ${r.need} phones' : '';
+  final phones = r.need > 1 ? L.t.ofPhones(r.done, r.need) : '';
   // Bundle 221: a chat answer on the way (mock A-4 "40 of 80 parts").
   final parts = ChatAnswerCarrier.progress.value[r.id];
   if (parts != null && !parts.all && r.state != 'cancelled') {
-    return ('the rest is on the way', '${parts.have} of ${parts.of} parts', A216Tone.blue);
+    return (L.t.theRestIsOnTheWay, L.t.ofParts(parts.have, parts.of), A216Tone.blue);
   }
-  if (r.emptyAll) return ('No messages in this chat', 'No messages', A216Tone.grey);
+  if (r.emptyAll) return (L.t.noMessagesInThisChat, L.t.noMessages, A216Tone.grey);
   if (r.state == 'cancelled') {
-    return ('Cancelled ${_date(r.finishedAt)}'.trim(), 'Cancelled', A216Tone.grey);
+    return (L.t.cancelled2(_date(r.finishedAt)).trim(), L.t.cancelled, A216Tone.grey);
   }
   if (r.state == 'replaced') {
-    return ('Replaced by a newer action', 'Replaced', A216Tone.grey);
+    return (L.t.replacedByANewerAction, L.t.replaced, A216Tone.grey);
   }
   if (!r.pending) {
     final sub = [_via(r.via), phones].where((x) => x.isNotEmpty).join(' · ');
-    return (sub, 'Done ${_date(r.finishedAt.isEmpty ? r.madeAt : r.finishedAt)}'.trim(),
+    return (sub, L.t.done(_date(r.finishedAt.isEmpty ? r.madeAt : r.finishedAt)).trim(),
         A216Tone.green);
   }
   if (r.action == 'version_rule') {
-    return ('phones that got the rule', 'Reached ${r.done}', A216Tone.blue);
+    return (L.t.phonesThatGotTheRule, L.t.reached(r.done), A216Tone.blue);
   }
-  if (r.oldApp) return ('app too old to answer', 'Old app', A216Tone.red);
-  final since = 'since ${_date(r.madeAt)}';
+  if (r.oldApp) return (L.t.appTooOldToAnswer, L.t.oldApp, A216Tone.red);
+  final since = L.t.since(_date(r.madeAt));
   if (r.need > 1) {
-    return ('$since · phones confirmed', '${r.done} of ${r.need}', A216Tone.blue);
+    return (L.t.phonesConfirmed(since), '${r.done} of ${r.need}', A216Tone.blue);
   }
   // Bundle 254 (21.3): the phone got it but has no server key yet.
   if (r.waitTrust) {
-    return ('reached the phone · it must reach the server once', 'Pending', A216Tone.orange);
+    return (L.t.reachedThePhoneItMustReach2, L.t.pending, A216Tone.orange);
   }
-  return ('$since · no phone reached yet', 'Pending', A216Tone.orange);
+  return (L.t.noPhoneReachedYet(since), L.t.pending, A216Tone.orange);
 }

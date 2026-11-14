@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 196: one person I blocked (name from the saved profile).
 class BlockedPerson {
@@ -178,7 +179,7 @@ String blockDateLabel(DateTime? at) {
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
-  return '${d.day} ${months[d.month - 1]} ${d.year}';
+  return '${d.day} ${L.en(months[d.month - 1])} ${d.year}';
 }
 
 /// Bundle 196: "9:41 AM".

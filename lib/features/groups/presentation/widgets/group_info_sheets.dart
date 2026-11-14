@@ -13,6 +13,7 @@ import 'package:locallink/features/groups/data/services/group_nearby_service.dar
 import 'package:locallink/features/groups/presentation/widgets/group_nearby_widgets.dart'
     show GroupPendingTag;
 import 'package:locallink/features/groups/presentation/widgets/group_sheets.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G2: the Group info bottom sheets of the approved mock (G0).
 ///
@@ -127,28 +128,28 @@ Future<GroupPhotoPick?> showGroupPhotoSheet(BuildContext context,
     context,
     const ValueKey('group_photo_sheet'),
     (c) => [
-      _title(c, 'Group photo'),
+      _title(c, L.t.groupPhoto),
       GroupSheetAction(
         key: const ValueKey('group_photo_camera'),
         icon: Icons.photo_camera_outlined,
-        title: 'Camera',
+        title: L.t.camera,
         onTap: () => Navigator.pop(c, _PhotoChoice.camera),
       ),
       GroupSheetAction(
         key: const ValueKey('group_photo_gallery'),
         icon: Icons.photo_library_outlined,
-        title: 'Gallery',
+        title: L.t.gallery,
         onTap: () => Navigator.pop(c, _PhotoChoice.gallery),
       ),
       if (hasPhoto)
         GroupSheetAction(
           key: const ValueKey('group_photo_remove'),
           icon: Icons.delete_outline_rounded,
-          title: 'Remove photo',
+          title: L.t.removePhoto,
           red: true,
           onTap: () => Navigator.pop(c, _PhotoChoice.remove),
         ),
-      _big(c, _Big.ghost, 'Cancel', () => Navigator.pop(c),
+      _big(c, _Big.ghost, L.t.cancel, () => Navigator.pop(c),
           key: const ValueKey('group_photo_cancel')),
     ],
   );
@@ -167,7 +168,7 @@ Future<GroupPhotoPick?> showGroupPhotoSheet(BuildContext context,
     final bytes = await file.readAsBytes();
     if (bytes.length > kGroupPhotoMaxBytes) {
       if (context.mounted) {
-        LinkToast.show(context, 'This photo is too big. Try another one.', kind: LinkToastKind.error);
+        LinkToast.show(context, L.t.thisPhotoIsTooBigTry, kind: LinkToastKind.error);
       }
       return null;
     }
@@ -184,16 +185,16 @@ enum GroupMemberChoice { message, profile, addFriend, makeAdmin, dismissAdmin, r
 
 /// Bundle 215 (C2): "Added by you · today 10:42" / "· 3 Nov".
 String groupPendingSince(int atMs, {DateTime? now}) {
-  if (atMs <= 0) return 'Added by you';
+  if (atMs <= 0) return L.t.addedByYou;
   final t = DateTime.fromMillisecondsSinceEpoch(atMs);
   final n = now ?? DateTime.now();
   final hh = t.hour.toString().padLeft(2, '0');
   final mm = t.minute.toString().padLeft(2, '0');
   if (t.year == n.year && t.month == n.month && t.day == n.day) {
-    return 'Added by you · today $hh:$mm';
+    return L.t.addedByYouToday(hh, mm);
   }
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return 'Added by you · ${t.day} ${months[t.month - 1]}';
+  return L.t.addedByYou2(t.day, L.en(months[t.month - 1]));
 }
 
 /// Mock 29 (friend) / 29b (not a friend): tap a member in Group info.
@@ -210,12 +211,12 @@ Future<GroupMemberChoice?> showGroupMemberSheet(
   GroupInviteState? pending,
   bool canRetry = false,
 }) {
-  final name = member.name.trim().isEmpty ? 'Group member' : member.name.trim();
+  final name = member.name.trim().isEmpty ? L.t.groupMember : member.name.trim();
   final status = PresenceHub.instance.statusOf(member.deviceId).label;
   final wait = pending != null && pending.state != 'added' ? pending : null;
   final line = friend
       ? (username.isEmpty ? status : '@$username · $status')
-      : 'Not your friend · in this group';
+      : L.t.notYourFriendInThisGroup;
   return _sheet<GroupMemberChoice>(
     context,
     const ValueKey('group_member_sheet'),
@@ -259,8 +260,8 @@ Future<GroupMemberChoice?> showGroupMemberSheet(
             padding: const EdgeInsets.fromLTRB(2, 2, 2, 4),
             child: Text(
                 wait.state == 'failed'
-                    ? "Not reached in 7 days. Tap Try again to send the group to $name again."
-                    : "$name's phone has not got the group yet. It is added by itself when $name is Nearby (Wi-Fi Direct or mesh) or Online.",
+                    ? L.t.notReachedIn7DaysTap2(name)
+                    : L.t.sPhoneHasNotGotThe(name, name),
                 key: const ValueKey('member_pending_text'),
                 style: TextStyle(fontSize: 13.5, color: colors.onSurface, height: 1.35)),
           ),
@@ -273,7 +274,7 @@ Future<GroupMemberChoice?> showGroupMemberSheet(
           if (canRetry)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: _big(c, _Big.blue, 'Try again',
+              child: _big(c, _Big.blue, L.t.tryAgain,
                   () => Navigator.pop(c, GroupMemberChoice.retry),
                   key: const ValueKey('member_retry')),
             ),
@@ -282,43 +283,43 @@ Future<GroupMemberChoice?> showGroupMemberSheet(
           GroupSheetAction(
             key: const ValueKey('member_message'),
             icon: Icons.chat_bubble_outline_rounded,
-            title: 'Message $name',
+            title: L.t.message2(name),
             onTap: () => Navigator.pop(c, GroupMemberChoice.message),
           ),
         if (friend)
           GroupSheetAction(
             key: const ValueKey('member_profile'),
             icon: Icons.person_outline_rounded,
-            title: 'View profile',
+            title: L.t.viewProfile,
             onTap: () => Navigator.pop(c, GroupMemberChoice.profile),
           ),
         if (!friend && canAddFriend)
           GroupSheetAction(
             key: const ValueKey('member_add_friend'),
             icon: Icons.person_add_alt_outlined,
-            title: 'Add friend',
-            subtitle: 'Sends a friend request',
+            title: L.t.addFriend,
+            subtitle: L.t.sendsAFriendRequest,
             onTap: () => Navigator.pop(c, GroupMemberChoice.addFriend),
           ),
         if (canMakeAdmin)
           GroupSheetAction(
             key: const ValueKey('member_make_admin'),
             icon: Icons.star_border_rounded,
-            title: 'Make group admin',
+            title: L.t.makeGroupAdmin,
             onTap: () => Navigator.pop(c, GroupMemberChoice.makeAdmin),
           ),
         if (canDismissAdmin)
           GroupSheetAction(
             key: const ValueKey('member_dismiss_admin'),
             icon: Icons.star_outline_rounded,
-            title: 'Dismiss as admin',
+            title: L.t.dismissAsAdmin,
             onTap: () => Navigator.pop(c, GroupMemberChoice.dismissAdmin),
           ),
         if (canRemove)
           GroupSheetAction(
             key: const ValueKey('member_remove'),
             icon: Icons.person_remove_outlined,
-            title: 'Remove from group',
+            title: L.t.removeFromGroup,
             red: true,
             onTap: () => Navigator.pop(c, GroupMemberChoice.remove),
           ),
@@ -326,9 +327,9 @@ Future<GroupMemberChoice?> showGroupMemberSheet(
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: _hint(c,
-                'No "Message" here: you can only chat 1:1 with friends. In the group you can still talk.'),
+                L.t.noMessageHereYouCanOnly),
           ),
-        _big(c, _Big.ghost, 'Close', () => Navigator.pop(c),
+        _big(c, _Big.ghost, L.t.close, () => Navigator.pop(c),
             key: const ValueKey('member_close')),
       ];
     },
@@ -338,7 +339,7 @@ Future<GroupMemberChoice?> showGroupMemberSheet(
 /// "View profile": photo, name, @username and status.
 Future<void> showGroupMemberProfile(BuildContext context,
     {required GroupMember member, String username = ''}) {
-  final name = member.name.trim().isEmpty ? 'Group member' : member.name.trim();
+  final name = member.name.trim().isEmpty ? L.t.groupMember : member.name.trim();
   return _sheet<void>(
     context,
     const ValueKey('member_profile_sheet'),
@@ -359,7 +360,7 @@ Future<void> showGroupMemberProfile(BuildContext context,
         Text(PresenceHub.instance.statusOf(member.deviceId).label,
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
-        _big(c, _Big.ghost, 'Close', () => Navigator.pop(c)),
+        _big(c, _Big.ghost, L.t.close, () => Navigator.pop(c)),
       ];
     },
   );
@@ -373,12 +374,12 @@ Future<bool> showRemoveMemberSheet(BuildContext context,
     context,
     const ValueKey('remove_member_sheet'),
     (c) => [
-      _title(c, 'Remove $name from "$groupName"?'),
+      _title(c, L.t.removeFrom(name, groupName)),
       _hint(c,
-          '$name will see "$me removed you". They keep the old messages but get no new ones.'),
-      _big(c, _Big.red, 'Remove', () => Navigator.pop(c, true),
+          L.t.willSeeRemovedYouTheyKeep(name, me)),
+      _big(c, _Big.red, L.t.remove, () => Navigator.pop(c, true),
           key: const ValueKey('remove_member_confirm')),
-      _big(c, _Big.ghost, 'Cancel', () => Navigator.pop(c, false)),
+      _big(c, _Big.ghost, L.t.cancel, () => Navigator.pop(c, false)),
     ],
   );
   return ok == true;
@@ -405,7 +406,7 @@ Widget _points(BuildContext context, List<InlineSpan> points) {
                     BoxDecoration(color: colors.outline, shape: BoxShape.circle),
               ),
               Expanded(
-                child: Text.rich(p,
+                child: Text.rich(TextSpan(children: L.spans([p])),
                     style: TextStyle(
                         fontSize: 14, height: 1.35, color: colors.onSurface)),
               ),
@@ -427,27 +428,27 @@ Future<bool> showExitGroupSheet(BuildContext context,
     context,
     const ValueKey('exit_group_sheet'),
     (c) => [
-      _title(c, 'Exit "$groupName"?'),
+      _title(c, L.t.exit(groupName)),
       _points(c, [
-        TextSpan(text: 'Members see "$me left".'),
-        const TextSpan(
+        TextSpan(text: L.t.membersSeeLeft(me)),
+        TextSpan(
             text:
-                'Old messages stay on your phone (read only). You can delete the group later.'),
+                L.t.oldMessagesStayOnYourPhone),
         if (owner && nextOwner.isNotEmpty)
           TextSpan(children: [
-            const TextSpan(text: 'You are the owner: '),
+            TextSpan(text: L.t.youAreTheOwner),
             TextSpan(
                 text: nextOwner,
                 style: const TextStyle(fontWeight: FontWeight.w700)),
             TextSpan(
                 text: nextIsAdmin
-                    ? ' (admin) becomes the new owner.'
-                    : ' becomes the new owner.'),
+                    ? L.t.adminBecomesTheNewOwner
+                    : L.t.becomesTheNewOwner),
           ]),
       ]),
-      _big(c, _Big.red, 'Exit group', () => Navigator.pop(c, true),
+      _big(c, _Big.red, L.t.exitGroup, () => Navigator.pop(c, true),
           key: const ValueKey('exit_group_confirm')),
-      _big(c, _Big.ghost, 'Cancel', () => Navigator.pop(c, false)),
+      _big(c, _Big.ghost, L.t.cancel, () => Navigator.pop(c, false)),
     ],
   );
   return ok == true;
@@ -460,12 +461,12 @@ Future<bool> showDeleteGroupSheet(BuildContext context,
     context,
     const ValueKey('delete_group_sheet'),
     (c) => [
-      _title(c, 'Delete "$groupName"?'),
+      _title(c, L.t.delete2(groupName)),
       _hint(c,
-          'All messages, photos and files of this group are removed from this phone.'),
-      _big(c, _Big.red, 'Delete group', () => Navigator.pop(c, true),
+          L.t.allMessagesPhotosAndFilesOf),
+      _big(c, _Big.red, L.t.deleteGroup, () => Navigator.pop(c, true),
           key: const ValueKey('delete_group_confirm')),
-      _big(c, _Big.ghost, 'Cancel', () => Navigator.pop(c, false)),
+      _big(c, _Big.ghost, L.t.cancel, () => Navigator.pop(c, false)),
     ],
   );
   return ok == true;
@@ -545,7 +546,7 @@ class _EditGroupSheetState extends State<_EditGroupSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _title(context, 'Edit group'),
+            _title(context, L.t.editGroup),
             TextField(
               key: const ValueKey('edit_group_name'),
               controller: _name,
@@ -559,7 +560,7 @@ class _EditGroupSheetState extends State<_EditGroupSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 6, 2, 14),
-              child: Text('Group name',
+              child: Text(L.t.groupName,
                   style:
                       TextStyle(fontSize: 12.5, color: colors.onSurfaceVariant)),
             ),
@@ -577,7 +578,7 @@ class _EditGroupSheetState extends State<_EditGroupSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 6, 2, 4),
-              child: Text('Description',
+              child: Text(L.t.description,
                   style:
                       TextStyle(fontSize: 12.5, color: colors.onSurfaceVariant)),
             ),
@@ -592,12 +593,12 @@ class _EditGroupSheetState extends State<_EditGroupSheet> {
                 style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                     shape: const StadiumBorder(),
-                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, 
+                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, 
                         fontSize: 15.5, fontWeight: FontWeight.w700)),
-                child: const Text('Save'),
+                child: Text(L.t.save),
               ),
             ),
-            _big(context, _Big.ghost, 'Cancel', () => Navigator.pop(context)),
+            _big(context, _Big.ghost, L.t.cancel, () => Navigator.pop(context)),
           ],
         ),
       ),
@@ -609,18 +610,18 @@ class _EditGroupSheetState extends State<_EditGroupSheet> {
 
 /// Mock 37: "Usman is not in your friends. Ali (member) is his friend."
 String joinRequestHint(GroupJoinRequest r) {
-  final name = r.name.trim().isEmpty ? 'This person' : r.name.trim();
-  if (r.friend) return '$name is in your friends.';
+  final name = r.name.trim().isEmpty ? L.t.thisPerson : r.name.trim();
+  if (r.friend) return L.t.isInYourFriends(name);
   if (r.via == 'link') {
-    return '$name opened the group invite link. Add only people you know.';
+    return L.t.openedTheGroupInviteLinkAdd(name);
   }
   final via = r.viaNames;
-  if (via.isEmpty) return '$name is not in your friends.';
+  if (via.isEmpty) return L.t.isNotInYourFriends(name);
   if (via.length == 1) {
-    return '$name is not in your friends. ${via.first} (member) is his friend.';
+    return L.t.isNotInYourFriendsMember(name, via.first);
   }
-  final list = '${via.sublist(0, via.length - 1).join(', ')} and ${via.last}';
-  return '$name is not in your friends. $list (members) are his friends.';
+  final list = L.t.and(via.sublist(0, via.length - 1).join(', '), via.last);
+  return L.t.isNotInYourFriendsMembers(name, list);
 }
 
 /// Mock 37: someone scanned the group QR. True = Add to group,
@@ -630,7 +631,7 @@ Future<bool?> showJoinRequestSheet(BuildContext context, GroupJoinRequest r) {
   final time = MaterialLocalizations.of(context).formatTimeOfDay(
       TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(r.atMs)));
   // Bundle G6: or "opened the invite link".
-  final how = r.via == 'link' ? 'opened the invite link' : 'scanned the QR';
+  final how = r.via == 'link' ? L.t.openedTheInviteLink : L.t.scannedTheQr;
   final line = r.username.isEmpty
       ? '$how · $time'
       : '@${r.username} · $how · $time';
@@ -666,9 +667,9 @@ Future<bool?> showJoinRequestSheet(BuildContext context, GroupJoinRequest r) {
           ),
         ),
         _hint(c, joinRequestHint(r)),
-        _big(c, _Big.blue, 'Add to group', () => Navigator.pop(c, true),
+        _big(c, _Big.blue, L.t.addToGroup, () => Navigator.pop(c, true),
             key: const ValueKey('join_request_add')),
-        _big(c, _Big.ghost, 'Ignore', () => Navigator.pop(c, false),
+        _big(c, _Big.ghost, L.t.ignore, () => Navigator.pop(c, false),
             key: const ValueKey('join_request_ignore')),
       ];
     },

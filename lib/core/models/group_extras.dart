@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G5b (mock P): one pin note. It travels like a message (server
 /// outbox + Nearby fan-out) with the body `llpin:v1:{json}`:
@@ -91,19 +92,19 @@ class GroupPinNote {
   ];
 
   static String lengthLabel(Duration d) => d.inDays >= 1
-      ? (d.inDays == 1 ? '24 hours' : '${d.inDays} days')
-      : '${d.inHours} hours';
+      ? (d.inDays == 1 ? L.t.t24Hours : L.t.days(d.inDays))
+      : L.t.hours(d.inHours);
 
   /// P3: what is left, short ("7 days", "1 day", "5 h", "20 min").
   static String leftLabel(DateTime until, DateTime now) {
     final left = until.toUtc().difference(now.toUtc());
-    if (left.inMinutes < 1) return '1 min';
+    if (left.inMinutes < 1) return L.t.t1Min;
     if (left.inHours >= 24) {
       final days = (left.inMinutes / (24 * 60)).ceil();
-      return days == 1 ? '1 day' : '$days days';
+      return days == 1 ? L.t.t1Day : L.t.days(days);
     }
     if (left.inHours >= 1) return '${(left.inMinutes / 60).ceil()} h';
-    return '${left.inMinutes} min';
+    return L.t.min(left.inMinutes);
   }
 }
 
@@ -156,7 +157,7 @@ class GroupPoll {
   }
 
   /// Chats list / notifications / quotes: "📊 Poll: Where should we eat?".
-  String get preview => '📊 Poll: $question';
+  String get preview => L.t.poll(question);
 
   /// A clean poll from the New poll screen (null = not valid yet).
   static GroupPoll? build(String question, List<String> options,

@@ -345,6 +345,10 @@ class MainActivity : FlutterActivity() {
                 result.success(shareImageToWhatsApp298(call.argument<ByteArray>("png"), call.argument<String>("text") ?: ""))
             } else if (call.method == "clearShare298") {
                 result.success(clearShare298())
+            } else if (call.method == "language304") {
+                // 304 (H3): the chosen language for the Android-side notification words.
+                Words304.save(this, call.argument<String>("code") ?: "en")
+                result.success(true)
             } else {
                 result.notImplemented()
             }

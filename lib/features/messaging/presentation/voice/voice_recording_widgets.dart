@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/messaging/presentation/voice/voice_levels.dart';
 import 'package:locallink/features/messaging/presentation/voice/voice_recorder_controller.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 181: colours copied from the approved mock
 /// (`mocks/bundle181_full_mock.svg`). Send and the big mic use the app's
@@ -118,8 +119,8 @@ class _WavePainter extends CustomPainter {
   final double progress;
   final bool dot;
 
-  static const double barWidth = 2;
-  static const double step = 3;
+  static const double barWidth = 2.5;
+  static const double step = 3.5;
   static const double minHeight = 3;
   static const double dotSize = 12;
 
@@ -138,7 +139,7 @@ class _WavePainter extends CustomPainter {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(i * step, mid - h / 2, barWidth, h),
-          const Radius.circular(1),
+          const Radius.circular(1.25),
         ),
         paint,
       );
@@ -202,7 +203,7 @@ class VoiceHoldingContent extends StatelessWidget {
                         Icon(Icons.arrow_left_rounded, size: 30, color: muted),
                         ConstrainedBox(
                           constraints: BoxConstraints(maxWidth: words),
-                          child: Text('Slide to cancel',
+                          child: Text(L.t.slideToCancel,
                               maxLines: 1,
                               softWrap: false,
                               overflow: TextOverflow.ellipsis,
@@ -366,8 +367,8 @@ class VoiceHintBubble extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(color: VoiceBarColors.hint, borderRadius: BorderRadius.circular(10)),
-          child: const Text(
-            'Hold to record, release to send',
+          child: Text(
+            L.t.holdToRecordReleaseToSend,
             style: TextStyle(color: Colors.white, fontSize: 13),
           ),
         ),
@@ -501,7 +502,7 @@ Widget _softRed(BuildContext context, {required Key key, required String tooltip
 Widget _trash(VoiceRecorderController voice) => Builder(
       builder: (context) => IconButton(
         key: const ValueKey('voice_delete'),
-        tooltip: 'Delete voice note',
+        tooltip: L.t.deleteVoiceNote,
         onPressed: voice.discard,
         icon: Icon(Icons.delete_outline_rounded, color: _voiceRed(context), size: 26),
       ),
@@ -540,7 +541,7 @@ class _TrashPainter extends CustomPainter {
 Widget _send(VoiceRecorderController voice) => _Round(
       key: const ValueKey('voice_send'),
       size: 48,
-      tooltip: 'Send voice note',
+      tooltip: L.t.sendVoiceNote,
       onTap: voice.send,
       gradient: LocalLinkBrand.linearGradient,
       child: const Icon(Icons.send_rounded, color: Colors.white, size: 24),
@@ -571,7 +572,7 @@ class VoiceLockedPanel extends StatelessWidget {
                 color: Theme.of(context).colorScheme.primary)),
         const SizedBox(width: 6),
         _softRed(context,
-            key: const ValueKey('voice_pause'), tooltip: 'Pause', onTap: voice.pause, icon: Icons.pause_rounded),
+            key: const ValueKey('voice_pause'), tooltip: L.t.pause, onTap: voice.pause, icon: Icons.pause_rounded),
         const SizedBox(width: 6),
       ],
     );
@@ -597,7 +598,7 @@ class VoicePausedPanel extends StatelessWidget {
         _Round(
           key: const ValueKey('voice_play'),
           size: 34,
-          tooltip: playing ? 'Stop' : 'Play',
+          tooltip: playing ? L.t.stop : L.t.play,
           onTap: voice.togglePreview,
           color: colors.primary,
           child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: colors.onPrimary, size: 22),
@@ -619,7 +620,7 @@ class VoicePausedPanel extends StatelessWidget {
         const SizedBox(width: 6),
         _softRed(context,
             key: const ValueKey('voice_continue'),
-            tooltip: 'Continue recording',
+            tooltip: L.t.continueRecording,
             onTap: voice.resume,
             icon: Icons.mic_rounded),
         const SizedBox(width: 6),

@@ -1,7 +1,7 @@
 // Bundle 222: Forgot password (code + new password online / no server) and
 // the no-code request to the admin. Mocks R-1 … R-5.
-import 'dart:io';
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/models/account.dart';
@@ -12,6 +12,7 @@ import 'package:locallink/features/recovery/bloc/account_recovery_bloc.dart' sho
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
 import 'package:locallink/features/recovery/presentation/screens/account_recovery_screen.dart';
 import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
+import 'support/l10n_source_304.dart';
 
 class _Repo implements RecoveryRepositoryContract {
   bool online = true;
@@ -294,7 +295,7 @@ void main() {
   });
 
   test('R-1: login shows "Forgot password?" instead of "Account recovery"', () {
-    final src = File('lib/features/authentication/presentation/screens/setup_screen.dart').readAsStringSync();
+    final src = readEnglish304('lib/features/authentication/presentation/screens/setup_screen.dart');
     expect(src, contains("'Forgot password?'"));
     expect(src, contains('ForgotPasswordScreen222('));
     expect(src, isNot(contains("Text('Account recovery')")));

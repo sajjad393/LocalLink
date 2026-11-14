@@ -11,6 +11,7 @@ import 'package:locallink/core/widgets/local_link_text_field.dart';
 import 'package:locallink/features/recovery/bloc/account_recovery_bloc.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
 import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class AccountRecoveryScreen extends StatefulWidget {
   final RecoveryRepositoryContract repository;
@@ -57,15 +58,15 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
     if (!mounted || result == null) return;
 
     LinkToast.show(context, result.revokedDeviceIds.isEmpty
-              ? 'Account recovered on this phone.'
-              : 'Account recovered. Previous active devices were revoked.', kind: LinkToastKind.done);
+              ? L.t.accountRecoveredOnThisPhone
+              : L.t.accountRecoveredPreviousActiveDevicesWere, kind: LinkToastKind.done);
     await widget.onCompleted();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Account recovery')),
+      appBar: AppBar(title: Text(L.t.accountRecovery)),
       body: LocalLinkBlocBuilder<AccountRecoveryBloc, AccountRecoveryState>(
         bloc: _controller,
         builder: (context, state) {
@@ -84,13 +85,13 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
               ),
               const SizedBox(height: 18),
               Text(
-                'Recover your account',
+                L.t.recoverYourAccount,
                 style: Theme.of(context).textTheme.headlineSmall,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                'Enter your username to request account recovery.',
+                L.t.enterYourUsernameToRequestAccount,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
@@ -109,8 +110,8 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
                   controller: _username,
                   autocorrect: false,
                   textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(
-                    labelText: 'Username',
+                  decoration: InputDecoration(
+                    labelText: L.t.username,
                     prefixIcon: Icon(Icons.person_outline),
                   ),
                   onSubmitted: (_) => _submitRequest(),
@@ -120,7 +121,7 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
                   onPressed: state.busy ? null : _submitRequest,
                   loading: state.busy,
                   icon: const Icon(Icons.arrow_forward_rounded),
-                  label: 'Continue',
+                  label: L.t.continueText,
                 ),
               ] else ...[
                 const SizedBox(height: 24),
@@ -129,7 +130,7 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
                     leading: const Icon(Icons.pending_actions),
                     title: Text('@${recoveryState?.username ?? ''}'),
                     subtitle: Text(
-                      'Request: ${state.requestId!.substring(0, 8)}…\nStatus: ${recoveryState?.status}',
+                      L.t.requestStatus(state.requestId!.substring(0, 8), recoveryState?.status),
                     ),
                   ),
                 ),
@@ -143,16 +144,16 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
                     ),
                   ),
                 if (recoveryState?.rejectedReason.isNotEmpty ?? false)
-                  Text('Reason: ${recoveryState!.rejectedReason}'),
+                  Text(L.t.reason(recoveryState!.rejectedReason)),
                 if (approved) ...[
                   const SizedBox(height: 8),
                   LocalLinkTextField(
                     controller: _recoveryCode,
                     autocorrect: false,
                     onSubmitted: (_) => _complete(),
-                    decoration: const InputDecoration(
-                      labelText: 'Recovery code',
-                      hintText: 'Enter the one-time code',
+                    decoration: InputDecoration(
+                      labelText: L.t.recoveryCode2,
+                      hintText: L.t.enterTheOneTimeCode,
                       prefixIcon: Icon(Icons.key_outlined),
                     ),
                   ),
@@ -161,7 +162,7 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
                     onPressed: state.busy ? null : _complete,
                     loading: state.busy,
                     icon: const Icon(Icons.verified_user_outlined),
-                    label: 'Complete recovery',
+                    label: L.t.completeRecovery,
                   ),
                 ],
                 if (recoveryState?.status == 'pending')
@@ -173,7 +174,7 @@ class _AccountRecoveryScreenState extends State<AccountRecoveryScreen> {
                 OutlinedButton.icon(
                   onPressed: state.busy ? null : _controller.resetRequest,
                   icon: const Icon(Icons.restart_alt),
-                  label: const Text('Start over'),
+                  label: Text(L.t.startOver),
                 ),
               ],
             ],
@@ -291,7 +292,7 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
         return Scaffold(
           backgroundColor: p.screen,
           appBar: AppBar(
-            title: const Text('Forgot password'),
+            title: Text(L.t.forgotPassword),
             backgroundColor: p.screen,
             surfaceTintColor: Colors.transparent,
             foregroundColor: p.text,
@@ -305,14 +306,14 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 HeroRow290(
                   icon: Icons.key_rounded,
-                  title: 'Reset your password',
+                  title: L.t.resetYourPassword,
                   below: Align(alignment: Alignment.centerLeft, child: _chip(state.online)),
                 ),
                 SegmentSwitch290(
                   key: const ValueKey('forgot287-switch'),
-                  items: const [
+                  items: [
                     ('I have a code', Icons.key_rounded),
-                    ("I don't have it", Icons.shield_outlined),
+                    (L.t.iDonTHaveIt, Icons.shield_outlined),
                   ],
                   selected: state.tab == ForgotTab222.haveCode ? 0 : 1,
                   onChanged: state.busy
@@ -330,9 +331,9 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
 
   Widget _chip(bool? online) {
     final (text, kind) = switch (online) {
-      true => ('Server connected', LinkPillKind.on),
-      false => ('Offline \u00b7 works on this phone', LinkPillKind.off),
-      null => ('Checking the server\u2026', LinkPillKind.idle),
+      true => (L.t.serverConnected, LinkPillKind.on),
+      false => (L.t.offlineWorksOnThisPhone, LinkPillKind.off),
+      null => (L.t.checkingTheServer, LinkPillKind.idle),
     };
     return LivePill290(key: const ValueKey('forgot222-chip'), text: text, kind: kind);
   }
@@ -357,7 +358,7 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
     return LinkField290(
       fieldKey: const ValueKey('forgot287-username'),
       controller: _username,
-      label: 'Username',
+      label: L.t.username,
       icon: Icons.alternate_email_rounded,
       maxLength: 32,
       enabled: !state.busy,
@@ -375,7 +376,7 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
       LinkField290(
         fieldKey: const ValueKey('forgot287-password'),
         controller: _password,
-        label: 'New password',
+        label: L.t.newPassword,
         icon: Icons.lock_outline_rounded,
         obscureText: _hide,
         enabled: !state.busy,
@@ -389,13 +390,13 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
       LinkField290(
         fieldKey: const ValueKey('forgot287-again'),
         controller: _again,
-        label: 'New password again',
+        label: L.t.newPasswordAgain,
         icon: Icons.lock_outline_rounded,
         obscureText: _hide,
         enabled: !state.busy,
         error: _bad(state, ForgotField287.again),
         textInputAction: TextInputAction.done,
-        trailing: same ? const LinkOkMark290(key: ValueKey('forgot222-same'), text: 'Match') : null,
+        trailing: same ? LinkOkMark290(key: ValueKey('forgot222-same'), text: L.t.match) : null,
         onChanged: (_) => _bloc.clearError(),
         onSubmitted: (_) => _send(state),
       ),
@@ -428,7 +429,7 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
       LinkField290(
         fieldKey: const ValueKey('forgot287-code'),
         controller: _code,
-        label: 'Recovery code',
+        label: L.t.recoveryCode2,
         icon: Icons.pin_outlined,
         mono: true,
         enabled: !state.busy,
@@ -443,11 +444,11 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
       ..._under(state, ForgotField287.code),
       ..._passwordFields(state),
       ..._general(state),
-      _button(state, 'Set new password', filled: filled),
+      _button(state, L.t.setNewPassword, filled: filled),
       LinkNote290(
         state.online == false
-            ? 'Uses the code saved on this phone. The new password goes to the server when it is back.'
-            : 'Your other phones stay signed in. You get a new recovery code after this.',
+            ? L.t.usesTheCodeSavedOnThis
+            : L.t.yourOtherPhonesStaySignedIn,
       ),
     ];
   }
@@ -459,32 +460,32 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
         _usernameField(state, last: true),
         _gap(),
         ..._under(state, ForgotField287.username),
-        const StepList290(steps: [
-          ('Send a request', 'Takes a second', LinkStepState.todo),
-          ('The admin approves it', 'On the web or in the app', LinkStepState.todo),
-          ('Get a one-time code', 'The admin gives it to you in person', LinkStepState.todo),
+        StepList290(steps: [
+          (L.t.sendARequest, L.t.takesASecond, LinkStepState.todo),
+          (L.t.theAdminApprovesIt, L.t.onTheWebOrInThe, LinkStepState.todo),
+          (L.t.getAOneTimeCode, L.t.theAdminGivesItToYou, LinkStepState.todo),
         ]),
         ..._general(state),
-        _button(state, 'Ask the admin', filled: _username.text.trim().isNotEmpty, icon: Icons.send_rounded),
-        const LinkNote290('Needs the server.'),
+        _button(state, L.t.askTheAdmin, filled: _username.text.trim().isNotEmpty, icon: Icons.send_rounded),
+        LinkNote290(L.t.needsTheServer2),
       ];
     }
     final rejected = state.requestStatus == 'rejected';
     final approved = state.requestStatus == 'approved';
     final (pill, fg, bg) = switch (state.requestStatus) {
       'approved' || 'completed' => (
-          state.requestStatus == 'approved' ? 'Approved' : 'Done',
+          state.requestStatus == 'approved' ? L.t.approved : L.t.done2,
           p.ok,
           p.okBg,
         ),
-      'rejected' => ('Not approved', p.error, p.errBg),
-      _ => ('Waiting', p.isDark ? const Color(0xFFFBBF24) : const Color(0xFF9A5B06),
+      'rejected' => (L.t.notApproved, p.error, p.errBg),
+      _ => (L.t.waiting, p.isDark ? const Color(0xFFFBBF24) : const Color(0xFF9A5B06),
           p.isDark ? const Color(0x24F59E0B) : const Color(0xFFFEF3C7)),
     };
     final name = state.requestUsername.isEmpty ? _username.text.trim().toLowerCase() : state.requestUsername;
     final sent = _sentAt == null
-        ? 'Sent to the admin'
-        : 'Sent ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(_sentAt!))}';
+        ? L.t.sentToTheAdmin
+        : L.t.sent2(MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(_sentAt!)));
     final filled = _oneTime.text.trim().isNotEmpty && _passwordsFilled;
     return [
       Container(
@@ -517,7 +518,7 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
       ),
       if (rejected) ...[
         LinkUnderLine290(
-          'The admin did not approve it.${state.rejectedReason.isEmpty ? '' : ' Reason: ${state.rejectedReason}'}',
+          L.t.theAdminDidNotApproveIt(state.rejectedReason.isEmpty ? '' : L.t.reasonSuffix304(state.rejectedReason)),
           key: const ValueKey('forgot287-rejected'),
           error: true,
         ),
@@ -525,18 +526,18 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
         ..._under(state, ForgotField287.oneTime),
       ] else ...[
         StepList290(steps: [
-          ('Request sent', null, LinkStepState.done),
+          (L.t.requestSent, null, LinkStepState.done),
           approved
-              ? ('The admin approved it', null, LinkStepState.done)
-              : ('Waiting for the admin', 'Ask the admin to approve it', LinkStepState.now),
+              ? (L.t.theAdminApprovedIt, null, LinkStepState.done)
+              : (L.t.waitingForTheAdmin, L.t.askTheAdminToApproveIt, LinkStepState.now),
           approved
-              ? ('Type the one-time code', 'The admin gives it to you in person', LinkStepState.now)
-              : ('Type the one-time code', null, LinkStepState.wait),
+              ? (L.t.typeTheOneTimeCode, L.t.theAdminGivesItToYou, LinkStepState.now)
+              : (L.t.typeTheOneTimeCode, null, LinkStepState.wait),
         ]),
         LinkField290(
           fieldKey: const ValueKey('forgot287-onetime'),
           controller: _oneTime,
-          label: 'One-time code from the admin',
+          label: L.t.oneTimeCodeFromTheAdmin,
           icon: Icons.pin_outlined,
           mono: true,
           enabled: !state.busy,
@@ -549,7 +550,7 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
         ..._under(state, ForgotField287.oneTime),
         ..._passwordFields(state),
         ..._general(state),
-        _button(state, 'Set new password', filled: filled),
+        _button(state, L.t.setNewPassword, filled: filled),
       ],
       Center(
         child: TextButton(
@@ -557,9 +558,9 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
           onPressed: state.busy ? null : _bloc.cancelRequest,
           style: TextButton.styleFrom(
             foregroundColor: p.isDark ? const Color(0xFFA9B8FF) : const Color(0xFF1E5BFF),
-            textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 14, fontWeight: FontWeight.w600),
+            textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, fontSize: 14, fontWeight: FontWeight.w600),
           ),
-          child: Text(rejected ? 'Start again' : 'Cancel request'),
+          child: Text(rejected ? L.t.startAgain : L.t.cancelRequest),
         ),
       ),
     ];
@@ -576,7 +577,7 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
       child: Scaffold(
         backgroundColor: p.screen,
         appBar: AppBar(
-          title: const Text('Password changed'),
+          title: Text(L.t.passwordChanged),
           automaticallyImplyLeading: false,
           backgroundColor: p.screen,
           surfaceTintColor: Colors.transparent,
@@ -590,19 +591,19 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
                 children: [
                   const DoneTick235(),
                   const SizedBox(height: 18),
-                  Text("You're signed in",
+                  Text(L.t.youReSignedIn,
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: p.text)),
                   const SizedBox(height: 6),
                   if (code.isNotEmpty) ...[
-                    Text('Save your new recovery code now.',
+                    Text(L.t.saveYourNewRecoveryCodeNow,
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 13.5, color: p.muted)),
                     const SizedBox(height: 18),
                     RecoveryCodeBox235(key: const ValueKey('forgot222-new-code'), code: code),
                   ] else ...[
                     const SizedBox(height: 8),
                     Text(
-                      'Your new password works on this phone now. It goes to the server when the server is back, then you get a new recovery code.',
+                      L.t.yourNewPasswordWorksOnThis,
                       key: const ValueKey('forgot222-offline-done'),
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 13.5, color: p.muted, height: 1.4),

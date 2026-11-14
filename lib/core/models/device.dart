@@ -1,3 +1,4 @@
+import 'package:locallink/l10n/l10n.dart';
 enum DeviceNetworkStatus {
   serverConnected,
   wifiDirect,
@@ -27,10 +28,10 @@ extension DeviceNetworkStatusX on DeviceNetworkStatus {
   };
 
   String get label => switch (this) {
-    DeviceNetworkStatus.serverConnected => 'Server connected',
-    DeviceNetworkStatus.wifiDirect => 'Wi-Fi Direct',
-    DeviceNetworkStatus.disconnected => 'Server disconnected',
-    DeviceNetworkStatus.unknown => 'Status unknown / stale',
+    DeviceNetworkStatus.serverConnected => L.t.serverConnected,
+    DeviceNetworkStatus.wifiDirect => L.t.wiFiDirect,
+    DeviceNetworkStatus.disconnected => L.t.serverDisconnected,
+    DeviceNetworkStatus.unknown => L.t.statusUnknownStale,
   };
 }
 
@@ -173,11 +174,11 @@ class Device {
   String presenceLabel({DateTime? now}) {
     switch (presenceChannel(now: now)) {
       case 'nearby':
-        return 'Nearby';
+        return L.t.nearby;
       case 'server':
-        return 'Online';
+        return L.t.online;
       default:
-        return 'Offline';
+        return L.t.offline;
     }
   }
 }

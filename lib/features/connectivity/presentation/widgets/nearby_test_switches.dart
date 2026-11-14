@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_experiments.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 173: the old Settings > "Nearby tests" screen is gone.
 ///
@@ -20,11 +21,11 @@ Future<bool> _confirmTurnOn(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Cancel'),
+          child: Text(L.t.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Turn on'),
+          child: Text(L.t.turnOn),
         ),
       ],
     ),
@@ -50,18 +51,15 @@ class NearbyTestSwitches extends StatelessWidget {
             child: SwitchListTile(
               key: const Key('nearby_test_link_groups'),
               secondary: const Icon(Icons.hub_outlined),
-              title: const Text('Link full groups'),
-              subtitle: Text('Join full nearby groups as a Wi-Fi user and '
-                  'join a LinkUp hotspot. ${x.linkStatusText}'),
+              title: Text(L.t.linkFullGroups),
+              subtitle: Text(L.t.joinFullNearbyGroupsAsA(x.linkStatusText)),
               value: x.linkGroups,
               onChanged: (on) async {
                 if (on &&
                     !await _confirmTurnOn(
                       context,
-                      'Link full groups?',
-                      'Android will ask "Connect?" each time this phone '
-                          'joins another group or hotspot. Tap Connect to '
-                          'allow it. Needs Android 10 or newer.',
+                      L.t.linkFullGroups2,
+                      L.t.androidWillAskConnectEachTime,
                     )) {
                   return;
                 }
@@ -74,18 +72,15 @@ class NearbyTestSwitches extends StatelessWidget {
             child: SwitchListTile(
               key: const Key('nearby_test_share_hotspot'),
               secondary: const Icon(Icons.wifi_tethering),
-              title: const Text('Share a LinkUp hotspot'),
-              subtitle: Text('Other LinkUp phones join this one. No '
-                  'internet is shared. ${x.hotspotStatusText}'),
+              title: Text(L.t.shareALinkupHotspot),
+              subtitle: Text(L.t.otherLinkupPhonesJoinThisOne(x.hotspotStatusText)),
               value: x.shareHotspot,
               onChanged: (on) async {
                 if (on &&
                     !await _confirmTurnOn(
                       context,
-                      'Share a hotspot?',
-                      'This uses more battery. Some phones cannot run '
-                          'it while on Wi-Fi. Only LinkUp phones with '
-                          '"Link full groups" on will join it.',
+                      L.t.shareAHotspot,
+                      L.t.thisUsesMoreBatterySomePhones,
                     )) {
                   return;
                 }
@@ -114,9 +109,9 @@ class ExtraNearbySafetySwitch extends StatelessWidget {
       builder: (context, _) => SwitchListTile(
         key: const Key('nearby_strict_link_check'),
         secondary: const MessengerRowIcon(icon: Icons.verified_user_outlined),
-        title: Text('Extra nearby safety',
+        title: Text(L.t.extraNearbySafety,
             style: Theme.of(context).textTheme.titleSmall),
-        subtitle: Text('Only contacts the app can confirm',
+        subtitle: Text(L.t.onlyContactsTheAppCanConfirm,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 letterSpacing: 0)),
@@ -125,10 +120,8 @@ class ExtraNearbySafetySwitch extends StatelessWidget {
           if (on &&
               !await _confirmTurnOn(
                 context,
-                'Turn on extra nearby safety?',
-                'Contacts with an older LinkUp will not connect nearby '
-                    'until they update. Messages through the internet '
-                    'still work.',
+                L.t.turnOnExtraNearbySafety,
+                L.t.contactsWithAnOlderLinkupWill,
               )) {
             return;
           }

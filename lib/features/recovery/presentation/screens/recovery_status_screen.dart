@@ -6,6 +6,7 @@ import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
 import 'package:locallink/features/recovery/bloc/recovery_status_bloc.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class RecoveryStatusScreen extends StatefulWidget {
   final RecoveryRepositoryContract repository;
@@ -33,7 +34,7 @@ class _RecoveryStatusScreenState extends State<RecoveryStatusScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Recovery status'),
+        title: Text(L.t.recoveryStatus),
         actions: [
           IconButton(
               onPressed: _controller.loading ? null : _controller.poll,
@@ -51,10 +52,10 @@ class _RecoveryStatusScreenState extends State<RecoveryStatusScreen> {
           if (!state.loading && !state.hasRequest) {
             return LocalLinkEmptyView(
               icon: Icons.mark_email_read_outlined,
-              title: 'No pending recovery request',
+              title: L.t.noPendingRecoveryRequest,
               message:
-                  'Start recovery from the LinkUp welcome screen to create a new request.',
-              actionLabel: 'Back',
+                  L.t.startRecoveryFromTheLinkupWelcome,
+              actionLabel: L.t.back,
               onAction: () => Navigator.pop(context),
             );
           }
@@ -96,7 +97,7 @@ class _RecoveryStatusScreenState extends State<RecoveryStatusScreen> {
                 Card(
                     child: ListTile(
                         leading: const Icon(Icons.cloud_off),
-                        title: const Text('Refresh unavailable'),
+                        title: Text(L.t.refreshUnavailable),
                         subtitle: Text(friendlyErrorMessage(state.error)))),
               if (recoveryState != null) ...[
                 const SizedBox(height: 12),
@@ -104,29 +105,29 @@ class _RecoveryStatusScreenState extends State<RecoveryStatusScreen> {
                   child: Column(
                     children: [
                       ListTile(
-                          title: const Text('Account'),
+                          title: Text(L.t.account),
                           subtitle: Text(recoveryState.username.isEmpty
-                              ? 'LinkUp account'
+                              ? L.t.linkupAccount
                               : '@${recoveryState.username}'),
                           leading: const Icon(Icons.person_outline)),
                       ListTile(
-                          title: const Text('Request'),
+                          title: Text(L.t.request),
                           subtitle: Text(_short(recoveryState.requestId)),
                           leading:
                               const Icon(Icons.confirmation_number_outlined)),
                       if (recoveryState.approvedAt.isNotEmpty)
                         ListTile(
-                            title: const Text('Approved'),
+                            title: Text(L.t.approved),
                             subtitle: Text(recoveryState.approvedAt),
                             leading: const Icon(Icons.check_circle_outline)),
                       if (recoveryState.recoveryExpiresAt.isNotEmpty)
                         ListTile(
-                            title: const Text('Recovery credential expires'),
+                            title: Text(L.t.recoveryCredentialExpires),
                             subtitle: Text(recoveryState.recoveryExpiresAt),
                             leading: const Icon(Icons.timer_outlined)),
                       if (recoveryState.rejectedReason.isNotEmpty)
                         ListTile(
-                            title: const Text('Administrator note'),
+                            title: Text(L.t.administratorNote),
                             subtitle: Text(recoveryState.rejectedReason),
                             leading: const Icon(Icons.info_outline)),
                     ],
@@ -137,8 +138,8 @@ class _RecoveryStatusScreenState extends State<RecoveryStatusScreen> {
                 const SizedBox(height: 14),
                 const LinearProgressIndicator(),
                 const SizedBox(height: 8),
-                const Text(
-                    'This page checks the local server every few seconds.',
+                Text(
+                    L.t.thisPageChecksTheLocalServer,
                     textAlign: TextAlign.center),
               ],
             ],
@@ -149,21 +150,21 @@ class _RecoveryStatusScreenState extends State<RecoveryStatusScreen> {
   }
 
   String _title(String status) => switch (status) {
-        'approved' => 'Recovery approved',
-        'rejected' => 'Recovery rejected',
-        'expired' => 'Recovery expired',
-        'completed' => 'Recovery completed',
-        _ => 'Waiting for approval',
+        'approved' => L.t.recoveryApproved,
+        'rejected' => L.t.recoveryRejected,
+        'expired' => L.t.recoveryExpired,
+        'completed' => L.t.recoveryCompleted,
+        _ => L.t.waitingForApproval,
       };
   String _message(String status) => switch (status) {
         'approved' =>
-          'The administrator approved this device recovery request.',
-        'rejected' => 'The administrator rejected this request.',
+          L.t.theAdministratorApprovedThisDeviceRecovery,
+        'rejected' => L.t.theAdministratorRejectedThisRequest,
         'expired' =>
-          'The request or its recovery credential is no longer valid.',
-        'completed' => 'This recovery request has already been completed.',
+          L.t.theRequestOrItsRecoveryCredential,
+        'completed' => L.t.thisRecoveryRequestHasAlreadyBeen,
         _ =>
-          'Keep the new phone connected to the private LinkUp network while waiting for approval.',
+          L.t.keepTheNewPhoneConnectedTo,
       };
   String _short(String value) =>
       value.length <= 12 ? value : '${value.substring(0, 8)}…';

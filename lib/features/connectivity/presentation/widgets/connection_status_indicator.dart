@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:locallink/core/widgets/local_link_status_badge.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class ConnectionStatusIndicator extends StatelessWidget {
   final ConnectivityBloc controller;
@@ -19,18 +20,18 @@ class ConnectionStatusIndicator extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final snapshot = state.snapshot;
     if (snapshot.wifiDirectConnected) {
-      return (label: 'Wi-Fi Direct', icon: Icons.wifi_tethering, color: colors.tertiary);
+      return (label: L.t.wiFiDirect, icon: Icons.wifi_tethering, color: colors.tertiary);
     }
     if (snapshot.serverConnected && snapshot.network.connected) {
-      return (label: 'Local Wi-Fi', icon: Icons.wifi, color: colors.primary);
+      return (label: L.t.localWiFi, icon: Icons.wifi, color: colors.primary);
     }
     if (snapshot.network.connected) {
-      return (label: 'Local network available', icon: Icons.wifi_outlined, color: colors.secondary);
+      return (label: L.t.localNetworkAvailable, icon: Icons.wifi_outlined, color: colors.secondary);
     }
     if (snapshot.serverConnected) {
-      return (label: 'LinkUp connected', icon: Icons.hub_outlined, color: colors.primary);
+      return (label: L.t.linkupConnected, icon: Icons.hub_outlined, color: colors.primary);
     }
-    return (label: 'Searching for connection', icon: Icons.sync_problem_outlined, color: colors.outline);
+    return (label: L.t.searchingForConnection, icon: Icons.sync_problem_outlined, color: colors.outline);
   }
 
   @override
@@ -43,7 +44,7 @@ class ConnectionStatusIndicator extends StatelessWidget {
           return LocalLinkStatusBadge(label: view.label, color: view.color, icon: view.icon);
         }
         return Semantics(
-          label: 'Connection: ${view.label}',
+          label: L.t.connection(view.label),
           child: Tooltip(
             message: view.label,
             child: Icon(view.icon, color: view.color, size: 22),

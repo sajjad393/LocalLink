@@ -9,6 +9,7 @@ import 'package:locallink/core/security/identity_trust_service.dart';
 import 'package:locallink/core/security/security_code_245.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/qr_scan_config_232.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 245 (audit S7): chat ⋮ › Conversation info › Security code.
 ///
@@ -77,7 +78,7 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
     setState(() => _busy = true);
     await hub.setVerified(v.deviceId, on);
     if (mounted) setState(() => _busy = false);
-    if (on) _snack('${widget.name} is verified');
+    if (on) _snack(L.t.isVerified(widget.name));
   }
 
   Future<void> _accept() async {
@@ -87,7 +88,7 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
     final ok = await hub.accept(p.profile.userId);
     if (!mounted) return;
     setState(() => _busy = false);
-    _snack(ok ? 'New security code accepted' : 'Could not accept the new code');
+    _snack(ok ? L.t.newSecurityCodeAccepted : L.t.couldNotAcceptTheNewCode);
   }
 
   Future<void> _scan() async {
@@ -107,7 +108,7 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
     if (match) {
       await _setVerified(true);
     } else {
-      _snack("The codes don't match. Ask ${widget.name} to open this screen again.");
+      _snack(L.t.theCodesDonTMatchAsk(widget.name));
     }
   }
 
@@ -117,7 +118,7 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
     final v = _view;
     return Scaffold(
       key: const Key('security_code_screen'),
-      appBar: AppBar(title: const Text('Security code')),
+      appBar: AppBar(title: Text(L.t.securityCode)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : v == null
@@ -125,8 +126,7 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      "${widget.name}'s security code is not ready yet. "
-                      'It shows after you have chatted once nearby or over the server.',
+                      L.t.sSecurityCodeIsNotReady(widget.name),
                       key: const Key('security_code_not_ready'),
                       textAlign: TextAlign.center,
                       style: TextStyle(color: colors.onSurfaceVariant),
@@ -159,8 +159,7 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
                     _digits(context, v.groups),
                     const SizedBox(height: 16),
                     Text(
-                      "Compare this code with the one on ${widget.name}'s phone. "
-                      'If they are the same, nobody is in the middle of your chats and calls.',
+                      L.t.compareThisCodeWithTheOne(widget.name),
                       key: const Key('security_code_help'),
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 14, height: 1.35, color: colors.onSurfaceVariant),
@@ -170,21 +169,21 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
                       key: const Key('security_code_scan'),
                       onPressed: _busy ? null : _scan,
                       icon: const Icon(Icons.qr_code_scanner),
-                      label: Text("Scan ${widget.name}'s code"),
+                      label: Text(L.t.scanSCode(widget.name)),
                     ),
                     const SizedBox(height: 10),
                     if (v.state == IdentityTrustState.verified)
                       OutlinedButton(
                         key: const Key('security_code_unverify'),
                         onPressed: _busy ? null : () => _setVerified(false),
-                        child: const Text('Remove verified mark'),
+                        child: Text(L.t.removeVerifiedMark),
                       )
                     else
                       FilledButton.icon(
                         key: const Key('security_code_verify'),
                         onPressed: _busy || v.pending != null ? null : () => _setVerified(true),
                         icon: const Icon(Icons.verified_user_outlined),
-                        label: const Text('Mark as verified'),
+                        label: Text(L.t.markAsVerified),
                       ),
                   ],
                 ),
@@ -208,15 +207,14 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
             Icon(Icons.gpp_maybe_outlined, size: 20, color: colors.onErrorContainer),
             const SizedBox(width: 8),
             Expanded(
-              child: Text("${widget.name}'s security code changed",
+              child: Text(L.t.sSecurityCodeChanged(widget.name),
                   style: TextStyle(
                       fontWeight: FontWeight.w700, fontSize: 15, color: colors.onErrorContainer)),
             ),
           ]),
           const SizedBox(height: 6),
           Text(
-            'This happens when ${widget.name} reinstalls LinkUp or uses a new phone. '
-            'Until you accept, the old code is kept. If you are not sure, ask ${widget.name} first.',
+            L.t.thisHappensWhenReinstallsLinkupOr(widget.name, widget.name),
             style: TextStyle(fontSize: 13.5, height: 1.3, color: colors.onErrorContainer),
           ),
           Align(
@@ -224,7 +222,7 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
             child: TextButton(
               key: const Key('security_code_accept'),
               onPressed: _busy ? null : _accept,
-              child: const Text('Accept new code'),
+              child: Text(L.t.acceptNewCode),
             ),
           ),
         ],
@@ -235,10 +233,10 @@ class _SecurityCodeScreenState extends State<SecurityCodeScreen> {
   Widget _stateChip(BuildContext context, IdentityTrustState state) {
     final colors = Theme.of(context).colorScheme;
     final (IconData icon, String text, Color fg) = switch (state) {
-      IdentityTrustState.verified => (Icons.verified_user, 'Verified', const Color(0xFF1E8E3E)),
-      IdentityTrustState.changed => (Icons.gpp_maybe_outlined, 'Code changed', colors.error),
-      IdentityTrustState.revoked => (Icons.block, 'Revoked', colors.error),
-      IdentityTrustState.unverified => (Icons.shield_outlined, 'Not verified', colors.onSurfaceVariant),
+      IdentityTrustState.verified => (Icons.verified_user, L.t.verified, const Color(0xFF1E8E3E)),
+      IdentityTrustState.changed => (Icons.gpp_maybe_outlined, L.t.codeChanged, colors.error),
+      IdentityTrustState.revoked => (Icons.block, L.t.revoked, colors.error),
+      IdentityTrustState.unverified => (Icons.shield_outlined, L.t.notVerified, colors.onSurfaceVariant),
     };
     return Center(
       child: Container(
@@ -318,7 +316,7 @@ class _CodeScanPageState extends State<_CodeScanPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan security code')),
+      appBar: AppBar(title: Text(L.t.scanSecurityCode)),
       body: MobileScanner(
         controller: _scanner,
         onDetect: (capture) {

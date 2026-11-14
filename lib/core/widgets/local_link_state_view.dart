@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class LocalLinkLoadingView extends StatefulWidget {
   final String? message;
@@ -220,7 +221,7 @@ class LocalLinkInlineError extends StatelessWidget {
             ),
           ),
           if (onRetry != null)
-            TextButton(onPressed: onRetry, child: const Text('Retry')),
+            TextButton(onPressed: onRetry, child: Text(L.t.retry)),
         ],
       ),
     );

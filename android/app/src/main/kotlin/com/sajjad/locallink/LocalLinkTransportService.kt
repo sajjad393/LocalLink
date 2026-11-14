@@ -730,16 +730,16 @@ class LocalLinkTransportService : Service() {
     // Bundle 175 (8): as quiet as Android allows (MIN: folded at the bottom,
     // no top-bar icon, no sound). A channel's importance can't be lowered
     // after it exists, so this is a new channel; the old one is removed.
-    private fun createNotificationChannel(){if(android.os.Build.VERSION.SDK_INT<26)return;val nm=getSystemService(NotificationManager::class.java);try{nm.deleteNotificationChannel(OLD_CHANNEL_ID)}catch(_:Exception){};nm.createNotificationChannel(NotificationChannel(CHANNEL_ID,"Background service",NotificationManager.IMPORTANCE_MIN).apply{description="Lets messages arrive while LinkUp is closed";setShowBadge(false);setSound(null,null);enableVibration(false);enableLights(false)})}
+    private fun createNotificationChannel(){if(android.os.Build.VERSION.SDK_INT<26)return;val nm=getSystemService(NotificationManager::class.java);try{nm.deleteNotificationChannel(OLD_CHANNEL_ID)}catch(_:Exception){};nm.createNotificationChannel(NotificationChannel(CHANNEL_ID,Words304.w(this,"Background service"),NotificationManager.IMPORTANCE_MIN).apply{description=Words304.w(this@LocalLinkTransportService,"Lets messages arrive while LinkUp is closed");setShowBadge(false);setSound(null,null);enableVibration(false);enableLights(false)})}
     private fun buildNotification():Notification{
         val li=packageManager.getLaunchIntentForPackage(packageName)
         val pi=li?.let{PendingIntent.getActivity(this,2202,it,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)}
         @Suppress("DEPRECATION") val b=if(android.os.Build.VERSION.SDK_INT>=26)Notification.Builder(this,CHANNEL_ID)else Notification.Builder(this)
         b.setSmallIcon(R.drawable.ic_notification).setColor(0xFF209DEB.toInt())
-            .setContentTitle("LinkUp is running").setContentText("Messages can arrive while the app is closed")
+            .setContentTitle(Words304.w(this,"LinkUp is running")).setContentText(Words304.w(this,"Messages can arrive while the app is closed"))
             .setOngoing(true).setShowWhen(false).setOnlyAlertOnce(true).setCategory(Notification.CATEGORY_SERVICE).setContentIntent(pi)
         @Suppress("DEPRECATION") b.setPriority(Notification.PRIORITY_MIN)
-        if(pi!=null){@Suppress("DEPRECATION") b.addAction(Notification.Action.Builder(0,"Open",pi).build())}
+        if(pi!=null){@Suppress("DEPRECATION") b.addAction(Notification.Action.Builder(0,Words304.w(this,"Open"),pi).build())}
         if(android.os.Build.VERSION.SDK_INT>=31)b.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_DEFERRED)
         return b.build()
     }

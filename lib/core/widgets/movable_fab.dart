@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 206: where the round button sits. [left] = on the left edge;
 /// [y] = height inside the allowed area (0.0 top … 1.0 bottom).
@@ -295,8 +296,8 @@ class _MovableFabAreaState extends State<MovableFabArea> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   alignment: Alignment.center,
-                  child: const Text(
-                    'Drag to move',
+                  child: Text(
+                    L.t.dragToMove,
                     style: TextStyle(color: Colors.white, fontSize: 13),
                   ),
                 ),

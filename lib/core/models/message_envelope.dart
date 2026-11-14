@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:locallink/core/models/attachment.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 197a: hidden "envelopes" that ride inside a normal message body.
 ///
@@ -119,7 +120,7 @@ String replyKindLabel(String kind) => switch (kind) {
 /// The line shown inside a quote box.
 String replyLine(ReplyRef reply) {
   final label = replyKindLabel(reply.kind);
-  if (reply.snip.isEmpty) return label.isEmpty ? 'Message' : label;
+  if (reply.snip.isEmpty) return label.isEmpty ? L.t.message : L.en(label);
   if (label.isEmpty) return reply.snip;
   return '${label.split(' ').first} ${reply.snip}';
 }
@@ -338,11 +339,11 @@ String messageInfoTime(DateTime value, {DateTime? now}) {
   final today = DateTime(n.year, n.month, n.day);
   final day = DateTime(t.year, t.month, t.day);
   final diff = today.difference(day).inDays;
-  if (diff == 0) return 'Today, $clock';
-  if (diff == 1) return 'Yesterday, $clock';
+  if (diff == 0) return L.t.todayAt304(clock);
+  if (diff == 1) return L.t.yesterdayAt304(clock);
   const months = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
   ];
-  return '${t.day} ${months[t.month - 1]} ${t.year}, $clock';
+  return '${t.day} ${L.en(months[t.month - 1])} ${t.year}, $clock';
 }

@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +5,7 @@ import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/features/storage/domain/media_clean_policy.dart';
 import 'package:locallink/features/storage/presentation/storage_screen.dart';
+import 'support/l10n_source_304.dart';
 
 const _mb = 1024 * 1024;
 
@@ -53,7 +53,7 @@ void main() {
 
   group('197b Settings › Storage', () {
     test('Settings row sits between Keep LinkUp running and Reset setup', () {
-      final s = File('lib/features/home/presentation/screens/messenger_settings_screen.dart').readAsStringSync();
+      final s = readEnglish304('lib/features/home/presentation/screens/messenger_settings_screen.dart');
       final keep = s.indexOf("'Keep LinkUp running'");
       final storage = s.indexOf('StorageSettingsRow(store: store)');
       final reset = s.indexOf("'Reset setup'");
@@ -145,9 +145,9 @@ void main() {
     });
 
     test('Admin panel has the test button', () {
-      final s = File('lib/features/admin/presentation/screens/admin_panel_screen.dart').readAsStringSync();
+      final s = readEnglish304('lib/features/admin/presentation/screens/admin_panel_screen.dart');
       expect(s, contains('const StorageTestButton()'));
-      final b = File('lib/features/storage/presentation/storage_test_button.dart').readAsStringSync();
+      final b = readEnglish304('lib/features/storage/presentation/storage_test_button.dart');
       expect(b, contains("'Test clean-up now'"));
       expect(b, contains('test: true'));
     });

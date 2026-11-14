@@ -11,6 +11,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart'
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Which link one map edge represents. Drives colour + placement sector.
 enum LinkTag { server, wifiDirect, mesh, localWifi }
@@ -194,8 +195,8 @@ A216Link linkOfTag216(LinkTag t) => switch (t) {
 
 String linkTagLabel(LinkTag tag) => switch (tag) {
       LinkTag.server => 'Server',
-      LinkTag.wifiDirect => 'Wi-Fi Direct',
-      LinkTag.mesh => 'Mesh',
+      LinkTag.wifiDirect => L.t.wiFiDirect,
+      LinkTag.mesh => L.t.mesh,
       LinkTag.localWifi => 'Local Wi-Fi',
     };
 
@@ -294,7 +295,7 @@ class LinkPathsMap extends StatelessWidget {
                   key: const ValueKey('link_paths_expand'),
                   onTap: onExpand,
                   child: Tooltip(
-                    message: 'Full screen',
+                    message: L.t.fullScreen,
                     child: SizedBox(
                         width: 30,
                         height: 30,
@@ -331,7 +332,7 @@ class LinkPathsMap extends StatelessWidget {
                 top: 0,
                 bottom: 0,
                 child: Center(
-                  child: Text(emptyText,
+                  child: Text(L.en(emptyText),
                       key: const ValueKey('link_paths_empty'),
                       style: A216Text(c).note),
                 ),
@@ -377,7 +378,7 @@ class LinkBlockedLegend extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: kLinkBlockedRed, width: 1.4))),
           const SizedBox(width: 5),
-          Text('Blocked · relays only', style: A216Text.of(context).legend),
+          Text(L.t.blockedRelaysOnly, style: A216Text.of(context).legend),
         ],
       );
 }
@@ -604,7 +605,7 @@ class LinkPathsCanvas extends StatefulWidget {
                 label,
                 if (blocked && !small) ...[
                   const SizedBox(height: 4),
-                  const AdminTag216('Blocked', A216Tone.red),
+                  AdminTag216(L.t.blocked, A216Tone.red),
                 ],
               ]),
             ),
@@ -1140,7 +1141,7 @@ class _LinkPathsPainter extends CustomPainter {
         canvas.drawCircle(badge, 5, Paint()..color = kLinkBlockedRed);
         _text(canvas, Icons.block, badge, size: 8, color: Colors.white);
         _label(canvas, pos + const Offset(0, _nodeRadius + 11),
-            '${n.label} · Blocked',
+            L.t.blocked6(n.label),
             color: kLinkBlockedRed);
         continue;
       }
@@ -1160,7 +1161,7 @@ class _LinkPathsPainter extends CustomPainter {
     canvas.drawCircle(s, _selfRadius + 5, Paint()..color = Colors.white);
     canvas.drawCircle(s, _selfRadius, hub);
     _text(canvas, Icons.person, s, size: 26, color: Colors.white);
-    _label(canvas, s + const Offset(0, _selfRadius + 14), 'This phone',
+    _label(canvas, s + const Offset(0, _selfRadius + 14), L.t.thisPhone,
         strong: true);
     if (crownKey.split(',').contains('self')) {
       _crown(canvas, s - const Offset(0, _selfRadius + 9), 18);
@@ -1198,10 +1199,10 @@ class _LinkPathsPainter extends CustomPainter {
   void _plainLabel(Canvas canvas, Offset center, String text, double size) {
     final tp = TextPainter(
       text: TextSpan(
-        text: text,
+        text: L.en(text),
         style: TextStyle(
             inherit: false,
-            fontFamily: 'Roboto216',
+            fontFamily: 'Roboto216', fontFamilyFallback: L.fontFallback,
             fontSize: size,
             fontWeight: FontWeight.w600,
             color: labelColor),
@@ -1217,7 +1218,7 @@ class _LinkPathsPainter extends CustomPainter {
       {bool strong = false, bool tiny = false, Color? color}) {
     final tp = TextPainter(
       text: TextSpan(
-        text: text,
+        text: L.en(text),
         style: TextStyle(
             inherit: false,
             fontSize: tiny ? 8.5 : (strong ? 11.5 : 9.5),

@@ -13,6 +13,7 @@ import 'package:locallink/features/files/presentation/widgets/media_frame.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/features/storage/domain/media_clean_policy.dart';
 import 'package:locallink/features/files/presentation/widgets/media_tile_look.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 197b: shown in the bubble when LinkUp's copy of a photo / video /
 /// document / voice note was removed to save space (auto or by hand).
@@ -28,7 +29,7 @@ class RemovedMediaView extends StatefulWidget {
     this.cell,
   });
 
-  static const String label = 'Removed to save space';
+  static String get label => L.t.removedToSaveSpace;
 
   final Attachment attachment;
   final bool mine;
@@ -41,15 +42,15 @@ class RemovedMediaView extends StatefulWidget {
 
   /// V4: "This photo / video / file is no longer on your phone."
   static String goneMine(MediaKind kind) => switch (kind) {
-        MediaKind.photo => 'This photo is no longer on your phone.',
-        MediaKind.video => 'This video is no longer on your phone.',
-        _ => 'This file is no longer on your phone.',
+        MediaKind.photo => L.t.thisPhotoIsNoLongerOn,
+        MediaKind.video => L.t.thisVideoIsNoLongerOn,
+        _ => L.t.thisFileIsNoLongerOn2,
       };
 
   /// V5: receiver.
   static String goneTheirs(String? sender) {
     final name = (sender ?? '').trim();
-    return 'Removed to save space. Ask ${name.isEmpty ? 'the sender' : name} to send it again.';
+    return L.t.removedToSaveSpaceAskTo(name.isEmpty ? 'the sender' : name);
   }
 
   @override
@@ -124,7 +125,7 @@ class _RemovedMediaViewState extends State<RemovedMediaView> {
         key: const Key('removed_media_chip'),
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(color: Colors.black.withValues(alpha: .62), borderRadius: BorderRadius.circular(12)),
-        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.cloud_off_rounded, size: 15, color: Colors.white),
           SizedBox(width: 5),
           Flexible(
@@ -174,7 +175,7 @@ class _RemovedMediaViewState extends State<RemovedMediaView> {
                     top: 8,
                     child: VideoChip(
                         icon: Icons.play_arrow_rounded,
-                        label: ms > 0 ? _clock(ms) : 'Video'),
+                        label: ms > 0 ? _clock(ms) : L.t.video),
                   ),
                 if (looksNormal && _kind == MediaKind.video)
                   const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 52)),
@@ -241,10 +242,10 @@ class SavedMark extends StatelessWidget {
         key: const Key('saved_mark'),
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
-        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.check_rounded, size: 12, color: Colors.white),
           SizedBox(width: 3),
-          Text('Saved', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600)),
+          Text(L.t.saved, style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600)),
         ]),
       );
 }

@@ -12,6 +12,7 @@ import 'chat_video_hub.dart';
 import 'media_frame.dart';
 import 'media_playback_coordinator.dart';
 import 'media_tile_look.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 145: WhatsApp-like video inside the chat bubble.
 ///
@@ -300,7 +301,7 @@ class _ChatVideoPlayerState extends State<ChatVideoPlayer> {
       unawaited(_closeQuietly(controller));
       if (mounted) {
         setState(() => _starting = false);
-        LinkToast.show(context, "Can't play this video", kind: LinkToastKind.error);
+        LinkToast.show(context, L.t.canTPlayThisVideo, kind: LinkToastKind.error);
       }
       return;
     }
@@ -579,7 +580,7 @@ class _InMiniLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -587,7 +588,7 @@ class _InMiniLabel extends StatelessWidget {
               color: Colors.white, size: 30),
           SizedBox(height: 6),
           Text(
-            'Playing in mini player',
+            L.t.playingInMiniPlayer,
             key: Key('chat_video_in_mini'),
             style: TextStyle(
                 color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600),
@@ -1110,7 +1111,7 @@ class _ChatVideoFullscreenState extends State<ChatVideoFullscreen> {
                           children: [
                             IconButton(
                               key: const Key('chat_video_fs_back'),
-                              tooltip: 'Back',
+                              tooltip: L.t.back,
                               icon: const Icon(Icons.arrow_back_rounded,
                                   color: Colors.white),
                               onPressed: () => Navigator.of(context)
@@ -1120,7 +1121,7 @@ class _ChatVideoFullscreenState extends State<ChatVideoFullscreen> {
                             // Bundle 147: keep watching in the mini player.
                             IconButton(
                               key: const Key('chat_video_fs_minimize'),
-                              tooltip: 'Mini player',
+                              tooltip: L.t.miniPlayer,
                               icon: const Icon(
                                   Icons.picture_in_picture_alt_rounded,
                                   color: Colors.white),
@@ -1129,7 +1130,7 @@ class _ChatVideoFullscreenState extends State<ChatVideoFullscreen> {
                             ),
                             IconButton(
                               key: const Key('chat_video_fs_close'),
-                              tooltip: 'Close video',
+                              tooltip: L.t.closeVideo,
                               icon: const Icon(Icons.close_rounded,
                                   color: Colors.white),
                               onPressed: () => Navigator.of(context)

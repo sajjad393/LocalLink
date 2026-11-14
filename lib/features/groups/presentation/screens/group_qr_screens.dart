@@ -23,6 +23,7 @@ import 'package:locallink/features/groups/data/group_change_hub.dart';
 import 'package:locallink/features/groups/presentation/screens/new_group_screen.dart'
     show NewGroupTitle;
 import 'package:locallink/features/groups/presentation/widgets/group_nearby_widgets.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G4: Join with QR (approved mock G0).
 ///
@@ -163,7 +164,7 @@ class _GroupInviteQrScreenState extends State<GroupInviteQrScreen> {
       appBar: AppBar(
         titleSpacing: 0,
         title:
-            NewGroupTitle(title: 'Invite with QR', subtitle: widget.groupName),
+            NewGroupTitle(title: L.t.inviteWithQr, subtitle: widget.groupName),
       ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
@@ -231,13 +232,12 @@ class _GroupInviteQrScreenState extends State<GroupInviteQrScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(30, 4, 30, 0),
             child: Text.rich(
-              const TextSpan(children: [
+              TextSpan(children: [
                 TextSpan(
                     text:
-                        'Anyone who scans this near a member can ask to join. '
-                        'It works without internet.\n'),
+                        L.t.anyoneWhoScansThisNearA),
                 TextSpan(
-                    text: 'Expires in 24 hours.',
+                    text: L.t.expiresIn24Hours2,
                     style: TextStyle(fontWeight: FontWeight.w700)),
               ]),
               textAlign: TextAlign.center,
@@ -252,15 +252,15 @@ class _GroupInviteQrScreenState extends State<GroupInviteQrScreen> {
               _QrRow(
                 key: const ValueKey('group_qr_share'),
                 icon: Icons.share_outlined,
-                title: 'Share code',
-                subtitle: 'Send the picture to a friend',
+                title: L.t.shareCode,
+                subtitle: L.t.sendThePictureToAFriend,
                 onTap: code == null ? null : _share,
               ),
               _QrRow(
                 key: const ValueKey('group_qr_reset'),
                 icon: Icons.restart_alt_rounded,
-                title: 'Reset code',
-                subtitle: 'The old code stops working',
+                title: L.t.resetCode,
+                subtitle: L.t.theOldCodeStopsWorking,
                 red: true,
                 onTap: _busy ? null : () => _load(true),
               ),
@@ -373,7 +373,7 @@ class _GroupScanScreenState extends State<GroupScanScreen> {
     if (_done) return;
     final code = GroupJoinCode.parse(raw);
     if (code == null) {
-      if (mounted) setState(() => _error = 'This is not a LinkUp group code.');
+      if (mounted) setState(() => _error = L.t.thisIsNotALinkupGroup);
       return;
     }
     _done = true;
@@ -390,22 +390,22 @@ class _GroupScanScreenState extends State<GroupScanScreen> {
     final value = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Paste group code'),
+        title: Text(L.t.pasteGroupCode),
         content: TextField(
           controller: controller,
           maxLines: 4,
           minLines: 2,
-          decoration: const InputDecoration(hintText: 'llgq1:…'),
+          decoration: InputDecoration(hintText: L.t.llgq1),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+            child: Text(L.t.cancel),
           ),
           FilledButton(
             onPressed: () =>
                 Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: const Text('Open'),
+            child: Text(L.t.open),
           ),
         ],
       ),
@@ -420,12 +420,12 @@ class _GroupScanScreenState extends State<GroupScanScreen> {
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Join group with QR'),
+        title: Text(L.t.joinGroupWithQr),
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            tooltip: 'Flashlight',
+            tooltip: L.t.flashlight,
             icon: Icon(_torch ? Icons.flash_on : Icons.flash_off_outlined),
             onPressed: () {
               _scanner.toggleTorch();
@@ -464,8 +464,8 @@ class _GroupScanScreenState extends State<GroupScanScreen> {
                 top: window.bottom + 14,
                 left: 24,
                 right: 24,
-                child: const Text(
-                  'Scan a group code',
+                child: Text(
+                  L.t.scanAGroupCode,
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
@@ -497,7 +497,7 @@ class _GroupScanScreenState extends State<GroupScanScreen> {
                       side: const BorderSide(color: Colors.white54)),
                   onPressed: _paste,
                   icon: const Icon(Icons.content_paste, size: 18),
-                  label: const Text('Paste code'),
+                  label: Text(L.t.pasteCode),
                 ),
               ),
             ],
@@ -590,22 +590,22 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final code = widget.code;
-    final from = code.issuerName.isEmpty ? 'an admin' : code.issuerName;
+    final from = code.issuerName.isEmpty ? L.t.anAdmin2 : code.issuerName;
     final hint =
         TextStyle(fontSize: 13, height: 1.4, color: colors.onSurfaceVariant);
     final names = code.names.isEmpty ? [from] : code.names;
     return Scaffold(
-      appBar: AppBar(titleSpacing: 0, title: const Text('Join group')),
+      appBar: AppBar(titleSpacing: 0, title: Text(L.t.joinGroup)),
       body: ListView(
         padding: const EdgeInsets.only(top: 30, bottom: 24),
         children: [
           const Center(child: GroupAvatar(radius: 48)),
           const SizedBox(height: 12),
-          Text(code.name.isEmpty ? 'Group' : code.name,
+          Text(code.name.isEmpty ? L.t.group : code.name,
               textAlign: TextAlign.center,
               style:
                   const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-          Text("Group · ${code.count} members · from $from's code",
+          Text(L.t.groupMembersFromSCode(code.count, from),
               key: const ValueKey('join_group_line'),
               textAlign: TextAlign.center,
               style: hint),
@@ -649,16 +649,15 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
                           shape: const StadiumBorder(),
                           side: BorderSide(color: colors.outlineVariant),
                           disabledForegroundColor: colors.onSurface,
-                          textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, 
+                          textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, 
                               fontSize: 15.5, fontWeight: FontWeight.w700),
                         ),
-                        child: const Text('Requested ✓'),
+                        child: Text(L.t.requested2),
                       ),
                     ),
                     const SizedBox(height: 10),
                     Text(
-                        'An admin must add you. This stays for 24 hours. '
-                        'You get "$from added you" when it is done.',
+                        L.t.anAdminMustAddYouThis(from),
                         textAlign: TextAlign.center,
                         style: hint),
                   ],
@@ -673,10 +672,10 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
                     shape: const StadiumBorder(),
-                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, 
+                    textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, 
                         fontSize: 15.5, fontWeight: FontWeight.w700),
                   ),
-                  child: const Text('Ask to join'),
+                  child: Text(L.t.askToJoin),
                 ),
             },
           ),

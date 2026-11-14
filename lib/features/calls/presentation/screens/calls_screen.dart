@@ -25,6 +25,7 @@ import 'package:locallink/features/calls/presentation/call_history_groups.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/core/identity/person_name_258.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class CallsScreen extends StatefulWidget {
   final CallBloc controller;
@@ -73,12 +74,12 @@ class _CallsScreenState extends State<CallsScreen> {
       ? 'Missed'
       : switch (call.status) {
         'connected' => 'Completed',
-        'rejected' => call.endReason == 'busy' ? 'Busy' : 'Declined',
+        'rejected' => call.endReason == 'busy' ? L.t.busy : L.t.declined,
         'missed' => 'Missed',
-        'canceled' => 'Canceled',
-        'failed' => 'Failed',
-        'ringing' => 'No answer',
-        _ => call.durationSeconds > 0 ? 'Completed' : 'No answer',
+        'canceled' => L.t.canceled,
+        'failed' => L.t.failed,
+        'ringing' => L.t.noAnswer,
+        _ => call.durationSeconds > 0 ? 'Completed' : L.t.noAnswer,
       };
 
   String _duration(int seconds) =>
@@ -88,9 +89,9 @@ class _CallsScreenState extends State<CallsScreen> {
     final now = DateTime.now();
     final sameDay = (DateTime a, DateTime b) =>
         a.year == b.year && a.month == b.month && a.day == b.day;
-    if (sameDay(value, now)) return 'Today';
+    if (sameDay(value, now)) return L.t.today;
     if (sameDay(value, now.subtract(const Duration(days: 1)))) {
-      return 'Yesterday';
+      return L.t.yesterday;
     }
     return '${value.day}/${value.month}/${value.year}';
   }
@@ -169,17 +170,17 @@ class _CallsScreenState extends State<CallsScreen> {
         // Bundle 183 (L/M): the shared tab top bar - title only. The Wi-Fi
         // icon and the refresh button are gone (the list updates by itself;
         // pull down still reloads).
-        appBar: const TabTopBar(title: Text('Calls')),
+        appBar: TabTopBar(title: Text(L.t.calls2)),
         body: Column(children: [
           _CallInProgressBar(controller: widget.controller),
           Expanded(
             // Bundle 206: the round button can be moved (one place for
             // Chats, Calls and People); never over the call bar above.
             child: MovableFabArea(
-        label: 'New call',
+        label: L.t.newCall,
             fab: BrandGradientFab(
               heroTag: 'calls_fab',
-              tooltip: 'New call',
+              tooltip: L.t.newCall,
               // Bundle 104: brand-gradient FAB (People tab look) + modern icon.
               icon: Icons.add_ic_call_rounded,
               onPressed: widget.onNewCall,
@@ -198,9 +199,9 @@ class _CallsScreenState extends State<CallsScreen> {
                       child: LocalLinkEmptyView(
                         icon: Icons.call_outlined,
                         lottieAsset: LocalLinkAssets.lottieEmptyInbox,
-                        title: 'No calls yet',
+                        title: L.t.noCallsYet,
                         message:
-                            'Your recent LinkUp calls will appear here.',
+                            L.t.yourRecentLinkupCallsWillAppear,
                       ),
                       ),
                     ),
@@ -268,7 +269,7 @@ class _CallsScreenState extends State<CallsScreen> {
   /// Bundle 171: one line per call in the grouped-row sheet, e.g.
   /// "Outgoing · Canceled" or "Incoming · Completed 2:15".
   String _sheetLine(CallRecord call) {
-    final way = call.isOutgoing(widget.selfId) ? 'Outgoing' : 'Incoming';
+    final way = call.isOutgoing(widget.selfId) ? L.t.outgoing : L.t.incoming;
     final status = _status(call);
     final length =
         call.durationSeconds > 0 ? ' ${_duration(call.durationSeconds)}' : '';
@@ -307,17 +308,17 @@ class _CallsScreenState extends State<CallsScreen> {
                   ),
                   // Bundle 285 (mock 285): "Today · 4 calls · 2 missed".
                   subtitle: Text.rich(TextSpan(children: [
-                    TextSpan(text: '${_dayLabel(call.startedAt)} · ${group.count} calls'),
+                    TextSpan(text: L.t.calls(_dayLabel(call.startedAt), group.count)),
                     if (group.missed > 0) ...[
                       const TextSpan(text: ' · '),
                       TextSpan(
-                        text: '${group.missed} missed',
+                        text: L.t.missed(group.missed),
                         style: TextStyle(color: colors.error, fontWeight: FontWeight.w600),
                       ),
                     ],
                   ])),
                   trailing: MessengerCallButton(
-                    tooltip: 'Call back',
+                    tooltip: L.t.callBack,
                     onPressed: () {
                       Navigator.of(sheetContext).pop();
                       _redial(call);
@@ -410,8 +411,8 @@ class _CallInProgressBarState extends State<_CallInProgressBar> {
         final name = session.peerName.isEmpty ? 'LinkUp user' : session.peerName;
         final answered = session.answeredAt;
         final line = answered == null
-            ? '$name · Calling… — Tap to return'
-            : '$name · ${_mmss(answered)} — Tap to return';
+            ? L.t.callingTapToReturn(name)
+            : L.t.tapToReturn(name, _mmss(answered));
         return SafeArea(
           top: false,
           bottom: false,
@@ -451,7 +452,7 @@ class _CallInProgressBarState extends State<_CallInProgressBar> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('Call in progress',
+                      Text(L.t.callInProgress,
                           style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,

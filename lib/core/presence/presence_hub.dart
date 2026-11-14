@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:locallink/core/presence/switch_rules.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// What every screen shows for a person.
 enum PresenceStatus { nearby, online, offline }
@@ -16,9 +17,9 @@ extension PresenceStatusX on PresenceStatus {
   };
 
   String get label => switch (this) {
-    PresenceStatus.nearby => 'Nearby',
-    PresenceStatus.online => 'Online',
-    PresenceStatus.offline => 'Offline',
+    PresenceStatus.nearby => L.t.nearby,
+    PresenceStatus.online => L.t.online,
+    PresenceStatus.offline => L.t.offline,
   };
 }
 
@@ -56,16 +57,15 @@ class PresenceWayInfo {
 
   /// The words under a name (mock ST).
   String get label => switch (way) {
-        PresenceWay.wifi => 'Nearby · Wi-Fi',
-        PresenceWay.wifiDirect => 'Nearby · Wi-Fi Direct',
+        PresenceWay.wifi => L.t.nearbyWiFi,
+        PresenceWay.wifiDirect => L.t.nearbyWiFiDirect,
         PresenceWay.mesh => phonesBetween == null
-            ? 'Nearby · Mesh'
-            : 'Nearby · Mesh, via $phonesBetween '
-                '${phonesBetween == 1 ? 'phone' : 'phones'}',
-        PresenceWay.nearby => 'Nearby',
-        PresenceWay.connecting => 'Connecting…',
-        PresenceWay.online => 'Online',
-        PresenceWay.offline => 'Offline',
+            ? L.t.nearbyMesh
+            : L.t.nearbyMeshVia(phonesBetween, phonesBetween == 1 ? 'phone' : 'phones'),
+        PresenceWay.nearby => L.t.nearby,
+        PresenceWay.connecting => L.t.connecting,
+        PresenceWay.online => L.t.online,
+        PresenceWay.offline => L.t.offline,
       };
 }
 

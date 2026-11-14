@@ -5,6 +5,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/calls/data/transport/network_policy.dart';
 import 'package:locallink/features/home/domain/background_brand_guide.dart';
 import 'package:locallink/features/home/presentation/widgets/background_status_card.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 140: "Keep LocalLink running" — approved mock.
 /// Opt-in on tap only; once granted, options LOCK and only explain themselves
@@ -43,9 +44,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
   static const _brandKey = 'background_brand_override';
   BackgroundBrandGuide _brand = backgroundBrandByKey('other');
 
-  static const _lockedToast =
-      'LinkUp needs this to stay on — messages and calls must keep arriving '
-      'in the background.';
+  static String get _lockedToast => L.t.linkupNeedsThisToStayOn;
 
   @override
   void initState() {
@@ -119,7 +118,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
           key: const ValueKey('bg-location-turn-on'),
           onPressed: () => _answerBackgroundLocation(true),
           icon: const Icon(Icons.location_on_outlined, size: 18),
-          label: const Text('Find nearby friends when closed - Turn on'),
+          label: Text(L.t.findNearbyFriendsWhenClosedTurn),
         ),
       );
     }
@@ -134,18 +133,17 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(children: [
+          Row(children: [
             Icon(Icons.location_on_rounded, color: orange, size: 20),
             SizedBox(width: 8),
             Expanded(
-              child: Text('Find nearby friends when closed',
+              child: Text(L.t.findNearbyFriendsWhenClosed,
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
             ),
           ]),
           const SizedBox(height: 6),
-          const Text(
-              'Your Android needs Location "All the time" for this. '
-              'LinkUp never saves where you are.',
+          Text(
+              L.t.yourAndroidNeedsLocationAllThe,
               style: TextStyle(fontSize: 13)),
           const SizedBox(height: 8),
           Row(children: [
@@ -153,13 +151,13 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
               key: const ValueKey('bg-location-allow'),
               style: FilledButton.styleFrom(backgroundColor: orange),
               onPressed: () => _answerBackgroundLocation(true),
-              child: const Text('Allow'),
+              child: Text(L.t.allow),
             ),
             const SizedBox(width: 8),
             TextButton(
               key: const ValueKey('bg-location-not-now'),
               onPressed: () => _answerBackgroundLocation(false),
-              child: const Text('Not now'),
+              child: Text(L.t.notNow),
             ),
           ]),
         ],
@@ -184,7 +182,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
       await _bg.invokeMethod<void>(
           'openCallAlertSettings', {'state': _callAlerts ?? ''});
     } catch (_) {
-      _toast('Could not open notification settings right now.');
+      _toast(L.t.couldNotOpenNotificationSettingsRight);
     }
   }
 
@@ -192,7 +190,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
     try {
       await _notif.invokeMethod<void>('openSettings');
     } catch (_) {
-      _toast('Could not open notification settings right now.');
+      _toast(L.t.couldNotOpenNotificationSettingsRight);
     }
   }
 
@@ -251,7 +249,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
       await _bg.invokeMethod<String>(
           'openBrandSettings', <String, Object?>{'brand': _brand.key});
     } catch (_) {
-      _toast('Could not open your phone’s settings right now.');
+      _toast(L.t.couldNotOpenYourPhoneS);
     }
   }
 
@@ -269,14 +267,14 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
 
   Future<void> _requestBattery() async {
     if (_batteryExempt) {
-      _toast('$_lockedToast Battery optimization is already ignored.');
+      _toast(L.t.batteryOptimizationIsAlreadyIgnored(_lockedToast));
       return;
     }
     setState(() => _busy = true);
     try {
       await _bg.invokeMethod<void>('requestBatteryExemption');
     } catch (_) {
-      _toast('Could not open the battery dialog right now — try again.');
+      _toast(L.t.couldNotOpenTheBatteryDialog);
     }
     await _load();
     if (mounted) setState(() => _busy = false);
@@ -289,14 +287,11 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
       builder: (context) => Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Lock LinkUp in Recents',
+          Text(L.t.lockLinkupInRecents,
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
-          const Text(
-            '1. Open the Recents (recent apps) screen.\n'
-            '2. Tap the LinkUp app icon at the top of its card.\n'
-            '3. Choose “Lock”. A padlock stays on the card — the system '
-            'won’t swipe the app away in “clear all”.',
+          Text(
+            L.t.t1OpenTheRecentsRecentApps,
             style: TextStyle(fontSize: 14, height: 1.5),
           ),
         ]),
@@ -315,7 +310,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Your phone: ${_brand.title}',
+              Text(L.t.yourPhone2(_brand.title),
                   style: const TextStyle(
                       fontSize: 16, fontWeight: FontWeight.w700)),
               const SizedBox(height: 12),
@@ -348,11 +343,11 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
                 children: [
                   FilledButton(
                     onPressed: _openBrandSettings,
-                    child: const Text('Open settings'),
+                    child: Text(L.t.openSettings),
                   ),
                   TextButton(
                     onPressed: _pickBrand,
-                    child: const Text('Other brand? Tap to pick'),
+                    child: Text(L.t.otherBrandTapToPick),
                   ),
                 ],
               ),
@@ -371,7 +366,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Keep LinkUp running')),
+      appBar: AppBar(title: Text(L.t.keepLinkupRunning)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -416,10 +411,10 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
               // Row 1 — master switch (locks ON after grant)
               SwitchListTile(
                 secondary: _icon(Icons.power_settings_new_rounded),
-                title: const Text('Keep running in background',
+                title: Text(L.t.keepRunningInBackground,
                     style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text(
-                    'Stay reachable even when the app is closed'),
+                subtitle: Text(
+                    L.t.stayReachableEvenWhenTheApp),
                 value: _keepAlive,
                 onChanged: (wantOn) async {
                   if (!wantOn) {
@@ -436,11 +431,11 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
                 leading: _icon(
                     Icons.battery_charging_full_rounded,
                     color: _batteryExempt ? Colors.green : null),
-                title: const Text('Ignore battery optimization',
+                title: Text(L.t.ignoreBatteryOptimization,
                     style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: Text(_batteryExempt
-                    ? 'Allowed — required'
-                    : 'Recommended — messages arrive instantly'),
+                    ? L.t.allowedRequired
+                    : L.t.recommendedMessagesArriveInstantly),
                 trailing: _batteryExempt
                     ? Icon(Icons.check_circle, color: Colors.green[700])
                     : (_busy
@@ -455,17 +450,17 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
               // Row 4 — recents lock how-to
               ListTile(
                 leading: _icon(Icons.lock_outline_rounded),
-                title: const Text('Lock app in recents',
+                title: Text(L.t.lockAppInRecents,
                     style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text(
-                    'Open Recents, tap the LinkUp icon, choose Lock'),
+                subtitle: Text(
+                    L.t.openRecentsTapTheLinkupIcon),
                 trailing: const Icon(Icons.info_outline, size: 18),
                 onTap: _explainRecentsLock,
               ),
             ]),
           ),
           const SizedBox(height: 20),
-          Text('YOUR PHONE',
+          Text(L.t.yourPhone,
               style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -475,8 +470,7 @@ class _BackgroundRunScreenState extends State<BackgroundRunScreen>
           _brandCard(scheme),
           const SizedBox(height: 14),
           Text(
-            'Battery-permission dialogs are shown only when you tap a row. '
-            'Nothing is enabled silently.',
+            L.t.batteryPermissionDialogsAreShownOnly,
             style: TextStyle(
                 fontSize: 12, color: scheme.onSurface.withValues(alpha: 0.55)),
           ),

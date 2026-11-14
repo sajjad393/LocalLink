@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 256 E1/E2: plain words for an Add that failed (and a log line).
 String friendAddFailText256(Object error) {
   final t = error.toString().toLowerCase();
   if (t.contains('no active device')) {
-    return "Their phone is not known yet. Ask them to open LinkUp near you, then try again.";
+    return L.t.theirPhoneIsNotKnownYet;
   }
   if (t.contains('not found or unavailable')) {
-    return 'This person could not be found now. Try again near them or scan their QR code.';
+    return L.t.thisPersonCouldNotBeFound;
   }
-  if (t.contains('blocked')) return 'You blocked this person. Unblock them first.';
-  if (t.contains('invalid contact')) return "You can't add yourself.";
-  return 'Could not add this person. Try again.';
+  if (t.contains('blocked')) return L.t.youBlockedThisPersonUnblockThem;
+  if (t.contains('invalid contact')) return L.t.youCanTAddYourself;
+  return L.t.couldNotAddThisPersonTry;
 }
 
 void logFriendAddFail256(String source, Object error) {
@@ -32,9 +33,9 @@ AddStatus256 addStatus256({required bool serverConnected, required bool? wifi}) 
 }
 
 String addStatusText256(AddStatus256 s) => switch (s) {
-      AddStatus256.server => 'Server connected',
-      AddStatus256.noServer => 'No server - searching nearby phones',
-      AddStatus256.wifiOff => 'Wi-Fi off - using Wi-Fi Direct',
+      AddStatus256.server => L.t.serverConnected,
+      AddStatus256.noServer => L.t.noServerSearchingNearbyPhones,
+      AddStatus256.wifiOff => L.t.wiFiOffUsingWiFi,
     };
 
 class AddStatusLine256 extends StatelessWidget {
@@ -71,7 +72,7 @@ class AddStatusLine256 extends StatelessWidget {
           if (busy)
             const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
           else if (!ok)
-            Text('Find server now',
+            Text(L.t.findServerNow,
                 style: TextStyle(fontSize: 12.5, color: scheme.primary, fontWeight: FontWeight.w600)),
         ]),
       ),

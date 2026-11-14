@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 256 E6: one small chip under "Nearby" (why the list may be empty).
 class NearbyChip256 {
@@ -18,27 +19,27 @@ List<NearbyChip256> nearbyChips256({
 }) {
   return [
     if (wifi == true)
-      const NearbyChip256('wifi', 'Wi-Fi on', true, Icons.wifi_rounded)
+      NearbyChip256('wifi', L.t.wiFiOn304, true, Icons.wifi_rounded)
     else if (wifi == false)
-      const NearbyChip256('wifi', 'Wi-Fi off', false, Icons.wifi_off_rounded),
+      NearbyChip256('wifi', L.t.wiFiOff, false, Icons.wifi_off_rounded),
     if (wifiDirectOn)
-      const NearbyChip256('wd', 'Wi-Fi Direct on', true, Icons.wifi_tethering_rounded)
+      NearbyChip256('wd', L.t.wiFiDirectOn, true, Icons.wifi_tethering_rounded)
     else
-      const NearbyChip256('wd', 'Wi-Fi Direct off', false, Icons.portable_wifi_off_rounded),
+      NearbyChip256('wd', L.t.wiFiDirectOff, false, Icons.portable_wifi_off_rounded),
     if (ble == 'no_permission')
-      const NearbyChip256('ble', 'Bluetooth not allowed', false, Icons.bluetooth_disabled_rounded)
+      NearbyChip256('ble', L.t.bluetoothNotAllowed, false, Icons.bluetooth_disabled_rounded)
     else if (ble == 'off')
-      const NearbyChip256('ble', 'Bluetooth off', false, Icons.bluetooth_disabled_rounded)
+      NearbyChip256('ble', L.t.bluetoothOff, false, Icons.bluetooth_disabled_rounded)
     else if (ble == 'on' || ble == 'scan_only')
-      const NearbyChip256('ble', 'Bluetooth on', true, Icons.bluetooth_rounded),
+      NearbyChip256('ble', L.t.bluetoothOn, true, Icons.bluetooth_rounded),
   ];
 }
 
 /// Bundle 256 E8: "Seen 40 s ago" / "Seen 1 min ago".
 String nearbySeenLabel256(int ageMs) {
   final s = (ageMs / 1000).floor().clamp(0, 3600);
-  if (s < 60) return 'Seen ${s < 5 ? 5 : (s ~/ 5) * 5} s ago';
-  return 'Seen ${s ~/ 60} min ago';
+  if (s < 60) return L.t.seenSAgo(s < 5 ? 5 : (s ~/ 5) * 5);
+  return L.t.seenMinAgo(s ~/ 60);
 }
 
 /// Bundle 256 E8: a phone that just left the list stays 2 min (greyed,

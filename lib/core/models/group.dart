@@ -3,6 +3,7 @@ import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/core/models/group_extras.dart';
 import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 277 (B-1): group chat order = time written (like 1:1), then the
 /// server number, then the id. A message that never reached the server
@@ -177,7 +178,7 @@ class GroupMessage {
     final p = GroupPoll.parse(body);
     if (p != null) return p.preview;
     // Bundle G6: a locked message this phone can't open yet.
-    if (body.startsWith('llsk:v1:')) return '🔒 Waiting for this message';
+    if (body.startsWith('llsk:v1:')) return L.t.waitingForThisMessage;
     return envelope.text;
   }
   GroupPoll? get poll => GroupPoll.parse(body);

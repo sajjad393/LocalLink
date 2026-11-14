@@ -5,6 +5,7 @@ import 'package:locallink/features/messaging/presentation/widgets/pending_attach
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_button.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class GroupComposer extends StatelessWidget {
   final TextEditingController controller;
@@ -50,7 +51,7 @@ class GroupComposer extends StatelessWidget {
               LocalLinkIconButton(
                 onPressed: isSending ? null : onPick,
                 icon: const Icon(Icons.add),
-                tooltip: 'Attach',
+                tooltip: L.t.attach,
               ),
               const SizedBox(width: LocalLinkSpacing.xs),
               Expanded(
@@ -69,7 +70,7 @@ class GroupComposer extends StatelessWidget {
                     keyboardType: TextInputType.multiline,
                     maxLines: 5,
                     minLines: 1,
-                    hintText: 'Message group',
+                    hintText: L.t.messageGroup,
                     decoration: const InputDecoration(
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
@@ -86,7 +87,7 @@ class GroupComposer extends StatelessWidget {
                 icon: isSending
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.send_rounded),
-                tooltip: 'Send message',
+                tooltip: L.t.sendMessage,
               ),
             ],
           ),

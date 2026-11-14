@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/state/app_view_mode.dart';
 import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (E): one shell for every server tool page — the 216 app bar,
 /// pull to refresh, and the live lock (216d) when the server is lost.
@@ -92,15 +93,15 @@ class _AdminToolPage216State extends State<AdminToolPage216> {
         children: [
           const SizedBox(height: 2),
           if (offline)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(bottom: 10),
-              child: AdminBanner216(A216BannerKind.warning, 'No server · showing people seen nearby',
+              child: AdminBanner216(A216BannerKind.warning, L.t.noServerShowingPeopleSeenNearby,
                   key: ValueKey('a222_no_server_bar')),
             ),
           if (state.error != null && !state.loading && !offline)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: AdminBanner216(A216BannerKind.warning, 'Some data could not load',
+              child: AdminBanner216(A216BannerKind.warning, L.t.someDataCouldNotLoad,
                   key: const ValueKey('a216_load_error'), body: state.error),
             ),
           ...widget.builder(context, state),

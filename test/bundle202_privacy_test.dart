@@ -7,6 +7,7 @@ import 'package:locallink/features/account/domain/account_repository_contract.da
 import 'package:locallink/features/account/presentation/widgets/private_profile_card.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/l10n_source_304.dart';
 
 class _Account implements AccountRepositoryContract {
   _Account(this.profile);
@@ -109,16 +110,14 @@ void main() {
     });
 
     test('Profile: no Phone visibility; Privacy card; Save follows rule', () {
-      final src = File('lib/features/account/presentation/screens/profile_screen.dart')
-          .readAsStringSync();
+      final src = readEnglish304('lib/features/account/presentation/screens/profile_screen.dart');
       expect(src, isNot(contains('Phone visibility')));
       expect(src, isNot(contains('DropdownButton<String>')));
       expect(src, contains("Text('Privacy'"));
       expect(src, contains('PrivateProfileCard('));
       expect(src, contains('ProfilePrivacyRule.phoneVisibilityFor('));
-      final settings = File(
-              'lib/features/home/presentation/screens/messenger_settings_screen.dart')
-          .readAsStringSync();
+      final settings = readEnglish304(
+              'lib/features/home/presentation/screens/messenger_settings_screen.dart');
       expect(settings, isNot(contains('PrivateProfileRow')));
       expect(settings, contains('const ReadReceiptsRow()'));
       expect(settings, contains("ValueKey('settings_blocked_people')"));
@@ -156,8 +155,7 @@ void main() {
     });
 
     test('runs from Home start', () {
-      final src = File('lib/features/home/presentation/screens/home_screen.dart')
-          .readAsStringSync();
+      final src = readEnglish304('lib/features/home/presentation/screens/home_screen.dart');
       expect(src, contains('PhoneVisibilityAlign.runOnce('));
     });
   });

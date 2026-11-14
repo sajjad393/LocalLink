@@ -15,6 +15,7 @@ import 'package:locallink/core/services/locallink_api.dart'
 import 'package:locallink/features/groups/data/group_change_hub.dart';
 import 'package:locallink/features/groups/data/group_nearby_files.dart';
 import 'package:locallink/features/groups/data/services/group_nearby_store.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Sends one locked group packet (SealingPeerTransport.sendGroupLocked).
 typedef GroupLockedSend = Future<bool> Function({
@@ -319,8 +320,8 @@ class GroupNearbyService {
     final people = await keyedFriends(memberIds);
     if (people.isEmpty) throw const NoNearbyMembersException([]);
     if (people.length + 1 > GroupCard.maxMembers) {
-      throw const GroupActionException(
-          'GROUP_TOO_BIG', 'Nearby groups can have up to 32 people.');
+      throw GroupActionException(
+          'GROUP_TOO_BIG', L.t.nearbyGroupsCanHaveUpTo);
     }
     final now = _nowMs();
     final made = createdAt ??
@@ -380,12 +381,12 @@ class GroupNearbyService {
   }) async {
     final old = await card(gid);
     if (old == null) {
-      throw const GroupActionException(
-          'GROUP_NOT_MEMBER', "You're no longer a participant in this group.");
+      throw GroupActionException(
+          'GROUP_NOT_MEMBER', L.t.youReNoLongerAParticipant);
     }
     if (!old.isAdmin(_self)) {
-      throw const GroupActionException(
-          'GROUP_ADMINS_ONLY', 'Only admins can do this.');
+      throw GroupActionException(
+          'GROUP_ADMINS_ONLY', L.t.onlyAdminsCanDoThis);
     }
     final now = _nowMs();
     final next = await _signed(change(old, now));
@@ -417,14 +418,14 @@ class GroupNearbyService {
   Future<void> addMember(String gid, String deviceId, {bool quiet = false}) async {
     final f = (await keyedFriends([deviceId])).firstOrNull;
     if (f == null) {
-      throw const GroupActionException(
-          'GROUP_NOT_CONTACT', 'You can only add your friends.');
+      throw GroupActionException(
+          'GROUP_NOT_CONTACT', L.t.youCanOnlyAddYourFriends);
     }
     await issue(gid, (old, now) {
       if (old.has(f.id)) return old.next(by: _self, at: now);
       if (old.members.length >= GroupCard.maxMembers) {
-        throw const GroupActionException(
-            'GROUP_TOO_BIG', 'Nearby groups can have up to 32 people.');
+        throw GroupActionException(
+            'GROUP_TOO_BIG', L.t.nearbyGroupsCanHaveUpTo);
       }
       final joined =
           DateTime.fromMillisecondsSinceEpoch(now, isUtc: true).toIso8601String();
@@ -445,8 +446,8 @@ class GroupNearbyService {
   Future<void> removeMember(String gid, String deviceId, {bool quiet = false}) =>
       issue(gid, (old, now) {
         if (deviceId == old.owner) {
-          throw const GroupActionException(
-              'GROUP_ADMINS_ONLY', 'Only admins can do this.');
+          throw GroupActionException(
+              'GROUP_ADMINS_ONLY', L.t.onlyAdminsCanDoThis);
         }
         return old.next(
             by: _self,
@@ -1484,12 +1485,12 @@ class GroupNearbyService {
   Future<GroupJoinCode> inviteCode(String gid, {bool reset = false}) async {
     var c = await card(gid);
     if (c == null || !c.has(_self)) {
-      throw const GroupActionException(
-          'GROUP_NOT_MEMBER', "You're no longer a participant in this group.");
+      throw GroupActionException(
+          'GROUP_NOT_MEMBER', L.t.youReNoLongerAParticipant);
     }
     if (!c.isAdmin(_self)) {
-      throw const GroupActionException(
-          'GROUP_ADMINS_ONLY', 'Only admins can do this.');
+      throw GroupActionException(
+          'GROUP_ADMINS_ONLY', L.t.onlyAdminsCanDoThis);
     }
     final now = _nowMs();
     final fresh = c.qrToken.isNotEmpty &&
@@ -1561,23 +1562,23 @@ class GroupNearbyService {
   Future<void> askToJoin(GroupJoinCode code) async {
     final j = joins;
     if (j == null) {
-      throw const GroupActionException(
-          'GROUP_JOIN_OFF', "Couldn't ask to join. Try again.");
+      throw GroupActionException(
+          'GROUP_JOIN_OFF', L.t.couldnTAskToJoinTry);
     }
     final now = _nowMs();
     if (code.expired(now)) {
       AppLogger.info('GROUP_JOIN_QR', detail: 'why=expired');
-      throw const GroupActionException(
+      throw GroupActionException(
           'GROUP_QR_EXPIRED', GroupJoinCode.expiredText);
     }
     final local = await store.group(code.gid);
     if (code.issuer == _self || (local != null && local.isActive)) {
-      throw const GroupActionException(
-          'GROUP_ALREADY_IN', "You're already in this group.");
+      throw GroupActionException(
+          'GROUP_ALREADY_IN', L.t.youReAlreadyInThisGroup);
     }
     if (await store.isBlocked(code.issuer)) {
-      throw const GroupActionException(
-          'GROUP_JOIN_BLOCKED', "You can't join this group.");
+      throw GroupActionException(
+          'GROUP_JOIN_BLOCKED', L.t.youCanTJoinThisGroup);
     }
     AppLogger.info('GROUP_JOIN_QR', detail: 'from=${_id6(code.issuer)}');
     final sig = await keys.sign(joinText(code.gid, code.token, _self));
@@ -1696,8 +1697,8 @@ class GroupNearbyService {
     await issue(gid, (old, now) {
       if (old.has(id)) return old.next(by: _self, at: now);
       if (old.members.length >= GroupCard.maxMembers) {
-        throw const GroupActionException(
-            'GROUP_TOO_BIG', 'Nearby groups can have up to 32 people.');
+        throw GroupActionException(
+            'GROUP_TOO_BIG', L.t.nearbyGroupsCanHaveUpTo);
       }
       final joined =
           DateTime.fromMillisecondsSinceEpoch(now, isUtc: true).toIso8601String();
@@ -1728,14 +1729,14 @@ class GroupNearbyService {
   Future<void> addByKeys(String gid, String id, String name, String seal,
       String sign, {bool quiet = false}) async {
     if (seal.isEmpty || sign.isEmpty) {
-      throw const GroupActionException('GROUP_NO_KEYS',
-          'Ask them to open the link again with the newest LinkUp.');
+      throw GroupActionException('GROUP_NO_KEYS',
+          L.t.askThemToOpenTheLink);
     }
     await issue(gid, (old, now) {
       if (old.has(id)) return old.next(by: _self, at: now);
       if (old.members.length >= GroupCard.maxMembers) {
-        throw const GroupActionException(
-            'GROUP_TOO_BIG', 'Nearby groups can have up to 32 people.');
+        throw GroupActionException(
+            'GROUP_TOO_BIG', L.t.nearbyGroupsCanHaveUpTo);
       }
       final joined =
           DateTime.fromMillisecondsSinceEpoch(now, isUtc: true).toIso8601String();

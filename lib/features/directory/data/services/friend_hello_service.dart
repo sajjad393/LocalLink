@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 194: the automatic first message after YOU add a friend.
 const String kFriendHelloText = 'Hello 👋';
@@ -327,7 +328,7 @@ class FriendHelloService {
             reason: 'new_friend');
         if (!opened) {
           final name = e.displayName.isEmpty ? 'Friend' : e.displayName;
-          FriendChatOpener.toast?.call('$name added');
+          FriendChatOpener.toast?.call(L.t.added2(name));
         }
       }
       // The friend link goes out first; their Hello (both tapped) can land.

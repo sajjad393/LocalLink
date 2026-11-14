@@ -1,6 +1,5 @@
 // Bundle 210 (C, E): the Share LinkUp screen and its two entry points.
 
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,14 +10,14 @@ import 'package:locallink/features/share_app/presentation/share_app_screen.dart'
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/g210_fakes.dart';
+import 'support/l10n_source_304.dart';
 
 void main() {
   // ---------------------------------------------------- source checks first
   group('placement (source)', () {
     test('Settings: Storage → Share LinkUp → Reset setup', () {
-      final src = File(
-              'lib/features/home/presentation/screens/messenger_settings_screen.dart')
-          .readAsStringSync();
+      final src = readEnglish304(
+              'lib/features/home/presentation/screens/messenger_settings_screen.dart');
       final storage = src.indexOf('StorageSettingsRow(store: store)');
       final share = src.indexOf('ShareAppSettingsRow(');
       final reset = src.indexOf("title: 'Reset setup'");
@@ -29,8 +28,7 @@ void main() {
 
     test('People: card before Requests, hidden while searching', () {
       final src =
-          File('lib/features/directory/presentation/contacts_screen.dart')
-              .readAsStringSync();
+          readEnglish304('lib/features/directory/presentation/contacts_screen.dart');
       final card = src.indexOf('InviteNearbyCard(');
       final requests = src.indexOf("MessengerGroupLabel('Requests'");
       expect(card, greaterThan(0));
@@ -41,23 +39,20 @@ void main() {
     test('no new permission; channel registered; logs never hold the password',
         () {
       final manifest =
-          File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+          readEnglish304('android/app/src/main/AndroidManifest.xml');
       expect('uses-permission'.allMatches(manifest).length, 26); // Bundle 226: +4 Bluetooth; 275: +1 REQUEST_INSTALL_PACKAGES
-      final main = File(
-              'android/app/src/main/kotlin/com/sajjad/locallink/MainActivity.kt')
-          .readAsStringSync();
+      final main = readEnglish304(
+              'android/app/src/main/kotlin/com/sajjad/locallink/MainActivity.kt');
       expect(main, contains('AppShareNative.CHANNEL'));
-      final native = File(
-              'android/app/src/main/kotlin/com/sajjad/locallink/AppShareNative.kt')
-          .readAsStringSync();
+      final native = readEnglish304(
+              'android/app/src/main/kotlin/com/sajjad/locallink/AppShareNative.kt');
       for (final line in native.split('\n').where((l) => l.contains('Log.'))) {
         expect(line, isNot(contains('ssid')));
         expect(line, isNot(contains('key')));
         expect(line, isNot(contains('password')));
       }
-      final lnm = File(
-              'android/app/src/main/kotlin/com/sajjad/locallink/LocalNetManager.kt')
-          .readAsStringSync();
+      final lnm = readEnglish304(
+              'android/app/src/main/kotlin/com/sajjad/locallink/LocalNetManager.kt');
       expect(lnm, contains('"for" to forOwners'));
       expect(lnm, contains('owners.has(AppSharePolicy.OWNER_MESH)) tags()?.setHotspot'));
     });

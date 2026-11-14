@@ -196,7 +196,7 @@ void main() {
   group('bars look (pick B)', () {
     Future<List<Rect>> paintBars(WidgetTester t, VoiceWave w) async {
       await t.pumpWidget(Directionality(
-          textDirection: TextDirection.ltr, child: Center(child: SizedBox(width: 30, child: w))));
+          textDirection: TextDirection.ltr, child: Center(child: SizedBox(width: 35, child: w))));
       final ro = t.renderObject<RenderCustomPaint>(find.descendant(of: find.byWidget(w), matching: find.byType(CustomPaint)));
       final rects = <Rect>[];
       final canvas = _RecordingCanvas(rects);
@@ -204,12 +204,12 @@ void main() {
       return rects;
     }
 
-    testWidgets('2 px lines, 1 px gaps; none played at 0:00; dot follows the play point', (t) async {
+    testWidgets('2.5 px lines, 1 px gaps (304); none played at 0:00; dot follows the play point', (t) async {
       final rects = await paintBars(
           t, VoiceWave(levels: List<double>.filled(10, .5), color: Colors.grey, playedColor: Colors.blue, fit: true));
       expect(rects.length, 10);
-      expect(rects.first.width, 2);
-      expect(rects[1].left - rects[0].left, 3);
+      expect(rects.first.width, 2.5);
+      expect(rects[1].left - rects[0].left, 3.5);
       final painter = _RecordingCanvas.lastColors;
       expect(painter.every((c) => c.toARGB32() == Colors.grey.toARGB32()), isTrue);
       _RecordingCanvas.circles.clear();
@@ -224,7 +224,7 @@ void main() {
               dot: true));
       expect(_RecordingCanvas.lastColors.where((c) => c.toARGB32() == Colors.blue.toARGB32()).length, 5);
       expect(_RecordingCanvas.circles.length, 1);
-      expect(_RecordingCanvas.circles.single.dx, closeTo(14.5, .01));
+      expect(_RecordingCanvas.circles.single.dx, closeTo(17, .01));
     });
   });
 
@@ -251,8 +251,8 @@ void main() {
       // Paused preview = the same bars as the bubble: grey + blue + dot.
       final i = w.indexOf("ValueKey('voice_preview_wave')");
       expect(w.substring(i, i + 330), allOf(contains('dot: true'), contains('playedColor: colors.primary')));
-      expect(w, contains('static const double barWidth = 2;'));
-      expect(w, contains('static const double step = 3;'));
+      expect(w, contains('static const double barWidth = 2.5;'));
+      expect(w, contains('static const double step = 3.5;'));
     });
   });
 

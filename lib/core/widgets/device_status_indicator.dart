@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/widgets/local_link_status_badge.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Reachability indicator (Bundle 52B): a peer can be Nearby (reachable on
 /// the direct link: LAN / Wi-Fi Direct / mesh — works without the server),
@@ -55,8 +56,8 @@ class DeviceStatusIndicator extends StatelessWidget {
       );
     }
     final tooltip = switch (_channel) {
-      'nearby' => 'Nearby - direct link',
-      'server' => 'Online - via server',
+      'nearby' => L.t.nearbyDirectLink,
+      'server' => L.t.onlineViaServer,
       _ => label,
     };
     return Tooltip(

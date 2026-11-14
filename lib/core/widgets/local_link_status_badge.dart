@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class LocalLinkStatusBadge extends StatelessWidget {
   final String label;
@@ -18,7 +19,7 @@ class LocalLinkStatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
-      label: 'Connection status: $label',
+      label: L.t.connectionStatus(label),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: color.withOpacity(0.12),

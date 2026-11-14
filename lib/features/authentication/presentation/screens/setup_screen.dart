@@ -22,6 +22,7 @@ import 'package:locallink/features/recovery/domain/recovery_repository_contract.
 import 'package:locallink/features/recovery/presentation/screens/account_recovery_screen.dart';
 import 'package:locallink/features/recovery/presentation/screens/recovery_code_286.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class SetupScreen extends StatefulWidget {
   final AuthenticationRepositoryContract authentication;
@@ -210,28 +211,28 @@ class _SetupScreenState extends State<SetupScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text('Restore encrypted identity keys?'),
+        title: Text(L.t.restoreEncryptedIdentityKeys),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-                'This account has an encrypted backup of its identity keys. Enter the backup passphrase to also restore message decryption keys, or skip it.'),
+            Text(
+                L.t.thisAccountHasAnEncryptedBackup),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Backup passphrase'),
+              decoration: InputDecoration(labelText: L.t.backupPassphrase),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Skip'),
+            child: Text(L.t.skip),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Restore keys'),
+            child: Text(L.t.restoreKeys),
           ),
         ],
       ),
@@ -241,14 +242,14 @@ class _SetupScreenState extends State<SetupScreen> {
   Future<void> _runRestoreWithProgress({String? passphrase}) async {
     while (mounted) {
       if (!mounted) return;
-      final detail = ValueNotifier<String>('Starting restore…');
+      final detail = ValueNotifier<String>(L.t.startingRestore);
       final done = showDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (ctx) => PopScope(
           canPop: false,
           child: AlertDialog(
-            title: const Text('Restoring your account'),
+            title: Text(L.t.restoringYourAccount),
             content: Row(
               children: [
                 const SizedBox(
@@ -274,7 +275,7 @@ class _SetupScreenState extends State<SetupScreen> {
         );
         if (!mounted) return;
         Navigator.of(context, rootNavigator: true).pop();
-        LinkToast.show(context, 'Your conversations and contacts are restored.', kind: LinkToastKind.done);
+        LinkToast.show(context, L.t.yourConversationsAndContactsAreRestored, kind: LinkToastKind.done);
         return;
       } catch (error) {
         if (!mounted) return;
@@ -283,17 +284,17 @@ class _SetupScreenState extends State<SetupScreen> {
           context: context,
           barrierDismissible: false,
           builder: (ctx) => AlertDialog(
-            title: const Text('Restore failed'),
+            title: Text(L.t.restoreFailed),
             content: Text(
-                'The account history could not be restored (${cleanBlocError(error)}). You can retry now — the app will NOT pretend the account is empty.'),
+                L.t.theAccountHistoryCouldNotBe(cleanBlocError(error))),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Later'),
+                child: Text(L.t.later),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Retry'),
+                child: Text(L.t.retry),
               ),
             ],
           ),
@@ -366,13 +367,13 @@ class _SetupScreenState extends State<SetupScreen> {
         final wrong = wrongField288(state.error);
         // Bundle 288 (mock 288): ONE loading only - inside the button.
         final label = busy
-            ? (register ? 'Creating your account…' : 'Signing you in…')
-            : (register ? 'Create account' : 'Log in');
+            ? (register ? L.t.creatingYourAccount : L.t.signingYouIn)
+            : (register ? L.t.createAccount : L.t.logIn);
         return Scaffold(
           backgroundColor: p.screen,
           appBar: AppBar(
             // Bundle 288: "Create account" (was "Register").
-            title: Text(register ? 'Create account' : 'Log in'),
+            title: Text(register ? L.t.createAccount : L.t.logIn),
             backgroundColor: p.screen,
             surfaceTintColor: Colors.transparent,
             foregroundColor: p.text,
@@ -384,8 +385,8 @@ class _SetupScreenState extends State<SetupScreen> {
               children: [
                 LinkHead290(
                   icon: Icons.forum_rounded,
-                  title: register ? 'Create your account' : 'Welcome back',
-                  subtitle: register ? 'Pick a username your friends know' : 'Log in to your account',
+                  title: register ? L.t.createYourAccount : L.t.welcomeBack,
+                  subtitle: register ? L.t.pickAUsernameYourFriendsKnow : L.t.logInToYourAccount,
                 ),
                 // Bundle 288: the error is a red card above the fields
                 // (same words as before).
@@ -398,7 +399,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     LinkField290(
                       fieldKey: const ValueKey('auth288-username'),
                       controller: _username,
-                      label: 'Username',
+                      label: L.t.username,
                       icon: Icons.person_outline_rounded,
                       maxLength: 32,
                       enabled: !busy,
@@ -420,7 +421,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     LinkField290(
                       fieldKey: const ValueKey('auth288-password'),
                       controller: _password,
-                      label: 'Password',
+                      label: L.t.password,
                       icon: Icons.lock_outline_rounded,
                       obscureText: _obscurePassword,
                       enabled: !busy,
@@ -439,7 +440,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     if (register) ...[
                       if (_password.text.isNotEmpty) LinkStrength290(password: _password.text) else const SizedBox(height: 6),
                       LinkRules290(rules: [
-                        LinkRule290('At least 8 characters', ok: _password.text.length >= 8),
+                        LinkRule290(L.t.atLeast8Characters, ok: _password.text.length >= 8),
                       ]),
                     ],
                     if (!register)
@@ -451,9 +452,9 @@ class _SetupScreenState extends State<SetupScreen> {
                           style: TextButton.styleFrom(
                             foregroundColor: p.link,
                             disabledForegroundColor: p.link.withValues(alpha: 0.5),
-                            textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 13.5, fontWeight: FontWeight.w600),
+                            textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, fontSize: 13.5, fontWeight: FontWeight.w600),
                           ),
-                          child: const Text('Forgot password?'),
+                          child: Text(L.t.forgotPassword2),
                         ),
                       ),
                   ]),
@@ -468,8 +469,8 @@ class _SetupScreenState extends State<SetupScreen> {
                 const SizedBox(height: 8),
                 LinkAltLine290(
                   key: const ValueKey('auth288-switch'),
-                  lead: register ? 'Have an account?' : 'New here?',
-                  action: register ? 'Log in' : 'Create an account',
+                  lead: register ? L.t.haveAnAccount : L.t.newHere,
+                  action: register ? L.t.logIn : L.t.createAnAccount,
                   onTap: busy ? null : _switchMode,
                 ),
               ],

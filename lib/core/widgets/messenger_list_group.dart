@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/widgets/admin_crown.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 153 / 183: shared pieces so Chats, Calls, People, Settings and
 /// Account all look the same.
@@ -225,7 +226,7 @@ class MessengerCallButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return IconButton(
-      tooltip: tooltip,
+      tooltip: L.en(tooltip),
       onPressed: onPressed,
       style: IconButton.styleFrom(
         backgroundColor: colors.primary.withValues(alpha: 0.10),

@@ -3,6 +3,8 @@ analyzer:
     - build/**
     - android/**
     - web/**
+    # 304 (H3): made by flutter gen-l10n; the Urdu words carry RLI/FSI/PDI marks on purpose.
+    - lib/l10n/gen/**
 include: package:flutter_lints/flutter.yaml
 
 linter:

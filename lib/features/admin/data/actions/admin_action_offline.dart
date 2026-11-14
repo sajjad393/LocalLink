@@ -1,6 +1,7 @@
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_service.dart';
 import 'package:locallink/features/admin/data/models/admin_block_record.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 220: the existing admin screens call this right after their own
 /// action. With the server connected it does nothing (the server makes the
@@ -30,7 +31,7 @@ abstract final class AdminActionOffline {
         words: words,
         inner: inner,
       );
-      return 'Sent to all phones · Pending until it is done';
+      return L.t.sentToAllPhonesPendingUntil;
     } on StateError catch (e) {
       return e.message;
     } catch (e) {

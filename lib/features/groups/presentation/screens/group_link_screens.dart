@@ -16,6 +16,7 @@ import 'package:locallink/core/widgets/group_avatar.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/groups/data/group_change_hub.dart';
 import 'package:locallink/features/groups/data/group_invite_link.dart';
+import 'package:locallink/l10n/l10n.dart';
 import 'package:locallink/features/groups/presentation/screens/new_group_screen.dart'
     show NewGroupTitle;
 
@@ -52,7 +53,7 @@ class _GroupInviteLinkScreenState extends State<GroupInviteLinkScreen> {
       final t = await s.token(_g, reset: reset);
       if (mounted) setState(() => _token = t);
       if (reset && mounted) {
-        LinkToast.show(context, 'New link made. The old one stops working.', kind: LinkToastKind.done);
+        LinkToast.show(context, L.t.newLinkMadeTheOldOne, kind: LinkToastKind.done);
       }
     } catch (error) {
       if (mounted) showErrorToast(context, error: error);
@@ -64,7 +65,7 @@ class _GroupInviteLinkScreenState extends State<GroupInviteLinkScreen> {
   Future<void> _copy() async {
     await Clipboard.setData(ClipboardData(text: GroupInviteLink.link(_token)));
     if (!mounted) return;
-    LinkToast.show(context, 'Link copied', kind: LinkToastKind.done);
+    LinkToast.show(context, L.t.linkCopied, kind: LinkToastKind.done);
   }
 
   Future<void> _share() async {
@@ -80,17 +81,16 @@ class _GroupInviteLinkScreenState extends State<GroupInviteLinkScreen> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Reset link?'),
-        content: const Text('The old link stops working. People who have it '
-            "can't use it to join."),
+        title: Text(L.t.resetLink2),
+        content: Text(L.t.theOldLinkStopsWorkingPeople),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(c, false),
-              child: const Text('Cancel')),
+              child: Text(L.t.cancel)),
           TextButton(
               key: const ValueKey('link_reset_yes'),
               onPressed: () => Navigator.pop(c, true),
-              child: const Text('Reset link')),
+              child: Text(L.t.resetLink)),
         ],
       ),
     );
@@ -105,7 +105,7 @@ class _GroupInviteLinkScreenState extends State<GroupInviteLinkScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: NewGroupTitle(title: 'Invite with link', subtitle: _g.name),
+        title: NewGroupTitle(title: L.t.inviteWithLink, subtitle: _g.name),
       ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
@@ -125,15 +125,14 @@ class _GroupInviteLinkScreenState extends State<GroupInviteLinkScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(22, 18, 22, 0),
               child: Text.rich(
-                const TextSpan(children: [
+                TextSpan(children: L.spans([
                   TextSpan(
-                      text: 'This group works only Nearby (it is not on the '
-                          "server yet), so a link can't work. Use "),
+                      text: L.t.thisGroupWorksOnlyNearbyIt),
                   TextSpan(
-                      text: 'Invite with QR',
+                      text: L.t.inviteWithQr,
                       style: TextStyle(fontWeight: FontWeight.w700)),
-                  TextSpan(text: ', or wait until a member is Online once.'),
-                ]),
+                  TextSpan(text: L.t.orWaitUntilAMemberIs),
+                ])),
                 key: const ValueKey('link_nearby_only'),
                 textAlign: TextAlign.center,
                 style: hint,
@@ -175,9 +174,7 @@ class _GroupInviteLinkScreenState extends State<GroupInviteLinkScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
               child: Text(
-                  'Anyone with LinkUp who opens this link can ask to join, '
-                  'from anywhere. It needs internet (the server). With '
-                  '"Approve new members" on, an admin must say yes.',
+                  L.t.anyoneWithLinkupWhoOpensThis,
                   style: hint),
             ),
             MessengerListGroup(
@@ -186,22 +183,22 @@ class _GroupInviteLinkScreenState extends State<GroupInviteLinkScreen> {
                 _LinkRow(
                   key: const ValueKey('link_copy'),
                   icon: Icons.copy_rounded,
-                  title: 'Copy link',
-                  subtitle: 'Paste it in any app',
+                  title: L.t.copyLink,
+                  subtitle: L.t.pasteItInAnyApp,
                   onTap: _token.isEmpty ? null : _copy,
                 ),
                 _LinkRow(
                   key: const ValueKey('link_share'),
                   icon: Icons.share_outlined,
-                  title: 'Share link',
-                  subtitle: 'WhatsApp, SMS, email…',
+                  title: L.t.shareLink,
+                  subtitle: L.t.whatsappSmsEmail,
                   onTap: _token.isEmpty ? null : _share,
                 ),
                 _LinkRow(
                   key: const ValueKey('link_reset'),
                   icon: Icons.restart_alt_rounded,
-                  title: 'Reset link',
-                  subtitle: 'The old link stops working',
+                  title: L.t.resetLink,
+                  subtitle: L.t.theOldLinkStopsWorking,
                   red: true,
                   onTap: _busy || _token.isEmpty ? null : _reset,
                 ),
@@ -298,7 +295,7 @@ class _JoinGroupByLinkScreenState extends State<JoinGroupByLinkScreen> {
   Future<void> _load() async {
     final s = GroupInviteService.instance;
     if (s == null) {
-      setState(() => _error = 'Sign in to the server to open group links.');
+      setState(() => _error = L.t.signInToTheServerTo);
       return;
     }
     try {
@@ -357,7 +354,7 @@ class _JoinGroupByLinkScreenState extends State<JoinGroupByLinkScreen> {
     final big = FilledButton.styleFrom(
       minimumSize: const Size.fromHeight(48),
       shape: const StadiumBorder(),
-      textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 15.5, fontWeight: FontWeight.w700),
+      textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, fontSize: 15.5, fontWeight: FontWeight.w700),
     );
     final ghost = OutlinedButton.styleFrom(
       minimumSize: const Size.fromHeight(48),
@@ -365,10 +362,10 @@ class _JoinGroupByLinkScreenState extends State<JoinGroupByLinkScreen> {
       side: BorderSide(color: colors.outlineVariant),
       foregroundColor: colors.onSurface,
       disabledForegroundColor: colors.onSurface,
-      textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 15.5, fontWeight: FontWeight.w700),
+      textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, fontSize: 15.5, fontWeight: FontWeight.w700),
     );
     return Scaffold(
-      appBar: AppBar(titleSpacing: 0, title: const Text('Join group')),
+      appBar: AppBar(titleSpacing: 0, title: Text(L.t.joinGroup)),
       body: ListView(
         padding: const EdgeInsets.only(top: 30, bottom: 24),
         children: [
@@ -408,7 +405,7 @@ class _JoinGroupByLinkScreenState extends State<JoinGroupByLinkScreen> {
                         key: const ValueKey('join_link_open'),
                         onPressed: () => _open(p.groupId),
                         style: big,
-                        child: const Text('Open group'),
+                        child: Text(L.t.openGroup),
                       ),
                     'requested' => Opacity(
                         opacity: .9,
@@ -416,21 +413,20 @@ class _JoinGroupByLinkScreenState extends State<JoinGroupByLinkScreen> {
                           key: const ValueKey('join_link_requested'),
                           onPressed: null,
                           style: ghost,
-                          child: const Text('Requested ✓'),
+                          child: Text(L.t.requested2),
                         ),
                       ),
                     _ => FilledButton(
                         key: const ValueKey('join_link_join'),
                         onPressed: _busy ? null : _join,
                         style: big,
-                        child: Text(p.approve ? 'Ask to join' : 'Join group'),
+                        child: Text(p.approve ? L.t.askToJoin : L.t.joinGroup),
                       ),
                   },
                   const SizedBox(height: 10),
                   if (p.status == 'requested')
                     Text(
-                        'An admin must say yes. This stays for 24 hours. '
-                        'The group opens in your Chats when it is done.',
+                        L.t.anAdminMustSayYesThis,
                         textAlign: TextAlign.center,
                         style: hint)
                   else if (p.status != 'member')
@@ -438,7 +434,7 @@ class _JoinGroupByLinkScreenState extends State<JoinGroupByLinkScreen> {
                       key: const ValueKey('join_link_not_now'),
                       onPressed: () => Navigator.of(context).maybePop(),
                       style: ghost,
-                      child: const Text('Not now'),
+                      child: Text(L.t.notNow),
                     ),
                 ],
               ),
@@ -482,9 +478,9 @@ class _Faces extends StatelessWidget {
 
 String friendlyLinkError(Object error) {
   if (error is GroupActionException && error.code == 'GROUP_LINK_INVALID') {
-    return "This invite link doesn't work any more. Ask for a new one.";
+    return L.t.thisInviteLinkDoesnTWork2;
   }
-  return "Can't open the link now. Check the internet and try again.";
+  return L.t.canTOpenTheLinkNow;
 }
 
 // ---------------------------------------------------------------- L3
@@ -524,8 +520,8 @@ class _GroupInviteCardState extends State<GroupInviteCard> {
     final colors = Theme.of(context).colorScheme;
     final p = _p;
     final sub = p == null
-        ? 'Group invite'
-        : 'Group invite · ${p.members} ${p.members == 1 ? 'member' : 'members'}';
+        ? L.t.groupInvite
+        : L.t.groupInvite2(p.members, p.members == 1 ? 'member' : 'members');
     return SizedBox(
       width: 250,
       child: Material(
@@ -545,7 +541,7 @@ class _GroupInviteCardState extends State<GroupInviteCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(p?.name ?? 'Group',
+                      Text(p?.name ?? L.t.group,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -566,7 +562,7 @@ class _GroupInviteCardState extends State<GroupInviteCard> {
                     color: const Color(0xFF1E5BFF),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Text(p?.status == 'member' ? 'Open' : 'Join',
+                  child: Text(p?.status == 'member' ? L.t.open : L.t.join,
                       style: const TextStyle(
                           color: Colors.white,
                           fontSize: 13,

@@ -3,6 +3,7 @@ import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_offline.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 212: who is being blocked / unblocked.
 class BlockTarget {
@@ -60,22 +61,22 @@ class AdminBlockConfirmDialog extends StatelessWidget {
     final first = target.name.split(' ').first;
     final rows = block
         ? <(IconData, Color, String, String)>[
-            (Icons.block, kBlockRed, 'No messages or calls',
-                "Can't send or get them on any phone"),
-            (Icons.wifi_tethering, const Color(0xFF1E5BFF), 'Goes out right away',
-                'Nearby phones now, server when online'),
-            (Icons.check, kUnblockGreen, 'Old chats stay',
-                '$first can still read them. Unblock anytime'),
-            (Icons.hub_outlined, const Color(0xFF1E5BFF), 'Still helps the mesh',
-                "The phone carries others' locked messages"),
+            (Icons.block, kBlockRed, L.t.noMessagesOrCalls,
+                L.t.canTSendOrGetThem),
+            (Icons.wifi_tethering, const Color(0xFF1E5BFF), L.t.goesOutRightAway,
+                L.t.nearbyPhonesNowServerWhenOnline),
+            (Icons.check, kUnblockGreen, L.t.oldChatsStay,
+                L.t.canStillReadThemUnblockAnytime(first)),
+            (Icons.hub_outlined, const Color(0xFF1E5BFF), L.t.stillHelpsTheMesh,
+                L.t.thePhoneCarriesOthersLockedMessages),
           ]
         : <(IconData, Color, String, String)>[
-            (Icons.chat_bubble_outline, kUnblockGreen, 'Messages and calls work again',
-                'On every phone the unblock reaches'),
-            (Icons.wifi_tethering, const Color(0xFF1E5BFF), 'Goes out right away',
-                'Nearby phones now, server when online'),
-            (Icons.login, kUnblockGreen, 'No new sign-in',
-                '$first can use LinkUp at once'),
+            (Icons.chat_bubble_outline, kUnblockGreen, L.t.messagesAndCallsWorkAgain,
+                L.t.onEveryPhoneTheUnblockReaches),
+            (Icons.wifi_tethering, const Color(0xFF1E5BFF), L.t.goesOutRightAway,
+                L.t.nearbyPhonesNowServerWhenOnline),
+            (Icons.login, kUnblockGreen, L.t.noNewSignIn,
+                L.t.canUseLinkupAtOnce(first)),
           ];
     return Dialog(
       key: const ValueKey('admin_block_confirm'),
@@ -92,14 +93,14 @@ class AdminBlockConfirmDialog extends StatelessWidget {
                 color: main, size: 30),
           ),
           const SizedBox(height: 12),
-          Text(block ? 'Block ${target.name}?' : 'Unblock ${target.name}?',
+          Text(block ? L.t.block3(target.name) : L.t.unblock3(target.name),
               textAlign: TextAlign.center,
               style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
                   color: Color(0xFF111827))),
           const SizedBox(height: 4),
-          const Text('For everyone, on all LinkUp phones',
+          Text(L.t.forEveryoneOnAllLinkupPhones,
               style: TextStyle(fontSize: 13.5, color: Color(0xFF5B6472))),
           const SizedBox(height: 14),
           Container(
@@ -178,7 +179,7 @@ class AdminBlockConfirmDialog extends StatelessWidget {
                   foregroundColor: Colors.white,
                   shape: const StadiumBorder()),
               onPressed: () => Navigator.pop(context, true),
-              child: Text(block ? 'Block for everyone' : 'Unblock for everyone',
+              child: Text(block ? L.t.blockForEveryone : L.t.unblockForEveryone,
                   style: const TextStyle(
                       fontSize: 15, fontWeight: FontWeight.w700)),
             ),
@@ -186,7 +187,7 @@ class AdminBlockConfirmDialog extends StatelessWidget {
           const SizedBox(height: 4),
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel',
+            child: Text(L.t.cancel,
                 style: TextStyle(
                     fontWeight: FontWeight.w700, color: Color(0xFF5B6472))),
           ),
@@ -203,7 +204,7 @@ Future<bool> runAdminBlock(BuildContext context,
     required bool block}) async {
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (service == null) {
-    LinkToast.maybeOn(messenger, 'Offline blocking is not ready yet.', kind: LinkToastKind.error);
+    LinkToast.maybeOn(messenger, L.t.offlineBlockingIsNotReadyYet, kind: LinkToastKind.error);
     return false;
   }
   if (!await showAdminBlockConfirm(context, target: target, block: block)) {
@@ -225,13 +226,13 @@ Future<bool> runAdminBlock(BuildContext context,
       inner: record.blob,
     ));
     LinkToast.maybeOn(messenger, block
-            ? '${target.name} is blocked for everyone.'
-            : '${target.name} is unblocked for everyone.', kind: LinkToastKind.done);
+            ? L.t.isBlockedForEveryone(target.name)
+            : L.t.isUnblockedForEveryone(target.name), kind: LinkToastKind.done);
     return true;
   } on StateError catch (e) {
     LinkToast.maybeOn(messenger, e.message, kind: LinkToastKind.error);
   } catch (e) {
-    LinkToast.maybeOn(messenger, 'Could not save: $e', kind: LinkToastKind.error);
+    LinkToast.maybeOn(messenger, L.t.couldNotSave(e), kind: LinkToastKind.error);
   }
   return false;
 }

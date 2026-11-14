@@ -1,4 +1,5 @@
 import '../../../core/models/attachment.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 203 (5): files over 50 MB are not sent (no internet road can carry
 /// them reliably). They are dropped when picked / forwarded, with a pop-up.
@@ -23,18 +24,18 @@ class FileSizeRule {
   }
 
   static String title(int count) =>
-      count == 1 ? 'File too big' : '$count files too big';
+      count == 1 ? L.t.fileTooBig : L.t.filesTooBig(count);
 
   static String body(int count, {bool forward = false, bool othersSent = true}) {
     if (forward) {
       final first = count == 1
-          ? "This file is bigger than 50 MB and can't be forwarded."
-          : "These files are bigger than 50 MB and can't be forwarded.";
-      return othersSent ? '$first The other items were forwarded.' : first;
+          ? L.t.thisFileIsBiggerThan50
+          : L.t.theseFilesAreBiggerThan50;
+      return othersSent ? L.t.theOtherItemsWereForwarded(first) : first;
     }
     return count == 1
-        ? 'This file is bigger than 50 MB, so it was not added.'
-        : 'These files are bigger than 50 MB, so they were not added.';
+        ? L.t.thisFileIsBiggerThan502
+        : L.t.theseFilesAreBiggerThan502;
   }
 
   /// "63 MB" style size for the pop-up list.

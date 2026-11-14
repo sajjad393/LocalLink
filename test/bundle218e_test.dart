@@ -1,6 +1,5 @@
 // Bundle 218e: what she sees — the join cards, the stuck cards, the
 // Profile phone note, the admin "Joined from offline" line.
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +19,7 @@ import 'package:locallink/features/recovery/presentation/widgets/recovery_code_s
 
 import 'admin_test_support.dart';
 import 'support/g211_fakes.dart';
+import 'support/l10n_source_304.dart';
 
 class _Store extends Store211 {
   final settings = <String, String>{};
@@ -196,7 +196,7 @@ void main() {
   });
 
   group('Home wiring (source)', () {
-    final src = File('lib/features/home/presentation/screens/home_screen.dart').readAsStringSync();
+    final src = readEnglish304('lib/features/home/presentation/screens/home_screen.dart');
     test('cards first on Chats; the stuck card replaces the offline banner', () {
       expect(src, contains('..._joinCards218(),'));
       expect(src, contains('JoinCard218.stuck(block: _block218, onTry: _tryAgain218)'));
@@ -208,7 +208,7 @@ void main() {
       expect(src, contains("join = {'kind': 'renamed', 'name': renamed, 'was': ''};"));
       expect(src, contains('_renamedAccountNotice'));
       expect(src.indexOf('..._joinCards218(),'),
-          lessThan(src.indexOf("const MessengerGroupLabel('Conversations', top: 12)")));
+          lessThan(src.indexOf("MessengerGroupLabel('Conversations', top: 12)")));
     });
     test('OK and I saved it clear their settings', () {
       expect(src, contains('writeSetting(OfflineAccountSyncService.joinNoticeKey, \'\')'));

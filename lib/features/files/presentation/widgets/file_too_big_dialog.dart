@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/file_size_rule.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 203 (5): one file row in the pop-up (name + size).
 class TooBigFile {
@@ -54,7 +55,7 @@ Future<void> showFileTooBigDialog(
               ]),
             ),
           if (files.length > 5)
-            Text('+${files.length - 5} more',
+            Text(L.t.more(files.length - 5),
                 style: const TextStyle(color: Color(0xFF6A6B73))),
         ],
       ),

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/link_kit_290.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Fixed values from the mock CSS.
 abstract final class AddUi283 {
@@ -234,7 +235,7 @@ class _SearchBox283State extends State<SearchBox283> {
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,
-              hintText: 'Search name or @username',
+              hintText: L.t.searchNameOrUsername,
               hintStyle: TextStyle(fontSize: 14.5, color: hint),
             ),
           ),
@@ -243,7 +244,7 @@ class _SearchBox283State extends State<SearchBox283> {
           IconButton(
             onPressed: widget.busy ? null : widget.onClear,
             icon: Icon(Icons.close, size: 20, color: iconColor),
-            tooltip: 'Clear',
+            tooltip: L.t.clear,
           )
         else
           const SizedBox(width: 10),
@@ -303,7 +304,7 @@ class _LivePill283State extends State<LivePill283> with SingleTickerProviderStat
           ]),
         ),
         const SizedBox(width: 6),
-        Text(widget.text,
+        Text(L.en(widget.text),
             style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: p.isDark ? p.teal : const Color(0xFF0F766E))),
       ]),
     );
@@ -542,13 +543,13 @@ class NotFoundCard283 extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(
           child: Text.rich(
-            TextSpan(children: [
-              const TextSpan(text: 'No one called '),
+            TextSpan(children: L.spans([
+              TextSpan(text: L.t.noOneCalled),
               TextSpan(
                   text: '"$query"',
                   style: TextStyle(fontWeight: FontWeight.w700, color: p.isDark ? Colors.white : const Color(0xFF111111))),
-              const TextSpan(text: ' on LinkUp'),
-            ]),
+              TextSpan(text: L.t.onLinkup),
+            ])),
             style: TextStyle(fontSize: 13.5, color: p.isDark ? const Color(0xFFCFD1DB) : const Color(0xFF374151)),
           ),
         ),
@@ -591,7 +592,7 @@ class QuietLine283 extends StatelessWidget {
 class QrHint283 extends StatelessWidget {
   const QrHint283({super.key});
 
-  static const String text = 'Not here? Ask them to open My QR code, then tap Scan QR code below.';
+  static String get text => L.t.notHereAskThemToOpen2;
 
   @override
   Widget build(BuildContext context) {
@@ -611,13 +612,13 @@ class QrHint283 extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text.rich(
-                TextSpan(children: [
-                  const TextSpan(text: 'Not here? Ask them to open '),
-                  TextSpan(text: 'My QR code', style: bold),
-                  const TextSpan(text: ', then tap '),
-                  TextSpan(text: 'Scan QR code', style: bold),
-                  const TextSpan(text: ' below.'),
-                ]),
+                TextSpan(children: L.spans([
+                  TextSpan(text: L.t.notHereAskThemToOpen),
+                  TextSpan(text: L.t.myQrCode, style: bold),
+                  TextSpan(text: L.t.thenTap),
+                  TextSpan(text: L.t.scanQrCode, style: bold),
+                  TextSpan(text: L.t.below),
+                ])),
                 style: TextStyle(
                     fontSize: 13, height: 1.4, color: p.isDark ? const Color(0xFFB5B8C5) : const Color(0xFF4B5563)),
               ),
@@ -938,8 +939,8 @@ class EmptyAdd283 extends StatelessWidget {
               key: const ValueKey('add283_opt_qr'),
               icon: Icons.qr_code_2_rounded,
               gradient: LinkKit.brandGradient,
-              title: 'Show my QR code',
-              subtitle: 'Let a friend scan you',
+              title: L.t.showMyQrCode,
+              subtitle: L.t.letAFriendScanYou,
               onTap: onMyQr,
             ),
           ),
@@ -951,8 +952,8 @@ class EmptyAdd283 extends StatelessWidget {
               key: const ValueKey('add283_opt_nearby'),
               icon: Icons.near_me_rounded,
               gradient: AddUi283.purpleGradient,
-              title: 'Find people nearby',
-              subtitle: 'Phones around you with LinkUp',
+              title: L.t.findPeopleNearby,
+              subtitle: L.t.phonesAroundYouWithLinkup,
               onTap: onNearby,
             ),
           ),
@@ -1236,7 +1237,7 @@ class _ScenePainter283 extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(fontSize: size, fontWeight: weight, color: Colors.white, fontFamily: LocalLinkLook.fontFamily),
+        style: TextStyle(fontSize: size, fontWeight: weight, color: Colors.white, fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -1285,12 +1286,12 @@ class ScanButton283 extends StatelessWidget {
             key: const ValueKey('add_contact_scan_283'),
             borderRadius: BorderRadius.circular(26),
             onTap: onPressed,
-            child: const SizedBox(
+            child: SizedBox(
               height: 52,
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Icon(Icons.qr_code_scanner, size: 22, color: Colors.white),
                 SizedBox(width: 10),
-                Text('Scan QR code', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                Text(L.t.scanQrCode, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: Colors.white)),
               ]),
             ),
           ),

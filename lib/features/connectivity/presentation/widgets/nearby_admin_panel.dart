@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_list_page.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_admin_status.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 159.3: read-only "This phone — nearby network" section for the
 /// admin Network & Mesh screen: group, host, bridge, members, links, routes
@@ -54,12 +55,12 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
     final header = Row(
       children: [
         Expanded(
-          child: Text('This phone — nearby network',
+          child: Text(L.t.thisPhoneNearbyNetwork,
               style: theme.textTheme.titleMedium
                   ?.copyWith(fontWeight: FontWeight.w700)),
         ),
         IconButton(
-          tooltip: 'Refresh',
+          tooltip: L.t.refresh,
           onPressed: _refresh,
           icon: const Icon(Icons.refresh),
         ),
@@ -70,40 +71,40 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           header,
-          Text(_failed ? 'Not available on this device.' : 'Loading…',
+          Text(_failed ? L.t.notAvailableOnThisDevice : L.t.loading,
               style: theme.textTheme.bodySmall),
         ],
       );
     }
     final role = switch (s.role) {
-      'host' => 'Host',
-      'member' => 'Member',
-      _ => 'Not in a group',
+      'host' => L.t.host,
+      'member' => L.t.member,
+      _ => L.t.notInAGroup,
     };
     final rows = <(String, String)>[
-      ('Group', s.group ?? '—'),
-      ('Role', role),
-      if (s.role == 'host') ('Members', '${s.members}'),
-      ('Bridge to Wi-Fi', s.bridge ? 'Yes' : 'No'),
-      ('On charger', s.charging ? 'Yes' : 'No'),
-      ('Nearby phones seen', '${s.nearbyTags}'),
-      ('Waiting for a route', '${s.waiting}'),
-      ('Direct links', '${s.directLinks}'),
-      ('Links with checked id', '${s.verifiedLinks}'),
-      ('Relay links (not contacts)', '${s.relayLinks}'),
-      ('Calls passed on now', '${s.relayVoiceCalls}'),
-      ('Packets passed on', '${s.forwardedPackets}'),
-      ('Voice frames passed on', '${s.forwardedVoiceFrames}'),
-      ('File parts passed on', '${s.forwardedFileChunks}'),
+      (L.t.group, s.group ?? '—'),
+      (L.t.role, role),
+      if (s.role == 'host') (L.t.members, '${s.members}'),
+      (L.t.bridgeToWiFi, s.bridge ? L.t.yes : 'No'),
+      (L.t.onCharger, s.charging ? L.t.yes : 'No'),
+      (L.t.nearbyPhonesSeen, '${s.nearbyTags}'),
+      (L.t.waitingForARoute, '${s.waiting}'),
+      (L.t.directLinks, '${s.directLinks}'),
+      (L.t.linksWithCheckedId, '${s.verifiedLinks}'),
+      (L.t.relayLinksNotContacts, '${s.relayLinks}'),
+      (L.t.callsPassedOnNow, '${s.relayVoiceCalls}'),
+      (L.t.packetsPassedOn, '${s.forwardedPackets}'),
+      (L.t.voiceFramesPassedOn, '${s.forwardedVoiceFrames}'),
+      (L.t.filePartsPassedOn, '${s.forwardedFileChunks}'),
       // Bundle 161 (tests).
-      ('Linked group / hotspot (test)', switch (s.localNet) {
-        'linked' => s.localNetKind == 'hotspot' ? 'Hotspot' : 'Group',
-        'joining' => 'Joining…',
+      (L.t.linkedGroupHotspotTest, switch (s.localNet) {
+        'linked' => s.localNetKind == 'hotspot' ? L.t.hotspot : L.t.group,
+        'joining' => L.t.joining,
         _ => 'No',
       }),
-      ('Sharing a hotspot (test)', s.hotspot ? 'Yes' : 'No'),
-      ('Phones linked this way', '${s.localNetPeers}'),
-      ('Short route list', s.compactMap ? 'Yes' : 'No'),
+      (L.t.sharingAHotspotTest, s.hotspot ? L.t.yes : 'No'),
+      (L.t.phonesLinkedThisWay, '${s.localNetPeers}'),
+      (L.t.shortRouteList, s.compactMap ? L.t.yes : 'No'),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,11 +113,11 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
         if (s.wifiBlocked)
           Card(
             color: theme.colorScheme.secondaryContainer,
-            child: const ListTile(
+            child: ListTile(
               dense: true,
               leading: Icon(Icons.wifi_off),
-              title: Text('This Wi-Fi blocks phones from seeing each other'),
-              subtitle: Text('Using nearby groups instead.'),
+              title: Text(L.t.thisWiFiBlocksPhonesFrom),
+              subtitle: Text(L.t.usingNearbyGroupsInstead),
             ),
           ),
         Card(
@@ -133,12 +134,12 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
           ),
         ),
         const SizedBox(height: 8),
-        Text('Routes (${s.routes.length})',
+        Text(L.t.routes(s.routes.length),
             style: theme.textTheme.titleSmall
                 ?.copyWith(fontWeight: FontWeight.w700)),
         if (s.routes.length > kAdminListSearchFrom)
           AdminListSearch(
-            hint: 'Search phone or next hop',
+            hint: L.t.searchPhoneOrNextHop,
             onChanged: (q) => setState(() {
               _routeQuery = q;
               _routeShown = kAdminListPage;
@@ -147,7 +148,7 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
         if (s.routes.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text('No routes yet.', style: theme.textTheme.bodySmall),
+            child: Text(L.t.noRoutesYet, style: theme.textTheme.bodySmall),
           )
         else
           Card(
@@ -161,8 +162,7 @@ class _NearbyAdminPanelState extends State<NearbyAdminPanel> {
                   ListTile(
                     dense: true,
                     title: Text(r.destination),
-                    subtitle: Text('via ${r.nextHop.isEmpty ? '—' : r.nextHop}'
-                        '${r.state.isEmpty || r.state == 'ACTIVE' ? '' : ' · ${r.state.toLowerCase()}'}'),
+                    subtitle: Text(L.t.via(r.nextHop.isEmpty ? '—' : r.nextHop, r.state.isEmpty || r.state == 'ACTIVE' ? '' : ' · ${r.state.toLowerCase()}')),
                     trailing: Text('${r.hops} ${r.hops == 1 ? 'hop' : 'hops'}',
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                   ),

@@ -19,6 +19,7 @@ import 'bubble_media.dart';
 import 'message_options.dart';
 import 'pinch_text_zoom.dart';
 import 'route_mark_298.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class MessageBubble extends StatelessWidget {
   final Message message;
@@ -124,11 +125,11 @@ class MessageBubble extends StatelessWidget {
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Semantics(
-        label: message.text.isEmpty ? 'Message with attachment' : message.text,
+        label: message.text.isEmpty ? L.t.messageWithAttachment : message.text,
         button: onLongPress != null || _canResend,
         hint: _canResend
-            ? 'Message not sent. Tap to resend or delete'
-            : (onLongPress != null ? 'Long press for message actions' : null),
+            ? L.t.messageNotSentTapToResend
+            : (onLongPress != null ? L.t.longPressForMessageActions : null),
         child: GestureDetector(
           onTap: onTap ?? (_canResend ? onFailedTap : null),
           onLongPress: onLongPress,
@@ -175,7 +176,7 @@ class MessageBubble extends StatelessWidget {
                     isMine: isMine,
                     hasHeader: header != null,
                     bubbleMaxWidth: maxWidth,
-                    viewerTitle: isMine ? 'You' : senderName,
+                    viewerTitle: isMine ? L.t.you3 : senderName,
                     viewerSubtitle: _time(message.createdAt),
                     timeOverlay: () => _footer(theme, foreground, onMedia: true),
                     tile: (attachment, {cell, onOpen}) =>

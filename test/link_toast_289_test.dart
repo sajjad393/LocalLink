@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/widgets/movable_fab.dart';
+import 'support/l10n_source_304.dart';
 
 /// Bundle 289: one toast look everywhere (TODO_289 T-1..T-5).
 Widget _host(void Function(BuildContext) onTap, {Brightness b = Brightness.dark, bool fab = false}) =>
@@ -177,14 +178,14 @@ void main() {
     });
 
     test('back-to-exit toast stays 2 s', () {
-      final s = File('lib/features/home/presentation/screens/home_screen.dart').readAsStringSync();
+      final s = readEnglish304('lib/features/home/presentation/screens/home_screen.dart');
       final i = s.indexOf("'Press back again to exit'");
       expect(i, greaterThan(0));
       expect(s.substring(i, i + 120), contains('Duration(seconds: 2)'));
     });
 
     test('admin keys kept', () {
-      final s = File('lib/features/admin/presentation/screens/admin_panel_screen.dart').readAsStringSync();
+      final s = readEnglish304('lib/features/admin/presentation/screens/admin_panel_screen.dart');
       expect(s, contains("ValueKey('admin_no_longer')"));
       expect(s, contains("ValueKey('admin_not_available')"));
     });

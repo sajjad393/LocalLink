@@ -21,6 +21,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/directory/data/peer_photo_book.dart';
 import 'package:locallink/core/services/websocket_service.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class AccountTransferStart {
   final String transferId;
@@ -545,7 +546,7 @@ class LocalLinkApi {
             detail: 'part=${phoneProblem ? 'phone' : 'all'} reason=${reason.length > 60 ? reason.substring(0, 60) : reason}');
         try {
           await store.writeSetting(profileNoteKey256,
-              phoneProblem ? 'Your phone number was not saved: $reason' : 'Your profile change was not saved: $reason');
+              phoneProblem ? L.t.yourPhoneNumberWasNotSaved(reason) : L.t.yourProfileChangeWasNotSaved(reason));
           if (phoneProblem && !_retried218) {
             await _rewritePending218(pending, phoneNumber: '');
             return await _retryOnce218();
@@ -1526,7 +1527,7 @@ class LocalLinkApi {
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       return json['error']?.toString() ?? 'Server error (${response.statusCode})';
     } catch (_) {
-      return 'Server error (${response.statusCode})';
+      return L.t.serverError(response.statusCode);
     }
   }
 }
@@ -1568,11 +1569,11 @@ class GroupActionException implements Exception, FriendlyError {
   /// Plain words for a toast.
   @override
   String get friendly => switch (code) {
-        'GROUP_ADMINS_ONLY' => 'Only admins can do this.',
-        'GROUP_NOT_MEMBER' => "You're no longer a participant in this group.",
-        'GROUP_NOT_CONTACT' => 'You can only add your friends.',
-        'GROUP_LINK_INVALID' => "This invite link doesn't work any more.",
-        'GROUP_FULL' => 'This group is full (100 people).',
+        'GROUP_ADMINS_ONLY' => L.t.onlyAdminsCanDoThis,
+        'GROUP_NOT_MEMBER' => L.t.youReNoLongerAParticipant,
+        'GROUP_NOT_CONTACT' => L.t.youCanOnlyAddYourFriends,
+        'GROUP_LINK_INVALID' => L.t.thisInviteLinkDoesnTWork,
+        'GROUP_FULL' => L.t.thisGroupIsFull100People,
         _ => message,
       };
 

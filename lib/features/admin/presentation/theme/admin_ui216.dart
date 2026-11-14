@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216: design tokens for the redesigned admin pages
 /// (UI_SPEC_216 §1). `admin_theme.dart` is NOT changed – its own test
@@ -200,11 +201,11 @@ abstract final class A216 {
 
   static String linkLabel(A216Link l) => switch (l) {
         A216Link.server => 'Server',
-        A216Link.wifiDirect => 'Wi-Fi Direct',
-        A216Link.mesh => 'Mesh',
+        A216Link.wifiDirect => L.t.wiFiDirect,
+        A216Link.mesh => L.t.mesh,
         A216Link.lan => 'Local Wi-Fi',
-        A216Link.blocked => 'Blocked',
-        A216Link.offline => 'Offline',
+        A216Link.blocked => L.t.blocked,
+        A216Link.offline => L.t.offline,
         A216Link.removed => 'Removed',
       };
 
@@ -239,7 +240,7 @@ class A216Text {
   static TextStyle _s(double size, FontWeight w, Color color, double h,
           {double letter = 0}) =>
       TextStyle(
-        fontFamily: kAdminFont216,
+        fontFamily: kAdminFont216, fontFamilyFallback: L.fontFallback,
         fontSize: size,
         fontWeight: w,
         color: color,
@@ -299,8 +300,8 @@ abstract final class AdminTheme216 {
     final c = dark ? A216Colors.darkColors : A216Colors.light;
     return base.copyWith(
       scaffoldBackgroundColor: c.bg,
-      textTheme: base.textTheme.apply(fontFamily: kAdminFont216),
-      primaryTextTheme: base.primaryTextTheme.apply(fontFamily: kAdminFont216),
+      textTheme: base.textTheme.apply(fontFamily: kAdminFont216, fontFamilyFallback: L.fontFallback),
+      primaryTextTheme: base.primaryTextTheme.apply(fontFamily: kAdminFont216, fontFamilyFallback: L.fontFallback),
       colorScheme: base.colorScheme.copyWith(primary: c.blue),
       dividerColor: c.div,
       // Bundle 289 (T-3): the same toast card as the rest of the app.
@@ -308,7 +309,7 @@ abstract final class AdminTheme216 {
         behavior: SnackBarBehavior.floating,
         backgroundColor: dark ? const Color(0xFF2A2D38) : const Color(0xFF1F2937),
         contentTextStyle: TextStyle(
-            fontFamily: kAdminFont216,
+            fontFamily: kAdminFont216, fontFamilyFallback: L.fontFallback,
             fontSize: 14,
             height: 1.35,
             fontWeight: FontWeight.w500,

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +11,7 @@ import 'package:locallink/features/recovery/domain/recovery_repository_contract.
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 
 import 'support/g211_fakes.dart';
+import 'support/l10n_source_304.dart';
 
 /// Bundle 288: Log in / Create account - ONE loading, red error card, rules.
 class _Auth implements AuthenticationRepositoryContract {
@@ -136,7 +136,7 @@ void main() {
   });
 
   test('source: the second spinner row is gone', () {
-    final s = File('lib/features/authentication/presentation/screens/setup_screen.dart').readAsStringSync();
+    final s = readEnglish304('lib/features/authentication/presentation/screens/setup_screen.dart');
     expect(s, isNot(contains('_stage256(')));
     expect(s, isNot(contains('maxLength: 32,\n                  autocorrect')));
     expect(s, contains("'Creating your account…' : 'Signing you in…'"));

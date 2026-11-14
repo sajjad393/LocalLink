@@ -8,6 +8,7 @@ import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/messenger_conversation_tile.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/directory/presentation/contact_sheets.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// WhatsApp-style call history row: avatar, name, direction arrow + time.
 /// Bundle 99: no trailing call-back button — the ROW itself starts the call.
@@ -55,7 +56,7 @@ class CallHistoryTile extends StatelessWidget {
   String _statusLine() =>
       status == 'Completed'
           ? (duration == null ? date : '$date · $duration')
-          : (duration == null ? '$status, $date' : '$status, $date · $duration');
+          : (duration == null ? '${L.en(status)}, $date' : '${L.en(status)}, $date · $duration');
 
   @override
   Widget build(BuildContext context) {
@@ -158,7 +159,7 @@ class CallHistoryTile extends StatelessWidget {
                       TextSpan(children: [
                         TextSpan(text: '${_statusLine()} · '),
                         TextSpan(
-                          text: '$missedInside missed',
+                          text: L.t.missed(missedInside),
                           style: TextStyle(color: colors.error, fontWeight: FontWeight.w600),
                         ),
                       ]),
@@ -190,7 +191,7 @@ class CallHistoryTile extends StatelessWidget {
       // on a row I blocked opens the Unblock sheet instead of calling.
       trailing: (hubBlocked || blockedMe)
           ? null
-          : MessengerCallButton(tooltip: 'Call back', onPressed: onCall),
+          : MessengerCallButton(tooltip: L.t.callBack, onPressed: onCall),
       onTap: mine
           ? () => _openUnblock(context, peerId)
           : (onOpen ?? (blockedMe || hubBlocked ? null : onCall)),

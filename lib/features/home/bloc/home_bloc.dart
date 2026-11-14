@@ -9,6 +9,7 @@ import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/services/person_phones_237.dart';
 import 'package:locallink/features/home/domain/home_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 final class HomeState extends Equatable {
   final List<Device> devices;
@@ -192,8 +193,8 @@ final class HomeBloc extends Cubit<HomeState> {
           error: null,
           syncNotice: userInitiated
               ? (hasSavedData
-                  ? "Couldn't sync right now — showing your saved conversations."
-                  : "Couldn't reach the server. Conversations will appear when it's back.")
+                  ? L.t.couldnTSyncRightNowShowing
+                  : L.t.couldnTReachTheServerConversations)
               : null,
           loading: false,
         ));
@@ -202,7 +203,7 @@ final class HomeBloc extends Cubit<HomeState> {
           emit(state.copyWith(
             error: null,
             syncNotice: userInitiated
-                ? "Couldn't load your conversations. Please try again in a moment."
+                ? L.t.couldnTLoadYourConversationsPlease
                 : null,
             loading: false,
           ));

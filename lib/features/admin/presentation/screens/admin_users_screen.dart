@@ -12,6 +12,7 @@ import 'package:locallink/core/widgets/admin_crown.dart' show AdminCrownRoom;
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_people216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (pages 12-13): Users + the user sheet.
 class AdminUsersScreen extends StatefulWidget {
@@ -51,7 +52,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
   static String sub(Map<String, dynamic> u) {
     final n = (u['devices'] as num?)?.toInt() ?? 0;
-    final phones = n == 0 ? 'no phone' : plural216(n, 'phone');
+    final phones = n == 0 ? L.t.noPhone : plural216(n, 'phone');
     if (_isAdmin(u)) return '${level216(u['admin_role'])} · $phones';
     return '@${u['username'] ?? ''} · $phones';
   }
@@ -92,7 +93,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       subtitle: (s) => [
         people216(s.users.length + local.length),
         plural216(s.users.where(_isAdmin).length, 'admin'),
-        if (local.isNotEmpty) '${local.length} not on server',
+        if (local.isNotEmpty) L.t.notOnServer(local.length),
       ].join(' · '),
       builder: (context, state) {
         final rows = state.users.where(_match).toList();
@@ -103,7 +104,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         final shownHidden = _showHidden238 ? hiddenRows : const <OfflineUser222>[];
         return [
           AdminSearch216(
-            hint: 'Search name or @username',
+            hint: L.t.searchNameOrUsername,
             fieldKey: const ValueKey('a216_users_search'),
             onChanged: (v) => setState(() => _q = v),
           ),
@@ -118,11 +119,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           if (state.loading && state.users.isEmpty && mine.isEmpty)
             const AdminLoading216()
           else if (rows.isEmpty && mine.isEmpty && shownHidden.isEmpty)
-            const AdminEmptyState216(
+            AdminEmptyState216(
                 icon: Icons.search_rounded,
                 tone: A216Tone.grey,
-                title: 'No one found',
-                body: 'Try another name or filter.')
+                title: L.t.noOneFound,
+                body: L.t.tryAnotherNameOrFilter)
           else
             AdminListCard216([
               for (final u in rows)
@@ -144,7 +145,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     ),
                   ),
                   title: personName216(u, fallback: '${u['id']}'),
-                  subtitle: joinedRecently222(u) ? '${sub(u)} · Joined from offline' : sub(u),
+                  subtitle: joinedRecently222(u) ? L.t.joinedFromOffline2(sub(u)) : sub(u),
                   trailing: Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: AdminTag216(userStatus216(u['status']).text,
@@ -161,9 +162,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                   leading: ServerPersonAvatar216(name: u.name, userId: u.userId, hasAvatar: false),
                   title: u.name,
                   subtitle: offlineSub222(u),
-                  trailing: const Padding(
+                  trailing: Padding(
                     padding: EdgeInsets.only(right: 4),
-                    child: AdminTag216('Offline account', A216Tone.grey),
+                    child: AdminTag216(L.t.offlineAccount, A216Tone.grey),
                   ),
                   onTap: () => showOfflineUserSheet222(context, u),
                 ),
@@ -175,9 +176,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                   leading: ServerPersonAvatar216(name: u.name, userId: u.userId, hasAvatar: false, grey: true),
                   title: u.name,
                   subtitle: hiddenSub238(u),
-                  trailing: const Padding(
+                  trailing: Padding(
                     padding: EdgeInsets.only(right: 4),
-                    child: AdminTag216('Hidden', A216Tone.grey),
+                    child: AdminTag216(L.t.hidden, A216Tone.grey),
                   ),
                   onTap: () => showOfflineUserSheet222(context, u),
                 ),
@@ -198,7 +199,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
 /// Bundle 238: "Not seen for 30+ days · router · 41 days" - why it hides.
 String hiddenSub238(OfflineUser222 u) =>
-    ['Not seen for 30+ days', u.link, offlineShort222(u.seenAt)].where((x) => x.isNotEmpty).join(' · ');
+    [L.t.notSeenFor30Days, u.link, offlineShort222(u.seenAt)].where((x) => x.isNotEmpty).join(' · ');
 
 /// Bundle 238 (mock 238): the switch under the list. Old offline rows
 /// (not seen for 30 days, or a cleared phone that joined again) stay in the
@@ -229,8 +230,8 @@ class ShowHiddenRow238 extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Show hidden ($count)', style: theme.textTheme.bodyMedium),
-                    Text('Offline accounts not seen for 30 days',
+                    Text(L.t.showHidden(count), style: theme.textTheme.bodyMedium),
+                    Text(L.t.offlineAccountsNotSeenFor30,
                         style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                   ],
                 ),
@@ -250,13 +251,13 @@ String offlineShort222(String at, {DateTime? now}) {
   if (t == null) return '';
   final d = (now ?? DateTime.now()).toUtc().difference(t.toUtc());
   if (d.inMinutes < 1) return 'now';
-  if (d.inMinutes < 60) return '${d.inMinutes} min';
+  if (d.inMinutes < 60) return L.t.min(d.inMinutes);
   if (d.inHours < 24) return '${d.inHours} h';
   return plural216(d.inDays, 'day');
 }
 
 String offlineSub222(OfflineUser222 u) =>
-    ['Not on server yet', u.link, offlineShort222(u.seenAt)].where((x) => x.isNotEmpty).join(' · ');
+    [L.t.notOnServerYet, u.link, offlineShort222(u.seenAt)].where((x) => x.isNotEmpty).join(' · ');
 
 /// Bundle 222: a server row that came from an offline account shows a
 /// small note for 7 days (server field `joined_offline_at`, 218e).
@@ -278,17 +279,17 @@ class _OfflineSheet222 extends StatelessWidget {
   final AdminActionService? service;
 
   Future<void> _act(BuildContext context, String action) async {
-    final verb = action == 'block' ? 'Block' : 'Sign out';
+    final verb = action == 'block' ? L.t.block : L.t.signOut;
     final ok = await confirmAdmin216(
       context,
       title: '$verb ${user.name}?',
-      body: 'It goes to her phone by card, over any link. Pending until it is done.',
+      body: L.t.itGoesToHerPhoneBy,
       yes: verb,
       danger: action == 'block',
     );
     if (!ok || !context.mounted) return;
     final s = service ?? AdminActionService.instance;
-    var note = 'Admin actions are not ready on this phone';
+    var note = L.t.adminActionsAreNotReadyOn;
     if (s != null) {
       try {
         await s.make(
@@ -297,11 +298,11 @@ class _OfflineSheet222 extends StatelessWidget {
           label: user.name,
           targetDevices: [if (user.deviceId.isNotEmpty) user.deviceId],
         );
-        note = 'Sent to all phones · Pending until it is done';
+        note = L.t.sentToAllPhonesPendingUntil;
       } on StateError catch (e) {
         note = e.message;
       } catch (_) {
-        note = 'Could not send. Try again';
+        note = L.t.couldNotSendTryAgain;
       }
     }
     if (context.mounted) adminSnack216(context, note);
@@ -335,29 +336,29 @@ class _OfflineSheet222 extends StatelessWidget {
         if (user.username.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 3),
-            child: Text('@${user.username} (may change if taken)', textAlign: TextAlign.center, style: t.cardSub),
+            child: Text(L.t.mayChangeIfTaken(user.username), textAlign: TextAlign.center, style: t.cardSub),
           ),
         const SizedBox(height: 12),
-        kv('Status', 'Offline account · not on server yet', 'a222_os_status'),
-        if (user.phoneModel.isNotEmpty) kv('Phone', user.phoneModel, 'a222_os_phone'),
-        if (seen.isNotEmpty) kv('Seen', seen, 'a222_os_seen'),
-        kv('Server', user.carried ? 'Waiting · carried by this phone' : 'Waiting to join the server', 'a222_os_server'),
+        kv(L.t.status, L.t.offlineAccountNotOnServerYet, 'a222_os_status'),
+        if (user.phoneModel.isNotEmpty) kv(L.t.phone, user.phoneModel, 'a222_os_phone'),
+        if (seen.isNotEmpty) kv(L.t.seen, seen, 'a222_os_seen'),
+        kv('Server', user.carried ? L.t.waitingCarriedByThisPhone : L.t.waitingToJoinTheServer, 'a222_os_server'),
         const SizedBox(height: 14),
         Row(children: [
           Expanded(
-              child: AdminButton216('Block',
+              child: AdminButton216(L.t.block,
                   key: const ValueKey('a222_os_block'),
                   kind: A216ButtonKind.tonal,
                   onTap: () => _act(context, 'block'))),
           const SizedBox(width: 10),
           Expanded(
-              child: AdminButton216('Sign out',
+              child: AdminButton216(L.t.signOut,
                   key: const ValueKey('a222_os_signout'),
                   kind: A216ButtonKind.tonal,
                   onTap: () => _act(context, 'sign_out'))),
         ]),
         const SizedBox(height: 12),
-        Text('Actions go to her phone by card (Pending until done). More actions after she joins the server.',
+        Text(L.t.actionsGoToHerPhoneBy,
             style: t.cardSub),
       ],
     );
@@ -419,13 +420,13 @@ class _UserSheetState extends State<_UserSheet> {
     final label = userStatus216(to).text;
     final ok = await confirmAdmin216(
       context,
-      title: 'Set $_name to $label?',
+      title: L.t.setTo(_name, label),
       body: switch (to) {
-        'suspended' => '$_name can’t sign in until you set Active again.',
-        'disabled' => '$_name’s account is closed. $_name can’t sign in.',
-        _ => '$_name can use LinkUp again.',
+        'suspended' => L.t.canTSignInUntilYou(_name),
+        'disabled' => L.t.sAccountIsClosedCanT(_name, _name),
+        _ => L.t.canUseLinkupAgain(_name),
       },
-      yes: 'Set $label',
+      yes: L.t.setText(label),
       danger: to != 'active',
     );
     if (!ok || !mounted) return;
@@ -442,7 +443,7 @@ class _UserSheetState extends State<_UserSheet> {
 
   Future<void> _pickWifi() async {
     final r = await pickWifiRule216(context,
-        current: _wifi, title: 'Wi-Fi rule for $_name', note: 'For every phone of this account');
+        current: _wifi, title: L.t.wiFiRuleFor(_name), note: L.t.forEveryPhoneOfThisAccount);
     if (r == null || !mounted) return;
     final saved = await context
         .read<AdminBloc>()
@@ -454,16 +455,16 @@ class _UserSheetState extends State<_UserSheet> {
       userId: _id,
       label: _name,
       detail: {'level': 'user', 'wifi_radio_policy': r.picked ?? ''},
-      words: r.picked ?? 'no rule',
+      words: r.picked ?? L.t.noRule,
     );
     if (note != null && mounted) adminSnack216(context, note);
   }
 
   Future<void> _signOutAll() async {
     final ok = await confirmAdmin216(context,
-        title: 'Sign out all phones?',
-        body: '$_name must sign in again on every phone.',
-        yes: 'Sign out',
+        title: L.t.signOutAllPhones2,
+        body: L.t.mustSignInAgainOnEvery(_name),
+        yes: L.t.signOut,
         danger: true);
     if (!ok || !mounted) return;
     final bloc = context.read<AdminBloc>();
@@ -485,7 +486,7 @@ class _UserSheetState extends State<_UserSheet> {
           action: 'sign_out', userId: _id, label: _name, devices: [if (d.isNotEmpty) d]);
     }
     if (mounted) {
-      adminSnack216(context, note ?? '$_name is signed out on ${plural216(mine.length, 'phone')}.');
+      adminSnack216(context, note ?? L.t.isSignedOutOn(_name, plural216(mine.length, 'phone')));
     }
   }
 
@@ -534,7 +535,7 @@ class _UserSheetState extends State<_UserSheet> {
                     const SizedBox(width: 5),
                     Flexible(
                       child: Text(
-                          'Joined from offline · ${joinedOffline218(u['joined_offline_at'])}',
+                          L.t.joinedFromOffline(joinedOffline218(u['joined_offline_at'])),
                           overflow: TextOverflow.ellipsis,
                           style: t.custom(12, FontWeight.w500, c.blue)),
                     ),
@@ -543,11 +544,11 @@ class _UserSheetState extends State<_UserSheet> {
             ]),
           ),
         ]),
-        const AdminSection216('Status'),
-        for (final s in const [
-          ('active', 'Active', 'Can use LinkUp'),
-          ('suspended', 'Suspended', 'Can’t sign in for now'),
-          ('disabled', 'Off', 'Account closed'),
+        AdminSection216(L.t.status),
+        for (final s in [
+          ('active', 'Active', L.t.canUseLinkup),
+          ('suspended', L.t.suspended, L.t.canTSignInForNow),
+          ('disabled', L.t.off, L.t.accountClosed),
         ]) ...[
           AdminRadioCard216(
             key: ValueKey('a216_status_${s.$1}'),
@@ -565,7 +566,7 @@ class _UserSheetState extends State<_UserSheet> {
           AdminRow216(
             key: const ValueKey('a216_wifi_rule'),
             leading: const AdminToneIcon216(Icons.wifi_rounded, A216Tone.teal),
-            title: 'Wi-Fi rule',
+            title: L.t.wiFiRule,
             subtitle: _wifiLoaded ? wifiRuleLabel216(_wifi) : '…',
             enabled: canWifi,
             onTap: _pickWifi,
@@ -573,15 +574,15 @@ class _UserSheetState extends State<_UserSheet> {
           AdminRow216(
             key: const ValueKey('a216_signout_all'),
             leading: const AdminToneIcon216(Icons.logout_rounded, A216Tone.red),
-            title: 'Sign out all phones',
-            subtitle: '$_name must sign in again',
+            title: L.t.signOutAllPhones,
+            subtitle: L.t.mustSignInAgain(_name),
             enabled: canSessions,
             onTap: _signOutAll,
           ),
         ], shadow: false),
         if (!canStatus && !canWifi) ...[
           const SizedBox(height: 10),
-          Text('You can only look.', textAlign: TextAlign.center, style: t.note),
+          Text(L.t.youCanOnlyLook, textAlign: TextAlign.center, style: t.note),
         ],
       ],
     );

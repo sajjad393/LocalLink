@@ -6,6 +6,7 @@ import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/features/transfer/bloc/account_transfer_bloc.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class AccountTransferScreen extends StatefulWidget {
   final AccountTransferRepositoryContract repository;
@@ -26,7 +27,7 @@ class _AccountTransferScreenState extends State<AccountTransferScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Move to a new phone')),
+      appBar: AppBar(title: Text(L.t.moveToANewPhone)),
       body: LocalLinkBlocBuilder(
         bloc: _controller,
         builder: (context, state) {
@@ -49,12 +50,12 @@ class _AccountTransferScreenState extends State<AccountTransferScreen> {
                       Icon(Icons.cloud_off_outlined,
                           size: 46, color: scheme.onSurfaceVariant),
                       const SizedBox(height: 12),
-                      const Text('Transfer needs the server',
+                      Text(L.t.transferNeedsTheServer,
                           style: TextStyle(
                               fontSize: 18, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 6),
                       Text(
-                        'Open this screen again when you are back online.',
+                        L.t.openThisScreenAgainWhenYou,
                         textAlign: TextAlign.center,
                         style: TextStyle(color: scheme.onSurfaceVariant),
                       ),
@@ -67,7 +68,7 @@ class _AccountTransferScreenState extends State<AccountTransferScreen> {
                     if (offline) const SizedBox(height: 10),
                     FilledButton(
                         onPressed: _controller.start,
-                        child: const Text('Try again')),
+                        child: Text(L.t.tryAgain)),
                   ],
                 ),
               ),
@@ -76,9 +77,9 @@ class _AccountTransferScreenState extends State<AccountTransferScreen> {
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              const Text('Move this LinkUp account to another phone.', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+              Text(L.t.moveThisLinkupAccountToAnother, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              const Text('On the new phone, choose “Transfer account from old phone” and scan this QR code. Keep both phones on the same trusted LinkUp network.'),
+              Text(L.t.onTheNewPhoneChooseTransfer),
               const SizedBox(height: 24),
               if (transfer != null)
                 Center(
@@ -89,13 +90,13 @@ class _AccountTransferScreenState extends State<AccountTransferScreen> {
                   ),
                 ),
               const SizedBox(height: 18),
-              Center(child: Text('Expires in ${_controller.remainingLabel()}', style: TextStyle(fontWeight: FontWeight.w700, color: _controller.remaining.inMinutes < 2 ? Theme.of(context).colorScheme.error : null))),
+              Center(child: Text(L.t.expiresIn(_controller.remainingLabel()), style: TextStyle(fontWeight: FontWeight.w700, color: _controller.remaining.inMinutes < 2 ? Theme.of(context).colorScheme.error : null))),
               const SizedBox(height: 18),
-              const Card(child: Padding(padding: EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(Icons.security_outlined), SizedBox(width: 8), Text('Security', style: TextStyle(fontWeight: FontWeight.w700))]), SizedBox(height: 8), Text('This QR contains a one-time transfer credential. Anyone who can scan it may transfer the account, so keep this screen private.')])),),
+              Card(child: Padding(padding: EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(Icons.security_outlined), SizedBox(width: 8), Text(L.t.security, style: TextStyle(fontWeight: FontWeight.w700))]), SizedBox(height: 8), Text(L.t.thisQrContainsAOneTime)])),),
               const SizedBox(height: 14),
-              OutlinedButton.icon(onPressed: _controller.remaining <= Duration.zero ? _controller.start : null, icon: const Icon(Icons.refresh), label: const Text('Generate a new QR')),
+              OutlinedButton.icon(onPressed: _controller.remaining <= Duration.zero ? _controller.start : null, icon: const Icon(Icons.refresh), label: Text(L.t.generateANewQr)),
               const SizedBox(height: 8),
-              OutlinedButton.icon(onPressed: _controller.cancelling ? null : () async { if (await _controller.cancel() && context.mounted) Navigator.pop(context); }, icon: _controller.cancelling ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.cancel_outlined), label: const Text('Cancel transfer')),
+              OutlinedButton.icon(onPressed: _controller.cancelling ? null : () async { if (await _controller.cancel() && context.mounted) Navigator.pop(context); }, icon: _controller.cancelling ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.cancel_outlined), label: Text(L.t.cancelTransfer)),
             ],
           );
         },

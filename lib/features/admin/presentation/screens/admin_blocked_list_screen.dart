@@ -5,6 +5,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_block_confir
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_list_page.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// "12 Nov, 8:49 PM" style short time.
 String blockWhen(String iso) {
@@ -16,7 +17,7 @@ String blockWhen(String iso) {
   ];
   final h = at.hour % 12 == 0 ? 12 : at.hour % 12;
   final m = at.minute.toString().padLeft(2, '0');
-  return '${at.day} ${months[at.month - 1]}, $h:$m ${at.hour < 12 ? 'AM' : 'PM'}';
+  return '${at.day} ${L.en(months[at.month - 1])}, $h:$m ${at.hour < 12 ? 'AM' : 'PM'}';
 }
 
 /// Bundle 212 (E4, mock page 6): "Blocked by admin".
@@ -48,11 +49,11 @@ class _AdminBlockedListScreenState extends State<AdminBlockedListScreen> {
               keys: (e) => [e.record.targetName, e.record.targetUserId]);
           return AdminPage216(
             title: 'Blocked by admin',
-            subtitle: '${all.length} blocked · on every LinkUp phone it reaches',
+            subtitle: L.t.blockedOnEveryLinkupPhoneIt(all.length),
             children: [
               if (all.length > kAdminListSearchFrom) ...[
                 AdminSearch216(
-                  hint: 'Search name',
+                  hint: L.t.searchName,
                   fieldKey: const ValueKey('admin_blocked_search'),
                   onChanged: (q) => setState(() {
                     _query = q;
@@ -62,11 +63,11 @@ class _AdminBlockedListScreenState extends State<AdminBlockedListScreen> {
                 const SizedBox(height: 12),
               ],
               if (all.isEmpty)
-                const AdminEmptyState216(
+                AdminEmptyState216(
                     icon: Icons.verified_user_outlined,
                     tone: A216Tone.green,
-                    title: 'No one is blocked by admin',
-                    body: 'People you block here are stopped on every phone.')
+                    title: L.t.noOneIsBlockedByAdmin,
+                    body: L.t.peopleYouBlockHereAreStopped)
               else
                 AdminListCard216([for (final e in page.visible) _row(e)]),
               const SizedBox(height: 6),
@@ -76,8 +77,8 @@ class _AdminBlockedListScreenState extends State<AdminBlockedListScreen> {
                 onPressed: () => setState(() => _shown += kAdminListPage),
               ),
               const SizedBox(height: 8),
-              const AdminBanner216(A216BannerKind.info, 'Only for this phone?',
-                  body: 'Use "Blocked on this phone". It does not reach other phones.'),
+              AdminBanner216(A216BannerKind.info, L.t.onlyForThisPhone,
+                  body: L.t.useBlockedOnThisPhoneIt),
             ],
           );
         },
@@ -90,12 +91,12 @@ class _AdminBlockedListScreenState extends State<AdminBlockedListScreen> {
         deviceIds: r.targetDevices,
         name: r.targetName.isEmpty ? r.targetUserId : r.targetName);
     final by = r.signer == 'server'
-        ? 'web panel'
+        ? L.t.webPanel
         : (e.source == 'me' ? 'you' : (r.by.isEmpty ? 'admin' : r.by));
     final at = parseAdminTime216(r.at);
     final status = [
-      if (e.source == 'me') 'Reached ${e.reached} phone${e.reached == 1 ? '' : 's'}',
-      e.serverDone ? 'On server' : 'Not on server yet',
+      if (e.source == 'me') L.t.reachedPhone(e.reached, e.reached == 1 ? '' : 's'),
+      e.serverDone ? L.t.onServer : L.t.notOnServerYet,
     ].join(' · ');
     final color = e.serverDone ? const Color(0xFF12805C) : const Color(0xFFB54708);
     return AdminRow216(
@@ -108,7 +109,7 @@ class _AdminBlockedListScreenState extends State<AdminBlockedListScreen> {
         blocked: true,
       ),
       title: target.name,
-      subtitle: 'By $by · ${at == null ? '' : whenSub216(at)}',
+      subtitle: '${L.t.byWho304(by)} · ${at == null ? '' : whenSub216(at)}',
       subtitleWidget: Row(children: [
         Container(
             width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
@@ -121,7 +122,7 @@ class _AdminBlockedListScreenState extends State<AdminBlockedListScreen> {
         ),
       ]),
       trailing: AdminPillButton216(
-        'Unblock',
+        L.t.unblock,
         A216Tone.grey,
         () async {
           await runAdminBlock(context, service: widget.service, target: target, block: false);

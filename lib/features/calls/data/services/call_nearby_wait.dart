@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 225 (P1/P5): "away call" — an outgoing call to a friend with NO
 /// link at all (no router, no Wi-Fi Direct, no mesh).
@@ -153,7 +154,7 @@ class CallNearbyWait extends ChangeNotifier {
     final clean = name.trim().isEmpty ? 'them' : name.trim();
     final shown =
         clean.length > 18 ? '${clean.substring(0, 17).trimRight()}…' : clean;
-    return 'Waiting for $shown to connect…';
+    return L.t.waitingForToConnect(shown);
   }
 
   static String _short(String id) {

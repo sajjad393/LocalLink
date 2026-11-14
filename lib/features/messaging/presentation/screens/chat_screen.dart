@@ -60,6 +60,8 @@ import 'package:locallink/features/messaging/data/read_receipts/read_receipts_se
 import 'package:locallink/features/files/domain/file_size_rule.dart';
 import 'package:locallink/features/files/presentation/widgets/file_too_big_dialog.dart';
 import 'package:locallink/core/widgets/no_gray_press.dart';
+import 'package:locallink/core/widgets/unread_bar_304.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class ChatScreen extends StatefulWidget {
   final ChatBloc controller;
@@ -164,6 +166,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   bool _showJumpArrow = false;
 
+  /// 304 (H2): ids that were unread when the chat opened ("N unread
+  /// messages" bar above the first one). Cleared when you send.
+  Set<String> _unread304 = const <String>{};
+  final GlobalKey _unreadKey304 = GlobalKey();
+
+  void _clearUnread304() {
+    if (_unread304.isEmpty || !mounted) return;
+    setState(() => _unread304 = const <String>{});
+  }
+
   /// Bundle 197a: reply bar, held bubble, Select mode, quote jump flash.
   Message? _replyTo;
   String? _heldId;
@@ -212,7 +224,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
     if (!mounted) return;
     if (userId.isEmpty) {
-      LinkToast.show(context, 'Open this person from People to block them.', kind: LinkToastKind.info);
+      LinkToast.show(context, L.t.openThisPersonFromPeopleTo, kind: LinkToastKind.info);
       return;
     }
     await runBlockFlow(context,
@@ -230,8 +242,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _load() async {
+    // 304 (H2): what is unread now, before the chat marks it read.
+    final unread = await widget.notifications
+            ?.unreadDirectIds304(widget.controller.device.id) ??
+        const <String>[];
     await widget.controller.load();
     if (!mounted) return;
+    if (unread.isNotEmpty) setState(() => _unread304 = unread.toSet());
     await widget.notifications?.markDirectConversationRead(widget.controller.device.id);
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToInitial());
@@ -248,6 +265,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final messageId = widget.initialMessageId;
     if (messageId == null) {
       _scrollToBottom(animated: false);
+      // 304 (H2): open at the unread bar if the unread part is long.
+      final at = _unreadIndex304(widget.controller.messages);
+      if (at >= 0) {
+        WidgetsBinding.instance.addPostFrameCallback(
+            (_) { if (mounted) showUnreadBar304(_scrollController, _unreadKey304, at); });
+      }
       return;
     }
     final index = widget.controller.messages.indexWhere(
@@ -273,6 +296,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
     _scrollController.animateTo(target, duration: LocalLinkMotion.quick, curve: Curves.easeOut);
   }
+
+  /// 304 (H2): the row that gets the unread bar (-1 = none).
+  int _unreadIndex304(List<Message> visible) => _unread304.isEmpty
+      ? -1
+      : visible.indexWhere((m) => _unread304.contains(m.id));
 
   int _lastSeenCount = -1;
 
@@ -314,6 +342,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   /// Bundle 181: one voice note is ready (one file, parts already joined).
   Future<void> _sendVoiceNote(PickedFile file) async {
+    _clearUnread304();
     widget.controller.addPendingAttachments([file]);
     final reply = _takeReply();
     await widget.controller.send('', reply: reply);
@@ -346,6 +375,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final body = _textController.text.trim();
     if (body.isEmpty && widget.controller.pendingAttachments.isEmpty) return;
     _textController.clear();
+    _clearUnread304();
     final reply = _takeReply();
     UiSounds.play(UiSound.messageSent); // Bundle 198: soft "tick"
     await widget.controller.send(body, reply: reply);
@@ -398,7 +428,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }.contains(m.status.toLowerCase());
 
   String _nameOf(Message m) =>
-      _isMine(m) ? 'You' : _peerName(widget.controller.device);
+      _isMine(m) ? L.t.you3 : _peerName(widget.controller.device);
 
   void _toggleSelect(Message m) {
     setState(() {
@@ -490,8 +520,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     LinkToast.show(context, withText.length == 1
-            ? 'Message copied'
-            : '${withText.length} messages copied', kind: LinkToastKind.done);
+            ? L.t.messageCopied
+            : L.t.messagesCopied(withText.length), kind: LinkToastKind.done);
   }
 
   static String _clock(DateTime raw) {
@@ -524,7 +554,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final colors = Theme.of(context).colorScheme;
     final label = m.text.trim().isNotEmpty
         ? m.text
-        : replyKindLabel(replyKindFor(m.attachments));
+        : L.en(replyKindLabel(replyKindFor(m.attachments)));
     return Container(
       constraints: const BoxConstraints(maxWidth: 260),
       padding: const EdgeInsets.fromLTRB(12, 7, 10, 5),
@@ -572,7 +602,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final ok = await widget.controller.deleteForEveryone(ids);
       if (!mounted) return;
       if (!ok) {
-        LinkToast.show(context, 'Too late to delete for everyone', kind: LinkToastKind.error);
+        LinkToast.show(context, L.t.tooLateToDeleteForEveryone, kind: LinkToastKind.error);
       }
     } else {
       await widget.controller.deleteForMe(ids);
@@ -619,7 +649,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _jumpTo(String id, List<Message> visible) {
     final index = visible.indexWhere((m) => m.id == id);
     if (index < 0 || !_scrollController.hasClients) {
-      LinkToast.show(context, 'Message not found', kind: LinkToastKind.error);
+      LinkToast.show(context, L.t.messageNotFound, kind: LinkToastKind.error);
       return;
     }
     setState(() {
@@ -660,7 +690,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       key: const ValueKey('select_bar'),
       backgroundColor: colors.primaryContainer.withValues(alpha: .55),
       leading: IconButton(
-        tooltip: 'Close',
+        tooltip: L.t.close,
         onPressed: () => setState(_selected.clear),
         icon: const Icon(Icons.close),
       ),
@@ -671,21 +701,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (one != null && !blocked)
           IconButton(
             key: const ValueKey('select_reply'),
-            tooltip: 'Reply',
+            tooltip: L.t.reply,
             onPressed: () => _startReply(one, from: 'select'),
             icon: const Icon(Icons.reply_rounded),
           ),
         if (one != null && _isMine(one))
           IconButton(
             key: const ValueKey('select_info'),
-            tooltip: 'Message info',
+            tooltip: L.t.messageInfo,
             onPressed: () => _showInfo(one),
             icon: const Icon(Icons.info_outline_rounded),
           ),
         if (picked.any((m) => m.text.trim().isNotEmpty))
           IconButton(
             key: const ValueKey('select_copy'),
-            tooltip: 'Copy',
+            tooltip: L.t.copy,
             onPressed: () async {
               await _copy(picked);
               if (mounted) setState(_selected.clear);
@@ -698,13 +728,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 !MediaMessageActions.hasRemoved(m.attachments)))
           IconButton(
             key: const ValueKey('select_forward'),
-            tooltip: 'Forward',
+            tooltip: L.t.forward,
             onPressed: () => _forward(picked),
             icon: const Icon(Icons.forward_rounded),
           ),
         IconButton(
           key: const ValueKey('select_delete'),
-          tooltip: 'Delete',
+          tooltip: L.t.delete,
           onPressed: () => _delete(picked),
           icon: const Icon(Icons.delete_outline_rounded),
         ),
@@ -782,17 +812,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Message not sent',
+              Text(L.t.messageNotSent,
                   style: Theme.of(sheetContext).textTheme.titleMedium),
               const SizedBox(height: 8),
               ListTile(
                 leading: const Icon(Icons.refresh_rounded),
-                title: const Text('Resend'),
+                title: Text(L.t.resend),
                 onTap: () => Navigator.pop(sheetContext, 'resend'),
               ),
               ListTile(
                 leading: const Icon(Icons.delete_outline_rounded),
-                title: const Text('Delete'),
+                title: Text(L.t.delete),
                 onTap: () => Navigator.pop(sheetContext, 'delete'),
               ),
             ],
@@ -805,7 +835,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (choice == 'resend') {
       final ok = await bloc.resendFailed(messageId);
       if (!mounted || ok) return;
-      LinkToast.show(context, 'This message cannot be resent', kind: LinkToastKind.error);
+      LinkToast.show(context, L.t.thisMessageCannotBeResent, kind: LinkToastKind.error);
     } else if (choice == 'delete') {
       await bloc.deleteFailed(messageId);
     }
@@ -890,8 +920,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       BuildContext context, Device device, KeyEvent263 e) {
     final colors = Theme.of(context).colorScheme;
     final text = e.waiting
-        ? "${_peerName(device)}'s security code changed. Tap to check."
-        : "${_peerName(device)}'s security code changed. Tap to learn more.";
+        ? L.t.sSecurityCodeChangedTapTo(_peerName(device))
+        : L.t.sSecurityCodeChangedTapTo2(_peerName(device));
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: LocalLinkSpacing.sm),
       child: Center(
@@ -988,13 +1018,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       tone: mine ? NoticeTone302.red : NoticeTone302.grey,
       icon: mine ? Icons.block : Icons.lock_rounded,
       title: mine
-          ? 'You blocked ${_peerName(device)}.'
-          : "You can't message ${_peerName(device)}.",
-      line: mine ? "They can't message or call you." : '',
+          ? L.t.youBlocked3(_peerName(device))
+          : L.t.youCanTMessage(_peerName(device)),
+      line: mine ? L.t.theyCanTMessageOrCall : '',
       action: mine
           ? NoticeButton302(
               key: const ValueKey('chat_blocked_unblock'),
-              label: 'Unblock',
+              label: L.t.unblock,
               filled: false,
               onPressed: () => _unblock(device),
             )
@@ -1014,7 +1044,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         const SizedBox(width: 4),
         Flexible(
           child: Text(
-            admin ? 'Blocked by admin' : 'Old LinkUp',
+            admin ? L.t.blockedByAdmin : L.t.oldLinkup,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context)
@@ -1042,8 +1072,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ),
         child: Text(
           at.isEmpty
-              ? 'You blocked ${_peerName(device)}'
-              : 'You blocked ${_peerName(device)} · $at',
+              ? L.t.youBlocked(_peerName(device))
+              : L.t.youBlocked2(_peerName(device), at),
           style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
         ),
       ),
@@ -1086,6 +1116,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         // Bundle 207 (L2): search hides nothing (like groups); matches are
         // marked, "2 of 3", up / down jumps with the flash.
         final visibleMessages = state.messages;
+        final unreadAt304 = _unreadIndex304(visibleMessages);
         // Bundle 263 (C5): the security code notes of this chat (none while
         // searching).
         final keyEvents = searchQuery.isEmpty
@@ -1134,7 +1165,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               : _searching
                   ? ChatSearchBar(
                       keyPrefix: 'chat',
-                      hint: 'Search messages',
+                      hint: L.t.searchMessages,
                       controller: _searchController,
                       count: matches.length,
                       at: _matchAt,
@@ -1151,7 +1182,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 : null,
             leading: _searching
                 ? IconButton(
-                    tooltip: 'Close search',
+                    tooltip: L.t.closeSearch,
                     onPressed: _closeSearch,
                     icon: const Icon(Icons.arrow_back),
                   )
@@ -1161,8 +1192,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     controller: _searchController,
                     autofocus: true,
                     onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      hintText: 'Search messages',
+                    decoration: InputDecoration(
+                      hintText: L.t.searchMessages,
                       filled: false,
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none, // Bundle 298 (B)
@@ -1208,7 +1239,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                           Theme.of(context).colorScheme.error),
                                   const SizedBox(width: 4),
                                   Text(
-                                    'Blocked',
+                                    L.t.blocked,
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodySmall
@@ -1246,21 +1277,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     // title avatar as a badge — nothing else changed here.
                     // Bundle 196: no call icon when either side blocked.
                     if (widget.onStartCall != null && !iBlocked && !blockedMe && adminBar == null)
-                      IconButton(tooltip: 'Call', onPressed: _startCall, icon: const Icon(Icons.call_outlined)),
+                      IconButton(tooltip: L.t.call, onPressed: _startCall, icon: const Icon(Icons.call_outlined)),
                     // Bundle 197a (mock 15A): tidy pop-up under the ⋮, an
                     // icon on every row, a divider above Clear chat.
                     PopupMenuButton<String>(
                       key: const ValueKey('chat_more_menu'),
-                      tooltip: 'More options',
+                      tooltip: L.t.moreOptions,
                       position: PopupMenuPosition.under,
-                      itemBuilder: (_) => const [
+                      itemBuilder: (_) => [
                         PopupMenuItem(
                           value: 'search',
                           child: ListTile(
                             dense: true,
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(Icons.search),
-                            title: Text('Search messages'),
+                            title: Text(L.t.searchMessages),
                           ),
                         ),
                         PopupMenuItem(
@@ -1269,7 +1300,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             dense: true,
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(Icons.info_outline),
-                            title: Text('Conversation info'),
+                            title: Text(L.t.conversationInfo),
                           ),
                         ),
                         PopupMenuDivider(),
@@ -1279,7 +1310,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             dense: true,
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(Icons.clear_all_rounded),
-                            title: Text('Clear chat'),
+                            title: Text(L.t.clearChat),
                           ),
                         ),
                       ],
@@ -1301,7 +1332,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 // Loading no longer blanks the whole chat: the shimmer only
                 // shows for the very first paint (no messages at all).
                 child: (state.isLoading && visibleMessages.isEmpty)
-                    ? const LocalLinkLoadingView(message: 'Loading messages…')
+                    ? LocalLinkLoadingView(message: L.t.loadingMessages)
                     : (visibleMessages.isEmpty && calls298.isNotEmpty)
                         // Bundle 298 (F): only calls so far.
                         ? ListView(
@@ -1314,10 +1345,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     : visibleMessages.isEmpty
                         ? LocalLinkEmptyView(
                             icon: searchQuery.isEmpty ? Icons.forum_outlined : Icons.search_off,
-                            title: searchQuery.isEmpty ? 'Start the conversation' : 'No messages found',
+                            title: searchQuery.isEmpty ? L.t.startTheConversation : L.t.noMessagesFound,
                             message: searchQuery.isEmpty
-                                ? 'Send a message, photo or file to begin chatting privately.'
-                                : 'Try a different word or phrase.',
+                                ? L.t.sendAMessagePhotoOrFile
+                                : L.t.tryADifferentWordOrPhrase,
                           )
                         : Stack(
                             children: [
@@ -1390,7 +1421,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                       quoteName: reply == null
                                           ? ''
                                           : (reply.from == state.localDeviceId
-                                              ? 'You'
+                                              ? L.t.you3
                                               : _peerName(device)),
                                       quoteIsYou: reply?.from == state.localDeviceId,
                                       quoteMissing: reply != null &&
@@ -1431,6 +1462,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     children: [
                                       ...callsAbove298,
                                       if (dateHere298) _DateDivider(date: message.createdAt),
+                                      if (index == unreadAt304)
+                                        UnreadBar304(
+                                            key: _unreadKey304,
+                                            count: _unread304.length),
                                       // Bundle 263 (C2/C5): security code
                                       // notes made before this message.
                                       if (keyEventsBefore263(keyEvents, visibleMessages, index).isNotEmpty)
@@ -1475,7 +1510,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   child: NoGrayPress(
                                     child: FloatingActionButton.small(
                                       heroTag: null,
-                                      tooltip: 'Jump to latest',
+                                      tooltip: L.t.jumpToLatest,
                                       onPressed: () => _scrollToBottom(animated: true),
                                       child: const Icon(Icons.keyboard_arrow_down_rounded),
                                     ),
@@ -1489,7 +1524,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               if (adminBar != null)
                 // Bundle 302 (B): title + line card.
                 AdminBlockedBar(
-                    text: adminBar,
+                    text: L.en(adminBar),
                     notice: chatNotice302(_peerName(device),
                         peerId: device.id, peerUserId: _peerUserId))
               else if (iBlocked)
@@ -1604,7 +1639,7 @@ class _ReturnToCallChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
           child: ActionChip(
             avatar: const Icon(Icons.call, size: 15, color: Color(0xFF14532D)),
-            label: const Text('Return',
+            label: Text(L.t.returnText,
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,

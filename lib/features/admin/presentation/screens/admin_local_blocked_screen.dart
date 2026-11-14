@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (page 10): "Blocked on this phone" — the old 'Blocked
 /// devices' sheet as a page. Only this phone, online or offline.
@@ -52,17 +53,17 @@ class _AdminLocalBlockedScreenState extends State<AdminLocalBlockedScreen> {
 
   static String subOf(Map<String, Object?> r) {
     final at = parseAdminTime216(r['blocked_at'] ?? r['created_at']);
-    if (at != null) return 'Blocked ${dMMM216(at.toLocal())}';
+    if (at != null) return L.t.blocked2(dMMM216(at.toLocal()));
     final u = r['username']?.toString().trim() ?? '';
-    return u.isEmpty ? 'Blocked' : '@$u';
+    return u.isEmpty ? L.t.blocked : '@$u';
   }
 
   @override
   Widget build(BuildContext context) {
     final rows = _rows;
     return AdminPage216(
-      title: 'Blocked on this phone',
-      subtitle: 'Only this phone, online or offline',
+      title: L.t.blockedOnThisPhone,
+      subtitle: L.t.onlyThisPhoneOnlineOrOffline,
       children: [
         const SizedBox(height: 4),
         if (rows == null)
@@ -74,9 +75,9 @@ class _AdminLocalBlockedScreenState extends State<AdminLocalBlockedScreen> {
           AdminEmptyState216(
             icon: Icons.verified_user_outlined,
             tone: A216Tone.green,
-            title: 'Nobody is blocked here',
-            body: 'To stop someone on every phone, use Blocked by admin.',
-            button: widget.onBlockUser == null ? null : 'Block a user',
+            title: L.t.nobodyIsBlockedHere,
+            body: L.t.toStopSomeoneOnEveryPhone,
+            button: widget.onBlockUser == null ? null : L.t.blockAUser,
             onButton: widget.onBlockUser,
           )
         else
@@ -94,7 +95,7 @@ class _AdminLocalBlockedScreenState extends State<AdminLocalBlockedScreen> {
                 title: nameOf(r),
                 subtitle: subOf(r),
                 trailing: AdminPillButton216(
-                  'Unblock',
+                  L.t.unblock,
                   A216Tone.grey,
                   key: ValueKey('a216_local_unblock_${r['user_id']}'),
                   () async {
@@ -102,7 +103,7 @@ class _AdminLocalBlockedScreenState extends State<AdminLocalBlockedScreen> {
                     if (id.isEmpty) return;
                     await widget.unblock(id);
                     await _reload();
-                    if (context.mounted) adminSnack216(context, '${nameOf(r)} unblocked on this phone.');
+                    if (context.mounted) adminSnack216(context, L.t.unblockedOnThisPhone(nameOf(r)));
                   },
                 ),
               ),

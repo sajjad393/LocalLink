@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 
 import 'admin_crown.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// TODO 290: tap a crown -> a small bubble says the admin level and what
 /// this admin can do for you (owner picks, mock admin_crowns_290.html §5).
@@ -23,20 +24,20 @@ abstract final class CrownTip290 {
   /// Title + line for each level (code: backend adminPermission, 6e3427c).
   static String title(String? role) {
     final r = CrownColors290.norm(role);
-    if (r.isEmpty) return 'Admin';
-    return 'Admin \u00b7 ${r[0].toUpperCase()}${r.substring(1)}';
+    if (r.isEmpty) return L.t.admin;
+    return L.t.admin3(r[0].toUpperCase(), r.substring(1));
   }
 
   static String line(String? role) => switch (CrownColors290.norm(role)) {
         'owner' =>
-          'Developer and creator of LinkUp. Built this app so you can chat and call, even without internet.',
+          L.t.developerAndCreatorOfLinkupBuilt,
         'operator' =>
-          'Can help if you forget your password, lose a phone, or your Wi-Fi settings need fixing.',
+          L.t.canHelpIfYouForgetYour,
         'security' =>
-          'Keeps LinkUp safe. Can help you get back in if you forget your password.',
+          L.t.keepsLinkupSafeCanHelpYou,
         'auditor' =>
-          'Checks that LinkUp works well. Can only look, can not change your account.',
-        _ => 'Helps run LinkUp.',
+          L.t.checksThatLinkupWorksWellCan,
+        _ => L.t.helpsRunLinkup,
       };
 
   /// Bundle 298 (H): 7 s (3 s was too short to read the line).
@@ -296,7 +297,7 @@ class _CrownTapTarget290State extends State<CrownTapTarget290> {
       child: Semantics(
         key: const ValueKey('crown_tip_target'),
         button: true,
-        label: '${CrownTip290.title(widget.role)} crown. Shows what they can do',
+        label: L.t.crownShowsWhatTheyCanDo(CrownTip290.title(widget.role)),
         onTap: _tap,
         excludeSemantics: true,
         child: GestureDetector(
@@ -458,14 +459,14 @@ class CrownTipGeometry290 {
   const CrownTipGeometry290(this.rect, this.under, this.arrowX);
 
   static TextStyle titleStyle(Color c) => TextStyle(
-      fontFamily: LocalLinkLook.fontFamily,
+      fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback,
       fontSize: 14,
       height: 1,
       fontWeight: FontWeight.w700,
       color: c);
 
   static TextStyle lineStyle(Color c) => TextStyle(
-      fontFamily: LocalLinkLook.fontFamily,
+      fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback,
       fontSize: 13,
       height: 1.42,
       fontWeight: FontWeight.w400,

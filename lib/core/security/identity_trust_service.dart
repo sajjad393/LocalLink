@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:locallink/core/security/secure_storage_service.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 enum IdentityTrustState { unverified, verified, changed, revoked }
 
@@ -13,10 +14,10 @@ IdentityTrustState identityTrustStateFromString(String? value) => switch (value)
 extension IdentityTrustStateLabel on IdentityTrustState {
   String get value => name;
   String get label => switch (this) {
-    IdentityTrustState.unverified => 'Unverified',
-    IdentityTrustState.verified => 'Verified',
-    IdentityTrustState.changed => 'Identity changed',
-    IdentityTrustState.revoked => 'Revoked',
+    IdentityTrustState.unverified => L.t.unverified,
+    IdentityTrustState.verified => L.t.verified,
+    IdentityTrustState.changed => L.t.identityChanged,
+    IdentityTrustState.revoked => L.t.revoked,
   };
 }
 

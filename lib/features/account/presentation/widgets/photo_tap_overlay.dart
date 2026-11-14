@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 211 (A3): tap my picture → a dark circle with a camera in the
 /// middle shows for [visibleFor]; tap the camera → [onCamera] (the usual
@@ -68,7 +69,7 @@ class _PhotoTapOverlayState extends State<PhotoTapOverlay> {
     final inner = widget.innerRadius * 2;
     return Semantics(
       button: true,
-      label: 'Change profile photo',
+      label: L.t.changeProfilePhoto,
       child: GestureDetector(
         key: const ValueKey('profile_photo_tap'),
         behavior: HitTestBehavior.opaque,

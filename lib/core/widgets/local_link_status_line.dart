@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class LocalLinkStatusLine extends StatelessWidget {
   final String label;
@@ -20,7 +21,7 @@ class LocalLinkStatusLine extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
-      label: 'Connection status: $label${detail == null ? '' : '. $detail'}',
+      label: L.t.connectionStatus2(label, detail == null ? '' : '. $detail'),
       child: Container(
         padding: const EdgeInsets.symmetric(
           horizontal: LocalLinkSpacing.md,

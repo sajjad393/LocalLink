@@ -4,6 +4,7 @@ import 'package:locallink/core/notifications/local_link_notification_service.dar
 import 'package:locallink/core/notifications/notification_preferences.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_state_view.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   final LocalLinkNotificationService notifications;
@@ -72,7 +73,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     final colors = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      appBar: AppBar(title: Text(L.t.notifications)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           LocalLinkSpacing.screen,
@@ -88,13 +89,13 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                 foregroundColor: colors.onPrimaryContainer,
                 child: const Icon(Icons.notifications_outlined),
               ),
-              title: const Text('Notifications'),
+              title: Text(L.t.notifications),
               subtitle: Text(
                 _enabled == null
-                    ? 'Checking Android permission…'
+                    ? L.t.checkingAndroidPermission
                     : _enabled!
-                        ? 'Message and call alerts are enabled'
-                        : 'Notifications are disabled in Android settings',
+                        ? L.t.messageAndCallAlertsAreEnabled
+                        : L.t.notificationsAreDisabledInAndroidSettings,
               ),
               trailing: _enabled == false
                   ? FilledButton.tonal(
@@ -105,55 +106,55 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('Enable'),
+                          : Text(L.t.enable),
                     )
                   : null,
             ),
           ),
           const SizedBox(height: LocalLinkSpacing.xl),
-          Text('Lock-screen privacy', style: theme.textTheme.titleSmall),
+          Text(L.t.lockScreenPrivacy, style: theme.textTheme.titleSmall),
           const SizedBox(height: LocalLinkSpacing.xs),
           Text(
-            'Choose how much message detail appears when your phone is locked.',
+            L.t.chooseHowMuchMessageDetailAppears,
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: LocalLinkSpacing.sm),
           _privacyTile(
             context,
             value: NotificationPrivacyMode.full,
-            title: 'Show full content',
-            subtitle: 'Show sender and message preview',
+            title: L.t.showFullContent,
+            subtitle: L.t.showSenderAndMessagePreview,
           ),
           _privacyTile(
             context,
             value: NotificationPrivacyMode.senderOnly,
-            title: 'Show sender only',
-            subtitle: 'Hide message text on the lock screen',
+            title: L.t.showSenderOnly,
+            subtitle: L.t.hideMessageTextOnTheLock,
           ),
           _privacyTile(
             context,
             value: NotificationPrivacyMode.hidden,
-            title: 'Hide sensitive content',
-            subtitle: 'Show a generic LinkUp notification',
+            title: L.t.hideSensitiveContent,
+            subtitle: L.t.showAGenericLinkupNotification,
           ),
           const SizedBox(height: LocalLinkSpacing.lg),
-          Text('Android controls', style: theme.textTheme.titleSmall),
+          Text(L.t.androidControls, style: theme.textTheme.titleSmall),
           const SizedBox(height: LocalLinkSpacing.xs),
           Card(
             child: ListTile(
               leading: const Icon(Icons.tune_outlined),
-              title: const Text('Notification channels'),
-              subtitle: const Text(
-                'Manage sounds, vibration and importance in Android settings.',
+              title: Text(L.t.notificationChannels),
+              subtitle: Text(
+                L.t.manageSoundsVibrationAndImportanceIn,
               ),
               trailing: const Icon(Icons.open_in_new),
               onTap: () => widget.notifications.platform.openSystemSettings(),
             ),
           ),
           const SizedBox(height: LocalLinkSpacing.md),
-          const LocalLinkInlineInfo(
+          LocalLinkInlineInfo(
             icon: Icons.lock_outline,
-            message: 'LinkUp keeps notification content separate from your chat content.',
+            message: L.t.linkupKeepsNotificationContentSeparateFrom,
           ),
         ],
       ),

@@ -33,10 +33,10 @@ object CallNotificationManager {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "LinkUp incoming calls",
+            Words304.w(context, "LinkUp incoming calls"),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Incoming LinkUp calls"
+            description = Words304.w(context, "Incoming LinkUp calls")
             setSound(null, null)
             enableVibration(true)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
@@ -115,7 +115,7 @@ object CallNotificationManager {
         }
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF209DEB.toInt()) // Bundle 141
-            .setContentTitle("Incoming call")
+            .setContentTitle(Words304.w(context, "Incoming call"))
             .setContentText(callerName.ifBlank { callerId })
             .setCategory(Notification.CATEGORY_CALL)
             .setPriority(Notification.PRIORITY_MAX)
@@ -127,14 +127,14 @@ object CallNotificationManager {
             .addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(context, android.R.drawable.sym_action_call),
-                    "Accept",
+                    Words304.w(context, "Accept"),
                     acceptPending,
                 ).build(),
             )
             .addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(context, android.R.drawable.ic_menu_close_clear_cancel),
-                    "Reject",
+                    Words304.w(context, "Reject"),
                     rejectPending,
                 ).build(),
             )

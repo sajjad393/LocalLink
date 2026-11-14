@@ -6,6 +6,7 @@ import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/gradient_pill_button.dart';
 import 'package:locallink/core/widgets/local_link_button.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class CreateGroupResult {
   final String name;
@@ -47,7 +48,7 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('New group'),
+      title: Text(L.t.newGroup),
       content: SizedBox(
         width: 380,
         child: SingleChildScrollView(
@@ -56,18 +57,18 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
             children: [
               LocalLinkTextField(
                 controller: _nameController,
-                labelText: 'Group name',
+                labelText: L.t.groupName,
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: LocalLinkSpacing.lg),
-              const Align(
+              Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Members', style: LocalLinkTypography.cardTitle),
+                child: Text(L.t.members, style: LocalLinkTypography.cardTitle),
               ),
               if (widget.devices.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: LocalLinkSpacing.lg),
-                  child: Text('No other registered devices are available.'),
+                  child: Text(L.t.noOtherRegisteredDevicesAreAvailable),
                 )
               else
                 ...widget.devices.map(
@@ -93,10 +94,10 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
         ),
       ),
       actions: [
-        LocalLinkButton(variant: LocalLinkButtonVariant.text, expanded: false, onPressed: () => Navigator.pop(context), label: 'Cancel'),
+        LocalLinkButton(variant: LocalLinkButtonVariant.text, expanded: false, onPressed: () => Navigator.pop(context), label: L.t.cancel),
         GradientPillButton(
           onPressed: _canCreate ? _create : null,
-          child: const Text('Create'),
+          child: Text(L.t.create),
         ),
       ],
     );

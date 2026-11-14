@@ -9,6 +9,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_format216.da
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_people216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (page 15): who is signed in, on which phone.
 class AdminSessionsScreen extends StatelessWidget {
@@ -27,9 +28,9 @@ class AdminSessionsScreen extends StatelessWidget {
 
   Future<void> _signOut(BuildContext context, String id, {required bool admin}) async {
     final ok = await confirmAdmin216(context,
-        title: admin ? 'Sign out this admin?' : 'Sign out this phone?',
-        body: admin ? 'This admin session ends now.' : 'It must sign in again.',
-        yes: 'Sign out',
+        title: admin ? L.t.signOutThisAdmin : L.t.signOutThisPhone,
+        body: admin ? L.t.thisAdminSessionEndsNow : L.t.itMustSignInAgain,
+        yes: L.t.signOut,
         danger: true);
     if (!ok || !context.mounted) return;
     final bloc = context.read<AdminBloc>();
@@ -55,7 +56,7 @@ class AdminSessionsScreen extends StatelessWidget {
     return AdminToolPage216(
       title: 'Sessions',
       module: 'Sessions',
-      subtitle: (_) => 'Who is signed in, on which phone',
+      subtitle: (_) => L.t.whoIsSignedInOnWhich,
       builder: (context, state) {
         final c = A216.colors(context);
         final t = A216Text(c);
@@ -67,17 +68,17 @@ class AdminSessionsScreen extends StatelessWidget {
         };
         Widget nobody() => Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Text('Nobody signed in', textAlign: TextAlign.center, style: t.note),
+              child: Text(L.t.nobodySignedIn, textAlign: TextAlign.center, style: t.note),
             );
         Widget signOut(String id, {required bool admin}) => AdminPillButton216(
-              'Sign out',
+              L.t.signOut,
               A216Tone.red,
               canManage ? () => _signOut(context, id, admin: admin) : null,
               key: ValueKey('a216_signout_$id'),
             );
         return [
           if (state.loading && people.isEmpty && admins.isEmpty) const AdminLoading216(),
-          AdminSection216('People signed in',
+          AdminSection216(L.t.peopleSignedIn,
               right: '${people.length}', rightColor: c.blue, top: 4),
           if (people.isEmpty)
             nobody()
@@ -94,15 +95,15 @@ class AdminSessionsScreen extends StatelessWidget {
                     hasAvatar: usersByName['${s['username']}']?['has_avatar'] == true,
                   ),
                   title: personName216(s, fallback: '${s['user_id'] ?? ''}'),
-                  subtitle: '${phoneTitle255('${s['device_name'] ?? ''}', personName216(s))} · since ${since(s['created_at'])}', // Bundle 276
+                  subtitle: L.t.since2(phoneTitle255('${s['device_name'] ?? ''}', personName216(s)), since(s['created_at'])), // Bundle 276
                   trailing: thisDeviceId != null && '${s['device_id']}' == thisDeviceId
-                      ? const Padding(
+                      ? Padding(
                           padding: EdgeInsets.only(right: 4),
-                          child: AdminTag216('This phone', A216Tone.blue))
+                          child: AdminTag216(L.t.thisPhone, A216Tone.blue))
                       : signOut('${s['id']}', admin: false),
                 ),
             ]),
-          const AdminSection216('Admins signed in'),
+          AdminSection216(L.t.adminsSignedIn),
           if (admins.isEmpty)
             nobody()
           else
@@ -122,11 +123,11 @@ class AdminSessionsScreen extends StatelessWidget {
                         : const AdminToneIcon216(Icons.vpn_key_outlined, A216Tone.grey),
                     title: '${s['username'] ?? 'admin'} · ${level216(s['role'])}',
                     subtitle:
-                        'Since ${whenSub216(s['created_at'])} · ends ${parseAdminTime216(s['expires_at']) == null ? '—' : dMMM216(parseAdminTime216(s['expires_at'])!)}',
+                        L.t.sinceEnds(whenSub216(s['created_at']), parseAdminTime216(s['expires_at']) == null ? '—' : dMMM216(parseAdminTime216(s['expires_at'])!)),
                     trailing: s['current'] == true
-                        ? const Padding(
+                        ? Padding(
                             padding: EdgeInsets.only(right: 4),
-                            child: AdminTag216('This one', A216Tone.blue))
+                            child: AdminTag216(L.t.thisOne, A216Tone.blue))
                         : signOut('${s['id']}', admin: true),
                   );
                 }(),

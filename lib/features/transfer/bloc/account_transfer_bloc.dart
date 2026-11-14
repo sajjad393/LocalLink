@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 final class AccountTransferState extends Equatable {
   final AccountTransferStart? transfer;
@@ -87,7 +88,7 @@ final class AccountTransferBloc extends Cubit<AccountTransferState> {
   }
 
   String remainingLabel() => state.remaining <= Duration.zero
-      ? 'Expired'
+      ? L.t.expired
       : '${state.remaining.inMinutes.toString().padLeft(2, '0')}:${(state.remaining.inSeconds % 60).toString().padLeft(2, '0')}';
   @override
   Future<void> close() async {

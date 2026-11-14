@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G4: what the group QR holds (mock 36). Made by an admin; works
 /// without internet: the scanner's request is locked with the admin's key
@@ -18,8 +19,7 @@ class GroupJoinCode {
   });
 
   static const String prefix = 'llgq1:';
-  static const String expiredText =
-      'This group code has expired. Ask for a new one.';
+  static String get expiredText => L.t.thisGroupCodeHasExpiredAsk;
 
   final String gid;
   final String name;

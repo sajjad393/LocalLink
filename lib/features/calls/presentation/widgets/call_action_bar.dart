@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart' hide CallState;
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// WhatsApp-style call controls.
 ///
@@ -44,7 +45,7 @@ class CallActionBar extends StatelessWidget {
               background: CallPalette.red,
               foreground: Colors.white,
               size: 68,
-              label: 'Decline',
+              label: L.t.decline,
               onPressed: () => _run(controller.rejectIncoming),
             ),
             _CallCircleButton(
@@ -52,7 +53,7 @@ class CallActionBar extends StatelessWidget {
               background: CallPalette.green,
               foreground: Colors.white,
               size: 68,
-              label: 'Answer',
+              label: L.t.answer,
               onPressed: () => _run(controller.acceptIncoming),
             ),
           ],
@@ -65,8 +66,8 @@ class CallActionBar extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 28),
         child: TextButton(
           onPressed: () => Navigator.of(context).maybePop(),
-          child: const Text(
-            'Close',
+          child: Text(
+            L.t.close,
             style:
                 TextStyle(color: CallPalette.textSecondary, fontSize: 15),
           ),
@@ -88,7 +89,7 @@ class CallActionBar extends StatelessWidget {
             _CallToggleButton(
               icon: session.muted ? Icons.mic_off_rounded : Icons.mic_rounded,
               active: session.muted,
-              tooltip: session.muted ? 'Unmute' : 'Mute',
+              tooltip: session.muted ? L.t.unmute : L.t.mute,
               onPressed: () => _run(controller.toggleMute),
             ),
             _CallToggleButton(
@@ -96,7 +97,7 @@ class CallActionBar extends StatelessWidget {
                   ? Icons.volume_up_rounded
                   : Icons.phone_in_talk_rounded,
               active: session.speakerOn,
-              tooltip: session.speakerOn ? 'Speaker off' : 'Speaker on',
+              tooltip: session.speakerOn ? L.t.speakerOff : L.t.speakerOn,
               onPressed: () => _run(controller.toggleSpeaker),
             ),
             if (showVideoButton248(session))
@@ -106,7 +107,7 @@ class CallActionBar extends StatelessWidget {
                     ? Icons.videocam_rounded
                     : Icons.videocam_off_rounded,
                 active: session.videoEnabled,
-                tooltip: session.videoEnabled ? 'Turn camera off' : 'Turn camera on',
+                tooltip: session.videoEnabled ? L.t.turnCameraOff : L.t.turnCameraOn,
                 // Errors show as the call screen's snackbar (CallBloc error).
                 onPressed: () => _run(controller.toggleVideo),
               ),

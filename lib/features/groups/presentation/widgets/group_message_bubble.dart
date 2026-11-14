@@ -17,6 +17,7 @@ import 'package:locallink/features/groups/data/group_invite_link.dart'
 import 'package:locallink/features/groups/presentation/screens/group_link_screens.dart'
     show GroupInviteCard;
 import 'package:locallink/core/widgets/reaction_chips.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G1 (mock 13): the group bubble looks like the 1:1 bubble.
 ///
@@ -180,7 +181,7 @@ class GroupMessageBubble extends StatelessWidget {
                   isMine: isMine,
                   hasHeader: header != null,
                   bubbleMaxWidth: maxWidth,
-                  viewerTitle: isMine ? 'You' : senderName,
+                  viewerTitle: isMine ? L.t.you3 : senderName,
                   viewerSubtitle: _time(message.createdAt),
                   timeOverlay: () =>
                       _footer(theme, colors, foreground, onMedia: true),

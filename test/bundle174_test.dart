@@ -1,6 +1,5 @@
 // Bundle 174: missed calls, swipe-to-answer, chat video players, transfer
 // circle with cancel, phone-local message times.
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,8 +16,9 @@ import 'package:locallink/features/files/presentation/widgets/media_frame.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/chat_video_fakes.dart';
+import 'support/l10n_source_304.dart';
 
-String _src(String path) => File(path).readAsStringSync();
+String _src(String path) => readEnglish304(path);
 
 CallRecord _call({
   bool out = false,

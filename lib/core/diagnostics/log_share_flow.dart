@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'package:locallink/core/diagnostics/log_share_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 180: "Preparing logs..." (Cancel), then the Android share sheet.
 /// [prepare] / [share] can be swapped in tests.
@@ -25,7 +26,7 @@ Future<void> runLogShare(
       canPop: false,
       child: AlertDialog(
         key: const ValueKey('log_share_dialog'),
-        content: const Row(
+        content: Row(
           children: [
             SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
             SizedBox(width: 16),
@@ -34,9 +35,9 @@ Future<void> runLogShare(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Preparing logs...', style: TextStyle(fontWeight: FontWeight.w600)),
+                  Text(L.t.preparingLogs, style: TextStyle(fontWeight: FontWeight.w600)),
                   SizedBox(height: 4),
-                  Text('Last 1 hour'),
+                  Text(L.t.last1Hour),
                 ],
               ),
             ),
@@ -50,7 +51,7 @@ Future<void> runLogShare(
               open = false;
               Navigator.of(ctx).pop();
             },
-            child: const Text('Cancel'),
+            child: Text(L.t.cancel),
           ),
         ],
       ),
@@ -74,7 +75,7 @@ Future<void> runLogShare(
   }
   if (path == null) {
     AppLogger.warning('LOG_SHARE_FAILED', detail: 'error=${failure ?? 'no_file'}');
-    LinkToast.maybeOn(messenger, 'Could not prepare logs', kind: LinkToastKind.error);
+    LinkToast.maybeOn(messenger, L.t.couldNotPrepareLogs, kind: LinkToastKind.error);
     return;
   }
   try {
@@ -82,6 +83,6 @@ Future<void> runLogShare(
     AppLogger.info('LOG_SHARE_OPENED');
   } catch (e) {
     AppLogger.warning('LOG_SHARE_FAILED', detail: 'error=$e');
-    LinkToast.maybeOn(messenger, 'Could not share logs', kind: LinkToastKind.error);
+    LinkToast.maybeOn(messenger, L.t.couldNotShareLogs, kind: LinkToastKind.error);
   }
 }

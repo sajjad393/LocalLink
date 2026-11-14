@@ -24,6 +24,7 @@ import 'package:locallink/features/groups/presentation/widgets/group_info_sheets
 import 'package:locallink/features/groups/presentation/widgets/group_nearby_widgets.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_sheets.dart';
 import 'package:locallink/features/groups/data/group_invite_link.dart';
+import 'package:locallink/l10n/l10n.dart';
 import 'package:locallink/features/groups/presentation/screens/group_link_screens.dart'
     show GroupInviteLinkScreen;
 
@@ -61,17 +62,17 @@ const _months = [
 String groupDateLabel(String iso) {
   final t = DateTime.tryParse(iso)?.toLocal();
   if (t == null) return '';
-  return '${t.day} ${_months[t.month - 1]} ${t.year}';
+  return '${t.day} ${L.en(_months[t.month - 1])} ${t.year}';
 }
 
 /// Mock 28 / 4: the grey line under "Group settings".
 String groupSettingsLine(LocalGroup g, {bool both = false}) {
   final add = g.addMembers == 'admins'
-      ? 'Only admins add people'
-      : 'All members add people';
+      ? L.t.onlyAdminsAddPeople
+      : L.t.allMembersAddPeople;
   final send = g.sendMessages == 'admins'
-      ? 'Only admins send'
-      : 'Everyone can send';
+      ? L.t.onlyAdminsSend
+      : L.t.everyoneCanSend;
   if (both || g.sendMessages == 'admins') return '$add · $send';
   return add;
 }
@@ -228,9 +229,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final n = _requests.length;
     final first = _requests.first.name;
     final how = _requests.first.via == 'link'
-        ? 'opened the invite link'
-        : 'scanned the group QR';
-    final sub = n == 1 ? '$first $how' : '$first and ${n - 1} more asked to join';
+        ? L.t.openedTheInviteLink
+        : L.t.scannedTheGroupQr;
+    final sub = n == 1 ? '$first $how' : L.t.andMoreAskedToJoin(first, n - 1);
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 16, 14, 0),
       child: Material(
@@ -254,7 +255,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(n == 1 ? '1 request to join' : '$n requests to join',
+                      Text(n == 1 ? L.t.t1RequestToJoin : L.t.requestsToJoin(n),
                           style: const TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w700)),
                       Text(sub,
@@ -291,10 +292,10 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   }
 
   String _nameOf(String deviceId) {
-    if (deviceId == widget.localDeviceId) return 'You';
+    if (deviceId == widget.localDeviceId) return L.t.you3;
     for (final m in _members) {
       if (m.deviceId == deviceId) {
-        return m.name.trim().isEmpty ? 'Group member' : m.name.trim();
+        return m.name.trim().isEmpty ? L.t.groupMember : m.name.trim();
       }
     }
     return '';
@@ -306,7 +307,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         return m.name.trim();
       }
     }
-    return 'You';
+    return L.t.you3;
   }
 
   // ---- actions -------------------------------------------------------
@@ -443,7 +444,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         final messenger = ScaffoldMessenger.maybeOf(context);
         final ok = await _run('retry', () => retry(_group.id, m.deviceId));
         if (ok) {
-          LinkToast.maybeOn(messenger, 'Sending the group to $name again', kind: LinkToastKind.info);
+          LinkToast.maybeOn(messenger, L.t.sendingTheGroupToAgain(name), kind: LinkToastKind.info);
         }
       case GroupMemberChoice.remove:
         final name = _nameOf(m.deviceId);
@@ -547,7 +548,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 _InfoRow(
                   key: const ValueKey('info_mute_row'),
                   icon: Icons.notifications_off_outlined,
-                  title: 'Mute notifications',
+                  title: L.t.muteNotifications,
                   subtitle: _muteLine,
                   trailing: Switch(
                     key: const ValueKey('info_mute_switch'),
@@ -560,7 +561,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   _InfoRow(
                     key: const ValueKey('info_settings'),
                     icon: Icons.settings_outlined,
-                    title: 'Group settings',
+                    title: L.t.groupSettings,
                     subtitle: groupSettingsLine(_group),
                     onTap: _settings,
                   ),
@@ -568,8 +569,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   _InfoRow(
                     key: const ValueKey('info_invite_qr'),
                     icon: Icons.qr_code_2_rounded,
-                    title: 'Invite with QR',
-                    subtitle: 'Friends of friends scan to join',
+                    title: L.t.inviteWithQr,
+                    subtitle: L.t.friendsOfFriendsScanToJoin,
                     onTap: _inviteQr,
                   ),
                 // Bundle G6 (mock L1): server groups; Nearby-only shows L5.
@@ -579,8 +580,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   _InfoRow(
                     key: const ValueKey('info_invite_link'),
                     icon: Icons.link_rounded,
-                    title: 'Invite with link',
-                    subtitle: 'Anyone with the link can ask to join',
+                    title: L.t.inviteWithLink,
+                    subtitle: L.t.anyoneWithTheLinkCanAsk,
                     onTap: _inviteLink,
                   ),
               ],
@@ -614,7 +615,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                                 color: colors.primary, size: 22),
                           ),
                           const SizedBox(width: 14),
-                          Text('Add members',
+                          Text(L.t.addMembers,
                               style: TextStyle(
                                   fontSize: 15.5,
                                   fontWeight: FontWeight.w700,
@@ -642,8 +643,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 _InfoRow(
                   key: const ValueKey('info_exit'),
                   icon: Icons.logout_rounded,
-                  title: 'Exit group',
-                  subtitle: 'Your old messages stay on this phone',
+                  title: L.t.exitGroup,
+                  subtitle: L.t.yourOldMessagesStayOnThis,
                   red: true,
                   chevron: false,
                   onTap: _exit,
@@ -652,8 +653,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 _InfoRow(
                   key: const ValueKey('info_delete'),
                   icon: Icons.delete_outline_rounded,
-                  title: 'Delete group',
-                  subtitle: "You're no longer a participant in this group.",
+                  title: L.t.deleteGroup,
+                  subtitle: L.t.youReNoLongerAParticipant,
                   red: true,
                   chevron: false,
                   onTap: _delete,
@@ -666,35 +667,35 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   }
 
   String get _muteLine {
-    if (!GroupMuteBook.instance.isMuted(_group.id)) return 'Off';
+    if (!GroupMuteBook.instance.isMuted(_group.id)) return L.t.off;
     final until = GroupMuteBook.instance.mutedUntil(_group.id);
-    if (until == null || until == GroupMuteBook.always) return 'Always';
+    if (until == null || until == GroupMuteBook.always) return L.t.always;
     final t = DateTime.fromMillisecondsSinceEpoch(until);
     final hh = t.hour % 12 == 0 ? 12 : t.hour % 12;
     final mm = t.minute.toString().padLeft(2, '0');
     final ampm = t.hour < 12 ? 'AM' : 'PM';
-    return 'Until ${t.day} ${_months[t.month - 1]}, $hh:$mm $ampm';
+    return L.t.until(t.day, L.en(_months[t.month - 1]), hh, mm, ampm);
   }
 
   Widget _menu(GroupRules rules) {
     return PopupMenuButton<String>(
       key: const ValueKey('info_more_menu'),
-      tooltip: 'More options',
+      tooltip: L.t.moreOptions,
       position: PopupMenuPosition.under,
       itemBuilder: (_) => [
         if (rules.canEdit)
-          const PopupMenuItem(value: 'edit', child: Text('Edit group')),
+          PopupMenuItem(value: 'edit', child: Text(L.t.editGroup)),
         if (rules.active && rules.isAdmin)
-          const PopupMenuItem(value: 'settings', child: Text('Group settings')),
+          PopupMenuItem(value: 'settings', child: Text(L.t.groupSettings)),
         if (rules.active)
-          const PopupMenuItem(
+          PopupMenuItem(
               value: 'exit',
-              child: Text('Exit group', style: TextStyle(color: Color(0xFFB3261E))))
+              child: Text(L.t.exitGroup, style: TextStyle(color: Color(0xFFB3261E))))
         else
-          const PopupMenuItem(
+          PopupMenuItem(
               value: 'delete',
               child:
-                  Text('Delete group', style: TextStyle(color: Color(0xFFB3261E)))),
+                  Text(L.t.deleteGroup, style: TextStyle(color: Color(0xFFB3261E)))),
       ],
       onSelected: (v) {
         switch (v) {
@@ -753,8 +754,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           const SizedBox(height: 2),
           Text(
               count > 0
-                  ? 'Group · $count ${count == 1 ? 'member' : 'members'}'
-                  : 'Group',
+                  ? L.t.group2(count, count == 1 ? 'member' : 'members')
+                  : L.t.group,
               key: const ValueKey('info_count'),
               style: TextStyle(fontSize: 13.5, color: colors.onSurfaceVariant)),
         ],
@@ -776,14 +777,14 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 _QuickAction(
                     key: const ValueKey('info_add'),
                     icon: Icons.person_add_alt_outlined,
-                    label: 'Add',
+                    label: L.t.add,
                     onTap: _add),
                 const SizedBox(width: 12),
               ],
               _QuickAction(
                   key: const ValueKey('info_search'),
                   icon: Icons.search,
-                  label: 'Search',
+                  label: L.t.search,
                   onTap: () => Navigator.pop(context, 'search')),
               const SizedBox(width: 12),
               _QuickAction(
@@ -791,7 +792,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   icon: muted
                       ? Icons.notifications_active_outlined
                       : Icons.notifications_off_outlined,
-                  label: muted ? 'Unmute' : 'Mute',
+                  label: muted ? L.t.unmute : L.t.mute,
                   onTap: _mute),
             ],
           ),
@@ -808,7 +809,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final creator = _nameOf(creatorId);
     final date = groupDateLabel(_group.createdAt);
     final parts = <String>[
-      if (creator.isNotEmpty) 'Created by $creator',
+      if (creator.isNotEmpty) L.t.createdBy(creator),
       if (date.isNotEmpty) date,
     ];
     if (desc.isEmpty && !rules.canEdit && parts.isEmpty) {
@@ -834,7 +835,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 if (desc.isNotEmpty)
                   Text(desc, style: const TextStyle(fontSize: 14, height: 1.4))
                 else if (rules.canEdit)
-                  Text('Add group description',
+                  Text(L.t.addGroupDescription,
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -977,7 +978,7 @@ class _MemberRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final name = member.name.trim().isEmpty ? 'Group member' : member.name.trim();
+    final name = member.name.trim().isEmpty ? L.t.groupMember : member.name.trim();
     final status = you
         ? PresenceStatus.nearby
         : PresenceHub.instance.statusOf(member.deviceId);
@@ -988,7 +989,7 @@ class _MemberRow extends StatelessWidget {
     };
     final badge = switch (member.role) {
       'owner' => 'Owner',
-      'admin' => 'Admin',
+      'admin' => L.t.admin,
       _ => '',
     };
     final wait = you ? null : pending;
@@ -1010,7 +1011,7 @@ class _MemberRow extends StatelessWidget {
                   Row(
                     children: [
                       Flexible(
-                        child: Text(you ? 'You' : name,
+                        child: Text(you ? L.t.you3 : name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -1075,7 +1076,7 @@ class _MemberRow extends StatelessWidget {
                       : const Color(0xFFDDE6FF),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(badge,
+                child: Text(L.en(badge),
                     style: TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w700,
@@ -1161,19 +1162,19 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: NewGroupTitle(title: 'Group settings', subtitle: widget.groupName),
+        title: NewGroupTitle(title: L.t.groupSettings, subtitle: widget.groupName),
       ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
-          const MessengerGroupLabel('Admins decide', top: 8),
+          MessengerGroupLabel(L.t.adminsDecide, top: 8),
           MessengerListGroup(
             dividerIndent: 0,
             children: [
-              _seg('edit_info', 'Edit group info', 'Name, photo and description'),
-              _seg('send_messages', 'Send messages',
-                  'Only admins = announcement group'),
-              _seg('add_members', 'Add members', 'Includes the group QR code'),
+              _seg('edit_info', L.t.editGroupInfo, L.t.namePhotoAndDescription),
+              _seg('send_messages', L.t.sendMessages,
+                  L.t.onlyAdminsAnnouncementGroup),
+              _seg('add_members', L.t.addMembers, L.t.includesTheGroupQrCode),
             ],
           ),
           if (widget.approve != null && widget.onApprove != null) ...[
@@ -1184,8 +1185,8 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                 _InfoRow(
                   key: const ValueKey('set_approve_row'),
                   icon: Icons.shield_outlined,
-                  title: 'Approve new members',
-                  subtitle: 'Admins approve people who join by QR',
+                  title: L.t.approveNewMembers,
+                  subtitle: L.t.adminsApprovePeopleWhoJoinBy,
                   chevron: false,
                   trailing: Switch(
                     key: const ValueKey('set_approve_switch'),
@@ -1199,7 +1200,7 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
           ],
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-            child: Text('Only admins can see and change these.',
+            child: Text(L.t.onlyAdminsCanSeeAndChange,
                 style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
           ),
         ],
@@ -1262,8 +1263,8 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
             ),
             child: Row(
               children: [
-                option('all', 'All members'),
-                option('admins', 'Only admins'),
+                option('all', L.t.allMembers),
+                option('admins', L.t.onlyAdmins),
               ],
             ),
           ),
@@ -1326,7 +1327,7 @@ class _GroupAddMembersScreenState extends State<GroupAddMembersScreen> {
       if (_isPicked(f)) {
         _picked.removeWhere((p) => p.deviceId == f.deviceId);
       } else if (_others + _picked.length >= kNewGroupMax) {
-        LinkToast.show(context, 'You can add up to $kNewGroupMax people', kind: LinkToastKind.error);
+        LinkToast.show(context, L.t.youCanAddUpToPeople(kNewGroupMax), kind: LinkToastKind.error);
       } else {
         _picked.add(f);
       }
@@ -1349,17 +1350,17 @@ class _GroupAddMembersScreenState extends State<GroupAddMembersScreen> {
             ? SearchPill298(
                 fieldKey: const ValueKey('add_members_search'),
                 controller: _search,
-                hint: 'Search friends',
+                hint: L.t.searchFriends,
                 autofocus: true,
                 onChanged: (_) => setState(() {}),
               )
             : NewGroupTitle(
-                title: 'Add members',
+                title: L.t.addMembers,
                 subtitle:
-                    '${widget.groupName} · ${_others + _picked.length} of $kNewGroupMax'),
+                    L.t.groupCountOf304(widget.groupName, _others + _picked.length, kNewGroupMax)),
         actions: [
           IconButton(
-            tooltip: _searching ? 'Close search' : 'Search',
+            tooltip: _searching ? L.t.closeSearch : L.t.search,
             onPressed: () => setState(() {
               _searching = !_searching;
               _search.clear();
@@ -1371,7 +1372,7 @@ class _GroupAddMembersScreenState extends State<GroupAddMembersScreen> {
       floatingActionButton: SquareGradientFab(
         key: const ValueKey('add_members_done'),
         icon: Icons.check_rounded,
-        tooltip: 'Add',
+        tooltip: L.t.add,
         onPressed: _picked.isEmpty
             ? null
             : () => Navigator.pop(context, List<GroupFriend>.from(_picked)),
@@ -1411,11 +1412,11 @@ class _GroupAddMembersScreenState extends State<GroupAddMembersScreen> {
                       },
                     ),
                   ),
-                const MessengerGroupLabel('Your friends', top: 10),
+                MessengerGroupLabel(L.t.yourFriends, top: 10),
                 if (shown.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text('No friend found',
+                    child: Text(L.t.noFriendFound,
                         textAlign: TextAlign.center,
                         style: TextStyle(color: colors.onSurfaceVariant)),
                   )
@@ -1433,7 +1434,7 @@ class _GroupAddMembersScreenState extends State<GroupAddMembersScreen> {
                             picked: _isPicked(f),
                             enabled: !widget.memberIds.contains(f.deviceId),
                             note: widget.memberIds.contains(f.deviceId)
-                                ? 'Already in the group'
+                                ? L.t.alreadyInTheGroup
                                 : null,
                             onTap: () => _toggle(f),
                           ),

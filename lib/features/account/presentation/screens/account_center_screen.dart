@@ -36,6 +36,7 @@ import 'package:locallink/features/recovery/presentation/screens/account_restore
 import 'package:locallink/features/recovery/presentation/screens/recovery_code_286.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/features/transfer/presentation/screens/account_transfer_screen.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class AccountCenterScreen extends StatefulWidget {
   final AccountRepositoryContract accountRepository;
@@ -166,7 +167,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
         final displayName = personName276(profile?.displayName, profile?.username, widget.store.username);
         final username = profile?.username.isNotEmpty == true
             ? '@${profile!.username}'
-            : 'LinkUp account';
+            : L.t.linkupAccount;
         final colors = Theme.of(context).colorScheme;
         final text = Theme.of(context).textTheme;
         final error = state.errorMessage;
@@ -174,11 +175,11 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
         if (showOfflineBox) _logOfflineBox(error);
         if (!showOfflineBox) _offlineLogged = false;
         return Scaffold(
-          appBar: AppBar(title: const Text('Account')),
+          appBar: AppBar(title: Text(L.t.account)),
           body: RefreshIndicator(
             onRefresh: _controller.load,
             child: state.isLoading && profile == null
-                ? const LocalLinkLoadingView(message: 'Loading your account…')
+                ? LocalLinkLoadingView(message: L.t.loadingYourAccount)
                 : ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(0, 12, 0, 32),
@@ -231,7 +232,7 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                                               color: colors.onSurfaceVariant,
                                               letterSpacing: 0)),
                                       const SizedBox(height: 2),
-                                      Text('Tap to edit name and photo',
+                                      Text(L.t.tapToEditNameAndPhoto,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: text.bodySmall?.copyWith(
@@ -265,42 +266,42 @@ class _AccountCenterScreenState extends State<AccountCenterScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: LocalLinkInlineError(
                               message:
-                                  'Your saved profile is shown. ${friendlyErrorMessage(error)}',
+                                  L.t.yourSavedProfileIsShown(friendlyErrorMessage(error)),
                               onRetry: _controller.load),
                         ),
                       ],
                       // Bundle 183 (B5): plain words, Settings style.
-                      const MessengerGroupLabel('Phones'),
+                      MessengerGroupLabel(L.t.phones),
                       MessengerListGroup(dividerIndent: 66, children: [
                         MessengerSettingsRow(
                           icon: Icons.devices_outlined,
-                          title: 'My phones',
-                          subtitle: 'See and remove phones signed in',
+                          title: L.t.myPhones,
+                          subtitle: L.t.seeAndRemovePhonesSignedIn,
                           onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => DevicesScreen(accountRepository: widget.accountRepository, identityRepository: widget.identityRepository, api: widget.api, store: widget.store, crypto: widget.crypto, restoreService: widget.restoreService))),
                         ),
                         MessengerSettingsRow(
                           icon: Icons.qr_code_2,
-                          title: 'Move to a new phone',
-                          subtitle: 'Move this account to another phone',
+                          title: L.t.moveToANewPhone,
+                          subtitle: L.t.moveThisAccountToAnotherPhone,
                           onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AccountTransferScreen(repository: widget.transferRepository, viewMode: widget.viewMode))),
                         ),
                       ]),
                       // Bundle 183 (B6): extra nearby safety is a normal row.
-                      const MessengerGroupLabel('Backup and safety'),
+                      MessengerGroupLabel(L.t.backupAndSafety),
                       MessengerListGroup(dividerIndent: 66, children: [
                         // Bundle 286 (R-2): first row, Not saved / Saved tag
                         // (replaces the old grey recovery note).
                         RecoveryRow286(store: widget.store, accounts: widget.accountRepository),
                         MessengerSettingsRow(
                           icon: Icons.restore_outlined,
-                          title: 'Backup and restore',
-                          subtitle: 'Encrypted backup of your account',
+                          title: L.t.backupAndRestore,
+                          subtitle: L.t.encryptedBackupOfYourAccount,
                           onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AccountRestoreScreen(service: widget.restoreService))),
                         ),
                         MessengerSettingsRow(
                           icon: Icons.vpn_key_outlined,
-                          title: 'Security key',
-                          subtitle: "Your account's secret lock",
+                          title: L.t.securityKey,
+                          subtitle: L.t.yourAccountSSecretLock,
                           onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => CryptoMigrationScreen(identityRepository: widget.identityRepository))),
                         ),
                         const ExtraNearbySafetySwitch(),

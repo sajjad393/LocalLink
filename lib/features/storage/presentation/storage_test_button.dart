@@ -2,6 +2,7 @@ import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/features/storage/data/media_storage_service.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 197b (Q4): Admin panel › "Test clean-up now". One run with every
 /// file treated as 11 days old and the phone as 80% full. Unsent /
@@ -25,12 +26,12 @@ class _StorageTestButtonState extends State<StorageTestButton> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Test clean-up now?'),
-        content: const Text(
-            'Removes photos, videos and documents as if they were 11 days old and the phone 80% full. Voice notes and unsent media stay. The messages stay with a small picture.'),
+        title: Text(L.t.testCleanUpNow2),
+        content: Text(
+            L.t.removesPhotosVideosAndDocumentsAs),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Run test')),
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(L.t.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(L.t.runTest)),
         ],
       ),
     );
@@ -42,8 +43,8 @@ class _StorageTestButtonState extends State<StorageTestButton> {
     if (!mounted) return;
     setState(() => _running = false);
     LinkToast.maybeOn(messenger, !_service.autoClean
-            ? 'Free up space automatically is OFF. Nothing removed.'
-            : 'Test clean-up: $removed ${removed == 1 ? 'file' : 'files'} removed', kind: LinkToastKind.done);
+            ? L.t.freeUpSpaceAutomaticallyIsOff
+            : L.t.testCleanUpRemoved(removed, removed == 1 ? L.t.fileWord304 : L.t.filesWord304), kind: LinkToastKind.done);
   }
 
   @override
@@ -54,7 +55,7 @@ class _StorageTestButtonState extends State<StorageTestButton> {
       icon: _running
           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
           : const Icon(Icons.cleaning_services_outlined),
-      label: const Text('Test clean-up now'),
+      label: Text(L.t.testCleanUpNow),
     );
   }
 }

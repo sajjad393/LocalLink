@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/admin_theme.dart';
 import 'admin_components.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// One point on an admin chart.
 @immutable
@@ -104,11 +105,11 @@ class _AdminLineChartState extends State<AdminLineChart>
     if (widget.points.length < 2) {
       return SizedBox(
         height: widget.height,
-        child: const AdminEmptyState(
+        child: AdminEmptyState(
           icon: Icons.show_chart,
-          title: 'No data for this period',
+          title: L.t.noDataForThisPeriod,
           message:
-              'The server returned no activity buckets for the selected range.',
+              L.t.theServerReturnedNoActivityBuckets,
           dense: true,
         ),
       );
@@ -341,10 +342,10 @@ class AdminBarChart extends StatelessWidget {
     if (points.isEmpty) {
       return SizedBox(
         height: height,
-        child: const AdminEmptyState(
+        child: AdminEmptyState(
           icon: Icons.bar_chart,
-          title: 'No data',
-          message: 'Nothing recorded for this period.',
+          title: L.t.noData,
+          message: L.t.nothingRecordedForThisPeriod,
           dense: true,
         ),
       );
@@ -731,8 +732,8 @@ class AdminChartCard extends StatelessWidget {
     } else if (isEmpty) {
       body = AdminEmptyState(
         icon: Icons.query_stats_outlined,
-        title: 'No activity recorded',
-        message: emptyMessage,
+        title: L.t.noActivityRecorded,
+        message: L.en(emptyMessage),
       );
     } else {
       body = child;

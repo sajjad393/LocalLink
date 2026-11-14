@@ -1,10 +1,10 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/features/account/presentation/widgets/photo_tap_overlay.dart';
+import 'support/l10n_source_304.dart';
 
-String _src(String p) => File(p).readAsStringSync();
+String _src(String p) => readEnglish304(p);
 
 const _profile = 'lib/features/account/presentation/screens/profile_screen.dart';
 const _account = 'lib/features/account/presentation/screens/account_center_screen.dart';

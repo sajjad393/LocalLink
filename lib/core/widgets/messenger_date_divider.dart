@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/l10n/l10n.dart';
 
-const _months255 = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+List<String> get _months255 => [
+  L.t.jan, L.t.feb, L.t.mar, L.t.apr, L.t.may, L.t.jun,
+  L.t.jul, L.t.aug, L.t.sep, L.t.oct, L.t.nov, L.t.dec,
 ];
-const _days255 = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+List<String> get _days255 => [L.t.mon, L.t.tue, L.t.wed, L.t.thu, L.t.fri, L.t.sat, L.t.sun];
 
 /// Bundle 255 B3: one label for chat day chips (direct + group). "9/11/2026"
 /// read like 11 September, so: Today / Yesterday / "Mon 2 Nov" (last 6 days)
@@ -18,8 +19,8 @@ String chatDayLabel255(DateTime date, DateTime now) {
       .difference(DateTime.utc(d.year, d.month, d.day))
       .inDays;
   final dm = '${d.day} ${_months255[d.month - 1]}';
-  if (days == 0) return 'Today';
-  if (days == 1) return 'Yesterday';
+  if (days == 0) return L.t.today;
+  if (days == 1) return L.t.yesterday;
   if (days > 1 && days <= 6) return '${_days255[d.weekday - 1]} $dm';
   if (d.year == n.year) return dm;
   return '$dm ${d.year}';

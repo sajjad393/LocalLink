@@ -1,8 +1,8 @@
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/widgets/link_kit_290.dart';
 import 'package:locallink/features/recovery/presentation/screens/account_recovery_screen.dart';
+import 'support/l10n_source_304.dart';
 
 /// Bundle 287: Forgot password new look - only the look changed.
 void main() {
@@ -29,7 +29,7 @@ void main() {
   });
 
   test('source: same bloc calls, new parts, no counter, no flat button', () {
-    final s = File('lib/features/recovery/presentation/screens/account_recovery_screen.dart').readAsStringSync();
+    final s = readEnglish304('lib/features/recovery/presentation/screens/account_recovery_screen.dart');
     final i = s.indexOf('class ForgotPasswordScreen222');
     final screen = s.substring(i);
     for (final call in ['_bloc.resetWithCode(', '_bloc.completeNoCode(', '_bloc.askAdmin(', '_bloc.cancelRequest', '_bloc.selectTab(']) {

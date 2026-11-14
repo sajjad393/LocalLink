@@ -146,6 +146,7 @@ import 'package:locallink/features/messaging/data/read_receipts/read_receipt_ser
 import 'package:locallink/features/messaging/data/read_receipts/read_receipts_setting.dart';
 import 'package:locallink/features/messaging/data/chat_text_scale.dart';
 import 'package:locallink/features/messaging/data/read_receipts/voice_played_hub.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Owns the long-lived application services used by the Flutter client.
 ///
@@ -850,7 +851,7 @@ class AppDependencies {
       displayName: (me?.displayName ?? '').isNotEmpty ? me!.displayName : user,
       offlineUserId: id.startsWith('offline_') ? id : '',
       deviceId: device,
-      deviceName: (store.deviceName ?? '').trim().isEmpty ? 'Phone' : store.deviceName!.trim(),
+      deviceName: (store.deviceName ?? '').trim().isEmpty ? L.t.phone : store.deviceName!.trim(),
       hardwareFp: store.hardwareFp,
       pwdSalt: salt,
       pwdHash: hash,
@@ -1010,10 +1011,10 @@ class AppDependencies {
           unawaited(notifications
               .showSystemNotification(
                 id: 'admin_closed_self',
-                title: closed ? 'Account closed by admin' : 'Your account is active again',
+                title: closed ? L.t.accountClosedByAdmin : L.t.yourAccountIsActiveAgain,
                 body: closed
-                    ? "You can read old chats but can't send or call."
-                    : 'You can send messages and call again.',
+                    ? L.t.youCanReadOldChatsBut
+                    : L.t.youCanSendMessagesAndCall,
               )
               .catchError((Object _) {}));
         },
@@ -1233,9 +1234,8 @@ class AppDependencies {
       onSelfStopped: (rule) => unawaited(notifications
           .showSystemNotification(
             id: 'version_stopped',
-            title: 'This LinkUp version is stopped by admin',
-            body: 'You can read old chats. Update to send and call'
-                '${rule.minVersion.isEmpty ? '' : ' (${rule.minVersion} or newer)'}.',
+            title: L.t.thisLinkupVersionIsStoppedBy,
+            body: L.t.youCanReadOldChatsUpdate(rule.minVersion.isEmpty ? '' : ' (${rule.minVersion} or newer)'),
           )
           .catchError((Object _) {})),
     );
@@ -1399,19 +1399,19 @@ class AppDependencies {
           .showSystemNotification(
             id: 'admin_block_self',
             title: blocked
-                ? 'Your account is blocked by admin'
-                : 'Your account is active again',
+                ? L.t.yourAccountIsBlockedByAdmin
+                : L.t.yourAccountIsActiveAgain,
             body: blocked
-                ? "You can read old chats but can't send or call."
-                : 'You can send messages and call again.',
+                ? L.t.youCanReadOldChatsBut
+                : L.t.youCanSendMessagesAndCall,
           )
           .catchError((Object _) {})),
       // BG3: one silent note when the server has a block I made.
       onServerSaved: (name) => unawaited(notifications
           .showSystemNotification(
             id: 'admin_block_saved',
-            title: 'Block saved on the server',
-            body: '${name.isEmpty ? 'The user' : name} block saved on the server',
+            title: L.t.blockSavedOnTheServer,
+            body: L.t.blockSavedOnTheServer2(name.isEmpty ? 'The user' : name),
             silent: true,
           )
           .catchError((Object _) {})),
@@ -1471,7 +1471,7 @@ class AppDependencies {
     await api.loginAccount(
       username: user,
       password: password,
-      deviceName: (store.deviceName ?? '').trim().isEmpty ? 'LinkUp phone' : store.deviceName!,
+      deviceName: (store.deviceName ?? '').trim().isEmpty ? L.t.linkupPhone : store.deviceName!,
       deviceId: store.deviceId,
     );
     SessionDead262.instance.reset();

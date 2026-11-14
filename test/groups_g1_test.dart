@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +7,7 @@ import 'package:locallink/features/groups/data/group_mute_book.dart';
 import 'package:locallink/features/groups/presentation/screens/new_group_screen.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_sheets.dart';
 import 'package:locallink/features/messaging/presentation/widgets/pinch_text_zoom.dart';
+import 'support/l10n_source_304.dart';
 
 /// Bundle G1: the group screens must match the approved mock G0
 /// (texts, order, icons). One test block per mock screen.
@@ -397,7 +397,7 @@ void main() {
   });
 
   group('wiring (source)', () {
-    String src(String p) => File(p).readAsStringSync();
+    String src(String p) => readEnglish304(p);
 
     test('Chats + opens the Start sheet; New chat still goes to People', () {
       final home = src('lib/features/home/presentation/screens/home_screen.dart');
@@ -436,14 +436,14 @@ void main() {
 
     test('group chat: ⋮ text rows (mock 14), voice notes, search', () {
       final g = src('lib/features/groups/presentation/screens/group_chat_screen.dart');
-      expect(g, contains("const PopupMenuItem(value: 'info', child: Text('Group info'))"));
+      expect(g, contains("PopupMenuItem(value: 'info', child: Text('Group info'))"));
       expect(g, contains('ChatComposer('));
       expect(g, contains('voice: _voice'));
       expect(g, contains("VoiceDraftStore.put(key, draft)"));
       expect(g, isNot(contains('GroupComposer(')));
       // Bundle 207 (L2): the bar moved to the shared ChatSearchBar.
       expect(g, contains('ChatSearchBar('));
-      expect(File('lib/core/widgets/chat_search_bar.dart').readAsStringSync(),
+      expect(readEnglish304('lib/core/widgets/chat_search_bar.dart'),
           contains("'\${at.clamp(0, count - 1) + 1} of \$count'"));
     });
   });

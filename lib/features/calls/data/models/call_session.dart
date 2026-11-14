@@ -1,6 +1,7 @@
 import 'package:locallink/core/models/call.dart';
 import 'package:locallink/core/models/call_quality.dart';
 import 'package:locallink/features/calls/data/transport/call_transport_mode.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 enum CallDirection { outgoing, incoming }
 
@@ -31,12 +32,12 @@ extension CallRecordStatusX on String {
 
 extension CallQualityText on CallQuality {
   String get label => switch (this) {
-        CallQuality.unknown => 'Unknown',
-        CallQuality.excellent => 'Excellent',
-        CallQuality.good => 'Good',
-        CallQuality.fair => 'Fair',
-        CallQuality.poor => 'Poor',
-        CallQuality.reconnecting => 'Reconnecting',
+        CallQuality.unknown => L.t.unknown,
+        CallQuality.excellent => L.t.excellent,
+        CallQuality.good => L.t.good,
+        CallQuality.fair => L.t.fair,
+        CallQuality.poor => L.t.poor,
+        CallQuality.reconnecting => L.t.reconnecting,
       };
 }
 
@@ -101,7 +102,7 @@ class CallSession {
     if (!videoEnabled) return '';
     final cfg = videoRemoteConfigured ? 'cfg:ok' : 'cfg:--';
     final drops = videoDropSummary.isEmpty ? 'drops:none' : 'drops:$videoDropSummary';
-    return 'video dbg · $cfg · rx:$videoRxFrames · $drops';
+    return L.t.videoDbgRx(cfg, videoRxFrames, drops);
   }
 
   const CallSession({

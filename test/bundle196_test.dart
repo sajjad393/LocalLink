@@ -1,7 +1,6 @@
 // Bundle 196: contact sheets, own Private profile, Blocked everywhere,
 // block state, Nearby friend requests (TODO_196 Part 14).
 
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,8 +21,9 @@ import 'package:locallink/features/directory/domain/directory_repository_contrac
 import 'package:locallink/features/directory/presentation/add_contact_screen.dart';
 import 'package:locallink/features/directory/presentation/blocked_people_screen.dart';
 import 'package:locallink/features/directory/presentation/contact_sheets.dart';
+import 'support/l10n_source_304.dart';
 
-String _src(String path) => File(path).readAsStringSync();
+String _src(String path) => readEnglish304(path);
 
 final _ali = BlockedPerson(
   userId: 'u-ali',

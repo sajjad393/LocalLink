@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/features/directory/data/own_profile_match.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/presentation/add_contact_screen.dart';
+import 'support/l10n_source_304.dart';
 
 DirectoryProfile _p({
   String userId = 'u-other',
@@ -33,7 +34,7 @@ String? _match(DirectoryProfile p) => ownProfileMatch(
       selfIdentityKey: 'id-me',
     );
 
-String _read(String path) => File(path).readAsStringSync();
+String _read(String path) => readEnglish304(path);
 
 void main() {
   group('who is me', () {

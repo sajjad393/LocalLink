@@ -15,6 +15,7 @@ import 'package:locallink/features/authentication/presentation/widgets/welcome_m
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class WelcomeScreen extends StatelessWidget {
   final LocalLinkApi api;
@@ -74,8 +75,8 @@ class WelcomeScreen extends StatelessWidget {
         final v = snap.data ?? '';
         if (v.isEmpty) return view;
         final text = v == 'signed_out'
-            ? 'Signed out by admin. Your chats are still here. Log in again when the server is on.'
-            : 'This phone was removed by admin. Your chats are still here. Log in again when the server is on.';
+            ? L.t.signedOutByAdminYourChats
+            : L.t.thisPhoneWasRemovedByAdmin;
         return Stack(children: [
           view,
           Positioned(
@@ -124,7 +125,7 @@ class WelcomeView extends StatelessWidget {
     required this.onLogIn,
   });
 
-  static const String tagline = 'Chat and call, even without internet';
+  static String get tagline => L.t.chatAndCallEvenWithoutInternet;
 
   /// Space above the logo (mock: 92 on a 800 dp phone; less on small ones).
   static double logoTop(double height) => (height * 0.115).clamp(28.0, 110.0);
@@ -228,33 +229,33 @@ class _WelcomeContent extends StatelessWidget {
             style: TextStyle(fontSize: 14, color: p.muted),
           ),
           const SizedBox(height: 20),
-          const _FeatureCard(
+          _FeatureCard(
             icon: Icons.chat_bubble_rounded,
             iconColor: Color(0xFF8EA6FF),
             iconBackground: Color(0x2E1E5BFF),
-            title: 'Messages, photos, videos',
-            subtitle: 'Nearby, Online or Offline',
+            title: L.t.messagesPhotosVideos,
+            subtitle: L.t.nearbyOnlineOrOffline,
           ),
-          const _FeatureCard(
+          _FeatureCard(
             icon: Icons.call_rounded,
             iconColor: Color(0xFF2DD4BF),
             iconBackground: Color(0x2E14A3A0),
-            title: 'Voice calls',
-            subtitle: 'Clear calls with people near you',
+            title: L.t.voiceCalls,
+            subtitle: L.t.clearCallsWithPeopleNearYou,
           ),
-          const _FeatureCard(
+          _FeatureCard(
             icon: Icons.lock_rounded,
             iconColor: Color(0xFFB8A6FF),
             iconBackground: Color(0x337C5CFF),
-            title: 'Private and secure',
-            subtitle: 'Your account, your chats',
+            title: L.t.privateAndSecure,
+            subtitle: L.t.yourAccountYourChats,
           ),
           const Spacer(),
           const SizedBox(height: 20),
           BrandButton290(
             key: const ValueKey('welcome288-create'),
             onPressed: onCreateAccount,
-            text: 'Create account',
+            text: L.t.createAccount,
           ),
           const SizedBox(height: 10),
           // Bundle 288: outlined second button (still a TextButton).
@@ -269,9 +270,9 @@ class _WelcomeContent extends StatelessWidget {
                 side: BorderSide(
                     color: p.isDark ? const Color(0xFF343A55) : const Color(0xFFC7CCE0), width: 1.5),
               ),
-              textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 15, fontWeight: FontWeight.w700),
+              textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, fontSize: 15, fontWeight: FontWeight.w700),
             ),
-            child: const Text('I already have an account'),
+            child: Text(L.t.iAlreadyHaveAnAccount),
           ),
         ],
       ),
@@ -310,7 +311,7 @@ class _WelcomeLogo288State extends State<_WelcomeLogo288> with SingleTickerProvi
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'LinkUp logo',
+      label: L.t.linkupLogo,
       image: true,
       child: AnimatedBuilder(
         animation: _c,

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 161: the two nearby tests in Settings > Advanced. Both are OFF by
 /// default and stay this phone's own choice.
@@ -131,27 +132,27 @@ class NearbyExperiments extends ChangeNotifier {
 
   /// Plain words for Settings.
   String get linkStatusText {
-    if (!_linkGroups) return 'Off';
+    if (!_linkGroups) return L.t.off;
     return switch (_linkState) {
       'joining' => _linkKind == 'hotspot'
-          ? 'Joining a LinkUp hotspot…'
-          : 'Joining another group…',
+          ? L.t.joiningALinkupHotspot
+          : L.t.joiningAnotherGroup,
       'linked' => _linkKind == 'hotspot'
-          ? 'Joined a LinkUp hotspot'
-          : 'Linked to another group',
-      'resting' => 'Did not work, trying again later',
-      'unsupported' => 'Needs Android 10 or newer',
-      _ => 'On — waiting for a full group or a hotspot nearby',
+          ? L.t.joinedALinkupHotspot
+          : L.t.linkedToAnotherGroup,
+      'resting' => L.t.didNotWorkTryingAgainLater,
+      'unsupported' => L.t.needsAndroid10OrNewer,
+      _ => L.t.onWaitingForAFullGroup,
     };
   }
 
   String get hotspotStatusText {
-    if (!_shareHotspot) return 'Off';
+    if (!_shareHotspot) return L.t.off;
     return switch (_hotspotState) {
-      'starting' => 'Starting…',
-      'on' => 'On — nearby LinkUp phones can join',
-      'failed' => 'Could not start, trying again later',
-      _ => 'Waiting',
+      'starting' => L.t.starting2,
+      'on' => L.t.onNearbyLinkupPhonesCanJoin,
+      'failed' => L.t.couldNotStartTryingAgainLater,
+      _ => L.t.waiting,
     };
   }
 

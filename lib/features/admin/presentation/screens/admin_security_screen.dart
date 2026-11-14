@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// One row on the Security page (page 20).
 class SecurityItem216 {
@@ -39,40 +40,40 @@ List<SecurityItem216> securityItems216(List<Map<String, dynamic>> events, int al
     SecurityItem216 item(String title, String level, {bool withPhone = false}) =>
         SecurityItem216(title, '${withPhone ? whoPhone : who(e)} · $when', level, at);
     if (a == 'device_revoked') {
-      out.add(item('Phone removed', 'Small', withPhone: true));
+      out.add(item(L.t.phoneRemoved, 'Small', withPhone: true));
     } else if (a == 'session_revoked' || a == 'admin_session_revoked') {
-      out.add(item('Signed out by admin', 'Small'));
+      out.add(item(L.t.signedOutByAdmin, 'Small'));
     } else if (a == 'admin_user_status_changed') {
       final on = '${e['detail'] ?? ''}'.contains('active');
-      out.add(item(on ? 'Account turned on again' : 'Account stopped', on ? 'Done' : 'Small'));
+      out.add(item(on ? L.t.accountTurnedOnAgain : L.t.accountStopped, on ? 'Done' : 'Small'));
     } else if (a == 'rotate_identity_key') {
-      out.add(item('New security key', 'Info'));
+      out.add(item(L.t.newSecurityKey, L.t.info));
     } else if (a == 'recovery_code_disable') {
-      out.add(item('Recovery code turned off', 'Small'));
+      out.add(item(L.t.recoveryCodeTurnedOff, 'Small'));
     } else if (a == 'recovery_code_rotate') {
-      out.add(item('New recovery code', 'Info'));
+      out.add(item(L.t.newRecoveryCode, L.t.info));
     } else if (a == 'login_success') {
-      out.add(item('Signed in', 'Info', withPhone: true));
+      out.add(item(L.t.signedIn, L.t.info, withPhone: true));
     } else if (a.startsWith('account_recovery_')) {
       final w = switch (a.substring('account_recovery_'.length)) {
-        'request' || 'requested' => 'Recovery asked',
-        'approve' || 'approved' => 'Recovery approved',
-        'complete' || 'completed' => 'Recovery finished',
-        'reissue' || 'reissued' => 'Recovery new code',
-        _ => 'Recovery ${a.substring('account_recovery_'.length).replaceAll('_', ' ')}',
+        'request' || 'requested' => L.t.recoveryAsked,
+        'approve' || 'approved' => L.t.recoveryApproved,
+        'complete' || 'completed' => L.t.recoveryFinished,
+        'reissue' || 'reissued' => L.t.recoveryNewCode,
+        _ => L.t.recovery(a.substring('account_recovery_'.length).replaceAll('_', ' ')),
       };
-      out.add(item(w, 'Info'));
+      out.add(item(w, L.t.info));
     } else if (a.startsWith('account_transfer_')) {
-      out.add(item('Moved to a new phone', 'Info'));
+      out.add(item(L.t.movedToANewPhone, L.t.info));
     } else {
-      out.add(item(a.replaceAll('_', ' '), 'Info'));
+      out.add(item(a.replaceAll('_', ' '), L.t.info));
     }
   }
   for (final g in failed.values) {
     final e = g.first;
     final at = parseAdminTime216(e['created_at']);
     out.add(SecurityItem216(
-        '${g.length} wrong password${g.length == 1 ? '' : 's'}',
+        L.t.wrongPassword(g.length, g.length == 1 ? '' : 's'),
         '${who(e)} · ${whenSub216(e['created_at'])}',
         g.length >= alertAfter ? 'Serious' : 'Small',
         at));
@@ -96,7 +97,7 @@ class AdminSecurityScreen extends StatelessWidget {
     return AdminToolPage216(
       title: 'Security',
       module: 'Security Center',
-      subtitle: (_) => 'Warnings like wrong passwords',
+      subtitle: (_) => L.t.warningsLikeWrongPasswords,
       builder: (context, state) {
         final alertAfter =
             (state.settingsData?['security_alert_threshold'] as num?)?.toInt() ?? 5;
@@ -115,17 +116,17 @@ class AdminSecurityScreen extends StatelessWidget {
                 A216Tone.red, Icons.error_outline_rounded),
             AdminStatTile216('${items.where((i) => i.level == 'Small').length}', 'Small',
                 A216Tone.orange, Icons.warning_amber_rounded),
-            AdminStatTile216('$locked', 'Locked', A216Tone.grey, Icons.lock_outline_rounded),
+            AdminStatTile216('$locked', L.t.locked, A216Tone.grey, Icons.lock_outline_rounded),
           ]),
-          const AdminSection216('This week'),
+          AdminSection216(L.t.thisWeek),
           if (state.loading && state.securityEvents.isEmpty)
             const AdminLoading216()
           else if (items.isEmpty)
-            const AdminEmptyState216(
+            AdminEmptyState216(
                 icon: Icons.verified_user_outlined,
                 tone: A216Tone.green,
-                title: 'No warnings',
-                body: 'Wrong passwords and other warnings show here.')
+                title: L.t.noWarnings,
+                body: L.t.wrongPasswordsAndOtherWarningsShow)
           else
             AdminListCard216([
               for (var i = 0; i < items.length; i++)

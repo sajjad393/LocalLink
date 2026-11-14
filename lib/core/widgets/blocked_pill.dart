@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 196: small shared pieces for blocked / private people
 /// (Chats, chat bar, Calls, People, profile, search, Settings).
@@ -23,7 +24,7 @@ class BlockedPill extends StatelessWidget {
           const SizedBox(width: 3),
           Flexible(
             child: Text(
-            'Blocked',
+            L.t.blocked,
             maxLines: 1,
             softWrap: false,
             overflow: TextOverflow.fade,
@@ -62,7 +63,7 @@ class PrivatePill extends StatelessWidget {
           Icon(Icons.lock, size: 10, color: colors.onSurfaceVariant),
           const SizedBox(width: 3),
           Text(
-            'Private',
+            L.t.private,
             style: TextStyle(
               fontSize: 11,
               color: colors.onSurfaceVariant,

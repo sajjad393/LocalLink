@@ -3,6 +3,7 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/peer_mark_302.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 302 (B, mock labels_footer_302.html): the bar that replaces the
 /// message box when I can't send. A floating rounded card (no top line):
@@ -25,35 +26,39 @@ class ChatNotice302 {
   final String line;
 
   /// My account is blocked by admin.
-  static const ChatNotice302 selfAdmin = ChatNotice302(
+  /// 304: one card per language (same instance, like the old const).
+  static final _selfAdmin304 = Expando<ChatNotice302>();
+  static ChatNotice302 get selfAdmin => _selfAdmin304[L.t] ??= ChatNotice302(
     tone: NoticeTone302.red,
     icon: Icons.shield_rounded,
-    title: 'Blocked by admin',
-    line: "You can read chats but can't send.",
+    title: L.en('Blocked by admin'),
+    line: L.t.youCanReadChatsButCan,
   );
 
   /// My app version is stopped by admin.
-  static const ChatNotice302 selfOld = ChatNotice302(
+  /// 304: one card per language (same instance, like the old const).
+  static final _selfOld304 = Expando<ChatNotice302>();
+  static ChatNotice302 get selfOld => _selfOld304[L.t] ??= ChatNotice302(
     tone: NoticeTone302.red,
     icon: Icons.system_update_rounded,
-    title: 'Your LinkUp is old',
-    line: 'Stopped by admin. Update to send and call.',
+    title: L.t.yourLinkupIsOld,
+    line: L.t.stoppedByAdminUpdateToSend,
   );
 
   /// The other person is blocked by admin.
   static ChatNotice302 peerAdmin(String name) => ChatNotice302(
         tone: NoticeTone302.red,
         icon: Icons.shield_rounded,
-        title: '$name is blocked by admin',
-        line: "You can't message or call $name.",
+        title: L.t.isBlockedByAdmin(name),
+        line: L.t.youCanTMessageOrCall(name),
       );
 
   /// The other person's app version is stopped by admin (not a block).
   static ChatNotice302 peerOld(String name) => ChatNotice302(
         tone: NoticeTone302.amber,
         icon: Icons.system_update_rounded,
-        title: '$name has an old LinkUp',
-        line: 'You can message and call after they update.',
+        title: L.t.hasAnOldLinkup(name),
+        line: L.t.youCanMessageAndCallAfter,
       );
 }
 
@@ -202,7 +207,7 @@ class NoticeButton302 extends StatelessWidget {
       minimumSize: WidgetStatePropertyAll(Size(0, 36)),
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       textStyle: WidgetStatePropertyAll(TextStyle(
-          fontFamily: LocalLinkLook.fontFamily,
+          fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback,
           fontSize: 13.5,
           fontWeight: FontWeight.w700)),
     );

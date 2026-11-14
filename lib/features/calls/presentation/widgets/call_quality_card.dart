@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class CallQualityCard extends StatelessWidget {
   final CallSession session;
@@ -12,10 +13,10 @@ class CallQualityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final sample = session.qualitySample;
     final details = <String>[];
-    if (sample?.rttMs != null) details.add('${sample!.rttMs!.round()} ms delay');
-    if (sample?.jitterMs != null) details.add('${sample!.jitterMs!.round()} ms jitter');
-    if (sample?.packetLossPercent != null) details.add('${sample!.packetLossPercent!.toStringAsFixed(1)}% packet loss');
-    if (session.recoveryAttempts > 0) details.add('${session.recoveryAttempts} recovery attempts');
+    if (sample?.rttMs != null) details.add(L.t.msDelay(sample!.rttMs!.round()));
+    if (sample?.jitterMs != null) details.add(L.t.msJitter(sample!.jitterMs!.round()));
+    if (sample?.packetLossPercent != null) details.add(L.t.packetLoss(sample!.packetLossPercent!.toStringAsFixed(1)));
+    if (session.recoveryAttempts > 0) details.add(L.t.recoveryAttempts(session.recoveryAttempts));
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.lg),
@@ -33,7 +34,7 @@ class CallQualityCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Connection quality', style: Theme.of(context).textTheme.labelLarge),
+                Text(L.t.connectionQuality, style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 2),
                 Text(session.quality.label),
                 if (details.isNotEmpty) ...[

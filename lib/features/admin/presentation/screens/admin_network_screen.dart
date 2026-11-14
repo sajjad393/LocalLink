@@ -7,6 +7,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_format216.da
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_people216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (page 16): Network & mesh — how phones are linked.
 class AdminNetworkScreen extends StatelessWidget {
@@ -17,9 +18,9 @@ class AdminNetworkScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AdminToolPage216(
-      title: 'Network & mesh',
+      title: L.t.networkMesh,
       module: 'Network & Mesh',
-      subtitle: (_) => 'How phones are linked',
+      subtitle: (_) => L.t.howPhonesAreLinked,
       builder: (context, state) {
         final c = A216.colors(context);
         final t = A216Text(c);
@@ -61,13 +62,13 @@ class AdminNetworkScreen extends StatelessWidget {
               fallback: 'No owner');
           final e = edgeOf216(state.linkMapData, '${d['id']}');
           final words = switch (e.link) {
-            'server' => 'to the server',
-            'wifi_direct' => e.other.isEmpty ? 'Wi-Fi Direct' : 'with ${e.other}',
-            'mesh' => e.other.isEmpty ? 'mesh' : 'through ${e.other}',
-            'lan' => 'same Wi-Fi',
+            'server' => L.t.toTheServer,
+            'wifi_direct' => e.other.isEmpty ? L.t.wiFiDirect : L.t.withText(e.other),
+            'mesh' => e.other.isEmpty ? 'mesh' : L.t.through(e.other),
+            'lan' => L.t.sameWiFi,
             _ => switch (deviceLink216(d).text) {
-                'Server' => 'to the server',
-                'Local Wi-Fi' => 'same Wi-Fi',
+                'Server' => L.t.toTheServer,
+                'Local Wi-Fi' => L.t.sameWiFi,
                 final x => x,
               },
           };
@@ -80,24 +81,24 @@ class AdminNetworkScreen extends StatelessWidget {
             tile('server', _n(net, 'server_connected'), 'Server', A216.linkServer,
                 Icons.cloud_outlined),
             const SizedBox(width: 10),
-            tile('wifi_direct', _n(net, 'wifi_direct_connected'), 'Wi-Fi Direct',
+            tile('wifi_direct', _n(net, 'wifi_direct_connected'), L.t.wiFiDirect,
                 A216.linkWifiDirect, Icons.wifi_tethering_rounded),
           ]),
           const SizedBox(height: 10),
           Row(children: [
-            tile('mesh', _n(net, 'mesh_available'), 'Mesh', A216.linkMesh, Icons.hub_outlined),
+            tile('mesh', _n(net, 'mesh_available'), L.t.mesh, A216.linkMesh, Icons.hub_outlined),
             const SizedBox(width: 10),
             tile('lan', _n(net, 'lan_available'), 'Local Wi-Fi', A216.linkLan,
                 Icons.router_outlined),
           ]),
-          AdminSection216('Phones right now',
-              right: '${online.length} online', rightColor: c.grey),
+          AdminSection216(L.t.phonesRightNow,
+              right: L.t.online2(online.length), rightColor: c.grey),
           if (online.isEmpty)
-            const AdminEmptyState216(
+            AdminEmptyState216(
                 icon: Icons.wifi_off_rounded,
                 tone: A216Tone.grey,
-                title: 'No phones online',
-                body: 'Phones show here when they are linked.')
+                title: L.t.noPhonesOnline,
+                body: L.t.phonesShowHereWhenTheyAre)
           else
             AdminListCard216([
               for (final d in online)
@@ -143,7 +144,7 @@ class AdminNetworkScreen extends StatelessWidget {
                 ),
             ]),
           const SizedBox(height: 12),
-          const AdminNote216('Wi-Fi rule: open a person in Users or a phone in Devices.'),
+          AdminNote216(L.t.wiFiRuleOpenAPerson),
         ];
       },
     );

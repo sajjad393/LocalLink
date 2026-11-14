@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/network/session_dead_262.dart';
 import 'package:locallink/core/widgets/error_toast.dart' show friendlyErrorMessage;
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 262 (D): the server ended this phone's sign-in (3x 401 in a row).
 /// A yellow card on the Chats tab: "Signed out from the server" + "Sign in
@@ -12,8 +13,7 @@ class SessionDeadBanner262 extends StatelessWidget {
   static const Color tint = Color(0xFFFDF1DD);
   static const Color ink = Color(0xFF9A5B06);
 
-  static const String text =
-      'Signed out from the server. Nearby chats still work. Sign in again to use the server.';
+  static String get text => L.t.signedOutFromTheServerNearby;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -40,7 +40,7 @@ class SessionDeadBanner262 extends StatelessWidget {
                     key: const ValueKey('session_dead_sign_in_262'),
                     onPressed: () => showSignInAgain262(context),
                     style: TextButton.styleFrom(foregroundColor: ink),
-                    child: const Text('Sign in again'),
+                    child: Text(L.t.signInAgain),
                   ),
                 ]),
               ),
@@ -81,7 +81,7 @@ class _SignInAgainDialogState extends State<_SignInAgainDialog> {
   Future<void> _go() async {
     final pwd = _password.text;
     if (pwd.isEmpty) {
-      setState(() => _error = 'Type your password.');
+      setState(() => _error = L.t.typeYourPassword);
       return;
     }
     final signIn = SessionDead262.instance.signIn;
@@ -98,17 +98,16 @@ class _SignInAgainDialogState extends State<_SignInAgainDialog> {
       final words = friendlyErrorMessage(e);
       setState(() {
         _busy = false;
-        _error = words.contains('session has expired') ? 'Wrong password. Try again.' : words;
+        _error = words.contains('session has expired') ? L.t.wrongPasswordTryAgain : words;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Sign in again'),
+        title: Text(L.t.signInAgain),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('The server signed this phone out. Type your password to sign in again. '
-              'Your chats stay on this phone.'),
+          Text(L.t.theServerSignedThisPhoneOut),
           const SizedBox(height: 12),
           TextField(
             key: const ValueKey('session_dead_password_262'),
@@ -118,10 +117,10 @@ class _SignInAgainDialogState extends State<_SignInAgainDialog> {
             autofocus: true,
             onSubmitted: (_) => _go(),
             decoration: InputDecoration(
-              labelText: 'Password',
+              labelText: L.t.password,
               errorText: _error.isEmpty ? null : _error,
               suffixIcon: IconButton(
-                tooltip: _hide ? 'Show' : 'Hide',
+                tooltip: _hide ? L.t.showText : L.t.hideText,
                 icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                 onPressed: () => setState(() => _hide = !_hide),
               ),
@@ -131,14 +130,14 @@ class _SignInAgainDialogState extends State<_SignInAgainDialog> {
         actions: [
           TextButton(
             onPressed: _busy ? null : () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(L.t.cancel),
           ),
           FilledButton(
             key: const ValueKey('session_dead_go_262'),
             onPressed: _busy ? null : _go,
             child: _busy
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Sign in'),
+                : Text(L.t.signIn),
           ),
         ],
       );

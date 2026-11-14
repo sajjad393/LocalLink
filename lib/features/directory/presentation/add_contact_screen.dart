@@ -26,6 +26,7 @@ import 'package:locallink/features/directory/presentation/nearby_people_section.
 import 'package:locallink/features/directory/presentation/add_contact_ui283.dart';
 import 'package:locallink/core/widgets/link_kit_290.dart';
 import 'package:locallink/features/directory/presentation/profile_view_rules.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class AddContactScreen extends StatefulWidget {
   final DirectoryRepositoryContract repository;
@@ -179,7 +180,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
         )));
         return;
       }
-      LinkToast.show(context, 'Contact added', kind: LinkToastKind.done);
+      LinkToast.show(context, L.t.contactAdded, kind: LinkToastKind.done);
     } catch (e) {
       logFriendAddFail256(source, e);
       if (mounted) _showError(friendAddFailText256(e));
@@ -301,7 +302,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
     final me = await widget.pairing?.ownQrProfile242();
     if (!mounted) return;
     if (me == null) {
-      _showError('Your profile is not ready yet.');
+      _showError(L.t.yourProfileIsNotReadyYet);
       return;
     }
     await Navigator.push<void>(
@@ -338,12 +339,12 @@ class _AddContactScreenState extends State<AddContactScreen> {
       backgroundColor: p.screen,
       appBar: addBar283(
         context,
-        title: 'Add Contact',
+        title: L.t.addContact,
         // Bundle 242 (mock 242): My QR at the top right.
         actions: [
           RoundTopButton283(
             key: const ValueKey('add_contact_my_qr_242'),
-            tooltip: 'My QR code',
+            tooltip: L.t.myQrCode,
             icon: Icons.qr_code_2_rounded,
             onPressed: _openMyQr242,
           ),
@@ -407,7 +408,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (typing && (results.isNotEmpty || blockedMatches.isNotEmpty)) ...[
-          const SectionTitle283('Results'),
+          SectionTitle283(L.t.results),
           for (final person in blockedMatches)
             BlockedResultCard(
               key: ValueKey('search_blocked_${person.userId}'),
@@ -481,7 +482,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
         crypto: widget.crypto,
         pairing: widget.pairing!,
         selfUserId: widget.selfUserId,
-        title: 'People nearby',
+        title: L.t.peopleNearby,
         waitLine: PeopleToAdd267.waitLine,
         meInitial: _meInitial283,
       );
@@ -664,7 +665,7 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
         return;
       }
       if (context.mounted) {
-        LinkToast.show(context, 'Contact added', kind: LinkToastKind.done);
+        LinkToast.show(context, L.t.contactAdded, kind: LinkToastKind.done);
         setState(() => _isContact = true);
         _loadPrivacy();
       }
@@ -716,8 +717,8 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       await hub.reload();
       if (mounted) setState(() => _isContact = addBack ? true : _isContact);
       LinkToast.maybeOn(messenger, addBack
-              ? '${person.label} unblocked and added back'
-              : '${person.label} unblocked', kind: LinkToastKind.done);
+              ? L.t.unblockedAndAddedBack(person.label)
+              : L.t.unblocked(person.label), kind: LinkToastKind.done);
       _loadPrivacy();
     } catch (e) {
       LinkToast.maybeOn(messenger, cleanBlocError(e), kind: LinkToastKind.error);
@@ -751,7 +752,7 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
             children: [
               Icon(Icons.block, size: 16, color: scheme.error),
               const SizedBox(width: 6),
-              Text('Blocked',
+              Text(L.t.blocked,
                   style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
@@ -763,8 +764,8 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       const SizedBox(height: 14),
       Text(
         when.isEmpty
-            ? "You blocked $_name. They can't message or call you."
-            : "You blocked $_name on $when. They can't message or call you.",
+            ? L.t.youBlockedTheyCanTMessage(_name)
+            : L.t.youBlockedOnTheyCanT(_name, when),
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 13.5, color: scheme.onSurfaceVariant),
       ),
@@ -772,13 +773,13 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       FilledButton(
         key: const ValueKey('profile_unblock_add_back'),
         onPressed: () => _unblock(context, addBack: true),
-        child: const Text('Unblock and add back'),
+        child: Text(L.t.unblockAndAddBack),
       ),
       const SizedBox(height: 10),
       OutlinedButton(
         key: const ValueKey('profile_unblock_only'),
         onPressed: () => _unblock(context, addBack: false),
-        child: const Text('Unblock only'),
+        child: Text(L.t.unblockOnly),
       ),
     ];
   }
@@ -790,7 +791,7 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       );
 
   Widget _page(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Profile')),
+        appBar: AppBar(title: Text(L.t.profile)),
         body: BlockHub.instance.isBlockedUser(profile.userId) &&
                 _relation != ProfileRelation.self
             ? ListView(
@@ -844,14 +845,14 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       case ProfileRelation.self:
         return Chip(
           avatar: Icon(Icons.person, size: 18, color: scheme.onPrimaryContainer),
-          label: const Text('This is you'),
+          label: Text(L.t.thisIsYou),
           backgroundColor: scheme.primaryContainer,
           side: BorderSide.none,
         );
       case ProfileRelation.contact:
         return Chip(
           avatar: Icon(Icons.check_circle, size: 18, color: scheme.primary),
-          label: const Text('In your contacts'),
+          label: Text(L.t.inYourContacts),
           side: BorderSide.none,
         );
       case ProfileRelation.stranger:
@@ -875,7 +876,7 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
     final block = TextButton(
       style: TextButton.styleFrom(foregroundColor: scheme.error),
       onPressed: () => _block(context),
-      child: const Text('Block user'),
+      child: Text(L.t.blockUser),
     );
     if (contact) {
       return [
@@ -883,7 +884,7 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
           FilledButton.icon(
             onPressed: () => widget.onStartChat!(profile),
             icon: const Icon(Icons.chat_bubble_outline),
-            label: const Text('Message'),
+            label: Text(L.t.message),
           ),
         const SizedBox(height: 8),
         block,
@@ -893,14 +894,14 @@ class _DirectoryProfileViewState extends State<DirectoryProfileView> {
       FilledButton.icon(
         onPressed: () => _addContact(context),
         icon: const Icon(Icons.person_add_alt_1),
-        label: const Text('Add Contact'),
+        label: Text(L.t.addContact),
       ),
       if (widget.onStartChat != null) ...[
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () => widget.onStartChat!(profile),
           icon: const Icon(Icons.chat_bubble_outline),
-          label: const Text('Message'),
+          label: Text(L.t.message),
         ),
       ],
       const SizedBox(height: 8),
@@ -917,26 +918,26 @@ Future<String?> showSaveContactDialog(BuildContext context, String initialName) 
   return showDialog<String>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Save contact as'),
+      title: Text(L.t.saveContactAs),
       content: TextField(
         controller: controller,
         autocorrect: false,
         maxLength: 40,
         autofocus: true,
-        decoration: const InputDecoration(
-          labelText: 'Name on this phone',
-          hintText: 'Only you will see this name',
+        decoration: InputDecoration(
+          labelText: L.t.nameOnThisPhone,
+          hintText: L.t.onlyYouWillSeeThisName,
         ),
         onSubmitted: (value) => Navigator.pop(dialogContext, value),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('Cancel'),
+          child: Text(L.t.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(dialogContext, controller.text),
-          child: const Text('Add contact'),
+          child: Text(L.t.addContact2),
         ),
       ],
     ),
@@ -965,9 +966,9 @@ class SearchResultCard extends StatelessWidget {
   });
 
   static String statusWord(String channel) => switch (channel) {
-        'nearby' => 'Nearby',
-        'server' => 'Online',
-        _ => 'Offline',
+        'nearby' => L.t.nearby,
+        'server' => L.t.online,
+        _ => L.t.offline,
       };
 
   /// Bundle 283 (mock): teal dot = nearby, blue dot = online, none = offline.
@@ -988,7 +989,7 @@ class SearchResultCard extends StatelessWidget {
       builder: (context, _) {
         final channel =
             hasDevice ? PresenceHub.instance.channelOf(profile.deviceId) : '';
-        final status = hasDevice ? statusWord(channel) : 'Offline';
+        final status = hasDevice ? statusWord(channel) : L.t.offline;
         return PersonCard283(
           onTap: onOpen,
           avatar: LetterAvatar283(
@@ -998,10 +999,10 @@ class SearchResultCard extends StatelessWidget {
               ? '@${profile.username}'
               : '@${profile.username} · $status'),
           trailing: isContact
-              ? const ContactPill283('Contact', key: Key('search_result_added'))
+              ? ContactPill283(L.t.contact, key: Key('search_result_added'))
               : GradientChip283(
                   key: const Key('search_result_add'),
-                  text: 'Add',
+                  text: L.t.add,
                   onPressed: onAdd,
                 ),
         );
@@ -1041,7 +1042,7 @@ class BlockedResultCard extends StatelessWidget {
           side: BorderSide(color: AddUi283.chevron(p)),
           shape: const StadiumBorder(),
         ),
-        child: const Text('Unblock'),
+        child: Text(L.t.unblock),
       ),
     );
   }

@@ -1,0 +1,5547 @@
+{
+  "@@locale": "en",
+  "aConsistentCopyOfTheLinkup": "A consistent copy of the LinkUp database will be written to the server backup directory.",
+  "aLinkupPhoneHelpingToPass": "A LinkUp phone helping to pass your messages. It can't read them.",
+  "aNearbyPhone": "a nearby phone",
+  "aNearbyPhone2": "a nearby phone ({firstCarrier})",
+  "@aNearbyPhone2": {
+    "placeholders": {
+      "firstCarrier": {
+        "type": "Object?"
+      }
+    }
+  },
+  "aNewAccountIdentityKeyWill": "A new account identity key will become active. The previous key is retained on this phone as local key history. Other devices will learn the new public key automatically.",
+  "aNewerLinkupIsNeededPlease": "A newer LinkUp is needed. Please update.",
+  "aSmallMapOfYourContacts": "A small map of your contacts at the top of Chats",
+  "aboutFreeSpace": "About {sizeLabel} free space",
+  "@aboutFreeSpace": {
+    "placeholders": {
+      "sizeLabel": {
+        "type": "Object?"
+      }
+    }
+  },
+  "accept": "Accept",
+  "acceptNewCode": "Accept new code",
+  "account": "Account",
+  "accountClosed": "Account closed",
+  "accountClosedByAdmin": "Account closed by admin",
+  "accountClosedByAdminYouCan": "Account closed by admin. You can read old chats but can't send or call.",
+  "accountDataRestored": "Account data restored",
+  "accountPhonesBackup": "@{nickname} · Account, phones, backup",
+  "@accountPhonesBackup": {
+    "placeholders": {
+      "nickname": {
+        "type": "Object?"
+      }
+    }
+  },
+  "accountPhonesBackup2": "Account, phones, backup",
+  "accountProfileMetadataDevicesGroupsMessages": "Account/profile metadata, devices, groups, messages, group messages and call history. File content is not downloaded automatically.",
+  "accountRecoveredOnThisPhone": "Account recovered on this phone.",
+  "accountRecoveredPreviousActiveDevicesWere": "Account recovered. Previous active devices were revoked.",
+  "accountRecoveredSuccessfully": "Account recovered successfully.",
+  "accountRecovery": "Account recovery",
+  "accountRecoveryQueue": "Account recovery queue",
+  "accountStopped": "Account stopped",
+  "accountTurnedOnAgain": "Account turned on again",
+  "accountsAndProfiles": "Accounts and profiles",
+  "actionsGoToHerPhoneBy": "Actions go to her phone by card (Pending until done). More actions after she joins the server.",
+  "actionsThePhonesDidShowHere": "Actions the phones did show here.",
+  "actionsWaitHereUntilEachPhone": "Actions wait here until each phone does it. There is no time limit.",
+  "active": "Active",
+  "activeAgain": "Active again",
+  "activeCalls": "Active calls",
+  "activeSessions": "Active sessions",
+  "activityAnalytics": "Activity analytics",
+  "add": "Add",
+  "addAContactOrDiscoverNearby": "Add a contact or discover nearby LinkUp phones.",
+  "addAsAFriend": "Add {displayName} as a friend?",
+  "@addAsAFriend": {
+    "placeholders": {
+      "displayName": {
+        "type": "Object?"
+      }
+    }
+  },
+  "addContact": "Add Contact",
+  "addContact2": "Add contact",
+  "addFriend": "Add friend",
+  "addGroupDescription": "Add group description",
+  "addGroupPhotoOptional": "Add group photo (optional)",
+  "addMeOnLinkup": "ADD ME ON LINKUP",
+  "addMember": "Add member",
+  "addMembers": "Add members",
+  "addOption": "Add option",
+  "addPeopleUpTo": "Add people · up to {kNewGroupMax}",
+  "@addPeopleUpTo": {
+    "placeholders": {
+      "kNewGroupMax": {
+        "type": "Object?"
+      }
+    }
+  },
+  "addToGroup": "Add to group",
+  "added": "Added · {atMs}",
+  "@added": {
+    "placeholders": {
+      "atMs": {
+        "type": "Object?"
+      }
+    }
+  },
+  "added2": "{name} added",
+  "@added2": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "addedByYou": "Added by you",
+  "addedByYou2": "Added by you · {day} {month}",
+  "@addedByYou2": {
+    "placeholders": {
+      "day": {
+        "type": "Object?"
+      },
+      "month": {
+        "type": "Object?"
+      }
+    }
+  },
+  "addedByYouToday": "Added by you · today {hh}:{mm}",
+  "@addedByYouToday": {
+    "placeholders": {
+      "hh": {
+        "type": "Object?"
+      },
+      "mm": {
+        "type": "Object?"
+      }
+    }
+  },
+  "addedMembers304": "{actor} added {targets}",
+  "@addedMembers304": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      },
+      "targets": {
+        "type": "Object?"
+      }
+    }
+  },
+  "addedToTheGroup": "{selected} added to the group.",
+  "@addedToTheGroup": {
+    "placeholders": {
+      "selected": {
+        "type": "Object?"
+      }
+    }
+  },
+  "addedYou": "{actor} added you",
+  "@addedYou": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "adding": "Adding {invites}",
+  "@adding": {
+    "placeholders": {
+      "invites": {
+        "type": "Object?"
+      }
+    }
+  },
+  "adding2": "Adding {phone}…",
+  "@adding2": {
+    "placeholders": {
+      "phone": {
+        "type": "Object?"
+      }
+    }
+  },
+  "addingNowNearby": "Adding now · Nearby",
+  "addingPeople": "Adding people",
+  "admin": "Admin",
+  "admin2": "Admin · {level}",
+  "@admin2": {
+    "placeholders": {
+      "level": {
+        "type": "Object?"
+      }
+    }
+  },
+  "admin3": "Admin · {r}{substring}",
+  "@admin3": {
+    "placeholders": {
+      "r": {
+        "type": "Object?"
+      },
+      "substring": {
+        "type": "Object?"
+      }
+    }
+  },
+  "adminActions": "Admin actions",
+  "adminActionsAreNotReadyOn": "Admin actions are not ready on this phone",
+  "adminActionsSaved": "Admin actions saved",
+  "adminBadge": "Admin badge",
+  "adminBecomesTheNewOwner": " (admin) becomes the new owner.",
+  "adminBlocked": "Admin blocked",
+  "adminConsole": "Admin console",
+  "adminPolicy": "admin policy",
+  "adminSessionExpiredPleaseSignIn": "Admin session expired. Please sign in again.",
+  "adminSettings": "Admin settings",
+  "adminSettings2": "Admin Settings",
+  "adminTools": "admin tools",
+  "adminToolsAreNotAvailableRight": "Admin tools are not available right now",
+  "adminToolsAreOffOnThis": "Admin tools are off on this phone.",
+  "administration": "Administration / {title}",
+  "@administration": {
+    "placeholders": {
+      "title": {
+        "type": "Object?"
+      }
+    }
+  },
+  "administratorNote": "Administrator note",
+  "admins": "Admins",
+  "adminsApprovePeopleWhoJoinBy": "Admins approve people who join by QR",
+  "adminsDecide": "Admins decide",
+  "adminsOnlyNotifyEveryone": "Admins only: notify everyone",
+  "adminsSignedIn": "Admins signed in",
+  "affectsPhoneSeenNearby": "Affects {affects} phone{s} seen nearby",
+  "@affectsPhoneSeenNearby": {
+    "placeholders": {
+      "affects": {
+        "type": "Object?"
+      },
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "alertAfter": "Alert after",
+  "alertsAndPolicy": "Alerts and policy",
+  "all": "All {reactions}",
+  "@all": {
+    "placeholders": {
+      "reactions": {
+        "type": "Object?"
+      }
+    }
+  },
+  "all2": "All",
+  "allAreYoursAndLessThan": "All {count} are yours and less than 5 minutes old, so \"Delete for everyone\" is shown. A copy someone saved to the Gallery stays.",
+  "@allAreYoursAndLessThan": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "allGood": "All good",
+  "allMembers": "All members",
+  "allMembersAddPeople": "All members add people",
+  "allMessagesPhotosAndFilesIn": "All messages, photos and files in this chat are ",
+  "allMessagesPhotosAndFilesOf": "All messages, photos and files of this group are removed from this phone.",
+  "allTools": "all tools",
+  "allow": "Allow",
+  "allowNameSearchesToReturnYour": "Allow name searches to return your profile",
+  "allowNearbyDevicesToReachPeople": "Allow nearby devices to reach people without internet.",
+  "allowPeopleToFindYouWith": "Allow people to find you with your phone number",
+  "allowTheNearbyDevicesPermissionThen": "Allow the \"Nearby devices\" permission, then tap Add friend again.",
+  "allowed": "Allowed",
+  "allowedRequired": "Allowed — required",
+  "alreadyInTheGroup": "Already in the group",
+  "alsoStopVeryOldApps": "Also stop very old apps",
+  "always": "Always",
+  "alwaysOff": "Always off",
+  "alwaysOn": "Always on",
+  "alwaysUseTheDarkTheme": "Always use the dark theme.",
+  "alwaysUseTheLightTheme": "Always use the light theme.",
+  "anAdmin": "An admin",
+  "anAdmin2": "an admin",
+  "anAdminMustAddYouThis": "An admin must add you. This stays for 24 hours. You get \"{from} added you\" when it is done.",
+  "@anAdminMustAddYouThis": {
+    "placeholders": {
+      "from": {
+        "type": "Object?"
+      }
+    }
+  },
+  "anAdminMustSayYesThis": "An admin must say yes. This stays for 24 hours. The group opens in your Chats when it is done.",
+  "anAndroidPhone": "•  An Android phone",
+  "and": "{join} and {parts}",
+  "@and": {
+    "placeholders": {
+      "join": {
+        "type": "Object?"
+      },
+      "parts": {
+        "type": "Object?"
+      }
+    }
+  },
+  "andAreTyping": "{clean} and {clean2} are typing…",
+  "@andAreTyping": {
+    "placeholders": {
+      "clean": {
+        "type": "Object?"
+      },
+      "clean2": {
+        "type": "Object?"
+      }
+    }
+  },
+  "andItLeavesYourChatsList": " and it leaves your Chats list.",
+  "andMoreAskedToJoin": "{first} and {n} more asked to join",
+  "@andMoreAskedToJoin": {
+    "placeholders": {
+      "first": {
+        "type": "Object?"
+      },
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "android": "Android",
+  "android14FullScreenWhenLocked": "Android 14+: full screen when locked",
+  "androidControls": "Android controls",
+  "androidTurnedTheLinkupWiFi": "Android turned the LinkUp Wi-Fi off.",
+  "androidWillAskConnectEachTime": "Android will ask \"Connect?\" each time this phone joins another group or hotspot. Tap Connect to allow it. Needs Android 10 or newer.",
+  "androidWillAskYouToAllow": "Android will ask you to allow installs from LinkUp. Turn it on, then come back.",
+  "anotherAccount": "another account",
+  "anotherCallIsAlreadyActive": "Another call is already active",
+  "answer": "Answer",
+  "answerTheyCanChangeItFor": " answer. They can change it for 3 minutes after voting, then it's final.",
+  "anyoneCanFindYouByName": "Anyone can find you by name and see your phone number.",
+  "anyoneThisPhoneHasSeenOr": "Anyone this phone has seen, or nearby",
+  "anyoneWhoScansThisNearA": "Anyone who scans this near a member can ask to join. It works without internet.\n",
+  "anyoneWithLinkupWhoOpensThis": "Anyone with LinkUp who opens this link can ask to join, from anywhere. It needs internet (the server). With \"Approve new members\" on, an admin must say yes.",
+  "anyoneWithTheLinkCanAsk": "Anyone with the link can ask to join",
+  "anyoneWithThisCodeCanReset": "Anyone with this code can reset your password. LinkUp will never ask for it.",
+  "appInfoBatteryAllowBackgroundActivity": "App info > Battery: Allow background activity",
+  "appInfoBatterySaverChooseNo": "App info > Battery saver: choose No restrictions",
+  "appLaunchTurnOffManageAutomatically": "App launch: turn off Manage automatically for LinkUp",
+  "appTooOldToAnswer": "app too old to answer",
+  "appVersion": "App version",
+  "appearance": "Appearance",
+  "approveAndGiveCode": "Approve and give code",
+  "approveNewMembers": "Approve new members",
+  "approved": "Approved",
+  "approvedEnterTheRecoveryCodeProvided": "Approved. Enter the recovery code provided by the administrator.",
+  "approvedRecoveryFor": "{admin} approved recovery for {target}",
+  "@approvedRecoveryFor": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "appsBefore3054Can": "Apps before 3.0.54 can't read this rule. The server refuses them.",
+  "apr": "Apr",
+  "areRequiredFillThemInBefore": "{and} are required — fill them in before saving.",
+  "@areRequiredFillThemInBefore": {
+    "placeholders": {
+      "and": {
+        "type": "Object?"
+      }
+    }
+  },
+  "askAQuestion": "Ask a question",
+  "askPhones": "Ask phones",
+  "askPhonesForAChatOwner": "Ask phones for a chat · Owner only",
+  "askTheAdmin": "Ask the admin",
+  "askTheAdminForTheCode": "Ask the admin for the code.",
+  "askTheAdminToApproveIt": "Ask the admin to approve it",
+  "askThemToOpenTheLink": "Ask them to open the link again with the newest LinkUp.",
+  "askToJoin": "Ask to join",
+  "asked": "Asked {created_at} · {expires_at}",
+  "@asked": {
+    "placeholders": {
+      "created_at": {
+        "type": "Object?"
+      },
+      "expires_at": {
+        "type": "Object?"
+      }
+    }
+  },
+  "askedThePhoneForTheFull": "Asked the phone for the full file",
+  "atLeast8Characters": "At least 8 characters",
+  "attach": "Attach",
+  "auditLog": "Audit log",
+  "auditLog2": "Audit Log",
+  "auditedEventsSessionsAndOutstandingRecovery": "Audited events, sessions and outstanding recovery work",
+  "auditor": "Auditor",
+  "aug": "Aug",
+  "authenticatedDeviceSessions": "Authenticated device sessions",
+  "authenticatedSessions": "Authenticated sessions",
+  "autoFixed": "Auto-fixed",
+  "autoLaunchTurnLinkupOn": "Auto launch: turn LinkUp ON",
+  "autoStartTurnLinkupOn": "Auto-start: turn LinkUp ON",
+  "autostartTurnLinkupOn": "Autostart: turn LinkUp ON",
+  "available": "Available",
+  "avoidWiFiDirectAndMesh": "Avoid Wi-Fi Direct and mesh messaging. LinkUp uses the configured server connection when available; this does not guarantee that the server itself is on the public Internet.",
+  "back": "Back",
+  "backToStep1": "←  Back to step 1",
+  "backUpNow": "Back up now",
+  "backgroundPowerUseAllowLinkup": "Background power use: allow LinkUp",
+  "backup": "Backup",
+  "backupAndRestore": "Backup and restore",
+  "backupAndSafety": "Backup and safety",
+  "backupCompleted": "Backup completed.",
+  "backupCouldNotBeCreated": "Backup could not be created.",
+  "backupMade": "Backup made.",
+  "backupPassphrase": "Backup passphrase",
+  "backupWrittenTo": "Backup written to {path}",
+  "@backupWrittenTo": {
+    "placeholders": {
+      "path": {
+        "type": "Object?"
+      }
+    }
+  },
+  "batteryChooseUnrestricted": "Battery: choose Unrestricted",
+  "batteryLow10OrLess": "Battery low (10% or less)",
+  "batteryOptimizationIsAlreadyIgnored": "{lockedToast} Battery optimization is already ignored.",
+  "@batteryOptimizationIsAlreadyIgnored": {
+    "placeholders": {
+      "lockedToast": {
+        "type": "Object?"
+      }
+    }
+  },
+  "batteryPermissionDialogsAreShownOnly": "Battery-permission dialogs are shown only when you tap a row. Nothing is enabled silently.",
+  "becomesTheNewOwner": " becomes the new owner.",
+  "below": " below.",
+  "biggestFirstTapToOpenHold": "Biggest first. Tap to open, hold to pick.",
+  "block": "Block",
+  "block2": "Block {name}",
+  "@block2": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "block3": "Block {name}?",
+  "@block3": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blockAUser": "Block a user",
+  "blockFailed": "Block failed: {error}",
+  "@blockFailed": {
+    "placeholders": {
+      "error": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blockForEveryone": "Block for everyone",
+  "blockOrUnblockAUser": "Block or unblock a user",
+  "blockSavedOnTheServer": "Block saved on the server",
+  "blockSavedOnTheServer2": "{user} block saved on the server",
+  "@blockSavedOnTheServer2": {
+    "placeholders": {
+      "user": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blockUser": "Block user",
+  "blockUsersAllPhones": "Block users (all phones)",
+  "blocked": "Blocked",
+  "blocked2": "Blocked {toLocal}",
+  "@blocked2": {
+    "placeholders": {
+      "toLocal": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blocked3": "blocked {when}",
+  "@blocked3": {
+    "placeholders": {
+      "when": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blocked4": "{name} blocked",
+  "@blocked4": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blocked5": "{admin} blocked {target}",
+  "@blocked5": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blocked6": "{label} · Blocked",
+  "@blocked6": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blockedBy": "Blocked by {by} · {at}{phones}",
+  "@blockedBy": {
+    "placeholders": {
+      "by": {
+        "type": "Object?"
+      },
+      "at": {
+        "type": "Object?"
+      },
+      "phones": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blockedByAdmin": "Blocked by admin",
+  "blockedByAdminYouCanT": "Blocked by admin. You can't send.",
+  "blockedList": "Blocked list",
+  "blockedOn": "Blocked on {when}.",
+  "@blockedOn": {
+    "placeholders": {
+      "when": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blockedOnEveryLinkupPhoneIt": "{all} blocked · on every LinkUp phone it reaches",
+  "@blockedOnEveryLinkupPhoneIt": {
+    "placeholders": {
+      "all": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blockedOnThisPhone": "Blocked on this phone",
+  "blockedOnThisPhone2": "{name} blocked on this phone.",
+  "@blockedOnThisPhone2": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "blockedPeople": "Blocked people",
+  "blockedRelaysOnly": "Blocked · relays only",
+  "blockedServerLater": "Blocked · server later",
+  "blocks": "Blocks",
+  "blueInTheChatOnlyWhen": "Blue ✓✓ in the chat only when all {total} have read it. People with read receipts off show under Delivered.",
+  "@blueInTheChatOnlyWhen": {
+    "placeholders": {
+      "total": {
+        "type": "Object?"
+      }
+    }
+  },
+  "bluetoothNotAllowed": "Bluetooth not allowed",
+  "bluetoothOff": "Bluetooth off",
+  "bluetoothOn": "Bluetooth on",
+  "bridgeToWiFi": "Bridge to Wi-Fi",
+  "build": "Build {build}",
+  "@build": {
+    "placeholders": {
+      "build": {
+        "type": "Object?"
+      }
+    }
+  },
+  "build2": "build {build}",
+  "@build2": {
+    "placeholders": {
+      "build": {
+        "type": "Object?"
+      }
+    }
+  },
+  "build3": "{version} (build {build})",
+  "@build3": {
+    "placeholders": {
+      "version": {
+        "type": "Object?"
+      },
+      "build": {
+        "type": "Object?"
+      }
+    }
+  },
+  "busy": "Busy",
+  "call": "Call",
+  "callAlertsOffTapToTurn": "Call alerts off - tap to turn on",
+  "callAlertsOn": "Call alerts on",
+  "callAudio": "Call audio",
+  "callBack": "Call back",
+  "callCanceled": "Call canceled",
+  "callEnded": "Call ended",
+  "callEndedNoNearbyConnection": "Call ended: no nearby connection",
+  "callFailed": "Call failed",
+  "callInProgress": "Call in progress",
+  "callIsNoLongerAvailable": "Call is no longer available",
+  "callSessions": "Call sessions",
+  "calling": "Calling…",
+  "callingTapToReturn": "{name} · Calling… — Tap to return",
+  "@callingTapToReturn": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "calls": "{startedAt} · {count} calls",
+  "@calls": {
+    "placeholders": {
+      "startedAt": {
+        "type": "Object?"
+      },
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "calls2": "Calls",
+  "callsPassedOnNow": "Calls passed on now",
+  "callsRingButNoAcceptButton": "Calls ring, but no Accept button",
+  "callsRingWithAcceptReject": "Calls ring with Accept / Reject",
+  "callsShowHereWithNamesAnd": "Calls show here with names and times.",
+  "callsToday": "Calls today",
+  "cameByLocalWiFi": "Came by Local Wi-Fi",
+  "cameByMeshThroughAFriend": "Came by Mesh (through a friend's phone)",
+  "cameByWiFiDirect": "Came by Wi-Fi Direct",
+  "cameThroughTheServer": "Came through the server",
+  "camera": "Camera",
+  "canAskAgainLater": "{they} can ask again later.",
+  "@canAskAgainLater": {
+    "placeholders": {
+      "they": {
+        "type": "Object?"
+      }
+    }
+  },
+  "canHelpIfYouForgetYour": "Can help if you forget your password, lose a phone, or your Wi-Fi settings need fixing.",
+  "canOnlyLook": "can only look",
+  "canSendMessages": " can send messages.",
+  "canStillReadThemUnblockAnytime": "{first} can still read them. Unblock anytime",
+  "@canStillReadThemUnblockAnytime": {
+    "placeholders": {
+      "first": {
+        "type": "Object?"
+      }
+    }
+  },
+  "canTJoinTheServerYet": "Can't join the server yet",
+  "canTMessageOrCallYou": "{name} **can't message or call** you, and their adds are ignored.",
+  "@canTMessageOrCallYou": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "canTOpenTheLinkNow": "Can't open the link now. Check the internet and try again.",
+  "canTPlayThisVideo": "Can't play this video",
+  "canTSendOrGetThem": "Can't send or get them on any phone",
+  "canTSignInForNow": "Can’t sign in for now",
+  "canTSignInUntilYou": "{name} can’t sign in until you set Active again.",
+  "@canTSignInUntilYou": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "canUseLinkup": "Can use LinkUp",
+  "canUseLinkupAgain": "{name} can use LinkUp again.",
+  "@canUseLinkupAgain": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "canUseLinkupAtOnce": "{first} can use LinkUp at once",
+  "@canUseLinkupAtOnce": {
+    "placeholders": {
+      "first": {
+        "type": "Object?"
+      }
+    }
+  },
+  "cancel": "Cancel",
+  "cancelAction": "Cancel action",
+  "cancelDownload": "Cancel download",
+  "cancelReply": "Cancel reply",
+  "cancelRequest": "Cancel request",
+  "cancelThis": "Cancel this {what}?",
+  "@cancelThis": {
+    "placeholders": {
+      "what": {
+        "type": "Object?"
+      }
+    }
+  },
+  "cancelThisAction": "Cancel this action?",
+  "cancelThisRequest": "Cancel this request?",
+  "cancelTransfer": "Cancel transfer",
+  "canceled": "Canceled",
+  "cancelled": "Cancelled",
+  "cancelled2": "Cancelled {finishedAt}",
+  "@cancelled2": {
+    "placeholders": {
+      "finishedAt": {
+        "type": "Object?"
+      }
+    }
+  },
+  "carriedBy": "carried by {n}",
+  "@carriedBy": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "carriedByAPhone": "carried by a phone",
+  "changeKey": "Change key",
+  "changeProfilePhoto": "Change profile photo",
+  "changeSecurityKey": "Change security key?",
+  "changeTheRuleOnTheApp": "Change the rule on the App version page.",
+  "changedAdminSettings": "{admin} changed admin settings",
+  "@changedAdminSettings": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedTheGroup": "{actor} changed the group",
+  "@changedTheGroup": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedTheGroupDescription": "{actor} changed the group description",
+  "@changedTheGroupDescription": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedTheGroupNameTo": "{actor} changed the group name to \"{name}\"",
+  "@changedTheGroupNameTo": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      },
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedTheGroupSettings": "{actor} changed the group settings",
+  "@changedTheGroupSettings": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedTheWiFiRuleOf": "{admin} changed the Wi-Fi rule of {target}",
+  "@changedTheWiFiRuleOf": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedThisGroupSPhoto": "{actor} changed this group's photo",
+  "@changedThisGroupSPhoto": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedThisGroupSoAllMembers": "{actor} changed this group so all members can add members",
+  "@changedThisGroupSoAllMembers": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedThisGroupSoAllMembers2": "{actor} changed this group so all members can edit the group info",
+  "@changedThisGroupSoAllMembers2": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedThisGroupSoAllMembers3": "{actor} changed this group so all members can send messages",
+  "@changedThisGroupSoAllMembers3": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedThisGroupSoOnlyAdmins": "{actor} changed this group so only admins can add members",
+  "@changedThisGroupSoOnlyAdmins": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedThisGroupSoOnlyAdmins2": "{actor} changed this group so only admins can edit the group info",
+  "@changedThisGroupSoOnlyAdmins2": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "changedThisGroupSoOnlyAdmins3": "{actor} changed this group so only admins can send messages",
+  "@changedThisGroupSoOnlyAdmins3": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "chat": "Chat",
+  "chatAndCallEvenWithoutInternet": "Chat and call, even without internet",
+  "chats": "Chats",
+  "chatsBiggestFirst": "Chats, biggest first",
+  "chatsCallsPeople": "Chats, calls, people",
+  "checkAgain": "Check again",
+  "checkTheNewPasswordAndTry": "Check the new password and try again.",
+  "checkedByTheServerForEvery": "Checked by the server for every admin",
+  "checking": "Checking…",
+  "checkingAndroidPermission": "Checking Android permission…",
+  "checkingTheServer": "Checking the server…",
+  "checksThatLinkupWorksWellCan": "Checks that LinkUp works well. Can only look, can not change your account.",
+  "chooseAPasswordOfAtLeast": "Choose a password of at least 8 characters.",
+  "chooseHowLinkupLooksOnThis": "Choose how LinkUp looks on this phone.",
+  "chooseHowMuchMessageDetailAppears": "Choose how much message detail appears when your phone is locked.",
+  "clear": "Clear",
+  "clearCallsWithPeopleNearYou": "Clear calls with people near you",
+  "clearChat": "Clear chat",
+  "clearChatWith": "Clear chat with {name}?",
+  "@clearChatWith": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "close": "Close",
+  "closeDeleteThisCopy": "Close (delete this copy)",
+  "closeOtherSharingAppsAndTry": "Close other sharing apps and try again.",
+  "closeSearch": "Close search",
+  "closeVideo": "Close video",
+  "codeChanged": "Code changed",
+  "codeCopied": "Code copied",
+  "collapseMenu": "Collapse menu",
+  "compareThisCodeWithTheOne": "Compare this code with the one on {v}'s phone. If they are the same, nobody is in the middle of your chats and calls.",
+  "@compareThisCodeWithTheOne": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "completeRecovery": "Complete recovery",
+  "completeTransfer": "Complete transfer",
+  "completed": "Completed",
+  "completingSecureAccountRecovery": "Completing secure account recovery…",
+  "completingSecureDeviceTransfer": "Completing secure device transfer…",
+  "confirm": "Confirm",
+  "confirmItSMe": "Confirm it's me",
+  "confirmItSYouToKeep": "Confirm it's you to keep using LinkUp on this phone.",
+  "confirmPassphrase": "Confirm passphrase",
+  "confirmYourAccount": "Confirm your account",
+  "connectToTheServerOnceTo": "Connect to the server once to turn on offline blocking",
+  "connectToTheServerOnceTo2": "Connect to the server once to turn on offline blocking.",
+  "connectToTheServerToUse": "Connect to the server to use the old password.",
+  "connected": "Connected",
+  "connectedByMesh": "Connected by Mesh",
+  "connectedByWiFi": "Connected by Wi-Fi",
+  "connectedByWiFiDirect": "Connected by Wi-Fi Direct",
+  "connectedOnline": "Connected Online",
+  "connecting": "Connecting…",
+  "connectingSecurely": "Connecting securely…",
+  "connectingVideo": "Connecting video…",
+  "connection": "Connection: {label}",
+  "@connection": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "connectionQuality": "Connection quality",
+  "connectionStatus": "Connection status: {label}",
+  "@connectionStatus": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "connectionStatus2": "Connection status: {label}{detail}",
+  "@connectionStatus2": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      },
+      "detail": {
+        "type": "Object?"
+      }
+    }
+  },
+  "connectivity": "Connectivity",
+  "contact": "Contact",
+  "contactAdded": "Contact added",
+  "contacts": "Contacts",
+  "contacts2": "{all} contacts",
+  "@contacts2": {
+    "placeholders": {
+      "all": {
+        "type": "Object?"
+      }
+    }
+  },
+  "contactsWithAnOlderLinkupWill": "Contacts with an older LinkUp will not connect nearby until they update. Messages through the internet still work.",
+  "continueRecording": "Continue recording",
+  "continueText": "Continue",
+  "conversationInfo": "Conversation info",
+  "conversations": "Conversations",
+  "copied": "Copied",
+  "copiedWhatsappIsNotOnThis": "Copied. WhatsApp is not on this phone.",
+  "copy": "Copy",
+  "copyLink": "Copy link",
+  "copyText": "Copy text",
+  "couldNotAcceptTheNewCode": "Could not accept the new code",
+  "couldNotAddThisPersonTry": "Could not add this person. Try again.",
+  "couldNotAddTryAgain": "Could not add {r}. Try again.",
+  "@couldNotAddTryAgain": {
+    "placeholders": {
+      "r": {
+        "type": "Object?"
+      }
+    }
+  },
+  "couldNotBlock": "Could not block {name}",
+  "@couldNotBlock": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "couldNotConnectToLinkupMake": "Could not connect to LinkUp. Make sure the LinkUp server is available on your private network.",
+  "couldNotCreateYourQrCode": "Could not create your QR code. {error}",
+  "@couldNotCreateYourQrCode": {
+    "placeholders": {
+      "error": {
+        "type": "Object?"
+      }
+    }
+  },
+  "couldNotForwardTryAgain": "Could not forward. Try again.",
+  "couldNotGetItNow": "Could not get it now",
+  "couldNotMakeANewCode": "Could not make a new code. Try again.",
+  "couldNotOpenNotificationSettingsRight": "Could not open notification settings right now.",
+  "couldNotOpenTheBatteryDialog": "Could not open the battery dialog right now — try again.",
+  "couldNotOpenTheCameraOr": "Could not open the camera or gallery.",
+  "couldNotOpenYourPhoneS": "Could not open your phone’s settings right now.",
+  "couldNotPrepareLogs": "Could not prepare logs",
+  "couldNotReachTheSenderTry": "Could not reach the sender. Try again when nearby.",
+  "couldNotReachTheServerTry": "Could not reach the server. Try again.",
+  "couldNotRefreshTheRequestThe": "Could not refresh the request. The local network may be temporarily unavailable.",
+  "couldNotRemove": "Could not remove {name}",
+  "@couldNotRemove": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "couldNotSave": "Could not save: {e}",
+  "@couldNotSave": {
+    "placeholders": {
+      "e": {
+        "type": "Object?"
+      }
+    }
+  },
+  "couldNotSaveFreeSomeSpace": "Could not save. Free some space and try again.",
+  "couldNotSendTryAgain": "Could not send. Try again",
+  "couldNotShareLogs": "Could not share logs",
+  "couldNotStartTryingAgainLater": "Could not start, trying again later",
+  "couldNotUnblock": "Could not unblock {label}",
+  "@couldNotUnblock": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "couldnTAskToJoinTry": "Couldn't ask to join. Try again.",
+  "couldnTBeAdded": "Couldn't be added",
+  "couldnTGetTheAddressBy": "Couldn't get the address by itself",
+  "couldnTLoadYourConversationsPlease": "Couldn't load your conversations. Please try again in a moment.",
+  "couldnTReachTheServerConversations": "Couldn't reach the server. Conversations will appear when it's back.",
+  "couldnTReachThemTryAgain": "Couldn't reach them — try again",
+  "couldnTReadTheLinkupApp": "Couldn't read the LinkUp app file",
+  "couldnTStartTheDownloadPage": "Couldn't start the download page",
+  "couldnTSyncRightNowShowing": "Couldn't sync right now — showing your saved conversations.",
+  "couldnTTurnOnWiFi": "Couldn't turn on Wi-Fi",
+  "countUnknown": "count unknown",
+  "create": "Create",
+  "createAccount": "Create account",
+  "createAnAccount": "Create an account",
+  "createBackup": "Create backup",
+  "createDatabaseBackup": "Create database backup",
+  "createEncryptedKeyBackup": "Create encrypted key backup",
+  "createGroup": "Create group",
+  "createUpdateEncryptedKeyBackup": "Create / update encrypted key backup",
+  "createYourAccount": "Create your account",
+  "createdBy": "Created by {creator}",
+  "@createdBy": {
+    "placeholders": {
+      "creator": {
+        "type": "Object?"
+      }
+    }
+  },
+  "createdGroup": "{actor} created group \"{name}\"",
+  "@createdGroup": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      },
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "creatingYourAccount": "Creating your account…",
+  "critical": "Critical",
+  "criticalAlertIn24h": "{critical} critical alert{s} in 24h",
+  "@criticalAlertIn24h": {
+    "placeholders": {
+      "critical": {
+        "type": "Object?"
+      },
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "crownShowsWhatTheyCanDo": "{role} crown. Shows what they can do",
+  "@crownShowsWhatTheyCanDo": {
+    "placeholders": {
+      "role": {
+        "type": "Object?"
+      }
+    }
+  },
+  "currentIdentityKey": "Current identity key",
+  "dark": "Dark",
+  "darkTheme": "Dark theme",
+  "dashboard": "Dashboard",
+  "dataBoundaries": "Data boundaries",
+  "database": "Database",
+  "database2": "Database {num}",
+  "@database2": {
+    "placeholders": {
+      "num": {
+        "type": "Object?"
+      }
+    }
+  },
+  "databaseBackup": "Database backup",
+  "dates": "Dates",
+  "days": "{d} days",
+  "@days": {
+    "placeholders": {
+      "d": {
+        "type": "Object?"
+      }
+    }
+  },
+  "daysAgo": "{days} days ago",
+  "@daysAgo": {
+    "placeholders": {
+      "days": {
+        "type": "Object?"
+      }
+    }
+  },
+  "dec": "Dec",
+  "decline": "Decline",
+  "declined": "Declined",
+  "defaultSameAsSAccount": "Default = same as {owner}’s account",
+  "@defaultSameAsSAccount": {
+    "placeholders": {
+      "owner": {
+        "type": "Object?"
+      }
+    }
+  },
+  "defaultText": "Default",
+  "delete": "Delete",
+  "delete2": "Delete \"{groupName}\"?",
+  "@delete2": {
+    "placeholders": {
+      "groupName": {
+        "type": "Object?"
+      }
+    }
+  },
+  "delete3": "Delete {picked} {files} ({pickedBytes})",
+  "@delete3": {
+    "placeholders": {
+      "picked": {
+        "type": "Object?"
+      },
+      "files": {
+        "type": "Object?"
+      },
+      "pickedBytes": {
+        "type": "Object?"
+      }
+    }
+  },
+  "delete4": "Delete {count} {files}?",
+  "@delete4": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      },
+      "files": {
+        "type": "Object?"
+      }
+    }
+  },
+  "deleteChat": "Delete chat",
+  "deleteChatCompletely": "Delete chat completely",
+  "deleteChatWith": "Delete chat with {name}?",
+  "@deleteChatWith": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "deleteCompletely": "Delete completely",
+  "deleteCompletely2": "Delete completely?",
+  "deleteFiles": "Delete files",
+  "deleteForEveryone": "Delete for everyone",
+  "deleteForEveryoneRemovesItFrom": "\"Delete for everyone\" removes it from {who}{phone} too, even if {vIs} Offline now (it is removed when the phone gets the news). Only for your messages, up to 5 minutes old. A copy someone saved to the Gallery stays.",
+  "@deleteForEveryoneRemovesItFrom": {
+    "placeholders": {
+      "who": {
+        "type": "Object?"
+      },
+      "phone": {
+        "type": "Object?"
+      },
+      "vIs": {
+        "type": "Object?"
+      }
+    }
+  },
+  "deleteForMe": "Delete for me",
+  "deleteGroup": "Delete group",
+  "deleteMessage": "Delete message?",
+  "deleteMessageCompletely": "Delete {count} message{s} completely?",
+  "@deleteMessageCompletely": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      },
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "deleteMessages": "Delete {count} messages?",
+  "@deleteMessages": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "deleteMessagesCompletely": "Delete {sel} messages completely",
+  "@deleteMessagesCompletely": {
+    "placeholders": {
+      "sel": {
+        "type": "Object?"
+      }
+    }
+  },
+  "deleteUnpublishedAccount": "Delete unpublished account?",
+  "deleteVoiceNote": "Delete voice note",
+  "deletedByUser": "Deleted by user",
+  "deletedByUser2": "Deleted by user · {t} {hm}",
+  "@deletedByUser2": {
+    "placeholders": {
+      "t": {
+        "type": "Object?"
+      },
+      "hm": {
+        "type": "Object?"
+      }
+    }
+  },
+  "deletedFromThisPhone": "deleted from this phone",
+  "deletedThisGroupSPhoto": "{actor} deleted this group's photo",
+  "@deletedThisGroupSPhoto": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "delivered": "Delivered",
+  "deliveredTo": "Delivered to {delivered}",
+  "@deliveredTo": {
+    "placeholders": {
+      "delivered": {
+        "type": "Object?"
+      }
+    }
+  },
+  "deliveredToOf": "Delivered to {delivered} of {total}",
+  "@deliveredToOf": {
+    "placeholders": {
+      "delivered": {
+        "type": "Object?"
+      },
+      "total": {
+        "type": "Object?"
+      }
+    }
+  },
+  "description": "Description",
+  "descriptionOptional": "Description (optional)",
+  "developerAndCreatorOfLinkupBuilt": "Developer and creator of LinkUp. Built this app so you can chat and call, even without internet.",
+  "devices": "Devices",
+  "devicesSignedInToThisLinkup": "Devices signed in to this LinkUp account.",
+  "diagnosticCaptureMode": "Diagnostic capture mode",
+  "diagnostics": "Diagnostics",
+  "didNotWorkTryingAgainLater": "Did not work, trying again later",
+  "directLinks": "Direct links",
+  "directorySynchronization": "Directory synchronization",
+  "directoryVisibility": "Directory visibility",
+  "discoverableByName": "Discoverable by name",
+  "discoverableByPhone": "Discoverable by phone",
+  "diskFull": "Disk {disk}% full",
+  "@diskFull": {
+    "placeholders": {
+      "disk": {
+        "type": "Object?"
+      }
+    }
+  },
+  "dismissAsAdmin": "Dismiss as admin",
+  "dismissedAsGroupAdmin": "{actor} dismissed {targets} as group admin",
+  "@dismissedAsGroupAdmin": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      },
+      "targets": {
+        "type": "Object?"
+      }
+    }
+  },
+  "dismissedYouAsGroupAdmin": "{actor} dismissed you as group admin",
+  "@dismissedYouAsGroupAdmin": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "displayName": "Display name",
+  "docs": "Docs",
+  "document": "Document",
+  "documentReceived": "Document received",
+  "documents": "Documents",
+  "documentsReceived": "{n} documents received",
+  "@documentsReceived": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "done": "Done {done}",
+  "@done": {
+    "placeholders": {
+      "done": {
+        "type": "Object?"
+      }
+    }
+  },
+  "done2": "Done",
+  "doneMb": "Done, {total} MB",
+  "@doneMb": {
+    "placeholders": {
+      "total": {
+        "type": "Object?"
+      }
+    }
+  },
+  "download": "Download",
+  "dragToMove": "Drag to move",
+  "dragToScrollPinchToZoom": "Drag to scroll · pinch to zoom",
+  "eachPhoneOnceByHowIt": "Each phone once, by how it is linked now",
+  "earlier": "Earlier",
+  "editGroup": "Edit group",
+  "editGroupInfo": "Edit group info",
+  "effective": "Effective: {allowed}",
+  "@effective": {
+    "placeholders": {
+      "allowed": {
+        "type": "Object?"
+      }
+    }
+  },
+  "enable": "Enable",
+  "encryptedBackupOfYourAccount": "Encrypted backup of your account",
+  "encryptedHistory": "Encrypted history",
+  "encryptedIdentityBackupAvailable": "Encrypted identity backup available",
+  "encryptedIdentityBackupSavedToThe": "Encrypted identity backup saved to the LinkUp server",
+  "ended": "Ended",
+  "ending": "Ending…",
+  "endsInH": "ends in {left} h",
+  "@endsInH": {
+    "placeholders": {
+      "left": {
+        "type": "Object?"
+      }
+    }
+  },
+  "endsInMin": "ends in {clamp} min",
+  "@endsInMin": {
+    "placeholders": {
+      "clamp": {
+        "type": "Object?"
+      }
+    }
+  },
+  "enterThe12DigitCodeFrom": "Enter the 12-digit code from the admin.",
+  "enterTheCode": "Enter the code",
+  "enterTheOneTimeCode": "Enter the one-time code",
+  "enterThePasswordOf": "Enter the password of @{username}.",
+  "@enterThePasswordOf": {
+    "placeholders": {
+      "username": {
+        "type": "Object?"
+      }
+    }
+  },
+  "enterTheRecoveryCode": "Enter the recovery code.",
+  "enterYourPassword": "Enter your password",
+  "enterYourRecoveryCodeLikeK7qm2": "Enter your recovery code (like K7QM2-XPA9T-RC4WN-E8D3F).",
+  "enterYourUsername": "Enter your username.",
+  "enterYourUsernameAndPassword": "Enter your username and password.",
+  "enterYourUsernameToRequestAccount": "Enter your username to request account recovery.",
+  "event": "Event",
+  "eventsInTheLast24Hours": "Events in the last 24 hours",
+  "everyPhoneAndWhoOwnsIt": "Every phone and who owns it",
+  "everyone": "Everyone",
+  "everyoneCanSend": "Everyone can send",
+  "everyoneInTheGroupSeesIt": "Everyone in the group sees it at the top of the chat. Only one message is pinned at a time; a new pin replaces the old one.",
+  "everyoneNearbyIsAlreadyInYour": "Everyone nearby is already in your contacts",
+  "everyoneOnLinkupIsAlreadyIn": "Everyone on LinkUp is already in your contacts. To add someone new, search their name or use a QR code.",
+  "everyonePicks": "Everyone picks ",
+  "excellent": "Excellent",
+  "exit": "Exit \"{groupName}\"?",
+  "@exit": {
+    "placeholders": {
+      "groupName": {
+        "type": "Object?"
+      }
+    }
+  },
+  "exitFullScreen": "Exit full screen",
+  "exitGroup": "Exit group",
+  "expired": "Expired",
+  "expiresIn": "Expires in {remainingLabel}",
+  "@expiresIn": {
+    "placeholders": {
+      "remainingLabel": {
+        "type": "Object?"
+      }
+    }
+  },
+  "expiresIn24Hours": "Expires in 24 hours",
+  "expiresIn24Hours2": "Expires in 24 hours.",
+  "extraNearbySafety": "Extra nearby safety",
+  "failed": "Failed",
+  "failedLoginIn24h": "{failedLogins} failed login{s} in 24h",
+  "@failedLoginIn24h": {
+    "placeholders": {
+      "failedLogins": {
+        "type": "Object?"
+      },
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "failedLogins24h": "Failed logins 24h",
+  "fair": "Fair",
+  "feb": "Feb",
+  "file": "File",
+  "fileContents": "File contents",
+  "fileInfo": "File info",
+  "filePartsPassedOn": "File parts passed on",
+  "fileRemovedAfter60DaysThumbnail": "File removed after 60 days · thumbnail only",
+  "fileTooBig": "File too big",
+  "fileTransfers": "File transfers",
+  "fileTransfers2": "File Transfers",
+  "files": "Files",
+  "filesPeopleSendShowHereWith": "Files people send show here with kind and size.",
+  "filesReceived": "{n} files received",
+  "@filesReceived": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "filesSentAndSpaceUsed": "Files sent and space used",
+  "filesTooBig": "{count} files too big",
+  "@filesTooBig": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "filter": "Filter",
+  "findANearbyPersonOrCreate": "Find a nearby person or create a group to start chatting.",
+  "findAPerson": "Find a person",
+  "findNearbyFriendsWhenClosed": "Find nearby friends when closed",
+  "findNearbyFriendsWhenClosedTurn": "Find nearby friends when closed - Turn on",
+  "findPeopleNearby": "Find people nearby",
+  "findPeopleToAdd": "Find people to add",
+  "findPhonesNearYou": "Find phones near you",
+  "findServerNow": "Find server now",
+  "findingTheMatchingLinkupServer": "Finding the matching LinkUp server…",
+  "firstOrLetThemScanThe": " first, or let them scan the group QR later.",
+  "firstPerson": "First person",
+  "flashlight": "Flashlight",
+  "followAppTheme": "Follow app theme",
+  "followTheAccountOrPhoneSetting": "Follow the account or phone setting",
+  "followThePhoneSLightOr": "Follow the phone’s light or dark mode.",
+  "forEveryPhoneOfThisAccount": "For every phone of this account",
+  "forEveryoneOnAllLinkupPhones": "For everyone, on all LinkUp phones",
+  "forcedOff": "Forced OFF",
+  "forcedOn": "Forced ON",
+  "forgotItUseTheRecoveryCode": "Forgot it? Use the recovery code.",
+  "forgotPassword": "Forgot password",
+  "forgotPassword2": "Forgot password?",
+  "forward": "Forward",
+  "forwardTo": "Forward to",
+  "forwarded": "Forwarded",
+  "foundSomeone": "Found someone!",
+  "freeUpSpaceAutomatically": "Free up space automatically",
+  "freeUpSpaceAutomaticallyIsOff": "Free up space automatically is OFF. Nothing removed.",
+  "fri": "Fri",
+  "friendsOfFriendsScanToJoin": "Friends of friends scan to join",
+  "friendsWithoutWiFiCanReach": "Friends without Wi-Fi can reach you",
+  "fromEveryPhoneAlsoDeletedCopies": "From every phone, also deleted copies",
+  "fromEveryPhoneOfThisChat": "From every phone of this chat, also copies users deleted. This cannot be undone.",
+  "fromPhoto": "From photo",
+  "fromSPhone": "{range} · from {from}'s phone",
+  "@fromSPhone": {
+    "placeholders": {
+      "range": {
+        "type": "Object?"
+      },
+      "from": {
+        "type": "Object?"
+      }
+    }
+  },
+  "fullChat": "Full chat",
+  "fullMap": "Full map",
+  "fullScreen": "Full screen",
+  "gallery": "Gallery",
+  "gaveANewRecoveryCodeTo": "{admin} gave a new recovery code to {target}",
+  "@gaveANewRecoveryCodeTo": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "general": "General",
+  "generateANewQr": "Generate a new QR",
+  "getAOneTimeCode": "Get a one-time code",
+  "getChat": "Get chat",
+  "getFile": "Get file",
+  "getFullPhoto": "Get full photo",
+  "getFullVideo": "Get full video",
+  "getMessagesAndCallsWhenClosed": "Get messages and calls when closed",
+  "getsItWhenNearbyOrOnline": "gets it when Nearby or Online",
+  "getsTheGroupWhenNearbyOr": "Gets the group when Nearby or Online",
+  "gettingIt": "Getting it…",
+  "gettingItFromAnotherPhone": "Getting it from another phone",
+  "gettingItFromTheServer": "Getting it from the server…",
+  "gettingTheDownloadAddress": "Getting the download address...",
+  "giveTheAppToANearby": "Give the app to a nearby phone · no internet",
+  "giveThemLinkupNoInternet": "Give them LinkUp · no internet",
+  "goToPeople": "Go to People",
+  "goesOutRightAway": "Goes out right away",
+  "goneFromEveryPhoneAndThe": "Gone from every phone and the server, also copies users deleted. Users see nothing.",
+  "good": "Good",
+  "group": "Group",
+  "group2": "Group · {count} {members}",
+  "@group2": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      },
+      "members": {
+        "type": "Object?"
+      }
+    }
+  },
+  "groupChat": "Group chat",
+  "groupConversation": "Group conversation",
+  "groupDetails": "Group details",
+  "groupInfo": "Group info",
+  "groupInvite": "Group invite",
+  "groupInvite2": "Group invite · {members} {members2}",
+  "@groupInvite2": {
+    "placeholders": {
+      "members": {
+        "type": "Object?"
+      },
+      "members2": {
+        "type": "Object?"
+      }
+    }
+  },
+  "groupMember": "Group member",
+  "groupMembers": "Group · {members} members",
+  "@groupMembers": {
+    "placeholders": {
+      "members": {
+        "type": "Object?"
+      }
+    }
+  },
+  "groupMembersFromSCode": "Group · {count} members · from {from}'s code",
+  "@groupMembersFromSCode": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      },
+      "from": {
+        "type": "Object?"
+      }
+    }
+  },
+  "groupMessages": "Group messages",
+  "groupName": "Group name",
+  "groupPhoto": "Group photo",
+  "groupSettings": "Group settings",
+  "groupsAreMadeFromYourFriends": "Groups are made from your friends. Add friends in ",
+  "halfCanBeReadNowThe": "Half can be read now · the rest is on the way",
+  "hasAnOldLinkup": "{name} has an old LinkUp",
+  "@hasAnOldLinkup": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "haveAnAccount": "Have an account?",
+  "healthy": "Healthy",
+  "helpsRunLinkup": "Helps run LinkUp.",
+  "hidden": "Hidden",
+  "hideForToday": "Hide for today",
+  "hideMap": "Hide map",
+  "hideMessageTextOnTheLock": "Hide message text on the lock screen",
+  "hidePassword": "Hide password",
+  "hideSensitiveContent": "Hide sensitive content",
+  "hideText": "Hide",
+  "historicalIdentityKeys": "Historical identity keys",
+  "holdToRecordReleaseToSend": "Hold to record, release to send",
+  "holdToRecordVoiceNote": "Hold to record voice note",
+  "host": "Host",
+  "hotspot": "Hotspot",
+  "hours": "{d} hours",
+  "@hours": {
+    "placeholders": {
+      "d": {
+        "type": "Object?"
+      }
+    }
+  },
+  "howOftenAdminPagesUpdate": "How often admin pages update",
+  "howOtherPeopleSeeYou": "How other people see you",
+  "howPhonesAreLinked": "How phones are linked",
+  "iAlreadyHaveAnAccount": "I already have an account",
+  "iDonTHaveIt": "I don't have it",
+  "iSavedIt": "I saved it",
+  "identity": "{platform} • {status}\n{lastSeenAt}\nIdentity: {unverified}{identityFingerprint}",
+  "@identity": {
+    "placeholders": {
+      "platform": {
+        "type": "Object?"
+      },
+      "status": {
+        "type": "Object?"
+      },
+      "lastSeenAt": {
+        "type": "Object?"
+      },
+      "unverified": {
+        "type": "Object?"
+      },
+      "identityFingerprint": {
+        "type": "Object?"
+      }
+    }
+  },
+  "identityChanged": "Identity changed",
+  "identityChangedOrRevokedVerifyThis": "Identity changed or revoked — verify this user again",
+  "identityKeyHistory": "Identity key history",
+  "identityKeyRotatedToVersion": "Identity key rotated to version {currentVersion}.",
+  "@identityKeyRotatedToVersion": {
+    "placeholders": {
+      "currentVersion": {
+        "type": "Object?"
+      }
+    }
+  },
+  "identityKeysAreManagedLocallyAnd": "Identity keys are managed locally and are not shown in your public profile.",
+  "identitySigning": "Identity & signing",
+  "ifOffYouCanTSee": "If off, you can't see when others read your messages, and they can't see when you read theirs.",
+  "ifTheNewPhoneSaysThis": "If the new phone says \"This Wi-Fi has no internet. Stay connected?\" tap Yes / Stay.",
+  "ifYouLoseThisPhoneIt": "If you lose this phone, it is the only way back into @{user}.",
+  "@ifYouLoseThisPhoneIt": {
+    "placeholders": {
+      "user": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ifYouUnblockCanMessageAnd": "If you unblock, {label} can message and call you again.",
+  "@ifYouUnblockCanMessageAnd": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ignore": "Ignore",
+  "ignoreBatteryOptimization": "Ignore battery optimization",
+  "imageReceived": "Image received",
+  "imagesReceived": "{n} images received",
+  "@imagesReceived": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "inBothChatsTheMessageBox": "In both chats the message box is replaced by a short text, so **{name} can see** they can't message you.",
+  "@inBothChatsTheMessageBox": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "inLinkup": "In LinkUp: {token}",
+  "@inLinkup": {
+    "placeholders": {
+      "token": {
+        "type": "Object?"
+      }
+    }
+  },
+  "inYourContacts": "In your contacts",
+  "includesTheGroupQrCode": "Includes the group QR code",
+  "incoming": "Incoming",
+  "incomingCall": "Incoming call",
+  "info": "Info",
+  "inheritPlatformState": "Inherit / platform state",
+  "install": "Install",
+  "internet": "Internet",
+  "internetServerOnly": "Internet / server only",
+  "inviteAFriendNearby": "Invite a friend nearby",
+  "inviteLinkFrom": "invite link from {invitedBy}",
+  "@inviteLinkFrom": {
+    "placeholders": {
+      "invitedBy": {
+        "type": "Object?"
+      }
+    }
+  },
+  "inviteWithLink": "Invite with link",
+  "inviteWithQr": "Invite with QR",
+  "isBlocked": "{label} is blocked",
+  "@isBlocked": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isBlockedByAdmin": "{name} is blocked by admin",
+  "@isBlockedByAdmin": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isBlockedForEveryone": "{target} is blocked for everyone.",
+  "@isBlockedForEveryone": {
+    "placeholders": {
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isInYourFriends": "{name} is in your friends.",
+  "@isInYourFriends": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isNotInYourFriends": "{name} is not in your friends.",
+  "@isNotInYourFriends": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isNotInYourFriendsMember": "{name} is not in your friends. {via} (member) is his friend.",
+  "@isNotInYourFriendsMember": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "via": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isNotInYourFriendsMembers": "{name} is not in your friends. {list} (members) are his friends.",
+  "@isNotInYourFriendsMembers": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "list": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isNotOnTheServerYet": "{notOnServerName} is not on the server yet. It goes when {notOnServerName2} is nearby or joins the server.",
+  "@isNotOnTheServerYet": {
+    "placeholders": {
+      "notOnServerName": {
+        "type": "Object?"
+      },
+      "notOnServerName2": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isNowTheGroupOwner": "{owner} is now the group owner",
+  "@isNowTheGroupOwner": {
+    "placeholders": {
+      "owner": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isRemovedFromYourContacts": "{name} is **removed from your contacts**.",
+  "@isRemovedFromYourContacts": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isRequiredFillItInBefore": "{missing} is required — fill it in before saving.",
+  "@isRequiredFillItInBefore": {
+    "placeholders": {
+      "missing": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isSignedOutOn": "{name} is signed out on {phone}.",
+  "@isSignedOutOn": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "phone": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isTheServerHealthy": "Is the server healthy",
+  "isTyping": "{clean} is typing…",
+  "@isTyping": {
+    "placeholders": {
+      "clean": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isUnblockedForEveryone": "{target} is unblocked for everyone.",
+  "@isUnblockedForEveryone": {
+    "placeholders": {
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "isVerified": "{v} is verified",
+  "@isVerified": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "itGoesToEveryPhoneNearby": "It goes to every phone nearby, and to the server when online.",
+  "itGoesToHerPhoneBy": "It goes to her phone by card, over any link. Pending until it is done.",
+  "itIsRemovedOnlyFromYour": "It is removed only from your phone. The group still has it.",
+  "itIsRemovedOnlyFromYour2": "It is removed only from your phone. {peerName} still has it.",
+  "@itIsRemovedOnlyFromYour2": {
+    "placeholders": {
+      "peerName": {
+        "type": "Object?"
+      }
+    }
+  },
+  "itIsSignedOutAndMust": "It is signed out and must sign in again.",
+  "itMustSignInAgain": "It must sign in again.",
+  "itSyncsWhenTheServerAnswers": "It syncs when the server answers. Your local key above is fine.",
+  "itWasInstalledInPartsFor": "It was installed in parts (for example from a store). Ask a friend who installed the LinkUp file to share it.",
+  "items": "{files} items",
+  "@items": {
+    "placeholders": {
+      "files": {
+        "type": "Object?"
+      }
+    }
+  },
+  "jan": "Jan",
+  "join": "Join",
+  "joinFullNearbyGroupsAsA": "Join full nearby groups as a Wi-Fi user and join a LinkUp hotspot. {linkStatusText}",
+  "@joinFullNearbyGroupsAsA": {
+    "placeholders": {
+      "linkStatusText": {
+        "type": "Object?"
+      }
+    }
+  },
+  "joinGroup": "Join group",
+  "joinGroupWithQr": "Join group with QR",
+  "joinMyGroup": "JOIN MY GROUP",
+  "joinMyLinkupGroup": "Join my LinkUp group \"{groupName}\":",
+  "@joinMyLinkupGroup": {
+    "placeholders": {
+      "groupName": {
+        "type": "Object?"
+      }
+    }
+  },
+  "joinWiFi": "Join Wi-Fi",
+  "joinedALinkupHotspot": "Joined a LinkUp hotspot",
+  "joinedFromOffline": "Joined from offline · {joined_offline_at}",
+  "@joinedFromOffline": {
+    "placeholders": {
+      "joined_offline_at": {
+        "type": "Object?"
+      }
+    }
+  },
+  "joinedFromOffline2": "{u} · Joined from offline",
+  "@joinedFromOffline2": {
+    "placeholders": {
+      "u": {
+        "type": "Object?"
+      }
+    }
+  },
+  "joinedUsingThisGroupSInvite": "{actor} joined using this group's invite link",
+  "@joinedUsingThisGroupSInvite": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "joining": "Joining…",
+  "joiningALinkupHotspot": "Joining a LinkUp hotspot…",
+  "joiningAnotherGroup": "Joining another group…",
+  "jul": "Jul",
+  "jumpToLatest": "Jump to latest",
+  "jun": "Jun",
+  "justNow": "just now",
+  "k7qm2Xpa9tRc4wnE8d3f": "K7QM2-XPA9T-RC4WN-E8D3F",
+  "keepItPrivateItLetsYou": "Keep it private. It lets you set a new password.",
+  "keepKeepRunningInBackgroundOn": "Keep \"Keep running in background\" on (above)",
+  "keepLinkupRunning": "Keep LinkUp running",
+  "keepRunningInBackground": "Keep running in background",
+  "keepTheNewPhoneConnectedTo": "Keep the new phone connected to the private LinkUp network while waiting for approval.",
+  "keepThisPrivate": "Keep this private",
+  "keepWiFiOnOnBoth": "Keep Wi-Fi on, on both phones",
+  "keepsLinkupSafeCanHelpYou": "Keeps LinkUp safe. Can help you get back in if you forget your password.",
+  "keyRotationChangesTheDevicePublic": "Key rotation changes the device public identity used for future encrypted traffic. Previous private key versions stay only on this device and are never uploaded to the server. A new phone therefore needs a future encrypted key-migration/backup mechanism to recover historical ciphertext created for an older device identity.",
+  "lanAvailable": "LAN available",
+  "lanServerConnected": "LAN / Server connected",
+  "last": "Last: {whenSub216}{bytes}",
+  "@last": {
+    "placeholders": {
+      "whenSub216": {
+        "type": "Object?"
+      },
+      "bytes": {
+        "type": "Object?"
+      }
+    }
+  },
+  "last1Hour": "Last 1 hour",
+  "last30Days": "Last 30 days",
+  "last7Days": "Last 7 days",
+  "lastCleanUp": "Last clean-up: {dayText}, {time} · {what}",
+  "@lastCleanUp": {
+    "placeholders": {
+      "dayText": {
+        "type": "Object?"
+      },
+      "time": {
+        "type": "Object?"
+      },
+      "what": {
+        "type": "Object?"
+      }
+    }
+  },
+  "lastPolicyUpdate": "Last policy update: {updated_at}",
+  "@lastPolicyUpdate": {
+    "placeholders": {
+      "updated_at": {
+        "type": "Object?"
+      }
+    }
+  },
+  "lastSeen": "Last seen",
+  "lastSeen2": "Last seen {value}",
+  "@lastSeen2": {
+    "placeholders": {
+      "value": {
+        "type": "Object?"
+      }
+    }
+  },
+  "lastUpdate": "Last update",
+  "lastUpdated": "Last updated {hour}:{padLeft}",
+  "@lastUpdated": {
+    "placeholders": {
+      "hour": {
+        "type": "Object?"
+      },
+      "padLeft": {
+        "type": "Object?"
+      }
+    }
+  },
+  "lastWeek": "last week",
+  "later": "Later",
+  "left": "{actor} left",
+  "@left": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "letAFriendScanYou": "Let a friend scan you",
+  "levelTapYourPhotoInSettings": "Level: {role} · Tap your photo in Settings to switch.",
+  "@levelTapYourPhotoInSettings": {
+    "placeholders": {
+      "role": {
+        "type": "Object?"
+      }
+    }
+  },
+  "light": "Light",
+  "lightTheme": "Light theme",
+  "linkCopied": "Link copied",
+  "linkFullGroups": "Link full groups",
+  "linkFullGroups2": "Link full groups?",
+  "linkNow": "Link now",
+  "linkPaths": "Link paths",
+  "linkedGroupHotspotTest": "Linked group / hotspot (test)",
+  "linkedToAnotherGroup": "Linked to another group",
+  "linksWithCheckedId": "Links with checked id",
+  "linkup": "LinkUp {version}  ·  {sizeLabel}",
+  "@linkup": {
+    "placeholders": {
+      "version": {
+        "type": "Object?"
+      },
+      "sizeLabel": {
+        "type": "Object?"
+      }
+    }
+  },
+  "linkupAccount": "LinkUp account",
+  "linkupCallAndRoutingTransportIs": "LinkUp call and routing transport is local-only: LAN, Wi-Fi Direct and multi-hop mesh.",
+  "linkupConnected": "LinkUp connected",
+  "linkupCouldNotInitializeSafelyClose": "LinkUp could not initialize safely. Close and reopen the app.",
+  "linkupCouldNotStart": "LinkUp could not start",
+  "linkupCouldnTTurnOnIts": "LinkUp couldn't turn on its own Wi-Fi. If your friend is on the same Wi-Fi as you, they can scan this:",
+  "linkupIsDownloaded": "LinkUp{version} is downloaded",
+  "@linkupIsDownloaded": {
+    "placeholders": {
+      "version": {
+        "type": "Object?"
+      }
+    }
+  },
+  "linkupKeepsNotificationContentSeparateFrom": "LinkUp keeps notification content separate from your chat content.",
+  "linkupLogo": "LinkUp logo",
+  "linkupNeedsTheNearbyDevicesPermission": "LinkUp needs the \"Nearby devices\" permission to turn on its Wi-Fi. Allow it in LinkUp's app settings.",
+  "linkupNeedsThisToStayOn": "LinkUp needs this to stay on — messages and calls must keep arriving in the background.",
+  "linkupNeedsYourOkOnce": "LinkUp needs your OK once",
+  "linkupNotification": "LinkUp notification",
+  "linkupOnThisPhone": "LinkUp on this phone",
+  "linkupPhone": "LinkUp phone",
+  "linkupServerIdentityChangedConnectionWas": "LinkUp server identity changed. Connection was blocked for safety.",
+  "linkupTriesAgainLaterByItself": "LinkUp tries again later by itself.",
+  "linkupUpdatedTo": "LinkUp updated to {kAppVersion}",
+  "@linkupUpdatedTo": {
+    "placeholders": {
+      "kAppVersion": {
+        "type": "Object?"
+      }
+    }
+  },
+  "linkupUses": "LinkUp uses {bytes}",
+  "@linkupUses": {
+    "placeholders": {
+      "bytes": {
+        "type": "Object?"
+      }
+    }
+  },
+  "linkupVideoCall": "LinkUp video call",
+  "linkupVoiceCall": "LinkUp voice call",
+  "linkupWiFiIsOff": "LinkUp Wi-Fi is off.",
+  "live": "Live",
+  "liveNetwork": "Live network",
+  "liveOffline": "{live} live · {offline} offline",
+  "@liveOffline": {
+    "placeholders": {
+      "live": {
+        "type": "Object?"
+      },
+      "offline": {
+        "type": "Object?"
+      }
+    }
+  },
+  "livePlatformTotalsWithTheActivity": "Live platform totals with the activity recorded in the selected window",
+  "liveSubsystemHealth": "Live subsystem health",
+  "liveSubsystemReadings": "Live subsystem readings",
+  "llgq1": "llgq1:…",
+  "loading": "Loading…",
+  "loadingGroupMessages": "Loading group messages…",
+  "loadingMembers": "Loading members…",
+  "loadingMessages": "Loading messages…",
+  "loadingYourAccount": "Loading your account…",
+  "loadingYourConversations": "Loading your conversations…",
+  "localCallingServiceIsUnavailable": "Local calling service is unavailable",
+  "localCallingServiceUnavailableReconnectAnd": "Local calling service unavailable — reconnect and try again",
+  "localIpv4": "Local IPv4",
+  "localNetworkAvailable": "Local network available",
+  "localPlatformState": "local platform state",
+  "localWiFi": "Local Wi-Fi",
+  "localWiFiOnly": "Local Wi-Fi only",
+  "lockAppInRecents": "Lock app in recents",
+  "lockLinkupInRecents": "Lock LinkUp in Recents",
+  "lockScreenCallsOffTurnOn": "Lock-screen calls off - turn on",
+  "lockScreenPrivacy": "Lock-screen privacy",
+  "locked": "Locked",
+  "lockedUsers": "Locked users",
+  "logIn": "Log in",
+  "logInToYourAccount": "Log in to your account",
+  "longPressForMessageActions": "Long press for message actions",
+  "lookingForPhonesNearYou": "Looking for phones near you",
+  "lowestVersionAllowed": "Lowest version allowed",
+  "made": "Made {now}",
+  "@made": {
+    "placeholders": {
+      "now": {
+        "type": "Object?"
+      }
+    }
+  },
+  "madeABackup": "{admin} made a backup",
+  "@madeABackup": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      }
+    }
+  },
+  "madeAGroupAdmin": "{actor} made {targets} a group admin",
+  "@madeAGroupAdmin": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      },
+      "targets": {
+        "type": "Object?"
+      }
+    }
+  },
+  "madeAnAdmin": "{admin} made {target} an admin{detail}",
+  "@madeAnAdmin": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      },
+      "detail": {
+        "type": "Object?"
+      }
+    }
+  },
+  "madeYouAGroupAdmin": "{actor} made you a group admin",
+  "@madeYouAGroupAdmin": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "makeANewCode": "Make a new code",
+  "makeANewCode2": "Make a new code?",
+  "makeARecoveryCode": "Make a recovery code",
+  "makeGroupAdmin": "Make group admin",
+  "makeMyCode": "Make my code",
+  "makeNewCode": "Make new code",
+  "makePrivate": "Make private",
+  "makeYourProfilePrivate": "Make your profile private?",
+  "makingAGroupNeedsOnlineFor": "Making a group needs Online for now. Try again when Online.",
+  "manageDevices": "Manage devices",
+  "manageSoundsVibrationAndImportanceIn": "Manage sounds, vibration and importance in Android settings.",
+  "manageUsers": "Manage users",
+  "mar": "Mar",
+  "markAsRead": "Mark as read",
+  "markAsVerified": "Mark as verified",
+  "match": "Match",
+  "may": "May",
+  "mayChangeIfTaken": "@{username} (may change if taken)",
+  "@mayChangeIfTaken": {
+    "placeholders": {
+      "username": {
+        "type": "Object?"
+      }
+    }
+  },
+  "media": "Media",
+  "mediaLinksAndDocs": "Media, links and docs",
+  "mediaLinksAndDocs2": "Media, links and docs · {files}",
+  "@mediaLinksAndDocs2": {
+    "placeholders": {
+      "files": {
+        "type": "Object?"
+      }
+    }
+  },
+  "member": "Member",
+  "member2": "{members} member{s}",
+  "@member2": {
+    "placeholders": {
+      "members": {
+        "type": "Object?"
+      },
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "members": "Members",
+  "members2": "{people} members",
+  "@members2": {
+    "placeholders": {
+      "people": {
+        "type": "Object?"
+      }
+    }
+  },
+  "membersSeeLeft": "Members see \"{me} left\".",
+  "@membersSeeLeft": {
+    "placeholders": {
+      "me": {
+        "type": "Object?"
+      }
+    }
+  },
+  "memory": "Memory",
+  "mesh": "Mesh",
+  "meshCall": "Mesh call",
+  "meshCapable": "Mesh capable",
+  "meshLinks": "Mesh links",
+  "meshOnly": "Mesh only",
+  "meshPeers": "Mesh peers",
+  "meshQueuedPackets": "Mesh queued packets",
+  "message": "Message",
+  "message2": "Message {name}",
+  "@message2": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "messageActivity": "Message activity",
+  "messageAndCallAlertsAreEnabled": "Message and call alerts are enabled",
+  "messageCopied": "Message copied",
+  "messageGroup": "Message group",
+  "messageInfo": "Message info",
+  "messageNotAvailable": "Message not available",
+  "messageNotFound": "Message not found",
+  "messageNotSent": "Message not sent",
+  "messageNotSentTapToResend": "Message not sent. Tap to resend or delete",
+  "messageOneFriend": "Message one friend",
+  "messageText": "Message text",
+  "messageWithAttachment": "Message with attachment",
+  "messages": "Messages",
+  "messages2": "Messages · {hits}",
+  "@messages2": {
+    "placeholders": {
+      "hits": {
+        "type": "Object?"
+      }
+    }
+  },
+  "messages3": "{count} messages",
+  "@messages3": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "messagesAcceptedByTheServerPer": "Messages accepted by the server per bucket",
+  "messagesAndCallsGetWrongTimes": "Messages and calls get wrong times. On the server PC: Settings > Time > Set time automatically > Sync now.",
+  "messagesAndCallsWorkAgain": "Messages and calls work again",
+  "messagesAreSealedForGroupMembers": "Messages are sealed for group members only",
+  "messagesArriveWhenTheAppIs": "Messages arrive when the app is closed",
+  "messagesCopied": "{withText} messages copied",
+  "@messagesCopied": {
+    "placeholders": {
+      "withText": {
+        "type": "Object?"
+      }
+    }
+  },
+  "messagesGroupsAndCalls": "Messages, groups and calls",
+  "messagesPhotosVideos": "Messages, photos, videos",
+  "messagesToday": "Messages today",
+  "messagesWaitUntilItRunsAgain": "Messages wait until it runs again",
+  "microphonePermissionNeededAllowItThen": "Microphone permission needed — allow it, then answer again",
+  "min": "{left} min",
+  "@min": {
+    "placeholders": {
+      "left": {
+        "type": "Object?"
+      }
+    }
+  },
+  "minAgo": "{diff} min ago",
+  "@minAgo": {
+    "placeholders": {
+      "diff": {
+        "type": "Object?"
+      }
+    }
+  },
+  "minVersion": "Min. version",
+  "miniPlayer": "Mini player",
+  "minimize": "Minimize",
+  "minimumVersion": "Minimum version",
+  "missed": "{missed} missed",
+  "@missed": {
+    "placeholders": {
+      "missed": {
+        "type": "Object?"
+      }
+    }
+  },
+  "missed2": "Missed",
+  "missedCall": "Missed call",
+  "missedVoiceCall": "Missed voice call",
+  "moAgo": "{floor}mo ago",
+  "@moAgo": {
+    "placeholders": {
+      "floor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "mon": "Mon",
+  "more": "+{files} more",
+  "@more": {
+    "placeholders": {
+      "files": {
+        "type": "Object?"
+      }
+    }
+  },
+  "more2": "More",
+  "moreOptions": "More options",
+  "moveThisAccountToAnotherPhone": "Move this account to another phone",
+  "moveThisAccountToAnotherPhone2": "Move this account to another phone with a one-time QR transfer.",
+  "moveThisLinkupAccountToAnother": "Move this LinkUp account to another phone.",
+  "moveToANewPhone": "Move to a new phone",
+  "movedToANewPhone": "Moved to a new phone",
+  "msDelay": "{rttMs} ms delay",
+  "@msDelay": {
+    "placeholders": {
+      "rttMs": {
+        "type": "Object?"
+      }
+    }
+  },
+  "msJitter": "{jitterMs} ms jitter",
+  "@msJitter": {
+    "placeholders": {
+      "jitterMs": {
+        "type": "Object?"
+      }
+    }
+  },
+  "mustSignInAgain": "{name} must sign in again",
+  "@mustSignInAgain": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "mustSignInAgainOnEvery": "{name} must sign in again on every phone.",
+  "@mustSignInAgainOnEvery": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "mute": "Mute",
+  "muteNotifications": "Mute notifications",
+  "myAndroidPhone": "My Android Phone",
+  "myLinks": "My links",
+  "myLinkupAccount": "My LinkUp account",
+  "myLinkupRecoveryCodeKeepIt": "My LinkUp recovery code (@{who}): {code} - keep it private.",
+  "@myLinkupRecoveryCodeKeepIt": {
+    "placeholders": {
+      "who": {
+        "type": "Object?"
+      },
+      "code": {
+        "type": "Object?"
+      }
+    }
+  },
+  "myLinkupRecoveryCodeKeepIt2": "My LinkUp recovery code: {code} - keep it private.",
+  "@myLinkupRecoveryCodeKeepIt2": {
+    "placeholders": {
+      "code": {
+        "type": "Object?"
+      }
+    }
+  },
+  "myPhones": "My phones",
+  "myQrCode": "My QR code",
+  "nameAndPasswordInYourPhone": "Name and password: in your phone's hotspot settings",
+  "nameAndPhoto": "Name and photo",
+  "nameOnThisPhone": "Name on this phone",
+  "namePhotoAndDescription": "Name, photo and description",
+  "nearYou": "Near you",
+  "nearby": "Nearby",
+  "nearbyChatsWithOtherLinkupPhones": "Nearby chats with other LinkUp phones may pause for a moment if your phone can't do both. They come back by themselves when you stop sharing.",
+  "nearbyDirectLink": "Nearby - direct link",
+  "nearbyGroupsCanHaveUpTo": "Nearby groups can have up to 32 people.",
+  "nearbyLinkupUser": "Nearby LinkUp user",
+  "nearbyMesh": "Nearby · Mesh",
+  "nearbyMeshVia": "Nearby · Mesh, via {phonesBetween} {phones}",
+  "@nearbyMeshVia": {
+    "placeholders": {
+      "phonesBetween": {
+        "type": "Object?"
+      },
+      "phones": {
+        "type": "Object?"
+      }
+    }
+  },
+  "nearbyNow": "Nearby now",
+  "nearbyNow2": "nearby now",
+  "nearbyNowAFewSeconds": "Nearby now · a few seconds",
+  "nearbyNowAdding": "Nearby now · adding…",
+  "nearbyOnlineOrOffline": "Nearby, Online or Offline",
+  "nearbyPhonesNowServerWhenOnline": "Nearby phones now, server when online",
+  "nearbyPhonesSeen": "Nearby phones seen",
+  "nearbyTestsTestersOnly": "Nearby tests (testers only)",
+  "nearbyWhileClosedBatteryLow": "Nearby while closed: Battery low",
+  "nearbyWhileClosedNeedsLocation": "Nearby while closed: Needs location",
+  "nearbyWhileClosedNeedsPermission": "Nearby while closed: Needs permission",
+  "nearbyWhileClosedOffByAdmin": "Nearby while closed: Off by admin",
+  "nearbyWhileClosedOn": "Nearby while closed: On",
+  "nearbyWiFi": "Nearby · Wi-Fi",
+  "nearbyWiFiDirect": "Nearby · Wi-Fi Direct",
+  "needsALook": "Needs a look",
+  "needsAndroid10OrNewer": "Needs Android 10 or newer",
+  "needsTheServer": "Needs the server",
+  "needsTheServer2": "Needs the server.",
+  "needsTheServerItOpensBy": "Needs the server. It opens by itself when the server is back.",
+  "network": "Network",
+  "networkDetails": "Network details",
+  "networkMesh": "Network & mesh",
+  "networkMesh2": "Network & Mesh",
+  "neverSeen": "Never seen",
+  "neverShareItLinkupAndThe": "Never share it. LinkUp and the admin never ask for it.",
+  "neverShown": "Never shown",
+  "neverShownToAdmins": "Never shown to admins",
+  "newCall": "New call",
+  "newChat": "New chat",
+  "newCode": "New code",
+  "newConversation": "New conversation",
+  "newDeviceName": "New device name",
+  "newGroup": "New group",
+  "newHere": "New here?",
+  "newLinkMadeTheOldOne": "New link made. The old one stops working.",
+  "newLinkupFoundNearby": "New LinkUp found nearby",
+  "newLinkupOnTheServer": "New LinkUp on the server",
+  "newMessage": "New message",
+  "newMessageFrom": "New message from {displayName}",
+  "@newMessageFrom": {
+    "placeholders": {
+      "displayName": {
+        "type": "Object?"
+      }
+    }
+  },
+  "newMessages": "New messages",
+  "newMessages2": "{unreadCount} new messages",
+  "@newMessages2": {
+    "placeholders": {
+      "unreadCount": {
+        "type": "Object?"
+      }
+    }
+  },
+  "newMessages3": "{displayName} • {unreadCount} new messages",
+  "@newMessages3": {
+    "placeholders": {
+      "displayName": {
+        "type": "Object?"
+      },
+      "unreadCount": {
+        "type": "Object?"
+      }
+    }
+  },
+  "newNotification": "New notification",
+  "newOwnerOfThisPhoneAsk": "New owner of this phone? Ask the admin.",
+  "newPassword": "New password",
+  "newPasswordAgain": "New password again",
+  "newPhone": "New phone: {named}",
+  "@newPhone": {
+    "placeholders": {
+      "named": {
+        "type": "Object?"
+      }
+    }
+  },
+  "newPhone2": "New phone: {named} · {created_at}",
+  "@newPhone2": {
+    "placeholders": {
+      "named": {
+        "type": "Object?"
+      },
+      "created_at": {
+        "type": "Object?"
+      }
+    }
+  },
+  "newPoll": "New poll",
+  "newRecoveryCode": "New recovery code",
+  "newRequest": "New request",
+  "newSecurityCodeAccepted": "New security code accepted",
+  "newSecurityKey": "New security key",
+  "newText": "{unreadCount} new {messages}",
+  "@newText": {
+    "placeholders": {
+      "unreadCount": {
+        "type": "Object?"
+      },
+      "messages": {
+        "type": "Object?"
+      }
+    }
+  },
+  "newer": "Newer",
+  "newestFirstMergedAcrossUsersDevices": "Newest first, merged across users, devices, files, calls and audit sources",
+  "next": "Next",
+  "nextDownload": "Next: Download  →",
+  "nextPhone": "Next phone",
+  "noAccountWithThisUsername": "No account with this username.",
+  "noActivityRecorded": "No activity recorded",
+  "noAddressAtAllYourFriend": "No address at all? Your friend joins the Wi-Fi (step 1), opens its Wi-Fi details, and types the \"Gateway\" address in Chrome with :8080",
+  "noAnswer": "No answer",
+  "noBackupYet": "No backup yet",
+  "noCallsYet": "No calls yet",
+  "noChatsFound": "No chats found",
+  "noChatsYet": "No chats yet",
+  "noConnectionCheckYourNetworkAnd": "No connection. Check your network and try again.",
+  "noContactsYet": "No contacts yet",
+  "noConversationsYet": "No conversations yet",
+  "noCriticalSecurityAlertsIn24h": "No critical security alerts in 24h",
+  "noData": "No data",
+  "noDataForThisPeriod": "No data for this period",
+  "noDownloadsFor10Minutes": "No downloads for 10 minutes.",
+  "noEncryptedIdentityBackupOnThe": "No encrypted identity backup on the server",
+  "noFilesYet": "No files yet",
+  "noFriendFound": "No friend found",
+  "noFriendSPhoneCouldCheck": "No friend's phone could check the code yet. Come near a friend's phone, or connect to the server.",
+  "noFriendsYet": "No friends yet",
+  "noHealthReadings": "No health readings",
+  "noInternetNoSimNeeded": "•  No internet, no SIM needed",
+  "noLink": "No link",
+  "noLinkupServerWasFoundEnter": "No LinkUp server was found. Enter the server address and try again.",
+  "noMessageHereYouCanOnly": "No \"Message\" here: you can only chat 1:1 with friends. In the group you can still talk.",
+  "noMessages": "No messages",
+  "noMessagesFound": "No messages found",
+  "noMessagesInTheseDates": "No messages in these dates.",
+  "noMessagesInThisChat": "No messages in this chat",
+  "noMessagesOrCalls": "No messages or calls",
+  "noMessagesWereExchangedInThis": "No messages were exchanged in this window.",
+  "noMessagesYetToday": "No messages yet today",
+  "noMinimum": "No minimum",
+  "noModuleMatchesThatTermGlobal": "No module matches that term. Global entity search across users, devices and transfers is available inside each module.",
+  "noNearbyPhoneCouldShareIt": "No nearby phone could share it",
+  "noNewSignIn": "No new sign-in",
+  "noOneCalled": "No one called ",
+  "noOneCalledOnTheMap": "No one called \"{q}\" on the map",
+  "@noOneCalledOnTheMap": {
+    "placeholders": {
+      "q": {
+        "type": "Object?"
+      }
+    }
+  },
+  "noOneFound": "No one found",
+  "noOneIsAsking": "No one is asking",
+  "noOneIsBlockedByAdmin": "No one is blocked by admin",
+  "noOneNearbyRightNow": "No one nearby right now",
+  "noOneOnlineRightNow": "No one online right now",
+  "noOneTimeCodeWasReturned": "No one-time code was returned.",
+  "noOneToShowYetSearch": "No one to show yet. Search a name or scan a QR code.",
+  "noOperationalEventsHaveBeenRecorded": "No operational events have been recorded on this server yet.",
+  "noOtherPhonesLinked": "No other phones linked",
+  "noOtherRegisteredDevicesAreAvailable": "No other registered devices are available.",
+  "noOwner": "No owner",
+  "noPendingRecoveryRequest": "No pending recovery request",
+  "noPeopleFound": "No people found",
+  "noPhone": "no phone",
+  "noPhoneReachedYet": "{since} · no phone reached yet",
+  "@noPhoneReachedYet": {
+    "placeholders": {
+      "since": {
+        "type": "Object?"
+      }
+    }
+  },
+  "noPhonesFound": "No phones found",
+  "noPhonesOnline": "No phones online",
+  "noQrCodeFoundInThis": "No QR code found in this picture",
+  "noRecentActivity": "No recent activity",
+  "noRecords": "No records",
+  "noRequests": "No requests",
+  "noResponseTrafficRecordedYet": "No response traffic recorded yet.",
+  "noResultsFor": "No results for '{q}'",
+  "@noResultsFor": {
+    "placeholders": {
+      "q": {
+        "type": "Object?"
+      }
+    }
+  },
+  "noRoutesYet": "No routes yet.",
+  "noRule": "no rule",
+  "noServerAFriendSPhone": "No server · a friend's phone nearby checks it",
+  "noServerRequestsGoByWi": "No server · requests go by Wi-Fi Direct / mesh",
+  "noServerRightNow": "No server right now",
+  "noServerSearchingNearbyPhones": "No server - searching nearby phones",
+  "noServerShowingPeopleSeenNearby": "No server · showing people seen nearby",
+  "noServerSideKeyHistoryYet": "No server-side key history yet.",
+  "noWarnings": "No warnings",
+  "noWayToReachRightNow": "No way to reach right now. Messages wait and go when a way opens.",
+  "nobody": "Nobody",
+  "nobodyCanFindYouByName": "**Nobody can find you** by name search, and no phone shows you to others.",
+  "nobodyCanFindYouByName2": "Nobody can find you by name search. Only friends get your phone number.",
+  "nobodyIsBlockedHere": "Nobody is blocked here",
+  "nobodyKnownOnThisPhoneYet": "Nobody known on this phone yet.",
+  "nobodySignedIn": "Nobody signed in",
+  "none": "None",
+  "noneYetWaiting": "None yet. Waiting…",
+  "notAddedYetTheyNeedTo": "Not added yet: {join}. They need to open LinkUp Online once.",
+  "@notAddedYetTheyNeedTo": {
+    "placeholders": {
+      "join": {
+        "type": "Object?"
+      }
+    }
+  },
+  "notApproved": "Not approved",
+  "notAvailable": "Not available",
+  "notAvailableOnThisDevice": "Not available on this device.",
+  "notConnected": "Not connected",
+  "notDownloadedYet": "Not downloaded yet",
+  "notFoundItMayHaveBeen": "Not found. It may have been removed or renamed.",
+  "notFoundTryAgainWhenYou": "Not found. Try again when you're online or near friends.",
+  "notHereAskThemToOpen": "Not here? Ask them to open ",
+  "notHereAskThemToOpen2": "Not here? Ask them to open My QR code, then tap Scan QR code below.",
+  "notInAGroup": "Not in a group",
+  "notNow": "Not now",
+  "notOnServer": "{local} not on server",
+  "@notOnServer": {
+    "placeholders": {
+      "local": {
+        "type": "Object?"
+      }
+    }
+  },
+  "notOnServer2": "Not on server",
+  "notOnServerYet": "Not on server yet",
+  "notReachedIn7DaysTap": "Not reached in 7 days · tap to try again",
+  "notReachedIn7DaysTap2": "Not reached in 7 days. Tap Try again to send the group to {name} again.",
+  "@notReachedIn7DaysTap2": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "notSaved": "Not saved",
+  "notSeenFor30Days": "Not seen for 30+ days",
+  "notSentTapToRetry": "Not sent - tap to retry",
+  "notSentYet": "Not sent yet",
+  "notVerified": "Not verified",
+  "notVotedYet": "Not voted yet",
+  "notYourFriendInThisGroup": "Not your friend · in this group",
+  "nothingDoneYet": "Nothing done yet",
+  "nothingNeedsALookRightNow": "Nothing needs a look right now.",
+  "nothingPending": "Nothing pending",
+  "nothingRecordedForThisPeriod": "Nothing recorded for this period.",
+  "nothingRemoved": "nothing removed",
+  "nothingToReport": "Nothing to report",
+  "nothingYet": "Nothing yet",
+  "notificationChannels": "Notification channels",
+  "notifications": "Notifications",
+  "notificationsAllowLinkupTurnOnBanners": "Notifications: allow LinkUp, turn on Banners, Lock screen and Full-screen",
+  "notificationsAreDisabledInAndroidSettings": "Notifications are disabled in Android settings",
+  "notificationsOffTapToAllow": "Notifications off - tap to allow",
+  "notificationsOn": "Notifications on",
+  "nov": "Nov",
+  "now": "Now: {rule}",
+  "@now": {
+    "placeholders": {
+      "rule": {
+        "type": "Object?"
+      }
+    }
+  },
+  "oct": "Oct",
+  "ofAdded": "{added} of {invites} added",
+  "@ofAdded": {
+    "placeholders": {
+      "added": {
+        "type": "Object?"
+      },
+      "invites": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ofParts": "{parts} of {vOf} parts",
+  "@ofParts": {
+    "placeholders": {
+      "parts": {
+        "type": "Object?"
+      },
+      "vOf": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ofPartsTheRestIsOn": "{parts} of {vOf} parts · the rest is on the way",
+  "@ofPartsTheRestIsOn": {
+    "placeholders": {
+      "parts": {
+        "type": "Object?"
+      },
+      "vOf": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ofPhones": "{done} of {need} phones",
+  "@ofPhones": {
+    "placeholders": {
+      "done": {
+        "type": "Object?"
+      },
+      "need": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ofRegistered": "of {num} registered",
+  "@ofRegistered": {
+    "placeholders": {
+      "num": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ofVoted": "{voters} of {members} voted",
+  "@ofVoted": {
+    "placeholders": {
+      "voters": {
+        "type": "Object?"
+      },
+      "members": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ofVoted2": "{question} · {voters} of {members} voted",
+  "@ofVoted2": {
+    "placeholders": {
+      "question": {
+        "type": "Object?"
+      },
+      "voters": {
+        "type": "Object?"
+      },
+      "members": {
+        "type": "Object?"
+      }
+    }
+  },
+  "off": "Off",
+  "offAccountClosed": "Off (account closed)",
+  "offline": "Offline",
+  "offlineAccount": "Offline account",
+  "offlineAccountNotOnServerYet": "Offline account · not on server yet",
+  "offlineAccountsNotSeenFor30": "Offline accounts not seen for 30 days",
+  "offlineBlockingIsNotReadyYet": "Offline blocking is not ready yet.",
+  "offlineBlockingIsReady": "Offline blocking is ready",
+  "offlineIdle": "Offline / idle",
+  "offlineToolsOnlyBlockAppVersion": "{level} · Offline tools only · block, app version",
+  "@offlineToolsOnlyBlockAppVersion": {
+    "placeholders": {
+      "level": {
+        "type": "Object?"
+      }
+    }
+  },
+  "offlineToolsStillWorkLockedOnes": "Offline tools still work. Locked ones open by themselves.",
+  "offlineWorksOnThisPhone": "Offline · works on this phone",
+  "oldAccount": "old account",
+  "oldApp": "Old app",
+  "oldAppRule": "Old app rule",
+  "oldChatsStay": "Old chats stay",
+  "oldLinkup": "Old LinkUp",
+  "oldMessagesStayOnYourPhone": "Old messages stay on your phone (read only). You can delete the group later.",
+  "oldVersionUpdateToCall": "Old version. Update to call.",
+  "oldVersionUpdateToSend": "Old version. Update to send.",
+  "older": "Older",
+  "olderApps": "Older apps",
+  "olderAppsCanOnlyReadChats": "Older apps can only read chats from now. They see an Update button.",
+  "olderAppsSeeAYellowUpdate": "Older apps see a yellow \"Update\" banner. They keep working.",
+  "olderAppsSeeUpdateNeededIn": "Older apps see \"Update needed in {days} days\". After that they can only read chats.",
+  "@olderAppsSeeUpdateNeededIn": {
+    "placeholders": {
+      "days": {
+        "type": "Object?"
+      }
+    }
+  },
+  "olderVersionsStopped": "{v} · older versions stopped",
+  "@olderVersionsStopped": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "onAnOldApp": "{phone} on an old app",
+  "@onAnOldApp": {
+    "placeholders": {
+      "phone": {
+        "type": "Object?"
+      }
+    }
+  },
+  "onCharger": "On charger",
+  "onEveryPhone": "{adminBlocked} · on every phone",
+  "@onEveryPhone": {
+    "placeholders": {
+      "adminBlocked": {
+        "type": "Object?"
+      }
+    }
+  },
+  "onEveryPhoneTheUnblockReaches": "On every phone the unblock reaches",
+  "onLinkup": " on LinkUp",
+  "onNearbyLinkupPhonesCanJoin": "On — nearby LinkUp phones can join",
+  "onServer": "On server",
+  "onTheNewPhone": "On the new phone:",
+  "onTheNewPhoneChooseTransfer": "On the new phone, choose “Transfer account from old phone” and scan this QR code. Keep both phones on the same trusted LinkUp network.",
+  "onTheServer": "On the server",
+  "onTheWebOrInThe": "On the web or in the app",
+  "onThisPhoneAndroidNeedsLocation": "On this phone Android needs Location on to start a LinkUp Wi-Fi. Nothing is tracked.",
+  "onWaitingForAFullGroup": "On — waiting for a full group or a hotspot nearby",
+  "oneAnswerEachAVoteCan": "One answer each. A vote can be changed for 3 minutes, then it's final.",
+  "oneRunAsIfFilesWere": "One run as if files were 11 days old",
+  "oneTimeCodeFor": "One-time code for {them}",
+  "@oneTimeCodeFor": {
+    "placeholders": {
+      "them": {
+        "type": "Object?"
+      }
+    }
+  },
+  "oneTimeCodeFromTheAdmin": "One-time code from the admin",
+  "oneTimeOnly": "One time only\n",
+  "online": "Online",
+  "online2": "{online} online",
+  "@online2": {
+    "placeholders": {
+      "online": {
+        "type": "Object?"
+      }
+    }
+  },
+  "online3": "{phone} · {online} online",
+  "@online3": {
+    "placeholders": {
+      "phone": {
+        "type": "Object?"
+      },
+      "online": {
+        "type": "Object?"
+      }
+    }
+  },
+  "onlineCall": "Online call",
+  "onlineDevices": "Online devices",
+  "onlineNow": "Online now",
+  "onlineViaServer": "Online - via server",
+  "only": "Only ",
+  "onlyActionsYourAdminRolePermits": "Only actions your admin role permits",
+  "onlyAdmins": "Only admins",
+  "onlyAdminsAddPeople": "Only admins add people",
+  "onlyAdminsAnnouncementGroup": "Only admins = announcement group",
+  "onlyAdminsCanChangeTheGroup": "Only admins can change the group photo.",
+  "onlyAdminsCanDoThis": "Only admins can do this.",
+  "onlyAdminsCanPinMessages": "Only admins can pin messages",
+  "onlyAdminsCanSeeAndChange": "Only admins can see and change these.",
+  "onlyAdminsCanSendMessages": "Only admins can send messages.",
+  "onlyAdminsSend": "Only admins send",
+  "onlyContactsTheAppCanConfirm": "Only contacts the app can confirm",
+  "onlyForThisPhone": "Only for this phone?",
+  "onlyKindAndSizeNobodyCan": "Only kind and size. Nobody can open the files.",
+  "onlyNamesAndTimesNobodyCan": "Only names and times. Nobody can hear calls.",
+  "onlyPeopleThisPhoneHasSeen": "Only people this phone has seen are listed. Others can be blocked from the web panel.",
+  "onlyTheOwnerAdminCanBlock": "Only the owner admin can block users",
+  "onlyTheOwnerCanChangeThis": "Only the Owner can change this.",
+  "onlyThisPhoneOnlineOrOffline": "Only this phone, online or offline",
+  "onlyYouCanChangeThisTurn": "Only you can change this. Turn it off any time.",
+  "onlyYouShouldSeeYourRecovery": "Only you should see your recovery code.",
+  "onlyYouWillSeeThisName": "Only you will see this name",
+  "open": "Open",
+  "openAppVersion": "Open App version",
+  "openAuditLog": "Open audit log",
+  "openGroup": "Open group",
+  "openHotspotSettings": "Open hotspot settings",
+  "openLinkup": "Open LinkUp",
+  "openLinkupNearAMember": "Open LinkUp near a member",
+  "openNavigation": "Open navigation",
+  "openNetworkTopology": "Open Network Topology",
+  "openRecentsTapTheLinkupIcon": "Open Recents, tap the LinkUp icon, choose Lock",
+  "openRecovery": "Open Recovery",
+  "openSecurity": "Open Security",
+  "openSettings": "Open settings",
+  "openThisPersonFromPeopleTo": "Open this person from People to block them.",
+  "openThisScreenAgainWhenYou": "Open this screen again when you are back online.",
+  "openedChat": "{admin} opened chat {pair}",
+  "@openedChat": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "pair": {
+        "type": "Object?"
+      }
+    }
+  },
+  "openedTheGroupInviteLinkAdd": "{name} opened the group invite link. Add only people you know.",
+  "@openedTheGroupInviteLinkAdd": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "openedTheInviteLink": "opened the invite link",
+  "opensWhatsappChooseMessageYourself": "Opens WhatsApp · choose \"Message yourself\"",
+  "operationalMetadataFromTheLinkupServer": "Operational metadata from the LinkUp server.",
+  "operationalMetadataOnlyPasswordsPrivateKeys": "Operational metadata only. Passwords, private keys, message bodies, call audio and decrypted media are never exposed to this dashboard.",
+  "operations": "Operations",
+  "operatorText": "Operator",
+  "option": "Option {i}",
+  "@option": {
+    "placeholders": {
+      "i": {
+        "type": "Object?"
+      }
+    }
+  },
+  "optional": "Optional",
+  "orScanWithTheCameraApp": "(or scan with the camera app)",
+  "orType": "or type:",
+  "orTypeIt": "Or type it",
+  "orWaitUntilAMemberIs": ", or wait until a member is Online once.",
+  "otherBrandTapToPick": "Other brand? Tap to pick",
+  "otherLinkupPhones": "{n} other LinkUp phones",
+  "@otherLinkupPhones": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "otherLinkupPhonesJoinThisOne": "Other LinkUp phones join this one. No internet is shared. {hotspotStatusText}",
+  "@otherLinkupPhonesJoinThisOne": {
+    "placeholders": {
+      "hotspotStatusText": {
+        "type": "Object?"
+      }
+    }
+  },
+  "otherPhonesPixelMotorolaNokia": "Other phones (Pixel, Motorola, Nokia...)",
+  "outgoing": "Outgoing",
+  "outsideTheDatesPhoneClock": "Outside the dates (phone clock)",
+  "overTheInternetThroughTheLinkup": "Over the internet, through the LinkUp server.",
+  "overall": "Overall: {label}",
+  "@overall": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "overview": "Overview",
+  "owner": "Owner",
+  "ownerCanRead": "Owner can read",
+  "ownerCanReadEveryOpenIs": "Owner can read; every open is saved",
+  "ownerOnly": "Owner only",
+  "packetLoss": "{toStringAsFixed}% packet loss",
+  "@packetLoss": {
+    "placeholders": {
+      "toStringAsFixed": {
+        "type": "Object?"
+      }
+    }
+  },
+  "packetsPassedOn": "Packets passed on",
+  "pairingCode": "Pairing code",
+  "password": "Password",
+  "passwordChanged": "Password changed",
+  "passwordCopied": "Password copied",
+  "passwordHasACharacterThatIs": "Password has a character that is not allowed.",
+  "passwordIsTooLong": "Password is too long.",
+  "passwordMustBeAtLeast8": "Password must be at least 8 characters.",
+  "passwordOf": "Password of @{username}",
+  "@passwordOf": {
+    "placeholders": {
+      "username": {
+        "type": "Object?"
+      }
+    }
+  },
+  "passwords": "Passwords",
+  "pasteCode": "Paste code",
+  "pasteContactCode": "Paste contact code",
+  "pasteGroupCode": "Paste group code",
+  "pasteItInAnyApp": "Paste it in any app",
+  "pasteTheSharedCodeTextHere": "Paste the shared code text here",
+  "pause": "Pause",
+  "pending": "Pending",
+  "pending2": "Pending {pending}",
+  "@pending2": {
+    "placeholders": {
+      "pending": {
+        "type": "Object?"
+      }
+    }
+  },
+  "pendingRecoveries": "Pending recoveries",
+  "pendingUntilEachPhoneDoesIt": "Pending until each phone does it",
+  "pendingUntilEachPhoneDoesIt2": "{pendingCount} pending · until each phone does it",
+  "@pendingUntilEachPhoneDoesIt2": {
+    "placeholders": {
+      "pendingCount": {
+        "type": "Object?"
+      }
+    }
+  },
+  "people": "People",
+  "people2": "{n} people",
+  "@people2": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "peopleAreTyping": "{clean} people are typing…",
+  "@peopleAreTyping": {
+    "placeholders": {
+      "clean": {
+        "type": "Object?"
+      }
+    }
+  },
+  "peopleMovingToANewPhone": "People moving to a new phone",
+  "peopleNearYouMustAskFirst": "People near you must **ask first**, and you accept or decline. A **QR code** still adds at once.",
+  "peopleNearby": "People nearby",
+  "peopleNearbyPhonesKnow": "People nearby phones know",
+  "peopleSignedIn": "People signed in",
+  "peopleWhoAlreadyHaveYouKeep": "People who already have you **keep you**. They see a \"Private\" label next to your name.",
+  "peopleWithAnAccount": "People with an account",
+  "peopleYouBlockHereAreStopped": "People you block here are stopped on every phone.",
+  "peopleYouCanAdd": "People you can add",
+  "percentagesAreLiveReadingsTheTick": "Percentages are live readings; the tick marks the alert threshold",
+  "phone": "Phone",
+  "phone2": "Phone {number}",
+  "@phone2": {
+    "placeholders": {
+      "number": {
+        "type": "Object?"
+      }
+    }
+  },
+  "phoneFullFree": "Phone: {usedPercent}% full · {free} free",
+  "@phoneFullFree": {
+    "placeholders": {
+      "usedPercent": {
+        "type": "Object?"
+      },
+      "free": {
+        "type": "Object?"
+      }
+    }
+  },
+  "phoneMasterPowerSavingLetLinkup": "Phone Master > Power saving: let LinkUp run in background",
+  "phoneNumber": "Phone number",
+  "phoneNumberVisibility": "Phone number visibility",
+  "phoneRemoved": "Phone removed",
+  "phoneToPhoneNoRouterNeeded": "Phone to phone, no router needed. Messages and calls go straight between your phones.",
+  "phones": "Phones",
+  "phones2": "{carriers} phones",
+  "@phones2": {
+    "placeholders": {
+      "carriers": {
+        "type": "Object?"
+      }
+    }
+  },
+  "phonesAroundYouWithLinkup": "Phones around you with LinkUp",
+  "phonesConfirmed": "{since} · phones confirmed",
+  "@phonesConfirmed": {
+    "placeholders": {
+      "since": {
+        "type": "Object?"
+      }
+    }
+  },
+  "phonesGettingLinkup": "Phones getting LinkUp",
+  "phonesLinkedThisWay": "Phones linked this way",
+  "phonesLive": "Phones live",
+  "phonesNear": "Phones near",
+  "phonesRightNow": "Phones right now",
+  "phonesSeenNearbyThatThisAffects": "Phones seen nearby that this affects: {affects}.",
+  "@phonesSeenNearbyThatThisAffects": {
+    "placeholders": {
+      "affects": {
+        "type": "Object?"
+      }
+    }
+  },
+  "phonesShowHereWhenTheyAre": "Phones show here when they are linked.",
+  "phonesThatGotTheRule": "phones that got the rule",
+  "phonesThatHavenTAnsweredYet": "Phones that haven't answered yet won't answer.",
+  "phonesThatHavenTDoneIt": "Phones that haven't done it yet won't do it. Phones that did it stay as they are.",
+  "phonesWiFiRulesRecovery": "phones, Wi-Fi rules, recovery",
+  "photo": "Photo",
+  "photos": "Photos",
+  "pick": "Pick",
+  "pickAUsernameYourFriendsKnow": "Pick a username your friends know",
+  "pickAsManyChatsAsYou": "Pick as many chats as you want. Photos and videos are sent again as new files.",
+  "pin": "Pin",
+  "pinForHowLong": "Pin for how long?",
+  "pinnedAMessage": "{actor} pinned a message",
+  "@pinnedAMessage": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      }
+    }
+  },
+  "pinnedMessage": "Pinned message",
+  "platform": "Platform",
+  "play": "Play",
+  "played": "Played",
+  "playingInMiniPlayer": "Playing in mini player",
+  "pleaseWaitAFewSeconds": "Please wait a few seconds",
+  "pointAtThisCode": "Point at this code",
+  "pointAtThisCodeOrPick": "Point at this code, or pick this picture",
+  "pointAtYourFriendSQr": "Point at your friend's QR code",
+  "poll": "📊 Poll: {question}",
+  "@poll": {
+    "placeholders": {
+      "question": {
+        "type": "Object?"
+      }
+    }
+  },
+  "pollChooseOne": "POLL · CHOOSE ONE",
+  "pollChooseOneOrMore": "POLL · CHOOSE ONE OR MORE",
+  "poor": "Poor",
+  "preparing": "Preparing…",
+  "preparingLogs": "Preparing logs...",
+  "pressBackAgainToExit": "Press back again to exit",
+  "pretendOldBuild": "Pretend old build",
+  "privacy": "Privacy",
+  "privacyAccess": "Privacy & access",
+  "privacyAccess2": "Privacy & Access",
+  "privacyBoundary": "Privacy boundary",
+  "privacySecurity": "Privacy & Security",
+  "privacySettingsSaved": "Privacy settings saved",
+  "private": "Private",
+  "privateAndSecure": "Private and secure",
+  "privateChat": "Private chat",
+  "privateKeys": "Private keys",
+  "privateProfile": "Private profile",
+  "privateThingsStayPrivate": "Private things stay private",
+  "profile": "Profile",
+  "profileInformation": "Profile information",
+  "profilePhoto": "Profile photo",
+  "profileSaved": "Profile saved",
+  "protectYourAccountWhenThisPhone": "Protect your account when this phone is lost.",
+  "publicKey": "Public key: {currentPublicKey}",
+  "@publicKey": {
+    "placeholders": {
+      "currentPublicKey": {
+        "type": "Object?"
+      }
+    }
+  },
+  "publicKeyUnavailable": "Public key unavailable",
+  "qrImportFailed": "QR import failed ({stage}): {e}",
+  "@qrImportFailed": {
+    "placeholders": {
+      "stage": {
+        "type": "Object?"
+      },
+      "e": {
+        "type": "Object?"
+      }
+    }
+  },
+  "quickActions": "Quick actions",
+  "reached": "Reached {done}",
+  "@reached": {
+    "placeholders": {
+      "done": {
+        "type": "Object?"
+      }
+    }
+  },
+  "reachedPhone": "Reached {reached} phone{s}",
+  "@reachedPhone": {
+    "placeholders": {
+      "reached": {
+        "type": "Object?"
+      },
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "reachedThePhoneItMustReach": "Reached the phone - it must reach the server once",
+  "reachedThePhoneItMustReach2": "reached the phone · it must reach the server once",
+  "react": "React {emoji}",
+  "@react": {
+    "placeholders": {
+      "emoji": {
+        "type": "Object?"
+      }
+    }
+  },
+  "reactions": "Reactions",
+  "read": "Read",
+  "readByOf": "Read by {read} of {total}",
+  "@readByOf": {
+    "placeholders": {
+      "read": {
+        "type": "Object?"
+      },
+      "total": {
+        "type": "Object?"
+      }
+    }
+  },
+  "readChatsOnlyUpdateToSend": "Read chats only. Update to send and call.",
+  "readOnlyAtOnce": "Read only at once",
+  "readReceipts": "Read receipts",
+  "readReceiptsAreOffTurnOn": "Read receipts are off. Turn on in Settings › Privacy.",
+  "ready": "Ready",
+  "readyToSend": "Ready to send",
+  "readyToUpdate": "Ready to update",
+  "reason": "Reason: {rejectedReason}",
+  "@reason": {
+    "placeholders": {
+      "rejectedReason": {
+        "type": "Object?"
+      }
+    }
+  },
+  "reasonOptional": "Reason (optional)",
+  "recentActivity": "Recent activity",
+  "recentChats": "RECENT CHATS",
+  "recentSecurityEvents": "RECENT SECURITY EVENTS",
+  "recentsLockLinkupTapItsIcon": "Recents: lock LinkUp (tap its icon, choose Lock)",
+  "recommendedMessagesArriveInstantly": "Recommended — messages arrive instantly",
+  "recommendedWhenReplacingTheOldPhone": "Recommended when replacing the old phone.",
+  "reconnecting": "Reconnecting",
+  "reconnecting2": "Reconnecting…",
+  "recoverYourAccount": "Recover your account",
+  "recovery": "Recovery {v}",
+  "@recovery": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "recovery2": "Recovery",
+  "recoveryApproved": "Recovery approved",
+  "recoveryAsked": "Recovery asked",
+  "recoveryAttempts": "{recoveryAttempts} recovery attempts",
+  "@recoveryAttempts": {
+    "placeholders": {
+      "recoveryAttempts": {
+        "type": "Object?"
+      }
+    }
+  },
+  "recoveryCanLook": "recovery, can look",
+  "recoveryCode": "RECOVERY CODE",
+  "recoveryCode2": "Recovery code",
+  "recoveryCodeSaved": "Recovery code saved",
+  "recoveryCodeTurnedOff": "Recovery code turned off",
+  "recoveryCompleted": "Recovery completed",
+  "recoveryCompleted2": "Recovery completed.",
+  "recoveryCredentialExpires": "Recovery credential expires",
+  "recoveryExpired": "Recovery expired",
+  "recoveryFinished": "Recovery finished",
+  "recoveryNewCode": "Recovery new code",
+  "recoveryQueue": "Recovery queue",
+  "recoveryRejected": "Recovery rejected",
+  "recoveryStatus": "Recovery status",
+  "refresh": "Refresh",
+  "refreshData": "Refresh data",
+  "refreshEvery": "Refresh every",
+  "refreshNow": "Refresh now",
+  "refreshTimeAlertsBackup": "Refresh time, alerts, backup",
+  "refreshUnavailable": "Refresh unavailable",
+  "registered": "Registered",
+  "registeredDevices": "Registered devices",
+  "registeredHardware": "Registered hardware",
+  "reject": "Reject",
+  "rejectThisRequest": "Reject this request?",
+  "rejected": "Rejected",
+  "rejectedRecoveryFor": "{admin} rejected recovery for {target}",
+  "@rejectedRecoveryFor": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "relayLinksNotContacts": "Relay links (not contacts)",
+  "relaysForOthers": "relays for others",
+  "remove": "Remove",
+  "removeContact": "Remove contact",
+  "removeFrom": "Remove {name} from \"{groupName}\"?",
+  "@removeFrom": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "groupName": {
+        "type": "Object?"
+      }
+    }
+  },
+  "removeFromGroup": "Remove from group",
+  "removeFromThisGroup": "Remove {label} from this group?",
+  "@removeFromThisGroup": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "removeFromYourContacts": "Remove {name} from your contacts?",
+  "@removeFromYourContacts": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "removeMember": "Remove member",
+  "removeMember2": "Remove member?",
+  "removeOption": "Remove option",
+  "removePhone": "Remove phone",
+  "removePhoto": "Remove photo",
+  "removeRule": "Remove rule",
+  "removeThisPhone": "Remove this phone?",
+  "removeVerifiedMark": "Remove verified mark",
+  "removeYour": "Remove your {emoji}",
+  "@removeYour": {
+    "placeholders": {
+      "emoji": {
+        "type": "Object?"
+      }
+    }
+  },
+  "removed": "{name} removed",
+  "@removed": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "removed2": "{label} removed.",
+  "@removed2": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "removed3": "Removed",
+  "removed4": "{actor} removed {targets}",
+  "@removed4": {
+    "placeholders": {
+      "actor": {
+        "type": "Object?"
+      },
+      "targets": {
+        "type": "Object?"
+      }
+    }
+  },
+  "removedAdminFrom": "{admin} removed admin from {target}",
+  "@removedAdminFrom": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "removedToSaveSpace": "Removed to save space",
+  "removedToSaveSpaceAskTo": "Removed to save space. Ask {sender} to send it again.",
+  "@removedToSaveSpaceAskTo": {
+    "placeholders": {
+      "sender": {
+        "type": "Object?"
+      }
+    }
+  },
+  "removesPhotosVideosAndDocumentsAs": "Removes photos, videos and documents as if they were 11 days old and the phone 80% full. Voice notes and unsent media stay. The messages stay with a small picture.",
+  "rename": "Rename",
+  "renamePhone": "Rename phone",
+  "renamed": "{admin} renamed {target}",
+  "@renamed": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "replaced": "Replaced",
+  "replacedByANewerAction": "Replaced by a newer action",
+  "reply": "Reply",
+  "request": "Request",
+  "requestDeclined": "Request declined",
+  "requestSent": "Request sent",
+  "requestSentByTheServer": "Request sent by the server",
+  "requestSentNeedsToAccept": "Request sent. {who} needs to accept.",
+  "@requestSentNeedsToAccept": {
+    "placeholders": {
+      "who": {
+        "type": "Object?"
+      }
+    }
+  },
+  "requestSentToNearbyPhones": "Request sent to nearby phones",
+  "requestStatus": "Request: {substring}…\nStatus: {status}",
+  "@requestStatus": {
+    "placeholders": {
+      "substring": {
+        "type": "Object?"
+      },
+      "status": {
+        "type": "Object?"
+      }
+    }
+  },
+  "requestSubmittedAskTheLinkupAdministrator": "Request submitted. Ask the LinkUp administrator to approve it and provide the recovery code.",
+  "requested": "Requested",
+  "requested2": "Requested ✓",
+  "requests": "Requests",
+  "requests2": "Requests {requests}",
+  "@requests2": {
+    "placeholders": {
+      "requests": {
+        "type": "Object?"
+      }
+    }
+  },
+  "requestsToJoin": "{n} requests to join",
+  "@requestsToJoin": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "requestsWaitHereUntilAPhone": "Requests wait here until a phone answers. There is no time limit.",
+  "requiredText": "Required",
+  "requiresTheRuntimeMetricsSampler": "Requires the runtime metrics sampler",
+  "resend": "Resend",
+  "reset": "Reset",
+  "resetCode": "Reset code",
+  "resetLink": "Reset link",
+  "resetLink2": "Reset link?",
+  "resetSetup": "Reset setup",
+  "resetSetup2": "Reset setup?",
+  "resetYourPassword": "Reset your password",
+  "responseBytesServedPerBucket": "Response bytes served per bucket",
+  "restoreAccountData": "Restore account data",
+  "restoreAccountDataEncryptedKeys": "Restore account data + encrypted keys",
+  "restoreEncryptedIdentityBackup": "Restore encrypted identity backup",
+  "restoreEncryptedIdentityKeys": "Restore encrypted identity keys?",
+  "restoreFailed": "Restore failed",
+  "restoreKeys": "Restore keys",
+  "restoringYourAccount": "Restoring your account",
+  "results": "Results",
+  "resultsFor": "Results for \"{searchQuery}\"",
+  "@resultsFor": {
+    "placeholders": {
+      "searchQuery": {
+        "type": "Object?"
+      }
+    }
+  },
+  "resumingYourRecoveryRequest": "Resuming your recovery request…",
+  "retry": "Retry",
+  "returnText": "Return",
+  "reviewReports": "Review reports",
+  "revokeOldPhoneAfterTransfer": "Revoke old phone after transfer",
+  "revoked": "Revoked",
+  "revokedDevices": "Revoked devices",
+  "rightsCheckedByTheServer": "Rights checked by the server",
+  "ringing": "Ringing…",
+  "role": "Role",
+  "rollupsComputedFromPlatformTablesAnd": "Rollups computed from platform tables and the runtime sampler",
+  "rotateIdentityKey": "Rotate identity key",
+  "rotating": "Rotating…",
+  "routerEchoWiFiDirectAnd": "Router echo, Wi-Fi Direct and mesh checks",
+  "routes": "Routes ({routes})",
+  "@routes": {
+    "placeholders": {
+      "routes": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ruleRemovedForEveryone": "Rule removed for everyone.",
+  "runTest": "Run test",
+  "runningFor": "Running for",
+  "runningNow": "Running now",
+  "sAccountIsClosedCanT": "{name}’s account is closed. {name2} can’t sign in.",
+  "@sAccountIsClosedCanT": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "name2": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sPhoneHasNotGotThe": "{name}'s phone has not got the group yet. It is added by itself when {name2} is Nearby (Wi-Fi Direct or mesh) or Online.",
+  "@sPhoneHasNotGotThe": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "name2": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sSecurityCodeChanged": "{v}'s security code changed",
+  "@sSecurityCodeChanged": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sSecurityCodeChangedTapTo": "{device}'s security code changed. Tap to check.",
+  "@sSecurityCodeChangedTapTo": {
+    "placeholders": {
+      "device": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sSecurityCodeChangedTapTo2": "{device}'s security code changed. Tap to learn more.",
+  "@sSecurityCodeChangedTapTo2": {
+    "placeholders": {
+      "device": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sSecurityCodeIsNotReady": "{v}'s security code is not ready yet. It shows after you have chatted once nearby or over the server.",
+  "@sSecurityCodeIsNotReady": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "safety": "Safety",
+  "sajjad": "Sajjad",
+  "sameWiFi": "same Wi-Fi",
+  "sat": "Sat",
+  "save": "Save",
+  "saveChanges": "Save changes",
+  "saveContactAs": "Save contact as",
+  "saveForEveryone": "Save for everyone",
+  "saveItNowTheOldOne": "Save it now. The old one no longer works.",
+  "saveOnWhatsapp": "Save on WhatsApp",
+  "saveRule": "Save rule",
+  "saveStaysOffUntilTheNumber": "{phoneHint256}. Save stays off until the number is right.",
+  "@saveStaysOffUntilTheNumber": {
+    "placeholders": {
+      "phoneHint256": {
+        "type": "Object?"
+      }
+    }
+  },
+  "saveToPhone": "Save to phone",
+  "saveYourNewRecoveryCodeNow": "Save your new recovery code now.",
+  "saveYourRecoveryCode": "Save your recovery code",
+  "saved": "Saved",
+  "saved2": "Saved.",
+  "saved3": "{size} · Saved",
+  "@saved3": {
+    "placeholders": {
+      "size": {
+        "type": "Object?"
+      }
+    }
+  },
+  "savedItIsSpreadingToNearby": "Saved. It is spreading to nearby phones.",
+  "savedLocallyWillSyncWhenAvailable": "Saved locally; will sync when available",
+  "savedOnThisPhone": "Saved on this phone",
+  "savedToDownloadLinkup": "Saved to Download › LinkUp",
+  "savedToGalleryLinkup": "Saved to Gallery › LinkUp",
+  "saving": "Saving…",
+  "savingPhoto": "Saving photo…",
+  "scanAGroupCode": "Scan a group code",
+  "scanInstead": "Scan instead",
+  "scanQrCode": "Scan QR code",
+  "scanSCode": "Scan {v}'s code",
+  "@scanSCode": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "scanSecurityCode": "Scan security code",
+  "scanTheQrShownOnYour": "Scan the QR shown on your old phone.",
+  "scanWithTheCameraAppNot": "Scan with the camera app,\nnot the Wi-Fi scanner",
+  "scannedTheGroupQr": "scanned the group QR",
+  "scannedTheQr": "scanned the QR",
+  "screenStaysOnWhileSharing": "Screen stays on while sharing",
+  "search": "Search",
+  "search2": "Search…",
+  "searchChatsAndMessages": "Search chats and messages",
+  "searchFriends": "Search friends",
+  "searchMessages": "Search messages",
+  "searchModules": "Search modules…",
+  "searchName": "Search name",
+  "searchNameOrId": "Search name or id",
+  "searchNameOrUsername": "Search name or @username",
+  "searchPeople": "Search people",
+  "searchPhoneOrNextHop": "Search phone or next hop",
+  "searchPhoneOrOwner": "Search phone or owner",
+  "searchUsersDevices": "Search users, devices…",
+  "searching": "Searching",
+  "searchingForConnection": "Searching for connection",
+  "secondPerson": "Second person",
+  "secureLocalFirstMessaging": "Secure, local-first messaging",
+  "security": "Security",
+  "securityAlerts": "Security alerts",
+  "securityAndOperationalEventsAppearHere": "Security and operational events appear here as the server records them.",
+  "securityCenter": "Security center",
+  "securityCenter2": "Security Center",
+  "securityCode": "Security code",
+  "securityCodeChanged": "Security code changed",
+  "securityEvent": "Security event",
+  "securityKey": "Security key",
+  "securityOverview": "Security overview",
+  "securityWarning": "security warning",
+  "seeAndRemovePhonesSignedIn": "See and remove phones signed in",
+  "seeAndUnblockPeopleYouBlocked": "See and unblock people you blocked",
+  "seen": "Seen",
+  "seen2": "seen {a}",
+  "@seen2": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      }
+    }
+  },
+  "seenBefore": "Seen before",
+  "seenDaysAgo": "seen {d} days ago",
+  "@seenDaysAgo": {
+    "placeholders": {
+      "d": {
+        "type": "Object?"
+      }
+    }
+  },
+  "seenHAgo": "seen {d} h ago",
+  "@seenHAgo": {
+    "placeholders": {
+      "d": {
+        "type": "Object?"
+      }
+    }
+  },
+  "seenJustNow": "seen just now",
+  "seenMinAgo": "Seen {s} min ago",
+  "@seenMinAgo": {
+    "placeholders": {
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "seenMinAgo2": "seen {d} min ago",
+  "@seenMinAgo2": {
+    "placeholders": {
+      "d": {
+        "type": "Object?"
+      }
+    }
+  },
+  "seenNearby": "Seen nearby: {join}",
+  "@seenNearby": {
+    "placeholders": {
+      "join": {
+        "type": "Object?"
+      }
+    }
+  },
+  "seenNearbyNoneYet": "Seen nearby: none yet",
+  "seenSAgo": "Seen {s} s ago",
+  "@seenSAgo": {
+    "placeholders": {
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "seenYesterday": "seen yesterday",
+  "select": "Select",
+  "selectedUpTo": "{picked} selected · up to {kNewGroupMax}",
+  "@selectedUpTo": {
+    "placeholders": {
+      "picked": {
+        "type": "Object?"
+      },
+      "kNewGroupMax": {
+        "type": "Object?"
+      }
+    }
+  },
+  "send": "Send",
+  "sendAMessageOrShareA": "Send a message or share a file with everyone in this group.",
+  "sendAMessagePhotoOrFile": "Send a message, photo or file to begin chatting privately.",
+  "sendARequest": "Send a request",
+  "sendMessage": "Send message",
+  "sendMessages": "Send messages",
+  "sendPoll": "Send poll",
+  "sendRequest": "Send request",
+  "sendThePictureToAFriend": "Send the picture to a friend",
+  "sendVoiceNote": "Send voice note",
+  "sending": "Sending…",
+  "sendingTheGroupToAgain": "Sending the group to {name} again",
+  "@sendingTheGroupToAgain": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sendsAFriendRequest": "Sends a friend request",
+  "sendsAfterTheCall": "Sends after the call",
+  "sent": "Sent",
+  "sent2": "Sent {sentAgo}",
+  "@sent2": {
+    "placeholders": {
+      "sentAgo": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sentAsOneMessage": "{summary}\nSent as one message",
+  "@sentAsOneMessage": {
+    "placeholders": {
+      "summary": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sentByWiFiDirectPasses": "Sent by Wi-Fi Direct · passes phone to phone\nNo time limit · goes to the server log later",
+  "sentOnlyWhenAllMembersGot": "✓ = sent. ✓✓ only when all members got it.",
+  "sentTo": "Sent to {picks}",
+  "@sentTo": {
+    "placeholders": {
+      "picks": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sentToAllPhonesPendingUntil": "Sent to all phones · Pending until it is done",
+  "sentToChats": "Sent to {chats} chats",
+  "@sentToChats": {
+    "placeholders": {
+      "chats": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sentToTheAdmin": "Sent to the admin",
+  "sep": "Sep",
+  "serious": "Serious",
+  "server": "Server: {waiting}",
+  "@server": {
+    "placeholders": {
+      "waiting": {
+        "type": "Object?"
+      }
+    }
+  },
+  "server2": "Server",
+  "serverAddressOptionalFallback": "Server address (optional fallback)",
+  "serverConfiguration": "Server configuration",
+  "serverConnected": "Server connected",
+  "serverConnectedRequestsGoByThe": "Server connected · requests go by the server",
+  "serverDisconnected": "Server disconnected",
+  "serverError": "Server error ({statusCode})",
+  "@serverError": {
+    "placeholders": {
+      "statusCode": {
+        "type": "Object?"
+      }
+    }
+  },
+  "serverHealth": "Server health",
+  "serverHealthDetailsAreOffOn": "Server health details are off on this server.",
+  "serverHistoryNotReachableRightNow": "Server history not reachable right now.",
+  "serverIsBackToolsUnlocked": "Server is back. Tools unlocked.",
+  "serverLinks": "Server links",
+  "serverLost": "Server lost",
+  "serverOffYourLinksOnly": "Server off - your links only",
+  "serverPcClockIsH": "Server PC clock is {h} h {fast}",
+  "@serverPcClockIsH": {
+    "placeholders": {
+      "h": {
+        "type": "Object?"
+      },
+      "fast": {
+        "type": "Object?"
+      }
+    }
+  },
+  "serverTraffic": "Server traffic",
+  "sessions": "Sessions",
+  "setMinimumVersion": "{admin} set minimum version {detail}",
+  "@setMinimumVersion": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "detail": {
+        "type": "Object?"
+      }
+    }
+  },
+  "setNewPassword": "Set new password",
+  "setOnceCannotBeChanged": "Set once — cannot be changed",
+  "setText": "Set {label}",
+  "@setText": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "setTo": "Set {name} to {label}?",
+  "@setTo": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "setTo2": "{admin} set {target} to {detail}",
+  "@setTo2": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      },
+      "detail": {
+        "type": "Object?"
+      }
+    }
+  },
+  "settings": "Settings",
+  "settingsBatteryBackgroundUsageLimitsLinkup": "Settings > Battery > Background usage limits: LinkUp must not be in Sleeping or Deep sleeping apps",
+  "settingsWiFiTapTheQr": "Settings → Wi-Fi → tap the QR icon and scan this code.",
+  "sha256Created": "SHA-256 {publicKey}\nCreated {createdAt}{retiredAt}",
+  "@sha256Created": {
+    "placeholders": {
+      "publicKey": {
+        "type": "Object?"
+      },
+      "createdAt": {
+        "type": "Object?"
+      },
+      "retiredAt": {
+        "type": "Object?"
+      }
+    }
+  },
+  "share": "Share",
+  "shareAHotspot": "Share a hotspot?",
+  "shareALinkupHotspot": "Share a LinkUp hotspot",
+  "shareAgain": "Share again",
+  "shareAnyway": "Share anyway",
+  "shareCode": "Share code",
+  "shareLink": "Share link",
+  "shareLinkup": "Share LinkUp",
+  "shareMyQr": "Share my QR",
+  "shareYourLinkupIdentityWithAnother": "Share your LinkUp identity with another phone.",
+  "shareYourSignedPublicProfileThrough": "Share your signed public profile through LinkUp",
+  "sharingAHotspotTest": "Sharing a hotspot (test)",
+  "sharingStopped": "Sharing stopped",
+  "sharingStopsByItselfAfter10": "Sharing stops by itself after 10 minutes with no download, or when you leave this screen.",
+  "sharingUsesALotOfBattery": "Sharing uses a lot of battery. Plug in the charger first.",
+  "shortRouteList": "Short route list",
+  "showAGenericLinkupNotification": "Show a generic LinkUp notification",
+  "showFullContent": "Show full content",
+  "showHidden": "Show hidden ({count})",
+  "@showHidden": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "showMoreLeft": "Show {next} more  ({left} left)",
+  "@showMoreLeft": {
+    "placeholders": {
+      "next": {
+        "type": "Object?"
+      },
+      "left": {
+        "type": "Object?"
+      }
+    }
+  },
+  "showMyCode": "Show my code",
+  "showMyLinksMap": "Show My links map",
+  "showMyQrCode": "Show my QR code",
+  "showPassword": "Show password",
+  "showSenderAndMessagePreview": "Show sender and message preview",
+  "showSenderOnly": "Show sender only",
+  "showText": "Show",
+  "signIn": "Sign in",
+  "signInAgain": "Sign in again",
+  "signInToTheServerTo": "Sign in to the server to open group links.",
+  "signOut": "Sign out",
+  "signOut2": "Sign out?",
+  "signOutAllPhones": "Sign out all phones",
+  "signOutAllPhones2": "Sign out all phones?",
+  "signOutThisAdmin": "Sign out this admin?",
+  "signOutThisPhone": "Sign out this phone?",
+  "signedIn": "Signed in",
+  "signedIn2": "{admin} signed in",
+  "@signedIn2": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      }
+    }
+  },
+  "signedOut": "{admin} signed out",
+  "@signedOut": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      }
+    }
+  },
+  "signedOut2": "{admin} signed out {target}",
+  "@signedOut2": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "signedOutByAdmin": "Signed out by admin",
+  "signedOutByAdminYourChats": "Signed out by admin. Your chats are still here. Log in again when the server is on.",
+  "signedOutFromTheServerNearby": "Signed out from the server. Nearby chats still work. Sign in again to use the server.",
+  "signingYouIn": "Signing you in…",
+  "since": "since {madeAt}",
+  "@since": {
+    "placeholders": {
+      "madeAt": {
+        "type": "Object?"
+      }
+    }
+  },
+  "since2": "{s} · since {created_at}",
+  "@since2": {
+    "placeholders": {
+      "s": {
+        "type": "Object?"
+      },
+      "created_at": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sinceEnds": "Since {created_at} · ends {expires_at}",
+  "@sinceEnds": {
+    "placeholders": {
+      "created_at": {
+        "type": "Object?"
+      },
+      "expires_at": {
+        "type": "Object?"
+      }
+    }
+  },
+  "skip": "Skip",
+  "slideToCancel": "Slide to cancel",
+  "small": "Small",
+  "smallMap": "Small map",
+  "someDataCouldNotLoad": "Some data could not load",
+  "someOldPicturesWereLeftOut": "Some old pictures were left out to keep the copy small.",
+  "someone": "Someone",
+  "somethingWentWrong": "Something went wrong",
+  "somethingWentWrongPleaseTryAgain": "Something went wrong. Please try again.",
+  "somethingWentWrongTryAgain": "Something went wrong. Try again.",
+  "speakerOff": "Speaker off",
+  "speakerOn": "Speaker on",
+  "start": "Start",
+  "startAgain": "Start again",
+  "startAgainOnThisPhone": "Start again on this phone",
+  "startOver": "Start over",
+  "startRecoveryFromTheLinkupWelcome": "Start recovery from the LinkUp welcome screen to create a new request.",
+  "startTheConversation": "Start the conversation",
+  "startTheGroupConversation": "Start the group conversation",
+  "started": "{num} started {windowLabel}",
+  "@started": {
+    "placeholders": {
+      "num": {
+        "type": "Object?"
+      },
+      "windowLabel": {
+        "type": "Object?"
+      }
+    }
+  },
+  "startedByItselfYouCanKeep": "Started by itself. You can keep using LinkUp.",
+  "starting": "Starting",
+  "starting2": "Starting…",
+  "startingCamera": "Starting camera…",
+  "startingRestore": "Starting restore…",
+  "status": "Status",
+  "statusUnknownStale": "Status unknown / stale",
+  "stayReachableEvenWhenTheApp": "Stay reachable even when the app is closed",
+  "staysYourFriendANewMessage": "{name} stays your friend. A new message from them starts a new chat.",
+  "@staysYourFriendANewMessage": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "stillHas": "still has",
+  "stillHasCopyPhotosYouSaved": "{peerName} still has {their} copy. Photos you saved to your Gallery stay.",
+  "@stillHasCopyPhotosYouSaved": {
+    "placeholders": {
+      "peerName": {
+        "type": "Object?"
+      },
+      "their": {
+        "type": "Object?"
+      }
+    }
+  },
+  "stillHave": "still have",
+  "stillHelpsTheMesh": "Still helps the mesh",
+  "stillReceivingOverWiFiIt": "Still receiving over Wi-Fi. It will appear by itself.",
+  "stop": "Stop",
+  "stopAfterDay": "Stop after {days} day{s}",
+  "@stopAfterDay": {
+    "placeholders": {
+      "days": {
+        "type": "Object?"
+      },
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "stopInDay": "{v} · stop in {days} day{s}",
+  "@stopInDay": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      },
+      "days": {
+        "type": "Object?"
+      },
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "stopNow": "Stop now",
+  "stopSharing": "Stop sharing",
+  "stopVersionsBelow": "Stop versions below {v}?",
+  "@stopVersionsBelow": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "stopped": "Stopped",
+  "stoppedByAdmin": "Stopped by admin",
+  "stoppedByAdminUpdateToSend": "Stopped by admin. Update to send and call.",
+  "stoppedByYourPhone": "Stopped by your phone",
+  "storage": "Storage",
+  "storageUsed": "Storage used",
+  "strong": "Strong",
+  "subsystemStateReportedByTheServer": "Subsystem state reported by the server",
+  "sun": "Sun",
+  "suspended": "Suspended",
+  "swipeUpToAnswer": "Swipe up to answer",
+  "switchAccount": "Switch account",
+  "switchToDarkTheme": "Switch to dark theme",
+  "switchToLightTheme": "Switch to light theme",
+  "switchToVideoCall": "Switch to video call?",
+  "system": "System",
+  "systemDefault": "System default",
+  "systemHealth": "System health",
+  "t1AppInfoBatteryChooseUnrestricted": "1. App info > Battery: choose Unrestricted",
+  "t1Day": "1 day",
+  "t1Message": "1 message",
+  "t1Min": "1 min",
+  "t1OpenLinkupOnTheOther": "1. Open LinkUp on the other phone\n2. Tap Scan QR code and point at this\n3. You are added instantly",
+  "t1OpenTheRecentsRecentApps": "1. Open the Recents (recent apps) screen.\n2. Tap the LinkUp app icon at the top of its card.\n3. Choose “Lock”. A padlock stays on the card — the system won’t swipe the app away in “clear all”.",
+  "t1OtherLinkupPhone": "1 other LinkUp phone",
+  "t1Person": "1 person",
+  "t1Phone": "1 phone",
+  "t1RequestToJoin": "1 request to join",
+  "t1UnreadMessage": "1 unread message",
+  "t1Week": "1 week",
+  "t24Hours": "24 hours",
+  "t2PowerManagerPowerManagementFor": "2. Power manager > Power management for apps > LinkUp: turn OFF screen-lock cleaning",
+  "t30Days": "30 days",
+  "t7Days": "7 days",
+  "t8Hours": "8 hours",
+  "takesASecond": "Takes a second",
+  "tapAPersonToSeeMore": "Tap a person to see more.",
+  "tapAddFriendNextToThe": "Tap Add friend next to the phone you want to add.",
+  "tapAnOptionInTheChat": "Tap an option in the chat to vote; tap it again to take your vote back. Works Nearby and Online.",
+  "tapJoinGroupWithQr": "Tap Join group with QR",
+  "tapOpenSettings": "Tap Open settings",
+  "tapPhotoToAddOne": "Tap photo to add one",
+  "tapPhotoToChange": "Tap photo to change",
+  "tapScanQrCode": "Tap Scan QR code",
+  "tapTheCameraToChooseA": "Tap the camera to choose a photo",
+  "tapTheOneYourFriendCan": "Tap the one your friend can open:",
+  "tapToCallBack": "Tap to call back",
+  "tapToCancel": "Tap to cancel",
+  "tapToDownload": "Tap to download",
+  "tapToEditNameAndPhoto": "Tap to edit name and photo",
+  "tapToRemove": "Tap to remove",
+  "tapToReturn": "{name} · {answered} — Tap to return",
+  "@tapToReturn": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "answered": {
+        "type": "Object?"
+      }
+    }
+  },
+  "tapYourPhotoInSettingsTo": "Tap your photo in Settings to switch.",
+  "testCleanUpNow": "Test clean-up now",
+  "testCleanUpNow2": "Test clean-up now?",
+  "testCleanUpRemoved": "Test clean-up: {removed} {files} removed",
+  "@testCleanUpRemoved": {
+    "placeholders": {
+      "removed": {
+        "type": "Object?"
+      },
+      "files": {
+        "type": "Object?"
+      }
+    }
+  },
+  "testers": "Testers",
+  "thatActionIsNotAllowedOn": "That action is not allowed on this account.",
+  "thatAlreadyExistsTryADifferent": "That already exists. Try a different name.",
+  "thatCodeIsNotRight": "That code is not right.",
+  "thatFileIsTooLargeTo": "That file is too large to send.",
+  "thatPasswordIsNotRight": "That password is not right.",
+  "thatTookTooLongPleaseTry": "That took too long. Please try again.",
+  "thatUsernameAndPasswordDoNot": "That username and password do not match.",
+  "theAccountHistoryCouldNotBe": "The account history could not be restored ({error}). You can retry now — the app will NOT pretend the account is empty.",
+  "@theAccountHistoryCouldNotBe": {
+    "placeholders": {
+      "error": {
+        "type": "Object?"
+      }
+    }
+  },
+  "theAdminApprovedIt": "The admin approved it",
+  "theAdminApprovesIt": "The admin approves it",
+  "theAdminDidNotApproveIt": "The admin did not approve it.{rejectedReason}",
+  "@theAdminDidNotApproveIt": {
+    "placeholders": {
+      "rejectedReason": {
+        "type": "Object?"
+      }
+    }
+  },
+  "theAdminGivesItToYou": "The admin gives it to you in person",
+  "theAdminHasNotApprovedIt": "The admin has not approved it yet.",
+  "theAdministratorApprovedThisDeviceRecovery": "The administrator approved this device recovery request.",
+  "theAdministratorRejectedThisRecoveryRequest": "The administrator rejected this recovery request.",
+  "theAdministratorRejectedThisRequest": "The administrator rejected this request.",
+  "theChatAndAllItsMessages": "The chat and all its messages, photos and files are ",
+  "theChatStaysInYourChats": "The chat stays in your Chats list, empty.",
+  "theCodeIsWrongOrToo": "The code is wrong or too old. Ask the admin for a new code.",
+  "theCodesDonTMatchAsk": "The codes don't match. Ask {v} to open this screen again.",
+  "@theCodesDonTMatchAsk": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "theDeletedFromThisPhone": "The {files} {are} deleted from this phone ({bytes}).",
+  "@theDeletedFromThisPhone": {
+    "placeholders": {
+      "files": {
+        "type": "Object?"
+      },
+      "are": {
+        "type": "Object?"
+      },
+      "bytes": {
+        "type": "Object?"
+      }
+    }
+  },
+  "theGroup": "the group",
+  "theGroupPhotoCanBeSet": "The group photo can be set when Online.",
+  "theLinkWasLostLookingFor": "The link was lost. Looking for a way again.",
+  "theMessagesStayInTheChat": "The messages stay in the chat with a small picture and \"Removed to save space\".",
+  "theOldCodeStopsWorking": "The old code stops working",
+  "theOldLinkStopsWorking": "The old link stops working",
+  "theOldLinkStopsWorkingPeople": "The old link stops working. People who have it can't use it to join.",
+  "theOtherItemsWereForwarded": "{first} The other items were forwarded.",
+  "@theOtherItemsWereForwarded": {
+    "placeholders": {
+      "first": {
+        "type": "Object?"
+      }
+    }
+  },
+  "theOtherMembers": "The other members ",
+  "thePhoneCarriesOthersLockedMessages": "The phone carries others' locked messages",
+  "thePhoneDecides": "The phone decides",
+  "theQrBelongsToADifferent": "The QR belongs to a different or unavailable LinkUp server.",
+  "theQrShowsHereByItself": "The QR shows here by itself.\n(up to 10 seconds)",
+  "theRequestOrItsRecoveryCredential": "The request or its recovery credential is no longer valid.",
+  "theRestIsOnTheWay": "the rest is on the way",
+  "theServerDidNotReturnSubsystem": "The server did not return subsystem readings for this request.",
+  "theServerDidNotTakeIt": "The server did not take it (your recovery code was changed). Use Forgot password again when online.",
+  "theServerIsHavingTroublePlease": "The server is having trouble. Please try again in a moment.",
+  "theServerIsUnreachableCheckThat": "The server is unreachable. Check that it is running and that this phone is on the same network.",
+  "theServerNeedsAPairingCode": "The server needs a pairing code",
+  "theServerReturnedAReplyThe": "The server returned a reply the app could not understand.",
+  "theServerReturnedNoActivityBuckets": "The server returned no activity buckets for the selected range.",
+  "theServerSignedThisPhoneOut": "The server signed this phone out. Type your password to sign in again. Your chats stay on this phone.",
+  "theServerStoresOnlyAnEncrypted": "The server stores only an encrypted backup envelope. The backup passphrase stays on your device.",
+  "theServerTookTooLongTo": "The server took too long to respond. It will keep retrying automatically.",
+  "theTwoPasswordsAreNotThe": "The two passwords are not the same.",
+  "theirCopyPhotosYouSavedTo": " their copy. Photos you saved to your Gallery stay.",
+  "theirPhoneIsNotKnownYet": "Their phone is not known yet. Ask them to open LinkUp near you, then try again.",
+  "theirPhonesSendTheseMessagesAlso": "Their phones send these messages (also ones they deleted). They see nothing.",
+  "thenTap": ", then tap ",
+  "theseFilesAreBiggerThan50": "These files are bigger than 50 MB and can't be forwarded.",
+  "theseFilesAreBiggerThan502": "These files are bigger than 50 MB, so they were not added.",
+  "theseTwoAccountsAreOnThe": "These two accounts are on the same phone.",
+  "they": "They",
+  "theyAreAddedWhenNearbyOr": "They are added when Nearby or Online",
+  "theyCanNoLongerMessageOr": "They can no longer message or pair with this phone — online or offline. This applies right away on this phone.",
+  "theyCanTMessageOrCall": "They can't message or call you.",
+  "thisAccountHasAnEncryptedBackup": "This account has an encrypted backup of its identity keys. Enter the backup passphrase to also restore message decryption keys, or skip it.",
+  "thisAccountHasNoRecoveryCode": "This account has no recovery code on this phone yet.",
+  "thisAccountIsNotActiveAsk": "This account is not active. Ask the admin.",
+  "thisAdminSessionEndsNow": "This admin session ends now.",
+  "thisCopyOfLinkupCanT": "This copy of LinkUp can't be shared",
+  "thisDevice": "This device",
+  "thisFileIsBiggerThan50": "This file is bigger than 50 MB and can't be forwarded.",
+  "thisFileIsBiggerThan502": "This file is bigger than 50 MB, so it was not added.",
+  "thisFileIsNoLongerOn": "This file is no longer on your phone",
+  "thisFileIsNoLongerOn2": "This file is no longer on your phone.",
+  "thisGroupCodeHasExpiredAsk": "This group code has expired. Ask for a new one.",
+  "thisGroupIsFull100People": "This group is full (100 people).",
+  "thisGroupWorksOnlyNearbyIt": "This group works only Nearby (it is not on the server yet), so a link can't work. Use ",
+  "thisHappensByItself": "This happens by itself.",
+  "thisHappensWhenReinstallsLinkupOr": "This happens when {v} reinstalls LinkUp or uses a new phone. Until you accept, the old code is kept. If you are not sure, ask {v2} first.",
+  "@thisHappensWhenReinstallsLinkupOr": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      },
+      "v2": {
+        "type": "Object?"
+      }
+    }
+  },
+  "thisInviteLinkDoesnTWork": "This invite link doesn't work any more.",
+  "thisInviteLinkDoesnTWork2": "This invite link doesn't work any more. Ask for a new one.",
+  "thisIsNotALinkupGroup": "This is not a LinkUp group code.",
+  "thisIsYou": "This is you",
+  "thisLinkupVersionIsStoppedBy": "This LinkUp version is stopped by admin",
+  "thisMessageCannotBeResent": "This message cannot be resent",
+  "thisNearbyPhoneCannotBeConnected": "This nearby phone cannot be connected right now.",
+  "thisNeedsTheServerTryAgain": "This needs the server. Try again when the server is back.",
+  "thisOne": "This one",
+  "thisPageChecksTheLocalServer": "This page checks the local server every few seconds.",
+  "thisPageIsLockedItOpens": "This page is locked. It opens again by itself when the server is back.",
+  "thisPerson": "This person",
+  "thisPersonCouldNotBeFound": "This person could not be found now. Try again near them or scan their QR code.",
+  "thisPersonIsNotCurrentlyAvailable": "This person is not currently available.",
+  "thisPhone": "This phone",
+  "thisPhone2": "this phone",
+  "thisPhoneAlreadyHasAnAccount": "This phone already has an account",
+  "thisPhoneBlocksHotspotsMadeBy": "This phone blocks hotspots made by apps.",
+  "thisPhoneCanSignInOffline": "This phone can sign in offline only with the last account used on it.",
+  "thisPhoneCannotReachThatPhone": "This phone cannot reach that phone directly.",
+  "thisPhoneDoesnTAllowIt": "This phone doesn't allow it",
+  "thisPhoneHasNoCopyOf": "This phone has no copy of your password. Log in again on this phone, then try.",
+  "thisPhoneHasNoSavedSign": "This phone has no saved sign-in yet. Turn the server on and sign in once.",
+  "thisPhoneIsAlreadyLinkedTo": "This phone is already linked to {who} on the server. Ask the admin to remove this phone on the web (Devices), then tap Try again.",
+  "@thisPhoneIsAlreadyLinkedTo": {
+    "placeholders": {
+      "who": {
+        "type": "Object?"
+      }
+    }
+  },
+  "thisPhoneIsNotPairedWith": "This phone is not paired with the server yet. Ask the admin for the pairing code.",
+  "thisPhoneJoinedYourAccount": "This phone joined your account @{name}. {tail}",
+  "@thisPhoneJoinedYourAccount": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "tail": {
+        "type": "Object?"
+      }
+    }
+  },
+  "thisPhoneLinkupBuild": "This phone: LinkUp {kAppVersion} (build {kAppBuild})",
+  "@thisPhoneLinkupBuild": {
+    "placeholders": {
+      "kAppVersion": {
+        "type": "Object?"
+      },
+      "kAppBuild": {
+        "type": "Object?"
+      }
+    }
+  },
+  "thisPhoneLinkupBuild2": "This phone: LinkUp {kAppVersion} (build {kAppBuild}){sent}",
+  "@thisPhoneLinkupBuild2": {
+    "placeholders": {
+      "kAppVersion": {
+        "type": "Object?"
+      },
+      "kAppBuild": {
+        "type": "Object?"
+      },
+      "sent": {
+        "type": "Object?"
+      }
+    }
+  },
+  "thisPhoneNearbyNetwork": "This phone — nearby network",
+  "thisPhoneReportsOneBuildLower": "This phone reports one build lower",
+  "thisPhoneStillHasAskThe": "This phone still has @{username}. Ask the admin.",
+  "@thisPhoneStillHasAskThe": {
+    "placeholders": {
+      "username": {
+        "type": "Object?"
+      }
+    }
+  },
+  "thisPhoneWasRemovedByAdmin": "This phone was removed by admin. Your chats are still here. Log in again when the server is on.",
+  "thisPhotoIsNoLongerOn": "This photo is no longer on your phone.",
+  "thisPhotoIsTooBigTry": "This photo is too big. Try another one.",
+  "thisQrContainsAOneTime": "This QR contains a one-time transfer credential. Anyone who can scan it may transfer the account, so keep this screen private.",
+  "thisRecoveryRequestHasAlreadyBeen": "This recovery request has already been completed.",
+  "thisRecoveryRequestHasExpiredStart": "This recovery request has expired. Start a new request.",
+  "thisReturnsTheAppToIts": "This returns the app to its setup state. Existing local data may be removed.",
+  "thisServerBuildDoesNotExpose": "This server build does not expose the runtime sampler.",
+  "thisTransferQrHasExpiredGenerate": "This transfer QR has expired. Generate a new QR on the old phone.",
+  "thisUserIdentityIsNotTrusted": "This user identity is not trusted for local calling",
+  "thisUserIsBlocked": "This user is blocked",
+  "thisUsesMoreBatterySomePhones": "This uses more battery. Some phones cannot run it while on Wi-Fi. Only LinkUp phones with \"Link full groups\" on will join it.",
+  "thisVideoIsNoLongerOn": "This video is no longer on your phone.",
+  "thisWeek": "This week",
+  "thisWeekWaiting": "{file} this week · {waiting} waiting",
+  "@thisWeekWaiting": {
+    "placeholders": {
+      "file": {
+        "type": "Object?"
+      },
+      "waiting": {
+        "type": "Object?"
+      }
+    }
+  },
+  "thisWiFiBlocksPhonesFrom": "This Wi-Fi blocks phones from seeing each other",
+  "through": "through {other}",
+  "@through": {
+    "placeholders": {
+      "other": {
+        "type": "Object?"
+      }
+    }
+  },
+  "through2": "{link}, through {other}",
+  "@through2": {
+    "placeholders": {
+      "link": {
+        "type": "Object?"
+      },
+      "other": {
+        "type": "Object?"
+      }
+    }
+  },
+  "thu": "Thu",
+  "toStopSomeoneOnEveryPhone": "To stop someone on every phone, use Blocked by admin.",
+  "toTheServer": "to the server",
+  "today": "Today",
+  "today2": "today {t}",
+  "@today2": {
+    "placeholders": {
+      "t": {
+        "type": "Object?"
+      }
+    }
+  },
+  "todayAtAGlance": "Today at a glance",
+  "toggleFlash": "Toggle flash",
+  "tooLateToDeleteForEveryone": "Too late to delete for everyone",
+  "tooManyAttemptsPleaseWaitA": "Too many attempts. Please wait a moment and try again.",
+  "tooManyTriesTryAgainIn": "Too many tries. Try again in 1 minute.",
+  "topologyAndTransports": "Topology and transports",
+  "totalUsers": "Total users",
+  "trafficMetricsUnavailable": "Traffic metrics unavailable",
+  "transferAccount": "Transfer account",
+  "transferAccountToThisPhone": "Transfer account to this phone",
+  "transferNeedsTheServer": "Transfer needs the server",
+  "transferRequestDetected": "Transfer request detected",
+  "transferring": "Transferring",
+  "transferring2": "Transferring {text}",
+  "@transferring2": {
+    "placeholders": {
+      "text": {
+        "type": "Object?"
+      }
+    }
+  },
+  "transfersAndQuota": "Transfers and quota",
+  "transport": "Transport",
+  "transportStateReportedByConnectedDevices": "Transport state reported by connected devices",
+  "trustCompliance": "Trust & Compliance",
+  "tryADifferentWordOrPhrase": "Try a different word or phrase.",
+  "tryAgain": "Try again",
+  "tryAgainInAMoment": "Try again in a moment.",
+  "tryAnotherName": "Try another name.",
+  "tryAnotherNameOrFilter": "Try another name or filter.",
+  "tryAnotherNameOrUsername": "Try another name or username.",
+  "tryLinkupWiFiAgain": "Try LinkUp Wi-Fi again",
+  "tryingAgain": "Trying again…",
+  "tue": "Tue",
+  "turnCameraOff": "Turn camera off",
+  "turnCameraOn": "Turn camera on",
+  "turnItOnToFindPhones": "Turn it on to find phones near you",
+  "turnOn": "Turn on",
+  "turnOnAutoLaunchSecondaryLaunch": "Turn ON Auto-launch, Secondary launch and Run in background",
+  "turnOnExtraNearbySafety": "Turn on extra nearby safety?",
+  "turnOnLocation": "Turn on Location",
+  "turnOnWiFi": "Turn on Wi-Fi",
+  "turnOnWiFiToReach": "Turn on Wi-Fi to reach people nearby.",
+  "turnYourHotspotOffAndTry": "Turn your hotspot off and try again, or let your friend join your hotspot.",
+  "turnedOnTheirCameraAcceptTo": "{name} turned on their camera. Accept to switch this call to video.",
+  "@turnedOnTheirCameraAcceptTo": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "turningOnLinkupWiFi": "Turning on LinkUp Wi-Fi…",
+  "typeANameOrAWord": "Type a name or a word",
+  "typeANameToContinue": "Type a name to continue",
+  "typeTheOneTimeCode": "Type the one-time code",
+  "typeYourPassword": "Type your password.",
+  "unavailable": "Unavailable",
+  "unblock": "Unblock",
+  "unblock2": "Unblock {name}",
+  "@unblock2": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "unblock3": "Unblock {target}?",
+  "@unblock3": {
+    "placeholders": {
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "unblockAndAddBack": "Unblock and add back",
+  "unblockForEveryone": "Unblock for everyone",
+  "unblockOnly": "Unblock only",
+  "unblocked": "{label} unblocked",
+  "@unblocked": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "unblocked2": "{admin} unblocked {target}",
+  "@unblocked2": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      },
+      "target": {
+        "type": "Object?"
+      }
+    }
+  },
+  "unblockedAndAddedBack": "{label} unblocked and added back",
+  "@unblockedAndAddedBack": {
+    "placeholders": {
+      "label": {
+        "type": "Object?"
+      }
+    }
+  },
+  "unblockedOnThisPhone": "{r} unblocked on this phone.",
+  "@unblockedOnThisPhone": {
+    "placeholders": {
+      "r": {
+        "type": "Object?"
+      }
+    }
+  },
+  "unknown": "Unknown",
+  "unknownRole": "Unknown role",
+  "unmute": "Unmute",
+  "unmuteNotifications": "Unmute notifications",
+  "unpin": "Unpin",
+  "unreadMessages": "{count} unread messages",
+  "@unreadMessages": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "unsupported": "Unsupported",
+  "until": "Until {day} {month}, {hh}:{mm} {ampm}",
+  "@until": {
+    "placeholders": {
+      "day": {
+        "type": "Object?"
+      },
+      "month": {
+        "type": "Object?"
+      },
+      "hh": {
+        "type": "Object?"
+      },
+      "mm": {
+        "type": "Object?"
+      },
+      "ampm": {
+        "type": "Object?"
+      }
+    }
+  },
+  "unverified": "Unverified",
+  "upTo32PeopleNearby100": "Up to 32 people Nearby, 100 Online",
+  "update": "Update",
+  "updateLinkupSoon": "Update LinkUp soon",
+  "updateNeededInAfterThatThis": "Update needed in {d}. After that this version can only read chats.",
+  "@updateNeededInAfterThatThis": {
+    "placeholders": {
+      "d": {
+        "type": "Object?"
+      }
+    }
+  },
+  "updated": "Updated {cryptoBackupUpdatedAt}",
+  "@updated": {
+    "placeholders": {
+      "cryptoBackupUpdatedAt": {
+        "type": "Object?"
+      }
+    }
+  },
+  "updated2": "Updated {generatedAt}{s}",
+  "@updated2": {
+    "placeholders": {
+      "generatedAt": {
+        "type": "Object?"
+      },
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "uploadSizePerPhoneTlsSet": "Upload size {maxFile} · {quota} per phone · TLS {off}. Set on the server, can’t be changed here.",
+  "@uploadSizePerPhoneTlsSet": {
+    "placeholders": {
+      "maxFile": {
+        "type": "Object?"
+      },
+      "quota": {
+        "type": "Object?"
+      },
+      "off": {
+        "type": "Object?"
+      }
+    }
+  },
+  "use03xxXxxxxxxOr923xx": "Use 03xx xxxxxxx or +92 3xx xxxxxxx",
+  "useAtLeast10CharactersThis": "Use at least 10 characters. This passphrase is never sent to the server.",
+  "useBlockedOnThisPhoneIt": "Use \"Blocked on this phone\". It does not reach other phones.",
+  "useItInLinkupLoginForgot": "Use it in LinkUp: Login > Forgot password",
+  "useItOnForgotPasswordIf": "Use it on Forgot password if this phone is lost. Works offline.",
+  "useNewRequestToAskThe": "Use New request to ask the phones of 2 people or a group.",
+  "useOldPassword": "Use old password",
+  "useRecoveryCode": "Use recovery code",
+  "useTheUsername": "Use the username @{username}.",
+  "@useTheUsername": {
+    "placeholders": {
+      "username": {
+        "type": "Object?"
+      }
+    }
+  },
+  "used": "{used} used",
+  "@used": {
+    "placeholders": {
+      "used": {
+        "type": "Object?"
+      }
+    }
+  },
+  "usedByAnotherAccountSavedOn": "Used by another account. Saved on this phone only.",
+  "usedLinkupOnThisPhone": "@{username} · used LinkUp on this phone",
+  "@usedLinkupOnThisPhone": {
+    "placeholders": {
+      "username": {
+        "type": "Object?"
+      }
+    }
+  },
+  "username": "Username",
+  "usernameMustBe332Characters": "Username must be 3–32 characters and use letters, numbers, dot, dash, or underscore.",
+  "usernameOrRecoveryCodeIsWrong": "Username or recovery code is wrong.",
+  "users": "Users",
+  "usersBlockedServer": "{all} users · {blockedCount} blocked · server {offline}",
+  "@usersBlockedServer": {
+    "placeholders": {
+      "all": {
+        "type": "Object?"
+      },
+      "blockedCount": {
+        "type": "Object?"
+      },
+      "offline": {
+        "type": "Object?"
+      }
+    }
+  },
+  "usesTheCodeSavedOnThis": "Uses the code saved on this phone. The new password goes to the server when it is back.",
+  "usingNearbyGroupsInstead": "Using nearby groups instead.",
+  "verboseLogsForSupportCapturesTurns": "Verbose logs for support captures. Turns off when the app restarts.",
+  "verified": "Verified",
+  "version": "Version {currentVersion}",
+  "@version": {
+    "placeholders": {
+      "currentVersion": {
+        "type": "Object?"
+      }
+    }
+  },
+  "version2": "Version {keyVersion}{retired}",
+  "@version2": {
+    "placeholders": {
+      "keyVersion": {
+        "type": "Object?"
+      },
+      "retired": {
+        "type": "Object?"
+      }
+    }
+  },
+  "versionNewer": "Version newer",
+  "veryOldAppsBefore30": "Very old apps (before 3.0.54) are stopped too.",
+  "via": "via {nextHop}{state}",
+  "@via": {
+    "placeholders": {
+      "nextHop": {
+        "type": "Object?"
+      },
+      "state": {
+        "type": "Object?"
+      }
+    }
+  },
+  "viaMesh": "via mesh",
+  "viaServer": "via server",
+  "viaWiFi": "via Wi-Fi",
+  "viaWiFiDirect": "via Wi-Fi Direct",
+  "video": "Video",
+  "videoDbgRx": "video dbg · {cfg} · rx:{videoRxFrames} · {drops}",
+  "@videoDbgRx": {
+    "placeholders": {
+      "cfg": {
+        "type": "Object?"
+      },
+      "videoRxFrames": {
+        "type": "Object?"
+      },
+      "drops": {
+        "type": "Object?"
+      }
+    }
+  },
+  "videoReceived": "Video received",
+  "videos": "Videos",
+  "videosReceived": "{n} videos received",
+  "@videosReceived": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "viewAsUser": "View as User",
+  "viewAuditLog": "View Audit Log",
+  "viewNetwork": "View network",
+  "viewProfile": "View profile",
+  "viewSecurityCenter": "View Security Center",
+  "viewVotes": "View votes",
+  "voice": "Voice",
+  "voice2": "Voice · {started_at}",
+  "@voice2": {
+    "placeholders": {
+      "started_at": {
+        "type": "Object?"
+      }
+    }
+  },
+  "voice3": "Voice · {secs} · {started_at}",
+  "@voice3": {
+    "placeholders": {
+      "secs": {
+        "type": "Object?"
+      },
+      "started_at": {
+        "type": "Object?"
+      }
+    }
+  },
+  "voiceCall": "Voice call",
+  "voiceCalls": "Voice calls",
+  "voiceFramesPassedOn": "Voice frames passed on",
+  "voiceMessage": "voice message",
+  "voiceMessage2": "Voice message",
+  "voiceMessageReceived": "Voice message received",
+  "voiceMessagesReceived": "{n} voice messages received",
+  "@voiceMessagesReceived": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "voiceNote": "Voice note",
+  "votes": "Votes",
+  "votesCanTBeChangedAfter": "Votes can't be changed after 3 minutes",
+  "waiting": "Waiting",
+  "waiting2": "{waiting} waiting",
+  "@waiting2": {
+    "placeholders": {
+      "waiting": {
+        "type": "Object?"
+      }
+    }
+  },
+  "waitingCarriedByThisPhone": "Waiting · carried by this phone",
+  "waitingFor": "Waiting for {name}",
+  "@waitingFor": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "waitingForARoute": "Waiting for a route",
+  "waitingForAdministratorApproval": "Waiting for administrator approval…",
+  "waitingForApproval": "Waiting for approval",
+  "waitingForSender": "Waiting for sender",
+  "waitingForTheAdmin": "Waiting for the admin",
+  "waitingForThePhone": "Waiting for the phone",
+  "waitingForTheServer": "Waiting for the server",
+  "waitingForTheServerToBe": "Waiting for the server to be updated.",
+  "waitingForThisMessage": "🔒 Waiting for this message",
+  "waitingForThisPhone": "Waiting for this phone…",
+  "waitingForToConnect": "Waiting for {shown} to connect…",
+  "@waitingForToConnect": {
+    "placeholders": {
+      "shown": {
+        "type": "Object?"
+      }
+    }
+  },
+  "waitingGetsItWhenTheyAre": "Waiting. {peerName} gets it when they are Nearby or Online.",
+  "@waitingGetsItWhenTheyAre": {
+    "placeholders": {
+      "peerName": {
+        "type": "Object?"
+      }
+    }
+  },
+  "waitingNotNearOrOnlineYet": "Waiting · not near or online yet",
+  "waitingSendsWhenYourFriendIs": "Waiting. Sends when your friend is online",
+  "waitingToJoinTheServer": "Waiting to join the server",
+  "wantsToAddYou": "{username}wants to add you · {now}",
+  "@wantsToAddYou": {
+    "placeholders": {
+      "username": {
+        "type": "Object?"
+      },
+      "now": {
+        "type": "Object?"
+      }
+    }
+  },
+  "warnOnly": "Warn only",
+  "warnOnly2": "{v} · warn only",
+  "@warnOnly2": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "warnVersionsBelow": "Warn versions below {v}?",
+  "@warnVersionsBelow": {
+    "placeholders": {
+      "v": {
+        "type": "Object?"
+      }
+    }
+  },
+  "warning": "Warning",
+  "warningFirstThenReadOnly": "Warning first, then read only",
+  "warningsLikeWrongPasswords": "Warnings like wrong passwords",
+  "wasStoppedNoRight": "{admin} was stopped (no right)",
+  "@wasStoppedNoRight": {
+    "placeholders": {
+      "admin": {
+        "type": "Object?"
+      }
+    }
+  },
+  "wasTakenSoYouAre": "@{was} was taken, so you are @{name}. {tail}",
+  "@wasTakenSoYouAre": {
+    "placeholders": {
+      "was": {
+        "type": "Object?"
+      },
+      "name": {
+        "type": "Object?"
+      },
+      "tail": {
+        "type": "Object?"
+      }
+    }
+  },
+  "weak": "Weak",
+  "webPanel": "web panel",
+  "wed": "Wed",
+  "welcomeBack": "Welcome back",
+  "whatAdminsCanNeverSee": "What admins can never see",
+  "whatAdminsDid": "What admins did",
+  "whatAdminsDoShowsHere": "What admins do shows here.",
+  "whatIsRestored": "What is restored?",
+  "whatYourFriendNeeds": "What your friend needs",
+  "whatsappSmsEmail": "WhatsApp, SMS, email…",
+  "whenSomeoneMovesToANew": "When someone moves to a new phone and asks for help, it shows here.",
+  "whenThePhoneIsMoreThan": "When the phone is more than 70% full, remove photos, videos and documents not opened for 10 days. Voice notes stay.",
+  "whenThisIsOffLinkupCan": "When this is off, LinkUp can use the available local Wi-Fi, Wi-Fi Direct and mesh paths automatically.",
+  "whoCalledWhom": "Who called whom",
+  "whoIsLinkedToWhomLive": "Who is linked to whom, live",
+  "whoIsSignedInOnWhich": "Who is signed in, on which phone",
+  "wholeMap": "Whole map",
+  "wiFiCall": "Wi-Fi call",
+  "wiFiDirect": "Wi-Fi Direct",
+  "wiFiDirectCall": "Wi-Fi Direct call",
+  "wiFiDirectLinks": "Wi-Fi Direct links",
+  "wiFiDirectOff": "Wi-Fi Direct off",
+  "wiFiDirectOn": "Wi-Fi Direct on",
+  "wiFiDirectOnly": "Wi-Fi Direct only",
+  "wiFiDirectPeers": "Wi-Fi Direct peers",
+  "wiFiIsOff": "Wi-Fi is off",
+  "wiFiIsOffOrAndroid": "Wi-Fi is off or Android said no.",
+  "wiFiLinks": "Wi-Fi links",
+  "wiFiName": "Wi-Fi name",
+  "wiFiNameCopied": "Wi-Fi name copied",
+  "wiFiOff": "Wi-Fi off",
+  "wiFiOffUsingWiFi": "Wi-Fi off - using Wi-Fi Direct",
+  "wiFiRadioPolicy": "Wi-Fi radio policy",
+  "wiFiRule": "Wi-Fi rule",
+  "wiFiRule2": "Wi-Fi rule: {detail}",
+  "@wiFiRule2": {
+    "placeholders": {
+      "detail": {
+        "type": "Object?"
+      }
+    }
+  },
+  "wiFiRuleFor": "Wi-Fi rule for {name}",
+  "@wiFiRuleFor": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "wiFiRuleOpenAPerson": "Wi-Fi rule: open a person in Users or a phone in Devices.",
+  "wiFiStaysOff": "Wi-Fi stays off",
+  "wiFiStaysOn": "Wi-Fi stays on",
+  "wiFiStopped": "Wi-Fi stopped",
+  "willBeSignedOutAndBlocked": "“{device}” will be signed out and blocked from this account. You can add it again later through the normal login flow.",
+  "@willBeSignedOutAndBlocked": {
+    "placeholders": {
+      "device": {
+        "type": "Object?"
+      }
+    }
+  },
+  "willSeeRemovedYouTheyKeep": "{name} will see \"{me} removed you\". They keep the old messages but get no new ones.",
+  "@willSeeRemovedYouTheyKeep": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "me": {
+        "type": "Object?"
+      }
+    }
+  },
+  "withText": "with {other}",
+  "@withText": {
+    "placeholders": {
+      "other": {
+        "type": "Object?"
+      }
+    }
+  },
+  "withoutTheServerThisWorksOnly": "Without the server this works only for the last account on this phone.",
+  "workingNow": "Working now",
+  "worksWithoutTheServerToo": "Works without the server too.",
+  "wrongPassword": "{g} wrong password{s}",
+  "@wrongPassword": {
+    "placeholders": {
+      "g": {
+        "type": "Object?"
+      },
+      "s": {
+        "type": "Object?"
+      }
+    }
+  },
+  "wrongPasswordTries": "Wrong password tries",
+  "wrongPasswordTryAgain": "Wrong password. Try again.",
+  "wrongPasswordYourCodeStaysHidden": "Wrong password. Your code stays hidden.",
+  "wrongPasswordsAndOtherWarningsShow": "Wrong passwords and other warnings show here.",
+  "yellowBannerKeepsWorking": "Yellow banner, keeps working",
+  "yes": "Yes",
+  "yesterday": "Yesterday",
+  "yesterday2": "Yesterday {t}",
+  "@yesterday2": {
+    "placeholders": {
+      "t": {
+        "type": "Object?"
+      }
+    }
+  },
+  "you": "You: ",
+  "you2": "You: {text}",
+  "@you2": {
+    "placeholders": {
+      "text": {
+        "type": "Object?"
+      }
+    }
+  },
+  "you3": "You",
+  "youAdded": "You added {targets}",
+  "@youAdded": {
+    "placeholders": {
+      "targets": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youAlreadyHaveThisChatTheir": "You already have this chat. Their phone adds the messages they deleted.",
+  "youAreNoLongerAnAdmin": "You are no longer an admin",
+  "youAreNowAnAdmin": "You are now an admin 👑",
+  "youAreNowTheGroupOwner": "You are now the group owner",
+  "youAreOnTheSameWi": "You are on the same Wi-Fi router. Messages and calls go straight between your phones.",
+  "youAreOnTheServerNow": "You are @{name} on the server now. {tail}",
+  "@youAreOnTheServerNow": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "tail": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youAreTheOwner": "You are the owner: ",
+  "youBlocked": "You blocked {device}",
+  "@youBlocked": {
+    "placeholders": {
+      "device": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youBlocked2": "You blocked {device} · {at}",
+  "@youBlocked2": {
+    "placeholders": {
+      "device": {
+        "type": "Object?"
+      },
+      "at": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youBlocked3": "You blocked {device}.",
+  "@youBlocked3": {
+    "placeholders": {
+      "device": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youBlockedOnTheyCanT": "You blocked {name} on {when}. They can't message or call you.",
+  "@youBlockedOnTheyCanT": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "when": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youBlockedTheyCanTMessage": "You blocked {name}. They can't message or call you.",
+  "@youBlockedTheyCanTMessage": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youBlockedThisPersonUnblockThem": "You blocked this person. Unblock them first.",
+  "youCanAddThemAgainLater": "You can add them again later.",
+  "youCanAddUpToPeople": "You can add up to {kNewGroupMax} people",
+  "@youCanAddUpToPeople": {
+    "placeholders": {
+      "kNewGroupMax": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youCanChangeYourVoteFor": "You can change your vote for {left}",
+  "@youCanChangeYourVoteFor": {
+    "placeholders": {
+      "left": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youCanMessageAndCallAfter": "You can message and call after they update.",
+  "youCanOnlyAddYourFriends": "You can only add your friends.",
+  "youCanOnlyLook": "You can only look.",
+  "youCanReadChatsButCan": "You can read chats but can't send.",
+  "youCanReadOldChatsBut": "You can read old chats but can't send or call.",
+  "youCanReadOldChatsUpdate": "You can read old chats. Update to send and call{newer}.",
+  "@youCanReadOldChatsUpdate": {
+    "placeholders": {
+      "newer": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youCanSendMessagesAndCall": "You can send messages and call again.",
+  "youCanTAddYourself": "You can't add yourself.",
+  "youCanTJoinThisGroup": "You can't join this group.",
+  "youCanTMessage": "You can't message {device}.",
+  "@youCanTMessage": {
+    "placeholders": {
+      "device": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youCanTMessageOrCall": "You can't message or call {name}.",
+  "@youCanTMessageOrCall": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youCanUnblockThemAnyTime": "You can unblock them any time.",
+  "youCanWriteNowTheyGet": "You can write now. They get your messages right after they join.",
+  "youCreatedGroup": "You created group \"{name}\"",
+  "@youCreatedGroup": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youCreatedThisGroup": "You created this group",
+  "youHaveNotSavedItYet": "You have not saved it yet. Keep it safe in case this phone is lost.",
+  "youHavenTBlockedAnyone": "You haven't blocked anyone.",
+  "youJoinedUsingThisGroupS": "You joined using this group's invite link",
+  "youLeft": "You left",
+  "youReAgain": "You're @{username} again",
+  "@youReAgain": {
+    "placeholders": {
+      "username": {
+        "type": "Object?"
+      }
+    }
+  },
+  "youReAlreadyInThisGroup": "You're already in this group.",
+  "youReNoLongerAParticipant": "You're no longer a participant in this group.",
+  "youReOnTheServerNow": "You're on the server now",
+  "youReSignedIn": "You're signed in",
+  "youStillGetMessagesAMention": "You still get messages. A mention of you (@) still notifies you.",
+  "youVeAddedEveryone": "You've added everyone",
+  "yourAccountExistsOnlyOnThis": "Your account exists ONLY on this phone and has never reached the server. Resetting deletes it permanently — chats, and its recovery code, will be unrecoverable.",
+  "yourAccountIsActiveAgain": "Your account is active again",
+  "yourAccountIsBlockedByAdmin": "Your account is blocked by admin",
+  "yourAccountIsBlockedByAdmin2": "Your account is blocked by admin. You can read old chats but can't send or call.",
+  "yourAccountIsOnTheServer": "Your account is on the server now. {tail}",
+  "@yourAccountIsOnTheServer": {
+    "placeholders": {
+      "tail": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yourAccountSSecretLock": "Your account's secret lock",
+  "yourAccountWasSentWithYou": "Your account was sent with {via}. You join the server when a phone with internet passes it on.",
+  "@yourAccountWasSentWithYou": {
+    "placeholders": {
+      "via": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yourAccountYourChats": "Your account, your chats",
+  "yourAdminLevelIsNow": "Your admin level is now {role}",
+  "@yourAdminLevelIsNow": {
+    "placeholders": {
+      "role": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yourAndroidNeedsLocationAllThe": "Your Android needs Location \"All the time\" for this. LinkUp never saves where you are.",
+  "yourCameraPreviewTapToFlip": "Your camera preview. Tap to flip camera, drag to move.",
+  "yourChatWithThemStays": "Your chat with them **stays**.",
+  "yourChatsAndAccountStayOn": "Your chats and account stay on this phone.",
+  "yourChatsAndAccountStayOn2": "Your chats and account stay on this phone. Log back in with your password or recovery code whenever you are ready.",
+  "yourChatsStayOnThisPhone": "Your chats stay on this phone.",
+  "yourChatsWithSFriendsGo": "Your chats with {shownName}'s friends go on. The new account on this phone is removed.",
+  "@yourChatsWithSFriendsGo": {
+    "placeholders": {
+      "shownName": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yourContact": "Your contact",
+  "yourContacts": "Your contacts",
+  "yourConversationsAndContactsAreRestored": "Your conversations and contacts are restored.",
+  "yourFriendWillJoinThisWi": "Your friend will join this Wi-Fi to download the app. No internet used.",
+  "yourFriends": "Your friends",
+  "yourLinkupIsOld": "Your LinkUp is old",
+  "yourMessagesHopThroughSThey": "Your messages hop through {phones} ({who}'s). They stay locked; {who2} can't read them. Calls may be a bit slower.",
+  "@yourMessagesHopThroughSThey": {
+    "placeholders": {
+      "phones": {
+        "type": "Object?"
+      },
+      "who": {
+        "type": "Object?"
+      },
+      "who2": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yourMessagesHopThroughTheyStay": "Your messages hop through {phones}. They stay locked; nobody in between can read them. Calls may be a bit slower.",
+  "@yourMessagesHopThroughTheyStay": {
+    "placeholders": {
+      "phones": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yourNewPasswordIsOnlyOn": "Your new password is only on this phone",
+  "yourNewPasswordWorksOnThis": "Your new password works on this phone now. It goes to the server when the server is back, then you get a new recovery code.",
+  "yourOldCodeNoLongerWorks": "Your old code no longer works.",
+  "yourOldCodeStopsWorking": "Your old code stops working.",
+  "yourOldMessagesStayOnThis": "Your old messages stay on this phone",
+  "yourOtherPhonesStaySignedIn": "Your other phones stay signed in. You get a new recovery code after this.",
+  "yourPhone": "YOUR PHONE",
+  "yourPhone2": "Your phone: {title}",
+  "@yourPhone2": {
+    "placeholders": {
+      "title": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yourPhoneHotspotIsAlreadyOn": "Your phone hotspot is already on, so LinkUp can't start its own Wi-Fi. Ask your friend to join your hotspot, then scan:",
+  "yourPhoneHotspotIsOn": "Your phone hotspot is on",
+  "yourPhoneNumberStaysOnThis": "Your phone number stays on this phone only.",
+  "yourPhoneNumberWasNotSaved": "Your phone number was not saved: {reason}",
+  "@yourPhoneNumberWasNotSaved": {
+    "placeholders": {
+      "reason": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yourProfile": "Your profile",
+  "yourProfileChangeWasNotSaved": "Your profile change was not saved: {reason}",
+  "@yourProfileChangeWasNotSaved": {
+    "placeholders": {
+      "reason": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yourProfileIsNotReadyYet": "Your profile is not ready yet.",
+  "yourProfileIsPrivate": "Your profile is private",
+  "yourProfileIsPublicAgain": "Your profile is public again",
+  "yourRecentLinkupCallsWillAppear": "Your recent LinkUp calls will appear here.",
+  "yourRecoveryCode": "Your recovery code",
+  "yourRecoveryCodeChanged": "Your recovery code changed",
+  "yourSavedProfileIsShown": "Your saved profile is shown. {error}",
+  "@yourSavedProfileIsShown": {
+    "placeholders": {
+      "error": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yourSessionHasExpiredPleaseLog": "Your session has expired. Please log in again.",
+  "yourUniqueUsername": "Your unique username",
+  "yourVoteIsFinal": "Your vote is final",
+  "yourWayBackInIfThis": "Your way back in if this phone is lost",
+  "zoomIn": "Zoom in",
+  "zoomOut": "Zoom out",
+  "youObject304": "you",
+  "language304": "Language",
+  "phoneLanguage304": "Phone language",
+  "phoneLanguageHint304": "Urdu when the phone is set to Urdu, English otherwise",
+  "chooseLanguage304": "Choose the language of LinkUp on this phone.",
+  "no304": "No",
+  "groupCountOf304": "{v0} · {v1} of {v2}",
+  "@groupCountOf304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      },
+      "v1": {
+        "type": "Object?"
+      },
+      "v2": {
+        "type": "Object?"
+      }
+    }
+  },
+  "mbOf304": "{v0} of {v1} MB",
+  "@mbOf304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      },
+      "v1": {
+        "type": "Object?"
+      }
+    }
+  },
+  "wiFiOn304": "Wi-Fi on",
+  "yourFriend304": "Your friend",
+  "reasonSuffix304": " Reason: {v0}",
+  "@reasonSuffix304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  },
+  "todayAt304": "Today, {v0}",
+  "@todayAt304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  },
+  "yesterdayAt304": "Yesterday, {v0}",
+  "@yesterdayAt304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  },
+  "cantAddYetOnline304": "{v0} can't be added yet. They need to open LinkUp Online once.",
+  "@cantAddYetOnline304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  },
+  "cantAddYetNearby304": "{v0} can't be added yet. They need to be Online or Nearby with you once.",
+  "@cantAddYetNearby304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  },
+  "madeOnAdminPhone304": "This request was made on the admin phone. The answer opens there.",
+  "waitingForPhoneOfChat304": "Waiting for a phone of this chat. There is no time limit.",
+  "adminsLower304": "admins",
+  "oneLower304": "one",
+  "possPhone304": "'s phone",
+  "someoneIs304": "someone is",
+  "heIs304": "he is",
+  "byWho304": "By {v0}",
+  "@byWho304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  },
+  "fileWord304": "file",
+  "filesWord304": "files",
+  "slow304": "slow",
+  "fast304": "fast",
+  "todayLower304": "today",
+  "yesterdayLower304": "yesterday",
+  "isBlockedByAdminYouCanEn304": "{v0} is blocked by admin. You can't message or call {v1}.",
+  "@isBlockedByAdminYouCanEn304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      },
+      "v1": {
+        "type": "Object?"
+      }
+    }
+  },
+  "hasAnOldLinkupTheyNeedEn304": "{v0} has an old LinkUp. They need to update.",
+  "@hasAnOldLinkupTheyNeedEn304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  },
+  "replyPhotoEn304": "📷 Photo",
+  "replyVideoEn304": "🎥 Video",
+  "replyVoiceEn304": "🎤 Voice message",
+  "replyDocumentEn304": "📄 Document",
+  "serverAddressIsNotConfiguredEn304": "Server address is not configured.",
+  "noAccountMadeOfflineToSendEn304": "No account made offline to send.",
+  "selectedImageNoLongerExistsEn304": "Selected image no longer exists",
+  "serverReturnedNoRecoveryCodeEn304": "Server returned no recovery code",
+  "adminIsNotOnForThisEn304": "Admin is not on for this phone.",
+  "yourAdminRoleCanTDoEn304": "Your admin role can't do this.",
+  "youCanTDoThisOnEn304": "You can't do this on your own account.",
+  "connectToTheServerOnceToEn304": "Connect to the server once to turn on offline admin actions.",
+  "finishOrCancelSomeActionsFirstEn304": "Finish or cancel some actions first",
+  "thisPhoneDoesnTKnowSEn304": "This phone doesn't know {v0}'s phone yet. Connect to the server.",
+  "@thisPhoneDoesnTKnowSEn304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  },
+  "thisActionIsTooBigToEn304": "This action is too big to send.",
+  "thisActionIsNotPendingEn304": "This action is not pending.",
+  "thisActionIsNotOnThisEn304": "This action is not on this phone.",
+  "theseTwoAccountsAreOnTheEn304": "These two accounts are on the same phone - there is no chat between them.",
+  "adminActionsAreNotReadyEn304": "Admin actions are not ready.",
+  "thisPhoneDoesnTKnowTheirEn304": "This phone doesn't know their phones yet.",
+  "openTheChatAgainFirstEn304": "Open the chat again first.",
+  "youCanTBlockYourOwnEn304": "You can't block your own account.",
+  "pickThisPhoneSVersionOrEn304": "Pick this phone's version or a lower one.",
+  "connectToTheServerOnceToEn3042": "Connect to the server once to turn on offline admin.",
+  "onlyTheOwnerAdminCanSetEn304": "Only the owner admin can set the minimum version.",
+  "noLinkupServerIsAvailableOnEn304": "No LinkUp server is available on the local network.",
+  "chooseAUsernameBetween3AndEn304": "Choose a username between 3 and 32 characters.",
+  "linkupServerCouldNotBeVerifiedEn304": "LinkUp server could not be verified.",
+  "linkupServerIdentityChangedEn304": "LinkUp server identity changed.",
+  "userNotFoundOrUnavailableEn304": "User not found or unavailable",
+  "contactHasNoActiveDeviceEn304": "Contact has no active device",
+  "pairAnswerWasNotSentCheckEn304": "Pair answer was not sent — check the connection and ask them to pair again.",
+  "thisRequestHasExpiredEn304": "This request has expired.",
+  "thisRequestCouldNotBeCheckedEn304": "This request could not be checked.",
+  "deviceIdentityIsNotReadyYetEn304": "Device identity is not ready yet",
+  "finishSettingUpYourProfileBeforeEn304": "Finish setting up your profile before pairing",
+  "identityKeysAreNotReadyOnEn304": "Identity keys are not ready on this phone — restart the app once and try again.",
+  "couldNotSignYourIdentityForEn304": "Could not sign your identity for pairing.",
+  "thisContactIsUnavailableOrBlockedEn304": "This contact is unavailable or blocked",
+  "selectedFileIsNoLongerAvailableEn304": "Selected file is no longer available",
+  "wiFiDirectTransportIsUnavailableEn304": "Wi-Fi Direct transport is unavailable",
+  "downloadFailedEn304": "Download failed ({v0})",
+  "@downloadFailedEn304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  },
+  "noLocalLanWiFiDirectEn304": "No local LAN, Wi-Fi Direct, or mesh route is available",
+  "messageBodyIsTooLargeEn304": "Message body is too large",
+  "groupNotFoundEn304": "Group not found",
+  "messageBodyMustBe16kbOrEn304": "Message body must be 16KB or less",
+  "messageOrAttachmentRequiredEn304": "Message or attachment required",
+  "voiceRecordingCouldNotStartEn304": "Voice recording could not start",
+  "voiceRecordingCouldNotBeSavedEn304": "Voice recording could not be saved",
+  "voiceNoteCouldNotBeSavedEn304": "Voice note could not be saved",
+  "backupPassphraseMustBeAtLeastEn304": "Backup passphrase must be at least 10 characters",
+  "noEncryptedIdentityBackupIsAvailableEn304": "No encrypted identity backup is available",
+  "encryptedBackupBelongsToADifferentEn304": "Encrypted backup belongs to a different account",
+  "thisDeviceIsNotLinkedToEn304": "This device is not linked to a LinkUp account",
+  "fileTransferCancelledEn304": "File transfer cancelled",
+  "fileUploadFailedEn304": "File upload failed ({v0})",
+  "@fileUploadFailedEn304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  },
+  "invalidAdminServerResponseEn304": "Invalid admin server response.",
+  "adminRequestFailedEn304": "Admin request failed ({v0}).",
+  "@adminRequestFailedEn304": {
+    "placeholders": {
+      "v0": {
+        "type": "Object?"
+      }
+    }
+  }
+}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class GroupMemberTile extends StatelessWidget {
   final GroupMember member;
@@ -29,7 +30,7 @@ class GroupMemberTile extends StatelessWidget {
         subtitle: Text(member.deviceId),
         trailing: isOwner
             ? Chip(
-                label: const Text('Owner'),
+                label: Text(L.t.owner),
                 labelStyle: TextStyle(color: colors.onPrimaryContainer, fontWeight: FontWeight.w600),
                 backgroundColor: colors.primaryContainer,
                 side: BorderSide.none,
@@ -37,7 +38,7 @@ class GroupMemberTile extends StatelessWidget {
             : canRemove
                 ? IconButton(
                     onPressed: onRemove,
-                    tooltip: 'Remove member',
+                    tooltip: L.t.removeMember,
                     icon: Icon(Icons.person_remove, color: colors.error),
                   )
                 : null,

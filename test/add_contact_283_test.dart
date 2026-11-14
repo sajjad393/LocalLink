@@ -2,7 +2,6 @@
 // + `_light.html`): no Bluetooth / Wi-Fi Direct words, new search look, same
 // look on every phone (Roboto, text cap 1.3x, fixed colours, light version),
 // QR buttons with one job each.
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,8 +12,9 @@ import 'package:locallink/features/directory/data/people_to_add_267.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
 import 'package:locallink/features/directory/presentation/add_contact_screen.dart';
 import 'package:locallink/features/directory/presentation/add_contact_ui283.dart';
+import 'support/l10n_source_304.dart';
 
-String _read(String path) => File(path).readAsStringSync();
+String _read(String path) => readEnglish304(path);
 
 const _ui = [
   'lib/features/directory/presentation/add_contact_screen.dart',

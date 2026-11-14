@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 290 (PLAN_3.0.90 Phase 2, mocks 283/284/286/287/288): ONE set of
 /// colours and parts for every new screen, so every phone shows the same
@@ -580,7 +581,7 @@ class _LinkField290State extends State<LinkField290> {
     final focused = _focus.hasFocus;
     final border = widget.error ? p.badBorder : (focused ? p.focus : Colors.transparent);
     final textStyle = widget.mono
-        ? TextStyle(fontFamily: LinkKit.mono, fontSize: 13.5, color: p.text, letterSpacing: 0.4)
+        ? TextStyle(fontFamily: LinkKit.mono, fontFamilyFallback: L.fontFallback, fontSize: 13.5, color: p.text, letterSpacing: 0.4)
         : widget.obscureText
             ? TextStyle(fontSize: 17, letterSpacing: 3, color: p.text)
             : TextStyle(fontSize: 15, color: p.text);
@@ -670,7 +671,7 @@ class LinkEye290 extends StatelessWidget {
     final p = LinkKit.of(context);
     return Semantics(
       button: true,
-      label: hidden ? 'Show password' : 'Hide password',
+      label: hidden ? L.t.showPassword : L.t.hidePassword,
       child: InkResponse(
         onTap: onTap,
         radius: 22,
@@ -696,10 +697,10 @@ int linkPasswordScore290(String password) {
 
 String linkPasswordWord290(int score) => switch (score) {
       <= 0 => '',
-      1 => 'Weak',
-      2 => 'Fair',
-      3 => 'Good',
-      _ => 'Strong',
+      1 => L.t.weak,
+      2 => L.t.fair,
+      3 => L.t.good,
+      _ => L.t.strong,
     };
 
 /// Mock `.under .meter`: 4 bars + the word.

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_direct_service.dart';
 import 'package:locallink/features/connectivity/data/services/wifi_radio_control_service.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 159.1: what the "ready for nearby" card should say.
 enum NearbyReadyCardKind { none, allowNearby, turnOnWifi }
@@ -145,17 +146,17 @@ class _NearbyReadyCardState extends State<NearbyReadyCard>
               Expanded(
                 child: Text(
                   nearby
-                      ? 'Allow nearby devices to reach people without internet.'
-                      : 'Turn on Wi-Fi to reach people nearby.',
+                      ? L.t.allowNearbyDevicesToReachPeople
+                      : L.t.turnOnWiFiToReach,
                   style: theme.textTheme.bodySmall,
                 ),
               ),
               TextButton(
                 onPressed: _act,
-                child: Text(nearby ? 'Allow' : 'Turn on'),
+                child: Text(nearby ? L.t.allow : L.t.turnOn),
               ),
               IconButton(
-                tooltip: 'Hide',
+                tooltip: L.t.hideText,
                 visualDensity: VisualDensity.compact,
                 onPressed: () {
                   _hiddenThisSession = true;

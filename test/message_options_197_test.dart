@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +8,7 @@ import 'package:locallink/features/messaging/data/forward_hub.dart';
 import 'package:locallink/features/messaging/presentation/screens/forward_screen.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_bubble.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
+import 'support/l10n_source_304.dart';
 
 class _NoFiles implements FileTransferRepositoryContract {
   @override
@@ -288,9 +288,8 @@ void main() {
   });
 
   test('chat ⋮ pop-up is the tidy 15A one', () {
-    final s = File(
-            'lib/features/messaging/presentation/screens/chat_screen.dart')
-        .readAsStringSync();
+    final s = readEnglish304(
+            'lib/features/messaging/presentation/screens/chat_screen.dart');
     expect(s, contains('position: PopupMenuPosition.under'));
     expect(s, contains('PopupMenuDivider()'));
     expect(s, contains("title: Text('Clear chat')"));

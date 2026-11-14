@@ -7,6 +7,7 @@ import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart' show CallBloc;
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 303 (B, style C of mock call_strip_303.html): ONE call card on
 /// EVERY screen (chat, group chat, contacts, settings, Chats, Calls ...)
@@ -63,11 +64,11 @@ class CallStrip303 extends StatefulWidget {
     if (s == null || s.isFinished) return null;
     final name = s.peerName.trim().isEmpty ? 'LinkUp user' : s.peerName.trim();
     if (s.direction == CallDirection.incoming && s.state == CallState.ringing) {
-      return (name, 'Incoming call');
+      return (name, L.t.incomingCall);
     }
     final answered = s.answeredAt;
-    if (answered == null) return (name, 'Calling…');
-    if (s.state == CallState.reconnecting) return (name, 'Reconnecting…');
+    if (answered == null) return (name, L.t.calling);
+    if (s.state == CallState.reconnecting) return (name, L.t.reconnecting2);
     final secs = (now ?? DateTime.now()).difference(answered).inSeconds.clamp(0, 359999);
     final mm = (secs ~/ 60).toString().padLeft(2, '0');
     final ss = (secs % 60).toString().padLeft(2, '0');
@@ -309,10 +310,10 @@ class _CallStrip303State extends State<CallStrip303> {
               ]),
             ),
             if (ringing) ...[
-              _round(const ValueKey('call_strip_303_decline'), c.red, Icons.call_end_rounded, 'Decline',
+              _round(const ValueKey('call_strip_303_decline'), c.red, Icons.call_end_rounded, L.t.decline,
                   () => unawaited(_decline(calls))),
               const SizedBox(width: 8),
-              _round(const ValueKey('call_strip_303_answer'), c.green, Icons.call_rounded, 'Answer',
+              _round(const ValueKey('call_strip_303_answer'), c.green, Icons.call_rounded, L.t.answer,
                   () => unawaited(_answer(calls))),
             ] else
               FilledButton(
@@ -327,7 +328,7 @@ class _CallStrip303State extends State<CallStrip303> {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   textStyle: text.labelLarge?.copyWith(fontSize: 13, fontWeight: FontWeight.w700),
                 ),
-                child: const Text('Return'),
+                child: Text(L.t.returnText),
               ),
           ]),
         ),

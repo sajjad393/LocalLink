@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Offline-account credential KDF — bit-compatible with the backend's
 /// `derivePasswordKey` (internal/httpapi/auth.go): PBKDF2-HMAC-SHA256 over
@@ -211,10 +212,10 @@ abstract interface class OfflineLoginReason278 {
 String offlineLoginText278(String reason) {
   switch (reason) {
     case 'no_copy':
-      return 'This phone has no saved sign-in yet. Turn the server on and sign in once.';
+      return L.t.thisPhoneHasNoSavedSign;
     case 'other_user':
-      return 'This phone can sign in offline only with the last account used on it.';
+      return L.t.thisPhoneCanSignInOffline;
     default:
-      return 'That username and password do not match.';
+      return L.t.thatUsernameAndPasswordDoNot;
   }
 }

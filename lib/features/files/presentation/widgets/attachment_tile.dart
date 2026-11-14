@@ -31,6 +31,7 @@ import 'package:locallink/features/messaging/data/read_receipts/voice_played_hub
 import 'media_tile_look.dart';
 import 'media_grid.dart';
 import 'prepare_ring.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class AttachmentTile extends StatefulWidget {
   final Attachment attachment;
@@ -173,7 +174,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
           children: [
             CircularProgressIndicator(value: p?.fraction, strokeWidth: 3),
             IconButton(
-              tooltip: 'Cancel download',
+              tooltip: L.t.cancelDownload,
               onPressed: () => unawaited(_stopAuto()),
               icon: const Icon(Icons.close, size: 18),
             ),
@@ -292,7 +293,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
     } catch (_) {}
     if (!ok && mounted) {
       MediaTransferActions.instance.markCancelled(widget.messageId);
-      LinkToast.show(context, 'Could not reach the sender. Try again when nearby.', kind: LinkToastKind.error);
+      LinkToast.show(context, L.t.couldNotReachTheSenderTry, kind: LinkToastKind.error);
     }
   }
 
@@ -333,7 +334,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               child: Text(
-                name.isEmpty ? 'Waiting for sender' : 'Waiting for $name',
+                name.isEmpty ? L.t.waitingForSender : L.t.waitingFor(name),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: Color(0xFFD0D4DC), fontSize: 11.5),
@@ -364,7 +365,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
             ),
           ),
           const SizedBox(height: 6),
-          const VideoChip(label: 'Tap to download'),
+          VideoChip(label: L.t.tapToDownload),
         ],
       );
 
@@ -390,13 +391,13 @@ class _AttachmentTileState extends State<AttachmentTile> {
                   color: const Color(0xDDB3261E),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.refresh_rounded, color: Colors.white, size: 16),
                     SizedBox(width: 4),
                     Text(
-                      'Not sent - tap to retry',
+                      L.t.notSentTapToRetry,
                       style: TextStyle(
                           color: Colors.white,
                           fontSize: 12.5,
@@ -712,7 +713,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
   Future<void> _download() async {
     if (_arrivingDirect) {
       // Bundle 150: nothing to download from the server; it is on its way.
-      LinkToast.show(context, 'Still receiving over Wi-Fi. It will appear by itself.', kind: LinkToastKind.info);
+      LinkToast.show(context, L.t.stillReceivingOverWiFiIt, kind: LinkToastKind.info);
       return;
     }
     // Bundle 208 (E6): a tap goes to the front of the background line
@@ -986,7 +987,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                                 strokeWidth: 3,
                               ),
                               IconButton(
-                                tooltip: 'Cancel download',
+                                tooltip: L.t.cancelDownload,
                                 onPressed: _cancel,
                                 icon: const Icon(Icons.close, size: 18),
                               ),
@@ -1087,7 +1088,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                           maxLines: 1, overflow: TextOverflow.ellipsis),
                       Text(
                           saved
-                              ? '${_sizeLabel(widget.attachment.size)} · Saved'
+                              ? L.t.saved3(_sizeLabel(widget.attachment.size))
                               : _sizeLabel(widget.attachment.size),
                           style: Theme.of(context).textTheme.labelSmall),
                       if (progress?.error != null)
@@ -1114,7 +1115,7 @@ class _AttachmentTileState extends State<AttachmentTile> {
                           strokeWidth: 3,
                         ),
                         IconButton(
-                          tooltip: 'Cancel download',
+                          tooltip: L.t.cancelDownload,
                           onPressed: _cancel,
                           icon: const Icon(Icons.close, size: 18),
                         ),
@@ -1127,12 +1128,12 @@ class _AttachmentTileState extends State<AttachmentTile> {
                   IconButton(
                     tooltip: _displayPath == null &&
                             (_localPath == null || _localPath!.isEmpty)
-                        ? 'Download'
+                        ? L.t.download
                         : (widget.attachment.contentType
                                 .toLowerCase()
                                 .startsWith('video/')
-                            ? 'Play'
-                            : 'Open'),
+                            ? L.t.play
+                            : L.t.open),
                     onPressed: _displayPath == null &&
                             (_localPath == null || _localPath!.isEmpty)
                         ? _download
@@ -1201,10 +1202,10 @@ class _AttachmentTileState extends State<AttachmentTile> {
           ringKey: const Key('chat_video_prepare_ring'),
           pctKey: const Key('chat_video_prepare_pct'));
     } else if (hasLocal || widget.uploading) {
-      center = circle(Icons.play_arrow_rounded, 'Play', _openOrRetryLocal,
+      center = circle(Icons.play_arrow_rounded, L.t.play, _openOrRetryLocal,
           const Key('chat_video_prepare'));
     } else {
-      center = circle(Icons.download_rounded, 'Download', _download,
+      center = circle(Icons.download_rounded, L.t.download, _download,
           const Key('chat_video_download'));
     }
     final thumb = cached?.thumbnail;
@@ -1417,11 +1418,11 @@ class _AttachmentTileState extends State<AttachmentTile> {
       // Own / saved photo being opened: normally a blink. Offer a retry
       // only if opening failed twice.
       center = _prepareFailures >= 2
-          ? button(Icons.refresh_rounded, 'Try again', _openOrRetryLocal,
+          ? button(Icons.refresh_rounded, L.t.tryAgain, _openOrRetryLocal,
               const Key('chat_photo_prepare'))
           : null;
     } else {
-      center = button(Icons.download_rounded, 'Download', _download,
+      center = button(Icons.download_rounded, L.t.download, _download,
           const Key('chat_photo_download'));
     }
     return Padding(
@@ -1541,10 +1542,10 @@ class _LiveRing extends StatelessWidget {
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 child: Text(
-                  'Sends after the call',
+                  L.t.sendsAfterTheCall,
                   key: Key('transfer_paused_label'),
                   style: TextStyle(
                       color: Colors.white,

@@ -1,3 +1,4 @@
+import 'package:locallink/l10n/l10n.dart';
 /// Bundle 256 D1: the SAME phone number rule as the server
 /// (`normalizePhoneNumber` in the backend `internal/httpapi/profile.go`).
 /// Returns `+digits`, or null when the server would answer 400
@@ -17,4 +18,4 @@ String? normalizePhone256(String input) {
 /// True when [input] is empty (allowed) or the server accepts it.
 bool phoneOk256(String input) => input.trim().isEmpty || normalizePhone256(input) != null;
 
-const String phoneHint256 = 'Use 03xx xxxxxxx or +92 3xx xxxxxxx';
+String get phoneHint256 => L.t.use03xxXxxxxxxOr923xx;

@@ -11,6 +11,7 @@ import 'package:locallink/core/widgets/link_kit_290.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 286 (approved mock 286): the recovery code is easy to find and
 /// to save.
@@ -293,7 +294,7 @@ class _RecoveryHomeCard286State extends State<RecoveryHomeCard286> with TickerPr
 
   Future<void> _saved(String from) async {
     if (_leaving) return;
-    LinkToast.show(context, 'Recovery code saved', kind: LinkToastKind.done);
+    LinkToast.show(context, L.t.recoveryCodeSaved, kind: LinkToastKind.done);
     final leaving = _leave();
     await RecoveryFlags286.markSaved(widget.store, from: from);
     await leaving;
@@ -319,16 +320,16 @@ class _RecoveryHomeCard286State extends State<RecoveryHomeCard286> with TickerPr
     final user = (widget.store.username ?? '').trim();
     final (title, words) = switch (kind) {
       RecoveryCardKind286.fresh => (
-          'Save your recovery code',
-          'If you lose this phone, it is the only way back into @$user.',
+          L.t.saveYourRecoveryCode,
+          L.t.ifYouLoseThisPhoneIt(user),
         ),
       RecoveryCardKind286.notSaved => (
-          'Save your recovery code',
-          'You have not saved it yet. Keep it safe in case this phone is lost.',
+          L.t.saveYourRecoveryCode,
+          L.t.youHaveNotSavedItYet,
         ),
       RecoveryCardKind286.noCode => (
-          'Make a recovery code',
-          'This account has no recovery code on this phone yet.',
+          L.t.makeARecoveryCode,
+          L.t.thisAccountHasNoRecoveryCode,
         ),
     };
     final curve = CurvedAnimation(parent: _in, curve: const Cubic(0.2, 0.8, 0.2, 1));
@@ -409,7 +410,7 @@ class _RecoveryHomeCard286State extends State<RecoveryHomeCard286> with TickerPr
                       Icon(Icons.check_rounded,
                           size: 15, color: p.isDark ? const Color(0xFF86EFAC) : const Color(0xFF067647)),
                       const SizedBox(width: 4),
-                      Text('I saved it',
+                      Text(L.t.iSavedIt,
                           style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
@@ -424,7 +425,7 @@ class _RecoveryHomeCard286State extends State<RecoveryHomeCard286> with TickerPr
                   onTap: () => unawaited(_later()),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                    child: Text('Later',
+                    child: Text(L.t.later,
                         style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -439,7 +440,7 @@ class _RecoveryHomeCard286State extends State<RecoveryHomeCard286> with TickerPr
               Expanded(
                 child: _CardButton286(
                   key: const ValueKey('rc286-open'),
-                  text: kind == RecoveryCardKind286.noCode ? 'Make my code' : 'Show my code',
+                  text: kind == RecoveryCardKind286.noCode ? L.t.makeMyCode : L.t.showMyCode,
                   icon: kind == RecoveryCardKind286.noCode ? Icons.refresh_rounded : Icons.visibility,
                   onTap: () => unawaited(_openScreen(make: kind == RecoveryCardKind286.noCode)),
                 ),
@@ -447,7 +448,7 @@ class _RecoveryHomeCard286State extends State<RecoveryHomeCard286> with TickerPr
               const SizedBox(width: 8),
               _CardButton286(
                 key: const ValueKey('rc286-later'),
-                text: 'Later',
+                text: L.t.later,
                 outlined: true,
                 onTap: () => unawaited(_later()),
               ),
@@ -615,9 +616,9 @@ class _RecoveryRow286State extends State<RecoveryRow286> {
     final text = Theme.of(context).textTheme;
     final saved = _saved == true;
     final (tag, fg, bg, key) = saved
-        ? ('Saved', p.isDark ? const Color(0xFF86EFAC) : const Color(0xFF067647),
+        ? (L.t.saved, p.isDark ? const Color(0xFF86EFAC) : const Color(0xFF067647),
             p.isDark ? const Color(0x2122C55E) : const Color(0xFFDCFCE7), 'rc286-tag-saved')
-        : ('Not saved', p.isDark ? const Color(0xFFFBBF24) : const Color(0xFF9A5B06),
+        : (L.t.notSaved, p.isDark ? const Color(0xFFFBBF24) : const Color(0xFF9A5B06),
             p.isDark ? const Color(0x24F59E0B) : const Color(0xFFFEF3C7), 'rc286-tag-not-saved');
     return DecoratedBox(
       // Mock `.sr.new`: a soft blue wash while it is not saved.
@@ -638,7 +639,7 @@ class _RecoveryRow286State extends State<RecoveryRow286> {
           child: const Icon(Icons.security, size: 20, color: Colors.white),
         ),
         title: Row(children: [
-          Flexible(child: Text('Recovery code', style: text.titleSmall, overflow: TextOverflow.ellipsis)),
+          Flexible(child: Text(L.t.recoveryCode2, style: text.titleSmall, overflow: TextOverflow.ellipsis)),
           if (_saved != null) ...[
             const SizedBox(width: 6),
             Container(
@@ -649,7 +650,7 @@ class _RecoveryRow286State extends State<RecoveryRow286> {
             ),
           ],
         ]),
-        subtitle: Text('Your way back in if this phone is lost',
+        subtitle: Text(L.t.yourWayBackInIfThis,
             style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant, letterSpacing: 0)),
         trailing: Icon(Icons.chevron_right, color: colors.onSurfaceVariant, size: 20),
         onTap: () => RecoveryCode286.open(context, store: widget.store, accounts: widget.accounts),
@@ -663,7 +664,7 @@ class _RecoveryRow286State extends State<RecoveryRow286> {
 AppBar _bar286(BuildContext context) {
   final p = LinkKit.of(context);
   return AppBar(
-    title: const Text('Recovery code'),
+    title: Text(L.t.recoveryCode2),
     backgroundColor: p.screen,
     surfaceTintColor: Colors.transparent,
     foregroundColor: p.text,
@@ -677,8 +678,8 @@ class RecoveryPasswordScreen286 extends StatefulWidget {
   final bool makeNew;
   const RecoveryPasswordScreen286({super.key, required this.store, required this.accounts, this.makeNew = false});
 
-  static const String wrongText = 'Wrong password. Your code stays hidden.';
-  static const String noCopyText = 'This phone has no copy of your password. Log in again on this phone, then try.';
+  static String get wrongText => L.t.wrongPasswordYourCodeStaysHidden;
+  static String get noCopyText => L.t.thisPhoneHasNoCopyOf;
 
   @override
   State<RecoveryPasswordScreen286> createState() => _RecoveryPasswordScreen286State();
@@ -732,7 +733,7 @@ class _RecoveryPasswordScreen286State extends State<RecoveryPasswordScreen286> {
         AppLogger.warning('RECOVERY_VIEW', detail: 'new_code_failed');
         if (!mounted) return;
         setState(() => _busy = false);
-        LinkToast.show(context, 'Could not make a new code. Try again.', kind: LinkToastKind.error);
+        LinkToast.show(context, L.t.couldNotMakeANewCode, kind: LinkToastKind.error);
         return;
       }
     }
@@ -753,15 +754,15 @@ class _RecoveryPasswordScreen286State extends State<RecoveryPasswordScreen286> {
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const HeroRow290(
+            HeroRow290(
               icon: Icons.lock,
-              title: 'Enter your password',
-              subtitle: 'Only you should see your recovery code.',
+              title: L.t.enterYourPassword,
+              subtitle: L.t.onlyYouShouldSeeYourRecovery,
             ),
             LinkField290(
               fieldKey: const ValueKey('rc286-password'),
               controller: _password,
-              label: 'Password',
+              label: L.t.password,
               icon: Icons.lock_outline_rounded,
               obscureText: _hide,
               enabled: !_busy,
@@ -783,10 +784,10 @@ class _RecoveryPasswordScreen286State extends State<RecoveryPasswordScreen286> {
             BrandButton290(
               key: const ValueKey('rc286-show'),
               onPressed: _password.text.isEmpty ? null : () => unawaited(_check()),
-              text: 'Show my code',
+              text: L.t.showMyCode,
               loading: _busy,
             ),
-            if (_error == null) const LinkNote290('Works without the server too.'),
+            if (_error == null) LinkNote290(L.t.worksWithoutTheServerToo),
           ]),
         ),
       ),
@@ -817,7 +818,7 @@ class _RecoveryCodeScreen286State extends State<RecoveryCodeScreen286> {
 
   Future<void> _saved() async {
     await RecoveryFlags286.markSaved(widget.store, from: 'whatsapp_screen');
-    if (mounted) LinkToast.show(context, 'Recovery code saved', kind: LinkToastKind.done);
+    if (mounted) LinkToast.show(context, L.t.recoveryCodeSaved, kind: LinkToastKind.done);
   }
 
   Future<void> _makeNew() async {
@@ -827,23 +828,23 @@ class _RecoveryCodeScreen286State extends State<RecoveryCodeScreen286> {
       builder: (ctx) => AlertDialog(
         backgroundColor: p.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text('Make a new code?', style: TextStyle(color: p.text, fontSize: 18, fontWeight: FontWeight.w700)),
-        content: Text('Your old code stops working.', style: TextStyle(color: p.muted, fontSize: 14, height: 1.4)),
+        title: Text(L.t.makeANewCode2, style: TextStyle(color: p.text, fontSize: 18, fontWeight: FontWeight.w700)),
+        content: Text(L.t.yourOldCodeStopsWorking, style: TextStyle(color: p.muted, fontSize: 14, height: 1.4)),
         actions: [
           TextButton(
             key: const ValueKey('rc286-new-no'),
             onPressed: () => Navigator.pop(ctx, false),
             style: TextButton.styleFrom(foregroundColor: p.muted),
-            child: const Text('Cancel'),
+            child: Text(L.t.cancel),
           ),
           TextButton(
             key: const ValueKey('rc286-new-yes'),
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(
               foregroundColor: p.link,
-              textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontWeight: FontWeight.w700),
+              textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, fontWeight: FontWeight.w700),
             ),
-            child: const Text('Make new code'),
+            child: Text(L.t.makeNewCode),
           ),
         ],
       ),
@@ -856,7 +857,7 @@ class _RecoveryCodeScreen286State extends State<RecoveryCodeScreen286> {
       setState(() => _code = code);
     } catch (_) {
       AppLogger.warning('RECOVERY_VIEW', detail: 'new_code_failed');
-      if (mounted) LinkToast.show(context, 'Could not make a new code. Try again.', kind: LinkToastKind.error);
+      if (mounted) LinkToast.show(context, L.t.couldNotMakeANewCode, kind: LinkToastKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -888,12 +889,12 @@ class _RecoveryCodeScreen286State extends State<RecoveryCodeScreen286> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const HeroRow290(
+            HeroRow290(
               icon: Icons.security,
-              title: 'Your recovery code',
+              title: L.t.yourRecoveryCode,
               below: Align(
                 alignment: Alignment.centerLeft,
-                child: LivePill290(text: 'Saved on this phone'),
+                child: LivePill290(text: L.t.savedOnThisPhone),
               ),
             ),
             RecoveryCodeBox235(
@@ -911,8 +912,8 @@ class _RecoveryCodeScreen286State extends State<RecoveryCodeScreen286> {
               onSaved: _saved,
             ),
             const SizedBox(height: 10),
-            _tip(p, 'Use it on Forgot password if this phone is lost. Works offline.'),
-            _tip(p, 'Never share it. LinkUp and the admin never ask for it.'),
+            _tip(p, L.t.useItOnForgotPasswordIf),
+            _tip(p, L.t.neverShareItLinkupAndThe),
             const SizedBox(height: 8),
             Center(
               child: TextButton.icon(
@@ -920,12 +921,12 @@ class _RecoveryCodeScreen286State extends State<RecoveryCodeScreen286> {
                 onPressed: _busy ? null : () => unawaited(_makeNew()),
                 style: TextButton.styleFrom(
                   foregroundColor: p.isDark ? const Color(0xFFA9B8FF) : const Color(0xFF1E5BFF),
-                  textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontSize: 14, fontWeight: FontWeight.w600),
+                  textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, fontSize: 14, fontWeight: FontWeight.w600),
                 ),
                 icon: _busy
                     ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.refresh_rounded, size: 15),
-                label: const Text('Make a new code'),
+                label: Text(L.t.makeANewCode),
               ),
             ),
           ]),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:locallink/features/admin/data/models/admin_block_record.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 220: every admin action goes to all phones.
 ///
@@ -76,20 +77,20 @@ abstract final class AdminActionRules {
 
   /// Words for lists (app and logs).
   static String title(String action, {String detail = ''}) => switch (action) {
-        'block' => 'Block',
-        'unblock' => 'Unblock',
-        'off' => 'Off (account closed)',
-        'active' => 'Active again',
-        'wifi_rule' => detail.isEmpty ? 'Wi-Fi rule' : 'Wi-Fi rule: $detail',
-        'sign_out' => 'Sign out',
-        'remove_phone' => 'Remove phone',
-        'admin_badge' => detail.isEmpty ? 'Admin badge' : detail,
-        'version_rule' => detail.isEmpty ? 'Old app rule' : detail,
-        'rename_phone' => 'Rename phone',
-        'cancel' => 'Cancel',
-        'get_chat' => detail.isEmpty ? 'Get chat' : detail,
+        'block' => L.t.block,
+        'unblock' => L.t.unblock,
+        'off' => L.t.offAccountClosed,
+        'active' => L.t.activeAgain,
+        'wifi_rule' => detail.isEmpty ? L.t.wiFiRule : L.t.wiFiRule2(detail),
+        'sign_out' => L.t.signOut,
+        'remove_phone' => L.t.removePhone,
+        'admin_badge' => detail.isEmpty ? L.t.adminBadge : detail,
+        'version_rule' => detail.isEmpty ? L.t.oldAppRule : detail,
+        'rename_phone' => L.t.renamePhone,
+        'cancel' => L.t.cancel,
+        'get_chat' => detail.isEmpty ? L.t.getChat : detail,
         'get_file' => detail.isEmpty ? 'Get full photo' : detail,
-        'delete_completely' => detail.isEmpty ? 'Delete completely' : detail,
+        'delete_completely' => detail.isEmpty ? L.t.deleteCompletely : detail,
         _ => action,
       };
 }

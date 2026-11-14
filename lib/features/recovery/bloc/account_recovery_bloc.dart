@@ -6,6 +6,7 @@ import 'package:locallink/core/errors/error_message.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/locallink_api.dart' as api;
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 typedef CoreRecoveryState = api.AccountRecoveryState;
 
@@ -94,7 +95,7 @@ final class AccountRecoveryBloc extends Cubit<AccountRecoveryState> {
       requestId: saved['request_id'],
       requestSecret: saved['request_secret'],
       server: savedServer,
-      statusMessage: 'Resuming your recovery request…',
+      statusMessage: L.t.resumingYourRecoveryRequest,
     ));
     await pollOnce();
     startPolling();
@@ -105,14 +106,14 @@ final class AccountRecoveryBloc extends Cubit<AccountRecoveryState> {
 
     final user = username.trim().toLowerCase();
     if (user.isEmpty) {
-      emit(state.copyWith(error: 'Enter your username.'));
+      emit(state.copyWith(error: L.t.enterYourUsername));
       return;
     }
 
     emit(state.copyWith(
       busy: true,
       clearError: true,
-      statusMessage: 'Connecting securely…',
+      statusMessage: L.t.connectingSecurely,
     ));
 
     try {
@@ -162,7 +163,7 @@ final class AccountRecoveryBloc extends Cubit<AccountRecoveryState> {
         recoveryState: recoveryState,
         busy: false,
         statusMessage:
-            'Request submitted. Ask the LinkUp administrator to approve it and provide the recovery code.',
+            L.t.requestSubmittedAskTheLinkupAdministrator,
       ));
       startPolling();
     } catch (e) {
@@ -180,7 +181,7 @@ final class AccountRecoveryBloc extends Cubit<AccountRecoveryState> {
         lower.contains('network') ||
         lower.contains('connection') ||
         lower.contains('socket')) {
-      return 'Could not connect to LinkUp. Make sure the LinkUp server is available on your private network.';
+      return L.t.couldNotConnectToLinkupMake;
     }
     return value;
   }
@@ -203,12 +204,12 @@ final class AccountRecoveryBloc extends Cubit<AccountRecoveryState> {
         requestSecret: secret,
       );
       final message = switch (current.status) {
-        'pending' => 'Waiting for administrator approval…',
+        'pending' => L.t.waitingForAdministratorApproval,
         'approved' =>
-          'Approved. Enter the recovery code provided by the administrator.',
-        'rejected' => 'The administrator rejected this recovery request.',
-        'expired' => 'This recovery request has expired. Start a new request.',
-        'completed' => 'Recovery completed.',
+          L.t.approvedEnterTheRecoveryCodeProvided,
+        'rejected' => L.t.theAdministratorRejectedThisRecoveryRequest,
+        'expired' => L.t.thisRecoveryRequestHasExpiredStart,
+        'completed' => L.t.recoveryCompleted2,
         _ => 'Recovery status: ${current.status}'
       };
 
@@ -247,14 +248,14 @@ final class AccountRecoveryBloc extends Cubit<AccountRecoveryState> {
 
     final code = recoveryCode.trim();
     if (code.isEmpty) {
-      emit(state.copyWith(error: 'Enter the recovery code.'));
+      emit(state.copyWith(error: L.t.enterTheRecoveryCode));
       return null;
     }
 
     emit(state.copyWith(
       busy: true,
       clearError: true,
-      statusMessage: 'Completing secure account recovery…',
+      statusMessage: L.t.completingSecureAccountRecovery,
     ));
 
     try {
@@ -286,7 +287,7 @@ final class AccountRecoveryBloc extends Cubit<AccountRecoveryState> {
       _timer?.cancel();
       emit(state.copyWith(
         busy: false,
-        statusMessage: 'Account recovered successfully.',
+        statusMessage: L.t.accountRecoveredSuccessfully,
       ));
       return result;
     } catch (e) {
@@ -432,10 +433,10 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
   /// Same rules as register: 8..128, typed the same twice, no control
   /// characters. Returns the text to show, or null when fine.
   static String? passwordProblem(String password, String again) {
-    if (password.length < 8) return 'Password must be at least 8 characters.';
-    if (password.length > 128) return 'Password is too long.';
-    if (RegExp(r'[\x00-\x1F\x7F]').hasMatch(password)) return 'Password has a character that is not allowed.';
-    if (password != again) return 'The two passwords are not the same.';
+    if (password.length < 8) return L.t.passwordMustBeAtLeast8;
+    if (password.length > 128) return L.t.passwordIsTooLong;
+    if (RegExp(r'[\x00-\x1F\x7F]').hasMatch(password)) return L.t.passwordHasACharacterThatIs;
+    if (password != again) return L.t.theTwoPasswordsAreNotThe;
     return null;
   }
 
@@ -451,8 +452,8 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
   }) async {
     if (state.busy) return;
     final user = username.trim().toLowerCase();
-    if (user.isEmpty) return _fail('Enter your username.');
-    if (!codeLooksRight(recoveryCode)) return _fail('Enter your recovery code (like K7QM2-XPA9T-RC4WN-E8D3F).');
+    if (user.isEmpty) return _fail(L.t.enterYourUsername);
+    if (!codeLooksRight(recoveryCode)) return _fail(L.t.enterYourRecoveryCodeLikeK7qm2);
     final problem = passwordProblem(newPassword, again);
     if (problem != null) return _fail(problem);
     emit(state.copyWith(busy: true, clearError: true));
@@ -468,7 +469,7 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
     } catch (error) {
       if (online && _isNetwork(error)) {
         // The server went away between the check and the send.
-        emit(state.copyWith(busy: false, online: false, error: 'Could not reach the server. Try again.'));
+        emit(state.copyWith(busy: false, online: false, error: L.t.couldNotReachTheServerTry));
         AppLogger.info('RESET_CODE_FAIL', detail: 'reason=net');
         return;
       }
@@ -481,8 +482,8 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
   Future<void> askAdmin({required String username}) async {
     if (state.busy) return;
     final user = username.trim().toLowerCase();
-    if (user.isEmpty) return _fail('Enter your username.');
-    if (state.online == false) return _fail('This needs the server. Try again when the server is back.');
+    if (user.isEmpty) return _fail(L.t.enterYourUsername);
+    if (state.online == false) return _fail(L.t.thisNeedsTheServerTryAgain);
     emit(state.copyWith(busy: true, clearError: true));
     try {
       final out = await repository.createNoCodeRequest222(username: user);
@@ -496,7 +497,7 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
       ));
       _startPolling();
     } catch (error) {
-      emit(state.copyWith(busy: false, error: _isNetwork(error) ? 'This needs the server. Try again when the server is back.' : textFor222(error)));
+      emit(state.copyWith(busy: false, error: _isNetwork(error) ? L.t.thisNeedsTheServerTryAgain : textFor222(error)));
     }
   }
 
@@ -533,7 +534,7 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
   }) async {
     if (state.busy || !state.hasRequest) return;
     final digits = oneTimeCode.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length != 12) return _fail('Enter the 12-digit code from the admin.');
+    if (digits.length != 12) return _fail(L.t.enterThe12DigitCodeFrom);
     final problem = passwordProblem(newPassword, again);
     if (problem != null) return _fail(problem);
     emit(state.copyWith(busy: true, clearError: true));
@@ -550,9 +551,9 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
     } catch (error) {
       final lower = error.toString().toLowerCase();
       final text = lower.contains('not approved') || lower.contains('pending')
-          ? 'The admin has not approved it yet.'
+          ? L.t.theAdminHasNotApprovedIt
           : (lower.contains('credential') || lower.contains('invalid recovery') || lower.contains('expired'))
-              ? 'The code is wrong or too old. Ask the admin for a new code.'
+              ? L.t.theCodeIsWrongOrToo
               : textFor222(error);
       emit(state.copyWith(busy: false, error: text));
     }
@@ -588,28 +589,28 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
   static String textFor222(Object error) {
     if (error is ResetProblem222) {
       return error.reason == 'not_last'
-          ? 'Without the server this works only for the last account on this phone.'
-          : 'Username or recovery code is wrong.';
+          ? L.t.withoutTheServerThisWorksOnly
+          : L.t.usernameOrRecoveryCodeIsWrong;
     }
     if (error is api.ApiError218) {
       switch (error.code) {
         case 'BAD_RECOVERY_CODE':
-          return 'Username or recovery code is wrong.';
+          return L.t.usernameOrRecoveryCodeIsWrong;
         case 'RATE_LIMIT':
-          return 'Too many tries. Try again in 1 minute.';
+          return L.t.tooManyTriesTryAgainIn;
         case 'NOT_ACTIVE':
-          return 'This account is not active. Ask the admin.';
+          return L.t.thisAccountIsNotActiveAsk;
         case 'PAIRING_REQUIRED':
-          return 'This phone is not paired with the server yet. Ask the admin for the pairing code.';
+          return L.t.thisPhoneIsNotPairedWith;
         case 'NO_ACCOUNT':
-          return 'No account with this username.';
+          return L.t.noAccountWithThisUsername;
         case 'BAD_RESET_DATA':
-          return 'Check the new password and try again.';
+          return L.t.checkTheNewPasswordAndTry;
       }
-      if (error.status == 429) return 'Too many tries. Try again in 1 minute.';
+      if (error.status == 429) return L.t.tooManyTriesTryAgainIn;
     }
     final text = errorMessage(error);
-    if (text.toLowerCase().contains('too many')) return 'Too many tries. Try again in 1 minute.';
+    if (text.toLowerCase().contains('too many')) return L.t.tooManyTriesTryAgainIn;
     return text;
   }
 

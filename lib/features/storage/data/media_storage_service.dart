@@ -13,6 +13,7 @@ import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/storage/domain/media_clean_policy.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Phone storage numbers from Android (StatFs on the data partition).
 class PhoneStorage {
@@ -612,10 +613,10 @@ class MediaStorageService extends ChangeNotifier {
       await book.markOpened(attachment.id);
       AppLogger.info('MEDIA_SAVED_TO_PHONE',
           detail: 'type=${kind.name} kb=${(File(plain).lengthSync() / 1024).round()}');
-      return kind == MediaKind.document ? 'Saved to Download › LinkUp' : 'Saved to Gallery › LinkUp';
+      return kind == MediaKind.document ? L.t.savedToDownloadLinkup : L.t.savedToGalleryLinkup;
     } catch (error) {
       AppLogger.warning('MEDIA_SAVE_FAILED', detail: 'type=${kind.name} error=$error');
-      return 'Could not save. Free some space and try again.';
+      return L.t.couldNotSaveFreeSomeSpace;
     } finally {
       if (view != null) {
         try {

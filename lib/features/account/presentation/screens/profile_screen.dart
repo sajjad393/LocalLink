@@ -42,6 +42,7 @@ import 'package:locallink/features/recovery/domain/account_restoration_repositor
 import 'package:locallink/features/transfer/domain/account_transfer_repository_contract.dart';
 import 'package:locallink/features/transfer/presentation/screens/account_transfer_screen.dart';
 import 'package:locallink/features/recovery/presentation/screens/recovery_code_286.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class ProfileScreen extends StatefulWidget {
   final AccountRepositoryContract accountRepository;
@@ -208,13 +209,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // offline onboarding can't be blocked by a missing phone number.
     if (_usernameLocked) {
       final missing = <String>[
-        if (name.text.trim().isEmpty) 'Display name',
-        if (phone.text.trim().isEmpty) 'Phone number',
+        if (name.text.trim().isEmpty) L.t.displayName,
+        if (phone.text.trim().isEmpty) L.t.phoneNumber,
       ];
       if (missing.isNotEmpty) {
         LinkToast.show(context, missing.length == 1
-              ? '${missing.first} is required — fill it in before saving.'
-              : '${missing.join(' and ')} are required — fill them in before saving.', kind: LinkToastKind.info);
+              ? L.t.isRequiredFillItInBefore(missing.first)
+              : L.t.areRequiredFillThemInBefore(missing.join(' and ')), kind: LinkToastKind.info);
         return;
       }
     }
@@ -269,7 +270,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       } else {
         setState(() {});
       }
-      LinkToast.show(context, 'Profile saved', kind: LinkToastKind.done);
+      LinkToast.show(context, L.t.profileSaved, kind: LinkToastKind.done);
       if (widget.onboarding) Navigator.pop(context);
     } catch (error) {
       if (!mounted) return;
@@ -294,11 +295,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Bundle 211 (A4): "Tap photo to change" / "Tap photo to add one" /
   /// "Tap the camera to choose a photo" (while the camera shows).
   String _photoHint(LocalProfile? value) {
-    if (_photoSaving) return 'Saving photo…';
-    if (_cameraShowing) return 'Tap the camera to choose a photo';
+    if (_photoSaving) return L.t.savingPhoto;
+    if (_cameraShowing) return L.t.tapTheCameraToChooseA;
     final hasPhoto = image != null ||
         (!_removePhoto && (value?.localAvatarPath ?? '').isNotEmpty);
-    return hasPhoto ? 'Tap photo to change' : 'Tap photo to add one';
+    return hasPhoto ? L.t.tapPhotoToChange : L.t.tapPhotoToAddOne;
   }
 
   /// Bundle 211 (A5): a new or removed photo is saved at once (the Save
@@ -340,7 +341,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (_) {
       if (mounted) {
-        LinkToast.show(context, 'Could not open the camera or gallery.', kind: LinkToastKind.error);
+        LinkToast.show(context, L.t.couldNotOpenTheCameraOr, kind: LinkToastKind.error);
       }
     }
   }
@@ -366,19 +367,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Sign out?'),
-        content: const Text(
-          'Your chats and account stay on this phone. Log back in with your '
-          'password or recovery code whenever you are ready.',
+        title: Text(L.t.signOut2),
+        content: Text(
+          L.t.yourChatsAndAccountStayOn2,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: Text(L.t.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Sign out'),
+            child: Text(L.t.signOut),
           ),
         ],
       ),
@@ -413,7 +413,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final displayName = personName276(value?.displayName, value?.username, username.text);
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.onboarding ? 'Your profile' : 'Profile'),
+        title: Text(widget.onboarding ? L.t.yourProfile : L.t.profile),
         actions: [
           // Bundle 118 rev3: tonal pill QR quick-action — jumps straight to
           // the My QR code screen from anywhere Profile is reachable.
@@ -421,7 +421,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: IconButton.filledTonal(
-                tooltip: 'My QR code',
+                tooltip: L.t.myQrCode,
                 onPressed: () => Navigator.push<void>(
                   context,
                   MaterialPageRoute(
@@ -450,7 +450,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
            already: LocalLinkSpacing.md,
            child: Center(
             child: Semantics(
-              label: 'Profile photo',
+              label: L.t.profilePhoto,
               // Bundle 211 (A2-A3): no camera button (it covered the lock).
               // Tap the photo → camera in the middle for 3 s → tap it.
               child: ValueListenableBuilder<bool?>(
@@ -503,12 +503,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           ],
           const SizedBox(height: LocalLinkSpacing.section),
-          Text('Profile information', style: Theme.of(context).textTheme.titleMedium),
+          Text(L.t.profileInformation, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: LocalLinkSpacing.sm),
           if (shimmer)
             const ProfileShimmer295.fields()
           else ...[
-          LocalLinkTextField(controller: name, labelText: 'Display name', hintText: 'How other people see you'),
+          LocalLinkTextField(controller: name, labelText: L.t.displayName, hintText: L.t.howOtherPeopleSeeYou),
           const SizedBox(height: LocalLinkSpacing.sm),
           // Bundle 127/128: username is immutable once set — the field is
           // disabled (greyed, untappable) whenever the account already has
@@ -517,8 +517,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             controller: username,
             autocorrect: false,
             enabled: !_usernameLocked,
-            labelText: 'Username',
-            hintText: _usernameLocked ? 'Set once — cannot be changed' : 'Your unique username',
+            labelText: L.t.username,
+            hintText: _usernameLocked ? L.t.setOnceCannotBeChanged : L.t.yourUniqueUsername,
             prefixIcon: const Icon(Icons.alternate_email),
             suffixIcon: _usernameLocked ? const Icon(Icons.lock_outline, size: 20) : null,
           ),
@@ -526,16 +526,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           LocalLinkTextField(
             controller: phone,
             keyboardType: TextInputType.phone,
-            labelText: 'Phone number',
-            hintText: _usernameLocked ? 'Required' : 'Optional',
+            labelText: L.t.phoneNumber,
+            hintText: _usernameLocked ? L.t.requiredText : L.t.optional,
             prefixIcon: const Icon(Icons.phone_outlined),
             // Bundle 218e: typing another number hides the note at once.
             // Bundle 256 D1: the server's number rule is checked as you type.
             onChanged: (_) => setState(() {}),
             decoration: _phoneLocalOnly
                 ? InputDecoration(
-                    labelText: 'Phone number',
-                    hintText: _usernameLocked ? 'Required' : 'Optional',
+                    labelText: L.t.phoneNumber,
+                    hintText: _usernameLocked ? L.t.requiredText : L.t.optional,
                     prefixIcon: const Icon(Icons.phone_outlined),
                     labelStyle: const TextStyle(color: Color(0xFFB54708)),
                     floatingLabelStyle: const TextStyle(color: Color(0xFFB54708)),
@@ -547,7 +547,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 : null,
           ),
           if (_phoneLocalOnly)
-            const Padding(
+            Padding(
               key: ValueKey('profile_phone_local_note'),
               padding: EdgeInsets.only(top: 6),
               child: Row(
@@ -555,7 +555,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icon(Icons.error_outline_rounded, size: 14, color: Color(0xFFB54708)),
                   SizedBox(width: 6),
                   Expanded(
-                    child: Text('Used by another account. Saved on this phone only.',
+                    child: Text(L.t.usedByAnotherAccountSavedOn,
                         style: TextStyle(fontSize: 12, color: Color(0xFFB54708))),
                   ),
                 ],
@@ -571,7 +571,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Icon(Icons.error_outline_rounded, size: 14, color: Theme.of(context).colorScheme.error),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text('$phoneHint256. Save stays off until the number is right.',
+                    child: Text(L.t.saveStaysOffUntilTheNumber(phoneHint256),
                         style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.error)),
                   ),
                 ],
@@ -589,7 +589,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               return BrandButton290(
                 key: const ValueKey('profile284_save'),
                 onPressed: busy || shimmer || !phoneOk256(phone.text) ? null : save,
-                text: inButton ? 'Saving…' : 'Save changes',
+                text: inButton ? L.t.saving : L.t.saveChanges,
                 loading: inButton,
               );
             },
@@ -598,7 +598,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: LocalLinkSpacing.section),
             // Bundle 202 (mock P2): "Visibility" removed; the Private profile
             // switch moved here from Settings and also decides the phone.
-            Text('Privacy', style: Theme.of(context).textTheme.titleMedium),
+            Text(L.t.privacy, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: LocalLinkSpacing.sm),
             PrivateProfileCard(
               accountRepository: widget.accountRepository,
@@ -608,25 +608,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
             ),
             const SizedBox(height: LocalLinkSpacing.section),
-            Text('Share', style: Theme.of(context).textTheme.titleMedium),
+            Text(L.t.share, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: LocalLinkSpacing.sm),
             Card(
               child: ListTile(
                 leading: CircleAvatar(backgroundColor: Theme.of(context).colorScheme.primaryContainer, child: const Icon(Icons.qr_code_2)),
-                title: const Text('My QR code'),
-                subtitle: const Text('Share your LinkUp identity with another phone.'),
+                title: Text(L.t.myQrCode),
+                subtitle: Text(L.t.shareYourLinkupIdentityWithAnother),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: widget.crypto == null || value == null ? null : () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => MyQrScreen(profile: _directoryProfile(value), crypto: widget.crypto!, repository: widget.directoryRepository))),
               ),
             ),
             const SizedBox(height: LocalLinkSpacing.section),
-            Text('Account', style: Theme.of(context).textTheme.titleMedium),
+            Text(L.t.account, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: LocalLinkSpacing.sm),
             Card(
               child: ListTile(
                 leading: const Icon(Icons.sync_lock_outlined),
-                title: const Text('Recovery code'),
-                subtitle: const Text('Protect your account when this phone is lost.'),
+                title: Text(L.t.recoveryCode2),
+                subtitle: Text(L.t.protectYourAccountWhenThisPhone),
                 trailing: const Icon(Icons.chevron_right),
                 // Bundle 286 (R-3): the same password + code screens as
                 // Settings > Account > Recovery code.
@@ -636,8 +636,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.phone_android),
-                title: const Text('Transfer account'),
-                subtitle: const Text('Move this account to another phone with a one-time QR transfer.'),
+                title: Text(L.t.transferAccount),
+                subtitle: Text(L.t.moveThisAccountToAnotherPhone2),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AccountTransferScreen(repository: widget.transferRepository))),
               ),
@@ -646,8 +646,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.logout_outlined),
-                  title: const Text('Sign out'),
-                  subtitle: const Text('Your chats and account stay on this phone.'),
+                  title: Text(L.t.signOut),
+                  subtitle: Text(L.t.yourChatsAndAccountStayOn),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _confirmSignOut(context),
                 ),

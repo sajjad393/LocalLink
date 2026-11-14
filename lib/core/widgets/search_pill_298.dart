@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/link_kit_290.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 298 (B): one search look in the whole app, the same as the Add
 /// Contact search (283): a grey pill; while typing it turns lighter and gets a
@@ -133,7 +134,7 @@ class _SearchPill298State extends State<SearchPill298> {
         ),
         if (widget.clearButton && hasText)
           IconButton(
-            tooltip: 'Clear',
+            tooltip: L.t.clear,
             visualDensity: VisualDensity.compact,
             onPressed: () {
               widget.controller.clear();

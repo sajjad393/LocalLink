@@ -16,6 +16,7 @@ import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_strip_303.dart';
 
 import 'support/b216_fonts.dart';
+import 'support/l10n_source_304.dart';
 
 /// Bundle 303: the ring screen opens while LinkUp is on screen (also when
 /// Android says "inactive"), skips are logged, ONE call card (style C)
@@ -23,7 +24,7 @@ import 'support/b216_fonts.dart';
 /// calls start on the earpiece and the proximity result is logged.
 final String? _out = Platform.environment['UI_CHECK_OUT'];
 
-String _src(String p) => File(p).readAsStringSync();
+String _src(String p) => readEnglish304(p);
 
 class _Gw implements CallGateway {
   final ctrl = StreamController<CallSession?>.broadcast();

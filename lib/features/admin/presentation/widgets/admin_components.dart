@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme/admin_theme.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -548,8 +549,8 @@ class AdminActivityTimeline extends StatelessWidget {
     if (entries.isEmpty) {
       return AdminEmptyState(
         icon: Icons.history_toggle_off_outlined,
-        title: 'Nothing yet',
-        message: emptyMessage,
+        title: L.t.nothingYet,
+        message: L.en(emptyMessage),
         dense: true,
       );
     }
@@ -742,7 +743,7 @@ class AdminErrorState extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Something went wrong',
+                Text(L.t.somethingWentWrong,
                     style: AdminText.bodyStrong.copyWith(color: palette.danger)),
                 const SizedBox(height: AdminSpace.xxs),
                 Text(message,
@@ -754,7 +755,7 @@ class AdminErrorState extends StatelessWidget {
             TextButton(
               onPressed: onRetry,
               style: TextButton.styleFrom(foregroundColor: palette.danger),
-              child: const Text('Retry'),
+              child: Text(L.t.retry),
             ),
         ],
       ),
@@ -983,7 +984,7 @@ class AdminSearchBar extends StatelessWidget {
         textInputAction: TextInputAction.search,
         style: AdminText.body.copyWith(color: palette.textPrimary),
         decoration: InputDecoration(
-          hintText: hint,
+          hintText: L.en(hint),
           prefixIconConstraints:
               const BoxConstraints(minWidth: 34, minHeight: 34),
           prefixIcon:
@@ -1112,8 +1113,8 @@ class AdminDataTable extends StatelessWidget {
     if (rows.isEmpty) {
       return AdminEmptyState(
         icon: Icons.inbox_outlined,
-        title: 'No records',
-        message: emptyMessage,
+        title: L.t.noRecords,
+        message: L.en(emptyMessage),
         dense: true,
       );
     }
@@ -1240,7 +1241,7 @@ Future<bool> showAdminConfirmation(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: Text(cancelLabel),
+          child: Text(L.en(cancelLabel)),
         ),
         FilledButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -1250,7 +1251,7 @@ Future<bool> showAdminConfirmation(
                   foregroundColor: palette.onPrimary,
                 )
               : null,
-          child: Text(confirmLabel),
+          child: Text(L.en(confirmLabel)),
         ),
       ],
     ),
@@ -1477,7 +1478,7 @@ class AdminFilterBar extends StatelessWidget {
           AdminSearchBar(
             controller: controller!,
             onChanged: onSearchChanged ?? (_) {},
-            hint: searchHint,
+            hint: L.en(searchHint),
             width: 280,
           ),
         if (options.isNotEmpty)
@@ -1502,7 +1503,7 @@ class AdminFilterBar extends StatelessWidget {
                   child: DropdownButton<String>(
                     value: selectedValue,
                     isDense: true,
-                    hint: Text('All',
+                    hint: Text(L.t.all2,
                         style: AdminText.body
                             .copyWith(color: palette.textSecondary)),
                     dropdownColor: palette.surfaceRaised,
@@ -1530,7 +1531,7 @@ class AdminFilterBar extends StatelessWidget {
         if (activeFilters.isNotEmpty && onClearFilters != null)
           TextButton(
             onPressed: onClearFilters,
-            child: const Text('Clear'),
+            child: Text(L.t.clear),
           ),
         ...trailing,
       ],

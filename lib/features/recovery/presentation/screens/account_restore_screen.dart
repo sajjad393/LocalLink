@@ -5,6 +5,7 @@ import 'package:locallink/core/widgets/error_toast.dart';
 import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/recovery/bloc/account_restore_bloc.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class AccountRestoreScreen extends StatefulWidget {
   final AccountRestorationRepositoryContract service;
@@ -27,24 +28,24 @@ class _AccountRestoreScreenState extends State<AccountRestoreScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: pass, autofocus: true, obscureText: true, decoration: const InputDecoration(labelText: 'Backup passphrase')),
+            TextField(controller: pass, autofocus: true, obscureText: true, decoration: InputDecoration(labelText: L.t.backupPassphrase)),
             if (confirm) ...[
               const SizedBox(height: 12),
-              TextField(controller: confirmController, obscureText: true, decoration: const InputDecoration(labelText: 'Confirm passphrase')),
+              TextField(controller: confirmController, obscureText: true, decoration: InputDecoration(labelText: L.t.confirmPassphrase)),
             ],
             const SizedBox(height: 12),
-            const Text('Use at least 10 characters. This passphrase is never sent to the server.'),
+            Text(L.t.useAtLeast10CharactersThis),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(L.t.cancel)),
           FilledButton(
             onPressed: () {
               final value = pass.text;
               if (value.length < 10 || (confirm && value != confirmController.text)) return;
               Navigator.pop(context, value);
             },
-            child: const Text('Continue'),
+            child: Text(L.t.continueText),
           ),
         ],
       ),
@@ -57,7 +58,7 @@ class _AccountRestoreScreenState extends State<AccountRestoreScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Backup and restore')),
+      appBar: AppBar(title: Text(L.t.backupAndRestore)),
       body: LocalLinkBlocBuilder(
         bloc: _controller,
         builder: (context, state) {
@@ -76,55 +77,55 @@ class _AccountRestoreScreenState extends State<AccountRestoreScreen> {
                       const SizedBox(height: 4),
                       Text(m.profile.displayName),
                       const SizedBox(height: 12),
-                      Text(m.cryptoBackupAvailable ? 'Encrypted identity backup available' : 'No encrypted identity backup on the server'),
-                      if (m.cryptoBackupUpdatedAt.isNotEmpty) Text('Updated ${m.cryptoBackupUpdatedAt}', style: Theme.of(context).textTheme.bodySmall),
+                      Text(m.cryptoBackupAvailable ? L.t.encryptedIdentityBackupAvailable : L.t.noEncryptedIdentityBackupOnThe),
+                      if (m.cryptoBackupUpdatedAt.isNotEmpty) Text(L.t.updated(m.cryptoBackupUpdatedAt), style: Theme.of(context).textTheme.bodySmall),
                     ]),
                   ),
                 ),
-                _card('Messages', m.counts['messages'] ?? 0, Icons.chat_bubble_outline),
-                _card('Group messages', m.counts['group_messages'] ?? 0, Icons.groups_outlined),
-                _card('Calls', m.counts['calls'] ?? 0, Icons.call_outlined),
-                _card('Files', m.counts['files'] ?? 0, Icons.attach_file),
-                _card('Historical identity keys', m.historicalIdentityKeys, Icons.key_outlined),
+                _card(L.t.messages, m.counts['messages'] ?? 0, Icons.chat_bubble_outline),
+                _card(L.t.groupMessages, m.counts['group_messages'] ?? 0, Icons.groups_outlined),
+                _card(L.t.calls2, m.counts['calls'] ?? 0, Icons.call_outlined),
+                _card(L.t.files, m.counts['files'] ?? 0, Icons.attach_file),
+                _card(L.t.historicalIdentityKeys, m.historicalIdentityKeys, Icons.key_outlined),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Encrypted history', style: TextStyle(fontWeight: FontWeight.w700)),
+                      Text(L.t.encryptedHistory, style: TextStyle(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
-                      const Text('The server stores only an encrypted backup envelope. The backup passphrase stays on your device.'),
+                      Text(L.t.theServerStoresOnlyAnEncrypted),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
                         onPressed: _controller.busy
                             ? null
                             : () async {
-                                final pass = await _passphraseDialog(title: 'Create encrypted key backup', confirm: true);
+                                final pass = await _passphraseDialog(title: L.t.createEncryptedKeyBackup, confirm: true);
                                 if (pass == null) return;
                                 if (await _controller.createBackup(pass) && context.mounted) {
-                                  LinkToast.show(context, 'Encrypted identity backup saved to the LinkUp server', kind: LinkToastKind.done);
+                                  LinkToast.show(context, L.t.encryptedIdentityBackupSavedToThe, kind: LinkToastKind.done);
                                 }
                               },
                         icon: const Icon(Icons.lock_outline),
-                        label: const Text('Create / update encrypted key backup'),
+                        label: Text(L.t.createUpdateEncryptedKeyBackup),
                       ),
                       TextButton.icon(
                         onPressed: _controller.busy
                             ? null
                             : () async {
                                 String? pass;
-                                if (m.cryptoBackupAvailable) pass = await _passphraseDialog(title: 'Restore encrypted identity backup', confirm: false);
+                                if (m.cryptoBackupAvailable) pass = await _passphraseDialog(title: L.t.restoreEncryptedIdentityBackup, confirm: false);
                                 if (!context.mounted) return;
                                 if (await _controller.restore(passphrase: pass) && context.mounted) {
-                                  LinkToast.show(context, 'Account data restored', kind: LinkToastKind.done);
+                                  LinkToast.show(context, L.t.accountDataRestored, kind: LinkToastKind.done);
                                 }
                               },
                         icon: const Icon(Icons.restore),
-                        label: Text(m.cryptoBackupAvailable ? 'Restore account data + encrypted keys' : 'Restore account data'),
+                        label: Text(m.cryptoBackupAvailable ? L.t.restoreAccountDataEncryptedKeys : L.t.restoreAccountData),
                       ),
                     ]),
                   ),
                 ),
-                const Card(child: ListTile(leading: Icon(Icons.info_outline), title: Text('What is restored?'), subtitle: Text('Account/profile metadata, devices, groups, messages, group messages and call history. File content is not downloaded automatically.'))),
+                Card(child: ListTile(leading: Icon(Icons.info_outline), title: Text(L.t.whatIsRestored), subtitle: Text(L.t.accountProfileMetadataDevicesGroupsMessages))),
               ],
               if (_controller.busy) ...[
                 const SizedBox(height: 12),

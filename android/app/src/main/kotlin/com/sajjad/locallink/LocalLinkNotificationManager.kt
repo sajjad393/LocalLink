@@ -64,10 +64,10 @@ object LocalLinkNotificationManager {
 
         val messageChannel = NotificationChannel(
             MESSAGE_CHANNEL_ID,
-            "LinkUp messages",
+            Words304.w(context, "LinkUp messages"),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "New LinkUp direct and group messages"
+            description = Words304.w(context, "New LinkUp direct and group messages")
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             enableVibration(true)
             val soundId = context.resources.getIdentifier(
@@ -96,10 +96,10 @@ object LocalLinkNotificationManager {
 
         val systemChannel = NotificationChannel(
             SYSTEM_CHANNEL_ID,
-            "LinkUp system",
+            Words304.w(context, "LinkUp system"),
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
-            description = "LinkUp security, pairing, and system updates"
+            description = Words304.w(context, "LinkUp security, pairing, and system updates")
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         manager.createNotificationChannel(systemChannel)
@@ -107,10 +107,10 @@ object LocalLinkNotificationManager {
         // Bundle 177 (7.8): "X added you as a friend".
         val friendsChannel = NotificationChannel(
             FRIENDS_CHANNEL_ID,
-            "Friends",
+            Words304.w(context, "Friends"),
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
-            description = "Someone added you as a friend"
+            description = Words304.w(context, "Someone added you as a friend")
             lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         }
         manager.createNotificationChannel(friendsChannel)
@@ -249,7 +249,7 @@ object LocalLinkNotificationManager {
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
 
-        if (unreadCount > 1) builder.setSubText("$unreadCount new messages")
+        if (unreadCount > 1) builder.setSubText(Words304.w(context, "%s new messages", unreadCount))
         if (silent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) builder.setSilent(true)
 
         when (visibility) {
@@ -261,7 +261,7 @@ object LocalLinkNotificationManager {
                         .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF209DEB.toInt()) // Bundle 141: brand blue tint
                         .setContentTitle(publicTitle.ifBlank { "LinkUp" })
-                        .setContentText(publicBody.ifBlank { "New notification" })
+                        .setContentText(publicBody.ifBlank { Words304.w(context, "New notification") })
                         .setCategory(Notification.CATEGORY_MESSAGE)
                         .setVisibility(Notification.VISIBILITY_PUBLIC)
                         .build()
@@ -298,18 +298,18 @@ object LocalLinkNotificationManager {
 
         val replyAction = NotificationCompat.Action.Builder(
             android.R.drawable.ic_menu_send,
-            "Reply",
+            Words304.w(context, "Reply"),
             replyPending,
         ).addRemoteInput(
             RemoteInput.Builder(REMOTE_INPUT_KEY)
-                .setLabel("Reply")
+                .setLabel(Words304.w(context, "Reply"))
                 .setAllowFreeFormInput(true)
                 .build()
         ).build()
 
         val readAction = NotificationCompat.Action.Builder(
             android.R.drawable.ic_menu_view,
-            "Mark read",
+            Words304.w(context, "Mark read"),
             readPending,
         ).build()
 
@@ -344,7 +344,7 @@ object LocalLinkNotificationManager {
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF209DEB.toInt()) // Bundle 141: brand blue tint
             .setContentTitle(title.ifBlank { "LinkUp" })
-            .setContentText(body.ifBlank { "New messages" })
+            .setContentText(body.ifBlank { Words304.w(context, "New messages") })
             .setCategory(Notification.CATEGORY_MESSAGE)
             .setGroup(groupKey(conversationType, conversationId))
             .setAutoCancel(true)
@@ -458,7 +458,7 @@ object LocalLinkNotificationManager {
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val who = name.ifBlank { "Someone" }.take(64)
+        val who = name.ifBlank { Words304.w(context, "Someone") }.take(64)
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationCompat.Builder(context, FRIENDS_CHANNEL_ID)
         } else {
@@ -467,8 +467,8 @@ object LocalLinkNotificationManager {
         }
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF209DEB.toInt())
-            .setContentTitle("$who added you as a friend")
-            .setContentText("Saved in your contacts")
+            .setContentTitle(Words304.w(context, "%s added you as a friend", who))
+            .setContentText(Words304.w(context, "Saved in your contacts"))
             .setCategory(Notification.CATEGORY_SOCIAL)
             .setAutoCancel(true)
             .setPriority(Notification.PRIORITY_DEFAULT)
@@ -487,7 +487,7 @@ object LocalLinkNotificationManager {
                 actionIntent(context, action, notificationId, "friend", userId, "friend", deviceId, recipientId, null),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            builder.addAction(0, label, pending)
+            builder.addAction(0, Words304.w(context, label), pending)
         }
         button(ACTION_FRIEND_REMOVE, 1, "Remove")
         button(ACTION_FRIEND_BLOCK, 2, "Block")
@@ -508,10 +508,10 @@ object LocalLinkNotificationManager {
     ) {
         if (notificationId <= 0 || userId.isBlank() || deviceId.isBlank()) return
         val builder = friendBuilder(context) ?: return
-        val who = name.ifBlank { "Someone" }.take(64)
+        val who = name.ifBlank { Words304.w(context, "Someone") }.take(64)
         builder
-            .setContentTitle("$who wants to add you")
-            .setContentText("$who is near you. Accept to become friends.")
+            .setContentTitle(Words304.w(context, "%s wants to add you", who))
+            .setContentText(Words304.w(context, "%s is near you. Accept to become friends.", who))
         context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { launch ->
             builder.setContentIntent(
                 PendingIntent.getActivity(
@@ -529,7 +529,7 @@ object LocalLinkNotificationManager {
                 actionIntent(context, action, notificationId, "friend", userId, "friend", deviceId, recipientId, null),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            builder.addAction(0, label, pending)
+            builder.addAction(0, Words304.w(context, label), pending)
         }
         button(ACTION_FRIEND_REQUEST_ACCEPT, 4, "Accept")
         button(ACTION_FRIEND_REQUEST_DECLINE, 3, "Decline")
@@ -550,10 +550,10 @@ object LocalLinkNotificationManager {
     ) {
         if (notificationId <= 0 || deviceId.isBlank()) return
         val builder = friendBuilder(context) ?: return
-        val who = name.ifBlank { "Someone" }.take(64)
+        val who = name.ifBlank { Words304.w(context, "Someone") }.take(64)
         builder
-            .setContentTitle("$who accepted your request")
-            .setContentText("You are friends now. Tap to say hello.")
+            .setContentTitle(Words304.w(context, "%s accepted your request", who))
+            .setContentText(Words304.w(context, "You are friends now. Tap to say hello."))
             .setContentIntent(
                 PendingIntent.getActivity(
                     context,

@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/features/groups/data/services/group_nearby_service.dart';
 import 'package:locallink/features/groups/data/services/group_nearby_store.dart';
+import 'support/l10n_source_304.dart';
 
 // Bundle 215 (A + §8.2): no "Adding…" strip on the group chat page; a
 // signed group message from a pending member clears her "Pending".
@@ -193,7 +193,7 @@ Future<void> _settle(_Air air) async {
   }
 }
 
-String _src(String p) => File(p).readAsStringSync();
+String _src(String p) => readEnglish304(p);
 
 void main() {
   group('pending clears when her message arrives', () {

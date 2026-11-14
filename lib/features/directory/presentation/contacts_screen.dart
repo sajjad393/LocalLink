@@ -34,6 +34,7 @@ import 'package:locallink/features/messaging/bloc/chat_bloc.dart';
 import 'package:locallink/features/messaging/domain/messaging_repository_contract.dart';
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 183 (N3): the People filter (sliders button).
 enum PeopleFilter { all, nearby, online }
@@ -107,7 +108,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Future<void> _chat(DirectoryProfile p) async {
     if (p.deviceId.isEmpty) {
-      if (mounted) LinkToast.show(context, 'This person is not currently available.', kind: LinkToastKind.error);
+      if (mounted) LinkToast.show(context, L.t.thisPersonIsNotCurrentlyAvailable, kind: LinkToastKind.error);
       return;
     }
     final device = _device(p);
@@ -172,14 +173,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return Scaffold(
       // Bundle 183 (L/N1): the shared tab top bar, "People" like the tab,
       // no back arrow.
-      appBar: const TabTopBar(title: Text('People')),
+      appBar: TabTopBar(title: Text(L.t.people)),
       // Bundle 206: the round button can be moved (one place for Chats,
       // Calls and People). Same look, now the shared BrandGradientFab.
       body: MovableFabArea(
-        label: 'Add contact',
+        label: L.t.addContact2,
         fab: BrandGradientFab(
           heroTag: 'add_contact_fab',
-          tooltip: 'Add contact',
+          tooltip: L.t.addContact2,
           icon: Icons.add,
           onPressed: _addContact,
         ),
@@ -229,7 +230,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   // Bundle 298 (B): the same grey pill as every search.
                   child: SearchPill298(
                     controller: _searchController,
-                    hint: 'Search people',
+                    hint: L.t.searchPeople,
                     height: 48,
                     onChanged: (value) => setState(() => _query = value),
                     // Bundle 183 (N3/N4): the sliders icon is a real
@@ -250,22 +251,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 if (query.isEmpty)
                   InviteNearbyCard(ownerName: widget.shareOwnerName),
                 if (requests.isNotEmpty) ...[
-                  MessengerGroupLabel('Requests',
+                  MessengerGroupLabel(L.t.requests,
                       key: const ValueKey('people_requests_label'),
                       top: filtered ? 16 : 24),
                   _requestGroup(context, requests),
                 ],
                 // Bundle 183 (O/N12): the shared small grey CAPITALS title.
-                MessengerGroupLabel('Your contacts', top: filtered ? 16 : 24),
+                MessengerGroupLabel(L.t.yourContacts, top: filtered ? 16 : 24),
                 if (all.isEmpty || (contacts.isEmpty && query.isNotEmpty))
                   SizedBox(
                     height: 420,
                     child: LocalLinkEmptyView(
                       icon: Icons.people_outline,
                       lottieAsset: 'assets/animations/empty_inbox.json',
-                      title: query.isEmpty ? 'No contacts yet' : 'No people found',
-                      message: query.isEmpty ? 'Add a contact or discover nearby LinkUp phones.' : 'Try another name or username.',
-                      actionLabel: query.isEmpty ? 'Add contact' : null,
+                      title: query.isEmpty ? L.t.noContactsYet : L.t.noPeopleFound,
+                      message: query.isEmpty ? L.t.addAContactOrDiscoverNearby : L.t.tryAnotherNameOrUsername,
+                      actionLabel: query.isEmpty ? L.t.addContact2 : null,
                       onAction: query.isEmpty ? _addContact : null,
                     ),
                   )
@@ -278,8 +279,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       child: Center(
                         child: Text(
                           _filter == PeopleFilter.nearby
-                              ? 'No one nearby right now'
-                              : 'No one online right now',
+                              ? L.t.noOneNearbyRightNow
+                              : L.t.noOneOnlineRightNow,
                           style: TextStyle(
                               fontSize: 14, color: colors.onSurfaceVariant),
                         ),
@@ -289,7 +290,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 else
                   _contactGroup(context, contacts),
                 if (blocked.isNotEmpty) ...[
-                  MessengerGroupLabel('Blocked',
+                  MessengerGroupLabel(L.t.blocked,
                       key: const ValueKey('people_blocked_label'),
                       color: colors.error),
                   _blockedGroup(context, blocked),
@@ -305,15 +306,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   static String _filterLabel(PeopleFilter f) => switch (f) {
-        PeopleFilter.all => 'All',
-        PeopleFilter.nearby => 'Nearby',
-        PeopleFilter.online => 'Online',
+        PeopleFilter.all => L.t.all2,
+        PeopleFilter.nearby => L.t.nearby,
+        PeopleFilter.online => L.t.online,
       };
 
   Widget _filterButton(ColorScheme colors) {
     return PopupMenuButton<PeopleFilter>(
       key: const ValueKey('people_filter_button'),
-      tooltip: 'Filter',
+      tooltip: L.t.filter,
       position: PopupMenuPosition.under,
       constraints: const BoxConstraints.tightFor(width: 180),
       color: colors.surfaceContainerLowest,
@@ -444,7 +445,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           // Bundle 196 (4.1): ⋮ opens the actions sheet (no pop-up menu).
           trailing: IconButton(
             key: ValueKey('people_more_${profile.userId}'),
-            tooltip: 'More',
+            tooltip: L.t.more2,
             icon: const Icon(Icons.more_vert),
             onPressed: () => _actions(profile),
           ),
@@ -496,7 +497,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   /// Bundle 196 (5.1): the same call as the chat's call button.
   Future<void> _call(DirectoryProfile p) async {
     if (p.deviceId.isEmpty) {
-      LinkToast.show(context, 'This person is not currently available.', kind: LinkToastKind.error);
+      LinkToast.show(context, L.t.thisPersonIsNotCurrentlyAvailable, kind: LinkToastKind.error);
       return;
     }
     final device = _device(p);
@@ -529,7 +530,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             child: BlockedUserLine(username: p.username),
           ),
           trailing: IconButton(
-            tooltip: 'More',
+            tooltip: L.t.more2,
             icon: const Icon(Icons.more_vert),
             onPressed: () => runUnblockFlow(context, p, from: 'people'),
           ),
@@ -566,8 +567,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleSmall),
                     Text(
-                      '${r.username.isEmpty ? '' : '@${r.username} · '}'
-                      'wants to add you · ${FriendRequestRules.age(r.atMs, now)}',
+                      L.t.wantsToAddYou(r.username.isEmpty ? '' : '@${r.username} · ', FriendRequestRules.age(r.atMs, now)),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -584,12 +584,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         TextButton(
                           key: ValueKey('request_decline_${r.deviceId}'),
                           onPressed: () => _declineRequest(r),
-                          child: const Text('Decline'),
+                          child: Text(L.t.decline),
                         ),
                         FilledButton.tonal(
                           key: ValueKey('request_accept_${r.deviceId}'),
                           onPressed: () => _acceptRequest(r),
-                          child: const Text('Accept'),
+                          child: Text(L.t.accept),
                         ),
                       ],
                       ),
@@ -610,9 +610,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       await accept(r.deviceId);
       await bloc.load();
-      LinkToast.maybeOn(messenger, '${r.name} added', kind: LinkToastKind.done);
+      LinkToast.maybeOn(messenger, L.t.added2(r.name), kind: LinkToastKind.done);
     } catch (e) {
-      LinkToast.maybeOn(messenger, 'Could not add ${r.name}. Try again.', kind: LinkToastKind.error);
+      LinkToast.maybeOn(messenger, L.t.couldNotAddTryAgain(r.name), kind: LinkToastKind.error);
     }
   }
 
@@ -625,7 +625,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       } else {
         await FriendRequestBook.instance.decline(r.deviceId);
       }
-      LinkToast.maybeOn(messenger, 'Request declined', kind: LinkToastKind.done);
+      LinkToast.maybeOn(messenger, L.t.requestDeclined, kind: LinkToastKind.done);
     } catch (_) {}
   }
 }

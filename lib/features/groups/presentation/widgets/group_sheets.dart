@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/message_reaction.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G1: the bottom sheets of the approved group mock (G0).
 ///
@@ -99,30 +100,30 @@ Future<StartChoice?> showStartSheet(BuildContext context) {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _sheetTitle(sheetContext, 'Start'),
+            _sheetTitle(sheetContext, L.t.start),
             GroupSheetAction(
               key: const ValueKey('start_new_chat'),
               icon: Icons.chat_bubble_outline_rounded,
-              title: 'New chat',
-              subtitle: 'Message one friend',
+              title: L.t.newChat,
+              subtitle: L.t.messageOneFriend,
               onTap: () => Navigator.pop(sheetContext, StartChoice.newChat),
             ),
             GroupSheetAction(
               key: const ValueKey('start_new_group'),
               icon: Icons.group_outlined,
-              title: 'New group',
-              subtitle: 'Up to 32 people Nearby, 100 Online',
+              title: L.t.newGroup,
+              subtitle: L.t.upTo32PeopleNearby100,
               onTap: () => Navigator.pop(sheetContext, StartChoice.newGroup),
             ),
             // Bundle G4 (mock 2).
             GroupSheetAction(
               key: const ValueKey('start_join_qr'),
               icon: Icons.qr_code_2_rounded,
-              title: 'Join group with QR',
-              subtitle: 'Scan a group code',
+              title: L.t.joinGroupWithQr,
+              subtitle: L.t.scanAGroupCode,
               onTap: () => Navigator.pop(sheetContext, StartChoice.joinQr),
             ),
-            _closeButton(sheetContext, 'Close'),
+            _closeButton(sheetContext, L.t.close),
           ],
         ),
       ),
@@ -173,8 +174,8 @@ Future<GroupRowChoice?> showGroupRowSheet(
                                   ?.copyWith(fontWeight: FontWeight.w700, fontSize: 15.5)),
                           Text(
                               memberCount > 0
-                                  ? 'Group · $memberCount members'
-                                  : 'Group',
+                                  ? L.t.groupMembers(memberCount)
+                                  : L.t.group,
                               style: text.bodySmall
                                   ?.copyWith(color: colors.onSurfaceVariant)),
                         ],
@@ -186,40 +187,40 @@ Future<GroupRowChoice?> showGroupRowSheet(
               GroupSheetAction(
                 key: const ValueKey('group_row_read'),
                 icon: Icons.mark_chat_read_outlined,
-                title: 'Mark as read',
+                title: L.t.markAsRead,
                 onTap: () => Navigator.pop(sheetContext, GroupRowChoice.markRead),
               ),
               if (muted)
                 GroupSheetAction(
                   key: const ValueKey('group_row_unmute'),
                   icon: Icons.notifications_active_outlined,
-                  title: 'Unmute notifications',
+                  title: L.t.unmuteNotifications,
                   onTap: () => Navigator.pop(sheetContext, GroupRowChoice.unmute),
                 )
               else
                 GroupSheetAction(
                   key: const ValueKey('group_row_mute'),
                   icon: Icons.notifications_off_outlined,
-                  title: 'Mute notifications',
+                  title: L.t.muteNotifications,
                   onTap: () => Navigator.pop(sheetContext, GroupRowChoice.mute),
                 ),
               GroupSheetAction(
                 key: const ValueKey('group_row_info'),
                 icon: Icons.info_outline_rounded,
-                title: 'Group info',
+                title: L.t.groupInfo,
                 onTap: () => Navigator.pop(sheetContext, GroupRowChoice.info),
               ),
               GroupSheetAction(
                 key: const ValueKey('chat_row_clear'),
                 icon: Icons.clear_all_rounded,
-                title: 'Clear chat',
+                title: L.t.clearChat,
                 onTap: () => Navigator.pop(sheetContext, GroupRowChoice.clear),
               ),
               if (active)
                 GroupSheetAction(
                   key: const ValueKey('group_row_exit'),
                   icon: Icons.logout_rounded,
-                  title: 'Exit group',
+                  title: L.t.exitGroup,
                   red: true,
                   onTap: () => Navigator.pop(sheetContext, GroupRowChoice.exit),
                 )
@@ -227,11 +228,11 @@ Future<GroupRowChoice?> showGroupRowSheet(
                 GroupSheetAction(
                   key: const ValueKey('group_row_delete'),
                   icon: Icons.delete_outline_rounded,
-                  title: 'Delete group',
+                  title: L.t.deleteGroup,
                   red: true,
                   onTap: () => Navigator.pop(sheetContext, GroupRowChoice.delete),
                 ),
-              _closeButton(sheetContext, 'Close'),
+              _closeButton(sheetContext, L.t.close),
             ],
           ),
         ),
@@ -264,10 +265,10 @@ class _MuteSheet extends StatefulWidget {
 }
 
 class _MuteSheetState extends State<_MuteSheet> {
-  static const _options = <(String, Duration?)>[
-    ('8 hours', Duration(hours: 8)),
-    ('1 week', Duration(days: 7)),
-    ('Always', null),
+  static List<(String, Duration?)> get _options => <(String, Duration?)>[
+    (L.t.t8Hours, Duration(hours: 8)),
+    (L.t.t1Week, Duration(days: 7)),
+    (L.t.always, null),
   ];
   int _picked = 1;
 
@@ -281,13 +282,13 @@ class _MuteSheetState extends State<_MuteSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Mute notifications',
+            Text(L.t.muteNotifications,
                 style: Theme.of(context)
                     .textTheme
                     .titleLarge
                     ?.copyWith(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            Text('You still get messages. A mention of you (@) still notifies you.',
+            Text(L.t.youStillGetMessagesAMention,
                 style: TextStyle(
                     fontSize: 12.5, height: 1.4, color: colors.onSurfaceVariant)),
             const SizedBox(height: 12),
@@ -335,7 +336,7 @@ class _MuteSheetState extends State<_MuteSheet> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel',
+                  child: Text(L.t.cancel,
                       style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
                 const SizedBox(width: 10),
@@ -343,7 +344,7 @@ class _MuteSheetState extends State<_MuteSheet> {
                   key: const ValueKey('mute_confirm'),
                   onPressed: () => Navigator.pop(
                       context, GroupMuteChoice(_options[_picked].$2)),
-                  child: const Text('Mute',
+                  child: Text(L.t.mute,
                       style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ],
@@ -443,7 +444,7 @@ class _ReactionsSheetState extends State<_ReactionsSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Reactions',
+            Text(L.t.reactions,
                 style: Theme.of(context)
                     .textTheme
                     .titleLarge
@@ -453,7 +454,7 @@ class _ReactionsSheetState extends State<_ReactionsSheet> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  tab('All ${widget.reactions.length}', null),
+                  tab(L.t.all(widget.reactions.length), null),
                   for (final e in counts.entries) tab('${e.key} ${e.value}', e.key),
                 ],
               ),
@@ -480,11 +481,11 @@ class _ReactionsSheetState extends State<_ReactionsSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(mine ? 'You' : name,
+                Text(mine ? L.t.you3 : name,
                     style: const TextStyle(
                         fontSize: 14.5, fontWeight: FontWeight.w600)),
                 if (mine)
-                  Text('Tap to remove',
+                  Text(L.t.tapToRemove,
                       style: TextStyle(fontSize: 12.5, color: colors.primary)),
               ],
             ),

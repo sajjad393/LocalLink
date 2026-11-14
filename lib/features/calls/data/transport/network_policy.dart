@@ -1,3 +1,4 @@
+import 'package:locallink/l10n/l10n.dart';
 enum AdminWifiRadioPolicy {
   allowed,
   forcedOn,
@@ -11,9 +12,9 @@ extension AdminWifiRadioPolicyX on AdminWifiRadioPolicy {
         AdminWifiRadioPolicy.forcedOff => 'forced_off',
       };
   String get label => switch (this) {
-        AdminWifiRadioPolicy.allowed => 'Allowed',
-        AdminWifiRadioPolicy.forcedOn => 'Forced ON',
-        AdminWifiRadioPolicy.forcedOff => 'Forced OFF',
+        AdminWifiRadioPolicy.allowed => L.t.allowed,
+        AdminWifiRadioPolicy.forcedOn => L.t.forcedOn,
+        AdminWifiRadioPolicy.forcedOff => L.t.forcedOff,
       };
   static AdminWifiRadioPolicy? fromStorage(Object? raw) => switch (raw?.toString().trim().toLowerCase()) {
     'allowed' => AdminWifiRadioPolicy.allowed,
@@ -37,7 +38,7 @@ class EffectiveNetworkPolicy {
   static EffectiveNetworkPolicy evaluate({
     AdminWifiRadioPolicy? wifiRadioPolicy,
   }) {
-    final source = wifiRadioPolicy == null ? 'local platform state' : 'admin policy';
+    final source = wifiRadioPolicy == null ? L.t.localPlatformState : L.t.adminPolicy;
     return EffectiveNetworkPolicy(
       wifiRadioPolicy: wifiRadioPolicy,
       wifiRadioAdminPolicy: wifiRadioPolicy,

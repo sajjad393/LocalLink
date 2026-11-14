@@ -8,16 +8,17 @@ import 'package:locallink/features/admin/bloc/admin_bloc.dart';
 import 'package:locallink/features/admin/domain/admin_repository_contract.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (E): small helpers shared by the tool pages.
 
 // ------------------------------------------------------------ Wi-Fi rule
 /// Server value → shown words (WORDS_216). null / '' = Default.
 String wifiRuleLabel216(Object? v) => switch ((v ?? '').toString()) {
-      'allowed' => 'Allowed',
-      'forced_on' => 'Always on',
-      'forced_off' => 'Always off',
-      _ => 'Default',
+      'allowed' => L.t.allowed,
+      'forced_on' => L.t.alwaysOn,
+      'forced_off' => L.t.alwaysOff,
+      _ => L.t.defaultText,
     };
 
 const wifiRuleValues216 = <String?>[null, 'allowed', 'forced_on', 'forced_off'];
@@ -38,11 +39,11 @@ Future<({String? picked})?> pickWifiRule216(BuildContext context,
     {required String? current, required String title, String? note}) {
   return showAdminSheet216<({String? picked})>(context, builder: (sheet) {
     final t = A216Text.of(sheet);
-    const subs = {
-      null: 'Follow the account or phone setting',
-      'allowed': 'The phone decides',
-      'forced_on': 'Wi-Fi stays on',
-      'forced_off': 'Wi-Fi stays off',
+    final subs = {
+      null: L.t.followTheAccountOrPhoneSetting,
+      'allowed': L.t.thePhoneDecides,
+      'forced_on': L.t.wiFiStaysOn,
+      'forced_off': L.t.wiFiStaysOff,
     };
     return Column(
       key: const ValueKey('a216_wifi_sheet'),
@@ -73,8 +74,8 @@ Future<({String? picked})?> pickWifiRule216(BuildContext context,
 
 // ---------------------------------------------------------- status words
 ({String text, A216Tone tone}) userStatus216(Object? status) => switch ('$status') {
-      'suspended' => (text: 'Suspended', tone: A216Tone.orange),
-      'disabled' => (text: 'Off', tone: A216Tone.red),
+      'suspended' => (text: L.t.suspended, tone: A216Tone.orange),
+      'disabled' => (text: L.t.off, tone: A216Tone.red),
       _ => (text: 'Active', tone: A216Tone.green),
     };
 
@@ -88,17 +89,17 @@ Future<({String? picked})?> pickWifiRule216(BuildContext context,
       d['wifi_direct_connected'] != true &&
       d['mesh_available'] != true &&
       d['lan_available'] != true) {
-    return (text: 'Offline', tone: A216Tone.grey);
+    return (text: L.t.offline, tone: A216Tone.grey);
   }
   if (d['server_connected'] == true) return (text: 'Server', tone: A216Tone.green);
-  if (d['wifi_direct_connected'] == true) return (text: 'Wi-Fi Direct', tone: A216Tone.amber);
-  if (d['mesh_available'] == true) return (text: 'Mesh', tone: A216Tone.purple);
+  if (d['wifi_direct_connected'] == true) return (text: L.t.wiFiDirect, tone: A216Tone.amber);
+  if (d['mesh_available'] == true) return (text: L.t.mesh, tone: A216Tone.purple);
   if (d['lan_available'] == true) return (text: 'Local Wi-Fi', tone: A216Tone.teal);
   // Bundle 255 B9: online with no link flag is NOT a server link (noshad's
   // phone said "Server" before it ever reached the server).
   return d['online'] == true
-      ? (text: 'Online', tone: A216Tone.grey)
-      : (text: 'Offline', tone: A216Tone.grey);
+      ? (text: L.t.online, tone: A216Tone.grey)
+      : (text: L.t.offline, tone: A216Tone.grey);
 }
 
 /// Bundle 255 B9: ALL links of a phone (same flags as the Network tiles),
@@ -108,8 +109,8 @@ List<({String text, A216Tone tone})> deviceLinks255(Map<String, dynamic> d) {
   if (one.text == 'Removed') return [one];
   final all = <({String text, A216Tone tone})>[
     if (d['server_connected'] == true) (text: 'Server', tone: A216Tone.green),
-    if (d['wifi_direct_connected'] == true) (text: 'Wi-Fi Direct', tone: A216Tone.amber),
-    if (d['mesh_available'] == true) (text: 'Mesh', tone: A216Tone.purple),
+    if (d['wifi_direct_connected'] == true) (text: L.t.wiFiDirect, tone: A216Tone.amber),
+    if (d['mesh_available'] == true) (text: L.t.mesh, tone: A216Tone.purple),
     if (d['lan_available'] == true) (text: 'Local Wi-Fi', tone: A216Tone.teal),
   ];
   return all.isEmpty ? [one] : all;
@@ -117,8 +118,8 @@ List<({String text, A216Tone tone})> deviceLinks255(Map<String, dynamic> d) {
 
 String linkWord216(Object? link) => switch ('$link') {
       'server' => 'Server',
-      'wifi_direct' || 'wifiDirect' => 'Wi-Fi Direct',
-      'mesh' => 'Mesh',
+      'wifi_direct' || 'wifiDirect' => L.t.wiFiDirect,
+      'mesh' => L.t.mesh,
       'lan' || 'local_wifi' || 'localWifi' => 'Local Wi-Fi',
       _ => '$link',
     };

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:locallink/core/widgets/link_toast.dart';
+import 'package:locallink/core/widgets/unread_bar_304.dart';
 import 'package:locallink/core/widgets/admin_blocked_banner.dart';
 import 'package:locallink/core/widgets/chat_notice_bar_302.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
@@ -62,6 +63,7 @@ import 'package:locallink/features/groups/data/group_extras_book.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_extras_widgets.dart';
 import 'package:locallink/features/files/domain/file_size_rule.dart';
 import 'package:locallink/features/files/presentation/widgets/file_too_big_dialog.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class GroupChatScreen extends StatefulWidget {
   final LocalGroup group;
@@ -238,9 +240,9 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     var text = GroupMentions.plain(m.text).trim().replaceAll(RegExp(r'\s+'), ' ');
     if (text.isEmpty && m.attachments.isNotEmpty) {
       final a = m.attachments.first;
-      text = chatPreviewMediaWord(a.contentType, isImage: a.isImage);
+      text = L.en(chatPreviewMediaWord(a.contentType, isImage: a.isImage));
     }
-    if (text.isEmpty) text = 'Message';
+    if (text.isEmpty) text = L.t.message;
     return '${_nameFor(m.senderId)}: $text';
   }
 
@@ -270,7 +272,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     if (length == null || !mounted) return;
     final ok = await GroupExtrasHub.pin?.call(widget.group.id, m.id, length) ?? false;
     if (!ok && mounted) {
-      LinkToast.show(context, 'Only admins can pin messages', kind: LinkToastKind.error);
+      LinkToast.show(context, L.t.onlyAdminsCanPinMessages, kind: LinkToastKind.error);
     }
   }
 
@@ -312,7 +314,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
               // Bundle 207 (K4): after 3 minutes the vote is final.
               final left = tally.changeLeft(widget.localDeviceId, DateTime.now());
               if (left != null && left <= Duration.zero) {
-                LinkToast.show(context, "Votes can't be changed after 3 minutes", kind: LinkToastKind.error);
+                LinkToast.show(context, L.t.votesCanTBeChangedAfter, kind: LinkToastKind.error);
                 return;
               }
               unawaited(GroupExtrasHub.vote?.call(widget.group.id, m.id,
@@ -332,8 +334,8 @@ class _GroupChatScreenState extends State<GroupChatScreen>
   }
 
   String _pollName(String id) => id == widget.localDeviceId
-      ? (_memberNames[id] ?? 'You')
-      : (_memberNames[id] ?? 'Group member');
+      ? (_memberNames[id] ?? L.t.you3)
+      : (_memberNames[id] ?? L.t.groupMember);
 
   // ------------------------------------------------- Bundle G5 receipts
 
@@ -351,6 +353,19 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     } catch (_) {}
   }
 
+  /// 304 (H2): ids unread when the group opened ("N unread messages" bar).
+  Set<String> _unread304 = const <String>{};
+  final GlobalKey _unreadKey304 = GlobalKey();
+
+  void _clearUnread304() {
+    if (_unread304.isEmpty || !mounted) return;
+    setState(() => _unread304 = const <String>{});
+  }
+
+  int _unreadIndex304(List<GroupMessage> visible) => _unread304.isEmpty
+      ? -1
+      : visible.indexWhere((m) => _unread304.contains(m.id));
+
   /// The chat is on screen: messages from others are read now.
   void _markRead() {
     final mark = GroupReceiptHub.markRead;
@@ -366,7 +381,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
   Map<String, String> get _otherMembers => {
         for (final m in _members)
           if (m.deviceId != widget.localDeviceId)
-            m.deviceId: _memberNames[m.deviceId] ?? 'Group member',
+            m.deviceId: _memberNames[m.deviceId] ?? L.t.groupMember,
       };
 
   GroupTick? _tickFor(GroupMessage m) {
@@ -399,25 +414,25 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     final out = <GroupMentionChoice>[];
     for (final m in _members) {
       if (m.deviceId == widget.localDeviceId) continue;
-      final name = _memberNames[m.deviceId] ?? 'Group member';
+      final name = _memberNames[m.deviceId] ?? L.t.groupMember;
       if (q.isNotEmpty && !name.toLowerCase().contains(q)) continue;
       out.add(GroupMentionChoice(
           id: m.deviceId,
           name: name,
           sub: switch (m.role) {
-            'owner' => 'Owner',
-            'admin' => 'Admin',
-            _ => 'Member',
+            'owner' => L.t.owner,
+            'admin' => L.t.admin,
+            _ => L.t.member,
           }));
     }
     out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     if (out.length > 6) out.removeRange(6, out.length);
     // @all: admins only (mock 16).
     if (_iAmAdmin && 'all'.startsWith(q)) {
-      out.add(const GroupMentionChoice(
+      out.add(GroupMentionChoice(
           id: GroupMentions.allId,
           name: 'all',
-          sub: 'Admins only: notify everyone',
+          sub: L.t.adminsOnlyNotifyEveryone,
           everyone: true));
     }
     return out;
@@ -450,6 +465,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
 
   /// G1: one voice note is ready (one file) - sent like a photo.
   Future<void> _sendVoiceNote(PickedFile file) async {
+    _clearUnread304();
     final replyTo = _replyTo;
     if (replyTo != null) setState(() => _replyTo = null);
     try {
@@ -484,11 +500,16 @@ class _GroupChatScreenState extends State<GroupChatScreen>
   }
 
   Future<void> _load() async {
+    // 304 (H2): what is unread now, before the group is marked read.
+    final unread =
+        await widget.notifications?.unreadGroupIds304(widget.group.id) ??
+            const <String>[];
     await Future.wait([
       _controller.load(),
       _loadMemberNames(),
     ]);
     if (!mounted) return;
+    if (unread.isNotEmpty) setState(() => _unread304 = unread.toSet());
     await widget.notifications?.markGroupConversationRead(widget.group.id);
     if (!mounted) return;
     _markRead();
@@ -498,7 +519,17 @@ class _GroupChatScreenState extends State<GroupChatScreen>
         _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       }
       final jump = widget.jumpToMessageId;
-      if (jump != null && mounted) _jumpTo(jump);
+      if (jump != null && mounted) {
+        _jumpTo(jump);
+        return;
+      }
+      // 304 (H2): open at the unread bar if the unread part is long.
+      final at = _unreadIndex304(_controller.messages);
+      if (widget.initialMessageId == null && at >= 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) showUnreadBar304(_scrollController, _unreadKey304, at);
+        });
+      }
     });
   }
 
@@ -509,7 +540,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       final map = <String, String>{};
       final roles = <String, String>{};
       for (final member in members) {
-        final label = member.name.trim().isEmpty ? 'Group member' : member.name.trim();
+        final label = member.name.trim().isEmpty ? L.t.groupMember : member.name.trim();
         map[member.deviceId] = label;
         roles[member.deviceId] = member.role;
       }
@@ -550,6 +581,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     if ((body.isEmpty && _pending.isEmpty) || _controller.isSending) return;
     _mentionPicks.clear();
     _typingSender.stop();
+    _clearUnread304();
     final files = List<PickedFile>.from(_pending);
     _messageController.clear();
     setState(() => _pending.clear());
@@ -600,8 +632,8 @@ class _GroupChatScreenState extends State<GroupChatScreen>
   bool _notSentYet(GroupMessage m) => _controller.isMine(m) && m.notSentYet; // Bundle G3
 
   String _nameFor(String senderId) => senderId == widget.localDeviceId
-      ? 'You'
-      : (_memberNames[senderId] ?? 'Group member');
+      ? L.t.you3
+      : (_memberNames[senderId] ?? L.t.groupMember);
 
   void _toggleSelect(GroupMessage m) {
     setState(() {
@@ -691,8 +723,8 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     LinkToast.show(context, withText.length == 1
-            ? 'Message copied'
-            : '${withText.length} messages copied', kind: LinkToastKind.done);
+            ? L.t.messageCopied
+            : L.t.messagesCopied(withText.length), kind: LinkToastKind.done);
   }
 
   Future<void> _forward(List<GroupMessage> messages) async {
@@ -718,7 +750,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     final mine = _controller.isMine(m);
     final label = m.text.trim().isNotEmpty
         ? GroupMentions.plain(m.text)
-        : replyKindLabel(replyKindFor(m.attachments));
+        : L.en(replyKindLabel(replyKindFor(m.attachments)));
     final fg = colors.onSurface;
     return Container(
       constraints: const BoxConstraints(maxWidth: 260),
@@ -788,7 +820,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       final ok = await _controller.deleteForEveryone(ids);
       if (!mounted) return;
       if (!ok) {
-        LinkToast.show(context, 'Too late to delete for everyone', kind: LinkToastKind.error);
+        LinkToast.show(context, L.t.tooLateToDeleteForEveryone, kind: LinkToastKind.error);
       }
     } else {
       await _controller.deleteForMe(ids);
@@ -820,7 +852,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
   void _jumpTo(String id) {
     final index = _controller.messages.indexWhere((m) => m.id == id);
     if (index < 0 || !_scrollController.hasClients) {
-      LinkToast.show(context, 'Message not found', kind: LinkToastKind.error);
+      LinkToast.show(context, L.t.messageNotFound, kind: LinkToastKind.error);
       return;
     }
     setState(() {
@@ -851,7 +883,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       key: const ValueKey('select_bar'),
       backgroundColor: colors.primaryContainer.withValues(alpha: .55),
       leading: IconButton(
-        tooltip: 'Close',
+        tooltip: L.t.close,
         onPressed: () => setState(_selected.clear),
         icon: const Icon(Icons.close),
       ),
@@ -861,19 +893,19 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       actions: [
         if (one != null)
           IconButton(
-            tooltip: 'Reply',
+            tooltip: L.t.reply,
             onPressed: () => _startReply(one, from: 'select'),
             icon: const Icon(Icons.reply_rounded),
           ),
         if (one != null && _controller.isMine(one))
           IconButton(
-            tooltip: 'Message info',
+            tooltip: L.t.messageInfo,
             onPressed: () => _showInfo(one),
             icon: const Icon(Icons.info_outline_rounded),
           ),
         if (picked.any((m) => m.text.trim().isNotEmpty))
           IconButton(
-            tooltip: 'Copy',
+            tooltip: L.t.copy,
             onPressed: () async {
               await _copy(picked);
               if (mounted) setState(_selected.clear);
@@ -885,12 +917,12 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                 !_notSentYet(m) &&
                 !MediaMessageActions.hasRemoved(m.attachments)))
           IconButton(
-            tooltip: 'Forward',
+            tooltip: L.t.forward,
             onPressed: () => _forward(picked),
             icon: const Icon(Icons.forward_rounded),
           ),
         IconButton(
-          tooltip: 'Delete',
+          tooltip: L.t.delete,
           onPressed: () => _delete(picked),
           icon: const Icon(Icons.delete_outline_rounded),
         ),
@@ -900,8 +932,8 @@ class _GroupChatScreenState extends State<GroupChatScreen>
 
   /// G1 (mock 13): "Admin" / "Owner" next to the name.
   String _roleLabel(String deviceId) => switch (_memberRoles[deviceId]) {
-        'owner' => 'Owner',
-        'admin' => 'Admin',
+        'owner' => L.t.owner,
+        'admin' => L.t.admin,
         _ => '',
       };
 
@@ -912,7 +944,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
         if (e.key != widget.localDeviceId) e.value,
     ];
     if (_memberNames.isEmpty) return '';
-    return ['You', ...others].join(', ');
+    return [L.t.you3, ...others].join(', ');
   }
 
   /// Bundle G2: Group info (mock 27/28).
@@ -942,14 +974,14 @@ class _GroupChatScreenState extends State<GroupChatScreen>
   }
 
   String get _cantSendText => _group.isActive
-      ? 'Only admins can send messages.'
-      : "You're no longer a participant in this group.";
+      ? L.t.onlyAdminsCanSendMessages
+      : L.t.youReNoLongerAParticipant;
 
   /// Mock 31 from the ⋮ menu.
   Future<void> _exitGroup() async {
     final rules = _rules;
     final next = rules.isOwner ? rules.nextOwner : null;
-    var me = 'You';
+    var me = L.t.you3;
     for (final m in _members) {
       if (m.deviceId == widget.localDeviceId && m.name.trim().isNotEmpty) {
         me = m.name.trim();
@@ -1001,14 +1033,14 @@ class _GroupChatScreenState extends State<GroupChatScreen>
       ),
       child: active
           ? Text.rich(
-              TextSpan(children: [
-                const TextSpan(text: 'Only '),
+              TextSpan(children: L.spans([
+                TextSpan(text: L.t.only),
                 TextSpan(
-                    text: 'admins',
+                    text: L.t.adminsLower304,
                     style: TextStyle(
                         color: colors.primary, fontWeight: FontWeight.w600)),
-                const TextSpan(text: ' can send messages.'),
-              ]),
+                TextSpan(text: L.t.canSendMessages),
+              ])),
               key: const ValueKey('group_admins_only'),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13.5, color: colors.onSurfaceVariant),
@@ -1016,7 +1048,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text("You're no longer a participant in this group.",
+                Text(L.t.youReNoLongerAParticipant,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 13.5, color: colors.onSurfaceVariant)),
@@ -1024,7 +1056,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                 TextButton(
                   key: const ValueKey('group_delete_button'),
                   onPressed: _deleteGroup,
-                  child: const Text('Delete group',
+                  child: Text(L.t.deleteGroup,
                       style:
                           TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
                 ),
@@ -1089,29 +1121,29 @@ class _GroupChatScreenState extends State<GroupChatScreen>
     final muted = GroupMuteBook.instance.isMuted(widget.group.id);
     return PopupMenuButton<String>(
       key: const ValueKey('group_more_menu'),
-      tooltip: 'More options',
+      tooltip: L.t.moreOptions,
       position: PopupMenuPosition.under,
       itemBuilder: (_) => [
-        const PopupMenuItem(value: 'info', child: Text('Group info')),
-        const PopupMenuItem(value: 'search', child: Text('Search')),
+        PopupMenuItem(value: 'info', child: Text(L.t.groupInfo)),
+        PopupMenuItem(value: 'search', child: Text(L.t.search)),
         // Bundle G5 (mock 14).
-        const PopupMenuItem(value: 'media', child: Text('Media, links and docs')),
+        PopupMenuItem(value: 'media', child: Text(L.t.mediaLinksAndDocs)),
         // Bundle G5b (mock Q1).
         if (_rules.canSend)
-          const PopupMenuItem(value: 'poll', child: Text('New poll')),
+          PopupMenuItem(value: 'poll', child: Text(L.t.newPoll)),
         PopupMenuItem(
             value: muted ? 'unmute' : 'mute',
-            child: Text(muted ? 'Unmute notifications' : 'Mute notifications')),
-        const PopupMenuItem(value: 'clear', child: Text('Clear chat')),
+            child: Text(muted ? L.t.unmuteNotifications : L.t.muteNotifications)),
+        PopupMenuItem(value: 'clear', child: Text(L.t.clearChat)),
         if (_group.isActive)
-          const PopupMenuItem(
+          PopupMenuItem(
               value: 'exit',
-              child: Text('Exit group',
+              child: Text(L.t.exitGroup,
                   style: TextStyle(color: Color(0xFFB3261E))))
         else
-          const PopupMenuItem(
+          PopupMenuItem(
               value: 'delete',
-              child: Text('Delete group',
+              child: Text(L.t.deleteGroup,
                   style: TextStyle(color: Color(0xFFB3261E)))),
       ],
       onSelected: (value) {
@@ -1219,8 +1251,8 @@ class _GroupChatScreenState extends State<GroupChatScreen>
   }
 
   String _senderName(GroupMessage message) {
-    if (_controller.isMine(message)) return 'You';
-    return _memberNames[message.senderId] ?? 'Group member';
+    if (_controller.isMine(message)) return L.t.you3;
+    return _memberNames[message.senderId] ?? L.t.groupMember;
   }
 
   @override
@@ -1334,7 +1366,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                         Text(
                             groupTypingText([
                               for (final id in _typingIds)
-                                _memberNames[id] ?? 'Someone'
+                                _memberNames[id] ?? L.t.someone
                             ]),
                             key: const ValueKey('group_bar_typing'),
                             maxLines: 1,
@@ -1368,12 +1400,12 @@ class _GroupChatScreenState extends State<GroupChatScreen>
             if (pinBar != null) pinBar,
             Expanded(
               child: state.isLoading
-                  ? const LocalLinkLoadingView(message: 'Loading group messages…')
+                  ? LocalLinkLoadingView(message: L.t.loadingGroupMessages)
                   : state.messages.isEmpty
-                      ? const LocalLinkEmptyView(
+                      ? LocalLinkEmptyView(
                           icon: Icons.groups_outlined,
-                          title: 'Start the group conversation',
-                          message: 'Send a message or share a file with everyone in this group.',
+                          title: L.t.startTheGroupConversation,
+                          message: L.t.sendAMessageOrShareA,
                           lottieAsset: 'assets/animations/empty_inbox.json',
                         )
                       // Bundle 199: two fingers = text size.
@@ -1397,7 +1429,7 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                               final who = _typingIds.last;
                               return GroupTypingBubble(
                                   key: const ValueKey('group_typing_bubble'),
-                                  name: _memberNames[who] ?? 'Someone',
+                                  name: _memberNames[who] ?? L.t.someone,
                                   deviceId: who);
                             }
                             final message = state.messages[index];
@@ -1416,6 +1448,10 @@ class _GroupChatScreenState extends State<GroupChatScreen>
                               key: ValueKey<String>('gmsg:${message.id}'),
                               children: [
                                 if (showDate) MessengerDateDivider(date: parsed),
+                                if (index == _unreadIndex304(state.messages))
+                                  UnreadBar304(
+                                      key: _unreadKey304,
+                                      count: _unread304.length),
                                 if (event != null)
                                   _systemLines(message, event)
                                 else
@@ -1461,13 +1497,13 @@ class _GroupChatScreenState extends State<GroupChatScreen>
             // Bundle 212 (F2): my account is blocked by admin.
             // Bundle 302 (B): the same rounded card as in a chat.
             if (AdminBlockBook.instance.selfBlocked)
-              const AdminBlockedBar(
-                  text: "Blocked by admin. You can't send.",
+              AdminBlockedBar(
+                  text: L.t.blockedByAdminYouCanT,
                   notice: ChatNotice302.selfAdmin)
             else if (VersionGuard.instance.stopped)
               // Bundle 213: this app version is stopped by admin.
-              const AdminBlockedBar(
-                  text: 'Old version. Update to send.',
+              AdminBlockedBar(
+                  text: L.en('Old version. Update to send.'),
                   notice: ChatNotice302.selfOld)
             else
             // Bundle G2 (mock 25 / 26): no message box when I can't post.

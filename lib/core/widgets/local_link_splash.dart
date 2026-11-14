@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Branded startup screen shown while the app initializes.
 ///
@@ -96,7 +97,7 @@ class _LocalLinkSplashScreenState extends State<LocalLinkSplashScreen>
             FadeTransition(
               opacity: _fade,
               child: Text(
-                'Secure, local-first messaging',
+                L.t.secureLocalFirstMessaging,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.82),
                   fontSize: 14,

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/features/admin/domain/admin_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (J): testers switch "UI check data". While on, the admin
 /// pages show the same people as the mock (Sajjad, Sumaira, Ali, Zeeshan,
@@ -31,7 +32,7 @@ class AdminUiCheckBanner216 extends StatelessWidget {
                 alignment: Alignment.center,
                 child: const Text('UI check data – not real',
                     style: TextStyle(
-                        fontFamily: 'Roboto216',
+                        fontFamily: 'Roboto216', fontFamilyFallback: L.fontFallback,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF93370D))),
@@ -61,13 +62,13 @@ class AdminUiCheckSwitch216 extends StatelessWidget {
                   children: [
                     Text('UI check data',
                         style: TextStyle(
-                            fontFamily: 'Roboto216',
+                            fontFamily: 'Roboto216', fontFamilyFallback: L.fontFallback,
                             fontSize: 14.5,
                             fontWeight: FontWeight.w500,
                             color: ink)),
                     const SizedBox(height: 3),
                     Text('Show the mock people on admin pages',
-                        style: TextStyle(fontFamily: 'Roboto216', fontSize: 12.5, color: grey)),
+                        style: TextStyle(fontFamily: 'Roboto216', fontFamilyFallback: L.fontFallback, fontSize: 12.5, color: grey)),
                   ],
                 ),
               ),

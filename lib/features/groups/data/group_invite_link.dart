@@ -8,6 +8,7 @@ import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/groups/data/services/group_nearby_service.dart';
 import 'package:locallink/features/groups/data/group_change_hub.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G6 (mock L1-L5): "Invite with link" for groups on the server.
 ///
@@ -43,10 +44,10 @@ class GroupInviteLink {
   static String shareText(String groupName, String token, String serverBase) {
     final web = webLink(serverBase, token);
     return [
-      'Join my LinkUp group "$groupName":',
+      L.t.joinMyLinkupGroup(groupName),
       if (web.isNotEmpty) web,
       if (web.isNotEmpty) '',
-      if (web.isNotEmpty) 'In LinkUp: ${link(token)}' else link(token),
+      if (web.isNotEmpty) L.t.inLinkup(link(token)) else link(token),
     ].join('\n');
   }
 
@@ -119,7 +120,7 @@ class GroupJoinPreview {
     final parts = <String>[
       'Group',
       '$members ${members == 1 ? 'member' : 'members'}',
-      if (invitedBy.isNotEmpty) 'invite link from $invitedBy',
+      if (invitedBy.isNotEmpty) L.t.inviteLinkFrom(invitedBy),
     ];
     return parts.join(' · ');
   }
@@ -231,8 +232,8 @@ class GroupInviteService {
     final n = nearby;
     if (g.worksNearby && n != null) {
       if (r.seal.isEmpty || r.sign.isEmpty) {
-        throw const GroupActionException('GROUP_NO_KEYS',
-            'Ask them to open the link again with the newest LinkUp.');
+        throw GroupActionException('GROUP_NO_KEYS',
+            L.t.askThemToOpenTheLink);
       }
       var serverDone = false;
       try {

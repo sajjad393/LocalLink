@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 298 (I): the picture sent to WhatsApp with a new recovery code
 /// (before: only a text line). Drawn by code (no asset, no network), so it
@@ -24,7 +25,7 @@ abstract final class RecoveryCard298 {
   /// "14 Nov 2026".
   static String day(DateTime d) {
     const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${d.day} ${m[d.month - 1]} ${d.year}';
+    return '${d.day} ${L.en(m[d.month - 1])} ${d.year}';
   }
 
   /// The code on two lines when it has 4 groups ("AAAAA-BBBBB" / "CCCCC-DDDDD").
@@ -41,7 +42,7 @@ abstract final class RecoveryCard298 {
       TextAlign align = TextAlign.left}) {
     final b = ui.ParagraphBuilder(ui.ParagraphStyle(textAlign: align, maxLines: 3))
       ..pushStyle(ui.TextStyle(
-        fontFamily: font,
+        fontFamily: font, fontFamilyFallback: L.fontFallback,
         fontSize: fontSize,
         fontWeight: weight,
         color: color,
@@ -94,7 +95,7 @@ abstract final class RecoveryCard298 {
     c.drawParagraph(_text('LinkUp', 46, Colors.white, weight: FontWeight.w700), const Offset(196, 90));
 
     // Title pill.
-    final pillText = _text('RECOVERY CODE', 24, _cyan, weight: FontWeight.w700, spacing: 4);
+    final pillText = _text(L.t.recoveryCode, 24, _cyan, weight: FontWeight.w700, spacing: 4);
     final pill =
         RRect.fromRectAndRadius(Rect.fromLTWH(80, 230, pillText.longestLine + 56, 56), const Radius.circular(28));
     c.drawRRect(pill, Paint()..color = _cyan.withValues(alpha: .12));
@@ -108,7 +109,7 @@ abstract final class RecoveryCard298 {
 
     // Who.
     final who = username.trim().replaceFirst('@', '');
-    c.drawParagraph(_text(who.isEmpty ? 'My LinkUp account' : '@$who', 52, Colors.white, weight: FontWeight.w600),
+    c.drawParagraph(_text(who.isEmpty ? L.t.myLinkupAccount : '@$who', 52, Colors.white, weight: FontWeight.w600),
         const Offset(80, 318));
 
     // Code box with a gradient edge and glow.
@@ -152,9 +153,9 @@ abstract final class RecoveryCard298 {
     c.drawArc(
         Rect.fromCenter(center: lockAt + const Offset(0, -6), width: 22, height: 26), math.pi, math.pi, false, lock);
     c.drawParagraph(
-        _text('Keep this private', 34, const Color(0xFFFDE68A), weight: FontWeight.w700), const Offset(140, 780));
+        _text(L.t.keepThisPrivate, 34, const Color(0xFFFDE68A), weight: FontWeight.w700), const Offset(140, 780));
     c.drawParagraph(
-        _text('Anyone with this code can reset your password. LinkUp will never ask for it.', 27,
+        _text(L.t.anyoneWithThisCodeCanReset, 27,
             Colors.white.withValues(alpha: .72),
             width: w - 220),
         const Offset(140, 828));
@@ -166,9 +167,9 @@ abstract final class RecoveryCard298 {
         Paint()
           ..color = Colors.white.withValues(alpha: .10)
           ..strokeWidth = 2);
-    c.drawParagraph(_text('Use it in LinkUp: Login > Forgot password', 25, Colors.white.withValues(alpha: .62)),
+    c.drawParagraph(_text(L.t.useItInLinkupLoginForgot, 25, Colors.white.withValues(alpha: .62)),
         const Offset(80, 976));
-    final when = _text('Made ${day(made ?? DateTime.now())}', 25, Colors.white.withValues(alpha: .62),
+    final when = _text(L.t.made(day(made ?? DateTime.now())), 25, Colors.white.withValues(alpha: .62),
         width: 400, align: TextAlign.right);
     c.drawParagraph(when, const Offset(w - 80 - 400, 976));
     c.restore();

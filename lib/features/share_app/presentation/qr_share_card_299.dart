@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart' show QrCode, QrErrorCorrectLevel, QrImage;
 import 'package:locallink/features/recovery/presentation/widgets/recovery_card_298.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 299 (Q): the picture sent when a QR code is shared (My QR code,
 /// group Invite with QR). Same look as the 298 recovery card: dark navy,
@@ -21,11 +22,11 @@ abstract final class QrShareCard299 {
   static const Color _cyan = Color(0xFF22D3EE);
   static const Color _qrDark = Color(0xFF0E1A33);
 
-  static String pillFor(QrCardKind299 k) => k == QrCardKind299.contact ? 'ADD ME ON LINKUP' : 'JOIN MY GROUP';
+  static String pillFor(QrCardKind299 k) => k == QrCardKind299.contact ? L.t.addMeOnLinkup : L.t.joinMyGroup;
 
   static List<String> stepsFor(QrCardKind299 k) => k == QrCardKind299.contact
-      ? const ['Open LinkUp', 'Tap Scan QR code', 'Point at this code, or pick this picture']
-      : const ['Open LinkUp near a member', 'Tap Join group with QR', 'Point at this code'];
+      ? [L.t.openLinkup, L.t.tapScanQrCode, L.t.pointAtThisCodeOrPick]
+      : [L.t.openLinkupNearAMember, L.t.tapJoinGroupWithQr, L.t.pointAtThisCode];
 
   static ui.Paragraph _text(String text, double fontSize, Color color,
       {FontWeight weight = FontWeight.w400,
@@ -35,7 +36,7 @@ abstract final class QrShareCard299 {
       int maxLines = 1}) {
     final b = ui.ParagraphBuilder(ui.ParagraphStyle(textAlign: align, maxLines: maxLines, ellipsis: '…'))
       ..pushStyle(ui.TextStyle(
-        fontFamily: font,
+        fontFamily: font, fontFamilyFallback: L.fontFallback,
         fontSize: fontSize,
         fontWeight: weight,
         color: color,
@@ -210,7 +211,7 @@ abstract final class QrShareCard299 {
     }
 
     // Footer: when it was made (contact) / it expires (group).
-    final foot = kind == QrCardKind299.group ? 'Expires in 24 hours' : 'Made ${RecoveryCard298.day(made ?? DateTime.now())}';
+    final foot = kind == QrCardKind299.group ? L.t.expiresIn24Hours : L.t.made(RecoveryCard298.day(made ?? DateTime.now()));
     final fp = _text(foot, 25, kind == QrCardKind299.group ? const Color(0xFFFDE68A) : Colors.white.withValues(alpha: .62),
         width: 400, align: TextAlign.right, weight: kind == QrCardKind299.group ? FontWeight.w600 : FontWeight.w400);
     c.drawParagraph(fp, Offset(w - 80 - 400, 1196 + 54 + 20 - fp.height / 2));

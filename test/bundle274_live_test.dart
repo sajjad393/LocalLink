@@ -1,8 +1,8 @@
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/features/admin/data/services/admin_live_hint_274.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_ways_274.dart';
+import 'support/l10n_source_304.dart';
 
 /// Bundle 274: live admin data (hint -> quiet re-read) and the dashboard
 /// ring that counts each phone once.
@@ -45,16 +45,16 @@ void main() {
   });
 
   test('D-3 / D-4 wiring', () {
-    final dash = File('lib/features/admin/presentation/screens/admin_dashboard_screen.dart').readAsStringSync();
+    final dash = readEnglish304('lib/features/admin/presentation/screens/admin_dashboard_screen.dart');
     expect(dash, contains('LinkWays274.of(state.linkMapData)'));
     expect(dash, contains('kLinkTagColors[LinkTag.server]'));
     expect(dash, contains('Each phone once, by how it is linked now'));
-    final shell = File('lib/features/admin/presentation/screens/admin_shell_screen.dart').readAsStringSync();
+    final shell = readEnglish304('lib/features/admin/presentation/screens/admin_shell_screen.dart');
     expect(shell, contains('AdminLiveHint274.tick.addListener(_onHint274)'));
     expect(shell, contains('AdminLiveHint274.tick.removeListener(_onHint274)'));
-    final role = File('lib/features/admin/data/services/admin_role_service.dart').readAsStringSync();
+    final role = readEnglish304('lib/features/admin/data/services/admin_role_service.dart');
     expect(role, contains('AdminLiveHint274.onMessage('));
-    final presence = File('lib/features/connectivity/data/services/presence_service.dart').readAsStringSync();
+    final presence = readEnglish304('lib/features/connectivity/data/services/presence_service.dart');
     expect(presence, contains('peer_disconnected'));
   });
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class AppearanceSettingsScreen extends StatelessWidget {
   final ThemeMode themeMode;
@@ -17,7 +18,7 @@ class AppearanceSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Appearance')),
+      appBar: AppBar(title: Text(L.t.appearance)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           LocalLinkSpacing.md,
@@ -27,7 +28,7 @@ class AppearanceSettingsScreen extends StatelessWidget {
         ),
         children: [
           Text(
-            'Choose how LinkUp looks on this phone.',
+            L.t.chooseHowLinkupLooksOnThis,
             style: theme.textTheme.bodyLarge,
           ),
           const SizedBox(height: LocalLinkSpacing.lg),
@@ -38,24 +39,24 @@ class AppearanceSettingsScreen extends StatelessWidget {
                   context,
                   mode: ThemeMode.system,
                   icon: Icons.brightness_auto_outlined,
-                  title: 'System default',
-                  subtitle: 'Follow the phone’s light or dark mode.',
+                  title: L.t.systemDefault,
+                  subtitle: L.t.followThePhoneSLightOr,
                 ),
                 const Divider(height: 1, indent: 72),
                 _option(
                   context,
                   mode: ThemeMode.light,
                   icon: Icons.light_mode_outlined,
-                  title: 'Light',
-                  subtitle: 'Always use the light theme.',
+                  title: L.t.light,
+                  subtitle: L.t.alwaysUseTheLightTheme,
                 ),
                 const Divider(height: 1, indent: 72),
                 _option(
                   context,
                   mode: ThemeMode.dark,
                   icon: Icons.dark_mode_outlined,
-                  title: 'Dark',
-                  subtitle: 'Always use the dark theme.',
+                  title: L.t.dark,
+                  subtitle: L.t.alwaysUseTheDarkTheme,
                 ),
               ],
             ),
@@ -108,9 +109,9 @@ class _VerboseLogsTileState extends State<_VerboseLogsTile> {
       value: AppLogger.verbose,
       onChanged: (value) => setState(() => AppLogger.verbose = value),
       secondary: const Icon(Icons.terminal_outlined),
-      title: const Text('Diagnostic capture mode'),
-      subtitle: const Text(
-          'Verbose logs for support captures. Turns off when the app restarts.'),
+      title: Text(L.t.diagnosticCaptureMode),
+      subtitle: Text(
+          L.t.verboseLogsForSupportCapturesTurns),
       contentPadding: const EdgeInsets.symmetric(
         horizontal: LocalLinkSpacing.md,
         vertical: LocalLinkSpacing.xs,

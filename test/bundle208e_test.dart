@@ -3,7 +3,6 @@
 // sender's own re-send (E5) and source checks for the bubble / wiring.
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +22,7 @@ import 'package:locallink/features/files/presentation/widgets/attachment_tile.da
 import 'package:locallink/features/files/presentation/widgets/media_view_cache.dart';
 
 import 'support/phase5_fakes.dart';
+import 'support/l10n_source_304.dart';
 
 const _mb = 1024 * 1024;
 
@@ -510,7 +510,7 @@ void main() {
   });
 
   group('208 E source checks', () {
-    String read(String p) => File(p).readAsStringSync();
+    String read(String p) => readEnglish304(p);
 
     test('AutoFile.fromRow reads a store row (1:1 and group)', () {
       final one = AutoFile.fromRow({

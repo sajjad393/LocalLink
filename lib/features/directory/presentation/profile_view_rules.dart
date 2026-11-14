@@ -1,6 +1,8 @@
 /// Bundle 170: small pure rules for the Profile and Add Contact screens.
 library;
 
+import 'package:locallink/l10n/l10n.dart';
+
 /// Who the opened profile is, seen from this account.
 enum ProfileRelation { self, contact, stranger }
 
@@ -35,10 +37,10 @@ String maskPhone(String raw) {
 }
 
 /// Name shown for a nearby phone whose person is not known yet.
-const String nearbyUnknownName = 'Nearby LinkUp user';
+String get nearbyUnknownName => L.t.nearbyLinkupUser;
 
 /// Subtitle of every nearby card (no transport words).
-const String nearbyCardSubtitle = 'Near you'; // Bundle 283 (mock E)
+String get nearbyCardSubtitle => L.t.nearYou; // Bundle 283 (mock E)
 
 /// Typing in Add Contact narrows the Nearby list. Only real names match —
 /// the "Nearby LocalLink user" placeholder never does.

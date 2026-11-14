@@ -5,6 +5,7 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
 import 'package:locallink/features/messaging/presentation/voice/voice_recorder_controller.dart';
 import 'package:locallink/features/messaging/presentation/voice/voice_recording_widgets.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 199b: the big mic while holding (52 px circle shown 1.45x, grown
 /// to the left from its right edge). The lock box is centred over it.
@@ -104,7 +105,7 @@ class ChatComposer extends StatelessWidget {
                           children: [
                             IconButton(
                               onPressed: isSending ? null : onPickAttachments,
-                              tooltip: 'Attach',
+                              tooltip: L.t.attach,
                               icon: Icon(
                                 Icons.add_circle_outline_rounded,
                                 color: colors.onSurfaceVariant,
@@ -120,13 +121,13 @@ class ChatComposer extends StatelessWidget {
                                 // only with the send button.
                                 textInputAction: TextInputAction.newline,
                                 keyboardType: TextInputType.multiline,
-                                hintText: 'Message',
+                                hintText: L.t.message,
                                 maxLines: 5,
                                 minLines: 1,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   // Bundle 181: the "Message" hint (mock screen 4)
                                   // was lost because this decoration replaced it.
-                                  hintText: 'Message',
+                                  hintText: L.t.message,
                                   // Bundle 130: the global input theme fills every
                                   // field (filled:true) — inside this pill that
                                   // fill painted as a SQUARE slab whose two
@@ -182,7 +183,7 @@ class ChatComposer extends StatelessWidget {
                     );
                   } else if (voice != null && !hasText && !hasAttachments) {
                     child = Tooltip(
-                      message: 'Hold to record voice note',
+                      message: L.t.holdToRecordVoiceNote,
                       child: Container(
                         key: const ValueKey('voice_mic'),
                         width: 52,
@@ -197,7 +198,7 @@ class ChatComposer extends StatelessWidget {
                   } else {
                     child = _RoundAction(
                       onPressed: isSending ? null : onSend,
-                      tooltip: 'Send message',
+                      tooltip: L.t.sendMessage,
                       gradient: LocalLinkBrand.linearGradient,
                       icon: isSending
                           ? const SizedBox(

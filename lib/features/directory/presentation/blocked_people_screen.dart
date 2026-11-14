@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/directory/presentation/contact_sheets.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 196 (11.5, mock 8): Settings › PRIVACY › Blocked people.
 /// Rows: muted avatar, name, @user + Blocked pill, outlined "Unblock".
@@ -10,13 +11,13 @@ import 'package:locallink/features/directory/presentation/contact_sheets.dart';
 class BlockedPeopleScreen extends StatelessWidget {
   const BlockedPeopleScreen({super.key});
 
-  static String countLabel(int n) => n == 1 ? '1 person' : '$n people';
+  static String countLabel(int n) => n == 1 ? L.t.t1Person : L.t.people2(n);
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Blocked people')),
+      appBar: AppBar(title: Text(L.t.blockedPeople)),
       body: ListenableBuilder(
         listenable: BlockHub.instance,
         builder: (context, _) {
@@ -27,7 +28,7 @@ class BlockedPeopleScreen extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(32),
                 child: Text(
-                  "You haven't blocked anyone.",
+                  L.t.youHavenTBlockedAnyone,
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant),
                 ),
@@ -66,7 +67,7 @@ class BlockedPeopleScreen extends StatelessWidget {
                         side: BorderSide(color: colors.outline),
                         shape: const StadiumBorder(),
                       ),
-                      child: const Text('Unblock'),
+                      child: Text(L.t.unblock),
                     ),
                     onTap: () => runUnblockFlow(context, p, from: 'settings'),
                   ),
@@ -74,7 +75,7 @@ class BlockedPeopleScreen extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 14),
                 child: Text(
-                  'Tap a person to see more.',
+                  L.t.tapAPersonToSeeMore,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 12.5, color: colors.onSurfaceVariant),

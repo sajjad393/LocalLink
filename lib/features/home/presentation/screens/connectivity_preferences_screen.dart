@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/services/local_store.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class ConnectivityPreferencesScreen extends StatefulWidget {
   final LocalStore store;
@@ -12,17 +13,17 @@ class _ConnectivityPreferencesScreenState extends State<ConnectivityPreferencesS
   @override void initState(){super.initState();_internetOnly=widget.store.internetOnly;}
   Future<void> _set(bool value) async { setState(()=>_internetOnly=value); await widget.store.setInternetOnly(value); }
   @override Widget build(BuildContext context)=>Scaffold(
-    appBar: AppBar(title:const Text('Connectivity')),
+    appBar: AppBar(title:Text(L.t.connectivity)),
     body: ListView(padding:const EdgeInsets.all(16),children:[
       Card(child:SwitchListTile.adaptive(
         value:_internetOnly,
         onChanged:_set,
-        title:const Text('Internet / server only'),
-        subtitle:const Text('Avoid Wi-Fi Direct and mesh messaging. LinkUp uses the configured server connection when available; this does not guarantee that the server itself is on the public Internet.'),
+        title:Text(L.t.internetServerOnly),
+        subtitle:Text(L.t.avoidWiFiDirectAndMesh),
         secondary:const Icon(Icons.public_outlined),
       )),
       const SizedBox(height:12),
-      const Card(child:Padding(padding:EdgeInsets.all(16),child:Text('When this is off, LinkUp can use the available local Wi-Fi, Wi-Fi Direct and mesh paths automatically.'))),
+      Card(child:Padding(padding:EdgeInsets.all(16),child:Text(L.t.whenThisIsOffLinkupCan))),
     ]),
   );
 }

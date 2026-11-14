@@ -12,6 +12,7 @@ import 'package:locallink/features/authentication/domain/authentication_reposito
 import 'package:locallink/features/directory/data/services/duplicate_guard_235.dart';
 import 'package:locallink/features/recovery/data/repositories/recovery_repository.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 235: a problem the person can fix (shown under the button).
 class ProofProblem235 implements Exception {
@@ -42,7 +43,7 @@ class AccountReturn235 {
   }) : _guard = guard ?? (() => DuplicateGuard235.instance);
 
   static const returnSetting = 'return_235';
-  static const wrongCode = 'That code is not right.';
+  static String get wrongCode => L.t.thatCodeIsNotRight;
 
   final LocalStore store;
   final AuthenticationRepositoryContract auth;
@@ -78,14 +79,14 @@ class AccountReturn235 {
   Future<String> withCode(
       DupBlockInfo235 info, String code, String newPassword) async {
     if (!RecoveryKey235.looksLikeCode(code)) {
-      throw const ProofProblem235(wrongCode);
+      throw ProofProblem235(wrongCode);
     }
     // A friend's phone sent the recovery key: a wrong code is caught here,
     // with or without the server.
     if (info.recoveryKey.isNotEmpty &&
         await RecoveryKey235.publicKey(code, info.userId) != info.recoveryKey) {
       AppLogger.info('DUP_PROOF_FAIL', detail: 'how=code reason=key');
-      throw const ProofProblem235(wrongCode);
+      throw ProofProblem235(wrongCode);
     }
     if (await serverOnline()) {
       try {
@@ -98,7 +99,7 @@ class AccountReturn235 {
       } catch (e) {
         if (e is ApiError218 && e.code == 'BAD_RECOVERY_CODE') {
           AppLogger.info('DUP_PROOF_FAIL', detail: 'how=code reason=server');
-          throw const ProofProblem235(wrongCode);
+          throw ProofProblem235(wrongCode);
         }
         if (!_isNetwork(e)) {
           AppLogger.info('DUP_PROOF_FAIL', detail: 'how=code reason=${e is ApiError218 ? e.code : 'other'}');
@@ -108,8 +109,8 @@ class AccountReturn235 {
       }
     }
     if (info.recoveryKey.isEmpty) {
-      throw const ProofProblem235(
-          "No friend's phone could check the code yet. Come near a friend's phone, or connect to the server.");
+      throw ProofProblem235(
+          L.t.noFriendSPhoneCouldCheck);
     }
     await _switchOffline(info, code, newPassword);
     AppLogger.info('DUP_PROOF_OK', detail: 'how=code server=0');
@@ -121,11 +122,11 @@ class AccountReturn235 {
       DupBlockInfo235 info, String username, String password) async {
     final user = username.trim().toLowerCase().replaceFirst(RegExp('^@'), '');
     if (user != info.username.toLowerCase()) {
-      throw ProofProblem235('Use the username @${info.username}.');
+      throw ProofProblem235(L.t.useTheUsername(info.username));
     }
-    if (password.isEmpty) throw ProofProblem235('Password of @${info.username}');
+    if (password.isEmpty) throw ProofProblem235(L.t.passwordOf(info.username));
     if (!await serverOnline()) {
-      throw const ProofProblem235('Connect to the server to use the old password.');
+      throw ProofProblem235(L.t.connectToTheServerToUse);
     }
     try {
       await auth.prepareForAuthentication(deviceName: _deviceName);
@@ -142,11 +143,11 @@ class AccountReturn235 {
       if (e is ProofProblem235) rethrow;
       AppLogger.info('DUP_PROOF_FAIL', detail: 'how=password reason=${e is ApiError218 ? e.code : 'other'}');
       if (_isNetwork(e)) {
-        throw const ProofProblem235('Connect to the server to use the old password.');
+        throw ProofProblem235(L.t.connectToTheServerToUse);
       }
       final status = e is ApiError218 ? e.status : 0;
       if (status == 401 || e.toString().toLowerCase().contains('invalid')) {
-        throw const ProofProblem235('That password is not right.');
+        throw ProofProblem235(L.t.thatPasswordIsNotRight);
       }
       throw ProofProblem235(_text(e));
     }
@@ -154,7 +155,7 @@ class AccountReturn235 {
 
   static String _text(Object e) {
     final t = e.toString().replaceFirst('Exception: ', '').trim();
-    return t.isEmpty ? 'Something went wrong. Try again.' : t;
+    return t.isEmpty ? L.t.somethingWentWrongTryAgain : t;
   }
 
   /// The new account's waiting data goes; the old account's stays.

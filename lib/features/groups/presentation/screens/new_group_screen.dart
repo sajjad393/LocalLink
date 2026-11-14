@@ -13,6 +13,7 @@ import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/groups/presentation/screens/group_info_screen.dart';
 import 'package:locallink/features/groups/presentation/widgets/group_info_sheets.dart';
 import 'package:locallink/core/widgets/no_gray_press.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G1: making a group (mock 3, 3b and 4).
 ///
@@ -89,8 +90,8 @@ class NewGroupScreen extends StatefulWidget {
   /// Bundle 207 (M2, mock 207 page 1): "2 selected · up to 32" (was
   /// "Add people · 2 of 32", which read like page 2 of 32).
   static String subtitleFor(int picked) => picked == 0
-      ? 'Add people · up to $kNewGroupMax'
-      : '$picked selected · up to $kNewGroupMax';
+      ? L.t.addPeopleUpTo(kNewGroupMax)
+      : L.t.selectedUpTo(picked, kNewGroupMax);
 
   @override
   State<NewGroupScreen> createState() => _NewGroupScreenState();
@@ -124,7 +125,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
       if (_isPicked(f)) {
         _picked.removeWhere((p) => p.deviceId == f.deviceId);
       } else if (_picked.length >= kNewGroupMax) {
-        LinkToast.show(context, 'You can add up to $kNewGroupMax people', kind: LinkToastKind.error);
+        LinkToast.show(context, L.t.youCanAddUpToPeople(kNewGroupMax), kind: LinkToastKind.error);
       } else {
         _picked.add(f);
       }
@@ -184,13 +185,13 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
       appBar: AppBar(
         titleSpacing: 0,
         title: NewGroupTitle(
-            title: 'New group',
+            title: L.t.newGroup,
             subtitle: NewGroupScreen.subtitleFor(_picked.length)),
       ),
       floatingActionButton: SquareGradientFab(
         key: const ValueKey('new_group_next'),
         icon: Icons.arrow_forward_rounded,
-        tooltip: 'Next',
+        tooltip: L.t.next,
         onPressed: _picked.isEmpty ? null : _next,
       ),
       body: friends == null
@@ -207,17 +208,17 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                       child: SearchPill298(
                         fieldKey: const ValueKey('new_group_search'),
                         controller: _search,
-                        hint: 'Search friends',
+                        hint: L.t.searchFriends,
                         height: 46,
                         onChanged: (_) => setState(() {}),
                       ),
                     ),
                     if (_picked.isNotEmpty) _chips(context),
                     if (shown.isEmpty) ...[
-                      const MessengerGroupLabel('Your friends', top: 10),
+                      MessengerGroupLabel(L.t.yourFriends, top: 10),
                       Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text('No friend found',
+                        child: Text(L.t.noFriendFound,
                             textAlign: TextAlign.center,
                             style: TextStyle(color: colors.onSurfaceVariant)),
                       ),
@@ -228,11 +229,11 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             if (nearby.isNotEmpty) ...[
-                              const MessengerGroupLabel('Nearby now', top: 10),
+                              MessengerGroupLabel(L.t.nearbyNow, top: 10),
                               rows(nearby),
                             ],
                             if (rest.isNotEmpty) ...[
-                              const MessengerGroupLabel('Your friends', top: 10),
+                              MessengerGroupLabel(L.t.yourFriends, top: 10),
                               rows(rest),
                             ],
                           ],
@@ -312,17 +313,17 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        const Text('No friends yet',
+        Text(L.t.noFriendsYet,
             textAlign: TextAlign.center,
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
         const SizedBox(height: 6),
         Text.rich(
-          TextSpan(children: [
-            const TextSpan(text: 'Groups are made from your friends. Add friends in '),
-            const TextSpan(
-                text: 'People', style: TextStyle(fontWeight: FontWeight.w700)),
-            const TextSpan(text: ' first, or let them scan the group QR later.'),
-          ]),
+          TextSpan(children: L.spans([
+            TextSpan(text: L.t.groupsAreMadeFromYourFriends),
+            TextSpan(
+                text: L.t.people, style: TextStyle(fontWeight: FontWeight.w700)),
+            TextSpan(text: L.t.firstOrLetThemScanThe),
+          ])),
           textAlign: TextAlign.center,
           style: TextStyle(
               fontSize: 12.5, height: 1.4, color: colors.onSurfaceVariant),
@@ -338,7 +339,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
             Navigator.pop(context);
             widget.onGoToPeople();
           },
-          child: const Text('Go to People',
+          child: Text(L.t.goToPeople,
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5)),
         ),
       ],
@@ -412,7 +413,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => GroupSettingsScreen(
-          groupName: _name.text.trim().isEmpty ? 'New group' : _name.text.trim(),
+          groupName: _name.text.trim().isEmpty ? L.t.newGroup : _name.text.trim(),
           editInfo: _editInfo,
           sendMessages: _sendMessages,
           addMembers: _addMembers,
@@ -516,7 +517,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
       appBar: AppBar(
         titleSpacing: 0,
         title:
-            const NewGroupTitle(title: 'New group', subtitle: 'Name and photo'),
+            NewGroupTitle(title: L.t.newGroup, subtitle: L.t.nameAndPhoto),
       ),
       // Bundle 207 (M2, mock 207 page 1): the grey button says why it is
       // off.
@@ -524,7 +525,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_name.text.trim().isEmpty && !_busy) ...[
-            Text('Type a name to continue',
+            Text(L.t.typeANameToContinue,
                 key: const ValueKey('new_group_name_hint'),
                 style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
             const SizedBox(width: 12),
@@ -532,7 +533,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
           SquareGradientFab(
             key: const ValueKey('new_group_create'),
             icon: Icons.check_rounded,
-            tooltip: 'Create group',
+            tooltip: L.t.createGroup,
             busy: _busy,
             onPressed: ready ? _create : null,
           ),
@@ -544,7 +545,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
           _photoCircle(context),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
-            child: Text('Add group photo (optional)',
+            child: Text(L.t.addGroupPhotoOptional,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12.5, color: colors.onSurfaceVariant)),
           ),
@@ -563,7 +564,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
               // counter on the right (was "0/80" above the line and "Group
               // name" under it).
               decoration: InputDecoration(
-                labelText: 'Group name',
+                labelText: L.t.groupName,
                 floatingLabelBehavior: FloatingLabelBehavior.always,
                 labelStyle: TextStyle(
                     color: colors.primary, fontWeight: FontWeight.w600),
@@ -600,7 +601,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
               decoration: InputDecoration(
                 isDense: true,
                 counterText: '',
-                hintText: 'Description (optional)',
+                hintText: L.t.descriptionOptional,
                 hintStyle: TextStyle(color: colors.onSurfaceVariant),
                 // Bundle 207 (M2): a soft filled box (mock 207 page 1).
                 filled: true,
@@ -615,7 +616,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
               ),
             ),
           ),
-          const MessengerGroupLabel('Settings', top: 18),
+          MessengerGroupLabel(L.t.settings, top: 18),
           MessengerListGroup(
             dividerIndent: 58,
             children: [
@@ -633,7 +634,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Group settings',
+                            Text(L.t.groupSettings,
                                 style: TextStyle(
                                     fontSize: 15, fontWeight: FontWeight.w700)),
                             const SizedBox(height: 1),
@@ -664,7 +665,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
             ],
           ),
           // Bundle 207 (M2): "3 MEMBERS" with You first (mock 207 page 1).
-          MessengerGroupLabel('${widget.people.length + 1} members', top: 16),
+          MessengerGroupLabel(L.t.members2(widget.people.length + 1), top: 16),
           SizedBox(
             height: 84,
             child: ListView.separated(
@@ -687,7 +688,7 @@ class _NewGroupNameScreenState extends State<NewGroupNameScreen> {
                             localPath: _ownPath,
                             peerId: widget.ownPeerId),
                         const SizedBox(height: 4),
-                        Text('You',
+                        Text(L.t.you3,
                             style: TextStyle(
                                 fontSize: 12, color: colors.onSurfaceVariant)),
                       ],

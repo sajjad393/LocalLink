@@ -6,6 +6,7 @@ import 'package:locallink/features/admin/data/services/admin_badge_book.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 
 import 'crown_tip_290.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (A): crown style A colours (UI_SPEC_216 §1.2).
 const Color kCrownRing216 = Color(0xFFE7B416);
@@ -449,9 +450,9 @@ class AdminRoleTag216 extends StatelessWidget {
             child: CustomPaint(painter: CrownPainter216(colors: colors)),
           ),
           SizedBox(width: small ? 5 : 5.5),
-          Text('Admin · $level',
+          Text(L.t.admin2(level),
               style: TextStyle(
-                  fontFamily: 'Roboto216',
+                  fontFamily: 'Roboto216', fontFamilyFallback: L.fontFallback,
                   fontSize: small ? 11 : 12,
                   height: 1,
                   fontWeight: FontWeight.w600,

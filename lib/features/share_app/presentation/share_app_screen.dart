@@ -10,6 +10,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:locallink/features/share_app/data/app_share_channel.dart';
 import 'package:locallink/features/share_app/data/apk_share_server.dart';
 import 'package:locallink/features/share_app/domain/app_share_controller.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class ShareAppScreen extends StatefulWidget {
   final String ownerName;
@@ -62,7 +63,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Share LinkUp')),
+      appBar: AppBar(title: Text(L.t.shareLinkup)),
       body: SafeArea(child: _body(context)),
     );
   }
@@ -90,9 +91,8 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
           context,
           key: 'share_cant',
           icon: Icons.block,
-          title: "This copy of LinkUp can't be shared",
-          body: 'It was installed in parts (for example from a store). '
-              'Ask a friend who installed the LinkUp file to share it.',
+          title: L.t.thisCopyOfLinkupCanT,
+          body: L.t.itWasInstalledInPartsFor,
           actions: [
             FilledButton(
                 onPressed: () => Navigator.of(context).maybePop(),
@@ -192,9 +192,9 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(children: [
-        chip(1, 'Join Wi-Fi'),
+        chip(1, L.t.joinWiFi),
         const SizedBox(width: 8),
-        chip(2, 'Download'),
+        chip(2, L.t.download),
       ]),
     );
   }
@@ -206,13 +206,13 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
               backgroundColor: Colors.red.shade600,
               minimumSize: const Size.fromHeight(48)),
           onPressed: _stopAndClose,
-          child: const Text('Stop sharing'),
+          child: Text(L.t.stopSharing),
         )
       : TextButton(
           key: const ValueKey('share_stop'),
           style: TextButton.styleFrom(foregroundColor: Colors.red.shade600),
           onPressed: _stopAndClose,
-          child: const Text('Stop sharing',
+          child: Text(L.t.stopSharing,
               style: TextStyle(fontWeight: FontWeight.w700)),
         );
 
@@ -223,11 +223,11 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
-        const Text('Phones getting LinkUp',
+        Text(L.t.phonesGettingLinkup,
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
         const SizedBox(height: 6),
         if (list.isEmpty)
-          Text('None yet. Waiting…',
+          Text(L.t.noneYetWaiting,
               key: const ValueKey('share_phones_none'),
               style: TextStyle(color: colors.onSurfaceVariant)),
         for (final p in list) _phoneRow(context, p),
@@ -267,7 +267,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
             children: [
               Row(children: [
                 Expanded(
-                  child: Text('Phone ${p.number}',
+                  child: Text(L.t.phone2(p.number),
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
                 if (p.done)
@@ -280,7 +280,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
               ]),
               const SizedBox(height: 4),
               if (p.done)
-                Text('Done, ${mb(p.total)} MB',
+                Text(L.t.doneMb(mb(p.total)),
                     style: TextStyle(color: Colors.green.shade700))
               else ...[
                 ClipRRect(
@@ -289,7 +289,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
                       value: p.progress, minHeight: 7),
                 ),
                 const SizedBox(height: 3),
-                Text('${mb(p.upTo)} of ${mb(p.total)} MB',
+                Text(L.t.mbOf304(mb(p.upTo), mb(p.total)),
                     style: TextStyle(
                         fontSize: 12, color: colors.onSurfaceVariant)),
               ],
@@ -304,7 +304,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
 
   Widget _starting(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final size = _c.apk == null ? '' : 'About ${_c.sizeLabel} free space';
+    final size = _c.apk == null ? '' : L.t.aboutFreeSpace(_c.sizeLabel);
     return _scroll(key: 'share_starting', [
       const SizedBox(height: 40),
       Center(
@@ -325,20 +325,17 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
         ),
       ),
       const SizedBox(height: 24),
-      const Text('Turning on LinkUp Wi-Fi…',
+      Text(L.t.turningOnLinkupWiFi,
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
       Text(
-          'Your friend will join this Wi-Fi to download the app. '
-          'No internet used.',
+          L.t.yourFriendWillJoinThisWi,
           textAlign: TextAlign.center,
           style: TextStyle(color: colors.onSurfaceVariant)),
       _note(
           context,
-          "Nearby chats with other LinkUp phones may pause for a moment if "
-          "your phone can't do both. They come back by themselves when you "
-          'stop sharing.'),
+          L.t.nearbyChatsWithOtherLinkupPhones),
       const SizedBox(height: 14),
       Card(
         margin: EdgeInsets.zero,
@@ -347,12 +344,12 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('What your friend needs',
+              Text(L.t.whatYourFriendNeeds,
                   style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
-              const Text('•  An Android phone'),
+              Text(L.t.anAndroidPhone),
               if (size.isNotEmpty) Text('•  $size'),
-              const Text('•  No internet, no SIM needed'),
+              Text(L.t.noInternetNoSimNeeded),
             ],
           ),
         ),
@@ -361,7 +358,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
       OutlinedButton(
         key: const ValueKey('share_cancel'),
         onPressed: _stopAndClose,
-        child: const Text('Cancel'),
+        child: Text(L.t.cancel),
       ),
     ]);
   }
@@ -371,17 +368,17 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
         key: 'share_battery',
         icon: Icons.battery_alert,
         warm: true,
-        title: 'Battery low (10% or less)',
-        body: 'Sharing uses a lot of battery. Plug in the charger first.',
+        title: L.t.batteryLow10OrLess,
+        body: L.t.sharingUsesALotOfBattery,
         actions: [
           FilledButton(
             key: const ValueKey('share_anyway'),
             onPressed: () => _c.shareAnyway(),
-            child: const Text('Share anyway'),
+            child: Text(L.t.shareAnyway),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).maybePop(),
-            child: const Text('Cancel'),
+            child: Text(L.t.cancel),
           ),
         ],
       );
@@ -389,19 +386,19 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
   Widget _step1(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     const mono = TextStyle(
-        fontFamily: 'monospace', fontWeight: FontWeight.w700, fontSize: 15);
+        fontFamily: 'monospace', fontFamilyFallback: L.fontFallback, fontWeight: FontWeight.w700, fontSize: 15);
     return _scroll(key: 'share_step1', [
       _steps(context, 1),
       _qrCard(context, data: _c.wifiQr, key: 'share_qr_wifi', below: [
         const SizedBox(height: 10),
-        const Text('On the new phone:',
+        Text(L.t.onTheNewPhone,
             style: TextStyle(fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
-        Text('Settings → Wi-Fi → tap the QR icon and scan this code.',
+        Text(L.t.settingsWiFiTapTheQr,
             textAlign: TextAlign.center,
             style: TextStyle(color: colors.onSurfaceVariant)),
         const SizedBox(height: 4),
-        Text('(or scan with the camera app)',
+        Text(L.t.orScanWithTheCameraApp,
             style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
       ]),
       const SizedBox(height: 10),
@@ -414,7 +411,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Or type it',
+                  Text(L.t.orTypeIt,
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -423,7 +420,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
                   Row(children: [
                     SizedBox(
                         width: 84,
-                        child: Text('Wi-Fi name',
+                        child: Text(L.t.wiFiName,
                             style: TextStyle(
                                 fontSize: 12,
                                 color: colors.onSurfaceVariant))),
@@ -435,7 +432,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
                   Row(children: [
                     SizedBox(
                         width: 84,
-                        child: Text('Password',
+                        child: Text(L.t.password,
                             style: TextStyle(
                                 fontSize: 12,
                                 color: colors.onSurfaceVariant))),
@@ -449,11 +446,11 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
               ),
             ),
             GestureDetector(
-              onLongPress: () => _copy(_c.password, 'Password copied'),
+              onLongPress: () => _copy(_c.password, L.t.passwordCopied),
               child: TextButton(
                 key: const ValueKey('share_copy'),
-                onPressed: () => _copy(_c.ssid, 'Wi-Fi name copied'),
-                child: const Text('Copy'),
+                onPressed: () => _copy(_c.ssid, L.t.wiFiNameCopied),
+                child: Text(L.t.copy),
               ),
             ),
           ]),
@@ -461,20 +458,19 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
       ),
       _note(
           context,
-          'If the new phone says "This Wi-Fi has no internet. Stay '
-          'connected?" tap Yes / Stay.',
+          L.t.ifTheNewPhoneSaysThis,
           warm: true),
       const SizedBox(height: 18),
       FilledButton(
         key: const ValueKey('share_next'),
         style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
         onPressed: () => _c.goToStep(2),
-        child: const Text('Next: Download  →'),
+        child: Text(L.t.nextDownload),
       ),
       const SizedBox(height: 4),
       Center(child: _stopButton()),
       Center(
-        child: Text('Screen stays on while sharing',
+        child: Text(L.t.screenStaysOnWhileSharing,
             style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
       ),
     ]);
@@ -509,11 +505,11 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
               child: CircularProgressIndicator(
                   strokeWidth: 4, color: colors.primary)),
           const SizedBox(height: 18),
-          const Text('Getting the download address...',
+          Text(L.t.gettingTheDownloadAddress,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
-          Text('The QR shows here by itself.\n(up to 10 seconds)',
+          Text(L.t.theQrShowsHereByItself,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
         ]),
@@ -526,11 +522,11 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: box,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text("Couldn't get the address by itself",
+        Text(L.t.couldnTGetTheAddressBy,
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         if (choices.isNotEmpty) ...[
           const SizedBox(height: 4),
-          Text('Tap the one your friend can open:',
+          Text(L.t.tapTheOneYourFriendCan,
               style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
           const SizedBox(height: 8),
           for (final a in choices)
@@ -553,7 +549,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
                       Expanded(
                         child: Text(a.ip,
                             style: TextStyle(
-                                fontFamily: 'monospace',
+                                fontFamily: 'monospace', fontFamilyFallback: L.fontFallback,
                                 fontSize: 17,
                                 fontWeight: FontWeight.w700,
                                 color: colors.primary)),
@@ -575,12 +571,11 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
               side: BorderSide(color: colors.primary)),
           onPressed: _c.retryIp,
           icon: const Icon(Icons.refresh),
-          label: const Text('Try again'),
+          label: Text(L.t.tryAgain),
         ),
         const SizedBox(height: 12),
         Text(
-          'No address at all? Your friend joins the Wi-Fi (step 1), opens its '
-          'Wi-Fi details, and types the "Gateway" address in Chrome with :8080',
+          L.t.noAddressAtAllYourFriend,
           key: const ValueKey('share_gateway_tip'),
           style: TextStyle(fontSize: 12.5, color: colors.onSurfaceVariant),
         ),
@@ -605,23 +600,23 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
             border: Border.all(color: const Color(0xFFE6C34A)),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const Text('Scan with the camera app,\nnot the Wi-Fi scanner',
+          child: Text(L.t.scanWithTheCameraAppNot,
               textAlign: TextAlign.center,
               style: TextStyle(
                   fontWeight: FontWeight.w700, color: Color(0xFF5C4600))),
         ),
         const SizedBox(height: 6),
-        Text('or type:',
+        Text(L.t.orType,
             style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
         SelectableText(_c.downloadLabel ?? '',
             key: const ValueKey('share_url'),
             style: TextStyle(
-                fontFamily: 'monospace',
+                fontFamily: 'monospace', fontFamilyFallback: L.fontFallback,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
                 color: colors.primary)),
         const SizedBox(height: 2),
-        Text('LinkUp ${_c.apk?.version ?? ''}  ·  ${_c.sizeLabel}',
+        Text(L.t.linkup(_c.apk?.version ?? '', _c.sizeLabel),
             style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
       ]),
     ];
@@ -634,15 +629,14 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
       _phones(context),
       _note(
           context,
-          'Sharing stops by itself after 10 minutes with no download, or '
-          'when you leave this screen.'),
+          L.t.sharingStopsByItselfAfter10),
       const SizedBox(height: 18),
       OutlinedButton(
         key: const ValueKey('share_back'),
         style:
             OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
         onPressed: () => _c.goToStep(1),
-        child: const Text('←  Back to step 1'),
+        child: Text(L.t.backToStep1),
       ),
       const SizedBox(height: 8),
       _stopButton(filled: true),
@@ -656,17 +650,15 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
       _note(
           context,
           own
-              ? "Your phone hotspot is already on, so LinkUp can't start its "
-                  'own Wi-Fi. Ask your friend to join your hotspot, then scan:'
-              : "LinkUp couldn't turn on its own Wi-Fi. If your friend is on "
-                  'the same Wi-Fi as you, they can scan this:'),
+              ? L.t.yourPhoneHotspotIsAlreadyOn
+              : L.t.linkupCouldnTTurnOnIts),
       const SizedBox(height: 12),
       ..._downloadQr(context),
       if (own)
         Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Text(
-              "Name and password: in your phone's hotspot settings",
+              L.t.nameAndPasswordInYourPhone,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
         ),
@@ -678,7 +670,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
           style:
               OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
           onPressed: () => widget.native.openHotspotSettings(),
-          child: const Text('Open hotspot settings'),
+          child: Text(L.t.openHotspotSettings),
         )
       else
         OutlinedButton(
@@ -689,7 +681,7 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
             await _c.stop('retry');
             await _c.start();
           },
-          child: const Text('Try LinkUp Wi-Fi again'),
+          child: Text(L.t.tryLinkupWiFiAgain),
         ),
       const SizedBox(height: 8),
       _stopButton(filled: true),
@@ -701,77 +693,74 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
     final tryAgain = FilledButton(
       key: const ValueKey('share_try_again'),
       onPressed: () => _c.start(),
-      child: const Text('Try again'),
+      child: Text(L.t.tryAgain),
     );
     switch (r) {
       case 'permission':
         return _message(context,
             key: 'share_failed',
             icon: Icons.wifi_off,
-            title: "Couldn't turn on Wi-Fi",
-            body: 'LinkUp needs the "Nearby devices" permission to turn on '
-                'its Wi-Fi. Allow it in LinkUp\'s app settings.',
+            title: L.t.couldnTTurnOnWiFi,
+            body: L.t.linkupNeedsTheNearbyDevicesPermission,
             actions: [tryAgain]);
       case 'location_off':
         return _message(context,
             key: 'share_failed',
             icon: Icons.location_off,
-            title: 'Turn on Location',
-            body: 'On this phone Android needs Location on to start a '
-                'LinkUp Wi-Fi. Nothing is tracked.',
+            title: L.t.turnOnLocation,
+            body: L.t.onThisPhoneAndroidNeedsLocation,
             actions: [
               OutlinedButton(
                   key: const ValueKey('share_location'),
                   onPressed: () => widget.native.openLocationSettings(),
-                  child: const Text('Turn on Location')),
+                  child: Text(L.t.turnOnLocation)),
               tryAgain,
             ]);
       case 'own_hotspot':
         return _message(context,
             key: 'share_failed',
             icon: Icons.wifi_tethering_off,
-            title: 'Your phone hotspot is on',
-            body: 'Turn your hotspot off and try again, or let your friend '
-                'join your hotspot.',
+            title: L.t.yourPhoneHotspotIsOn,
+            body: L.t.turnYourHotspotOffAndTry,
             actions: [
               OutlinedButton(
                   key: const ValueKey('share_open_hotspot'),
                   onPressed: () => widget.native.openHotspotSettings(),
-                  child: const Text('Open hotspot settings')),
+                  child: Text(L.t.openHotspotSettings)),
               tryAgain,
             ]);
       case 'blocked':
         return _message(context,
             key: 'share_failed',
             icon: Icons.block,
-            title: "This phone doesn't allow it",
-            body: 'This phone blocks hotspots made by apps.',
+            title: L.t.thisPhoneDoesnTAllowIt,
+            body: L.t.thisPhoneBlocksHotspotsMadeBy,
             actions: [tryAgain]);
       case 'port_busy':
         return _message(context,
             key: 'share_failed',
             icon: Icons.error_outline,
-            title: "Couldn't start the download page",
-            body: 'Close other sharing apps and try again.',
+            title: L.t.couldnTStartTheDownloadPage,
+            body: L.t.closeOtherSharingAppsAndTry,
             actions: [tryAgain]);
       case 'apk_missing':
         return _message(context,
             key: 'share_failed',
             icon: Icons.error_outline,
-            title: "Couldn't read the LinkUp app file",
-            body: 'Try again in a moment.',
+            title: L.t.couldnTReadTheLinkupApp,
+            body: L.t.tryAgainInAMoment,
             actions: [tryAgain]);
       default:
         return _message(context,
             key: 'share_failed',
             icon: Icons.wifi_off,
-            title: "Couldn't turn on Wi-Fi",
-            body: 'Wi-Fi is off or Android said no.',
+            title: L.t.couldnTTurnOnWiFi,
+            body: L.t.wiFiIsOffOrAndroid,
             actions: [
               OutlinedButton(
                   key: const ValueKey('share_wifi'),
                   onPressed: () => widget.native.openWifiSettings(),
-                  child: const Text('Turn on Wi-Fi')),
+                  child: Text(L.t.turnOnWiFi)),
               tryAgain,
             ]);
     }
@@ -782,22 +771,22 @@ class _ShareAppScreenState extends State<ShareAppScreen> {
     final again = FilledButton(
       key: const ValueKey('share_again'),
       onPressed: () => _c.start(),
-      child: Text(r == 'stopped' ? 'Try again' : 'Share again'),
+      child: Text(r == 'stopped' ? L.t.tryAgain : L.t.shareAgain),
     );
     if (r == 'stopped') {
       return _message(context,
           key: 'share_stopped',
           icon: Icons.wifi_off,
-          title: 'Wi-Fi stopped',
-          body: 'Android turned the LinkUp Wi-Fi off.',
+          title: L.t.wiFiStopped,
+          body: L.t.androidTurnedTheLinkupWiFi,
           actions: [again]);
     }
     return _message(context,
         key: 'share_stopped',
         icon: Icons.timer_off_outlined,
         warm: r == 'idle',
-        title: 'Sharing stopped',
-        body: r == 'idle' ? 'No downloads for 10 minutes.' : 'LinkUp Wi-Fi is off.',
+        title: L.t.sharingStopped,
+        body: r == 'idle' ? L.t.noDownloadsFor10Minutes : L.t.linkupWiFiIsOff,
         actions: [again]);
   }
 

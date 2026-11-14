@@ -7,6 +7,7 @@ import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/groups/data/group_change_hub.dart';
 import 'package:locallink/features/groups/data/group_photo_book.dart';
 import 'package:locallink/features/groups/data/services/group_nearby_service.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 final class GroupRepository implements GroupRepositoryContract {
   final LocalLinkApi _api;
@@ -415,15 +416,15 @@ final class GroupRepository implements GroupRepositoryContract {
       // after the bridge).
       final nearbyPhoto = _photoNearby;
       if (nearbyPhoto == null) {
-        throw const GroupActionException(
-            'GROUP_NEEDS_ONLINE', 'The group photo can be set when Online.');
+        throw GroupActionException(
+            'GROUP_NEEDS_ONLINE', L.t.theGroupPhotoCanBeSet);
       }
       try {
         await nearbyPhoto(groupId, jpeg);
       } on StateError catch (e) {
         if (e.message == 'GROUP_NOT_ADMIN') {
-          throw const GroupActionException(
-              'GROUP_NOT_ADMIN', 'Only admins can change the group photo.');
+          throw GroupActionException(
+              'GROUP_NOT_ADMIN', L.t.onlyAdminsCanChangeTheGroup);
         }
         rethrow;
       }

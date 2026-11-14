@@ -8,15 +8,16 @@ import 'package:locallink/features/admin/data/models/version_rule.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/admin/data/services/version_rule_service.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 String _modeLine(VersionRule? r) {
-  if (r == null || r.isRemove) return 'No minimum';
-  final v = r.minVersion.isEmpty ? 'build ${r.minBuild}' : r.minVersion;
-  if (r.warnOnly) return '$v · warn only';
+  if (r == null || r.isRemove) return L.t.noMinimum;
+  final v = r.minVersion.isEmpty ? L.t.build2(r.minBuild) : r.minVersion;
+  if (r.warnOnly) return L.t.warnOnly2(v);
   final stop = r.stopTime;
-  if (stop == null || !DateTime.now().isBefore(stop)) return '$v · older versions stopped';
+  if (stop == null || !DateTime.now().isBefore(stop)) return L.t.olderVersionsStopped(v);
   final days = (stop.difference(DateTime.now()).inMinutes / 1440).ceil();
-  return '$v · stop in $days day${days == 1 ? '' : 's'}';
+  return L.t.stopInDay(v, days, days == 1 ? '' : 's');
 }
 
 /// Admin panel card under "Block users". Bundle 216 (page 4): section
@@ -31,8 +32,8 @@ class AdminVersionCard extends StatelessWidget {
     final counts = svc?.buildCounts() ?? const <int, ({String version, int phones})>{};
     final builds = counts.keys.toList()..sort((a, b) => b.compareTo(a));
     return builds.isEmpty
-        ? 'Seen nearby: none yet'
-        : 'Seen nearby: ${builds.map((b) => '${counts[b]!.version.isEmpty ? 'build $b' : counts[b]!.version} (${counts[b]!.phones})').join(', ')}';
+        ? L.t.seenNearbyNoneYet
+        : L.t.seenNearby(builds.map((b) => '${counts[b]!.version.isEmpty ? 'build $b' : counts[b]!.version} (${counts[b]!.phones})').join(', '));
   }
 
   @override
@@ -47,7 +48,7 @@ class AdminVersionCard extends StatelessWidget {
           key: const ValueKey('admin_version_card'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const AdminSection216('App version'),
+            AdminSection216(L.t.appVersion),
             AdminCard216(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Material(
@@ -71,7 +72,7 @@ class AdminVersionCard extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Minimum version', style: t.rowTitle),
+                              Text(L.t.minimumVersion, style: t.rowTitle),
                               const SizedBox(height: 3),
                               Text(_modeLine(VersionGuard.instance.rule),
                                   maxLines: 1,
@@ -90,8 +91,7 @@ class AdminVersionCard extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('This phone: LinkUp $kAppVersion (build $kAppBuild)'
-                        '${AppBuild.pretendOld ? ' · pretending ${AppBuild.sent}' : ''}',
+                    Text(L.t.thisPhoneLinkupBuild2(kAppVersion, kAppBuild, AppBuild.pretendOld ? ' · pretending ${AppBuild.sent}' : ''),
                         style: t.cardSub),
                     const SizedBox(height: 4),
                     Text(seenLine(svc),
@@ -154,13 +154,13 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
   }
 
   String _label(({int build, String version}) c) =>
-      c.version.isEmpty ? 'Build ${c.build}' : '${c.version} (build ${c.build})';
+      c.version.isEmpty ? L.t.build(c.build) : L.t.build3(c.version, c.build);
 
   String get _versionText {
     for (final c in _choices()) {
-      if (c.build == _build) return c.version.isEmpty ? 'build $_build' : c.version;
+      if (c.build == _build) return c.version.isEmpty ? L.t.build2(_build) : c.version;
     }
-    return 'build $_build';
+    return L.t.build2(_build);
   }
 
   Future<void> _save() async {
@@ -173,24 +173,24 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
       builder: (context) => AlertDialog(
         key: const ValueKey('version_confirm'),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        title: Text(_mode == _Mode.warn ? 'Warn versions below $v?' : 'Stop versions below $v?'),
+        title: Text(_mode == _Mode.warn ? L.t.warnVersionsBelow(v) : L.t.stopVersionsBelow(v)),
         content: Text([
           switch (_mode) {
-            _Mode.warn => 'Older apps see a yellow "Update" banner. They keep working.',
-            _Mode.stopNow => 'Older apps can only read chats from now. They see an Update button.',
+            _Mode.warn => L.t.olderAppsSeeAYellowUpdate,
+            _Mode.stopNow => L.t.olderAppsCanOnlyReadChats,
             _Mode.stopLater =>
-              'Older apps see "Update needed in $_days days". After that they can only read chats.',
+              L.t.olderAppsSeeUpdateNeededIn(_days),
           },
-          if (_veryOld) 'Very old apps (before 3.0.54) are stopped too.',
-          'Phones seen nearby that this affects: $affects.',
-          'It goes to every phone nearby, and to the server when online.',
+          if (_veryOld) L.t.veryOldAppsBefore30,
+          L.t.phonesSeenNearbyThatThisAffects(affects),
+          L.t.itGoesToEveryPhoneNearby,
         ].join('\n\n')),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(L.t.cancel)),
           FilledButton(
             key: const ValueKey('version_confirm_save'),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Save for everyone'),
+            child: Text(L.t.saveForEveryone),
           ),
         ],
       ),
@@ -202,14 +202,14 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
           mode: _mode == _Mode.warn ? 'warn' : 'stop',
           stopDays: _mode == _Mode.stopLater ? _days : 0,
           veryOld: _veryOld,
-        ), 'Saved. It is spreading to nearby phones.');
+        ), L.t.savedItIsSpreadingToNearby);
   }
 
   Future<void> _remove() async {
     final svc = _svc;
     if (svc == null) return;
     await _run(() => svc.setRule(minBuild: 0, minVersion: '', mode: 'warn', remove: true),
-        'Rule removed for everyone.');
+        L.t.ruleRemovedForEveryone);
   }
 
   Future<void> _run(Future<Object?> Function() job, String done) async {
@@ -220,7 +220,7 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
       LinkToast.maybeOn(messenger, done, kind: LinkToastKind.done);
       if (mounted) Navigator.of(context).maybePop();
     } catch (e) {
-      final text = e is StateError ? e.message : 'Could not save: $e';
+      final text = e is StateError ? e.message : L.t.couldNotSave(e);
       LinkToast.maybeOn(messenger, text, kind: LinkToastKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -234,7 +234,7 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
     final affects = svc?.affects(_build) ?? 0;
     final choices = _choices();
     return AdminPage216(
-      title: 'Minimum version',
+      title: L.t.minimumVersion,
       body: Builder(builder: (context) {
         final c = A216.colors(context);
         final t = A216Text(c);
@@ -254,17 +254,17 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Now: ${rule == null || rule.isRemove ? 'no minimum' : _modeLine(rule)}',
+                    Text(L.t.now(rule == null || rule.isRemove ? 'no minimum' : _modeLine(rule)),
                         style: t.custom(14, FontWeight.w600, c.ink)),
                     const SizedBox(height: 4),
-                    Text('This phone: LinkUp $kAppVersion (build $kAppBuild)', style: t.cardSub),
+                    Text(L.t.thisPhoneLinkupBuild(kAppVersion, kAppBuild), style: t.cardSub),
                     const SizedBox(height: 2),
                     Text(AdminVersionCard.seenLine(svc), style: t.cardSub),
                   ]),
                 ),
               ]),
             ),
-            const AdminSection216('Lowest version allowed'),
+            AdminSection216(L.t.lowestVersionAllowed),
             AdminChips216(
               wrap: true,
               items: [for (final ch in choices) _label(ch)],
@@ -272,27 +272,27 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
               keys: [for (final ch in choices) ValueKey('version_pick_${ch.build}')],
               onSelected: (i) => setState(() => _build = choices[i].build),
             ),
-            const AdminSection216('Older apps'),
+            AdminSection216(L.t.olderApps),
             AdminRadioCard216(
               key: const ValueKey('version_mode_warn'),
-              title: 'Warn only',
-              subtitle: 'Yellow banner, keeps working',
+              title: L.t.warnOnly,
+              subtitle: L.t.yellowBannerKeepsWorking,
               selected: _mode == _Mode.warn,
               onTap: () => setState(() => _mode = _Mode.warn),
             ),
             const SizedBox(height: 10),
             AdminRadioCard216(
               key: const ValueKey('version_mode_now'),
-              title: 'Stop now',
-              subtitle: 'Read only at once',
+              title: L.t.stopNow,
+              subtitle: L.t.readOnlyAtOnce,
               selected: _mode == _Mode.stopNow,
               onTap: () => setState(() => _mode = _Mode.stopNow),
             ),
             const SizedBox(height: 10),
             AdminRadioCard216(
               key: const ValueKey('version_mode_days'),
-              title: 'Stop after $_days day${_days == 1 ? '' : 's'}',
-              subtitle: 'Warning first, then read only',
+              title: L.t.stopAfterDay(_days, _days == 1 ? '' : 's'),
+              subtitle: L.t.warningFirstThenReadOnly,
               selected: _mode == _Mode.stopLater,
               onTap: () => setState(() => _mode = _Mode.stopLater),
               trailing: _mode == _Mode.stopLater
@@ -311,9 +311,9 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
               child: Row(children: [
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Also stop very old apps', style: t.radioTitle),
+                    Text(L.t.alsoStopVeryOldApps, style: t.radioTitle),
                     const SizedBox(height: 3),
-                    Text("Apps before 3.0.54 can't read this rule. The server refuses them.",
+                    Text(L.t.appsBefore3054Can,
                         style: t.radioSub),
                   ]),
                 ),
@@ -327,17 +327,17 @@ class _AdminMinVersionScreenState extends State<AdminMinVersionScreen> {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Text('Affects $affects phone${affects == 1 ? '' : 's'} seen nearby',
+              child: Text(L.t.affectsPhoneSeenNearby(affects, affects == 1 ? '' : 's'),
                   key: const ValueKey('version_affects'),
                   textAlign: TextAlign.center,
                   style: t.note),
             ),
-            AdminButton216('Save rule',
+            AdminButton216(L.t.saveRule,
                 key: const ValueKey('version_save'),
                 onTap: _busy || svc == null ? null : _save),
             if (rule != null && !rule.isRemove) ...[
               const SizedBox(height: 10),
-              AdminButton216('Remove rule',
+              AdminButton216(L.t.removeRule,
                   key: const ValueKey('version_remove'),
                   kind: A216ButtonKind.outline,
                   onTap: _busy || svc == null ? null : _remove),
@@ -375,9 +375,9 @@ class _PretendOldBuildSwitchState extends State<PretendOldBuildSwitch> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Pretend old build', style: t.rowTitle),
+              Text(L.t.pretendOldBuild, style: t.rowTitle),
               const SizedBox(height: 3),
-              Text('This phone reports one build lower', style: t.rowSub),
+              Text(L.t.thisPhoneReportsOneBuildLower, style: t.rowSub),
             ],
           ),
         ),

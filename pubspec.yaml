@@ -1,7 +1,7 @@
 name: locallink
 publish_to: 'none'
 description: LinkUp offline LAN communication client.
-version: 3.0.99+170
+version: 3.0.100+171
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -9,6 +9,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # 304 (H3): English + Urdu with Flutter's standard language system.
+  flutter_localizations:
+    sdk: flutter
+  intl: any
   http: ^1.2.2
   web_socket_channel: ^3.0.1
   shared_preferences: ^2.3.2
@@ -39,6 +43,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # 304 (H3): makes lib/l10n/gen from the .arb files.
+  generate: true
   assets:
     - assets/animations/
     - assets/brand/
@@ -53,4 +59,12 @@ flutter:
         - asset: assets/fonts/Roboto-SemiBold.ttf
           weight: 600
         - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 700
+    # 304 (H3): Urdu letters (Noto Naskh Arabic, OFL). Used as the fallback
+    # after Roboto, so English looks the same as before.
+    - family: NotoNaskh304
+      fonts:
+        - asset: assets/fonts/NotoNaskhArabic-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/NotoNaskhArabic-Bold.ttf
           weight: 700

@@ -13,6 +13,7 @@ import 'package:locallink/features/admin/data/actions/delete_completely_doer.dar
 import 'package:locallink/features/admin/data/services/admin_block_service.dart' show AdminSignIn;
 import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 221: what the Owner reads. Online the server opens the parts
 /// (web requests are locked for the server key); a request made on the
@@ -62,7 +63,7 @@ class ChatAnswerView {
   bool get empty => answerId.isEmpty;
 
   /// "40 of 80 parts" (or '' when complete / nothing yet).
-  String get partsWords => empty || complete ? '' : '$parts of $of parts';
+  String get partsWords => empty || complete ? '' : L.t.ofParts(parts, of);
 
   static ChatAnswerView fromServer(String id, Map<String, dynamic> j) {
     int n(String k) => j[k] is int ? j[k] as int : int.tryParse('${j[k] ?? ''}') ?? 0;
@@ -436,12 +437,12 @@ class ChatRequestRow221 {
 
   /// The words on the right of a row (mock A-1 / A-2).
   String get tag {
-    if (empty) return 'No messages';
-    if (cancelled) return 'Cancelled';
-    if (ready) return 'Ready';
-    if (half) return '$parts of $of parts';
-    if (oldApp) return 'Old app';
-    return 'Pending';
+    if (empty) return L.t.noMessages;
+    if (cancelled) return L.t.cancelled;
+    if (ready) return L.t.ready;
+    if (half) return L.t.ofParts(parts, of);
+    if (oldApp) return L.t.oldApp;
+    return L.t.pending;
   }
 
   static ChatRequestRow221 fromServer(Map<String, dynamic> m) {

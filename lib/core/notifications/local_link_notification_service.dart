@@ -23,6 +23,7 @@ import 'package:locallink/features/groups/domain/group_messaging_repository_cont
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
 import 'package:locallink/features/messaging/domain/messaging_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Coordinates modern message/system notifications on top of the existing
 /// messaging and calling services. It does not own any networking.
@@ -158,6 +159,21 @@ final class LocalLinkNotificationService {
       await _markDirectMessageRead(message);
     }
     await platform.cancelNotification(notificationIdForDirectSummary(id));
+  }
+
+  /// 304 (H2): the friend's unread messages, oldest first - read BEFORE the
+  /// chat marks them read, for the "N unread messages" bar.
+  Future<List<String>> unreadDirectIds304(String conversationId) async {
+    final id = conversationId.trim();
+    if (id.isEmpty) return const <String>[];
+    return [for (final m in await store.unreadMessagesForConversation(id)) m.id];
+  }
+
+  /// 304 (H2): the same for a group (messages from the other members).
+  Future<List<String>> unreadGroupIds304(String groupId) async {
+    final id = groupId.trim();
+    if (id.isEmpty) return const <String>[];
+    return [for (final m in await store.unreadGroupMessages(id)) m.id];
   }
 
   Future<void> markGroupConversationRead(String groupId) async {
@@ -567,7 +583,7 @@ final class LocalLinkNotificationService {
       title: _summaryTitleForPrivacy(
         displayName: identity.displayName,
       ),
-      body: '$unreadCount new ${unreadCount == 1 ? 'message' : 'messages'}',
+      body: L.t.newText(unreadCount, unreadCount == 1 ? 'message' : 'messages'),
       silent: silent || policy.shouldBeSilent,
       visibility: _visibilityForMessage(),
     );
@@ -586,14 +602,14 @@ final class LocalLinkNotificationService {
     final summaryTitle = preferences.privacyMode == NotificationPrivacyMode.full
         ? groupName
         : preferences.privacyMode == NotificationPrivacyMode.senderOnly
-            ? 'New messages'
+            ? L.t.newMessages
             : 'LinkUp';
     await platform.showSummary(
       notificationId: notificationIdForGroupSummary(groupId),
       conversationType: 'group',
       conversationId: groupId,
       title: summaryTitle,
-      body: '$unreadCount new ${unreadCount == 1 ? 'message' : 'messages'}',
+      body: L.t.newText(unreadCount, unreadCount == 1 ? 'message' : 'messages'),
       silent: silent || policy.shouldBeSilent,
       visibility: _visibilityForMessage(),
     );
@@ -1060,7 +1076,7 @@ final class LocalLinkNotificationService {
         // Bundle G1 (mock 8): title = group name, "Sara: ..." in the text.
         return title;
       case NotificationPrivacyMode.senderOnly:
-        return isGroup ? (senderName ?? 'New message') : title;
+        return isGroup ? (senderName ?? L.t.newMessage) : title;
       case NotificationPrivacyMode.hidden:
         return 'LinkUp';
     }
@@ -1076,7 +1092,7 @@ final class LocalLinkNotificationService {
         // Bundle G1 (mock 8): title = group name, "Sara: ..." in the text.
         return title;
       case NotificationPrivacyMode.senderOnly:
-        return isGroup ? (senderName ?? 'New message') : title;
+        return isGroup ? (senderName ?? L.t.newMessage) : title;
       case NotificationPrivacyMode.hidden:
         return 'LinkUp';
     }
@@ -1096,16 +1112,16 @@ final class LocalLinkNotificationService {
       case NotificationPrivacyMode.full:
         return body;
       case NotificationPrivacyMode.senderOnly:
-        return 'New message';
+        return L.t.newMessage;
       case NotificationPrivacyMode.hidden:
-        return 'New notification';
+        return L.t.newNotification;
     }
   }
 
   String _publicBody() => switch (preferences.privacyMode) {
-        NotificationPrivacyMode.full => 'LinkUp notification',
-        NotificationPrivacyMode.senderOnly => 'New message',
-        NotificationPrivacyMode.hidden => 'New notification',
+        NotificationPrivacyMode.full => L.t.linkupNotification,
+        NotificationPrivacyMode.senderOnly => L.t.newMessage,
+        NotificationPrivacyMode.hidden => L.t.newNotification,
       };
 
   String _summaryForConversation({
@@ -1117,16 +1133,16 @@ final class LocalLinkNotificationService {
     switch (preferences.privacyMode) {
       case NotificationPrivacyMode.full:
         if (unreadCount <= 1) {
-          return isGroup ? displayName : 'New message from $displayName';
+          return isGroup ? displayName : L.t.newMessageFrom(displayName);
         }
-        return '$displayName • $unreadCount new messages';
+        return L.t.newMessages3(displayName, unreadCount);
       case NotificationPrivacyMode.senderOnly:
-        final safeName = isGroup ? (senderName ?? 'New message') : displayName;
+        final safeName = isGroup ? (senderName ?? L.t.newMessage) : displayName;
         return unreadCount <= 1
             ? safeName
-            : '$safeName • $unreadCount new messages';
+            : L.t.newMessages3(safeName, unreadCount);
       case NotificationPrivacyMode.hidden:
-        return unreadCount <= 1 ? 'New message' : '$unreadCount new messages';
+        return unreadCount <= 1 ? L.t.newMessage : L.t.newMessages2(unreadCount);
     }
   }
 

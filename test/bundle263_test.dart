@@ -2,7 +2,6 @@
 // the work behind them runs by itself; the security code note is in the
 // chat like WhatsApp. See TODO_263.md.
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/diagnostics/app_log_file.dart';
@@ -10,6 +9,7 @@ import 'package:locallink/core/diagnostics/ui_hidden_263.dart';
 import 'package:locallink/core/security/security_code_245.dart';
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
 import 'package:locallink/features/directory/domain/directory_models.dart';
+import 'support/l10n_source_304.dart';
 
 DirectoryProfile _card(String key, {String device = 'android-ali', String user = 'u-ali'}) =>
     DirectoryProfile(
@@ -22,7 +22,7 @@ DirectoryProfile _card(String key, {String device = 'android-ali', String user =
       profileVersion: 1,
     );
 
-String _src(String path) => File(path).readAsStringSync();
+String _src(String path) => readEnglish304(path);
 String _logs() => AppLogFile.instance.pendingForTest.join('\n');
 
 const _home = 'lib/features/home/presentation/screens/home_screen.dart';

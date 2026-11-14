@@ -9,6 +9,7 @@ import 'package:locallink/features/connectivity/data/models/nearby_tag.dart';
 import 'package:locallink/features/connectivity/data/models/wifi_direct_models.dart';
 import 'package:locallink/features/connectivity/domain/connectivity_repository_contract.dart';
 import 'package:locallink/core/diagnostics/app_diagnostics.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 final class ConnectivityState extends Equatable {
   final ConnectivitySnapshot snapshot;
@@ -115,7 +116,7 @@ final class ConnectivityBloc extends Cubit<ConnectivityState> {
   Future<void> connectWifiDirect(WifiDirectPeer peer) async {
     if (_closed) return;
     if (peer.address.trim().isEmpty) {
-      emit(state.copyWith(error: 'This nearby phone cannot be connected right now.'));
+      emit(state.copyWith(error: L.t.thisNearbyPhoneCannotBeConnected));
       return;
     }
     // Bundle 157: the shared-group rules handle the tap when available.

@@ -7,6 +7,7 @@ import 'package:locallink/features/admin/data/admin_permissions.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (page 24): Admin settings (owner).
 class AdminSettingsScreen extends StatefulWidget {
@@ -28,7 +29,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     if (!mounted) return;
     setState(() => _busy = false);
     final error = bloc.state.error;
-    adminSnack216(context, error == null ? 'Saved.' : friendlyErrorMessage(error));
+    adminSnack216(context, error == null ? L.t.saved2 : friendlyErrorMessage(error));
   }
 
   Future<void> _backup() async {
@@ -36,16 +37,16 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     final r = await context.read<AdminBloc>().backup();
     if (!mounted) return;
     setState(() => _busy = false);
-    if (r != null) adminSnack216(context, 'Backup made.');
+    if (r != null) adminSnack216(context, L.t.backupMade);
     await context.read<AdminBloc>().load();
   }
 
   @override
   Widget build(BuildContext context) {
     return AdminToolPage216(
-      title: 'Admin settings',
+      title: L.t.adminSettings,
       module: 'Admin Settings',
-      subtitle: (_) => 'Refresh time, alerts, backup',
+      subtitle: (_) => L.t.refreshTimeAlertsBackup,
       builder: (context, state) {
         final c = A216.colors(context);
         final t = A216Text(c);
@@ -82,8 +83,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             key: const ValueKey('a216_settings_card'),
             child: Column(children: [
               row(
-                  'Refresh every',
-                  'How often admin pages update',
+                  L.t.refreshEvery,
+                  L.t.howOftenAdminPagesUpdate,
                   AdminStepper216(
                     value: '$refresh s',
                     minusKey: const ValueKey('a216_refresh_minus'),
@@ -93,8 +94,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   )),
               Container(height: 1, margin: const EdgeInsets.only(left: 16), color: c.div),
               row(
-                  'Alert after',
-                  'Wrong password tries',
+                  L.t.alertAfter,
+                  L.t.wrongPasswordTries,
                   AdminStepper216(
                     value: '$alerts',
                     minusKey: const ValueKey('a216_alerts_minus'),
@@ -106,11 +107,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           ),
           if (owner) ...[
             const SizedBox(height: 14),
-            AdminButton216('Save',
+            AdminButton216(L.t.save,
                 key: const ValueKey('a216_settings_save'),
                 onTap: _busy ? null : _save),
           ],
-          const AdminSection216('Backup'),
+          AdminSection216(L.t.backup),
           AdminCard216(
             key: const ValueKey('a216_backup_card'),
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -120,19 +121,19 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Database backup', style: t.rowTitle),
+                    Text(L.t.databaseBackup, style: t.rowTitle),
                     const SizedBox(height: 3),
                     Text(
                         last == null
-                            ? 'No backup yet'
-                            : 'Last: ${whenSub216(last)}${bytes > 0 ? ' · ${size216(bytes)}' : ''}',
+                            ? L.t.noBackupYet
+                            : L.t.last(whenSub216(last), bytes > 0 ? ' · ${size216(bytes)}' : ''),
                         style: t.rowSub),
                   ]),
                 ),
               ]),
               if (owner) ...[
                 const SizedBox(height: 12),
-                AdminButton216('Back up now',
+                AdminButton216(L.t.backUpNow,
                     key: const ValueKey('a216_backup_now'),
                     icon: Icons.download_rounded,
                     kind: A216ButtonKind.tonal,
@@ -143,8 +144,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           ),
           const SizedBox(height: 12),
           AdminNote216(
-              'Upload size ${maxFile > 0 ? size216(maxFile) : '—'} · ${quota > 0 ? size216(quota) : '—'} per phone · '
-              'TLS ${s['tls_enabled'] == true ? 'on' : 'off'}. Set on the server, can’t be changed here.'),
+              L.t.uploadSizePerPhoneTlsSet(maxFile > 0 ? size216(maxFile) : '—', quota > 0 ? size216(quota) : '—', s['tls_enabled'] == true ? 'on' : 'off')),
         ];
       },
     );

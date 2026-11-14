@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/message_reaction.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 207: what a tap on an emoji chip under a message does.
 /// One reaction per person (as before):
@@ -86,7 +87,7 @@ class ReactionChip extends StatelessWidget {
     if (onTap == null && onLongPress == null) return chip;
     return Semantics(
       button: true,
-      label: mine ? 'Remove your $emoji' : 'React $emoji',
+      label: mine ? L.t.removeYour(emoji) : L.t.react(emoji),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 298 (E): the "Online / Wi-Fi Direct / Mesh / Local Wi-Fi" lines
 /// between messages are gone. A received message now shows a tiny way icon
@@ -15,18 +16,18 @@ class RouteMark298 extends StatelessWidget {
 
   /// (icon, colour, words) for a way; null = no mark.
   static ({IconData icon, Color color, String words})? of(String? channel) => switch (channel) {
-        'server' => (icon: Icons.cloud_outlined, color: const Color(0xFF16A34A), words: 'Came through the server'),
+        'server' => (icon: Icons.cloud_outlined, color: const Color(0xFF16A34A), words: L.t.cameThroughTheServer),
         'wifi_direct' => (
             icon: Icons.wifi_tethering_rounded,
             color: const Color(0xFFCA8A04),
-            words: 'Came by Wi-Fi Direct'
+            words: L.t.cameByWiFiDirect
           ),
         'mesh' => (
             icon: Icons.hub_outlined,
             color: const Color(0xFF7C3AED),
-            words: "Came by Mesh (through a friend's phone)"
+            words: L.t.cameByMeshThroughAFriend
           ),
-        'lan' || 'direct' => (icon: Icons.wifi_rounded, color: const Color(0xFF0D9488), words: 'Came by Local Wi-Fi'),
+        'lan' || 'direct' => (icon: Icons.wifi_rounded, color: const Color(0xFF0D9488), words: L.t.cameByLocalWiFi),
         _ => null,
       };
 

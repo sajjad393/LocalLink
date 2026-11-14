@@ -14,6 +14,7 @@ import 'package:locallink/core/widgets/admin_crown.dart';
 import 'package:locallink/features/admin/data/models/admin_badge.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_panel_screen.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 211 (C1): where the switch sheet was opened from.
 enum AccountSwitchPlace { user, admin }
@@ -150,7 +151,7 @@ class AccountSwitchSheet extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text('Switch account',
+              child: Text(L.t.switchAccount,
                   style: text.titleMedium?.copyWith(
                       fontSize: 17, fontWeight: FontWeight.w600)),
             ),
@@ -167,7 +168,7 @@ class AccountSwitchSheet extends StatelessWidget {
               ),
               title: Text(userName,
                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-              subtitle: const Text('Chats, calls, people'),
+              subtitle: Text(L.t.chatsCallsPeople),
               trailing: tick(current == AccountSwitchPlace.user),
               onTap: () => onPick(AccountSwitchChoice.user),
             ),
@@ -183,13 +184,13 @@ class AccountSwitchSheet extends StatelessWidget {
                   backgroundColor: CrownColors290.of(s.role).tagBg,
                   child: AdminCrown.mark(20, halo: null, role: s.role),
                 ),
-                title: const Text('Admin',
+                title: Text(L.t.admin,
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
                 subtitle: Text(blocked
-                    ? 'Your account is blocked by admin'
+                    ? L.t.yourAccountIsBlockedByAdmin
                     : online
                         ? level
-                        : '$level · Offline tools only · block, app version'),
+                        : L.t.offlineToolsOnlyBlockAppVersion(level)),
                 trailing: tick(current == AccountSwitchPlace.admin),
                 onTap: () => onPick(AccountSwitchChoice.admin),
               ),

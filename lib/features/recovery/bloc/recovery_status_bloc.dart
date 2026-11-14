@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/locallink_api.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 final class RecoveryStatusState extends Equatable {
   final Map<String, String>? saved;
@@ -70,7 +71,7 @@ final class RecoveryStatusBloc extends Cubit<RecoveryStatusState> {
     } catch (_) {
       emit(state.copyWith(
           error:
-              'Could not refresh the request. The local network may be temporarily unavailable.',
+              L.t.couldNotRefreshTheRequestThe,
           loading: false));
     }
   }

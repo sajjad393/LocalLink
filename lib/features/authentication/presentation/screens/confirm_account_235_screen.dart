@@ -6,6 +6,7 @@ import 'package:locallink/core/identity/dup_account_235.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
 import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 235: what the screen needs (the app gives AccountReturn235; tests
 /// give fakes).
@@ -121,8 +122,8 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
   }
 
   String? _passwordProblem() {
-    if (_password.text.length < 8) return 'Choose a password of at least 8 characters.';
-    if (_password.text != _again.text) return 'The two passwords are not the same.';
+    if (_password.text.length < 8) return L.t.chooseAPasswordOfAtLeast;
+    if (_password.text != _again.text) return L.t.theTwoPasswordsAreNotThe;
     return null;
   }
 
@@ -131,7 +132,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
     FocusScope.of(context).unfocus();
     if (_codeTab) {
       if (!RecoveryKey235.looksLikeCode(_code.text)) {
-        setState(() => _error = 'Enter your recovery code (like K7QM2-XPA9T-RC4WN-E8D3F).');
+        setState(() => _error = L.t.enterYourRecoveryCodeLikeK7qm2);
         return;
       }
       final p = _passwordProblem();
@@ -141,11 +142,11 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
       }
     } else {
       if (_online != true) {
-        setState(() => _error = 'Connect to the server to use the old password.');
+        setState(() => _error = L.t.connectToTheServerToUse);
         return;
       }
       if (_oldPassword.text.isEmpty) {
-        setState(() => _error = 'Enter the password of @${widget.info.username}.');
+        setState(() => _error = L.t.enterThePasswordOf(widget.info.username));
         return;
       }
     }
@@ -166,7 +167,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
       await widget.actions.finish();
     } catch (e) {
       final text = e.toString().replaceFirst('Exception: ', '');
-      if (mounted) setState(() => _error = text.isEmpty ? 'Something went wrong. Try again.' : text);
+      if (mounted) setState(() => _error = text.isEmpty ? L.t.somethingWentWrongTryAgain : L.en(text));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -186,7 +187,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
     if (ok) {
       await widget.actions.finish();
     } else if (mounted) {
-      setState(() => _error = 'This phone still has @${widget.info.username}. Ask the admin.');
+      setState(() => _error = L.t.thisPhoneStillHasAskThe(widget.info.username));
     }
     if (mounted) setState(() => _busy = false);
   }
@@ -198,7 +199,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
     return PopScope(
       canPop: false,
       child: Scaffold(
-        appBar: AppBar(title: const Text('Confirm your account'), automaticallyImplyLeading: false),
+        appBar: AppBar(title: Text(L.t.confirmYourAccount), automaticallyImplyLeading: false),
         body: SafeArea(
           child: ListView(
             key: const ValueKey('dup235-screen'),
@@ -207,7 +208,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
             children: [
               _ownerCard(context),
               const SizedBox(height: 12),
-              Text("Confirm it's you to keep using LinkUp on this phone.",
+              Text(L.t.confirmItSYouToKeep,
                   style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14, height: 1.4)),
               const SizedBox(height: 12),
               _chip(),
@@ -230,7 +231,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
                     onPressed: _busy || (!_codeTab && _online != true) ? null : _confirm,
                     child: _busy
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text("Confirm it's me", style: TextStyle(fontWeight: FontWeight.w700)),
+                        : Text(L.t.confirmItSMe, style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
                 ),
               ),
@@ -238,21 +239,21 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
                 padding: const EdgeInsets.fromLTRB(4, 14, 4, 0),
                 child: Text(
                   _codeTab
-                      ? "Your chats with ${widget.info.shownName}'s friends go on. The new account on this phone is removed."
-                      : 'Forgot it? Use the recovery code.',
+                      ? L.t.yourChatsWithSFriendsGo(widget.info.shownName)
+                      : L.t.forgotItUseTheRecoveryCode,
                   style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13, height: 1.4),
                 ),
               ),
               const SizedBox(height: 28),
               Center(
-                child: Text('New owner of this phone? Ask the admin.',
+                child: Text(L.t.newOwnerOfThisPhoneAsk,
                     textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
               ),
               Center(
                 child: TextButton(
                   key: const ValueKey('dup235-check-again'),
                   onPressed: _busy ? null : _checkAgain,
-                  child: const Text('Check again'),
+                  child: Text(L.t.checkAgain),
                 ),
               ),
             ],
@@ -275,7 +276,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
         border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('This phone already has an account',
+        Text(L.t.thisPhoneAlreadyHasAnAccount,
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
         const SizedBox(height: 10),
         Row(children: [
@@ -288,7 +289,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-              Text('@${widget.info.username} \u00b7 used LinkUp on this phone',
+              Text(L.t.usedLinkupOnThisPhone(widget.info.username),
                   style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
             ]),
           ),
@@ -299,9 +300,9 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
 
   Widget _chip() {
     final (text, fg, bg) = switch (_online) {
-      true => ('Server connected', _green, _greenBg),
-      false => ("No server \u00b7 a friend's phone nearby checks it", _orange, _orangeBg),
-      null => ('Checking the server\u2026', Colors.grey.shade700, Colors.grey.shade200),
+      true => (L.t.serverConnected, _green, _greenBg),
+      false => (L.t.noServerAFriendSPhone, _orange, _orangeBg),
+      null => (L.t.checkingTheServer, Colors.grey.shade700, Colors.grey.shade200),
     };
     return Container(
       key: const ValueKey('dup235-chip'),
@@ -350,8 +351,8 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(999)),
       child: Row(children: [
-        tab('Use recovery code', true),
-        tab('Use old password', false),
+        tab(L.t.useRecoveryCode, true),
+        tab(L.t.useOldPassword, false),
       ]),
     );
   }
@@ -363,8 +364,8 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
         controller: _code,
         autocorrect: false,
         textInputAction: TextInputAction.next,
-        labelText: 'Recovery code',
-        hintText: 'K7QM2-XPA9T-RC4WN-E8D3F',
+        labelText: L.t.recoveryCode2,
+        hintText: L.t.k7qm2Xpa9tRc4wnE8d3f,
         prefixIcon: const Icon(Icons.key_outlined),
         onChanged: (_) => setState(() => _error = null),
       ),
@@ -373,11 +374,11 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
         controller: _password,
         obscureText: _hide,
         textInputAction: TextInputAction.next,
-        labelText: 'New password',
-        hintText: 'At least 8 characters',
+        labelText: L.t.newPassword,
+        hintText: L.t.atLeast8Characters,
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
-          tooltip: _hide ? 'Show password' : 'Hide password',
+          tooltip: _hide ? L.t.showPassword : L.t.hidePassword,
           onPressed: () => setState(() => _hide = !_hide),
           icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined),
         ),
@@ -387,7 +388,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
         controller: _again,
         obscureText: _hide,
         textInputAction: TextInputAction.done,
-        labelText: 'New password again',
+        labelText: L.t.newPasswordAgain,
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: same
             ? const Padding(
@@ -408,7 +409,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
         autocorrect: false,
         maxLength: 32,
         textInputAction: TextInputAction.next,
-        labelText: 'Username',
+        labelText: L.t.username,
         prefixIcon: const Icon(Icons.alternate_email),
         onChanged: (_) => setState(() => _error = null),
       ),
@@ -417,10 +418,10 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
         controller: _oldPassword,
         obscureText: _hide,
         textInputAction: TextInputAction.done,
-        labelText: 'Password of @${widget.info.username}',
+        labelText: L.t.passwordOf(widget.info.username),
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
-          tooltip: _hide ? 'Show password' : 'Hide password',
+          tooltip: _hide ? L.t.showPassword : L.t.hidePassword,
           onPressed: () => setState(() => _hide = !_hide),
           icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined),
         ),
@@ -429,7 +430,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
       if (_online == false)
         Padding(
           padding: const EdgeInsets.only(top: 10),
-          child: Text('Connect to the server to use the old password.',
+          child: Text(L.t.connectToTheServerToUse,
               key: const ValueKey('dup235-needs-server'),
               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
         ),
@@ -443,7 +444,7 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
     return PopScope(
       canPop: false,
       child: Scaffold(
-        appBar: AppBar(title: const Text('Confirm your account'), automaticallyImplyLeading: false),
+        appBar: AppBar(title: Text(L.t.confirmYourAccount), automaticallyImplyLeading: false),
         body: SafeArea(
           child: Column(children: [
             Expanded(
@@ -452,10 +453,10 @@ class _ConfirmAccountScreen235State extends State<ConfirmAccountScreen235> {
                 children: [
                   const DoneTick235(),
                   const SizedBox(height: 16),
-                  Text("You're @${widget.info.username} again",
+                  Text(L.t.youReAgain(widget.info.username),
                       textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 6),
-                  Text('Save your new recovery code now.',
+                  Text(L.t.saveYourNewRecoveryCodeNow,
                       textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
                   const SizedBox(height: 18),
                   RecoveryCodeBox235(key: const ValueKey('dup235-new-code'), code: code),

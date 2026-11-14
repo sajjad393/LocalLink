@@ -12,6 +12,7 @@ import 'package:locallink/features/admin/presentation/screens/admin_blocked_list
 import 'package:locallink/features/admin/presentation/widgets/admin_block_confirm.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Map filter chips (E7).
 enum LinkMapFilter { all, wifiDirect, mesh, localWifi, server, blocked }
@@ -27,11 +28,11 @@ bool linkMapFilterMatches(LinkMapFilter f, LinkNode n) => switch (f) {
 
 String linkMapFilterLabel(LinkMapFilter f) => switch (f) {
       LinkMapFilter.all => 'All',
-      LinkMapFilter.wifiDirect => 'Wi-Fi Direct',
-      LinkMapFilter.mesh => 'Mesh',
+      LinkMapFilter.wifiDirect => L.t.wiFiDirect,
+      LinkMapFilter.mesh => L.t.mesh,
       LinkMapFilter.localWifi => 'Local Wi-Fi',
       LinkMapFilter.server => 'Server',
-      LinkMapFilter.blocked => 'Blocked',
+      LinkMapFilter.blocked => L.t.blocked,
     };
 
 /// The big map grows with the number of users so nodes never pile up.
@@ -190,7 +191,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   /// Bundle 273: a tap in user mode opens the chat; a relay explains itself.
   void _userTap(LinkNode n) {
     if (n.relay) {
-      LinkToast.show(context, "A LinkUp phone helping to pass your messages. It can't read them.",
+      LinkToast.show(context, L.t.aLinkupPhoneHelpingToPass,
           kind: LinkToastKind.info);
       return;
     }
@@ -280,7 +281,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     final nodes = _nodes;
     final hit = nodes.where((n) => n.label.toLowerCase().contains(t)).firstOrNull;
     if (hit == null) {
-      LinkToast.show(context, 'No one called "$q" on the map', kind: LinkToastKind.info);
+      LinkToast.show(context, L.t.noOneCalledOnTheMap(q), kind: LinkToastKind.info);
       return;
     }
     // Hidden by the chip filter: show everyone again, then find.
@@ -367,22 +368,20 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                         [
                           if (target.username.isNotEmpty) '@${target.username}',
                           linkTagLabel(node.tag),
-                          if (blocked) 'relays for others',
+                          if (blocked) L.t.relaysForOthers,
                         ].join(' · '),
                         style: t.cardSub),
                   ]),
                 ),
-                AdminTag216(blocked ? 'Blocked' : 'Active', blocked ? A216Tone.red : A216Tone.green),
+                AdminTag216(blocked ? L.t.blocked : 'Active', blocked ? A216Tone.red : A216Tone.green),
               ]),
               if (blocked && entry != null) ...[
                 const SizedBox(height: 14),
                 Text(
-                    'Blocked by ${entry.record.signer == 'server' ? 'web panel' : (entry.record.by.isEmpty ? 'admin' : entry.record.by)}'
-                    ' · ${blockWhen(entry.record.at)}'
-                    '${entry.source == 'me' ? ' · reached ${entry.reached} phones' : ''}',
+                    L.t.blockedBy(entry.record.signer == 'server' ? 'web panel' : (entry.record.by.isEmpty ? 'admin' : entry.record.by), blockWhen(entry.record.at), entry.source == 'me' ? ' · reached ${entry.reached} phones' : ''),
                     style: t.rowSub.copyWith(color: c.ink)),
                 const SizedBox(height: 2),
-                Text('Server: ${entry.serverDone ? 'done' : 'waiting'}', style: t.cardSub),
+                Text(L.t.server(entry.serverDone ? 'done' : 'waiting'), style: t.cardSub),
               ],
               const SizedBox(height: 18),
               Row(children: [
@@ -397,7 +396,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                           shape: const StadiumBorder(),
                           textStyle: t.custom(14, FontWeight.w600, c.ink)),
                       onPressed: () => runAdminBlock(sheet, service: widget.service, target: target, block: !blocked),
-                      child: Text(blocked ? 'Unblock' : 'Block'),
+                      child: Text(blocked ? L.t.unblock : L.t.block),
                     ),
                   ),
                 ),
@@ -415,7 +414,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                         Navigator.of(sheet).push(
                             MaterialPageRoute<void>(builder: (_) => AdminBlockedListScreen(service: widget.service)));
                       },
-                      child: const Text('Blocked list'),
+                      child: Text(L.t.blockedList),
                     ),
                   ),
                 ),
@@ -487,12 +486,12 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                     body: _mapArea(context, shown),
                   )
                 : AdminPage216(
-                    title: widget.title,
+                    title: L.en(widget.title),
                     subtitle: widget.userMode
-                        ? (widget.userSubtitle ?? '${linkMapUserCount(all)} contacts')
-                        : '${linkMapUserCount(all)} users · $blockedCount blocked · server ${widget.serverOnline ? 'online' : 'offline'}',
+                        ? (widget.userSubtitle ?? L.t.contacts2(linkMapUserCount(all)))
+                        : L.t.usersBlockedServer(linkMapUserCount(all), blockedCount, widget.serverOnline ? 'online' : 'offline'),
                     right: AdminBarAction216(
-                      tooltip: 'Small map',
+                      tooltip: L.t.smallMap,
                       fill: const Color(0xFFEEF3FF),
                       onTap: () => Navigator.of(context).maybePop(),
                       child: Icon(Icons.close_fullscreen_rounded, size: 18, color: A216.colors(context).blue),
@@ -502,7 +501,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                           child: AdminSearch216(
-                            hint: 'Find a person',
+                            hint: L.t.findAPerson,
                             fieldKey: const ValueKey('link_map_search'),
                             onSubmitted: _find,
                           ),
@@ -600,7 +599,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                   color: const Color(0xFF1F2733),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text('Whole map', style: t.custom(13, FontWeight.w600, Colors.white)),
+                child: Text(L.t.wholeMap, style: t.custom(13, FontWeight.w600, Colors.white)),
               ),
             ),
           ),
@@ -610,7 +609,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
             right: 12,
             bottom: 22,
             child: Center(
-              child: Text('Drag to scroll · pinch to zoom',
+              child: Text(L.t.dragToScrollPinchToZoom,
                   key: const ValueKey('link_map_hint'), style: t.custom(11, FontWeight.w400, c.grey)),
             ),
           ),
@@ -626,16 +625,16 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
             ),
             padding: const EdgeInsets.symmetric(vertical: 0),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              _zoomButton(const ValueKey('link_map_zoom_in'), 'Zoom in', Icons.add_rounded, () => _setScale(1.5)),
+              _zoomButton(const ValueKey('link_map_zoom_in'), L.t.zoomIn, Icons.add_rounded, () => _setScale(1.5)),
               ListenableBuilder(
                 listenable: _zoom,
                 builder: (context, _) => _zoomButton(const ValueKey('link_map_zoom_out'),
-                    _atFit ? 'Whole map' : 'Zoom out', Icons.remove_rounded, _atFit ? null : () => _setScale(1 / 1.5)),
+                    _atFit ? L.t.wholeMap : L.t.zoomOut, Icons.remove_rounded, _atFit ? null : () => _setScale(1 / 1.5)),
               ),
-              _zoomButton(const ValueKey('link_map_centre'), 'This phone', Icons.my_location_rounded, _centre),
+              _zoomButton(const ValueKey('link_map_centre'), L.t.thisPhone, Icons.my_location_rounded, _centre),
               // Bundle 298 (A): full screen (hidden while in it).
               if (!_full)
-                _zoomButton(const ValueKey('link_map_full_298_open'), 'Full screen', Icons.fullscreen_rounded,
+                _zoomButton(const ValueKey('link_map_full_298_open'), L.t.fullScreen, Icons.fullscreen_rounded,
                     () => _setFull(true)),
             ]),
           ),
@@ -658,7 +657,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.close_rounded, size: 18, color: c.ink2),
                     const SizedBox(width: 6),
-                    Text('Exit full screen', style: t.custom(13.5, FontWeight.w600, c.ink2)),
+                    Text(L.t.exitFullScreen, style: t.custom(13.5, FontWeight.w600, c.ink2)),
                   ]),
                 ),
               ),

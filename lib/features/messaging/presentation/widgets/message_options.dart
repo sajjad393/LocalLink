@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 197a (mock v8): the shared message-option sheets and small
 /// widgets used by the 1-to-1 chat and the group chat.
@@ -78,7 +79,7 @@ Future<MessageActionResult?> showMessageActionsSheet(
                     children: [
                       for (final emoji in kQuickReactions)
                         IconButton(
-                          tooltip: 'React $emoji',
+                          tooltip: L.t.react(emoji),
                           onPressed: () => Navigator.pop(sheetContext,
                               MessageActionResult(MessageAction.react, emoji)),
                           icon: Text(emoji, style: const TextStyle(fontSize: 28)),
@@ -87,18 +88,18 @@ Future<MessageActionResult?> showMessageActionsSheet(
                   ),
                   const Divider(height: 12),
                 ],
-                if (canReply) row(MessageAction.reply, Icons.reply_rounded, 'Reply'),
-                if (hasText) row(MessageAction.copy, Icons.copy_outlined, 'Copy'),
+                if (canReply) row(MessageAction.reply, Icons.reply_rounded, L.t.reply),
+                if (hasText) row(MessageAction.copy, Icons.copy_outlined, L.t.copy),
                 if (canForward)
-                  row(MessageAction.forward, Icons.forward_rounded, 'Forward'),
+                  row(MessageAction.forward, Icons.forward_rounded, L.t.forward),
                 // Bundle 197b (P1): received media, Android 10+.
                 if (canSave && !mine)
-                  row(MessageAction.save, Icons.download_rounded, 'Save to phone'),
+                  row(MessageAction.save, Icons.download_rounded, L.t.saveToPhone),
                 if (mine)
-                  row(MessageAction.info, Icons.info_outline_rounded, 'Message info'),
+                  row(MessageAction.info, Icons.info_outline_rounded, L.t.messageInfo),
                 // Bundle G5b (mock P1 / P4).
                 if (pinRow == PinRow.pin)
-                  row(MessageAction.pin, Icons.push_pin_outlined, 'Pin'),
+                  row(MessageAction.pin, Icons.push_pin_outlined, L.t.pin),
                 if (pinRow == PinRow.unpin)
                   ListTile(
                     key: const ValueKey('msg_action_unpin'),
@@ -117,7 +118,7 @@ Future<MessageActionResult?> showMessageActionsSheet(
                         ),
                       ]),
                     ),
-                    title: Text('Unpin',
+                    title: Text(L.t.unpin,
                         style: TextStyle(
                             color: colors.onSurface,
                             fontSize: 15.5,
@@ -125,8 +126,8 @@ Future<MessageActionResult?> showMessageActionsSheet(
                     onTap: () => Navigator.pop(
                         sheetContext, const MessageActionResult(MessageAction.unpin)),
                   ),
-                row(MessageAction.select, Icons.check_circle_outline_rounded, 'Select'),
-                row(MessageAction.delete, Icons.delete_outline_rounded, 'Delete',
+                row(MessageAction.select, Icons.check_circle_outline_rounded, L.t.select),
+                row(MessageAction.delete, Icons.delete_outline_rounded, L.t.delete,
                     danger: true),
               ],
             ),
@@ -157,18 +158,14 @@ Future<DeleteChoice?> showDeleteMessagesSheet(
     builder: (sheetContext) {
       final theme = Theme.of(sheetContext);
       final colors = theme.colorScheme;
-      final who = group ? 'the group' : peerName;
+      final who = group ? L.t.theGroup : peerName;
       final hint = allowEveryone
           ? (count == 1
-              ? '"Delete for everyone" removes it from $who${group ? '' : "'s phone"} too, '
-                  'even if ${group ? 'someone is' : 'he is'} Offline now (it is removed when '
-                  'the phone gets the news). Only for your messages, up to 5 minutes old. '
-                  'A copy someone saved to the Gallery stays.'
-              : 'All $count are yours and less than 5 minutes old, so '
-                  '"Delete for everyone" is shown. A copy someone saved to the Gallery stays.')
+              ? L.t.deleteForEveryoneRemovesItFrom(who, group ? '' : L.t.possPhone304, group ? L.t.someoneIs304 : L.t.heIs304)
+              : L.t.allAreYoursAndLessThan(count))
           : (group
-              ? 'It is removed only from your phone. The group still has it.'
-              : 'It is removed only from your phone. $peerName still has it.');
+              ? L.t.itIsRemovedOnlyFromYour
+              : L.t.itIsRemovedOnlyFromYour2(peerName));
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
@@ -176,7 +173,7 @@ Future<DeleteChoice?> showDeleteMessagesSheet(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(count == 1 ? 'Delete message?' : 'Delete $count messages?',
+              Text(count == 1 ? L.t.deleteMessage : L.t.deleteMessages(count),
                   style: theme.textTheme.titleLarge
                       ?.copyWith(fontSize: 19, fontWeight: FontWeight.w700)),
               if (preview != null) ...[
@@ -192,7 +189,7 @@ Future<DeleteChoice?> showDeleteMessagesSheet(
               if (allowEveryone) ...[
                 _wideButton(
                   key: const ValueKey('delete_for_everyone'),
-                  label: 'Delete for everyone',
+                  label: L.t.deleteForEveryone,
                   filled: true,
                   colors: colors,
                   onTap: () =>
@@ -201,7 +198,7 @@ Future<DeleteChoice?> showDeleteMessagesSheet(
                 const SizedBox(height: 10),
                 _wideButton(
                   key: const ValueKey('delete_for_me'),
-                  label: 'Delete for me',
+                  label: L.t.deleteForMe,
                   filled: false,
                   colors: colors,
                   onTap: () => Navigator.pop(sheetContext, DeleteChoice.forMe),
@@ -209,7 +206,7 @@ Future<DeleteChoice?> showDeleteMessagesSheet(
               ] else
                 _wideButton(
                   key: const ValueKey('delete_for_me'),
-                  label: 'Delete for me',
+                  label: L.t.deleteForMe,
                   filled: true,
                   colors: colors,
                   onTap: () => Navigator.pop(sheetContext, DeleteChoice.forMe),
@@ -218,7 +215,7 @@ Future<DeleteChoice?> showDeleteMessagesSheet(
               Center(
                 child: TextButton(
                   onPressed: () => Navigator.pop(sheetContext),
-                  child: const Text('Cancel',
+                  child: Text(L.t.cancel,
                       style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
@@ -314,32 +311,32 @@ Future<void> showMessageInfoSheet(
       if (group) {
         rows.add(notSentYet
             ? line(const ValueKey('info_not_sent'), Icons.schedule_rounded,
-                'Not sent yet', '')
-            : line(const ValueKey('info_sent'), Icons.send_rounded, 'Sent',
+                L.t.notSentYet, '')
+            : line(const ValueKey('info_sent'), Icons.send_rounded, L.t.sent,
                 messageInfoTime(sentAt)));
       } else {
         // Bundle 218d: a 1:1 message still waiting shows "Not sent yet" too.
         rows.add(notSentYet && deliveredAt == null
             ? line(const ValueKey('info_not_sent'), Icons.schedule_rounded,
-                'Not sent yet', '')
-            : line(const ValueKey('info_sent'), Icons.send_rounded, 'Sent',
+                L.t.notSentYet, '')
+            : line(const ValueKey('info_sent'), Icons.send_rounded, L.t.sent,
                 messageInfoTime(sentAt)));
         if (deliveredAt != null) {
           rows.add(Divider(height: 1, color: colors.outlineVariant));
           rows.add(line(const ValueKey('info_delivered'), Icons.done_all_rounded,
-              'Delivered', messageInfoTime(deliveredAt)));
+              L.t.delivered, messageInfoTime(deliveredAt)));
         }
         // Bundle 198: Read (hidden when my switch is OFF) and Played.
         if (readAt != null && !receiptsOff) {
           rows.add(Divider(height: 1, color: colors.outlineVariant));
           rows.add(line(const ValueKey('info_read'), Icons.done_all_rounded,
-              'Read', messageInfoTime(readAt),
+              L.t.read, messageInfoTime(readAt),
               iconColor: colors.primary));
         }
         if (playedAt != null) {
           rows.add(Divider(height: 1, color: colors.outlineVariant));
           rows.add(line(const ValueKey('info_played'), Icons.mic_rounded,
-              'Played', messageInfoTime(playedAt),
+              L.t.played, messageInfoTime(playedAt),
               iconColor: colors.primary));
         }
       }
@@ -350,7 +347,7 @@ Future<void> showMessageInfoSheet(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Message info',
+              Text(L.t.messageInfo,
                   style: theme.textTheme.titleLarge
                       ?.copyWith(fontSize: 19, fontWeight: FontWeight.w700)),
               const SizedBox(height: 12),
@@ -363,7 +360,7 @@ Future<void> showMessageInfoSheet(
                   key: const ValueKey('info_receipts_off'),
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    'Read receipts are off. Turn on in Settings › Privacy.',
+                    L.t.readReceiptsAreOffTurnOn,
                     style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
                   ),
                 ),
@@ -379,8 +376,7 @@ Future<void> showMessageInfoSheet(
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    '$notOnServerName is not on the server yet. It goes when '
-                    '$notOnServerName is nearby or joins the server.',
+                    L.t.isNotOnTheServerYet(notOnServerName, notOnServerName),
                     style: TextStyle(fontSize: 13.5, color: colors.onSurfaceVariant),
                   ),
                 ),
@@ -390,15 +386,14 @@ Future<void> showMessageInfoSheet(
                   key: const ValueKey('info_waiting'),
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    'Waiting. ${peerName.isEmpty ? 'Your friend' : peerName} '
-                    'gets it when they are Nearby or Online.',
+                    L.t.waitingGetsItWhenTheyAre(peerName.isEmpty ? L.t.yourFriend304 : peerName),
                     style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
                   ),
                 ),
               Center(
                 child: TextButton(
                   onPressed: () => Navigator.pop(sheetContext),
-                  child: const Text('Close',
+                  child: Text(L.t.close,
                       style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
@@ -440,7 +435,7 @@ Future<bool> showClearChatSheet(
                   ),
                 ),
                 Expanded(
-                  child: Text.rich(TextSpan(children: spans),
+                  child: Text.rich(TextSpan(children: L.spans(spans)),
                       style: TextStyle(
                           fontSize: 14, height: 1.35, color: colors.onSurface)),
                 ),
@@ -450,37 +445,36 @@ Future<bool> showClearChatSheet(
       const bold = TextStyle(fontWeight: FontWeight.w700);
       final points = deleteChat
           ? [
-              point(const [
-                TextSpan(text: 'The chat and all its messages, photos and files are '),
-                TextSpan(text: 'deleted from this phone', style: bold),
-                TextSpan(text: ' and it leaves your Chats list.'),
+              point([
+                TextSpan(text: L.t.theChatAndAllItsMessages),
+                TextSpan(text: L.t.deletedFromThisPhone, style: bold),
+                TextSpan(text: L.t.andItLeavesYourChatsList),
               ]),
               point([
                 TextSpan(
-                    text: '$name stays your friend. A new message from them '
-                        'starts a new chat.'),
+                    text: L.t.staysYourFriendANewMessage(name)),
               ]),
             ]
           : [
-              point(const [
-                TextSpan(text: 'All messages, photos and files in this chat are '),
-                TextSpan(text: 'deleted from this phone', style: bold),
-                TextSpan(text: '.'),
+              point([
+                TextSpan(text: L.t.allMessagesPhotosAndFilesIn),
+                TextSpan(text: L.t.deletedFromThisPhone, style: bold),
+                TextSpan(text: L.isUrdu ? '۔' : '.'),
               ]),
               point(group
-                  ? const [
-                      TextSpan(text: 'The other members '),
-                      TextSpan(text: 'still have', style: bold),
-                      TextSpan(text: ' their copy. Photos you saved to your Gallery stay.'),
+                  ? [
+                      TextSpan(text: L.t.theOtherMembers),
+                      TextSpan(text: L.t.stillHave, style: bold),
+                      TextSpan(text: L.t.theirCopyPhotosYouSavedTo),
                     ]
                   : [
                       TextSpan(text: '$name '),
-                      const TextSpan(text: 'still has', style: bold),
-                      const TextSpan(
-                          text: ' their copy. Photos you saved to your Gallery stay.'),
+                      TextSpan(text: L.t.stillHas, style: bold),
+                      TextSpan(
+                          text: L.t.theirCopyPhotosYouSavedTo),
                     ]),
-              point(const [
-                TextSpan(text: 'The chat stays in your Chats list, empty.'),
+              point([
+                TextSpan(text: L.t.theChatStaysInYourChats),
               ]),
             ];
       return SafeArea(
@@ -490,7 +484,7 @@ Future<bool> showClearChatSheet(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(deleteChat ? 'Delete chat with $name?' : 'Clear chat with $name?',
+              Text(deleteChat ? L.t.deleteChatWith(name) : L.t.clearChatWith(name),
                   style: theme.textTheme.titleLarge
                       ?.copyWith(fontSize: 19, fontWeight: FontWeight.w700)),
               const SizedBox(height: 14),
@@ -498,7 +492,7 @@ Future<bool> showClearChatSheet(
               const SizedBox(height: 6),
               _wideButton(
                 key: ValueKey(deleteChat ? 'confirm_delete_chat' : 'confirm_clear_chat'),
-                label: deleteChat ? 'Delete chat' : 'Clear chat',
+                label: deleteChat ? L.t.deleteChat : L.t.clearChat,
                 filled: true,
                 colors: colors,
                 onTap: () => Navigator.pop(sheetContext, true),
@@ -506,7 +500,7 @@ Future<bool> showClearChatSheet(
               Center(
                 child: TextButton(
                   onPressed: () => Navigator.pop(sheetContext, false),
-                  child: const Text('Cancel',
+                  child: Text(L.t.cancel,
                       style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
@@ -553,19 +547,19 @@ Future<ChatRowChoice?> showChatRowSheet(
               ListTile(
                 key: const ValueKey('chat_row_clear'),
                 leading: Icon(Icons.clear_all_rounded, color: colors.onSurfaceVariant),
-                title: const Text('Clear chat'),
+                title: Text(L.t.clearChat),
                 onTap: () => Navigator.pop(sheetContext, ChatRowChoice.clear),
               ),
               if (allowDelete)
                 ListTile(
                   key: const ValueKey('chat_row_delete'),
                   leading: Icon(Icons.delete_outline_rounded, color: colors.error),
-                  title: Text('Delete chat', style: TextStyle(color: colors.error)),
+                  title: Text(L.t.deleteChat, style: TextStyle(color: colors.error)),
                   onTap: () => Navigator.pop(sheetContext, ChatRowChoice.delete),
                 ),
               TextButton(
                 onPressed: () => Navigator.pop(sheetContext),
-                child: const Text('Close',
+                child: Text(L.t.close,
                     style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ],
@@ -634,7 +628,7 @@ class ReplyBar extends StatelessWidget {
           ),
           IconButton(
             key: const ValueKey('reply_bar_close'),
-            tooltip: 'Cancel reply',
+            tooltip: L.t.cancelReply,
             onPressed: onClose,
             icon: const Icon(Icons.close_rounded),
           ),
@@ -698,7 +692,7 @@ class QuoteBox extends StatelessWidget {
                   style: TextStyle(
                       color: accent, fontWeight: FontWeight.w700, fontSize: 12.5)),
             Text(
-              notAvailable ? 'Message not available' : line,
+              notAvailable ? L.t.messageNotAvailable : line,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -743,7 +737,7 @@ class ForwardedLabel extends StatelessWidget {
         children: [
           Icon(Icons.forward_rounded, size: 13, color: c),
           const SizedBox(width: 3),
-          Text('Forwarded',
+          Text(L.t.forwarded,
               style: TextStyle(
                   fontSize: 11.5, fontStyle: FontStyle.italic, color: c)),
         ],

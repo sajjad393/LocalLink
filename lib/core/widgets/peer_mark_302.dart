@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/presence/block_hub.dart';
 import 'package:locallink/features/admin/data/services/admin_block_book.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 302 (A): why a person can't be reached, so every screen shows the
 /// right words. Before 302 all three cases said "Blocked" / "You blocked …"
@@ -108,7 +109,7 @@ class AdminBlockedPill302 extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _Pill302(
         key: const ValueKey('pill_admin_blocked_302'),
-        text: 'Admin blocked',
+        text: L.t.adminBlocked,
         icon: Icons.shield_rounded,
         ink: Theme.of(context).colorScheme.error,
         outline: true,
@@ -122,7 +123,7 @@ class OldAppPill302 extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _Pill302(
         key: const ValueKey('pill_old_linkup_302'),
-        text: 'Old LinkUp',
+        text: L.t.oldLinkup,
         icon: Icons.system_update_rounded,
         ink: oldInk302(context),
         tint: oldTint302(context),

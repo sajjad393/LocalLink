@@ -3,7 +3,6 @@
 // trying 60 s instead of 45 s. A mesh route counts as a link.
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,6 +20,7 @@ import 'package:locallink/features/calls/data/services/call_session_manager.dart
 import 'package:locallink/features/connectivity/data/services/local_route_policy_service.dart';
 
 import 'support/phase5_fakes.dart';
+import 'support/l10n_source_304.dart';
 
 void _installChannelMocks() {
   final messenger =
@@ -196,8 +196,7 @@ void main() {
       }
     });
     test('call screen uses it only while the wait runs', () {
-      final src = File('lib/features/calls/presentation/screens/call_screen.dart')
-          .readAsStringSync();
+      final src = readEnglish304('lib/features/calls/presentation/screens/call_screen.dart');
       expect(src, contains('CallNearbyWait.instance.waitingFor(session.id) =>'));
       expect(src, contains('CallNearbyWait.waitingText(session.peerName)'));
       expect(src, contains("'Calling…'"), reason: 'linked calls unchanged');

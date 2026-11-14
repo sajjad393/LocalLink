@@ -28,6 +28,7 @@ import 'package:locallink/features/directory/data/services/friend_hello_service.
 import 'package:locallink/features/directory/presentation/nearby_list_plan.dart';
 import 'package:locallink/features/directory/presentation/add_contact_ui283.dart';
 import 'package:locallink/features/directory/presentation/profile_view_rules.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 170: the Nearby list now lives INSIDE Add Contact (the separate
 /// Nearby screen and its button on Contacts are gone). This section shows
@@ -168,8 +169,8 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
   Widget _wifiCard256(BuildContext context) => WarnCard283(
         key: const ValueKey<String>('nearby_wifi_card_256'),
         kind: WarnKind283.wifi,
-        title: 'Wi-Fi is off',
-        text: 'Turn it on to find phones near you',
+        title: L.t.wiFiIsOff,
+        text: L.t.turnItOnToFindPhones,
         action: 'Turn on',
         onPressed: _openWifi256,
       );
@@ -183,7 +184,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         title: k.name ?? nearbyUnknownName,
         subtitle: nearbySeenLabel256(k.ageMs),
         action: GradientChip283(
-          text: 'Add friend',
+          text: L.t.addFriend,
           onPressed: () => _pairSheet(k.peer),
         ),
       ),
@@ -207,8 +208,8 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
 
   void _onWaiting(String name) {
     if (!mounted) return;
-    final who = name.trim().isEmpty ? 'They' : name.trim();
-    _snack('Request sent. $who needs to accept.');
+    final who = name.trim().isEmpty ? L.t.they : name.trim();
+    _snack(L.t.requestSentNeedsToAccept(who));
   }
 
   @override
@@ -400,16 +401,16 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
     AppLogger.info('PAIR_UI', detail: 'stage=pair_button peer=${peer.name}');
     final c = widget.connectivity;
     if (!await c.isWifiDirectSupported()) {
-      _snack('This phone cannot reach that phone directly.');
+      _snack(L.t.thisPhoneCannotReachThatPhone);
       return;
     }
     if (!await c.hasWifiDirectPermission()) {
       await c.requestWifiDirectEnable();
       _snack(
-          'Allow the "Nearby devices" permission, then tap Add friend again.');
+          L.t.allowTheNearbyDevicesPermissionThen);
       return;
     }
-    _snack('Waiting for this phone…');
+    _snack(L.t.waitingForThisPhone);
     // Bundle 154 (F6): remember which unpaired phones were already visible,
     // so the phone that appears right after this tap gets the request —
     // already-paired phones nearby no longer block pairing.
@@ -462,7 +463,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
       AppLogger.warning('PAIR_UI',
           detail: 'PAIR_AMBIGUOUS count=${_unpairedDiscoveredIds().length}');
       if (_unpairedDiscoveredIds().isNotEmpty) {
-        _snack('Tap Add friend next to the phone you want to add.');
+        _snack(L.t.tapAddFriendNextToThe);
       }
       return;
     }
@@ -511,7 +512,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         await widget.pairing.requestPair(peer.nodeId);
         AppLogger.info('PAIR_TAP', detail: 'stage=requestPair_returned_ok');
         // Bundle 177 (7.3): no accept box any more; "<name> added" follows.
-        _snack('Adding ${_personName(peer.nodeId) ?? 'this phone'}…');
+        _snack(L.t.adding2(_personName(peer.nodeId) ?? 'this phone'));
         return;
       } catch (error) {
         lastError = error;
@@ -556,7 +557,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
                 wifiPeers.first.name.isNotEmpty
             ? wifiPeers.first.name
             : null);
-    final displayName = knownName ?? 'this phone';
+    final displayName = knownName ?? L.t.thisPhone2;
     final send = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
@@ -577,14 +578,14 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
                           fontSize: 20, color: scheme.onPrimaryContainer)),
             ),
             const SizedBox(height: 12),
-            Text('Add $displayName as a friend?',
+            Text(L.t.addAsAFriend(displayName),
                 style: Theme.of(sheetContext).textTheme.titleMedium,
                 textAlign: TextAlign.center),
             // Bundle 263 (B6): no phone id row (not useful to a normal user).
             const SizedBox(height: 4),
             Chip(
               // Bundle 170: no transport words — just Nearby.
-              label: const Text('Nearby'),
+              label: Text(L.t.nearby),
               visualDensity: VisualDensity.compact,
               side: BorderSide.none,
               backgroundColor: scheme.surfaceContainerHighest,
@@ -595,12 +596,12 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
               child: FilledButton.icon(
                 onPressed: () => Navigator.of(sheetContext).pop(true),
                 icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-                label: const Text('Add friend'),
+                label: Text(L.t.addFriend),
               ),
             ),
             TextButton(
               onPressed: () => Navigator.of(sheetContext).pop(false),
-              child: const Text('Cancel'),
+              child: Text(L.t.cancel),
             ),
           ],
         ),
@@ -756,9 +757,9 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
           for (final k in kept) _keptCard256(k),
         ] else if (!any) ...[
           if (plan.emptyState == NearbyEmptyState.everyoneAdded)
-            const SlideIn283(
+            SlideIn283(
               delay: Duration(milliseconds: 150),
-              child: QuietLine283('Everyone nearby is already in your contacts'),
+              child: QuietLine283(L.t.everyoneNearbyIsAlreadyInYour),
             )
           else if (searchingNow)
             _lookingBox(context),
@@ -772,7 +773,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
 
   /// Bundle 283 (mock `.sec`): small grey capitals + live "Searching".
   Widget _header(BuildContext context, {required bool live}) =>
-      SectionTitle283(widget.title, live: live);
+      SectionTitle283(L.en(widget.title), live: live);
 
   /// Bundle 283 (mock 283 D/E): the new search scene. [foundProgress] > 0 =
   /// the curved line reaches the person, "Found someone!", then the card.
@@ -792,16 +793,16 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           child: found
-              ? Text('Found someone!',
+              ? Text(L.t.foundSomeone,
                   key: const ValueKey('nearby_found_283'),
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ok))
-              : const LookingText283('Looking for phones near you',
+              : LookingText283(L.t.lookingForPhonesNearYou,
                   key: ValueKey('nearby_looking_283')),
         ),
         if (!found) ...[
           const SizedBox(height: 4),
-          Text('Keep Wi-Fi on, on both phones',
+          Text(L.t.keepWiFiOnOnBoth,
               key: const ValueKey('nearby_wait_267'),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12.5, color: p.muted)),
@@ -815,8 +816,8 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
   Widget _permissionCard(BuildContext context) => WarnCard283(
         key: const ValueKey<String>('nearby_allow_card_283'),
         kind: WarnKind283.nearby,
-        title: 'Find phones near you',
-        text: 'LinkUp needs your OK once',
+        title: L.t.findPhonesNearYou,
+        text: L.t.linkupNeedsYourOkOnce,
         action: 'Allow',
         onPressed: () => _startSearch(askPermission: true),
       );
@@ -852,12 +853,12 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
         builder: (context, _) => FriendRequestBook.instance.isSent(mesh.nodeId)
             ? GradientChip283(
                 key: ValueKey('nearby_requested_${mesh.nodeId}'),
-                text: 'Requested',
+                text: L.t.requested,
                 icon: Icons.schedule_rounded,
                 onPressed: null,
               )
             : GradientChip283(
-                text: 'Add friend',
+                text: L.t.addFriend,
                 onPressed: () => _pairSheet(mesh),
               ),
       );
@@ -868,7 +869,7 @@ class _NearbyPeopleSectionState extends State<NearbyPeopleSection>
               height: 22,
               child: CircularProgressIndicator(strokeWidth: 2))
           : GradientChip283(
-              text: 'Add friend',
+              text: L.t.addFriend,
               onPressed: wifi == null ? null : () => _pairWithWifiPeer(wifi),
             );
     }

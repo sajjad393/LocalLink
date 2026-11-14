@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/theme/app_tokens.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class LocalLinkTheme {
   static ThemeData _build(Brightness brightness) {
@@ -21,7 +22,7 @@ class LocalLinkTheme {
       brightness: brightness,
       colorScheme: scheme,
       // Bundle 290 (S-1): the bundled Roboto everywhere.
-      fontFamily: LocalLinkLook.fontFamily,
+      fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback,
       visualDensity: VisualDensity.adaptivePlatformDensity,
     );
 
@@ -29,7 +30,7 @@ class LocalLinkTheme {
 
     return base.copyWith(
       scaffoldBackgroundColor: scheme.surface,
-      primaryTextTheme: base.primaryTextTheme.apply(fontFamily: LocalLinkLook.fontFamily),
+      primaryTextTheme: base.primaryTextTheme.apply(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback),
       textTheme: base.textTheme.copyWith(
         // Every level must carry an explicit color: colorless replacements
         // render as opaque white in the light theme (invisible on white
@@ -59,7 +60,7 @@ class LocalLinkTheme {
             color: scheme.onSurfaceVariant, fontSize: 12, height: 1.35),
         labelLarge: TextStyle(
             color: scheme.onSurface, fontSize: 14, fontWeight: FontWeight.w700),
-      ).apply(fontFamily: LocalLinkLook.fontFamily),
+      ).apply(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback),
       appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: 0,
@@ -125,7 +126,7 @@ class LocalLinkTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontWeight: FontWeight.w700, fontSize: 15),
+          textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, fontWeight: FontWeight.w700, fontSize: 15),
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.xl),
           shape: RoundedRectangleBorder(
@@ -135,7 +136,7 @@ class LocalLinkTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontWeight: FontWeight.w700, fontSize: 15),
+          textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, fontWeight: FontWeight.w700, fontSize: 15),
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: LocalLinkSpacing.xl),
           shape: RoundedRectangleBorder(
@@ -158,7 +159,7 @@ class LocalLinkTheme {
         behavior: SnackBarBehavior.floating,
         backgroundColor: dark ? const Color(0xFF2A2D38) : const Color(0xFF1F2937),
         contentTextStyle: TextStyle(
-          fontFamily: LocalLinkLook.fontFamily,
+          fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback,
           fontSize: 14,
           height: 1.35,
           fontWeight: FontWeight.w500,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/search_pill_298.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 163 (4.9): admin lists used to stop at 50 with no hint. Now they
 /// show 50 at a time with a search box and "Show 50 more (N left)".
@@ -66,7 +67,7 @@ class _AdminListSearchPillState extends State<_AdminListSearchPill> {
 
   @override
   Widget build(BuildContext context) => SearchPill298(
-      controller: _c, hint: widget.hint, onChanged: widget.onChanged);
+      controller: _c, hint: L.en(widget.hint), onChanged: widget.onChanged);
 }
 
 /// "Show 50 more (250 left)" under an admin list. Nothing when all shown.
@@ -92,7 +93,7 @@ class AdminListMoreButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: FilledButton.tonal(
           onPressed: onPressed,
-          child: Text('Show $next more  ($left left)'),
+          child: Text(L.t.showMoreLeft(next, left)),
         ),
       ),
     );

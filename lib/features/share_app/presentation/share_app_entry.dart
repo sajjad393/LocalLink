@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:locallink/core/widgets/messenger_list_group.dart';
 import 'package:locallink/features/share_app/presentation/share_app_screen.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 void openShareApp(BuildContext context, {required String ownerName}) {
   Navigator.of(context).push<void>(MaterialPageRoute(
@@ -78,8 +79,8 @@ class ShareAppSettingsRow extends StatelessWidget {
     return MessengerSettingsRow(
       key: const ValueKey('settings_share_app'),
       icon: Icons.ios_share_rounded,
-      title: 'Share LinkUp',
-      subtitle: 'Give the app to a nearby phone · no internet',
+      title: L.t.shareLinkup,
+      subtitle: L.t.giveTheAppToANearby,
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         const _NewBadge(),
         const SizedBox(width: 4),
@@ -121,9 +122,9 @@ class InviteNearbyCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Invite a friend nearby',
+                    Text(L.t.inviteAFriendNearby,
                         style: TextStyle(fontWeight: FontWeight.w700)),
-                    Text('Give them LinkUp · no internet',
+                    Text(L.t.giveThemLinkupNoInternet,
                         style: TextStyle(
                             fontSize: 12, color: colors.onSurfaceVariant)),
                   ],

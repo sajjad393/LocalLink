@@ -3,7 +3,6 @@
 // shared). Nearby appears only after a search found no one, with a
 // "Please wait" line under the search animation.
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,6 +20,7 @@ import 'package:locallink/features/directory/presentation/add_contact_screen.dar
 import 'package:locallink/features/directory/presentation/nearby_people_section.dart';
 
 import 'support/phase5_fakes.dart';
+import 'support/l10n_source_304.dart';
 
 final class _MeshRepo implements MeshRepositoryContract {
   final StreamController<Map<String, dynamic>> controller = StreamController.broadcast();
@@ -101,7 +101,7 @@ Future<void> _type(WidgetTester tester, String text) async {
   await tester.pump();
 }
 
-String _src(String p) => File(p).readAsStringSync();
+String _src(String p) => readEnglish304(p);
 const _screen = 'lib/features/directory/presentation/add_contact_screen.dart';
 
 void main() {

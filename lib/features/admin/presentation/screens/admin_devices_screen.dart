@@ -9,6 +9,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_format216.da
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_people216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (page 14): Devices + the phone sheet.
 class AdminDevicesScreen extends StatefulWidget {
@@ -41,12 +42,12 @@ class _AdminDevicesScreenState extends State<AdminDevicesScreen> {
       title: 'Devices',
       module: 'Devices',
       subtitle: (s) =>
-          '${plural216(s.devices.length, 'phone')} · ${s.devices.where(online).length} online',
+          L.t.online3(plural216(s.devices.length, 'phone'), s.devices.where(online).length),
       builder: (context, state) {
         final rows = state.devices.where(_match).toList();
         return [
           AdminSearch216(
-            hint: 'Search phone or owner',
+            hint: L.t.searchPhoneOrOwner,
             fieldKey: const ValueKey('a216_devices_search'),
             onChanged: (v) => setState(() => _q = v),
           ),
@@ -54,11 +55,11 @@ class _AdminDevicesScreenState extends State<AdminDevicesScreen> {
           if (state.loading && state.devices.isEmpty)
             const AdminLoading216()
           else if (rows.isEmpty)
-            const AdminEmptyState216(
+            AdminEmptyState216(
                 icon: Icons.smartphone_rounded,
                 tone: A216Tone.grey,
-                title: 'No phones found',
-                body: 'Try another name.')
+                title: L.t.noPhonesFound,
+                body: L.t.tryAnotherName)
           else
             AdminListCard216([
               for (final d in rows)
@@ -142,7 +143,7 @@ class _DeviceSheetState extends State<_DeviceSheet> {
       label: _name,
       devices: [_id],
       detail: {'level': 'device', 'wifi_radio_policy': v ?? ''},
-      words: v ?? 'no rule',
+      words: v ?? L.t.noRule,
     );
     if (note != null && mounted) adminSnack216(context, note);
   }
@@ -152,7 +153,7 @@ class _DeviceSheetState extends State<_DeviceSheet> {
     final name = await showAdminSheet216<String>(context, builder: (sheet) {
       final t = A216Text.of(sheet);
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('Rename phone', style: t.sheetTitle),
+        Text(L.t.renamePhone, style: t.sheetTitle),
         const SizedBox(height: 14),
         TextField(
           key: const ValueKey('a216_rename_field'),
@@ -165,7 +166,7 @@ class _DeviceSheetState extends State<_DeviceSheet> {
           ),
         ),
         const SizedBox(height: 8),
-        AdminButton216('Save',
+        AdminButton216(L.t.save,
             key: const ValueKey('a216_rename_save'),
             onTap: () => Navigator.of(sheet).pop(ctrl.text.trim())),
       ]);
@@ -178,9 +179,9 @@ class _DeviceSheetState extends State<_DeviceSheet> {
 
   Future<void> _remove() async {
     final ok = await confirmAdmin216(context,
-        title: 'Remove this phone?',
-        body: 'It is signed out and must sign in again.',
-        yes: 'Remove phone',
+        title: L.t.removeThisPhone,
+        body: L.t.itIsSignedOutAndMust,
+        yes: L.t.removePhone,
         danger: true);
     if (!ok || !mounted) return;
     final nav = Navigator.of(context);
@@ -211,7 +212,7 @@ class _DeviceSheetState extends State<_DeviceSheet> {
         ? link.text
         : (edge.other.isEmpty
             ? linkWord216(edge.link)
-            : '${linkWord216(edge.link)}, through ${edge.other}');
+            : L.t.through2(linkWord216(edge.link), edge.other));
     final online = d['online'] == true;
     const picks = wifiRuleValues216;
     return Column(
@@ -223,11 +224,11 @@ class _DeviceSheetState extends State<_DeviceSheet> {
         Text(
             [
               owner,
-              'Android',
-              if (build is num && build > 0) 'build $build',
+              L.t.android,
+              if (build is num && build > 0) L.t.build2(build),
             ].join(' · '),
             style: t.cardSub),
-        const AdminSection216('Wi-Fi rule'),
+        AdminSection216(L.t.wiFiRule),
         Opacity(
           opacity: canWifi && _loaded ? 1 : 0.5,
           child: IgnorePointer(
@@ -245,17 +246,17 @@ class _DeviceSheetState extends State<_DeviceSheet> {
           ),
         ),
         const SizedBox(height: 6),
-        Text('Default = same as $owner’s account', style: t.note),
+        Text(L.t.defaultSameAsSAccount(owner), style: t.note),
         const SizedBox(height: 10),
         AdminKeyValue216('Owner',
             '$owner${(d['username'] ?? '').toString().isEmpty ? '' : ' (@${d['username']})'}'),
-        AdminKeyValue216('Link now', linkNow),
-        AdminKeyValue216('Last seen', online ? 'now' : age216(d['last_seen_at'])),
+        AdminKeyValue216(L.t.linkNow, linkNow),
+        AdminKeyValue216(L.t.lastSeen, online ? 'now' : age216(d['last_seen_at'])),
         if (canManage) ...[
           const SizedBox(height: 16),
           Row(children: [
             Expanded(
-              child: AdminButton216('Rename',
+              child: AdminButton216(L.t.rename,
                   key: const ValueKey('a216_rename'),
                   icon: Icons.edit_outlined,
                   kind: A216ButtonKind.outline,
@@ -264,7 +265,7 @@ class _DeviceSheetState extends State<_DeviceSheet> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: AdminButton216('Remove phone',
+              child: AdminButton216(L.t.removePhone,
                   key: const ValueKey('a216_remove'),
                   kind: A216ButtonKind.danger,
                   height: 42,

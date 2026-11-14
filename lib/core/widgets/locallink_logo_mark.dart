@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 178: the LinkUp mark (logo A) drawn as vector shapes: a chat
 /// bubble with an up arrow out of its top-right corner and the two linked
@@ -17,7 +18,7 @@ class LocalLinkLogoMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'LinkUp logo',
+      label: L.t.linkupLogo,
       image: true,
       child: SizedBox(
         width: width,

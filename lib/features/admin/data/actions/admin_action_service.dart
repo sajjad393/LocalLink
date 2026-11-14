@@ -12,6 +12,7 @@ import 'package:locallink/features/admin/data/actions/admin_action_doers.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_server.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_store.dart';
 import 'package:locallink/features/admin/data/models/admin_block_record.dart';
+import 'package:locallink/l10n/l10n.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart'
     show AdminSignIn, AdminTrustSaved, ed25519Verify;
 
@@ -263,13 +264,13 @@ class AdminActionService {
   }
 
   String _subFor(_Entry e) {
-    if (e.state == 'cancelled') return 'Cancelled';
-    if (e.state == 'replaced') return 'Replaced by a newer action';
-    if (!e.pending) return e.need > 1 ? '${e.done} of ${e.need} phones' : 'Done';
-    if (e.action == 'version_rule') return 'Reached ${e.done}';
-    if (e.need > 1) return '${e.done} of ${e.need} phones';
-    if (_waitSeen(e)) return 'Reached the phone - it must reach the server once';
-    return 'Waiting for the phone';
+    if (e.state == 'cancelled') return L.t.cancelled;
+    if (e.state == 'replaced') return L.t.replacedByANewerAction;
+    if (!e.pending) return e.need > 1 ? L.t.ofPhones(e.done, e.need) : L.t.done2;
+    if (e.action == 'version_rule') return L.t.reached(e.done);
+    if (e.need > 1) return L.t.ofPhones(e.done, e.need);
+    if (_waitSeen(e)) return L.t.reachedThePhoneItMustReach;
+    return L.t.waitingForThePhone;
   }
 
   void _publish() {

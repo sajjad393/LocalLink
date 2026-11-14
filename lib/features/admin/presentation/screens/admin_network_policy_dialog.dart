@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class AdminNetworkPolicyDialog extends StatefulWidget {
   final String title;
@@ -62,41 +63,41 @@ class _AdminNetworkPolicyDialogState extends State<AdminNetworkPolicyDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                        'LinkUp call and routing transport is local-only: LAN, Wi-Fi Direct and multi-hop mesh.',
+                    Text(
+                        L.t.linkupCallAndRoutingTransportIs,
                         style: TextStyle(fontSize: 12)),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String?>(
                         value: _wifi,
-                        decoration: const InputDecoration(
-                            labelText: 'Wi-Fi radio policy'),
-                        items: const [
+                        decoration: InputDecoration(
+                            labelText: L.t.wiFiRadioPolicy),
+                        items: [
                           DropdownMenuItem<String?>(
                               value: null,
-                              child: Text('Inherit / platform state')),
+                              child: Text(L.t.inheritPlatformState)),
                           DropdownMenuItem<String?>(
-                              value: 'allowed', child: Text('Allowed')),
+                              value: 'allowed', child: Text(L.t.allowed)),
                           DropdownMenuItem<String?>(
-                              value: 'forced_on', child: Text('Forced ON')),
+                              value: 'forced_on', child: Text(L.t.forcedOn)),
                           DropdownMenuItem<String?>(
-                              value: 'forced_off', child: Text('Forced OFF')),
+                              value: 'forced_off', child: Text(L.t.forcedOff)),
                         ],
                         onChanged: widget.readOnly
                             ? null
                             : (v) => setState(() => _wifi = v)),
                     Text(
-                        'Effective: ${widget.policy['wifi_radio_policy'] ?? 'allowed'}',
+                        L.t.effective(widget.policy['wifi_radio_policy'] ?? 'allowed'),
                         style: Theme.of(context).textTheme.bodySmall),
                     if (widget.policy['updated_at'] != null)
                       Padding(
                           padding: const EdgeInsets.only(top: 12),
                           child: Text(
-                              'Last policy update: ${widget.policy['updated_at']}')),
+                              L.t.lastPolicyUpdate(widget.policy['updated_at']))),
                   ]))),
       actions: [
         TextButton(
             onPressed: _saving ? null : () => Navigator.pop(context),
-            child: const Text('Close')),
+            child: Text(L.t.close)),
         if (!widget.readOnly)
           FilledButton(
               onPressed: _saving ? null : _save,
@@ -105,7 +106,7 @@ class _AdminNetworkPolicyDialogState extends State<AdminNetworkPolicyDialog> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Save'))
+                  : Text(L.t.save))
       ],
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 221 (mock A-2): New request - Private chat (2 people) or Group,
 /// Full chat / 7 days / 30 days / Dates. True when a request was sent.
@@ -37,7 +38,7 @@ class ChatRequestSheet221 extends StatefulWidget {
 
 class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
   static const _ranges = ['full', '7', '30', 'dates'];
-  static const _rangeWords = ['Full chat', '7 days', '30 days', 'Dates'];
+  static List<String> get _rangeWords => [L.t.fullChat, L.t.t7Days, L.t.t30Days, L.t.dates];
 
   late bool _group = widget.preset?.isGroup ?? false;
   Map<String, dynamic>? _a;
@@ -81,14 +82,14 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
   Future<void> _pickPerson(bool first) async {
     final people = await widget.service.people().catchError((_) => <Map<String, dynamic>>[]);
     if (!mounted) return;
-    final picked = await _pickFrom(people, title: first ? 'First person' : 'Second person');
+    final picked = await _pickFrom(people, title: first ? L.t.firstPerson : L.t.secondPerson);
     if (picked != null && mounted) setState(() => first ? _a = picked : _b = picked);
   }
 
   Future<void> _pickGroup() async {
     final groups = await widget.service.localGroups().catchError((_) => <Map<String, dynamic>>[]);
     if (!mounted) return;
-    final picked = await _pickFrom(groups, title: 'Group');
+    final picked = await _pickFrom(groups, title: L.t.group);
     if (picked != null && mounted) setState(() => _g = picked);
   }
 
@@ -101,7 +102,7 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
           if (items.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Text('Nobody known on this phone yet.', style: t.rowSub),
+              child: Text(L.t.nobodyKnownOnThisPhoneYet, style: t.rowSub),
             ),
           for (final it in items)
             InkWell(
@@ -117,7 +118,7 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
                       Text(
                           it['me'] == true
                               ? 'Me (${it['name'] ?? ''})'
-                              : ((it['name']?.toString() ?? '').isEmpty ? 'Someone' : it['name'].toString()),
+                              : ((it['name']?.toString() ?? '').isEmpty ? L.t.someone : it['name'].toString()),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: t.rowTitle),
@@ -126,7 +127,7 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
                         Text(
                             [
                               if ((it['username']?.toString() ?? '').isNotEmpty) '@${it['username']}',
-                              if (it['old'] == true) 'old account',
+                              if (it['old'] == true) L.t.oldAccount,
                             ].join(' · '),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -195,7 +196,7 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
               const SizedBox(width: 14),
               if (value != null) ...[Letter221(name, size: 32), const SizedBox(width: 12)],
               Expanded(
-                child: Text(value == null ? 'Pick' : (name.isEmpty ? 'Someone' : name),
+                child: Text(value == null ? L.t.pick : (name.isEmpty ? L.t.someone : name),
                     style: t.custom(16, FontWeight.w500, value == null ? c.grey : c.ink)),
               ),
               Icon(Icons.chevron_right_rounded, color: c.grey),
@@ -214,26 +215,26 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
     final t = A216Text(c);
     String dates() {
       final d = _dates;
-      if (d == null) return 'Dates';
+      if (d == null) return L.t.dates;
       return '${d.start.day}/${d.start.month} - ${d.end.day}/${d.end.month}';
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('New request', style: t.custom(20, FontWeight.w700, c.ink)),
+      Text(L.t.newRequest, style: t.custom(20, FontWeight.w700, c.ink)),
       const SizedBox(height: 14),
       Tabs221(
-        labels: const ['Private chat', 'Group'],
+        labels: [L.t.privateChat, L.t.group],
         selected: _group ? 1 : 0,
         onSelected: (i) => setState(() => _group = i == 1),
       ),
       const SizedBox(height: 14),
       if (_group)
-        _field('Group', _g, _pickGroup, const ValueKey('request221_group'))
+        _field(L.t.group, _g, _pickGroup, const ValueKey('request221_group'))
       else ...[
-        _field('First person', _a, () => _pickPerson(true), const ValueKey('request221_first')),
-        _field('Second person', _b, () => _pickPerson(false), const ValueKey('request221_second')),
+        _field(L.t.firstPerson, _a, () => _pickPerson(true), const ValueKey('request221_first')),
+        _field(L.t.secondPerson, _b, () => _pickPerson(false), const ValueKey('request221_second')),
       ],
-      Text('Messages', style: t.custom(14, FontWeight.w600, c.ink2)),
+      Text(L.t.messages, style: t.custom(14, FontWeight.w600, c.ink2)),
       const SizedBox(height: 8),
       Wrap(spacing: 10, runSpacing: 8, children: [
         for (var i = 0; i < _ranges.length; i++)
@@ -254,7 +255,7 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
       ]),
       const SizedBox(height: 14),
       if (!_group && _samePhone) ...[
-        Text('These two accounts are on the same phone.',
+        Text(L.t.theseTwoAccountsAreOnThe,
             key: const ValueKey('request254_same_phone'),
             style: t.custom(14, FontWeight.w600, c.toneFg(A216Tone.red))),
         const SizedBox(height: 10),
@@ -264,14 +265,14 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
         decoration: BoxDecoration(color: c.surfaceMuted, borderRadius: BorderRadius.circular(14)),
         child: Text(
             !_group && _meIn
-                ? 'You already have this chat. Their phone adds the messages they deleted.'
-                : 'Their phones send these messages (also ones they deleted). They see nothing.',
+                ? L.t.youAlreadyHaveThisChatTheir
+                : L.t.theirPhonesSendTheseMessagesAlso,
             style: t.custom(14, FontWeight.w400, c.ink2, 1.45)),
       ),
       const SizedBox(height: 16),
       SizedBox(
         height: 52,
-        child: AdminButton216(_sending ? 'Sending…' : 'Send request',
+        child: AdminButton216(_sending ? L.t.sending : L.t.sendRequest,
             key: const ValueKey('request221_send'), height: 52, onTap: _ready ? _send : null),
       ),
     ]);

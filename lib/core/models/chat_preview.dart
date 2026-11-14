@@ -2,6 +2,7 @@ import 'package:locallink/core/models/group_extras.dart';
 import 'package:locallink/core/models/group_mentions.dart';
 import 'package:locallink/core/models/group_event.dart';
 import 'package:locallink/core/models/message_envelope.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 163 (4.7): the last message of a conversation, for the Chats list.
 class ChatPreview {
@@ -65,7 +66,7 @@ String chatPreviewText(
   final poll = GroupPoll.parse(preview.body);
   final body = (poll?.preview ??
           (preview.body.startsWith('llsk:v1:')
-              ? '🔒 Waiting for this message' // Bundle G6
+              ? L.t.waitingForThisMessage // Bundle G6
               : GroupMentions.plain(preview.body)))
       .trim()
       .replaceAll(RegExp(r'\s+'), ' ');
@@ -73,11 +74,11 @@ String chatPreviewText(
   final text = body.isNotEmpty
       ? body
       : hasMedia
-          ? chatPreviewMediaWord(preview.attachmentType,
-              isImage: preview.attachmentIsImage)
-          : 'Message';
+          ? L.en(chatPreviewMediaWord(preview.attachmentType,
+              isImage: preview.attachmentIsImage))
+          : L.t.message;
   if (localDeviceId.isNotEmpty && preview.senderId == localDeviceId) {
-    return 'You: $text';
+    return L.t.you2(text);
   }
   final name = senderName?.trim() ?? '';
   return name.isEmpty ? text : '$name: $text';
@@ -105,9 +106,9 @@ String chatPreviewTime(DateTime value, {DateTime? now}) {
     final minute = local.minute.toString().padLeft(2, '0');
     return '$hour:$minute ${local.hour >= 12 ? 'PM' : 'AM'}';
   }
-  if (daysAgo == 1) return 'Yesterday';
+  if (daysAgo == 1) return L.t.yesterday;
   if (daysAgo < 7) {
-    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final names = [L.t.mon, L.t.tue, L.t.wed, L.t.thu, L.t.fri, L.t.sat, L.t.sun];
     return names[local.weekday - 1];
   }
   final yy = (local.year % 100).toString().padLeft(2, '0');

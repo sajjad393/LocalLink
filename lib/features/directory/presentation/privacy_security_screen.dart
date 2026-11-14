@@ -5,6 +5,7 @@ import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/features/account/domain/account_repository_contract.dart';
 import 'package:locallink/features/account/bloc/account_bloc.dart';
 import 'package:locallink/features/directory/domain/directory_repository_contract.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class PrivacySecurityScreen extends StatefulWidget {
   final AccountRepositoryContract accountRepository;
@@ -58,8 +59,8 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
       await widget.directoryRepository?.publishOwnProfile();
       if (mounted)
         LinkToast.show(context, saved
-                ? 'Privacy settings saved'
-                : 'Saved locally; will sync when available', kind: LinkToastKind.done);
+                ? L.t.privacySettingsSaved
+                : L.t.savedLocallyWillSyncWhenAvailable, kind: LinkToastKind.done);
     } catch (e) {
       if (mounted)
         LinkToast.show(context, cleanBlocError(e), kind: LinkToastKind.error);
@@ -76,46 +77,46 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: const Text('Privacy & Security')),
+      appBar: AppBar(title: Text(L.t.privacySecurity)),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        const Text('Directory visibility',
+        Text(L.t.directoryVisibility,
             style: TextStyle(fontWeight: FontWeight.bold)),
         SwitchListTile(
-            title: const Text('Discoverable by phone'),
+            title: Text(L.t.discoverableByPhone),
             subtitle:
-                const Text('Allow people to find you with your phone number'),
+                Text(L.t.allowPeopleToFindYouWith),
             value: byPhone,
             onChanged: (v) => setState(() => byPhone = v)),
         SwitchListTile(
-            title: const Text('Discoverable by name'),
-            subtitle: const Text('Allow name searches to return your profile'),
+            title: Text(L.t.discoverableByName),
+            subtitle: Text(L.t.allowNameSearchesToReturnYour),
             value: byName,
             onChanged: (v) => setState(() => byName = v)),
         SwitchListTile(
-            title: const Text('Directory synchronization'),
-            subtitle: const Text(
-                'Share your signed public profile through LinkUp'),
+            title: Text(L.t.directorySynchronization),
+            subtitle: Text(
+                L.t.shareYourSignedPublicProfileThrough),
             value: sync,
             onChanged: (v) => setState(() => sync = v)),
         ListTile(
-          title: const Text('Phone number visibility'),
+          title: Text(L.t.phoneNumberVisibility),
           trailing: DropdownButton<String>(
               value: visibility,
-              items: const [
-                DropdownMenuItem(value: 'private', child: Text('Nobody')),
-                DropdownMenuItem(value: 'contacts', child: Text('Contacts')),
-                DropdownMenuItem(value: 'public', child: Text('Everyone'))
+              items: [
+                DropdownMenuItem(value: 'private', child: Text(L.t.nobody)),
+                DropdownMenuItem(value: 'contacts', child: Text(L.t.contacts)),
+                DropdownMenuItem(value: 'public', child: Text(L.t.everyone))
               ],
               onChanged: (v) {
                 if (v != null) setState(() => visibility = v);
               }),
         ),
         const Divider(),
-        const ListTile(
+        ListTile(
             leading: Icon(Icons.fingerprint),
-            title: Text('Identity & signing'),
+            title: Text(L.t.identitySigning),
             subtitle: Text(
-                'Identity keys are managed locally and are not shown in your public profile.')),
+                L.t.identityKeysAreManagedLocallyAnd)),
         const SizedBox(height: 12),
         FilledButton(
             onPressed: saving ? null : _save,
@@ -124,6 +125,6 @@ class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save changes'))
+                : Text(L.t.saveChanges))
       ]));
 }

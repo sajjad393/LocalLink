@@ -1,4 +1,5 @@
 import 'package:locallink/features/directory/domain/directory_models.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 195a: name search shows saved profiles AND server profiles
 /// together (saved first, one card per account).
@@ -40,6 +41,5 @@ class DirectorySearchInfo {
   static bool showOfflineHint({required bool noMatch}) =>
       noMatch && !serverReached;
 
-  static const String offlineHint =
-      "Not found. Try again when you're online or near friends.";
+  static String get offlineHint => L.t.notFoundTryAgainWhenYou;
 }

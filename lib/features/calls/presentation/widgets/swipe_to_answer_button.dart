@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:locallink/features/calls/presentation/widgets/call_palette.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 174: WhatsApp-style answer button for an incoming VOICE call.
 ///
@@ -116,8 +117,8 @@ class _SwipeToAnswerButtonState extends State<SwipeToAnswerButton>
     const size = SwipeToAnswerButton.buttonSize;
     return Semantics(
       button: true,
-      label: 'Answer',
-      hint: 'Swipe up to answer',
+      label: L.t.answer,
+      hint: L.t.swipeUpToAnswer,
       onTap: _answer,
       excludeSemantics: true,
       child: SizedBox(
@@ -195,10 +196,10 @@ class _SwipeToAnswerButtonState extends State<SwipeToAnswerButton>
                     ),
                   ),
                 ),
-                const Positioned(
+                Positioned(
                   bottom: 0,
                   child: Text(
-                    'Swipe up to answer',
+                    L.t.swipeUpToAnswer,
                     style: TextStyle(
                       color: Color(0xFFD6F5EC),
                       fontSize: 16,

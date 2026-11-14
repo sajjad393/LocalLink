@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/features/groups/data/group_receipts.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G5 (mock 19 / 20): "Message info" for my group message.
 ///
@@ -89,7 +90,7 @@ class GroupMessageInfoBody extends StatelessWidget {
           children: [
             Icon(Icons.schedule_rounded, size: 18, color: colors.onSurfaceVariant),
             const SizedBox(width: 14),
-            const Text('Not sent yet',
+            Text(L.t.notSentYet,
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
           ],
         ),
@@ -99,7 +100,7 @@ class GroupMessageInfoBody extends StatelessWidget {
         children.add(head(
             const ValueKey('ginfo_read'),
             Icon(Icons.done_all_rounded, size: 15, color: colors.primary),
-            'Read by ${info.read.length} of ${info.total}'));
+            L.t.readByOf(info.read.length, info.total)));
         for (final p in info.read) {
           children.add(row(p, p.at == null ? '' : messageInfoTime(p.at!)));
         }
@@ -109,8 +110,8 @@ class GroupMessageInfoBody extends StatelessWidget {
             const ValueKey('ginfo_delivered'),
             const Icon(Icons.done_all_rounded, size: 15, color: _soft),
             info.read.isEmpty
-                ? 'Delivered to ${info.delivered.length} of ${info.total}'
-                : 'Delivered to ${info.delivered.length}'));
+                ? L.t.deliveredToOf(info.delivered.length, info.total)
+                : L.t.deliveredTo(info.delivered.length)));
         for (final p in info.delivered) {
           children.add(row(p, p.at == null ? '' : messageInfoTime(p.at!)));
         }
@@ -119,9 +120,9 @@ class GroupMessageInfoBody extends StatelessWidget {
         children.add(head(
             const ValueKey('ginfo_waiting'),
             const Icon(Icons.schedule_rounded, size: 14, color: Color(0xFF6A6B73)),
-            'Waiting'));
+            L.t.waiting));
         for (final p in info.waiting) {
-          children.add(row(p, 'gets it when Nearby or Online'));
+          children.add(row(p, L.t.getsItWhenNearbyOrOnline));
         }
       }
       children.add(Padding(
@@ -129,9 +130,8 @@ class GroupMessageInfoBody extends StatelessWidget {
         padding: const EdgeInsets.only(top: 4),
         child: Text(
           info.waiting.isNotEmpty
-              ? '✓ = sent. ✓✓ only when all members got it.'
-              : 'Blue ✓✓ in the chat only when all ${info.total} have read it. '
-                  'People with read receipts off show under Delivered.',
+              ? L.t.sentOnlyWhenAllMembersGot
+              : L.t.blueInTheChatOnlyWhen(info.total),
           style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
         ),
       ));
@@ -148,7 +148,7 @@ class GroupMessageInfoBody extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text('Message info',
+                child: Text(L.t.messageInfo,
                     style: theme.textTheme.titleLarge
                         ?.copyWith(fontSize: 19, fontWeight: FontWeight.w700)),
               ),

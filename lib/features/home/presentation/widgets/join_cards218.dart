@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:locallink/core/widgets/local_link_text_field.dart';
 import 'package:locallink/features/recovery/presentation/widgets/recovery_code_save_235.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 218e: the cards on Chats after an offline account joined the
 /// server (or could not). Matches mock_218_app01..03.
@@ -52,29 +53,29 @@ class JoinCard218 extends StatefulWidget {
     return JoinCard218(
       key: const ValueKey('join218_done'),
       icon: JoinIcon218.ok,
-      title: "You're on the server now",
+      title: L.t.youReOnTheServerNow,
       body: doneText(kind: kind, name: name, was: was),
-      orangeLine: phoneLocalOnly ? 'Your phone number stays on this phone only.' : '',
+      orangeLine: phoneLocalOnly ? L.t.yourPhoneNumberStaysOnThis : '',
       orangeKey: const ValueKey('join218_phone_line'),
       buttons: [
-        JoinButton218(const ValueKey('join218_account'), 'Account', onAccount),
+        JoinButton218(const ValueKey('join218_account'), L.t.account, onAccount),
         JoinButton218(const ValueKey('join218_ok'), 'OK', onOk, tonal: true),
       ],
     );
   }
 
   static String doneText({required String kind, required String name, String was = ''}) {
-    const tail = 'Your chats stay on this phone.';
+    final tail = L.t.yourChatsStayOnThisPhone;
     switch (kind) {
       case 'renamed':
         if (was.isEmpty || was == name) {
-          return 'You are @$name on the server now. $tail';
+          return L.t.youAreOnTheServerNow(name, tail);
         }
-        return '@$was was taken, so you are @$name. $tail';
+        return L.t.wasTakenSoYouAre(was, name, tail);
       case 'linked':
-        return 'This phone joined your account @$name. $tail';
+        return L.t.thisPhoneJoinedYourAccount(name, tail);
       default:
-        return 'Your account is on the server now. $tail';
+        return L.t.yourAccountIsOnTheServer(tail);
     }
   }
 
@@ -90,10 +91,10 @@ class JoinCard218 extends StatefulWidget {
       return JoinCard218(
         key: const ValueKey('join236_wait_server'),
         icon: JoinIcon218.clock,
-        title: 'Waiting for the server',
-        body: 'Waiting for the server to be updated.',
+        title: L.t.waitingForTheServer,
+        body: L.t.waitingForTheServerToBe,
         buttons: [
-          JoinButton218.busy(const ValueKey('join218_try'), 'Try again', onTry),
+          JoinButton218.busy(const ValueKey('join218_try'), L.t.tryAgain, onTry),
         ],
       );
     }
@@ -101,24 +102,23 @@ class JoinCard218 extends StatefulWidget {
       return JoinCard218(
         key: const ValueKey('join218_stuck_pairing'),
         icon: JoinIcon218.warn,
-        title: 'The server needs a pairing code',
-        body: 'Ask the admin for the code.',
+        title: L.t.theServerNeedsAPairingCode,
+        body: L.t.askTheAdminForTheCode,
         field: 'pairing',
         buttons: [
-          JoinButton218.busy(const ValueKey('join218_try'), 'Try again', onTry),
+          JoinButton218.busy(const ValueKey('join218_try'), L.t.tryAgain, onTry),
         ],
       );
     }
     final owner = block.startsWith('device:@') ? block.substring('device:@'.length) : '';
-    final who = owner.isEmpty ? 'another account' : '@$owner';
+    final who = owner.isEmpty ? L.t.anotherAccount : '@$owner';
     return JoinCard218(
       key: const ValueKey('join218_stuck_device'),
       icon: JoinIcon218.phone,
-      title: "Can't join the server yet",
-      body: 'This phone is already linked to $who on the server. Ask the admin '
-          'to remove this phone on the web (Devices), then tap Try again.',
+      title: L.t.canTJoinTheServerYet,
+      body: L.t.thisPhoneIsAlreadyLinkedTo(who),
       buttons: [
-        JoinButton218.busy(const ValueKey('join218_try'), 'Try again', onTry),
+        JoinButton218.busy(const ValueKey('join218_try'), L.t.tryAgain, onTry),
       ],
     );
   }
@@ -126,14 +126,14 @@ class JoinCard218 extends StatefulWidget {
   /// Bundle 222 (U-3): her account went with nearby phones; never red,
   /// no time limit.
   static Widget carried222({required String firstCarrier, required int carriers, String sentAgo = ''}) {
-    final via = firstCarrier.isEmpty ? 'a nearby phone' : 'a nearby phone ($firstCarrier)';
-    final n = carriers == 1 ? '1 phone' : '$carriers phones';
+    final via = firstCarrier.isEmpty ? L.t.aNearbyPhone : L.t.aNearbyPhone2(firstCarrier);
+    final n = carriers == 1 ? L.t.t1Phone : L.t.phones2(carriers);
     return JoinCard218(
       key: const ValueKey('join222_carried'),
       icon: JoinIcon218.clock,
-      title: 'Waiting for the server',
-      body: 'Your account was sent with $via. You join the server when a phone with internet passes it on.',
-      blueLine: [if (sentAgo.isNotEmpty) 'Sent $sentAgo', 'carried by $n'].join(' · '),
+      title: L.t.waitingForTheServer,
+      body: L.t.yourAccountWasSentWithYou(via),
+      blueLine: [if (sentAgo.isNotEmpty) L.t.sent2(sentAgo), L.t.carriedBy(n)].join(' · '),
     );
   }
 
@@ -149,8 +149,8 @@ class JoinCard218 extends StatefulWidget {
     return JoinCard218(
       key: const ValueKey('join218_recovery'),
       icon: JoinIcon218.key,
-      title: 'Your recovery code changed',
-      body: 'Save it now. The old one no longer works.',
+      title: L.t.yourRecoveryCodeChanged,
+      body: L.t.saveItNowTheOldOne,
       extra: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -159,7 +159,7 @@ class JoinCard218 extends StatefulWidget {
             code: code,
             compact: true,
             copyKey: const ValueKey('join218_copy'),
-            copiedText: 'Copied',
+            copiedText: L.t.copied,
           ),
           const SizedBox(height: 10),
           SaveOnWhatsApp235(
@@ -384,8 +384,8 @@ class _JoinCard218State extends State<JoinCard218> {
                             : 'join218_recovery_field'),
                         controller: _field,
                         labelText:
-                            widget.field == 'pairing' ? 'Pairing code' : 'Recovery code',
-                        hintText: widget.field == 'pairing' ? 'Enter the code' : null,
+                            widget.field == 'pairing' ? L.t.pairingCode : L.t.recoveryCode2,
+                        hintText: widget.field == 'pairing' ? L.t.enterTheCode : null,
                         enabled: widget.field == 'pairing',
                         autocorrect: false,
                         maxLines: 1,
@@ -393,10 +393,10 @@ class _JoinCard218State extends State<JoinCard218> {
                         // on the line and the hint inside.
                         decoration: InputDecoration(
                           labelText: widget.field == 'pairing'
-                              ? 'Pairing code'
-                              : 'Recovery code',
+                              ? L.t.pairingCode
+                              : L.t.recoveryCode2,
                           hintText:
-                              widget.field == 'pairing' ? 'Enter the code' : null,
+                              widget.field == 'pairing' ? L.t.enterTheCode : null,
                           floatingLabelBehavior: FloatingLabelBehavior.always,
                           filled: true,
                           fillColor: dark ? colors.surfaceContainer : Colors.white,

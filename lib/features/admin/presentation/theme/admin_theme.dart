@@ -1,5 +1,6 @@
 import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Centralised, semantic design tokens for the LocalLink administration
 /// surface. Widgets must never hard-code colours — they read the palette that
@@ -330,7 +331,7 @@ abstract final class AdminTheme {
               : const Color(0xFF1F2733),
           borderRadius: BorderRadius.circular(AdminRadius.xs),
         ),
-        textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, color: Colors.white, fontSize: 12),
+        textStyle: const TextStyle(fontFamily: LocalLinkLook.fontFamily, fontFamilyFallback: L.fontFallback, color: Colors.white, fontSize: 12),
       ),
       // Bundle 289 (T-3): the same toast card as the rest of the app.
       snackBarTheme: SnackBarThemeData(
@@ -387,24 +388,24 @@ class AdminStatusStyle {
       case 'online':
       case 'connected':
       case 'success':
-        return AdminStatusStyle(palette.success, palette.successSoft, 'Healthy');
+        return AdminStatusStyle(palette.success, palette.successSoft, L.t.healthy);
       case 'warning':
       case 'warn':
       case 'degraded':
       case 'pending':
-        return AdminStatusStyle(palette.warning, palette.warningSoft, 'Warning');
+        return AdminStatusStyle(palette.warning, palette.warningSoft, L.t.warning);
       case 'critical':
       case 'error':
       case 'failed':
-        return AdminStatusStyle(palette.danger, palette.dangerSoft, 'Critical');
+        return AdminStatusStyle(palette.danger, palette.dangerSoft, L.t.critical);
       case 'offline':
       case 'disconnected':
       case 'revoked':
         return AdminStatusStyle(
-            palette.textSecondary, palette.surfaceMuted, 'Offline');
+            palette.textSecondary, palette.surfaceMuted, L.t.offline);
       default:
         return AdminStatusStyle(
-            palette.textTertiary, palette.surfaceMuted, 'Unknown');
+            palette.textTertiary, palette.surfaceMuted, L.t.unknown);
     }
   }
 }
@@ -463,12 +464,12 @@ String adminRelativeTime(String? isoTimestamp, {DateTime? now}) {
   if (parsed == null) return '—';
   final reference = (now ?? DateTime.now()).toUtc();
   final difference = reference.difference(parsed.toUtc());
-  if (difference.isNegative) return 'just now';
-  if (difference.inSeconds < 45) return 'just now';
+  if (difference.isNegative) return L.t.justNow;
+  if (difference.inSeconds < 45) return L.t.justNow;
   if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
   if (difference.inHours < 24) return '${difference.inHours}h ago';
   if (difference.inDays < 30) return '${difference.inDays}d ago';
-  if (difference.inDays < 365) return '${(difference.inDays / 30).floor()}mo ago';
+  if (difference.inDays < 365) return L.t.moAgo((difference.inDays / 30).floor());
   return '${(difference.inDays / 365).floor()}y ago';
 }
 
@@ -480,7 +481,7 @@ String adminBucketLabel(String isoTimestamp, {required bool longRange}) {
   if (longRange) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${months[local.month - 1]} ${local.day}';
+    return '${L.en(months[local.month - 1])} ${local.day}';
   }
   final hh = local.hour.toString().padLeft(2, '0');
   return '$hh:00';

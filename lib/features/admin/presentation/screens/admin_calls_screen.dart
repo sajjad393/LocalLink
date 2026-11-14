@@ -6,6 +6,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_format216.da
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_people216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 216 (page 17): Calls — only names and times.
 class AdminCallsScreen extends StatefulWidget {
@@ -24,7 +25,7 @@ class _AdminCallsScreenState extends State<AdminCallsScreen> {
         'ringing' || 'connected' || 'active' || 'accepted' => (text: 'Live', tone: A216Tone.blue),
         'missed' || 'rejected' || 'canceled' || 'cancelled' || 'declined' || 'busy' =>
           (text: 'Missed', tone: A216Tone.orange),
-        _ => (text: 'Ended', tone: A216Tone.green),
+        _ => (text: L.t.ended, tone: A216Tone.green),
       };
 
   bool _match(Map<String, dynamic> c) {
@@ -44,34 +45,34 @@ class _AdminCallsScreenState extends State<AdminCallsScreen> {
     return AdminToolPage216(
       title: 'Calls',
       module: 'Calls',
-      subtitle: (_) => 'Who called whom',
+      subtitle: (_) => L.t.whoCalledWhom,
       builder: (context, state) {
         final rows = state.calls.where(_match).toList();
         return [
           AdminChips216(
-            items: _chips,
+            items: [for (final c in _chips) L.en(c)],
             selected: _chip,
             keys: [for (final c in _chips) ValueKey('a216_calls_${c.toLowerCase().replaceAll(' ', '_')}')],
             onSelected: (i) => setState(() => _chip = i),
           ),
           const SizedBox(height: 10),
-          const AdminNote216('Only names and times. Nobody can hear calls.'),
+          AdminNote216(L.t.onlyNamesAndTimesNobodyCan),
           const SizedBox(height: 12),
           if (state.loading && state.calls.isEmpty)
             const AdminLoading216()
           else if (rows.isEmpty)
-            const AdminEmptyState216(
+            AdminEmptyState216(
                 icon: Icons.call_outlined,
                 tone: A216Tone.teal,
-                title: 'No calls yet',
-                body: 'Calls show here with names and times.')
+                title: L.t.noCallsYet,
+                body: L.t.callsShowHereWithNamesAnd)
           else
             AdminListCard216([
               for (final c in rows)
                 () {
                   final k = kind(c['status']);
                   final caller = '${c['caller_name'] ?? ''}'.trim().isEmpty
-                      ? 'Someone'
+                      ? L.t.someone
                       : '${c['caller_name']}';
                   final callee = '${c['callee_name'] ?? ''}'.trim().isEmpty
                       ? 'someone'
@@ -90,8 +91,8 @@ class _AdminCallsScreenState extends State<AdminCallsScreen> {
                     ),
                     title: '$caller → $callee',
                     subtitle: k.text == 'Missed'
-                        ? 'Voice · ${whenSub216(c['started_at'])}'
-                        : 'Voice · ${callLength216(secs)} · ${whenSub216(c['started_at'])}',
+                        ? L.t.voice2(whenSub216(c['started_at']))
+                        : L.t.voice3(callLength216(secs), whenSub216(c['started_at'])),
                     trailing: Padding(
                       padding: const EdgeInsets.only(right: 4),
                       child: AdminTag216(k.text, k.tone, dot: true),

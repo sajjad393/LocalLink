@@ -7,6 +7,7 @@ import 'package:locallink/features/admin/data/models/admin_badge.dart';
 import 'package:locallink/features/admin/data/models/admin_block_record.dart';
 import 'package:locallink/features/admin/data/models/admin_session.dart';
 import 'package:locallink/features/admin/data/services/admin_capability_service.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// The server's answer to `POST /api/v1/admin/device-session`.
 class AdminRoleAnswer {
@@ -211,13 +212,13 @@ class AdminRoleService {
     await write(notedKey, role);
     if (before == null && role.isEmpty) return; // never was admin
     if (role.isEmpty) {
-      notify?.call('You are no longer an admin', 'Admin tools are off on this phone.');
+      notify?.call(L.t.youAreNoLongerAnAdmin, L.t.adminToolsAreOffOnThis);
     } else if (before == null || before.isEmpty) {
-      notify?.call('You are now an admin 👑',
-          'Level: ${AdminBadges.roleLabel(role)} · Tap your photo in Settings to switch.');
+      notify?.call(L.t.youAreNowAnAdmin,
+          L.t.levelTapYourPhotoInSettings(AdminBadges.roleLabel(role)));
     } else {
-      notify?.call('Your admin level is now ${AdminBadges.roleLabel(role)}',
-          'Tap your photo in Settings to switch.');
+      notify?.call(L.t.yourAdminLevelIsNow(AdminBadges.roleLabel(role)),
+          L.t.tapYourPhotoInSettingsTo);
     }
   }
 

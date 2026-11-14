@@ -50,6 +50,7 @@ import 'package:locallink/features/admin/presentation/screens/admin_blocked_list
 import 'package:locallink/features/admin/presentation/screens/link_paths_full_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_block_confirm.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_version_card.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 134: the mobile admin area is ONE merged panel. Bundle 216 (D,
 /// mock pages 3-6, 26): hero, link map, block card, app version, then
@@ -114,20 +115,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
 
   // Bundle 216 (D): shown names come from WORDS_216; the first value is the
   // module key `_screenFor` knows (unchanged).
-  static const _modules = <_PanelModule>[
-    _PanelModule('Users', 'Users', Icons.group_outlined, 'People with an account', 'People', A216Tone.blue),
-    _PanelModule('Devices', 'Devices', Icons.smartphone_rounded, 'Every phone and who owns it', 'People', A216Tone.blue),
-    _PanelModule('Sessions', 'Sessions', Icons.vpn_key_outlined, 'Who is signed in, on which phone', 'People', A216Tone.blue),
-    _PanelModule('Network & Mesh', 'Network & mesh', Icons.hub_outlined, 'How phones are linked', 'Network', A216Tone.teal),
-    _PanelModule('Calls', 'Calls', Icons.call_outlined, 'Who called whom', 'Network', A216Tone.teal),
-    _PanelModule('File Transfers', 'File transfers', Icons.swap_horiz_rounded, 'Files sent and space used', 'Network', A216Tone.teal),
-    _PanelModule('Recovery', 'Recovery', Icons.restore_rounded, 'People moving to a new phone', 'Safety', A216Tone.orange),
-    _PanelModule('Security Center', 'Security', Icons.shield_outlined, 'Warnings like wrong passwords', 'Safety', A216Tone.orange),
-    _PanelModule('Dashboard', 'Dashboard', Icons.bar_chart_rounded, 'Today at a glance', 'System', A216Tone.grey),
-    _PanelModule('Audit Log', 'Audit log', Icons.list_alt_rounded, 'What admins did', 'System', A216Tone.grey),
-    _PanelModule('Diagnostics', 'Diagnostics', Icons.monitor_heart_outlined, 'Is the server healthy', 'System', A216Tone.grey),
-    _PanelModule('Privacy & Access', 'Privacy & access', Icons.verified_user_outlined, 'What admins can never see', 'System', A216Tone.grey),
-    _PanelModule('Admin Settings', 'Admin settings', Icons.storage_rounded, 'Refresh time, alerts, backup', 'System', A216Tone.grey,
+  static List<_PanelModule> get _modules => <_PanelModule>[
+    _PanelModule('Users', 'Users', Icons.group_outlined, L.t.peopleWithAnAccount, L.t.people, A216Tone.blue),
+    _PanelModule('Devices', 'Devices', Icons.smartphone_rounded, L.t.everyPhoneAndWhoOwnsIt, L.t.people, A216Tone.blue),
+    _PanelModule('Sessions', 'Sessions', Icons.vpn_key_outlined, L.t.whoIsSignedInOnWhich, L.t.people, A216Tone.blue),
+    _PanelModule('Network & Mesh', L.t.networkMesh, Icons.hub_outlined, L.t.howPhonesAreLinked, L.t.network, A216Tone.teal),
+    _PanelModule('Calls', 'Calls', Icons.call_outlined, L.t.whoCalledWhom, L.t.network, A216Tone.teal),
+    _PanelModule('File Transfers', L.t.fileTransfers, Icons.swap_horiz_rounded, L.t.filesSentAndSpaceUsed, L.t.network, A216Tone.teal),
+    _PanelModule('Recovery', 'Recovery', Icons.restore_rounded, L.t.peopleMovingToANewPhone, L.t.safety, A216Tone.orange),
+    _PanelModule('Security Center', 'Security', Icons.shield_outlined, L.t.warningsLikeWrongPasswords, L.t.safety, A216Tone.orange),
+    _PanelModule('Dashboard', 'Dashboard', Icons.bar_chart_rounded, L.t.todayAtAGlance, L.t.system, A216Tone.grey),
+    _PanelModule('Audit Log', L.t.auditLog, Icons.list_alt_rounded, L.t.whatAdminsDid, L.t.system, A216Tone.grey),
+    _PanelModule('Diagnostics', 'Diagnostics', Icons.monitor_heart_outlined, L.t.isTheServerHealthy, L.t.system, A216Tone.grey),
+    _PanelModule('Privacy & Access', L.t.privacyAccess, Icons.verified_user_outlined, L.t.whatAdminsCanNeverSee, L.t.system, A216Tone.grey),
+    _PanelModule('Admin Settings', L.t.adminSettings, Icons.storage_rounded, L.t.refreshTimeAlertsBackup, L.t.system, A216Tone.grey,
         ownerOnly: true),
   ];
 
@@ -294,9 +295,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     }
     if (result == AdminRoleResult.notAdmin) {
       widget.viewMode.setAdminCapability(false);
-      LinkToast.maybeOn(messenger, 'You are no longer an admin', kind: LinkToastKind.error, key: const ValueKey('admin_no_longer'));
+      LinkToast.maybeOn(messenger, L.t.youAreNoLongerAnAdmin, kind: LinkToastKind.error, key: const ValueKey('admin_no_longer'));
     } else {
-      LinkToast.maybeOn(messenger, 'Admin tools are not available right now', kind: LinkToastKind.error, key: const ValueKey('admin_not_available'));
+      LinkToast.maybeOn(messenger, L.t.adminToolsAreNotAvailableRight, kind: LinkToastKind.error, key: const ValueKey('admin_not_available'));
     }
     if (nav.canPop()) nav.pop();
   }
@@ -380,7 +381,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       deviceIds: [id],
       name: (p?.name ?? '').isNotEmpty ? p!.name : (name.trim().isEmpty ? id : name),
       username: p?.username ?? '',
-      seen: 'nearby now',
+      seen: L.t.nearbyNow2,
     );
   }
 
@@ -528,9 +529,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   bool get _check => AdminUiCheck216.on.value;
 
   String get _myName {
-    if (_check) return 'Sajjad';
+    if (_check) return L.t.sajjad;
     final u = widget.store.username?.trim() ?? '';
-    return u.isEmpty ? 'Admin' : u;
+    return u.isEmpty ? L.t.admin : u;
   }
 
   // ------------------------------------------------- module pages (216e)
@@ -593,19 +594,18 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     final name = _nodeName(d);
     final ok = await confirmAdmin216(
       context,
-      title: 'Block $name?',
-      body: 'They can no longer message or pair with this phone — online or '
-          'offline. This applies right away on this phone.',
-      yes: 'Block',
+      title: L.t.block3(name),
+      body: L.t.theyCanNoLongerMessageOr,
+      yes: L.t.block,
       danger: true,
     );
     if (!ok || !mounted) return;
     try {
       await widget.store.blockDeviceAndUser(d.id);
       await _refresh();
-      if (mounted) adminSnack216(context, '$name blocked on this phone.');
+      if (mounted) adminSnack216(context, L.t.blockedOnThisPhone2(name));
     } catch (error) {
-      if (mounted) adminSnack216(context, 'Block failed: $error');
+      if (mounted) adminSnack216(context, L.t.blockFailed(error));
     }
   }
 
@@ -657,7 +657,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               Text(d == null ? link : '${d.name} · $link', style: t.cardSub),
               if (blocked) ...[
                 const SizedBox(height: 10),
-                const AdminTag216('Blocked', A216Tone.red),
+                AdminTag216(L.t.blocked, A216Tone.red),
               ],
               const SizedBox(height: 18),
               if (d != null && !_check)
@@ -672,7 +672,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                               foregroundColor: c.ink,
                               shape: const StadiumBorder()),
                           onPressed: () => _networkBlock(d, block: false),
-                          child: const Text('Unblock'))
+                          child: Text(L.t.unblock))
                       : FilledButton(
                           key: const ValueKey('admin_node_block'),
                           style: FilledButton.styleFrom(
@@ -681,7 +681,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                               shape: const StadiumBorder()),
                           // 212 rule: Block by a nearby phone = for everyone.
                           onPressed: () => _networkBlock(d, block: true),
-                          child: const Text('Block')),
+                          child: Text(L.t.block)),
                 ),
             ],
           );
@@ -695,9 +695,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   /// `const NearbyTestSwitches()` (bundle 173 source scan).
   void _openNearbyTests() {
     Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => const AdminPage216(
-        title: 'Nearby tests (testers only)',
-        subtitle: 'Router echo, Wi-Fi Direct and mesh checks',
+      builder: (_) => AdminPage216(
+        title: L.t.nearbyTestsTestersOnly,
+        subtitle: L.t.routerEchoWiFiDirectAnd,
         children: [
           SizedBox(height: 4),
           NearbyTestSwitches(),
@@ -725,9 +725,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Nearby tests (testers only)', style: t.rowTitle),
+                      Text(L.t.nearbyTestsTestersOnly, style: t.rowTitle),
                       const SizedBox(height: 3),
-                      Text('Router echo, Wi-Fi Direct and mesh checks', style: t.rowSub),
+                      Text(L.t.routerEchoWiFiDirectAnd, style: t.rowSub),
                     ],
                   ),
                 ),
@@ -747,9 +747,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Test clean-up now', style: t.rowTitle),
+            Text(L.t.testCleanUpNow, style: t.rowTitle),
             const SizedBox(height: 3),
-            Text('One run as if files were 11 days old', style: t.rowSub),
+            Text(L.t.oneRunAsIfFilesWere, style: t.rowSub),
             const SizedBox(height: 6),
             const StorageTestButton(),
           ]),
@@ -789,12 +789,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         bottom: false,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           AdminAppBar216(
-            title: 'Admin',
+            title: L.t.admin,
             back: Navigator.of(context).canPop(),
             right: Padding(
               padding: const EdgeInsets.only(right: 2),
               child: Tooltip(
-                message: 'Switch account',
+                message: L.t.switchAccount,
                 child: Material(
                   color: c.surface,
                   shape: CircleBorder(side: BorderSide(color: c.line)),
@@ -826,17 +826,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                   AnimatedOpacity(
                     opacity: _backFading ? 0 : 1,
                     duration: const Duration(milliseconds: 300),
-                    child: const AdminBanner216(A216BannerKind.success,
-                        'Server is back. Tools unlocked.',
+                    child: AdminBanner216(A216BannerKind.success,
+                        L.t.serverIsBackToolsUnlocked,
                         key: ValueKey('a216_back_banner'),
                         icon: Icons.check_circle_outline_rounded),
                   ),
                 ],
                 if (!online) ...[
                   const SizedBox(height: 14),
-                  const AdminBanner216(A216BannerKind.warning, 'No server right now',
+                  AdminBanner216(A216BannerKind.warning, L.t.noServerRightNow,
                       key: ValueKey('a216_offline_banner'),
-                      body: 'Offline tools still work. Locked ones open by themselves.'),
+                      body: L.t.offlineToolsStillWorkLockedOnes),
                 ],
                 const SizedBox(height: 14),
                 _mapCard(online, devices),
@@ -846,12 +846,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                 if (online || _check)
                   ..._menus()
                 else ...[
-                  const AdminSection216('Needs the server'),
+                  AdminSection216(L.t.needsTheServer),
                   AdminLockedRows216([
                     for (final m in _modules) AdminLockedItem216(m.key, m.title, m.icon),
                   ]),
                 ],
-                const AdminSection216('Testers'),
+                AdminSection216(L.t.testers),
                 _testersCard(),
               ],
             ),
@@ -868,7 +868,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       builder: (context, _) {
         final rule = VersionGuard.instance.rule;
         final min = _check || rule == null || rule.isRemove
-            ? 'None'
+            ? L.t.none
             : (rule.minVersion.isEmpty ? 'b${rule.minBuild}' : rule.minVersion);
         return AdminHeroCard216(
           avatar: AdminPersonAvatar216(
@@ -881,7 +881,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
             adminRole: _check ? 'owner' : widget.session.role,
           ),
           name: _myName,
-          sub: '${_check ? 'Owner' : level} · ${levelRights216(_check ? 'Owner' : level)}',
+          sub: '${L.en(_check ? 'Owner' : level)} · ${levelRights216(_check ? 'Owner' : level)}',
           online: online,
           wayText: online ? 'Server' : _offlineWay(onLink),
           near: '${_check ? 3 : onLink.length}',
@@ -895,11 +895,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   static String _offlineWay(List<Device> onLink) {
     final hub = {for (final d in onLink) _hubTag(d.id)};
     if (hub.contains(LinkTag.wifiDirect) || onLink.any((d) => d.wifiDirectConnected)) {
-      return 'Wi-Fi Direct';
+      return L.t.wiFiDirect;
     }
-    if (hub.contains(LinkTag.mesh) || onLink.any((d) => d.meshAvailable)) return 'Mesh';
+    if (hub.contains(LinkTag.mesh) || onLink.any((d) => d.meshAvailable)) return L.t.mesh;
     if (hub.contains(LinkTag.localWifi) || onLink.any((d) => d.lanAvailable)) return 'Local Wi-Fi';
-    return 'No link';
+    return L.t.noLink;
   }
 
   Widget _mapCard(bool online, List<Device> devices) {
@@ -915,9 +915,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       key: const ValueKey('a216_map_card'),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
       child: LinkPathsMap(
-        title: 'Link paths',
+        title: L.t.linkPaths,
         // Bundle 272 (B-4): without the server only this phone's links.
-        subtitle: online || _check ? 'Who is linked to whom, live' : 'Server off - your links only',
+        subtitle: online || _check ? L.t.whoIsLinkedToWhomLive : L.t.serverOffYourLinksOnly,
         height: 104,
         nodes: nodes,
         extraEdges: edges,
@@ -941,8 +941,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     final local = _check ? 0 : _blocked.length;
     final status = switch (ready) {
       AdminBlockReadiness.ready => null,
-      AdminBlockReadiness.notOwner => 'Only the owner admin can block users',
-      _ => 'Connect to the server once to turn on offline blocking',
+      AdminBlockReadiness.notOwner => L.t.onlyTheOwnerAdminCanBlock,
+      _ => L.t.connectToTheServerOnceTo,
     };
     return Column(
       key: const ValueKey('admin_block_card'),
@@ -952,7 +952,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Expanded(child: Text('Block users (all phones)', style: t.section)),
+              Expanded(child: Text(L.t.blockUsersAllPhones, style: t.section)),
               if (status == null)
                 Row(
                   key: const ValueKey('admin_block_status'),
@@ -960,7 +960,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                   children: [
                     const Icon(Icons.check_rounded, size: 14, color: Color(0xFF079455)),
                     const SizedBox(width: 3),
-                    Text('Offline blocking is ready',
+                    Text(L.t.offlineBlockingIsReady,
                         style: t.custom(12, FontWeight.w600, const Color(0xFF079455))),
                   ],
                 ),
@@ -977,23 +977,23 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           AdminRow216(
             key: const ValueKey('admin_block_pick'),
             leading: const AdminToneIcon216(Icons.block_rounded, A216Tone.red),
-            title: 'Block or unblock a user',
-            subtitle: 'Anyone this phone has seen, or nearby',
+            title: L.t.blockOrUnblockAUser,
+            subtitle: L.t.anyoneThisPhoneHasSeenOr,
             onTap: _openBlockPicker,
           ),
           AdminRow216(
             key: const ValueKey('admin_block_list'),
             leading: const AdminToneIcon216(Icons.groups_outlined, A216Tone.red),
             title: 'Blocked by admin',
-            subtitle: '${people216(adminBlocked)} · on every phone',
+            subtitle: L.t.onEveryPhone(people216(adminBlocked)),
             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                 builder: (_) => AdminBlockedListScreen(service: _blocks))),
           ),
           AdminRow216(
             key: const ValueKey('admin_local_blocked'),
             leading: const AdminToneIcon216(Icons.phone_android_rounded, A216Tone.grey),
-            title: 'Blocked on this phone',
-            subtitle: local == 0 ? 'Nobody' : people216(local),
+            title: L.t.blockedOnThisPhone,
+            subtitle: local == 0 ? L.t.nobody : people216(local),
             onTap: _showBlocked,
           ),
           // Bundle 220: every admin action, Pending until each phone does it.
@@ -1002,8 +1002,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
             leading: const AdminToneIcon216(Icons.pending_actions_rounded, A216Tone.orange),
             title: 'Admin actions',
             subtitle: AdminActionBook.instance.pendingCount == 0
-                ? 'Pending until each phone does it'
-                : '${AdminActionBook.instance.pendingCount} pending · until each phone does it',
+                ? L.t.pendingUntilEachPhoneDoesIt
+                : L.t.pendingUntilEachPhoneDoesIt2(AdminActionBook.instance.pendingCount),
             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                 builder: (_) => AdminTheme216Scope(
                     child: AdminActionsScreen(
@@ -1016,7 +1016,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               key: const ValueKey('admin_conversations_row'),
               leading: const AdminToneIcon216(Icons.forum_outlined, A216Tone.blue),
               title: 'Conversations',
-              subtitle: 'Ask phones for a chat · Owner only',
+              subtitle: L.t.askPhonesForAChatOwner,
               onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => AdminTheme216Scope(
                       child: AdminConversationsScreen(viewMode: widget.viewMode)))),
@@ -1037,15 +1037,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                 AdminRow216(
                   key: ValueKey('a216_module_${m.key}'),
                   leading: AdminToneIcon216(m.icon, m.tone),
-                  title: m.title,
+                  title: L.en(m.title),
                   subtitle: m.subtitle,
                   trailing: m.ownerOnly && !owner
-                      ? const Padding(
+                      ? Padding(
                           padding: EdgeInsets.only(right: 8),
-                          child: AdminTag216('Owner only', A216Tone.gold))
+                          child: AdminTag216(L.t.ownerOnly, A216Tone.gold))
                       : null,
                   onTap: m.ownerOnly && !owner
-                      ? () => adminSnack216(context, 'Only the Owner can change this.')
+                      ? () => adminSnack216(context, L.t.onlyTheOwnerCanChangeThis)
                       : () => _openModule(m.key),
                 ),
             ]),
@@ -1053,10 +1053,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         );
     List<_PanelModule> of(String g) => [for (final m in _modules) if (m.group == g) m];
     return [
-      group('People', of('People')),
-      group('Network', of('Network')),
-      group('Safety', of('Safety')),
-      group('System', of('System')),
+      group(L.t.people, of(L.t.people)),
+      group(L.t.network, of(L.t.network)),
+      group(L.t.safety, of(L.t.safety)),
+      group(L.t.system, of(L.t.system)),
     ];
   }
 }

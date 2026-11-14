@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'media_frame.dart';
 import 'media_tile_look.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 147: photo inside a chat bubble.
 ///
@@ -312,7 +313,7 @@ class _ChatPhotoViewerState extends State<ChatPhotoViewer> {
                     children: [
                       IconButton(
                         key: const Key('chat_photo_viewer_close'),
-                        tooltip: 'Back',
+                        tooltip: L.t.back,
                         icon: const Icon(Icons.arrow_back_rounded,
                             color: Colors.white),
                         onPressed: () => Navigator.of(context).maybePop(),

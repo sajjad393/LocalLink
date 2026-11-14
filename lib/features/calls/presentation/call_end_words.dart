@@ -1,3 +1,4 @@
+import 'package:locallink/l10n/l10n.dart';
 /// Bundle 205 (P7): words shown when a call ends for a reason the person
 /// should know about (null = the normal "Call ended").
 abstract final class CallEndWords {
@@ -8,7 +9,7 @@ abstract final class CallEndWords {
   static const Duration readTime = Duration(seconds: 2);
 
   static String? endedText(String? reason) => switch (reason) {
-        noNearbyReason => 'Call ended: no nearby connection',
+        noNearbyReason => L.t.callEndedNoNearbyConnection,
         _ => null,
       };
 

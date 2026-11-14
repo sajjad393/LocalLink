@@ -9,6 +9,7 @@ import 'package:locallink/core/widgets/account_avatar.dart';
 import 'package:locallink/core/widgets/blocked_pill.dart';
 import 'package:locallink/core/widgets/group_avatar.dart';
 import 'package:locallink/core/widgets/messenger_list_group.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class MessengerConversationTile extends StatelessWidget {
   final String title;
@@ -257,7 +258,7 @@ class MessengerConversationTile extends StatelessWidget {
     final moreButton = onMore == null
         ? null
         : IconButton(
-            tooltip: 'More',
+            tooltip: L.t.more2,
             onPressed: onMore,
             icon: const Icon(Icons.more_vert),
           );

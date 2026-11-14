@@ -1,9 +1,9 @@
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/features/admin/presentation/theme/admin_ui216.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_map_network_272.dart';
 import 'package:locallink/features/admin/presentation/widgets/link_paths_map.dart';
+import 'support/l10n_source_304.dart';
 
 /// Bundle 272: the app admin map = this phone's links + the server's live
 /// map (option B) while the server is connected; server lines are blue.
@@ -108,7 +108,7 @@ void main() {
   test('server = blue everywhere; panel says when the server is off', () {
     expect(A216.linkServer.toARGB32(), 0xFF3B82C4);
     expect(kLinkTagColors[LinkTag.server]!.toARGB32(), 0xFF3B82C4);
-    final panel = File('lib/features/admin/presentation/screens/admin_panel_screen.dart').readAsStringSync();
+    final panel = readEnglish304('lib/features/admin/presentation/screens/admin_panel_screen.dart');
     expect(panel, contains('Server off - your links only'));
     expect(panel, contains('linkMapData'));
   });

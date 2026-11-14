@@ -3,6 +3,7 @@
 library;
 
 import 'package:locallink/core/utils/phone_label_255.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 const List<String> _months = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -31,7 +32,7 @@ DateTime? parseAdminTime216(Object? v) {
 }
 
 String _hm(DateTime t) => '${t.hour}:${t.minute.toString().padLeft(2, '0')}';
-String dMMM216(DateTime t) => '${t.day} ${_months[t.month - 1]}';
+String dMMM216(DateTime t) => '${t.day} ${L.en(_months[t.month - 1])}';
 
 int _dayDiff(DateTime t, DateTime now) {
   final a = DateTime(t.year, t.month, t.day);
@@ -45,7 +46,7 @@ String whenSub216(Object? v, {DateTime? now}) {
   if (t == null) return '';
   final n = now ?? adminNow216();
   final d = _dayDiff(t, n);
-  if (d <= 0) return 'today ${_hm(t)}';
+  if (d <= 0) return L.t.today2(_hm(t));
   if (d == 1) return 'yesterday';
   return dMMM216(t);
 }
@@ -57,7 +58,7 @@ String whenCol216(Object? v, {DateTime? now}) {
   final n = now ?? adminNow216();
   final d = _dayDiff(t, n);
   if (d <= 0) return _hm(t);
-  if (d == 1) return 'Yesterday';
+  if (d == 1) return L.t.yesterday;
   return dMMM216(t);
 }
 
@@ -68,18 +69,18 @@ String whenAudit216(Object? v, {DateTime? now}) {
   final n = now ?? adminNow216();
   final d = _dayDiff(t, n);
   if (d <= 0) return _hm(t);
-  if (d == 1) return 'Yesterday ${_hm(t)}';
+  if (d == 1) return L.t.yesterday2(_hm(t));
   return '${dMMM216(t)} ${_hm(t)}';
 }
 
 /// Audit day group: Today / Yesterday / Earlier.
 String dayGroup216(Object? v, {DateTime? now}) {
   final t = parseAdminTime216(v);
-  if (t == null) return 'Earlier';
+  if (t == null) return L.t.earlier;
   final d = _dayDiff(t, now ?? adminNow216());
-  if (d <= 0) return 'Today';
-  if (d == 1) return 'Yesterday';
-  return 'Earlier';
+  if (d <= 0) return L.t.today;
+  if (d == 1) return L.t.yesterday;
+  return L.t.earlier;
 }
 
 /// Age: `now`, `5 min ago`, `2 h ago`, `yesterday`, `3 days ago`,
@@ -90,19 +91,19 @@ String age216(Object? v, {DateTime? now}) {
   final n = now ?? adminNow216();
   final diff = n.difference(t);
   if (diff.inMinutes < 1) return 'now';
-  if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+  if (diff.inMinutes < 60) return L.t.minAgo(diff.inMinutes);
   final days = _dayDiff(t, n);
   if (days <= 0) return '${diff.inHours} h ago';
   if (days == 1) return 'yesterday';
-  if (days < 7) return '$days days ago';
-  if (days < 14) return 'last week';
+  if (days < 7) return L.t.daysAgo(days);
+  if (days < 14) return L.t.lastWeek;
   return dMMM216(t);
 }
 
 /// `seen yesterday`, `seen 3 days ago`.
 String seen216(Object? v, {DateTime? now}) {
   final a = age216(v, now: now);
-  return a.isEmpty ? '' : 'seen $a';
+  return a.isEmpty ? '' : L.t.seen2(a);
 }
 
 /// Call length `m:ss` (`h:mm:ss` from 1 h).
@@ -167,11 +168,11 @@ String level216(Object? role) {
 
 /// Short rights per level for the hero line.
 String levelRights216(String level) => switch (level) {
-      'Owner' => 'all tools',
-      'Operator' => 'phones, Wi-Fi rules, recovery',
-      'Security' => 'recovery, can look',
-      'Auditor' => 'can only look',
-      _ => 'admin tools',
+      'Owner' => L.t.allTools,
+      'Operator' => L.t.phonesWiFiRulesRecovery,
+      'Security' => L.t.recoveryCanLook,
+      'Auditor' => L.t.canOnlyLook,
+      _ => L.t.adminTools,
     };
 
 /// Name shown for a person: display name → @username → fallback.

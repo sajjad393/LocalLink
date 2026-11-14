@@ -26,6 +26,7 @@ import 'package:locallink/features/admin/presentation/screens/admin_transfers_sc
 import 'package:locallink/features/admin/presentation/screens/admin_users_screen.dart';
 import 'package:locallink/features/admin/presentation/theme/admin_theme.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_components.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Administration surface chrome: grouped navigation, global search,
 /// notification centre and profile menu wrapped around the admin modules.
@@ -91,28 +92,28 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
   // Navigation model
   // -------------------------------------------------------------------------
 
-  List<_AdminSection> get _sections => const [
-        _AdminSection('Operations', [
-          _AdminModule('Dashboard', Icons.dashboard_outlined, 'Overview'),
-          _AdminModule('Users', Icons.people_outline, 'Accounts and profiles'),
-          _AdminModule('Devices', Icons.devices_other_outlined, 'Registered hardware'),
-          _AdminModule('Sessions', Icons.vpn_key_outlined, 'Authenticated sessions'),
+  List<_AdminSection> get _sections => [
+        _AdminSection(L.t.operations, [
+          _AdminModule('Dashboard', Icons.dashboard_outlined, L.t.overview),
+          _AdminModule('Users', Icons.people_outline, L.t.accountsAndProfiles),
+          _AdminModule('Devices', Icons.devices_other_outlined, L.t.registeredHardware),
+          _AdminModule('Sessions', Icons.vpn_key_outlined, L.t.authenticatedSessions),
         ]),
-        _AdminSection('Connectivity', [
-          _AdminModule('Network & Mesh', Icons.hub_outlined, 'Topology and transports'),
-          _AdminModule('Calls', Icons.call_outlined, 'Call sessions'),
-          _AdminModule('File Transfers', Icons.swap_horiz_outlined, 'Transfers and quota'),
+        _AdminSection(L.t.connectivity, [
+          _AdminModule('Network & Mesh', Icons.hub_outlined, L.t.topologyAndTransports),
+          _AdminModule('Calls', Icons.call_outlined, L.t.callSessions),
+          _AdminModule('File Transfers', Icons.swap_horiz_outlined, L.t.transfersAndQuota),
         ]),
-        _AdminSection('Trust & Compliance', [
-          _AdminModule('Security Center', Icons.security_outlined, 'Alerts and policy'),
+        _AdminSection(L.t.trustCompliance, [
+          _AdminModule('Security Center', Icons.security_outlined, L.t.alertsAndPolicy),
           _AdminModule('Audit Log', Icons.fact_check_outlined, 'Admin actions'),
-          _AdminModule('Recovery', Icons.restore_outlined, 'Account recovery queue'),
+          _AdminModule('Recovery', Icons.restore_outlined, L.t.accountRecoveryQueue),
         ]),
-        _AdminSection('Platform', [
-          _AdminModule('Diagnostics', Icons.monitor_heart_outlined, 'Live subsystem health'),
-          _AdminModule('Admin Settings', Icons.settings_outlined, 'Server configuration',
+        _AdminSection(L.t.platform, [
+          _AdminModule('Diagnostics', Icons.monitor_heart_outlined, L.t.liveSubsystemHealth),
+          _AdminModule('Admin Settings', Icons.settings_outlined, L.t.serverConfiguration,
               ownerOnly: true),
-          _AdminModule('Privacy & Access', Icons.privacy_tip_outlined, 'Data boundaries'),
+          _AdminModule('Privacy & Access', Icons.privacy_tip_outlined, L.t.dataBoundaries),
         ]),
       ];
 
@@ -203,7 +204,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
 
   Future<void> _handleSessionExpiry() async {
     if (!mounted) return;
-    LinkToast.show(context, 'Admin session expired. Please sign in again.', kind: LinkToastKind.error);
+    LinkToast.show(context, L.t.adminSessionExpiredPleaseSignIn, kind: LinkToastKind.error);
     await _sessionStore.clear();
     widget.viewMode.reset();
     if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
@@ -235,7 +236,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         if (event is! Map) continue;
         items.add(_AdminNotification(
           icon: Icons.notifications_none,
-          title: event['title']?.toString() ?? 'Event',
+          title: event['title']?.toString() ?? L.t.event,
           detail: event['detail']?.toString() ?? '',
           timestamp: event['created_at']?.toString(),
           severity: event['severity']?.toString() ?? 'info',
@@ -248,7 +249,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
   }
 
   String _humanise(String? action) {
-    if (action == null || action.isEmpty) return 'Security event';
+    if (action == null || action.isEmpty) return L.t.securityEvent;
     final spaced = action.replaceAll('_', ' ');
     return spaced[0].toUpperCase() + spaced.substring(1);
   }
@@ -285,7 +286,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text('Notifications',
+                          child: Text(L.t.notifications,
                               style: AdminText.sectionTitle.copyWith(
                                   color: AdminPalette.of(context).textPrimary)),
                         ),
@@ -295,7 +296,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                             _selectModule('Audit Log');
                           },
                           icon: const Icon(Icons.open_in_new, size: 15),
-                          label: const Text('Audit log'),
+                          label: Text(L.t.auditLog),
                         ),
                       ],
                     ),
@@ -303,11 +304,11 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                     if (state.dashboardLoading && items.isEmpty)
                       const AdminLoadingSkeleton(height: 90)
                     else if (items.isEmpty)
-                      const AdminEmptyState(
+                      AdminEmptyState(
                         icon: Icons.notifications_off_outlined,
-                        title: 'Nothing to report',
+                        title: L.t.nothingToReport,
                         message:
-                            'Security and operational events appear here as the server records them.',
+                            L.t.securityAndOperationalEventsAppearHere,
                       )
                     else
                       ConstrainedBox(
@@ -318,7 +319,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                               for (final item in items)
                                 AdminNotificationItem(
                                   icon: item.icon,
-                                  title: item.title,
+                                  title: L.en(item.title),
                                   detail: item.detail.isEmpty ? null : item.detail,
                                   timestamp: item.timestamp,
                                   severity: item.severity,
@@ -447,7 +448,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
               icon: collapsed
                   ? Icons.chevron_right
                   : Icons.chevron_left,
-              label: 'Collapse menu',
+              label: L.t.collapseMenu,
               selected: false,
               collapsed: collapsed,
               onTap: () => setState(() => _sidebarCollapsed = !_sidebarCollapsed),
@@ -490,7 +491,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                     Text('LinkUp',
                         style: AdminText.bodyStrong
                             .copyWith(color: palette.textPrimary)),
-                    Text('Admin console',
+                    Text(L.t.adminConsole,
                         style: AdminText.caption
                             .copyWith(color: palette.textTertiary)),
                   ],
@@ -534,7 +535,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
           padding: const EdgeInsets.symmetric(horizontal: AdminSpace.sm, vertical: 1),
           child: AdminNavigationItem(
             icon: module.icon,
-            label: module.title,
+            label: L.en(module.title),
             selected: index == _index,
             collapsed: collapsed,
             badge: module.title == 'Security Center' ? alerts : 0,
@@ -570,13 +571,13 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
           Divider(height: 1, color: palette.border),
           ListTile(
             leading: Icon(Icons.person_outline, size: 18, color: palette.textSecondary),
-            title: Text('View as User',
+            title: Text(L.t.viewAsUser,
                 style: AdminText.body.copyWith(color: palette.textPrimary)),
             onTap: _viewAsUser,
           ),
           ListTile(
             leading: Icon(Icons.logout, size: 18, color: palette.textSecondary),
-            title: Text('Sign out',
+            title: Text(L.t.signOut,
                 style: AdminText.body.copyWith(color: palette.textPrimary)),
             onTap: _logout,
           ),
@@ -608,7 +609,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         children: [
           if (compact)
             IconButton(
-              tooltip: 'Open navigation',
+              tooltip: L.t.openNavigation,
               onPressed: () => _scaffoldKey.currentState?.openDrawer(),
               icon: const Icon(Icons.menu, size: 20),
             ),
@@ -617,7 +618,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Administration / ${modules[_index].title}',
+                Text(L.t.administration(modules[_index].title),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AdminText.bodyStrong
@@ -635,7 +636,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
             AdminSearchBar(
               controller: _searchController,
               width: width >= AdminBreakpoints.desktop ? 300 : 220,
-              hint: 'Search modules…',
+              hint: L.t.searchModules,
               onChanged: (value) => setState(() {
                 _searchQuery = value;
                 _searchOpen = value.trim().isNotEmpty;
@@ -647,7 +648,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
             )
           else
             IconButton(
-              tooltip: 'Search',
+              tooltip: L.t.search,
               onPressed: () => setState(() => _searchOpen = !_searchOpen),
               icon: const Icon(Icons.search, size: 20),
             ),
@@ -657,7 +658,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                 previous.loading != current.loading ||
                 previous.dashboardLoading != current.dashboardLoading,
             builder: (context, state) => IconButton(
-              tooltip: 'Refresh data',
+              tooltip: L.t.refreshData,
               onPressed: state.loading || state.dashboardLoading ? null : _refreshAll,
               icon: state.loading || state.dashboardLoading
                   ? const SizedBox(
@@ -668,7 +669,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
             ),
           ),
           IconButton(
-            tooltip: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+            tooltip: isDark ? L.t.switchToLightTheme : L.t.switchToDarkTheme,
             onPressed: () => setState(() =>
                 _themeOverride = isDark ? ThemeMode.light : ThemeMode.dark),
             icon: Icon(isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
@@ -678,7 +679,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
             alignment: Alignment.center,
             children: [
               IconButton(
-                tooltip: 'Notifications',
+                tooltip: L.t.notifications,
                 onPressed: _openNotificationCentre,
                 icon: const Icon(Icons.notifications_none, size: 20),
               ),
@@ -711,7 +712,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
   Widget _profileMenu(BuildContext context) {
     final palette = AdminPalette.of(context);
     return PopupMenuButton<String>(
-      tooltip: 'Account',
+      tooltip: L.t.account,
       color: palette.surfaceRaised,
       position: PopupMenuPosition.under,
       onSelected: (value) {
@@ -745,29 +746,29 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
           ),
         ),
         const PopupMenuDivider(),
-        const PopupMenuItem(
+        PopupMenuItem(
             value: 'user',
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.person_outline, size: 18),
-              title: Text('View as User'),
+              title: Text(L.t.viewAsUser),
             )),
-        const PopupMenuItem(
+        PopupMenuItem(
             value: 'system',
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.brightness_auto_outlined, size: 18),
-              title: Text('Follow app theme'),
+              title: Text(L.t.followAppTheme),
             )),
-        const PopupMenuItem(
+        PopupMenuItem(
             value: 'logout',
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.logout, size: 18),
-              title: Text('Sign out'),
+              title: Text(L.t.signOut),
             )),
       ],
       child: Padding(
@@ -809,7 +810,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
   }
 
   String _roleLabel(String role) {
-    if (role.isEmpty) return 'Unknown role';
+    if (role.isEmpty) return L.t.unknownRole;
     final spaced = role.replaceAll('_', ' ');
     return spaced[0].toUpperCase() + spaced.substring(1);
   }
@@ -834,11 +835,11 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         children: [
           Row(
             children: [
-              Text('Results for "$_searchQuery"',
+              Text(L.t.resultsFor(_searchQuery),
                   style: AdminText.caption.copyWith(color: palette.textSecondary)),
               const Spacer(),
               IconButton(
-                tooltip: 'Close search',
+                tooltip: L.t.closeSearch,
                 onPressed: () => setState(() {
                   _searchOpen = false;
                   _searchQuery = '';
@@ -852,7 +853,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AdminSpace.sm),
               child: Text(
-                'No module matches that term. Global entity search across users, devices and transfers is available inside each module.',
+                L.t.noModuleMatchesThatTermGlobal,
                 style: AdminText.body.copyWith(color: palette.textSecondary),
               ),
             )
@@ -870,7 +871,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                           ? palette.textTertiary
                           : palette.primary,
                     ),
-                    label: Text(module.title,
+                    label: Text(L.en(module.title),
                         style: AdminText.caption
                             .copyWith(color: palette.textPrimary)),
                     backgroundColor: palette.surfaceMuted,

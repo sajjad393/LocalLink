@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 255 A3: the server PC clock compared with this phone.
 ///
@@ -35,9 +36,8 @@ class ServerClock255 {
   static String title(Duration offset) {
     var h = (offset.inMinutes.abs() / 60).round();
     if (h < 1) h = 1;
-    return 'Server PC clock is $h h ${offset.isNegative ? 'slow' : 'fast'}';
+    return L.t.serverPcClockIsH(h, offset.isNegative ? L.t.slow304 : L.t.fast304);
   }
 
-  static const body = 'Messages and calls get wrong times. On the server PC: '
-      'Settings > Time > Set time automatically > Sync now.';
+  static String get body => L.t.messagesAndCallsGetWrongTimes;
 }

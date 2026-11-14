@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 298 (D): pinch zoom on the Chats "My links" small map.
 ///
@@ -220,7 +221,7 @@ class _MiniMapReset298State extends State<MiniMapReset298> with SingleTickerProv
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.restart_alt_rounded, size: 15, color: c.blue),
                   const SizedBox(width: 4),
-                  Text('Reset', style: A216Text(c).custom(12.5, FontWeight.w600, c.blue)),
+                  Text(L.t.reset, style: A216Text(c).custom(12.5, FontWeight.w600, c.blue)),
                 ]),
               ),
             ),

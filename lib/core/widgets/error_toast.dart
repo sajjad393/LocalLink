@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'package:locallink/core/widgets/link_toast.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G2: an error whose [friendly] text can be shown as it is.
 abstract interface class FriendlyError {
@@ -22,33 +23,33 @@ String friendlyErrorMessage(Object? error) {
       text.contains('SocketException') ||
       text.contains('Connection refused') ||
       text.contains('Network is unreachable')) {
-    return 'No connection. Check your network and try again.';
+    return L.t.noConnectionCheckYourNetworkAnd;
   }
   if (error is TimeoutException || text.contains('TimeoutException')) {
-    return 'That took too long. Please try again.';
+    return L.t.thatTookTooLongPleaseTry;
   }
   if (text.contains('401')) {
-    return 'Your session has expired. Please log in again.';
+    return L.t.yourSessionHasExpiredPleaseLog;
   }
   if (text.contains('403')) {
-    return 'That action is not allowed on this account.';
+    return L.t.thatActionIsNotAllowedOn;
   }
   if (text.contains('404')) {
-    return 'Not found. It may have been removed or renamed.';
+    return L.t.notFoundItMayHaveBeen;
   }
   if (text.contains('409')) {
-    return 'That already exists. Try a different name.';
+    return L.t.thatAlreadyExistsTryADifferent;
   }
   if (text.contains('413')) {
-    return 'That file is too large to send.';
+    return L.t.thatFileIsTooLargeTo;
   }
   if (text.contains('429')) {
-    return 'Too many attempts. Please wait a moment and try again.';
+    return L.t.tooManyAttemptsPleaseWaitA;
   }
   if (RegExp(r'5\d\d').hasMatch(text)) {
-    return 'The server is having trouble. Please try again in a moment.';
+    return L.t.theServerIsHavingTroublePlease;
   }
-  return 'Something went wrong. Please try again.';
+  return L.t.somethingWentWrongPleaseTryAgain;
 }
 
 /// Transient top-anchored toast for failures (never leaks exception detail).

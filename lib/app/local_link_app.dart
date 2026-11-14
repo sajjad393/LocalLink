@@ -37,6 +37,7 @@ import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/features/connectivity/domain/local_route.dart';
 import 'package:locallink/features/files/presentation/widgets/media_view_cache.dart';
 import 'package:locallink/core/identity/person_name_258.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 class LocalLinkApp extends StatefulWidget {
   const LocalLinkApp({super.key});
@@ -70,6 +71,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 304 (H3): the phone's language until the saved choice is read.
+    LanguageBook304.instance.load(null);
+    LanguageBook304.instance.addListener(_onLanguage304);
     // Bundle 147: mini video player + picture-in-picture for chat videos.
     ChatVideoHub.instance.attach(navigatorKey: _navigatorKey);
     // Bundle 148: one live status (Nearby / Online / Offline) for every
@@ -136,7 +140,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       _update275Open = true;
       unawaited(showSilentUpdateSheet275(ctx, s).whenComplete(() => _update275Open = false));
     };
-    SilentUpdate275.onUpdated = () => _showAppSnackBar('LinkUp updated to $kAppVersion');
+    SilentUpdate275.onUpdated = () => _showAppSnackBar(L.t.linkupUpdatedTo(kAppVersion));
     // Bundle 126: pairing diagnostics are demoted to logcat-only (the
     // service still prints every PAIR_DIAG line). While bring-up was broken,
     // toasting every stage line was worth it; now each packet produced 1–3
@@ -245,6 +249,24 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     ));
   }
 
+  /// 304 (H3): new words on every open screen at once (no restart).
+  void _onLanguage304() {
+    if (!mounted) return;
+    setState(() {});
+    rebuildAllWords304(context);
+  }
+
+  /// 304 (H3): "Phone language" follows a change in the phone's settings.
+  @override
+  void didChangeLocales(List<Locale>? locales) {
+    super.didChangeLocales(locales);
+    final book = LanguageBook304.instance;
+    if (book.value != AppLanguage304.phone) return;
+    final before = L.locale;
+    L.use(book.locale);
+    if (L.locale != before) _onLanguage304();
+  }
+
   Future<void> _setThemeMode(ThemeMode mode) async {
     if (!mounted) return;
     setState(() => _themeMode = mode);
@@ -289,6 +311,11 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
             'dark' => ThemeMode.dark,
             _ => ThemeMode.system,
           };
+          // 304 (H3): Settings > Language (kept like the theme).
+          LanguageBook304.instance.load(
+              await _deps.store.readSetting(LanguageBook304.settingKey));
+          LanguageBook304.instance.save =
+              (v) => _deps.store.writeSetting(LanguageBook304.settingKey, v);
           configured = await _deps.store.isConfigured();
           offlinePending = _deps.store.isOfflinePending;
           signedOut = await _deps.store.isSignedOut();
@@ -345,7 +372,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       if (!mounted) return;
       setState(() {
         _ready = true;
-        _startupError = 'LinkUp could not initialize safely. Close and reopen the app.';
+        _startupError = L.t.linkupCouldNotInitializeSafelyClose;
       });
     } finally {
       _initializing = false;
@@ -382,7 +409,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     if (!mounted || !_configured || _lifecycleState != AppLifecycleState.resumed) return;
     if (_navigatorKey.currentState == null) return;
     if (_deps.calls.takeCallUnavailableNotice() == null) return;
-    _showAppSnackBar('Call is no longer available');
+    _showAppSnackBar(L.t.callIsNoLongerAvailable);
   }
 
   /// Opens the call screen when (a) an incoming call is ringing, or
@@ -765,6 +792,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
 
   @override
   void dispose() {
+    LanguageBook304.instance.removeListener(_onLanguage304);
     _pairingDoneSub?.cancel();
     if (FriendChatOpener.open == _openFriendChat) {
       FriendChatOpener.open = null;
@@ -791,6 +819,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         theme: LocalLinkTheme.light(),
         darkTheme: LocalLinkTheme.dark(),
         themeMode: _themeMode,
+        locale: L.locale,
+        localizationsDelegates: L.delegates,
+        supportedLocales: L.supportedLocales,
         builder: _look290,
         home: const LocalLinkSplashScreen(),
       );
@@ -802,6 +833,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         theme: LocalLinkTheme.light(),
         darkTheme: LocalLinkTheme.dark(),
         themeMode: _themeMode,
+        locale: L.locale,
+        localizationsDelegates: L.delegates,
+        supportedLocales: L.supportedLocales,
         builder: _look290,
         home: Scaffold(
           body: Center(
@@ -812,8 +846,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
                 children: [
                   const Icon(Icons.error_outline, size: 56),
                   const SizedBox(height: 16),
-                  const Text(
-                    'LinkUp could not start',
+                  Text(
+                    L.t.linkupCouldNotStart,
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                     textAlign: TextAlign.center,
                   ),
@@ -840,6 +874,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       theme: LocalLinkTheme.light(),
       darkTheme: LocalLinkTheme.dark(),
       themeMode: _themeMode,
+      locale: L.locale,
+      localizationsDelegates: L.delegates,
+      supportedLocales: L.supportedLocales,
       initialRoute: _configured ? AppRoutes.home : AppRoutes.welcome,
       // Bundle 227 (F1): only Home OR Welcome at the start, never both.
       onGenerateInitialRoutes: (name) =>
@@ -865,10 +902,13 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   /// Bundle 290 (S-2): text grows at most 1.3x with the phone's font size,
   /// so every screen keeps the mock layout on every phone. TODO 290: the
   /// crown tap areas (tip bubble) work on every screen.
-  static Widget _look290(BuildContext context, Widget? child) => MediaQuery(
+  static Widget _look290(BuildContext context, Widget? child) => _ltr304(MediaQuery(
         data: LocalLinkLook.clampScaler(MediaQuery.of(context)),
         // Bundle 303 (B): the call strip above every screen.
         child: CallStrip303.wrap(
             CrownTapScope290(child: child ?? const SizedBox.shrink())),
-      );
+      ));
+
+  /// 304 (H3): Urdu words, the same left-to-right screens (user, 15 Nov).
+  static Widget _ltr304(Widget child) => Directionality(textDirection: TextDirection.ltr, child: child);
 }

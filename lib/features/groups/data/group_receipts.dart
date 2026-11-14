@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle G5: receipts per member, Message info and "typing" for groups.
 ///
@@ -133,9 +134,9 @@ class GroupMessageInfo {
 String groupTypingText(List<String> names) {
   final clean = names.where((n) => n.trim().isNotEmpty).toList();
   if (clean.isEmpty) return '';
-  if (clean.length == 1) return '${clean.first} is typing…';
-  if (clean.length == 2) return '${clean[0]} and ${clean[1]} are typing…';
-  return '${clean.length} people are typing…';
+  if (clean.length == 1) return L.t.isTyping(clean.first);
+  if (clean.length == 2) return L.t.andAreTyping(clean[0], clean[1]);
+  return L.t.peopleAreTyping(clean.length);
 }
 
 /// Who is typing in which group (server road). A typing note lasts 6 s
