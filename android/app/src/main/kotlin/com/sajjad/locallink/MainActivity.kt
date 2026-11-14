@@ -867,8 +867,8 @@ class MainActivity : FlutterActivity() {
                         val proximity = call.argument<Boolean>("proximity") == true
                         volumeControlStream = if (inCall) android.media.AudioManager.STREAM_VOICE_CALL
                             else android.media.AudioManager.USE_DEFAULT_STREAM_TYPE
-                        setCallProximity(inCall && proximity)
-                        result.success(null)
+                        // Bundle 303 (E): say what the sensor did (for the logs).
+                        result.success(setCallProximity(inCall && proximity))
                     }
                     "clearCommunicationDevice" -> {
                         // Bundle 143: call over — always hand screen + volume keys back.
@@ -1044,6 +1044,8 @@ class MainActivity : FlutterActivity() {
                     // Bundle 181: pause / continue = parts, joined into one file.
                     "join" -> joinVoiceParts(call.argument<List<*>>("paths"), call.argument<Boolean>("delete_parts") != false, result)
                     "play" -> playVoiceNote(call.argument<String>("path"), result)
+                    // Bundle 303 (G): length + loudness per slice for the real bars.
+                    "voice_wave" -> mediaBg(result) { VoiceWaveNative.read(call.argument<String>("path") ?: "", call.argument<Int>("buckets") ?: 120) }
                     "pause" -> { voicePlayer?.pause(); result.success(null) }
                     "stop" -> { voicePlayer?.stop(); voicePlayer?.release(); voicePlayer = null; result.success(null) }
                     // Bundle 145: chat video thumbnail + length + display size.
@@ -1372,11 +1374,12 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun setCallProximity(enabled: Boolean) {
+    /** Bundle 303 (E): returns "on" / "off" / "unsupported" / "error". */
+    private fun setCallProximity(enabled: Boolean): String {
         try {
             val pm = powerManager()
             if (enabled) {
-                if (!pm.isWakeLockLevelSupported(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) return
+                if (!pm.isWakeLockLevelSupported(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) return "unsupported"
                 val lock = proximityWakeLock ?: pm.newWakeLock(
                     android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK,
                     "locallink:call_proximity",
@@ -1386,14 +1389,17 @@ class MainActivity : FlutterActivity() {
                 }
                 // Hard cap so a lost "call ended" can never pin the sensor forever.
                 if (!lock.isHeld) lock.acquire(4 * 60 * 60 * 1000L)
+                return "on"
             } else {
                 proximityWakeLock?.let {
                     // Wait for the phone to leave the ear before lighting the screen.
                     if (it.isHeld) it.release(android.os.PowerManager.RELEASE_FLAG_WAIT_FOR_NO_PROXIMITY)
                 }
+                return "off"
             }
         } catch (_: Exception) {
             // Sensor/wakelock quirks on some ROMs must never break a call.
+            return "error"
         }
     }
 

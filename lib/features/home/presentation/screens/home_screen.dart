@@ -11,6 +11,7 @@ import 'package:locallink/features/groups/data/group_mention_book.dart';
 import 'package:locallink/features/groups/data/group_receipts.dart';
 import 'dart:async';
 
+import 'package:locallink/features/files/data/services/voice_wave_book.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/files/presentation/widgets/chat_video_hub.dart';
@@ -51,6 +52,7 @@ import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/data/services/call_preflight_exception.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
+import 'package:locallink/features/calls/presentation/widgets/call_strip_303.dart';
 import 'package:locallink/features/calls/presentation/screens/calls_screen.dart';
 import 'package:locallink/features/connectivity/bloc/connectivity_bloc.dart';
 import 'package:locallink/features/connectivity/bloc/mesh_bloc.dart';
@@ -685,6 +687,13 @@ class _HomeScreenState extends State<HomeScreen> {
       AppLogger.warning('MEDIA_STORAGE_START_FAILED', detail: '$error');
     }));
     _mediaLifecycle = AppLifecycleListener(onResume: service.onResume);
+    // Bundle 303 (G): remembered voice note bars survive a restart; no
+    // file reading during a call.
+    VoiceWaveBook.instance.attachStore(
+      read: widget.store.readSetting,
+      write: widget.store.writeSetting,
+      inCall: () => ChatVideoHub.instance.callActive,
+    );
   }
 
   void _registerForwardHub() {
@@ -1694,7 +1703,8 @@ class _OngoingCallBarState extends State<_OngoingCallBar> {
       initialData: widget.calls.session,
       builder: (context, snapshot) {
         final session = snapshot.data;
-        if (session == null || session.isFinished) {
+        // Bundle 303 (B): the app-wide call strip replaces this bar.
+        if (session == null || session.isFinished || CallStrip303.attached) {
           return const SizedBox.shrink();
         }
         return SafeArea(

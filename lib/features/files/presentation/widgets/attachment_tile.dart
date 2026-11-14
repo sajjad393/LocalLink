@@ -15,6 +15,8 @@ import 'package:locallink/core/widgets/local_link_bloc_builder.dart';
 import 'package:locallink/features/files/data/services/media_progress_hub.dart';
 import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
 import 'package:locallink/features/files/data/services/auto_fetch_service.dart';
+import 'package:locallink/features/files/data/services/voice_wave_book.dart';
+import 'package:locallink/features/messaging/presentation/voice/voice_recording_widgets.dart' show VoiceWave;
 import 'blue_progress_ring.dart';
 import 'chat_photo.dart';
 import 'chat_video_controller.dart';
@@ -95,6 +97,8 @@ class _AttachmentTileState extends State<AttachmentTile> {
   bool _playing = false;
   int _audioDurationMs = 0;
   int _audioPositionMs = 0;
+  // Bundle 303 (G): length + loudness read from the file (real bars).
+  VoiceWaveInfo? _wave;
   Timer? _audioTimer;
   // Bundle 147: the decrypted view comes from MediaViewCache (decrypted once,
   // shared, kept while shown). This tile holds one reference to it.
@@ -205,11 +209,29 @@ class _AttachmentTileState extends State<AttachmentTile> {
   /// Bundle 197b (T1): first time the plain view exists, make the small
   /// picture (kept when the file is removed later).
   void _ensureThumb(String view) {
+    _ensureWave(view);
     if (_media?.hasThumb ?? false) return;
     if (!widget.attachment.isImage && !_isVideo) return;
     if (!MediaStorageService.instance.configured) return;
     unawaited(MediaStorageService.instance
         .ensureThumb(widget.attachment.id, view, video: _isVideo && !widget.attachment.isImage));
+  }
+
+  String get _waveKey => '${widget.attachment.id}|${widget.attachment.size}';
+
+  /// Bundle 303 (G): a voice note on the phone -> its real bars and length
+  /// (read once per file, remembered; old voice notes too).
+  void _ensureWave(String view) {
+    if (!_isAudio || _wave != null) return;
+    final key = _waveKey;
+    final known = VoiceWaveBook.instance.peek(key);
+    if (known != null) {
+      _wave = known;
+      return;
+    }
+    unawaited(VoiceWaveBook.instance.load(key, view).then((info) {
+      if (info != null && mounted) setState(() => _wave = info);
+    }));
   }
 
   void _onCancelledChanged() {
@@ -931,7 +953,11 @@ class _AttachmentTileState extends State<AttachmentTile> {
           }
           if (_isAudio) {
             final colors = Theme.of(context).colorScheme;
-            final totalMs = _audioDurationMs > 0 ? _audioDurationMs : 0;
+            // Bundle 303 (G): the length is known as soon as the file is on
+            // the phone (was: only after the first play -> "43.3 KB").
+            final totalMs = _audioDurationMs > 0
+                ? _audioDurationMs
+                : (_wave?.durationMs ?? 0);
             final playbackFraction = totalMs > 0
                 ? (_audioPositionMs / totalMs).clamp(0.0, 1.0)
                 : 0.0;
@@ -994,26 +1020,17 @@ class _AttachmentTileState extends State<AttachmentTile> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Faux waveform — uniform bars that fill left→right
-                        // with playback progress.
-                        Row(
-                          children: [
-                            for (var i = 0; i < 24; i++)
-                              Expanded(
-                                child: Container(
-                                  margin: const EdgeInsets.symmetric(
-                                      horizontal: 1),
-                                  height: 8 + 10 * ((i * 7 % 11) / 10),
-                                  decoration: BoxDecoration(
-                                    color: (i / 24) <= playbackFraction
-                                        ? colors.primary
-                                        : colors.onSurfaceVariant
-                                            .withValues(alpha: .35),
-                                    borderRadius: BorderRadius.circular(2),
-                                  ),
-                                ),
-                              ),
-                          ],
+                        // Bundle 303 (G, pick B): bars from the real sound
+                        // (thin, close, round dot), like WhatsApp. No file
+                        // yet = low flat bars.
+                        VoiceWave(
+                          key: const ValueKey('voice_bubble_wave'),
+                          levels: _wave?.levels ?? const <double>[],
+                          color: colors.onSurfaceVariant.withValues(alpha: .35),
+                          playedColor: colors.primary,
+                          progress: playbackFraction,
+                          fit: true,
+                          dot: _wave != null,
                         ),
                         const SizedBox(height: 4),
                         Row(

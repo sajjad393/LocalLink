@@ -662,7 +662,10 @@ final class CallSessionManager implements CallGateway {
 
   void onAppLifecycleState(AppLifecycleState state) {
     if (_disposed) return;
-    _appInForeground = state == AppLifecycleState.resumed;
+    // Bundle 303 (C): "inactive" = LinkUp still on screen (its window only
+    // lost focus): the ring screen shows, no extra call notification.
+    _appInForeground = state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive;
     final session = _session;
     if (session != null &&
         session.direction == CallDirection.incoming &&
@@ -758,10 +761,11 @@ final class CallSessionManager implements CallGateway {
       direction: CallDirection.outgoing,
       state: CallState.connecting,
       startedAt: now,
-      // Bundle 144: voice calls start on the SPEAKER again (user choice: the
-      // 143 earpiece default sounded filtered). The speaker button moves to
-      // the earpiece; proximity screen-off is active only then.
-      speakerOn: true,
+      // Bundle 303 (D): voice calls start on the EARPIECE for both people
+      // (user choice, like WhatsApp; was the speaker since 144). The
+      // proximity sensor then blanks the screen at the ear. The speaker
+      // button still switches to the loudspeaker.
+      speakerOn: false,
       directMode: true,
       transportMode: mode,
       signalingConnected: false,
@@ -1432,10 +1436,11 @@ final class CallSessionManager implements CallGateway {
       direction: CallDirection.incoming,
       state: CallState.ringing,
       startedAt: createdAt,
-      // Bundle 144: voice calls start on the SPEAKER again (user choice: the
-      // 143 earpiece default sounded filtered). The speaker button moves to
-      // the earpiece; proximity screen-off is active only then.
-      speakerOn: true,
+      // Bundle 303 (D): voice calls start on the EARPIECE for both people
+      // (user choice, like WhatsApp; was the speaker since 144). The
+      // proximity sensor then blanks the screen at the ear. The speaker
+      // button still switches to the loudspeaker.
+      speakerOn: false,
       directMode: true,
       transportMode: CallTransportMode.offlineMesh,
       supportedMediaCodecs: advertised,

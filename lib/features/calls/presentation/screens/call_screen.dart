@@ -22,7 +22,12 @@ class CallScreen extends StatefulWidget {
   /// Bundle 146: id of the call whose screen is on the navigator stack, so
   /// notification Accept / Calls tab / "return to call" never push a second
   /// call screen for the same call.
-  static String? visibleCallId;
+  static String? get visibleCallId => visible303.value;
+  static set visibleCallId(String? id) => visible303.value = id;
+
+  /// Bundle 303 (B): the same id, listenable (the call strip hides while
+  /// the call screen is open).
+  static final ValueNotifier<String?> visible303 = ValueNotifier<String?>(null);
 
   final call_bloc.CallBloc controller;
   final CallSession initialSession;

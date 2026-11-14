@@ -22,6 +22,7 @@ import 'package:locallink/core/widgets/local_link_splash.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
+import 'package:locallink/features/calls/presentation/widgets/call_strip_303.dart';
 import 'package:locallink/core/notifications/notification_action.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/features/directory/data/services/friend_hello_service.dart';
@@ -352,6 +353,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   }
 
   void _listenForIncomingCalls() {
+    // Bundle 303 (B): the green call strip on every screen.
+    CallStrip303.attach(_deps.calls, _openCallFromStrip303);
     _callSub ??= _deps.calls.sessionStream.listen((session) {
       // Bundle 147: a call (ringing or live) pauses chat video, hides the
       // mini player and blocks picture-in-picture.
@@ -362,6 +365,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       if (session.isFinished && _shownIncomingCallId == session.id) {
         _shownIncomingCallId = null;
       }
+      _syncRingRetry303();
     });
     // Bundle 146: notification Accept asks for the call screen of a live call.
     _callScreenRequestSub ??=
@@ -386,13 +390,21 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   /// 'connecting'/'connected' by now, so the old ringing-only rule skipped it
   /// and the user landed on Home). Never pushes a second call screen.
   void _maybeShowIncomingCall() {
-    if (!mounted || !_configured || _lifecycleState != AppLifecycleState.resumed) return;
+    if (!mounted || !_configured) return;
     final session = _deps.calls.session;
     if (session == null || session.isFinished) return;
     final ringingIncoming = session.direction == CallDirection.incoming &&
         session.state == CallState.ringing;
     final requested = _deps.calls.requestedCallScreenId == session.id;
     if (!ringingIncoming && !requested) return;
+    // Bundle 303 (A): LinkUp on screen = resumed OR inactive. Android says
+    // "inactive" while LinkUp is still visible but its window lost focus
+    // (heads-up, notification shade, a system popup) - before, the ring
+    // screen was then skipped and only the Chats bar said "Calling…".
+    if (!_onScreen303) {
+      _skip303('app_${_lifecycleState.name}', session.id);
+      return;
+    }
     if (_shownIncomingCallId == session.id ||
         CallScreen.visibleCallId == session.id) {
       if (requested) {
@@ -402,10 +414,22 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       }
       return;
     }
-    if (_shownIncomingCallId != null) return;
+    if (_shownIncomingCallId != null) {
+      // Bundle 303 (A): a leftover id (its call screen is not open any
+      // more) must not block this call's ring screen.
+      if (CallScreen.visibleCallId != _shownIncomingCallId) {
+        AppLogger.info('CALL_SCREEN_SKIP',
+            detail: 'reason=leftover_cleared old=$_shownIncomingCallId call=${session.id}');
+        _shownIncomingCallId = null;
+      } else {
+        _skip303('other_call_screen', session.id);
+        return;
+      }
+    }
 
     final navigator = _navigatorKey.currentState;
     if (navigator == null) {
+      _skip303('no_navigator', session.id);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _maybeShowIncomingCall();
       });
@@ -432,6 +456,66 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
         }
       }),
     );
+  }
+
+  // ---------------------------------------------------------------------
+  // Bundle 303: the ring screen always opens while LinkUp is on screen.
+  // ---------------------------------------------------------------------
+  bool get _onScreen303 =>
+      _lifecycleState == AppLifecycleState.resumed ||
+      _lifecycleState == AppLifecycleState.inactive;
+
+  /// One CALL_SCREEN_SKIP line per call and reason (before 303 a skip wrote
+  /// nothing, so a missed ring screen left no trace in the logs).
+  final Set<String> _skipLogged303 = <String>{};
+
+  void _skip303(String reason, String callId) {
+    if (_skipLogged303.length > 200) _skipLogged303.clear();
+    if (!_skipLogged303.add('$callId|$reason')) return;
+    AppLogger.info('CALL_SCREEN_SKIP', detail: 'reason=$reason call=$callId');
+  }
+
+  /// While a call rings to me and its ring screen is not open: try again
+  /// every second (stops when it opens or the call ends).
+  Timer? _ringRetry303;
+
+  void _syncRingRetry303() {
+    final s = _deps.calls.session;
+    final need = s != null &&
+        !s.isFinished &&
+        s.direction == CallDirection.incoming &&
+        s.state == CallState.ringing &&
+        CallScreen.visibleCallId != s.id;
+    if (!need) {
+      _ringRetry303?.cancel();
+      _ringRetry303 = null;
+      return;
+    }
+    _ringRetry303 ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      _maybeShowIncomingCall();
+      _syncRingRetry303();
+    });
+  }
+
+  /// Tap on the call strip: the ring screen / the call screen.
+  DateTime? _stripOpenAt303;
+
+  void _openCallFromStrip303() {
+    final session = _deps.calls.session;
+    final navigator = _navigatorKey.currentState;
+    if (!mounted || session == null || session.isFinished || navigator == null) return;
+    if (CallScreen.visibleCallId == session.id) return;
+    // Two quick taps (or Answer + a tap) before the call screen has set its
+    // id must not open it twice.
+    final now = DateTime.now();
+    final last = _stripOpenAt303;
+    if (last != null && now.difference(last) < const Duration(milliseconds: 800)) return;
+    _stripOpenAt303 = now;
+    AppLogger.info('CALL_SCREEN_OPEN', detail: 'reason=call_strip call=${session.id}');
+    unawaited(navigator.push<void>(MaterialPageRoute(
+      builder: (_) => CallScreen(controller: _deps.calls, initialSession: session),
+    )));
   }
 
   void _listenForNotificationOpens() {
@@ -690,6 +774,7 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
       GroupInviteService.openGroup = null;
     }
     WidgetsBinding.instance.removeObserver(this);
+    _ringRetry303?.cancel();
     unawaited(_callSub?.cancel());
     unawaited(_callScreenRequestSub?.cancel());
     unawaited(_callUnavailableSub?.cancel());
@@ -749,6 +834,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: _navigatorKey,
+      // Bundle 303 (B): the call card follows the screen in front.
+      navigatorObservers: [CallStrip303.observer],
       title: 'LinkUp',
       theme: LocalLinkTheme.light(),
       darkTheme: LocalLinkTheme.dark(),
@@ -780,6 +867,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   /// crown tap areas (tip bubble) work on every screen.
   static Widget _look290(BuildContext context, Widget? child) => MediaQuery(
         data: LocalLinkLook.clampScaler(MediaQuery.of(context)),
-        child: CrownTapScope290(child: child ?? const SizedBox.shrink()),
+        // Bundle 303 (B): the call strip above every screen.
+        child: CallStrip303.wrap(
+            CrownTapScope290(child: child ?? const SizedBox.shrink())),
       );
 }

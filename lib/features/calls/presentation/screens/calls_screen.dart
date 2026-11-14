@@ -18,6 +18,7 @@ import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart'
     show CallSession;
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
+import 'package:locallink/features/calls/presentation/widgets/call_strip_303.dart';
 import 'package:locallink/features/calls/data/services/call_preflight_exception.dart';
 import 'package:locallink/features/calls/presentation/widgets/call_history_tile.dart';
 import 'package:locallink/features/calls/presentation/call_history_groups.dart';
@@ -402,7 +403,8 @@ class _CallInProgressBarState extends State<_CallInProgressBar> {
       initialData: widget.controller.session,
       builder: (context, snapshot) {
         final session = snapshot.data;
-        if (session == null || session.isFinished) {
+        // Bundle 303 (B): the app-wide call strip replaces this bar.
+        if (session == null || session.isFinished || CallStrip303.attached) {
           return const SizedBox.shrink();
         }
         final name = session.peerName.isEmpty ? 'LinkUp user' : session.peerName;

@@ -70,7 +70,10 @@ class _VoiceBlinkDotState extends State<VoiceBlinkDot> with SingleTickerProvider
   }
 }
 
-/// Bars: 3 px wide, every 6 px, 3 px minimum (silence = small dots).
+/// Bars: 2 px wide, every 3 px (1 px gap), 3 px minimum (silence = small
+/// dots). Bundle 303 (G, user pick B): thin and close like WhatsApp, the same
+/// lines in the voice bubble and in the message box; [dot] = round dot at
+/// the played point.
 class VoiceWave extends StatelessWidget {
   const VoiceWave({
     super.key,
@@ -80,6 +83,7 @@ class VoiceWave extends StatelessWidget {
     this.playedColor,
     this.progress = 0,
     this.height = 22,
+    this.dot = false,
   });
 
   final List<double> levels;
@@ -90,13 +94,14 @@ class VoiceWave extends StatelessWidget {
   final Color? playedColor;
   final double progress;
   final double height;
+  final bool dot;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: height,
       child: CustomPaint(
-        painter: _WavePainter(levels, color, fit, playedColor, progress),
+        painter: _WavePainter(levels, color, fit, playedColor, progress, dot: dot),
         size: Size.infinite,
       ),
     );
@@ -104,17 +109,19 @@ class VoiceWave extends StatelessWidget {
 }
 
 class _WavePainter extends CustomPainter {
-  _WavePainter(this.levels, this.color, this.fit, this.playedColor, this.progress);
+  _WavePainter(this.levels, this.color, this.fit, this.playedColor, this.progress, {this.dot = false});
 
   final List<double> levels;
   final Color color;
   final bool fit;
   final Color? playedColor;
   final double progress;
+  final bool dot;
 
-  static const double barWidth = 3;
-  static const double step = 6;
+  static const double barWidth = 2;
+  static const double step = 3;
   static const double minHeight = 3;
+  static const double dotSize = 12;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -123,17 +130,23 @@ class _WavePainter extends CustomPainter {
     final bars = fit ? VoiceLevels.fit(levels, n) : VoiceLevels.tail(levels, n);
     final mid = size.height / 2;
     final paint = Paint();
-    final played = (progress * n).floor();
+    // A bar is "played" once its middle is reached: none at 0:00.
+    final played = (progress.clamp(0.0, 1.0) * n).floor();
     for (var i = 0; i < bars.length; i++) {
-      final h = minHeight + (size.height - minHeight) * bars[i];
+      final h = minHeight + (size.height - minHeight) * bars[i].clamp(0.0, 1.0);
       paint.color = (playedColor != null && i < played) ? playedColor! : color;
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(i * step, mid - h / 2, barWidth, h),
-          const Radius.circular(1.5),
+          const Radius.circular(1),
         ),
         paint,
       );
+    }
+    if (dot) {
+      final span = (n - 1) * step + barWidth;
+      final x = (progress.clamp(0.0, 1.0) * span).clamp(dotSize / 2, size.width - dotSize / 2);
+      canvas.drawCircle(Offset(x, mid), dotSize / 2, Paint()..color = playedColor ?? color);
     }
   }
 
@@ -143,6 +156,8 @@ class _WavePainter extends CustomPainter {
       old.progress != progress ||
       old.color != color ||
       old.fit != fit ||
+      old.dot != dot ||
+      old.playedColor != playedColor ||
       !identical(old.levels, levels);
 }
 
@@ -167,12 +182,36 @@ class VoiceHoldingContent extends StatelessWidget {
             child: ClipRect(
               child: Transform.translate(
                 offset: Offset(voice.slideDx * .6, 0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.arrow_left_rounded, size: 30, color: muted),
-                    Text('Slide to cancel', style: TextStyle(fontSize: 14, color: muted)),
-                  ],
+                // Bundle 303 (G6, pick A): the live wave shows while holding
+                // too; the words keep their room first (small phones / big
+                // text: the wave gets shorter, never an overflow).
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final words = (box.maxWidth - 10 - 30 - 8 - 24).clamp(0.0, double.infinity);
+                    return Row(
+                      children: [
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: VoiceWave(
+                            key: const ValueKey('voice_hold_wave'),
+                            levels: voice.levels,
+                            color: Theme.of(context).colorScheme.primary,
+                            height: 20,
+                          ),
+                        ),
+                        Icon(Icons.arrow_left_rounded, size: 30, color: muted),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: words),
+                          child: Text('Slide to cancel',
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 14, color: muted)),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -364,7 +403,6 @@ class _Round extends StatelessWidget {
     required this.child,
     this.color,
     this.gradient,
-    this.border,
     super.key,
   });
 
@@ -374,7 +412,6 @@ class _Round extends StatelessWidget {
   final Widget child;
   final Color? color;
   final Gradient? gradient;
-  final BoxBorder? border;
 
   @override
   Widget build(BuildContext context) {
@@ -386,7 +423,7 @@ class _Round extends StatelessWidget {
         child: Material(
           type: MaterialType.transparency,
           child: Ink(
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color, gradient: gradient, border: border),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color, gradient: gradient),
             child: InkWell(
               onTap: onTap,
               customBorder: const CircleBorder(),
@@ -399,44 +436,75 @@ class _Round extends StatelessWidget {
   }
 }
 
-/// The white two-line panel used when locked and when paused.
-class _Panel extends StatelessWidget {
-  const _Panel({required this.top, required this.bottom, super.key});
+/// Bundle 303 (G6, user pick A "one line"): the locked / paused message box
+/// is ONE line, the same height and pill as the normal message box:
+/// red bin | pill (dot, timer, wave, soft red pause / continue) | send.
+/// Replaces the white two-line panel with the grey top line.
+class _OneLine extends StatelessWidget {
+  const _OneLine({required this.voice, required this.pill, super.key});
 
-  final Widget top;
-  final Widget bottom;
+  final VoiceRecorderController voice;
+  final List<Widget> pill;
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: dark ? Theme.of(context).colorScheme.surfaceContainerHigh : Colors.white,
-        border: const Border(top: BorderSide(color: VoiceBarColors.line)),
+    final colors = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(
+        LocalLinkSpacing.xs,
+        LocalLinkSpacing.xs,
+        LocalLinkSpacing.sm,
+        LocalLinkSpacing.md,
       ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(height: 44, child: top),
-              const SizedBox(height: 4),
-              SizedBox(height: 52, child: bottom),
-            ],
+      child: Row(
+        children: [
+          _trash(voice),
+          Expanded(
+            child: Container(
+              height: 52,
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHighest.withValues(alpha: .78),
+                borderRadius: BorderRadius.circular(26),
+                border: Border.all(color: colors.outlineVariant.withValues(alpha: .45)),
+              ),
+              child: Row(children: pill),
+            ),
           ),
-        ),
+          const SizedBox(width: LocalLinkSpacing.sm),
+          _send(voice),
+        ],
       ),
     );
   }
 }
 
-Widget _trash(VoiceRecorderController voice) => IconButton(
-      key: const ValueKey('voice_delete'),
-      tooltip: 'Delete voice note',
-      onPressed: voice.discard,
-      icon: const VoiceTrashIcon(),
+/// Bundle 303 (G6): red that reads well on light and dark.
+Color _voiceRed(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark ? const Color(0xFFF2655F) : VoiceBarColors.red;
+
+/// Soft red circle (pause / continue) inside the pill.
+Widget _softRed(BuildContext context, {required Key key, required String tooltip,
+        required VoidCallback onTap, required IconData icon}) {
+  final red = _voiceRed(context);
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return _Round(
+    key: key,
+    size: 38,
+    tooltip: tooltip,
+    onTap: onTap,
+    color: red.withValues(alpha: dark ? .22 : .13),
+    child: Icon(icon, color: red, size: 22),
+  );
+}
+
+Widget _trash(VoiceRecorderController voice) => Builder(
+      builder: (context) => IconButton(
+        key: const ValueKey('voice_delete'),
+        tooltip: 'Delete voice note',
+        onPressed: voice.discard,
+        icon: Icon(Icons.delete_outline_rounded, color: _voiceRed(context), size: 26),
+      ),
     );
 
 /// The mock's red bin: lid, handle, body with two white stripes.
@@ -478,7 +546,7 @@ Widget _send(VoiceRecorderController voice) => _Round(
       child: const Icon(Icons.send_rounded, color: Colors.white, size: 24),
     );
 
-/// Mock screen 2: red dot, timer, red wave / Delete - Pause - Send.
+/// Locked (hands free): bin | dot, timer, live blue wave, pause | send.
 class VoiceLockedPanel extends StatelessWidget {
   const VoiceLockedPanel({super.key, required this.voice});
 
@@ -486,43 +554,32 @@ class VoiceLockedPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
+    return _OneLine(
       key: const ValueKey('voice_locked_panel'),
-      top: Row(
-        children: [
-          const SizedBox(width: 4),
-          const VoiceBlinkDot(),
-          const SizedBox(width: 8),
-          Text(voiceClock(voice.recorded), key: const ValueKey('voice_timer'), style: _timerStyle(context)),
-          const SizedBox(width: 14),
-          // Bundle 202 (mock G2): blue live wave; dot / pause / bin stay red.
-          Expanded(
-              child: VoiceWave(
-                  key: const ValueKey('voice_live_wave'),
-                  levels: voice.levels,
-                  color: Theme.of(context).colorScheme.primary)),
-        ],
-      ),
-      bottom: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _trash(voice),
-          _Round(
-            key: const ValueKey('voice_pause'),
-            size: 44,
-            tooltip: 'Pause',
-            onTap: voice.pause,
-            color: VoiceBarColors.red,
-            child: const Icon(Icons.pause_rounded, color: Colors.white, size: 28),
-          ),
-          _send(voice),
-        ],
-      ),
+      voice: voice,
+      pill: [
+        const SizedBox(width: 14),
+        const VoiceBlinkDot(),
+        const SizedBox(width: 8),
+        Text(voiceClock(voice.recorded), key: const ValueKey('voice_timer'), style: _timerStyle(context)),
+        const SizedBox(width: 10),
+        // Bundle 202 (mock G2): blue live wave; dot / pause / bin stay red.
+        Expanded(
+            child: VoiceWave(
+                key: const ValueKey('voice_live_wave'),
+                levels: voice.levels,
+                color: Theme.of(context).colorScheme.primary)),
+        const SizedBox(width: 6),
+        _softRed(context,
+            key: const ValueKey('voice_pause'), tooltip: 'Pause', onTap: voice.pause, icon: Icons.pause_rounded),
+        const SizedBox(width: 6),
+      ],
     );
   }
 }
 
-/// Mock screen 3: play, blue wave, timer / Delete - Continue - Send.
+/// Paused (listen before send): bin | play, wave (grey + blue + dot), timer,
+/// continue | send.
 class VoicePausedPanel extends StatelessWidget {
   const VoicePausedPanel({super.key, required this.voice});
 
@@ -530,52 +587,43 @@ class VoicePausedPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final playing = voice.previewPlaying;
-    return _Panel(
+    return _OneLine(
       key: const ValueKey('voice_paused_panel'),
-      top: Row(
-        children: [
-          _Round(
-            key: const ValueKey('voice_play'),
-            size: 32,
-            tooltip: playing ? 'Stop' : 'Play',
-            onTap: voice.togglePreview,
-            color: VoiceBarColors.playBackground,
-            child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                color: VoiceBarColors.blue, size: 24),
+      voice: voice,
+      pill: [
+        const SizedBox(width: 8),
+        _Round(
+          key: const ValueKey('voice_play'),
+          size: 34,
+          tooltip: playing ? 'Stop' : 'Play',
+          onTap: voice.togglePreview,
+          color: colors.primary,
+          child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: colors.onPrimary, size: 22),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: VoiceWave(
+            key: const ValueKey('voice_preview_wave'),
+            levels: voice.levels,
+            color: colors.onSurfaceVariant.withValues(alpha: .35),
+            playedColor: colors.primary,
+            progress: voice.previewProgress,
+            fit: true,
+            dot: true,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: VoiceWave(
-              levels: voice.levels,
-              color: VoiceBarColors.lightBlue,
-              playedColor: VoiceBarColors.blue,
-              progress: voice.previewProgress,
-              fit: true,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(voiceClock(voice.recorded), key: const ValueKey('voice_timer'), style: _timerStyle(context)),
-        ],
-      ),
-      bottom: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _trash(voice),
-          _Round(
+        ),
+        const SizedBox(width: 8),
+        Text(voiceClock(voice.recorded), key: const ValueKey('voice_timer'), style: _timerStyle(context)),
+        const SizedBox(width: 6),
+        _softRed(context,
             key: const ValueKey('voice_continue'),
-            size: 44,
             tooltip: 'Continue recording',
             onTap: voice.resume,
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Theme.of(context).colorScheme.surface
-                : Colors.white,
-            border: Border.all(color: VoiceBarColors.red, width: 2.5),
-            child: const Icon(Icons.mic_rounded, color: VoiceBarColors.red, size: 24),
-          ),
-          _send(voice),
-        ],
-      ),
+            icon: Icons.mic_rounded),
+        const SizedBox(width: 6),
+      ],
     );
   }
 }

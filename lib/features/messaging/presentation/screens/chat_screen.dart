@@ -31,6 +31,7 @@ import 'package:locallink/core/widgets/local_link_state_view.dart';
 import 'package:locallink/features/calls/bloc/call_bloc.dart';
 import 'package:locallink/features/calls/data/models/call_session.dart';
 import 'package:locallink/features/calls/presentation/screens/call_screen.dart';
+import 'package:locallink/features/calls/presentation/widgets/call_strip_303.dart';
 import 'package:locallink/features/files/bloc/file_transfer_bloc.dart';
 import 'package:locallink/features/files/domain/file_transfer_repository_contract.dart';
 import 'package:locallink/features/messaging/data/services/not_on_server_218.dart';
@@ -1594,7 +1595,9 @@ class _ReturnToCallChip extends StatelessWidget {
       initialData: calls.session,
       builder: (context, snapshot) {
         final session = snapshot.data;
-        if (session == null || session.isFinished || session.peerId != peerId) {
+        // Bundle 303 (B): the app-wide call strip replaces this chip.
+        if (session == null || session.isFinished || session.peerId != peerId ||
+            CallStrip303.attached) {
           return const SizedBox.shrink();
         }
         return Padding(
