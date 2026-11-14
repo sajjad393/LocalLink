@@ -13781,6 +13781,198 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Admin request failed ({v0}).'**
   String adminRequestFailedEn304(Object? v0);
+
+  /// No description provided for @inProgress307.
+  ///
+  /// In en, this message translates to:
+  /// **'In progress'**
+  String get inProgress307;
+
+  /// No description provided for @finished307.
+  ///
+  /// In en, this message translates to:
+  /// **'Finished'**
+  String get finished307;
+
+  /// No description provided for @seeAll307.
+  ///
+  /// In en, this message translates to:
+  /// **'See all'**
+  String get seeAll307;
+
+  /// No description provided for @readyToReadSection307.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready to read'**
+  String get readyToReadSection307;
+
+  /// No description provided for @allChats307.
+  ///
+  /// In en, this message translates to:
+  /// **'All chats'**
+  String get allChats307;
+
+  /// No description provided for @noServer307.
+  ///
+  /// In en, this message translates to:
+  /// **'No server'**
+  String get noServer307;
+
+  /// No description provided for @stepSent307.
+  ///
+  /// In en, this message translates to:
+  /// **'{hl} to {n} phones'**
+  String stepSent307(Object? hl, Object? n);
+
+  /// No description provided for @stepPhones307.
+  ///
+  /// In en, this message translates to:
+  /// **'{hl} phones'**
+  String stepPhones307(Object? hl);
+
+  /// No description provided for @stepParts307.
+  ///
+  /// In en, this message translates to:
+  /// **'{hl} parts'**
+  String stepParts307(Object? hl);
+
+  /// No description provided for @xOfY307.
+  ///
+  /// In en, this message translates to:
+  /// **'{a} of {b}'**
+  String xOfY307(Object? a, Object? b);
+
+  /// No description provided for @stepReady307.
+  ///
+  /// In en, this message translates to:
+  /// **'{hl} to read'**
+  String stepReady307(Object? hl);
+
+  /// No description provided for @sentWord307.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get sentWord307;
+
+  /// No description provided for @waitingForTheirPhones307.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for their phones'**
+  String get waitingForTheirPhones307;
+
+  /// No description provided for @lookingForTheChat307.
+  ///
+  /// In en, this message translates to:
+  /// **'Looking for the chat'**
+  String get lookingForTheChat307;
+
+  /// No description provided for @answerComingFrom307.
+  ///
+  /// In en, this message translates to:
+  /// **'Answer coming from {name}\'s phone'**
+  String answerComingFrom307(Object? name);
+
+  /// No description provided for @answerComing307.
+  ///
+  /// In en, this message translates to:
+  /// **'Answer coming'**
+  String get answerComing307;
+
+  /// No description provided for @tapToOpenParts307.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to open · {n} parts'**
+  String tapToOpenParts307(Object? n);
+
+  /// No description provided for @noPhoneHasThisChat307.
+  ///
+  /// In en, this message translates to:
+  /// **'No phone has this chat'**
+  String get noPhoneHasThisChat307;
+
+  /// No description provided for @chatReady307.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat ready'**
+  String get chatReady307;
+
+  /// No description provided for @openChat307.
+  ///
+  /// In en, this message translates to:
+  /// **'Open chat'**
+  String get openChat307;
+
+  /// No description provided for @chatRequestsSummary307.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} chat requests · {r} ready'**
+  String chatRequestsSummary307(Object? n, Object? r);
+
+  /// No description provided for @chatRequestsChannel307.
+  ///
+  /// In en, this message translates to:
+  /// **'LinkUp chat requests'**
+  String get chatRequestsChannel307;
+
+  /// No description provided for @everything307.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything'**
+  String get everything307;
+
+  /// No description provided for @lastWeek307.
+  ///
+  /// In en, this message translates to:
+  /// **'Last week'**
+  String get lastWeek307;
+
+  /// No description provided for @lastMonth307.
+  ///
+  /// In en, this message translates to:
+  /// **'Last month'**
+  String get lastMonth307;
+
+  /// No description provided for @pickARange307.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a range'**
+  String get pickARange307;
+
+  /// No description provided for @messagesAt307.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} messages · {when}'**
+  String messagesAt307(Object? n, Object? when);
+
+  /// No description provided for @searchPeopleOrGroups307.
+  ///
+  /// In en, this message translates to:
+  /// **'Search people or groups'**
+  String get searchPeopleOrGroups307;
+
+  /// No description provided for @requestCancelled307.
+  ///
+  /// In en, this message translates to:
+  /// **'Request cancelled'**
+  String get requestCancelled307;
+
+  /// No description provided for @phonesNotAnswered307.
+  ///
+  /// In en, this message translates to:
+  /// **'Phones that haven\'t answered yet'**
+  String get phonesNotAnswered307;
+
+  /// No description provided for @fromPhone307.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s phone'**
+  String fromPhone307(Object? name);
+
+  /// No description provided for @noServerTip307.
+  ///
+  /// In en, this message translates to:
+  /// **'No server · requests go to nearby phones'**
+  String get noServerTip307;
 }
 
 class _AppLocalizationsDelegate

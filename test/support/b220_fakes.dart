@@ -123,6 +123,8 @@ class FakeServer220 implements AdminActionServer {
   List<SignedBlob> gotCards = [];
   List<SignedBlob> gotReceipts = [];
   List<Map<String, dynamic>> gotLabels = [];
+  List<SignedBlob> gotSeen = []; // Bundle 307
+  List<Map<String, dynamic>> gotClosed = []; // Bundle 307
   bool unauthorized = false;
   int mineCalls = 0;
   int syncs = 0;
@@ -136,9 +138,13 @@ class FakeServer220 implements AdminActionServer {
     required String signingKey,
     required List<Map<String, dynamic>> labels,
     required int build,
+    List<SignedBlob> seen = const [],
+    List<Map<String, dynamic>> closed = const [],
   }) async {
     syncs++;
     if (unauthorized) throw const AdminActionUnauthorized();
+    gotSeen = [...gotSeen, ...seen];
+    gotClosed = [...gotClosed, ...closed];
     gotCards = [...gotCards, ...cards];
     gotReceipts = [...gotReceipts, ...receipts];
     gotLabels = [...gotLabels, ...labels];

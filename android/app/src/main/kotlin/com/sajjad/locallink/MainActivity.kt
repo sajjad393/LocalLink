@@ -717,6 +717,13 @@ class MainActivity : FlutterActivity() {
                     "requestPermission" -> { LocalLinkNotificationManager.requestNotificationPermission(this); result.success(null) }
                     "notificationsEnabled" -> result.success(LocalLinkNotificationManager.notificationsEnabled(this))
                     "openSettings" -> { LocalLinkNotificationManager.openSettings(this); result.success(null) }
+                    // Bundle 307 (C1): the Get chat request card.
+                    "showChatRequest" -> { ChatRequestNotifier307.show(this, call.arguments as? Map<String, Any?> ?: emptyMap()); result.success(null) }
+                    "cancelChatRequest" -> {
+                        ChatRequestNotifier307.cancel(this, call.argument<String>("request_id")?.trim().orEmpty(), call.arguments as? Map<String, Any?> ?: emptyMap())
+                        result.success(null)
+                    }
+                    "cancelAllChatRequests" -> { ChatRequestNotifier307.cancelAll(this); result.success(null) }
                     "showMessage" -> {
                         val notificationId = call.argument<Int>("notification_id") ?: 0
                         val conversationType = call.argument<String>("conversation_type")?.trim().orEmpty()
@@ -1473,6 +1480,18 @@ class MainActivity : FlutterActivity() {
             safeIntent.action == CallNotificationManager.ACTION_OPEN) return
 
         val action = safeIntent.getStringExtra(LocalLinkNotificationManager.EXTRA_ACTION)?.trim().orEmpty()
+        // Bundle 307 (C1): tap / "Open chat" on a Get chat request card.
+        if (safeIntent.action == LocalLinkNotificationManager.ACTION_OPEN && action == ChatRequestNotifier307.TAP_ACTION) {
+            if (safeIntent.getBooleanExtra(EXTRA_MESSAGE_ACTION_CONSUMED, false)) return
+            if ((safeIntent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+            val requestId = safeIntent.getStringExtra(ChatRequestNotifier307.EXTRA_REQUEST_ID)?.trim().orEmpty()
+            if (requestId.isEmpty()) return
+            safeIntent.putExtra(EXTRA_MESSAGE_ACTION_CONSUMED, true)
+            val event = mutableMapOf<String, Any?>("action" to ChatRequestNotifier307.TAP_ACTION, "request_id" to requestId)
+            val sink = notificationEventSink
+            if (sink != null) sink.success(event) else pendingNotificationActions.add(event)
+            return
+        }
         val nativeAction = when (safeIntent.action) {
             LocalLinkNotificationManager.ACTION_OPEN -> "open"
             LocalLinkNotificationManager.ACTION_REPLY -> "reply"

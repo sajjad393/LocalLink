@@ -25,6 +25,9 @@ import 'package:locallink/features/admin/data/actions/admin_action_store.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+import 'package:locallink/features/admin/data/actions/chat_request_notifier_307.dart'; // Bundle 307
+import 'package:locallink/features/admin/data/actions/admin_action_book.dart' show AdminActionBook; // Bundle 307
+import 'package:flutter/foundation.dart' show Listenable; // Bundle 307
 import 'package:locallink/features/admin/data/actions/delete_completely_doer.dart';
 import 'package:locallink/core/services/hidden_store_221.dart';
 import 'package:locallink/features/admin/data/models/admin_block_record.dart' show AdminBlockRecord;
@@ -869,7 +872,18 @@ class AppDependencies {
     // Bundle 221: chats from phones (built before the 220 service: its
     // doers call the 3 new actions).
     final hide = store.hide221;
-    final chatRows = SqlChatRows221(hidden: hide, db: () => hide.db, name: _name221);
+    // Bundle 307 (A9): Get chat reads the friend's old phones too (rule 237).
+    final chatPhones307 = ChatPhones307(
+      personPhones: store.phonesOfPerson237,
+      userPhones: (u) async => [
+        (await store.directoryProfile(u))?['device_id']?.toString() ?? '',
+        await store.contactDevice258(u),
+      ],
+      selfDevice: () => store.deviceId ?? '',
+      selfUser: () => store.accountId ?? '',
+    );
+    final chatRows =
+        SqlChatRows221(hidden: hide, db: () => hide.db, name: _name221, widen: chatPhones307.of);
     final parts221 = SqlAnswerPartStore(hide, () => hide.db);
     Future<List<String>> linked221() async {
       final topology = await link.topology().timeout(const Duration(seconds: 3));
@@ -1113,6 +1127,19 @@ class AppDependencies {
       purgeHere: purge221,
       progressOf: chatCarrier221.progressOf,
     );
+    // Bundle 307 (C3): the phone card of a Get chat request (owner, this phone's requests).
+    final requests307 = ChatRequests221.instance!;
+    ChatRequestNotifier307.instance?.stop();
+    final card307 = ChatRequestNotifier307(
+      mine: requests307.mine307,
+      isOwner: requests307.isOwner,
+      read: store.readSetting,
+      write: store.writeSetting,
+      changes: Listenable.merge([AdminActionBook.instance, ChatAnswerCarrier.progress]),
+      taps: notifications.platform.chatRequestTaps307,
+    );
+    ChatRequestNotifier307.instance = card307;
+    ChatRequests221.changed307 = card307.kick;
   }
 
   /// Bundle 221: start the carrier, the daily sweep (hidden files after 60
@@ -1120,6 +1147,7 @@ class AppDependencies {
   /// listener (a message deleted completely that still arrives).
   void _start221() {
     chatCarrier221.start();
+    ChatRequestNotifier307.instance?.start(); // Bundle 307 (C3)
     joinCarrier222.start(); // Bundle 222
     unawaited(chatCarrier221.refreshProgress().catchError((Object _) {}));
     Future<void> sweep() async {
@@ -1833,6 +1861,7 @@ class AppDependencies {
       wifiDirectFallback.callWaiting(CallNearbyWait.instance.peerId);
 
   Future<void> dispose() async {
+    ChatRequestNotifier307.instance?.stop(); // Bundle 307 (C3)
     // Bundle 218: only clear the join hook if it is still ours.
     if (OfflineAccountSyncService.onJoined218 == _onJoined218) {
       OfflineAccountSyncService.onJoined218 = null;

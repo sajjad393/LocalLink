@@ -21,10 +21,40 @@ final class LocalLinkNotificationPlatform {
   StreamSubscription<dynamic>? _nativeActionSubscription;
   bool _disposed = false;
 
+  // Bundle 307 (C1): taps on a Get chat request card (the request id). A tap
+  // that starts the app is kept until someone listens.
+  late final StreamController<String> _chatRequestTaps307 =
+      StreamController<String>.broadcast(onListen: _flushTaps307);
+  final List<String> _earlyTaps307 = <String>[];
+
+  Stream<String> get chatRequestTaps307 => _chatRequestTaps307.stream;
+
+  void _flushTaps307() {
+    if (_earlyTaps307.isEmpty) return;
+    final queued = List<String>.of(_earlyTaps307);
+    _earlyTaps307.clear();
+    scheduleMicrotask(() {
+      for (final id in queued) {
+        if (!_chatRequestTaps307.isClosed) _chatRequestTaps307.add(id);
+      }
+    });
+  }
+
   LocalLinkNotificationPlatform() {
     _nativeActionSubscription = _actionsChannel.receiveBroadcastStream().listen(
       (event) {
         if (_disposed || event is! Map) return;
+        if (event['action'] == 'open_chat_request') {
+          final id = event['request_id']?.toString().trim() ?? '';
+          if (id.isEmpty) return;
+          if (_chatRequestTaps307.hasListener) {
+            _chatRequestTaps307.add(id);
+          } else {
+            _earlyTaps307.add(id);
+            if (_earlyTaps307.length > 4) _earlyTaps307.removeAt(0);
+          }
+          return;
+        }
         try {
           final action = LocalLinkNotificationAction.fromMap(event);
           if (_actions.hasListener) {
@@ -263,5 +293,6 @@ final class LocalLinkNotificationPlatform {
     } catch (_) {}
     await _nativeActionSubscription?.cancel();
     await _actions.close();
+    await _chatRequestTaps307.close();
   }
 }

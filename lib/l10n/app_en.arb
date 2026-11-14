@@ -5543,5 +5543,119 @@
         "type": "Object?"
       }
     }
-  }
+  },
+  "inProgress307": "In progress",
+  "finished307": "Finished",
+  "seeAll307": "See all",
+  "readyToReadSection307": "Ready to read",
+  "allChats307": "All chats",
+  "noServer307": "No server",
+  "stepSent307": "{hl} to {n} phones",
+  "@stepSent307": {
+    "placeholders": {
+      "hl": {
+        "type": "Object?"
+      },
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "stepPhones307": "{hl} phones",
+  "@stepPhones307": {
+    "placeholders": {
+      "hl": {
+        "type": "Object?"
+      }
+    }
+  },
+  "stepParts307": "{hl} parts",
+  "@stepParts307": {
+    "placeholders": {
+      "hl": {
+        "type": "Object?"
+      }
+    }
+  },
+  "xOfY307": "{a} of {b}",
+  "@xOfY307": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      },
+      "b": {
+        "type": "Object?"
+      }
+    }
+  },
+  "stepReady307": "{hl} to read",
+  "@stepReady307": {
+    "placeholders": {
+      "hl": {
+        "type": "Object?"
+      }
+    }
+  },
+  "sentWord307": "Sent",
+  "waitingForTheirPhones307": "Waiting for their phones",
+  "lookingForTheChat307": "Looking for the chat",
+  "answerComingFrom307": "Answer coming from {name}'s phone",
+  "@answerComingFrom307": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "answerComing307": "Answer coming",
+  "tapToOpenParts307": "Tap to open · {n} parts",
+  "@tapToOpenParts307": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "noPhoneHasThisChat307": "No phone has this chat",
+  "chatReady307": "Chat ready",
+  "openChat307": "Open chat",
+  "chatRequestsSummary307": "{n} chat requests · {r} ready",
+  "@chatRequestsSummary307": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      },
+      "r": {
+        "type": "Object?"
+      }
+    }
+  },
+  "chatRequestsChannel307": "LinkUp chat requests",
+  "everything307": "Everything",
+  "lastWeek307": "Last week",
+  "lastMonth307": "Last month",
+  "pickARange307": "Pick a range",
+  "messagesAt307": "{n} messages · {when}",
+  "@messagesAt307": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      },
+      "when": {
+        "type": "Object?"
+      }
+    }
+  },
+  "searchPeopleOrGroups307": "Search people or groups",
+  "requestCancelled307": "Request cancelled",
+  "phonesNotAnswered307": "Phones that haven't answered yet",
+  "fromPhone307": "{name}'s phone",
+  "@fromPhone307": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "noServerTip307": "No server · requests go to nearby phones"
 }

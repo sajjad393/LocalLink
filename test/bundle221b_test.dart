@@ -110,7 +110,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('chats221_owner')), findsOneWidget);
     expect(find.byKey(const ValueKey('chats221_online_bar')), findsOneWidget);
-    expect(find.text('Server connected · requests go by the server'), findsOneWidget);
+    expect(find.text('Server connected'), findsOneWidget);
     expect(find.text('Ali & Sara'), findsOneWidget);
     expect(find.textContaining('42 messages'), findsOneWidget);
     expect(find.text('Family'), findsOneWidget);
@@ -163,7 +163,7 @@ void main() {
     expect(find.byKey(const ValueKey('chats221_ask_c1')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('tabs221_1')));
     await tester.pump();
-    expect(find.text('Requests 2'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('tabs221_1')), matching: find.text('Requests')), findsOneWidget); expect(find.descendant(of: find.byKey(const ValueKey('tabs221_1')), matching: find.text('2')), findsOneWidget);
     expect(find.byKey(const ValueKey('requests221_cancel_r1')), findsOneWidget);
     expect(find.byKey(const ValueKey('requests221_cancel_r2')), findsNothing);
     expect(find.textContaining('40 of 80 parts'), findsOneWidget);
@@ -177,7 +177,7 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pump();
     expect(find.byKey(const ValueKey('chats221_offline_bar')), findsOneWidget);
-    expect(find.text('No server · requests go by Wi-Fi Direct / mesh'), findsOneWidget);
+    expect(find.text('No server'), findsOneWidget);
   });
 
   testWidgets('221-b5 Viewer: route tags, deleted by user, outside the dates, file gone, parts strip', (tester) async {
@@ -212,10 +212,10 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.text("1 Nov - 7 Nov · from Ali's phone"), findsOneWidget);
-    expect(find.text('Wi-Fi Direct'), findsNWidgets(2));
-    expect(find.text('Server'), findsOneWidget);
-    expect(find.text('Mesh'), findsOneWidget);
-    expect(find.text('Local Wi-Fi'), findsOneWidget);
+    expect(find.text('Wi-Fi Direct'), findsNothing);
+    expect(find.text('Server'), findsNothing);
+    expect(find.text('Mesh'), findsNothing);
+    expect(find.text('Local Wi-Fi'), findsNothing);
     expect(find.text('Deleted by user · 5 Nov 14:02'), findsOneWidget);
     expect(find.text('Outside the dates (phone clock)'), findsOneWidget);
     expect(find.text('File removed after 60 days · thumbnail only'), findsOneWidget);

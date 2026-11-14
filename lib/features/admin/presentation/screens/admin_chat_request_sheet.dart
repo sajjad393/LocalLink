@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/features/admin/presentation/widgets/conversations_kit307.dart';
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 221 (mock A-2): New request - Private chat (2 people) or Group,
 /// Full chat / 7 days / 30 days / Dates. True when a request was sent.
+/// Bundle 307 (B8): two person tiles with a swap button, a 2x2 range grid
+/// and the big blue "Get chat" button.
 Future<bool?> showChatRequestSheet(
   BuildContext context, {
   required ChatRequests221 service,
@@ -175,106 +178,170 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
     }
   }
 
-  Widget _field(String label, Map<String, dynamic>? value, VoidCallback onTap, Key key) {
-    final c = A216.colors(context);
-    final t = A216Text(c);
+  /// B8: a person tile. Before a pick: "First person" + "Pick"; after:
+  /// face, name, @username (the caption stays on top).
+  Widget _tile(String label, Map<String, dynamic>? value, VoidCallback onTap, Key key) {
+    final k = K307.of(context);
     final name = value?['name']?.toString() ?? '';
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(label, style: t.custom(14, FontWeight.w600, c.ink2)),
-      const SizedBox(height: 8),
-      Material(
-        color: c.surface,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14), side: BorderSide(color: c.ctrlBorder)),
-        child: InkWell(
-          key: key,
-          customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          onTap: onTap,
-          child: SizedBox(
-            height: 58,
-            child: Row(children: [
-              const SizedBox(width: 14),
-              if (value != null) ...[Letter221(name, size: 32), const SizedBox(width: 12)],
-              Expanded(
-                child: Text(value == null ? L.t.pick : (name.isEmpty ? L.t.someone : name),
-                    style: t.custom(16, FontWeight.w500, value == null ? c.grey : c.ink)),
-              ),
-              Icon(Icons.chevron_right_rounded, color: c.grey),
-              const SizedBox(width: 10),
-            ]),
+    final user = value?['username']?.toString() ?? '';
+    final picked = value != null;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: key,
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: Motion307.d(context, 250),
+          height: 150,
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          decoration: BoxDecoration(
+            color: k.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: picked ? k.blue.withValues(alpha: 0.35) : k.dash, width: picked ? 1.5 : 1),
+            boxShadow: k.shadowSmall,
           ),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12, FontWeight.w600, k.grey, 1.2)),
+            const SizedBox(height: 8),
+            if (picked)
+              Face307(name.isEmpty ? '?' : name, size: 48)
+            else
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(color: k.blueSoft, shape: BoxShape.circle),
+                child: Icon(Icons.person_add_alt_1_rounded, color: k.blueText, size: 22),
+              ),
+            const SizedBox(height: 6),
+            Text(picked ? (name.isEmpty ? L.t.someone : name) : L.t.pick,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: k.text(14.5, FontWeight.w700, picked ? k.ink : k.blueText, 1.2)),
+            if (picked && user.isNotEmpty)
+              Text('@$user', maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12, FontWeight.w400, k.grey, 1.2)),
+          ]),
         ),
       ),
-      const SizedBox(height: 14),
-    ]);
+    );
+  }
+
+  /// B8: a range tile (icon, title, small line, check when picked).
+  Widget _rangeTile(int i, String title, String small, IconData icon) {
+    final k = K307.of(context);
+    final on = _range == i;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: ValueKey('request221_range_${_ranges[i]}'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          setState(() => _range = i);
+          if (i == 3) _pickDates();
+        },
+        child: AnimatedContainer(
+          duration: Motion307.d(context, 200),
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          decoration: BoxDecoration(
+            color: on ? k.blueSoft : k.card,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: on ? k.blue : k.dash, width: on ? 1.5 : 1),
+          ),
+          child: Row(children: [
+            Icon(icon, size: 20, color: on ? k.blueText : k.grey),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(14.5, FontWeight.w700, k.ink, 1.2)),
+                Text(small, maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12, FontWeight.w400, k.grey, 1.2)),
+              ]),
+            ),
+            AnimatedOpacity(
+              opacity: on ? 1 : 0,
+              duration: Motion307.d(context, 200),
+              child: Icon(Icons.check_circle_rounded, size: 18, color: k.blue),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final k = K307.of(context);
     final c = A216.colors(context);
-    final t = A216Text(c);
     String dates() {
       final d = _dates;
-      if (d == null) return L.t.dates;
+      if (d == null) return L.t.pickARange307;
       return '${d.start.day}/${d.start.month} - ${d.end.day}/${d.end.month}';
     }
 
+    final smalls = [L.t.everything307, L.t.lastWeek307, L.t.lastMonth307, dates()];
+    const icons = [Icons.all_inclusive_rounded, Icons.date_range_rounded, Icons.calendar_month_rounded, Icons.edit_calendar_rounded];
+    Widget range(int i) => _rangeTile(i, _rangeWords[i], smalls[i], icons[i]);
+
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(L.t.newRequest, style: t.custom(20, FontWeight.w700, c.ink)),
+      Text(L.t.newRequest, style: k.text(24, FontWeight.w700, k.ink, 1.15, -0.4)),
+      const SizedBox(height: 6),
+      Text(L.t.theirPhonesSendTheseMessagesAlso, style: k.text(13.5, FontWeight.w400, k.grey, 1.4)),
       const SizedBox(height: 14),
-      Tabs221(
+      Segmented307(
         labels: [L.t.privateChat, L.t.group],
         selected: _group ? 1 : 0,
+        height: 40,
         onSelected: (i) => setState(() => _group = i == 1),
       ),
       const SizedBox(height: 14),
       if (_group)
-        _field(L.t.group, _g, _pickGroup, const ValueKey('request221_group'))
-      else ...[
-        _field(L.t.firstPerson, _a, () => _pickPerson(true), const ValueKey('request221_first')),
-        _field(L.t.secondPerson, _b, () => _pickPerson(false), const ValueKey('request221_second')),
-      ],
-      Text(L.t.messages, style: t.custom(14, FontWeight.w600, c.ink2)),
-      const SizedBox(height: 8),
-      Wrap(spacing: 10, runSpacing: 8, children: [
-        for (var i = 0; i < _ranges.length; i++)
-          ChoiceChip(
-            key: ValueKey('request221_range_${_ranges[i]}'),
-            label: Text(i == 3 ? dates() : _rangeWords[i]),
-            selected: _range == i,
-            showCheckmark: false,
-            labelStyle: t.custom(15, FontWeight.w600, _range == i ? c.blue : c.ink2),
-            selectedColor: c.blueSel,
-            backgroundColor: c.surface,
-            shape: StadiumBorder(side: BorderSide(color: _range == i ? c.blueSelBorder : c.ctrlBorder)),
-            onSelected: (_) {
-              setState(() => _range = i);
-              if (i == 3) _pickDates();
-            },
+        _tile(L.t.group, _g, _pickGroup, const ValueKey('request221_group'))
+      else
+        Stack(alignment: Alignment.center, children: [
+          Row(children: [
+            Expanded(child: _tile(L.t.firstPerson, _a, () => _pickPerson(true), const ValueKey('request221_first'))),
+            const SizedBox(width: 12),
+            Expanded(child: _tile(L.t.secondPerson, _b, () => _pickPerson(false), const ValueKey('request221_second'))),
+          ]),
+          Material(
+            color: k.card,
+            shape: CircleBorder(side: BorderSide(color: k.dash)),
+            elevation: 0,
+            child: InkWell(
+              key: const ValueKey('request307_swap'),
+              customBorder: const CircleBorder(),
+              onTap: () => setState(() {
+                final x = _a;
+                _a = _b;
+                _b = x;
+              }),
+              child: SizedBox(width: 34, height: 34, child: Icon(Icons.swap_horiz_rounded, size: 18, color: k.blueText)),
+            ),
           ),
-      ]),
+        ]),
+      const SizedBox(height: 16),
+      Text(L.t.messages, style: k.text(14, FontWeight.w700, k.ink, 1.2)),
+      const SizedBox(height: 8),
+      Row(children: [Expanded(child: range(0)), const SizedBox(width: 10), Expanded(child: range(1))]),
+      const SizedBox(height: 10),
+      Row(children: [Expanded(child: range(2)), const SizedBox(width: 10), Expanded(child: range(3))]),
       const SizedBox(height: 14),
       if (!_group && _samePhone) ...[
         Text(L.t.theseTwoAccountsAreOnThe,
             key: const ValueKey('request254_same_phone'),
-            style: t.custom(14, FontWeight.w600, c.toneFg(A216Tone.red))),
+            style: k.text(13.5, FontWeight.w600, c.toneFg(A216Tone.red), 1.35)),
         const SizedBox(height: 10),
       ],
-      Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        decoration: BoxDecoration(color: c.surfaceMuted, borderRadius: BorderRadius.circular(14)),
-        child: Text(
-            !_group && _meIn
-                ? L.t.youAlreadyHaveThisChatTheir
-                : L.t.theirPhonesSendTheseMessagesAlso,
-            style: t.custom(14, FontWeight.w400, c.ink2, 1.45)),
-      ),
-      const SizedBox(height: 16),
-      SizedBox(
-        height: 52,
-        child: AdminButton216(_sending ? L.t.sending : L.t.sendRequest,
-            key: const ValueKey('request221_send'), height: 52, onTap: _ready ? _send : null),
-      ),
+      if (!_group && _meIn) ...[
+        Container(
+          key: const ValueKey('request307_me_note'),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(color: k.blueSoft, borderRadius: BorderRadius.circular(14)),
+          child: Text(L.t.youAlreadyHaveThisChatTheir, style: k.text(13.5, FontWeight.w500, k.blueText, 1.4)),
+        ),
+        const SizedBox(height: 10),
+      ],
+      BigButton307(_sending ? L.t.sending : L.t.getChat,
+          key: const ValueKey('request221_send'), icon: _sending ? null : Icons.forum_rounded, onTap: _ready ? _send : null),
     ]);
   }
 }

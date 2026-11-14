@@ -405,18 +405,65 @@ class Hidden221 {
   }
 }
 
+/// Bundle 307 (A9): every phone id of the two people of a direct chat, like
+/// the chat screen (bundle 237 "one chat per friend"): the ids in the card,
+/// the phones this phone knows for each person (directory + contact), their
+/// old phones (`phonesOfPerson237`) and this phone itself when its account is
+/// one of the two. Only used to READ; the card targets never change.
+class ChatPhones307 {
+  ChatPhones307({
+    required this.personPhones,
+    required this.userPhones,
+    required this.selfDevice,
+    required this.selfUser,
+  });
+
+  /// `LocalStore.phonesOfPerson237` (current + old phones; a phone that is
+  /// now someone else's current phone is never in it).
+  final Future<Set<String>> Function(String deviceId) personPhones;
+
+  /// The phone ids this phone keeps for an account (directory + contact).
+  final Future<List<String>> Function(String userId) userPhones;
+  final String Function() selfDevice;
+  final String Function() selfUser;
+
+  Future<Set<String>> of(ChatRef221 chat) async {
+    final out = <String>{...chat.devices}..remove('');
+    if (chat.isGroup) return out;
+    final me = selfDevice();
+    final meUser = selfUser();
+    if (me.isNotEmpty && meUser.isNotEmpty && chat.users.contains(meUser)) out.add(me);
+    for (final u in chat.users) {
+      if (u.isEmpty) continue;
+      try {
+        out.addAll((await userPhones(u)).where((d) => d.isNotEmpty));
+      } catch (_) {}
+    }
+    for (final d in out.toList()) {
+      try {
+        out.addAll((await personPhones(d)).where((x) => x.isNotEmpty));
+      } catch (_) {}
+    }
+    return out;
+  }
+}
+
 /// The chat rows Get chat reads (live + hidden).
 class SqlChatRows221 implements ChatRows221 {
   SqlChatRows221({
     required this.hidden,
     required this.db,
     required this.name,
+    this.widen,
     SensitiveFileProtectionService? files,
   }) : _files = files;
 
   final Hidden221 hidden;
   final Database Function() db;
   final Future<String> Function(String deviceId) name;
+
+  /// Bundle 307 (A9): all phone ids of the chat (`ChatPhones307.of`).
+  final Future<Set<String>> Function(ChatRef221 chat)? widen;
   SensitiveFileProtectionService? _files;
   SensitiveFileProtectionService get files => _files ??= SensitiveFileProtectionService();
 
@@ -434,11 +481,28 @@ class SqlChatRows221 implements ChatRows221 {
       live.addAll(await d.query('group_messages', where: 'group_id=?', whereArgs: [chat.groupId]));
       hid.addAll(await d.query('hidden_group_messages', where: 'group_id=?', whereArgs: [chat.groupId]));
     } else {
-      final devs = chat.devices.toSet().toList();
+      final given = chat.devices.toSet()..remove('');
+      // Bundle 307 (A9): the friend's old phones too (same as the chat screen).
+      final all = <String>{...given};
+      final more = widen;
+      if (more != null) {
+        try {
+          all.addAll((await more(chat)).where((x) => x.isNotEmpty));
+        } catch (_) {}
+      }
+      final devs = all.toList();
       final q = List.filled(devs.length, '?').join(',');
       final where = 'sender_id IN ($q) AND recipient_id IN ($q) AND sender_id<>recipient_id';
       live.addAll(await d.query('messages', where: where, whereArgs: [...devs, ...devs]));
       hid.addAll(await d.query('hidden_messages', where: where, whereArgs: [...devs, ...devs]));
+      if (live.isEmpty && hid.isEmpty) {
+        AppLogger.info('CHAT_ROWS_EMPTY_307',
+            detail: 'devs=${given.length} widened=${all.length - given.length} rows=0');
+      } else if (all.length > given.length) {
+        AppLogger.info('CHAT_ROWS_307',
+            detail: 'devs=${given.length} widened=${all.length - given.length} '
+                'rows=${live.length + hid.length}');
+      }
     }
     final kind = chat.isGroup ? 'group' : 'direct';
     final liveIds = [for (final r in live) r['id']?.toString() ?? ''];

@@ -6,9 +6,11 @@ import 'package:flutter/services.dart';
 import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+import 'package:locallink/features/admin/data/actions/request_step_307.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/features/admin/presentation/widgets/conversations_kit307.dart';
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 221 (mock A-3): the copy of a chat the phones sent. Route tag per
@@ -16,6 +18,9 @@ import 'package:locallink/l10n/l10n.dart';
 /// clock)", thumbnails + Get full photo, the parts bar while the rest is on
 /// the way. Long-press → Copy text / Delete completely; menu → Delete
 /// (range) / Close.
+/// Bundle 307 (B9): round header, a progress card (ring + "28 of 40 parts"
+/// -> "Ready to read", then it shrinks away), iOS bubbles. The route words
+/// are no longer shown; the class stays so nothing else breaks.
 /// Route words, same as the web (`ROUTE221`).
 abstract final class AdminChatViewerScreenRoutes {
   static String word(String r) => switch (r) {
@@ -45,10 +50,17 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   String _error = '';
   Timer? _poll;
 
+  // B9: the progress card turns "Ready to read" when the last part lands,
+  // then shrinks away after 3 s.
+  bool _sawHalf = false;
+  bool _readyGone = false;
+  Timer? _readyTimer;
+
   @override
   void initState() {
     super.initState();
     _view = widget.view;
+    _noteProgress();
     if (_view == null) unawaited(_load());
     ChatAnswerCarrier.progress.addListener(_changed);
     _poll = Timer.periodic(const Duration(seconds: 20), (_) {
@@ -60,6 +72,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   void dispose() {
     ChatAnswerCarrier.progress.removeListener(_changed);
     _poll?.cancel();
+    _readyTimer?.cancel();
     super.dispose();
   }
 
@@ -68,9 +81,26 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   Future<void> _load() async {
     try {
       final v = await widget.service.open(widget.request);
-      if (mounted) setState(() => _view = v);
+      if (mounted) {
+        setState(() => _view = v);
+        _noteProgress();
+      }
     } catch (error) {
       if (mounted) setState(() => _error = L.en('$error'.replaceFirst('Bad state: ', '')));
+    }
+  }
+
+  void _noteProgress() {
+    final v = _view;
+    if (v == null || v.empty || v.forAdminPhone) return;
+    if (!v.complete) {
+      _sawHalf = true;
+      return;
+    }
+    if (_sawHalf && _readyTimer == null && !_readyGone) {
+      _readyTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _readyGone = true);
+      });
     }
   }
 
@@ -278,45 +308,138 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final c = A216.colors(context);
     final t = A216Text(c);
     final v = _view;
+    final k = K307.of(context);
+    Widget round(Widget child, {Key? key}) => Material(
+          key: key,
+          color: k.card,
+          shape: CircleBorder(side: BorderSide(color: k.dark ? k.cardEdge : Colors.transparent)),
+          child: child,
+        );
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(
-        backgroundColor: c.surface,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        titleSpacing: 0,
-        title: Row(children: [
-          ChatAvatars221(
-              names: _headerNames255,
-              group: _pick?.isGroup ?? false,
-              size: 46,
-              photoIds: _photoIds255),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(widget.request.label.isEmpty ? L.t.chat : widget.request.label,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(18, FontWeight.w600, c.ink)),
-              Text(_sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(13, FontWeight.w400, c.grey)),
+      body: SafeArea(
+        bottom: false,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Row(children: [
+              round(InkWell(
+                key: const ValueKey('viewer307_back'),
+                customBorder: const CircleBorder(),
+                onTap: () => Navigator.of(context).maybePop(),
+                child: SizedBox(width: 38, height: 38, child: Icon(Icons.chevron_left_rounded, color: k.ink, size: 26)),
+              )),
+              const SizedBox(width: 10),
+              ChatAvatars221(
+                  names: _headerNames255,
+                  group: _pick?.isGroup ?? false,
+                  size: 44,
+                  photoIds: _photoIds255),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(widget.request.label.isEmpty ? L.t.chat : widget.request.label,
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(16, FontWeight.w700, k.ink, 1.2)),
+                  Text(_sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12.5, FontWeight.w400, k.grey, 1.25)),
+                ]),
+              ),
+              const SizedBox(width: 6),
+              round(SizedBox(width: 38, height: 38, child: PopupMenuButton<String>(
+                key: const ValueKey('viewer221_menu'),
+                icon: Icon(Icons.more_vert_rounded, color: k.ink, size: 20),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                style: IconButton.styleFrom(minimumSize: const Size(38, 38), fixedSize: const Size(38, 38)),
+                onSelected: (x) => x == 'delete' ? _deleteSheet() : _close(),
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 'delete', child: Text(L.t.deleteChatCompletely)),
+                  PopupMenuItem(value: 'close', child: Text(L.t.closeDeleteThisCopy)),
+                ],
+              ))),
             ]),
           ),
-        ]),
-        actions: [
-          PopupMenuButton<String>(
-            key: const ValueKey('viewer221_menu'),
-            onSelected: (x) => x == 'delete' ? _deleteSheet() : _close(),
-            itemBuilder: (_) => [
-              PopupMenuItem(value: 'delete', child: Text(L.t.deleteChatCompletely)),
-              PopupMenuItem(value: 'close', child: Text(L.t.closeDeleteThisCopy)),
-            ],
+          if (v != null && !v.empty && !v.forAdminPhone) _progressCard(v),
+          Expanded(
+            child: v == null
+                ? Center(
+                    child: _error.isNotEmpty
+                        ? Padding(padding: const EdgeInsets.all(24), child: Text(_error, style: t.rowSub))
+                        : const CircularProgressIndicator(strokeWidth: 2))
+                : _body(v),
           ),
-        ],
+        ]),
       ),
-      body: v == null
-          ? Center(
-              child: _error.isNotEmpty
-                  ? Padding(padding: const EdgeInsets.all(24), child: Text(_error, style: t.rowSub))
-                  : const CircularProgressIndicator(strokeWidth: 2))
-          : _body(v),
+    );
+  }
+
+  /// B9: "28 of 40 parts · the rest is on the way" + ring; all in ->
+  /// "Ready to read" with a green edge, then it shrinks away after 3 s.
+  Widget _progressCard(ChatAnswerView v) {
+    final k = K307.of(context);
+    final row = ChatRequestRow221(
+        id: v.id, action: 'get_chat', parts: v.parts, of: v.of, state: v.complete ? 'done' : 'pending');
+    final step = RequestStep307.of(row);
+    final show = !v.complete || (_sawHalf && !_readyGone);
+    final Widget inner;
+    if (!v.complete) {
+      inner = Container(
+        key: const ValueKey('viewer221_parts'),
+        margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        decoration: k.cardBox(),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text(L.t.ofPartsTheRestIsOn(v.parts, v.of), style: k.text(14.5, FontWeight.w700, k.ink, 1.3)),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: SizedBox(
+                  height: 3,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(end: v.of <= 0 ? 0 : (v.parts / v.of).clamp(0, 1).toDouble()),
+                    duration: Motion307.d(context, 400),
+                    builder: (context, x, _) => LinearProgressIndicator(
+                      key: const ValueKey('parts221_bar'),
+                      value: x,
+                      backgroundColor: k.track,
+                      color: k.blue,
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 12),
+          ProgressRing307(step: step, size: 42),
+        ]),
+      );
+    } else {
+      inner = Container(
+        key: const ValueKey('viewer307_ready'),
+        margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        decoration: k.cardBox(edge: K307.ok, edgeWidth: 2),
+        child: Row(children: [
+          Expanded(
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(text: step.bigBefore),
+                TextSpan(text: step.highlight, style: TextStyle(color: k.green, fontWeight: FontWeight.w800)),
+                TextSpan(text: step.bigAfter),
+              ]),
+              style: k.text(16, FontWeight.w700, k.ink, 1.25),
+            ),
+          ),
+          ProgressRing307(step: step, size: 42),
+        ]),
+      );
+    }
+    return AnimatedSize(
+      duration: Motion307.d(context, 300),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: show ? inner : const SizedBox(width: double.infinity),
     );
   }
 
@@ -331,6 +454,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     }
     final items = <Widget>[];
     String lastDay = '';
+    var shown = 0; // E: batches of 3 fade in
     for (final m in v.messages) {
       final at = DateTime.tryParse('${m['created_at']}')?.toLocal();
       final day = at == null ? '' : dMMM216(at);
@@ -339,13 +463,14 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
         items.add(Center(
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(color: const Color(0xFFE6E9EF), borderRadius: BorderRadius.circular(14)),
-            child: Text(day, style: t.custom(13, FontWeight.w500, c.ink2)),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+                color: K307.of(context).mutedSoft, borderRadius: BorderRadius.circular(10)),
+            child: Text(day, style: t.custom(12, FontWeight.w600, c.grey)),
           ),
         ));
       }
-      items.add(_bubble(v, m));
+      items.add(Batch307(batch: shown++ ~/ 3, child: _bubble(v, m)));
     }
     return Column(children: [
       Expanded(
@@ -360,19 +485,6 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           ],
         ),
       ),
-      if (!v.complete)
-        Container(
-          key: const ValueKey('viewer221_parts'),
-          margin: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-          decoration: BoxDecoration(color: c.blueSel, borderRadius: BorderRadius.circular(14)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(L.t.ofPartsTheRestIsOn(v.parts, v.of),
-                style: t.custom(14.5, FontWeight.w600, c.blue)),
-            const SizedBox(height: 8),
-            PartsBar221(have: v.parts, of: v.of),
-          ]),
-        ),
     ]);
   }
 
@@ -395,6 +507,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   Widget _bubble(ChatAnswerView v, Map<String, dynamic> m) {
     final c = A216.colors(context);
     final t = A216Text(c);
+    final k = K307.of(context);
     final group = _pick?.isGroup ?? false;
     // The answering phone's owner on the left, the other person on the right.
     final right = !group && v.fromDevice.isNotEmpty && m['sender'] != v.fromDevice;
@@ -404,55 +517,57 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final name = sent.isNotEmpty ? sent : _nameFor255(v, m, right);
     final at = DateTime.tryParse('${m['created_at']}')?.toLocal();
     final time = at == null ? '' : TimeOfDay.fromDateTime(at).format(context);
-    final route = AdminChatViewerScreenRoutes.word(m['route']?.toString() ?? '');
     final body = m['body']?.toString() ?? '';
     final atts = [for (final a in (m['attachments'] as List? ?? const [])) if (a is Map) Map<String, dynamic>.from(a)];
-    final bg = deleted ? c.surface : (right ? const Color(0xFFDCE7FF) : c.surface);
-    final nameColor = right ? c.blue : const Color(0xFFB4236B);
-    Widget tag(String s) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-          decoration: BoxDecoration(color: const Color(0xFFE6E9EF), borderRadius: BorderRadius.circular(8)),
-          child: Text(s, style: t.custom(11.5, FontWeight.w600, c.ink2)),
-        );
+    // B9: left = card colour, right = blue with white words; tail corner 6.
+    final bg = right ? k.rightBubble : k.card;
+    final ink = right ? Colors.white : (deleted ? c.grey : c.ink);
+    final soft = right ? Colors.white.withValues(alpha: 0.75) : c.grey;
+    final shown = name.isEmpty ? L.t.someone : name;
+    final nameColor = right ? Colors.white.withValues(alpha: 0.9) : avatarColor221(shown);
+    const r = Radius.circular(20);
+    const tail = Radius.circular(6);
     final bubble = GestureDetector(
       key: ValueKey('viewer221_msg_${m['id']}'),
       onLongPress: () => _longPress(m),
       child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.8),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: deleted ? c.ctrlBorder : c.line),
+          borderRadius: BorderRadius.only(
+              topLeft: r, topRight: r, bottomLeft: right ? r : tail, bottomRight: right ? tail : r),
+          border: right ? null : Border.all(color: k.dark ? k.cardEdge : c.line),
+          boxShadow: right ? const [] : k.shadowSmall,
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Row(mainAxisSize: MainAxisSize.min, children: [
             Flexible(
-                child: Text(name.isEmpty ? L.t.someone : name,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(13.5, FontWeight.w600, nameColor))),
+                child: Text(shown,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(13, FontWeight.w700, nameColor))),
             const SizedBox(width: 10),
-            if (route.isNotEmpty) ...[tag(route), const SizedBox(width: 8)],
-            Text(time, style: t.custom(12.5, FontWeight.w400, c.grey)),
+            Text(time, style: t.custom(11.5, FontWeight.w400, soft)),
           ]),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           for (final a in atts) _attachment(m, a),
           if (body.isNotEmpty)
-            Text(body + ((m['cut'] == true) ? ' …' : ''),
-                style: t.custom(16, FontWeight.w400, deleted ? c.grey : c.ink, 1.35)),
+            Text(body + ((m['cut'] == true) ? ' …' : ''), style: t.custom(15.5, FontWeight.w400, ink, 1.35)),
           if (deleted) ...[
             const SizedBox(height: 6),
             Container(
               key: ValueKey('viewer221_deleted_${m['id']}'),
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-              decoration: BoxDecoration(color: const Color(0xFFE6E9EF), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(
+                  color: right ? Colors.white : (k.dark ? const Color(0xFF3B1A1A) : const Color(0xFFFEE4E2)),
+                  borderRadius: BorderRadius.circular(10)),
               child: Text(_deletedWords(m['deleted_at'].toString()),
-                  style: t.custom(12.5, FontWeight.w600, c.ink2)),
+                  style: t.custom(12, FontWeight.w700, k.dark && !right ? const Color(0xFFF97066) : c.red)),
             ),
           ],
           if (outside) ...[
             const SizedBox(height: 4),
-            Text(L.t.outsideTheDatesPhoneClock, style: t.custom(12, FontWeight.w500, c.grey)),
+            Text(L.t.outsideTheDatesPhoneClock, style: t.custom(12, FontWeight.w500, soft)),
           ],
         ]),
       ),

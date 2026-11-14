@@ -35,6 +35,9 @@ abstract class AdminActionServer {
     required String signingKey,
     required List<Map<String, dynamic>> labels,
     required int build,
+    // Bundle 307 (A1 / A5): signed seen notes + final states of my requests.
+    List<SignedBlob> seen = const [],
+    List<Map<String, dynamic>> closed = const [],
   });
 
   Future<({List<SignedBlob> cards, List<SignedBlob> states})> mine({
@@ -109,6 +112,8 @@ class HttpAdminActionServer implements AdminActionServer {
     required String signingKey,
     required List<Map<String, dynamic>> labels,
     required int build,
+    List<SignedBlob> seen = const [],
+    List<Map<String, dynamic>> closed = const [],
   }) async {
     final r = await _client
         .post(_uri('/api/v1/admin-actions/sync'),
@@ -120,6 +125,8 @@ class HttpAdminActionServer implements AdminActionServer {
               'signing_key': signingKey,
               'labels': labels,
               'build': build,
+              if (seen.isNotEmpty) 'seen': [for (final b in seen) b.toJson()],
+              if (closed.isNotEmpty) 'closed': closed,
             }))
         .timeout(_timeout);
     final out = _json(r);

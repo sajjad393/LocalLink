@@ -40,7 +40,7 @@ void main() {
         () {
       final manifest =
           readEnglish304('android/app/src/main/AndroidManifest.xml');
-      expect('uses-permission'.allMatches(manifest).length, 26); // Bundle 226: +4 Bluetooth; 275: +1 REQUEST_INSTALL_PACKAGES
+      expect('uses-permission'.allMatches(manifest).length, 27); // Bundle 226: +4 Bluetooth; 275: +1 REQUEST_INSTALL_PACKAGES; 307: +1 POST_PROMOTED_NOTIFICATIONS
       final main = readEnglish304(
               'android/app/src/main/kotlin/com/sajjad/locallink/MainActivity.kt');
       expect(main, contains('AppShareNative.CHANNEL'));

@@ -411,6 +411,14 @@ class ChatRequestRow221 {
   final String to;
   /// Bundle 254 (21.12): every phone said it has no copy of this chat.
   final bool empty;
+  /// Bundle 307 (live card): phones asked / phones that answered anything,
+  /// whose phone sends the answer, and whether the answer was opened / its
+  /// copy deleted (then it leaves the live row).
+  final int phones;
+  final int reached;
+  final String fromName;
+  final bool opened;
+  final bool closed;
 
   const ChatRequestRow221({
     required this.id,
@@ -429,6 +437,11 @@ class ChatRequestRow221 {
     this.from = '',
     this.to = '',
     this.empty = false,
+    this.phones = 0,
+    this.reached = 0,
+    this.fromName = '',
+    this.opened = false,
+    this.closed = false,
   });
 
   bool get ready => of > 0 && parts >= of;
@@ -464,6 +477,13 @@ class ChatRequestRow221 {
       chat: m['chat'] is Map ? Map<String, dynamic>.from(m['chat'] as Map) : null,
       from: s('from'),
       to: s('to'),
+      // Bundle 307 (A2): the server closes "No messages" requests too.
+      empty: m['empty'] == true,
+      phones: n('phones'),
+      reached: n('reached'),
+      fromName: s('from_name'),
+      opened: m['opened'] == true,
+      closed: m['closed'] == true,
     );
   }
 
@@ -487,6 +507,13 @@ class ChatRequestRow221 {
 class ChatRequests221 {
   static ChatRequests221? instance;
   static const String savedKey = 'admin_chat_requests_221';
+  /// Bundle 307 (C3): ids of the server requests made on THIS phone (the
+  /// offline ones are in [savedKey]); only these get the phone card.
+  static const String mineKey307 = 'chat_req_mine_307';
+
+  /// Bundle 307 (C3): a request was made or cancelled here (the phone card
+  /// updates at once instead of on its next check).
+  static void Function()? changed307;
 
   final ChatAdminServer server;
   final Future<AdminSignIn?> Function() signIn;
@@ -601,7 +628,12 @@ class ChatRequests221 {
         chat: m['chat'] is Map ? Map<String, dynamic>.from(m['chat'] as Map) : known?.chat,
         from: m['from']?.toString() ?? '',
         to: m['to']?.toString() ?? '',
-        empty: st?.emptyAll ?? false,
+        empty: (st?.emptyAll ?? false) || (known?.empty ?? false),
+        phones: (st?.phones ?? 0) > 0 ? st!.phones : known?.phones ?? 0,
+        reached: (st?.reached ?? 0) > (known?.reached ?? 0) ? st!.reached : known?.reached ?? 0,
+        fromName: known?.fromName ?? '',
+        opened: known?.opened ?? false,
+        closed: known?.closed ?? false,
       );
     }
     final list = out.values.toList()..sort((a, b) => b.madeAt.compareTo(a.madeAt));
@@ -677,7 +709,12 @@ class ChatRequests221 {
         if (range == 'dates') 'from': r.from,
         if (range == 'dates') 'to': r.to,
       });
-      return res['id']?.toString() ?? '';
+      final id = res['id']?.toString() ?? '';
+      if (id.isNotEmpty) {
+        await _markMine307(id);
+        changed307?.call();
+      }
+      return id;
     }
     final svc = actions;
     if (svc == null) throw StateError('Admin actions are not ready.');
@@ -704,7 +741,31 @@ class ChatRequests221 {
         from: r.from,
         to: r.to,
         offline: true));
+    changed307?.call();
     return id;
+  }
+
+  Future<List<String>> _mine307() async {
+    try {
+      final d = jsonDecode(await read(mineKey307) ?? '[]');
+      return [for (final x in (d is List ? d : const [])) if ('$x'.isNotEmpty) '$x'];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _markMine307(String id) async {
+    final all = await _mine307()..remove(id);
+    all.insert(0, id);
+    await write(mineKey307, jsonEncode(all.take(100).toList()));
+  }
+
+  /// Bundle 307 (C3): the Get chat requests made on this phone (offline
+  /// cards + server requests sent from here), newest first.
+  Future<List<ChatRequestRow221>> mine307() async {
+    final ids = {...await _mine307(), for (final m in await _saved()) m['id']?.toString() ?? ''}..remove('');
+    if (ids.isEmpty) return const [];
+    return [for (final r in await requests()) if (r.action == 'get_chat' && ids.contains(r.id)) r];
   }
 
   /// Opens an answer (half answers too).

@@ -8111,4 +8111,120 @@ class AppLocalizationsEn extends AppLocalizations {
   String adminRequestFailedEn304(Object? v0) {
     return 'Admin request failed ($v0).';
   }
+
+  @override
+  String get inProgress307 => 'In progress';
+
+  @override
+  String get finished307 => 'Finished';
+
+  @override
+  String get seeAll307 => 'See all';
+
+  @override
+  String get readyToReadSection307 => 'Ready to read';
+
+  @override
+  String get allChats307 => 'All chats';
+
+  @override
+  String get noServer307 => 'No server';
+
+  @override
+  String stepSent307(Object? hl, Object? n) {
+    return '$hl to $n phones';
+  }
+
+  @override
+  String stepPhones307(Object? hl) {
+    return '$hl phones';
+  }
+
+  @override
+  String stepParts307(Object? hl) {
+    return '$hl parts';
+  }
+
+  @override
+  String xOfY307(Object? a, Object? b) {
+    return '$a of $b';
+  }
+
+  @override
+  String stepReady307(Object? hl) {
+    return '$hl to read';
+  }
+
+  @override
+  String get sentWord307 => 'Sent';
+
+  @override
+  String get waitingForTheirPhones307 => 'Waiting for their phones';
+
+  @override
+  String get lookingForTheChat307 => 'Looking for the chat';
+
+  @override
+  String answerComingFrom307(Object? name) {
+    return 'Answer coming from $name\'s phone';
+  }
+
+  @override
+  String get answerComing307 => 'Answer coming';
+
+  @override
+  String tapToOpenParts307(Object? n) {
+    return 'Tap to open · $n parts';
+  }
+
+  @override
+  String get noPhoneHasThisChat307 => 'No phone has this chat';
+
+  @override
+  String get chatReady307 => 'Chat ready';
+
+  @override
+  String get openChat307 => 'Open chat';
+
+  @override
+  String chatRequestsSummary307(Object? n, Object? r) {
+    return '$n chat requests · $r ready';
+  }
+
+  @override
+  String get chatRequestsChannel307 => 'LinkUp chat requests';
+
+  @override
+  String get everything307 => 'Everything';
+
+  @override
+  String get lastWeek307 => 'Last week';
+
+  @override
+  String get lastMonth307 => 'Last month';
+
+  @override
+  String get pickARange307 => 'Pick a range';
+
+  @override
+  String messagesAt307(Object? n, Object? when) {
+    return '$n messages · $when';
+  }
+
+  @override
+  String get searchPeopleOrGroups307 => 'Search people or groups';
+
+  @override
+  String get requestCancelled307 => 'Request cancelled';
+
+  @override
+  String get phonesNotAnswered307 => 'Phones that haven\'t answered yet';
+
+  @override
+  String fromPhone307(Object? name) {
+    return '$name\'s phone';
+  }
+
+  @override
+  String get noServerTip307 => 'No server · requests go to nearby phones';
 }

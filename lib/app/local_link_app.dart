@@ -4,6 +4,10 @@ import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_doers.dart' show AdminActionSignOut;
 import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
+import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart' show ChatRequests221; // Bundle 307
+import 'package:locallink/features/admin/data/actions/chat_request_notifier_307.dart'; // Bundle 307
+import 'package:locallink/features/admin/presentation/screens/admin_chat_viewer_screen.dart'; // Bundle 307
+import 'package:locallink/features/admin/presentation/theme/admin_ui216.dart' show AdminTheme216Scope; // Bundle 307
 import 'package:locallink/features/share_app/domain/silent_update_275.dart';
 import 'package:locallink/features/share_app/presentation/update_sheet.dart';
 import 'dart:async';
@@ -123,6 +127,8 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     // Bundle 194: after an Add the chat opens (instead of a toast).
     FriendChatOpener.open = _openFriendChat;
     FriendChatOpener.toast = _showAppSnackBar;
+    // Bundle 307 (C1): tap on a Get chat request card opens its answer.
+    ChatRequestNotifier307.openViewer = _openChatRequest307;
     // Bundle G6: Join by invite link opens the group chat.
     GroupInviteService.openGroup = _openGroupChat;
     // Bundle 213: Update (get the new app from a nearby phone) and the
@@ -715,8 +721,27 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     );
   }
 
+  /// Bundle 307 (C1): open the answer of a tapped request card (waits up to
+  /// 10 s for the app to be ready when the tap started it).
+  Future<void> _openChatRequest307(String requestId) async {
+    for (var i = 0; i < 20; i++) {
+      if (!mounted) return;
+      if (_ready && _servicesReady && _configured && _navigatorKey.currentState != null) break;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    final svc = ChatRequests221.instance;
+    final navigator = _navigatorKey.currentState;
+    if (!mounted || svc == null || navigator == null || !await svc.isOwner()) return;
+    final rows = await svc.requests();
+    final row = rows.where((r) => r.id == requestId).firstOrNull;
+    if (row == null || !mounted) return;
+    await navigator.push(MaterialPageRoute<void>(
+        builder: (_) => AdminTheme216Scope(child: AdminChatViewerScreen(service: svc, request: row))));
+  }
+
   Future<void> _resetAccount() async {
     ChatVideoHub.instance.stopAll();
+    await ChatRequestNotifier307.instance?.clearAll(); // Bundle 307 (C1)
     // Bundle 180: logging out removes the saved logs too.
     unawaited(AppLogFile.instance.clearAll());
     PresenceHub.instance.forgetPeople();

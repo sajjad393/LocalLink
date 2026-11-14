@@ -126,6 +126,12 @@ class AdminActionService {
   final Map<String, Map<String, dynamic>> _waitTrust = <String, Map<String, dynamic>>{};
   final Set<String> _notMineLogged = <String>{};
   final Set<String> _emptyLogged = <String>{};
+  // Bundle 307 (A1): signed "seen" notes (made here or carried) waiting for
+  // the server (key id|device|why -> note), and notes already passed on.
+  final Map<String, Map<String, dynamic>> _seenOut = <String, Map<String, dynamic>>{};
+  final Set<String> _seenPassed = <String>{};
+  static const String seenOutSetting307 = 'admin_act_seen_out_307';
+  static const int maxSeenOut307 = 200;
   bool _recheckBusy = false;
   bool _loaded = false;
   bool _started = false;
@@ -178,6 +184,7 @@ class AdminActionService {
       AdminClosedFlag.closed.value =
           (await store.readSetting(AdminActionDoers.closedKey) ?? '') == '1';
       await _loadWaitTrust();
+      await _loadSeenOut307();
     } catch (error) {
       AppLogger.warning('ADMIN_ACT_LOAD_FAIL', detail: '$error');
     }
@@ -257,6 +264,8 @@ class AdminActionService {
             orElse: () => ''),
         waitTrust: e.pending && _waitSeen(e),
         emptyAll: e.extra['empty_all'] == true,
+        phones: _targets307(e).length,
+        reached: _reached307(e),
       ));
     }
     out.sort((a, b) => b.madeAt.compareTo(a.madeAt));
@@ -684,6 +693,21 @@ class AdminActionService {
 
   // ------------------------------------------- Bundle 254 (21.3): no trust yet
 
+  /// Bundle 307: the phones a card went to.
+  List<String> _targets307(_Entry e) =>
+      [for (final x in (e.extra['devices'] as List? ?? const [])) x.toString()];
+
+  /// Bundle 307: target phones that answered anything.
+  int _reached307(_Entry e) {
+    final got = <String>{
+      ...e.receipts.keys,
+      for (final slot in const ['empty', 'wait_trust'])
+        for (final x in (e.extra[slot] as List? ?? const [])) x.toString(),
+    };
+    final targets = _targets307(e);
+    return targets.isEmpty ? got.length : targets.where(got.contains).length;
+  }
+
   bool _waitSeen(_Entry e) =>
       e.mine && e.extra['wait_trust'] is List && (e.extra['wait_trust'] as List).isNotEmpty;
 
@@ -727,14 +751,15 @@ class AdminActionService {
     await _saveWaitTrust();
     AppLogger.warning('ADMIN_ACT_WAIT_TRUST',
         detail: 'id=${_tail(card.id)} action=${card.action} from=${_tail(from)}');
-    await _sendSeen(from, card.id, 'no_trust');
+    await _sendSeen(from, card.id, 'no_trust', maker: _maker307(card));
   }
 
   /// "seen" note: why = no_trust (can't check the card yet) or empty (no
   /// copy of the asked chat on this phone). Goes to the phone that brought
   /// the card; it is not a receipt and never counts as done.
-  Future<void> _sendSeen(String to, String cardId, String why) async {
-    if (to.isEmpty || to == 'server') return;
+  /// Bundle 307 (A1): it also goes to the phone that MADE the card (the
+  /// bringer can be a relay) and waits for the next server sync.
+  Future<void> _sendSeen(String to, String cardId, String why, {String maker = ''}) async {
     try {
       final body = jsonEncode({
         't': AdminActionRules.seenType,
@@ -744,11 +769,79 @@ class AdminActionService {
         'why': why,
         'at': _now(),
       });
-      await _safeSend(to, {
-        'type': AdminActionRules.seenType,
-        'notes': [SignedBlob(body: body, sig: await sign(body)).toJson()],
+      final note = SignedBlob(body: body, sig: await sign(body));
+      await _keepSeen307('$cardId|${selfDeviceId()}|$why', note);
+      final sendTo = <String>{
+        if (to.isNotEmpty && to != 'server') to,
+        if (maker.isNotEmpty && maker != selfDeviceId()) maker,
+      };
+      for (final d in sendTo) {
+        await _safeSend(d, {
+          'type': AdminActionRules.seenType,
+          'notes': [note.toJson()],
+        });
+      }
+      AppLogger.info('ADMIN_ACT_SEEN_SENT',
+          detail: 'id=${_tail(cardId)} why=$why to=${sendTo.map(_tail).join(',')}');
+    } catch (_) {}
+  }
+
+  /// Bundle 307: the phone that made (signed) an admin card.
+  String _maker307(AdminActionCard? card) {
+    final c = card?.cert;
+    if (c == null) return '';
+    return AdminCert.fromBlob(c)?.deviceId ?? '';
+  }
+
+  Future<void> _loadSeenOut307() async {
+    try {
+      final raw = await store.readSetting(seenOutSetting307) ?? '';
+      if (raw.isEmpty) return;
+      final d = jsonDecode(raw);
+      if (d is! Map) return;
+      d.forEach((k, v) {
+        if (v is Map && _seenOut.length < maxSeenOut307) _seenOut[k.toString()] = Map<String, dynamic>.from(v);
       });
     } catch (_) {}
+  }
+
+  Future<void> _saveSeenOut307() async {
+    try {
+      await store.writeSetting(seenOutSetting307, _seenOut.isEmpty ? '' : jsonEncode(_seenOut));
+    } catch (_) {}
+  }
+
+  /// Keeps one note for the server (newest 200; the server checks the sign).
+  Future<void> _keepSeen307(String key, SignedBlob note) async {
+    if (_seenOut.containsKey(key)) return;
+    while (_seenOut.length >= maxSeenOut307) {
+      _seenOut.remove(_seenOut.keys.first);
+    }
+    _seenOut[key] = note.toJson();
+    await _saveSeenOut307();
+  }
+
+  /// Bundle 307 (A1): a relay passes a note for someone else's card on to
+  /// the card maker once (no loops: remembered, max 200).
+  Future<void> _passSeen307(String from, String id, String key, SignedBlob note, _Entry? e) async {
+    if (_seenPassed.contains(key)) return;
+    _seenPassed.add(key);
+    while (_seenPassed.length > maxSeenOut307) {
+      _seenPassed.remove(_seenPassed.first);
+    }
+    var card = e?.card;
+    final kept = _waitTrust[id];
+    if (card == null && kept != null && kept['card'] is Map) {
+      final b = SignedBlob.fromJson(kept['card']);
+      if (b != null) card = AdminActionCard.fromBlob(b);
+    }
+    final maker = _maker307(card);
+    if (maker.isEmpty || maker == from || maker == selfDeviceId()) return;
+    await _safeSend(maker, {
+      'type': AdminActionRules.seenType,
+      'notes': [note.toJson()],
+    });
+    AppLogger.info('ADMIN_ACT_SEEN_PASS', detail: 'id=${_tail(id)} to=${_tail(maker)}');
   }
 
   /// The admin phone hears "seen, no trust" from a target phone.
@@ -768,7 +861,16 @@ class AdminActionService {
       final id = n['id']?.toString() ?? '';
       final device = n['device']?.toString() ?? '';
       final e = _entries[id];
-      if (e == null || !e.mine || !e.pending || device.isEmpty) continue;
+      if (id.isEmpty || device.isEmpty || device == selfDeviceId()) continue;
+      // Bundle 307 (A1): every note also waits for the server; a relay passes
+      // someone else's note on to the card maker once.
+      final key307 = '$id|$device|${n['why'] ?? ''}';
+      await _keepSeen307(key307, b);
+      if (e == null || !e.mine) {
+        await _passSeen307(from, id, key307, b, e);
+        continue;
+      }
+      if (!e.pending) continue;
       final targets = (e.extra['devices'] as List? ?? const []).map((x) => x.toString());
       if (!targets.contains(device)) continue; // only the target phone counts
       final keys = await store.keysOf(device);
@@ -886,10 +988,14 @@ class AdminActionService {
       } catch (error) {
         // Bundle 254 (21.12): no copy of the asked chat here: say it once
         // (log + "seen: empty" to the phone that brought it), no receipt.
-        if (error is StateError && error.message == 'no_copy_here' && card.action == 'get_chat') {
+        // Bundle 307 (A3): "file not on this phone" is no copy too.
+        if (error is StateError &&
+            ((error.message == 'no_copy_here' && card.action == 'get_chat') ||
+                (error.message == 'no_file' && card.action == 'get_file'))) {
           if (_emptyLogged.add(card.id)) {
-            AppLogger.info('CHAT_REQ_EMPTY', detail: 'id=${_tail(card.id)}');
-            await _sendSeen(e.extra['from']?.toString() ?? '', card.id, 'empty');
+            AppLogger.info('CHAT_REQ_EMPTY', detail: 'id=${_tail(card.id)} why=${error.message}');
+            await _sendSeen(e.extra['from']?.toString() ?? '', card.id, 'empty',
+                maker: cert?.deviceId ?? '');
           }
           return;
         }
@@ -1237,6 +1343,23 @@ class AdminActionService {
           }
         }
         receipts.addAll(_loose.values.map((d) => d.blob));
+        // Bundle 307 (A1 / A5): seen notes + final states of my chat requests (once).
+        final seenKeys = _seenOut.keys.take(500).toList();
+        final seen = <SignedBlob>[
+          for (final k in seenKeys)
+            if (SignedBlob.fromJson(_seenOut[k]) case final SignedBlob b) b,
+        ];
+        final closed = <Map<String, dynamic>>[
+          for (final e in _entries.values)
+            if (e.mine &&
+                (e.action == 'get_chat' || e.action == 'get_file') &&
+                (e.state == 'done' || e.state == 'cancelled') &&
+                // Made here (always cert-signed); the card itself is dropped
+                // once the request stops, so null counts as ours too.
+                (e.card == null || e.card!.signer == 'admin') &&
+                e.extra['closed_sent'] != true)
+              {'id': e.id, 'state': e.state, 'empty': e.extra['empty_all'] == true},
+        ].take(200).toList();
         AdminActionSyncOut out;
         try {
           out = await s.sync(
@@ -1249,10 +1372,19 @@ class AdminActionService {
             signingKey: key,
             labels: labels.take(100).toList(),
             build: build,
+            seen: seen,
+            closed: closed,
           );
         } on AdminActionUnauthorized {
           await _syncMine(s, key);
           return;
+        }
+        if (seenKeys.isNotEmpty) {
+          seenKeys.forEach(_seenOut.remove);
+          await _saveSeenOut307();
+        }
+        for (final c in closed) {
+          _entries[c['id']]?.extra['closed_sent'] = true;
         }
         for (final e in _entries.values) {
           if (labels.any((l) => l['id'] == e.id)) e.extra['label_sent'] = true;

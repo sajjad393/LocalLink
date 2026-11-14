@@ -284,6 +284,13 @@ class BackgroundChannels(
             "notificationsEnabled" -> result.success(LocalLinkNotificationManager.notificationsEnabled(context))
             // No screen to ask from: the app asks when it is opened.
             "requestPermission", "openSettings" -> result.success(null)
+            // Bundle 307 (C1): the Get chat request card (also with the app closed).
+            "showChatRequest" -> { ChatRequestNotifier307.show(context, call.arguments as? Map<String, Any?> ?: emptyMap()); result.success(null) }
+            "cancelChatRequest" -> {
+                ChatRequestNotifier307.cancel(context, call.argument<String>("request_id")?.trim().orEmpty(), call.arguments as? Map<String, Any?> ?: emptyMap())
+                result.success(null)
+            }
+            "cancelAllChatRequests" -> { ChatRequestNotifier307.cancelAll(context); result.success(null) }
             "showMessage" -> {
                 val notificationId = call.argument<Int>("notification_id") ?: 0
                 val conversationType = call.argument<String>("conversation_type")?.trim().orEmpty()

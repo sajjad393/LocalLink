@@ -20,6 +20,10 @@ class AdminActionRow {
   final bool waitTrust;
   /// Bundle 254 (21.12): every target phone had no copy of the asked chat.
   final bool emptyAll;
+  /// Bundle 307 (live card): phones the card went to / phones that answered
+  /// anything (a receipt, "no copy here" or "can't check yet").
+  final int phones;
+  final int reached;
 
   const AdminActionRow({
     required this.id,
@@ -38,6 +42,8 @@ class AdminActionRow {
     this.via = '',
     this.waitTrust = false,
     this.emptyAll = false,
+    this.phones = 0,
+    this.reached = 0,
   });
 
   bool get pending => state == 'pending';

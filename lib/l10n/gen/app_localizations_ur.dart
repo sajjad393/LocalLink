@@ -8143,4 +8143,120 @@ class AppLocalizationsUr extends AppLocalizations {
   String adminRequestFailedEn304(Object? v0) {
     return '⁧ایڈمن درخواست ناکام (⁨$v0⁩)۔⁩';
   }
+
+  @override
+  String get inProgress307 => '⁧جاری ہے⁩';
+
+  @override
+  String get finished307 => '⁧مکمل⁩';
+
+  @override
+  String get seeAll307 => '⁧سب دیکھیں⁩';
+
+  @override
+  String get readyToReadSection307 => '⁧پڑھنے کے لیے تیار⁩';
+
+  @override
+  String get allChats307 => '⁧تمام چیٹس⁩';
+
+  @override
+  String get noServer307 => '⁧سرور نہیں⁩';
+
+  @override
+  String stepSent307(Object? hl, Object? n) {
+    return '⁧⁨$n⁩ فونز کو ⁨$hl⁩⁩';
+  }
+
+  @override
+  String stepPhones307(Object? hl) {
+    return '⁧⁨$hl⁩ فونز⁩';
+  }
+
+  @override
+  String stepParts307(Object? hl) {
+    return '⁧⁨$hl⁩ حصے⁩';
+  }
+
+  @override
+  String xOfY307(Object? a, Object? b) {
+    return '⁧⁨$b⁩ میں سے ⁨$a⁩⁩';
+  }
+
+  @override
+  String stepReady307(Object? hl) {
+    return '⁧پڑھنے کے لیے ⁨$hl⁩⁩';
+  }
+
+  @override
+  String get sentWord307 => '⁧بھیج دی گئی⁩';
+
+  @override
+  String get waitingForTheirPhones307 => '⁧ان کے فونز کا انتظار ہے⁩';
+
+  @override
+  String get lookingForTheChat307 => '⁧چیٹ تلاش ہو رہی ہے⁩';
+
+  @override
+  String answerComingFrom307(Object? name) {
+    return '⁧⁨$name⁩ کے فون سے جواب آ رہا ہے⁩';
+  }
+
+  @override
+  String get answerComing307 => '⁧جواب آ رہا ہے⁩';
+
+  @override
+  String tapToOpenParts307(Object? n) {
+    return '⁧کھولنے کے لیے ٹیپ کریں · ⁨$n⁩ حصے⁩';
+  }
+
+  @override
+  String get noPhoneHasThisChat307 => '⁧کسی فون میں یہ چیٹ نہیں ہے⁩';
+
+  @override
+  String get chatReady307 => '⁧چیٹ تیار ہے⁩';
+
+  @override
+  String get openChat307 => '⁧چیٹ کھولیں⁩';
+
+  @override
+  String chatRequestsSummary307(Object? n, Object? r) {
+    return '⁧⁨$n⁩ چیٹ درخواستیں · ⁨$r⁩ تیار⁩';
+  }
+
+  @override
+  String get chatRequestsChannel307 => '⁧LinkUp چیٹ درخواستیں⁩';
+
+  @override
+  String get everything307 => '⁧سب کچھ⁩';
+
+  @override
+  String get lastWeek307 => '⁧پچھلا ہفتہ⁩';
+
+  @override
+  String get lastMonth307 => '⁧پچھلا مہینہ⁩';
+
+  @override
+  String get pickARange307 => '⁧تاریخیں چنیں⁩';
+
+  @override
+  String messagesAt307(Object? n, Object? when) {
+    return '⁧⁨$n⁩ پیغامات · ⁨$when⁩⁩';
+  }
+
+  @override
+  String get searchPeopleOrGroups307 => '⁧لوگ یا گروپ تلاش کریں⁩';
+
+  @override
+  String get requestCancelled307 => '⁧درخواست منسوخ ہو گئی⁩';
+
+  @override
+  String get phonesNotAnswered307 => '⁧وہ فون جنہوں نے ابھی جواب نہیں دیا⁩';
+
+  @override
+  String fromPhone307(Object? name) {
+    return '⁧⁨$name⁩ کا فون⁩';
+  }
+
+  @override
+  String get noServerTip307 => '⁧سرور نہیں · درخواستیں قریبی فونز کو جاتی ہیں⁩';
 }
