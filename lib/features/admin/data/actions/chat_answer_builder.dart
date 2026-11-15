@@ -134,6 +134,9 @@ class ChatRow221 {
   });
 }
 
+/// Bundle 310 (V1): a voice note's length (ms) + loudness slices (0..1).
+typedef VoiceOf310 = ({int ms, List<double> levels})? Function(String key);
+
 /// What the builder reads (SQL on the phone: `hidden_store_221.dart`).
 abstract class ChatRows221 {
   /// Live + hidden messages of the chat (any order, any range).
@@ -204,12 +207,54 @@ class ChatAnswerBuilder {
   final Future<String> Function(String body) sign;
   final DateTime Function() _clock;
 
+  /// Bundle 310 (V1): length + bars of a voice note this phone already read
+  /// (key `fileId|size`, the voice bubble's own key), or null. The viewers
+  /// (web + app) draw the same bars; without them they show flat bars.
+  final VoiceOf310? voiceOf;
+
   ChatAnswerBuilder({
     required this.source,
     required this.selfDeviceId,
     required this.sign,
     DateTime Function()? clock,
+    this.voiceOf,
   }) : _clock = clock ?? DateTime.now;
+
+  /// Bundle 310 (V1): the same rule as the voice bubble (attachment_tile).
+  static bool isAudio310(String type, String name) {
+    if (type.toLowerCase().startsWith('audio/')) return true;
+    final n = name.toLowerCase();
+    return const ['.m4a', '.aac', '.mp3', '.wav', '.ogg', '.opus'].any(n.endsWith);
+  }
+
+  /// Bundle 310 (V1): the phone keeps 120 slices; the answer carries [n]
+  /// digits 0-9 (the loudest slice of each group), e.g. "0258963...".
+  static String bars310(List<double> levels, {int n = 40}) {
+    if (levels.isEmpty) return '';
+    final count = levels.length < n ? levels.length : n;
+    final out = StringBuffer();
+    for (var i = 0; i < count; i++) {
+      final a = i * levels.length ~/ count;
+      var b = (i + 1) * levels.length ~/ count;
+      if (b <= a) b = a + 1;
+      var peak = 0.0;
+      for (var j = a; j < b && j < levels.length; j++) {
+        final v = levels[j];
+        if (v.isFinite && v > peak) peak = v;
+      }
+      out.write((peak.clamp(0.0, 1.0) * 9).round());
+    }
+    return out.toString();
+  }
+
+  Map<String, dynamic>? _voice310(ChatAtt221 a) {
+    final of = voiceOf;
+    if (of == null || !isAudio310(a.type, a.name) || a.fileId.isEmpty) return null;
+    final v = of('${a.fileId}|${a.size}');
+    if (v == null || v.ms <= 0) return null;
+    final bars = bars310(v.levels);
+    return {'ms': v.ms, if (bars.isNotEmpty) 'bars': bars};
+  }
 
   static String newAnswerId() {
     final r = Random.secure();
@@ -251,6 +296,7 @@ class ChatAnswerBuilder {
           'thumb_type': thumb.type,
         },
         if (gone) 'file_gone': true,
+        if (_voice310(a) case final voice?) 'voice': voice,
       });
     }
     final name = names[r.sender] ??= await source.nameOf(r.sender).catchError((_) => '');

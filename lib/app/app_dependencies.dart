@@ -35,6 +35,7 @@ import 'package:locallink/features/connectivity/domain/local_route.dart' show Lo
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/features/files/data/services/auto_fetch_service.dart';
 import 'package:locallink/features/files/data/services/media_transfer_actions.dart';
+import 'package:locallink/features/files/data/services/voice_wave_book.dart';
 import 'package:locallink/features/files/presentation/widgets/chat_video_hub.dart';
 import 'package:locallink/features/storage/data/media_storage_service.dart';
 import 'package:locallink/features/files/presentation/widgets/media_gallery_viewer.dart';
@@ -967,7 +968,11 @@ class AppDependencies {
     DeleteCompletelyDoer.instance = purge221;
     final chatDoer221 = ChatDoer221(
       builder: ChatAnswerBuilder(
-          source: chatRows, selfDeviceId: () => store.deviceId ?? '', sign: crypto.signPayload),
+          source: chatRows, selfDeviceId: () => store.deviceId ?? '', sign: crypto.signPayload,
+          voiceOf: (key) => switch (VoiceWaveBook.instance.peek(key)) { // Bundle 310 (V1)
+                final w? => (ms: w.durationMs, levels: w.levels),
+                null => null,
+              }),
       carrier: chatCarrier221,
       purge: purge221,
     );
@@ -1005,6 +1010,7 @@ class AppDependencies {
       ),
       hints: socket.messages,
       serverOnline: () => socket.isConnected,
+      online: socket.connectionState, // Bundle 310 (P2)
       viaOf: (peer) => switch (routePolicy.routes[peer]?.kind) {
         LocalRouteKind.lan => 'wifi',
         LocalRouteKind.wifiDirect => 'wifi_direct',

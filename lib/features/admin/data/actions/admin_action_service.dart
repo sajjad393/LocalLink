@@ -65,6 +65,7 @@ class AdminActionService {
     this.server,
     this.hints,
     this.serverOnline,
+    this.online,
     this.viaOf,
     this.makeBlockInner,
     this.onChanged,
@@ -100,6 +101,11 @@ class AdminActionService {
   /// Server push hints (`{"type":"admin_action"}` on the socket).
   final Stream<Map<String, dynamic>>? hints;
   final bool Function()? serverOnline;
+
+  /// Bundle 310 (P2): the server socket came up (true) / went down. On up,
+  /// ask the server for cards at once (at most once per [onlineSyncEvery]).
+  final Stream<bool>? online;
+  static const Duration onlineSyncEvery = Duration(seconds: 30);
 
   /// How a phone is linked: wifi | wifi_direct | mesh (for "Done via").
   final String Function(String peerId)? viaOf;
@@ -138,6 +144,9 @@ class AdminActionService {
   bool _syncBusy = false;
   StreamSubscription<Map<String, dynamic>>? _sub;
   StreamSubscription<Map<String, dynamic>>? _hintSub;
+  StreamSubscription<bool>? _onlineSub; // Bundle 310 (P2)
+  DateTime? _onlineSyncAt;
+  bool _syncAgain = false; // Bundle 310 (P1): asked while a sync was running
   Timer? _digestTimer;
   Timer? _serverTimer;
   Timer? _soon;
@@ -199,6 +208,14 @@ class AdminActionService {
     _hintSub = hints?.listen((m) {
       if (m['type']?.toString() == 'admin_action') syncSoon();
     });
+    _onlineSub = online?.listen((up) {
+      if (!up) return;
+      final now = _clock();
+      final last = _onlineSyncAt;
+      if (last != null && now.difference(last).abs() < onlineSyncEvery) return;
+      _onlineSyncAt = now;
+      syncSoon();
+    });
     _digestTimer = Timer.periodic(AdminActionRules.digestEvery, (_) {
       unawaited(sendDigests().catchError((_) {}));
       unawaited(recheckWaitTrust().catchError((_) {}));
@@ -221,6 +238,8 @@ class AdminActionService {
     _soon?.cancel();
     await _sub?.cancel();
     await _hintSub?.cancel();
+    await _onlineSub?.cancel();
+    _onlineSub = null;
     _started = false;
     if (identical(instance, this)) {
       instance = null;
@@ -996,6 +1015,8 @@ class AdminActionService {
             AppLogger.info('CHAT_REQ_EMPTY', detail: 'id=${_tail(card.id)} why=${error.message}');
             await _sendSeen(e.extra['from']?.toString() ?? '', card.id, 'empty',
                 maker: cert?.deviceId ?? '');
+            // Bundle 310 (P1): tell the server now, not at the next 10 min sync.
+            unawaited(syncWithServer().catchError((_) {}));
           }
           return;
         }
@@ -1306,8 +1327,13 @@ class AdminActionService {
 
   Future<void> syncWithServer() async {
     final s = server;
-    if (s == null || _syncBusy) return;
+    if (s == null) return;
+    if (_syncBusy) {
+      _syncAgain = true; // Bundle 310 (P1): once more right after this one
+      return;
+    }
     _syncBusy = true;
+    _syncAgain = false;
     try {
       await load();
       final key = await signingKey();
@@ -1411,6 +1437,10 @@ class AdminActionService {
       AppLogger.info('ADMIN_ACT_SYNC_SKIP', detail: '$error');
     } finally {
       _syncBusy = false;
+      if (_syncAgain && _started) {
+        _syncAgain = false;
+        syncSoon();
+      }
     }
   }
 

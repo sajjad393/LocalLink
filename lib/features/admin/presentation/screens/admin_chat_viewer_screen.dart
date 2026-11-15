@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,7 @@ import 'package:locallink/features/admin/presentation/screens/admin_conversation
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/conversations_kit307.dart';
+import 'package:locallink/features/admin/presentation/widgets/viewer_bubbles310.dart';
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 221 (mock A-3): the copy of a chat the phones sent. Route tag per
@@ -41,6 +43,11 @@ class AdminChatViewerScreen extends StatefulWidget {
   /// Tests: a ready view (no loading).
   final ChatAnswerView? view;
 
+  /// Bundle 310 (V4) tests: plays a voice note file (returns its length in
+  /// ms); null = the phone's own voice player (`locallink/voice_notes`).
+  @visibleForTesting
+  static Future<int?> Function(String path)? playForTest;
+
   @override
   State<AdminChatViewerScreen> createState() => _AdminChatViewerScreenState();
 }
@@ -56,6 +63,19 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   bool _readyGone = false;
   Timer? _readyTimer;
 
+  // Bundle 310 (V4): voice notes - the Get file request of each file of
+  // this chat, the one playing now, and where the play position is.
+  Map<String, ChatRequestRow221> _files310 = <String, ChatRequestRow221>{};
+  final Set<String> _asked310 = <String>{};
+  Timer? _filePoll310;
+  String _playing310 = '';
+  String _loading310 = '';
+  int _playMs310 = 0;
+  int _playLen310 = 0;
+  Timer? _playTimer310;
+  final Set<String> _runStart310 = <String>{};
+  static const MethodChannel _voice310 = MethodChannel('locallink/voice_notes');
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +86,87 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     _poll = Timer.periodic(const Duration(seconds: 20), (_) {
       if (!(_view?.complete ?? false)) unawaited(_load());
     });
+    if (widget.view == null) unawaited(_loadFiles310());
+  }
+
+  /// V4: the Get file requests of this chat (ready ones can play here).
+  Future<void> _loadFiles310() async {
+    try {
+      final all = await widget.service.requests();
+      final out = <String, ChatRequestRow221>{};
+      for (final r in all) {
+        if (r.action != 'get_file' || r.parent != widget.request.id || r.fileId.isEmpty) continue;
+        if (r.state == 'cancelled') continue;
+        final old = out[r.fileId];
+        if (old == null || (!_ready310(old) && (_ready310(r) || r.madeAt.compareTo(old.madeAt) > 0))) out[r.fileId] = r;
+      }
+      if (!mounted) return;
+      setState(() => _files310 = out);
+      final waiting = _asked310.any((f) => !_ready310(out[f])) || out.values.any((r) => !_ready310(r));
+      _filePoll310?.cancel();
+      _filePoll310 = waiting ? Timer(const Duration(seconds: 10), () => unawaited(_loadFiles310())) : null;
+    } catch (_) {}
+  }
+
+  static bool _ready310(ChatRequestRow221? r) => r != null && (r.state == 'done' || (r.of > 0 && r.parts >= r.of));
+
+  /// V4: play / pause a voice note that came from the phone.
+  Future<void> _playVoice310(ChatRequestRow221 r) async {
+    if (_loading310.isNotEmpty) return;
+    if (_playing310 == r.fileId) {
+      _playTimer310?.cancel();
+      unawaited(_voice310.invokeMethod<void>('pause').catchError((Object _) {}));
+      setState(() => _playing310 = '');
+      return;
+    }
+    await _stopVoice310();
+    if (!mounted) return;
+    setState(() => _loading310 = r.fileId);
+    try {
+      final bytes = await widget.service.fileBytes(r);
+      if (bytes == null || bytes.isEmpty) throw StateError(L.t.couldNotGetItNow);
+      final safe = r.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+      final file = File('${Directory.systemTemp.path}/admin_voice310_$safe.m4a');
+      await file.writeAsBytes(bytes, flush: true);
+      final play = AdminChatViewerScreen.playForTest;
+      final len = play != null ? await play(file.path) : await _voice310.invokeMethod<int>('play', {'path': file.path});
+      if (!mounted) return;
+      setState(() {
+        _loading310 = '';
+        _playing310 = r.fileId;
+        _playMs310 = 0;
+        _playLen310 = len ?? 0;
+      });
+      _playTimer310?.cancel();
+      if ((len ?? 0) > 0) {
+        _playTimer310 = Timer.periodic(const Duration(milliseconds: 120), (t) {
+          if (!mounted) {
+            t.cancel();
+            return;
+          }
+          setState(() {
+            _playMs310 += 120;
+            if (_playMs310 >= _playLen310) {
+              _playMs310 = 0;
+              _playing310 = '';
+              t.cancel();
+            }
+          });
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loading310 = '');
+      adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
+    }
+  }
+
+  Future<void> _stopVoice310() async {
+    _playTimer310?.cancel();
+    if (_playing310.isNotEmpty) {
+      _playing310 = '';
+      await _voice310.invokeMethod<void>('stop').catchError((Object _) {});
+    }
   }
 
   @override
@@ -73,6 +174,14 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     ChatAnswerCarrier.progress.removeListener(_changed);
     _poll?.cancel();
     _readyTimer?.cancel();
+    _filePoll310?.cancel();
+    unawaited(_stopVoice310());
+    // Bundle 310: the voice copies played here go with the screen.
+    try {
+      for (final f in Directory.systemTemp.listSync()) {
+        if (f is File && f.path.contains('admin_voice310_')) f.deleteSync();
+      }
+    } catch (_) {}
     super.dispose();
   }
 
@@ -177,6 +286,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           messageId: m['id']?.toString() ?? '',
           name: a['name']?.toString() ?? '');
       if (mounted) adminSnack216(context, L.t.askedThePhoneForTheFull);
+      _asked310.add(a['file_id']?.toString() ?? ''); // Bundle 310 (V4)
+      if (mounted) setState(() {});
+      unawaited(_loadFiles310());
     } catch (error) {
       if (mounted) adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
     }
@@ -455,9 +567,15 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final items = <Widget>[];
     String lastDay = '';
     var shown = 0; // E: batches of 3 fade in
+    // Bundle 310 (V4): a group shows the name on the first bubble of a run.
+    _runStart310.clear();
+    String? lastSender;
     for (final m in v.messages) {
       final at = DateTime.tryParse('${m['created_at']}')?.toLocal();
       final day = at == null ? '' : dMMM216(at);
+      final sender = '${m['sender'] ?? m['sender_name'] ?? ''}';
+      if (sender != lastSender || (day.isNotEmpty && day != lastDay)) _runStart310.add('${m['id']}');
+      lastSender = sender;
       if (day.isNotEmpty && day != lastDay) {
         lastDay = day;
         items.add(Center(
@@ -465,8 +583,8 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
             margin: const EdgeInsets.symmetric(vertical: 10),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-                color: K307.of(context).mutedSoft, borderRadius: BorderRadius.circular(10)),
-            child: Text(day, style: t.custom(12, FontWeight.w600, c.grey)),
+                color: Theme.of(context).colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(999)),
+            child: Text(day, style: t.custom(11.5, FontWeight.w500, Theme.of(context).colorScheme.onSurfaceVariant)),
           ),
         ));
       }
@@ -474,7 +592,10 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     }
     return Column(children: [
       Expanded(
-        child: ListView(
+        // Bundle 310 (V4): the app's chat surface behind the bubbles.
+        child: ColoredBox(
+          color: Theme.of(context).colorScheme.surface,
+          child: ListView(
           key: const ValueKey('viewer221_list'),
           padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
           children: [
@@ -483,6 +604,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
             if (v.messages.isEmpty) _info(L.t.noMessagesInTheseDates),
             ...items,
           ],
+        ),
         ),
       ),
     ]);
@@ -508,6 +630,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final c = A216.colors(context);
     final t = A216Text(c);
     final k = K307.of(context);
+    final cs = Theme.of(context).colorScheme;
     final group = _pick?.isGroup ?? false;
     // The answering phone's owner on the left, the other person on the right.
     final right = !group && v.fromDevice.isNotEmpty && m['sender'] != v.fromDevice;
@@ -519,56 +642,65 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final time = at == null ? '' : TimeOfDay.fromDateTime(at).format(context);
     final body = m['body']?.toString() ?? '';
     final atts = [for (final a in (m['attachments'] as List? ?? const [])) if (a is Map) Map<String, dynamic>.from(a)];
-    // B9: left = card colour, right = blue with white words; tail corner 6.
-    final bg = right ? k.rightBubble : k.card;
-    final ink = right ? Colors.white : (deleted ? c.grey : c.ink);
-    final soft = right ? Colors.white.withValues(alpha: 0.75) : c.grey;
+    // Bundle 310 (V4): like the app's Messages screen - grey bubbles (left =
+    // surfaceContainerHighest, right = surfaceContainer), the time inside at
+    // the bottom right, the name only in groups on the first bubble of a run.
+    final bg = right ? cs.surfaceContainer : cs.surfaceContainerHighest;
+    final ink = deleted ? cs.onSurfaceVariant : cs.onSurface;
+    final soft = cs.onSurface.withValues(alpha: 0.62);
     final shown = name.isEmpty ? L.t.someone : name;
-    final nameColor = right ? Colors.white.withValues(alpha: 0.9) : avatarColor221(shown);
-    const r = Radius.circular(20);
+    final showName = group && _runStart310.contains('${m['id']}');
+    const r = Radius.circular(18);
     const tail = Radius.circular(6);
+    final timeStyle = t.custom(11, FontWeight.w500, soft);
     final bubble = GestureDetector(
       key: ValueKey('viewer221_msg_${m['id']}'),
       onLongPress: () => _longPress(m),
       child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.8),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
+        margin: const EdgeInsets.symmetric(vertical: 2.5),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
         decoration: BoxDecoration(
-          color: bg,
+          color: deleted ? Colors.transparent : bg,
           borderRadius: BorderRadius.only(
               topLeft: r, topRight: r, bottomLeft: right ? r : tail, bottomRight: right ? tail : r),
-          border: right ? null : Border.all(color: k.dark ? k.cardEdge : c.line),
-          boxShadow: right ? const [] : k.shadowSmall,
+          border: deleted ? Border.all(color: cs.outlineVariant) : null,
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Flexible(
-                child: Text(shown,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(13, FontWeight.w700, nameColor))),
-            const SizedBox(width: 10),
-            Text(time, style: t.custom(11.5, FontWeight.w400, soft)),
-          ]),
-          const SizedBox(height: 3),
+        child: Stack(children: [
+        Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          if (showName)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 1),
+              child: Text(shown,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(12.5, FontWeight.w700, avatarColor221(shown))),
+            ),
           for (final a in atts) _attachment(m, a),
           if (body.isNotEmpty)
-            Text(body + ((m['cut'] == true) ? ' …' : ''), style: t.custom(15.5, FontWeight.w400, ink, 1.35)),
+            BubbleText310(
+                text: body + ((m['cut'] == true) ? ' …' : ''),
+                time: time,
+                style: t.custom(15, FontWeight.w400, ink, 1.35),
+                timeStyle: timeStyle),
           if (deleted) ...[
             const SizedBox(height: 6),
             Container(
               key: ValueKey('viewer221_deleted_${m['id']}'),
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
               decoration: BoxDecoration(
-                  color: right ? Colors.white : (k.dark ? const Color(0xFF3B1A1A) : const Color(0xFFFEE4E2)),
+                  color: k.dark ? const Color(0xFF3B1A1A) : const Color(0xFFFEE4E2),
                   borderRadius: BorderRadius.circular(10)),
               child: Text(_deletedWords(m['deleted_at'].toString()),
-                  style: t.custom(12, FontWeight.w700, k.dark && !right ? const Color(0xFFF97066) : c.red)),
+                  style: t.custom(12, FontWeight.w700, k.dark ? const Color(0xFFF97066) : c.red)),
             ),
           ],
           if (outside) ...[
             const SizedBox(height: 4),
             Text(L.t.outsideTheDatesPhoneClock, style: t.custom(12, FontWeight.w500, soft)),
           ],
+          // No text: the time sits alone on the last line, right.
+          SizedBox(height: body.isEmpty ? 16 : 2),
+        ]),
+        if (body.isEmpty) Positioned(right: 0, bottom: 2, child: Text(time, style: timeStyle)),
         ]),
       ),
     );
@@ -596,6 +728,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final gone = a['file_gone'] == true;
     final type = a['type']?.toString() ?? '';
     final media = type.startsWith('image/') || type.startsWith('video/');
+    if (Viewer310.isAudio(type, a['name']?.toString() ?? '')) return _voice310Row(m, a, gone);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 10, runSpacing: 6, children: [
@@ -612,7 +745,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
               Icon(media ? Icons.image_outlined : Icons.insert_drive_file_outlined, color: c.grey, size: 20),
               const SizedBox(width: 6),
               Flexible(
-                  child: Text(a['name']?.toString() ?? L.t.file,
+                  child: Text(Viewer310.shortName(a['name']?.toString() ?? L.t.file),
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(13, FontWeight.w500, c.ink2))),
             ]),
           ),
@@ -626,6 +759,51 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
               width: 150,
               onTap: () => _getFile(m, a)),
       ]),
+    );
+  }
+
+  /// Bundle 310 (V4): a voice note = the voice row (bars + length). Get =
+  /// ask the phones (as Get file); when the file is here it plays here.
+  Widget _voice310Row(Map<String, dynamic> m, Map<String, dynamic> a, bool gone) {
+    final fileId = a['file_id']?.toString() ?? '';
+    final voice = a['voice'] is Map ? Map<String, dynamic>.from(a['voice'] as Map) : const <String, dynamic>{};
+    final levels = Viewer310.bars(voice['bars']);
+    final ms = voice['ms'] is num ? (voice['ms'] as num).toInt() : 0;
+    final size = a['size'] is num ? (a['size'] as num).toInt() : 0;
+    final f = _files310[fileId];
+    var label = ms > 0 ? Viewer310.clock(ms) : (size > 0 ? size216(size) : '');
+    VoiceState310 state;
+    double played = 0;
+    double? progress;
+    VoidCallback? onTap;
+    if (gone) {
+      state = VoiceState310.gone;
+      label = L.t.fileRemovedAfter60DaysThumbnail;
+    } else if (_loading310 == fileId) {
+      state = VoiceState310.getting;
+    } else if (f != null && _ready310(f)) {
+      final playing = _playing310 == fileId;
+      state = playing ? VoiceState310.playing : VoiceState310.ready;
+      if (playing) {
+        final len = _playLen310 > 0 ? _playLen310 : ms;
+        played = len > 0 ? _playMs310 / len : 0;
+        label = '${Viewer310.clock(_playMs310)} / ${Viewer310.clock(len)}';
+      }
+      onTap = () => unawaited(_playVoice310(f));
+    } else if (f != null || _asked310.contains(fileId)) {
+      state = VoiceState310.getting;
+      if (f != null && f.of > 0) {
+        progress = f.parts / f.of;
+        label = '${f.parts} / ${f.of}';
+      }
+    } else {
+      state = VoiceState310.get;
+      onTap = fileId.isEmpty ? null : () => unawaited(_getFile(m, a));
+    }
+    return Padding(
+      key: ValueKey('viewer310_voice_$fileId'),
+      padding: const EdgeInsets.only(bottom: 2),
+      child: VoiceRow310(state: state, levels: levels, label: label, played: played, progress: progress, onTap: onTap),
     );
   }
 }
