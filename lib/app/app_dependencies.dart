@@ -568,6 +568,7 @@ class AppDependencies {
       groups: groupMessagingRepository,
       calls: calls,
     );
+    _buildChatRequestCard307(); // Bundle 312: needs `notifications` (set just above)
     // Bundle 198: read receipts (1-to-1), voice "played", the in-chat pop.
     readReceipts = ReadReceiptService(
       localId: () => store.deviceId,
@@ -1133,6 +1134,12 @@ class AppDependencies {
       purgeHere: purge221,
       progressOf: chatCarrier221.progressOf,
     );
+    // Bundle 312: the 307 request card is made in _buildChatRequestCard307,
+    // after `notifications` exists (here it is not set yet: the app broke on start).
+  }
+
+  /// Bundle 307 (C3) / 312: called right after `notifications` is set.
+  void _buildChatRequestCard307() {
     // Bundle 307 (C3): the phone card of a Get chat request (owner, this phone's requests).
     final requests307 = ChatRequests221.instance!;
     ChatRequestNotifier307.instance?.stop();
