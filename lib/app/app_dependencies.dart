@@ -121,6 +121,7 @@ import 'package:locallink/features/groups/data/repositories/group_messaging_repo
 import 'package:locallink/features/groups/data/repositories/group_repository.dart';
 import 'package:locallink/features/messaging/data/services/reliable_messaging_service.dart';
 import 'package:locallink/features/messaging/data/services/chat_restore_313.dart';
+import 'package:locallink/features/admin/data/actions/group_notes_314.dart';
 import 'package:locallink/features/messaging/data/services/chat_restore_store_313.dart';
 import 'package:locallink/core/identity/person_name_258.dart';
 import 'package:locallink/features/recovery/data/repositories/recovery_repository.dart';
@@ -1136,6 +1137,10 @@ class AppDependencies {
       write: store.writeSetting,
       purgeHere: purge221,
       progressOf: chatCarrier221.progressOf,
+      // Bundle 314 (1 / 1c): the server's groups + the nearby groups members
+      // reported to this phone (read when asked: the notes start later).
+      serverGroups: HttpChatAdminServer(baseUrl: () => api.baseUrl).groups314,
+      reportedGroups: () async => await GroupNotes314.instance?.reported() ?? const <Map<String, dynamic>>[],
     );
     // Bundle 312: the 307 request card is made in _buildChatRequestCard307,
     // after `notifications` exists (here it is not set yet: the app broke on start).
@@ -1198,6 +1203,63 @@ class AppDependencies {
     unawaited(restore.start().catchError((Object e) {
       AppLogger.warning('RESTORE313_START_FAILED', detail: '$e');
     }));
+    _startGroupNotes314(link);
+  }
+
+  /// Bundle 314 (1c): every member phone reports its phone-only groups (no
+  /// messages, no keys) to the server and, locked, to the Owner's phone.
+  void _startGroupNotes314(SealingPeerTransport link) {
+    if (GroupNotes314.instance != null) return;
+    final keep = SqlAdminActionStore(store);
+    final notes = GroupNotes314(
+      selfDeviceId: () => store.deviceId ?? '',
+      myGroups: () async {
+        final out = <Map<String, dynamic>>[];
+        for (final g in await store.localGroups()) {
+          // Phone-only groups I am still in ("both" is on the server too).
+          if (!g.nearbyOnly || !g.isActive) continue;
+          out.add({
+            'id': g.id,
+            'name': g.name,
+            'made_at': g.createdAt,
+            'members': [
+              for (final m in await store.groupMembers(g.id))
+                if ((m['device_id']?.toString() ?? '').isNotEmpty) m['device_id'].toString(),
+            ],
+          });
+        }
+        return out;
+      },
+      sign: crypto.signPayload,
+      events: link.events,
+      read: store.readSetting,
+      write: store.writeSetting,
+      post: HttpGroupNotes314(
+        baseUrl: () => api.baseUrl,
+        deviceId: () => store.deviceId ?? '',
+        deviceToken: () => store.deviceToken ?? '',
+      ).post,
+      serverOnline: () => socket.isConnected,
+      ownerPhones: () async {
+        final owners = {
+          for (final b in AdminBadgeBook.instance.badges)
+            if (b.on && b.role == 'owner') b.userId,
+        };
+        if (owners.isEmpty) return const <String>[];
+        return [
+          ...(await store.devicesOfUsers(owners)).keys,
+          for (final u in owners) ...await keep.phonesOf(u).catchError((_) => <String>[]),
+        ];
+      },
+      canReach: (id) => link.isSealCapable(id) && PresenceHub.instance.statusOf(id) == PresenceStatus.nearby,
+      sendLocked: link.sendLockedOnly313,
+      isOwnerPhone: () async => AdminBadgeBook.instance.roleOf(store.accountId) == 'owner',
+      signingKeyOf: (device) async => (await keep.keysOf(device)).signingKey,
+      verify: ed25519Verify,
+      groupChanges: GroupChangeHub.instance.changes,
+    );
+    GroupNotes314.instance = notes;
+    notes.start();
   }
 
   void _start221() {

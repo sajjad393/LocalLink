@@ -3,6 +3,7 @@ import 'dart:io' show gzip;
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart' show SimpleKeyPair;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/core/network/build_http.dart' show BuildHeaderClient;
@@ -110,7 +111,10 @@ class ChatAdminRefused implements Exception {
   final int status;
   final String code;
   final String message;
-  const ChatAdminRefused(this.status, this.code, this.message);
+
+  /// Bundle 314 (1b): `already_asked` = the open request of this chat.
+  final String openId;
+  const ChatAdminRefused(this.status, this.code, this.message, {this.openId = ''});
   @override
   String toString() => message;
 }
@@ -140,7 +144,8 @@ class HttpChatAdminServer implements ChatAdminServer {
     if (r.statusCode < 200 || r.statusCode > 299) {
       final m = d is Map ? d : const {};
       throw ChatAdminRefused(r.statusCode, m['code']?.toString() ?? '',
-          m['error']?.toString() ?? 'server ${r.statusCode}');
+          m['error']?.toString() ?? 'server ${r.statusCode}',
+          openId: m['open_id']?.toString() ?? '');
     }
     return d;
   }
@@ -217,6 +222,12 @@ class HttpChatAdminServer implements ChatAdminServer {
       await _client
           .post(_uri('/api/v1/admin/purge'), headers: _h(token), body: jsonEncode(body))
           .timeout(_timeout));
+
+  /// Bundle 314 (1): the server's groups (`me` flag, member phones) + the
+  /// nearby groups members reported (`nearby`).
+  Future<Map<String, dynamic>> groups314(String token) async => _map(await _client
+      .get(_uri('/api/v1/admin/groups?limit=200'), headers: _h(token))
+      .timeout(_timeout));
 }
 
 /// Opens answers meant for this (admin) phone from the local parts.
@@ -501,6 +512,10 @@ class ChatRequestRow221 {
       };
 }
 
+/// Bundle 314: the codes of a refused Get chat (server 409 and this phone).
+const String ownChatCode314 = 'own_chat';
+const String alreadyAskedCode314 = 'already_asked';
+
 /// What the Owner screens use: online the server makes the card and opens
 /// the answer; offline this phone signs the card (owner cert) and the
 /// answer comes back locked for this phone.
@@ -532,6 +547,13 @@ class ChatRequests221 {
   final Future<void> Function(String key, String value) write;
   final DeleteCompletelyDoer? purgeHere;
   final Future<AnswerProgress?> Function(String actionId)? progressOf;
+
+  /// Bundle 314 (1): the server's group list `{groups:[...], nearby:[...]}`.
+  final Future<Map<String, dynamic>> Function(String token)? serverGroups;
+
+  /// Bundle 314 (1c): the nearby groups members reported to this phone
+  /// `{id, name, members:[device], made_at}`.
+  final Future<List<Map<String, dynamic>>> Function()? reportedGroups;
   final DateTime Function() _clock;
 
   ChatRequests221({
@@ -552,8 +574,16 @@ class ChatRequests221 {
     required this.write,
     this.purgeHere,
     this.progressOf,
+    this.serverGroups,
+    this.reportedGroups,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
+
+  /// Bundle 314 (K5): the last server chat list (owner phone, no message
+  /// text) and group list, for the offline Chats tab and offline Get chat.
+  static const String chatsSavedKey314 = 'admin_chats_saved_314';
+  static const String groupsSavedKey314 = 'admin_groups_saved_314';
+  static const int maxSaved314 = 500;
 
   Future<String?> _token() async {
     final s = await signIn();
@@ -566,16 +596,233 @@ class ChatRequests221 {
 
   // ----------------------------------------------------------------- lists
 
+  /// Bundle 314: online = the server list (my own chats marked `me`, no
+  /// Get chat); offline = the last server list saved here + the nearby
+  /// groups members reported, without my own chats (USER PICK K5).
   Future<List<Map<String, dynamic>>> conversations() async {
     final token = await _token();
     if (token != null && serverOnline()) {
       try {
-        return await server.conversations(token);
+        final list = await server.conversations(token);
+        final mine = await _mine314();
+        final out = [
+          for (final c in list) {...c, if (c['me'] == true || await _rowIsMine314(c, mine)) 'me': true},
+        ];
+        await _saveList314(chatsSavedKey314, [for (final c in out) if (c['me'] != true) c]);
+        return out;
       } catch (error) {
         AppLogger.info('ADMIN_CHATS_LIST_LOCAL', detail: '$error');
       }
     }
-    return localChats();
+    final mine = await _mine314();
+    final out = <Map<String, dynamic>>[];
+    final groups = <String>{};
+    for (final c in await _savedList314(chatsSavedKey314)) {
+      if (c['me'] == true || await _rowIsMine314(c, mine)) continue;
+      if (c['kind'] == 'group') groups.add(c['group_id']?.toString() ?? '');
+      out.add(c);
+    }
+    for (final g in await _reported314()) {
+      final id = g['id']?.toString() ?? '';
+      if (id.isEmpty || groups.contains(id) || g['me'] == true) continue;
+      groups.add(id);
+      out.add({
+        'id': 'n:$id',
+        'kind': 'group',
+        'group_id': id,
+        'group_name': g['name'] ?? '',
+        'member_count': g['members'] ?? 0,
+        'message_count': 0,
+        'last_message_at': g['made_at'] ?? '',
+        'nearby': true,
+      });
+    }
+    return out;
+  }
+
+  // ----------------------------------------------------- Bundle 314 lists
+
+  /// My phones + my user id (one phone = one account; more after a move).
+  Future<Set<String>> _mine314() async => {
+        selfDeviceId(),
+        selfUserId(),
+        ...await phonesOf(selfUserId()).catchError((_) => <String>[]),
+      }..remove('');
+
+  Future<bool> _groupIsMine314(String groupId, Set<String> mine) async {
+    if (groupId.isEmpty) return false;
+    final devices = await groupDevices(groupId).catchError((_) => <String>[]);
+    return devices.any(mine.contains);
+  }
+
+  Future<bool> _rowIsMine314(Map<String, dynamic> c, Set<String> mine) async {
+    if (c['kind'] == 'group') return _groupIsMine314(c['group_id']?.toString() ?? '', mine);
+    for (final x in (c['participants'] as List? ?? const [])) {
+      if (x is Map && mine.contains(x['id']?.toString() ?? '')) return true;
+    }
+    return false;
+  }
+
+  Future<List<Map<String, dynamic>>> _savedList314(String key) async {
+    try {
+      final d = jsonDecode(await read(key) ?? '[]');
+      return [for (final x in (d is List ? d : const [])) if (x is Map) Map<String, dynamic>.from(x)];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveList314(String key, List<Map<String, dynamic>> list) async {
+    try {
+      await write(key, jsonEncode(list.take(maxSaved314).toList()));
+    } catch (_) {}
+  }
+
+  /// Reported nearby groups, `me` when one of my phones is a member.
+  Future<List<Map<String, dynamic>>> _reported314() async {
+    final mine = await _mine314();
+    final out = <Map<String, dynamic>>[];
+    for (final g in await (reportedGroups?.call() ?? Future.value(const <Map<String, dynamic>>[]))
+        .catchError((_) => <Map<String, dynamic>>[])) {
+      final members = [for (final d in (g['members'] as List? ?? const [])) d.toString()];
+      out.add({
+        'id': g['id']?.toString() ?? '',
+        'name': g['name']?.toString() ?? '',
+        'members': members.length,
+        'member_devices': members,
+        'made_at': g['made_at']?.toString() ?? '',
+        'nearby': true,
+        if (members.any(mine.contains)) 'me': true,
+      });
+    }
+    return out;
+  }
+
+  /// Bundle 314 (1): the group picker = every group I am NOT in: the
+  /// server's groups (+ reported nearby ones it knows), the last saved
+  /// server list when offline, groups this phone knows that I am not in,
+  /// and the nearby groups reported to this phone.
+  /// Rows: `{id, name, members, nearby, member_devices}`.
+  Future<List<Map<String, dynamic>>> pickerGroups314() async {
+    final mine = await _mine314();
+    final byId = <String, Map<String, dynamic>>{};
+    void add(Map<String, dynamic> g) {
+      final id = g['id']?.toString() ?? '';
+      if (id.isEmpty || byId.containsKey(id)) return;
+      byId[id] = g;
+    }
+
+    Map<String, dynamic> row(Map<String, dynamic> g, {bool nearby = false}) {
+      final devices = [for (final d in (g['member_devices'] as List? ?? const [])) d.toString()];
+      final n = g['members'];
+      return {
+        'id': g['id']?.toString() ?? '',
+        'name': g['name']?.toString() ?? '',
+        'members': n is int ? n : int.tryParse('${n ?? ''}') ?? devices.length,
+        'nearby': nearby || g['nearby'] == true,
+        'member_devices': devices,
+        if (g['me'] == true || devices.any(mine.contains)) 'me': true,
+      };
+    }
+
+    var fromServer = false;
+    final token = await _token();
+    final load = serverGroups;
+    if (load != null && token != null && serverOnline()) {
+      try {
+        final d = await load(token);
+        final list = <Map<String, dynamic>>[
+          for (final g in (d['groups'] as List? ?? const [])) if (g is Map) row(Map<String, dynamic>.from(g)),
+          for (final g in (d['nearby'] as List? ?? const []))
+            if (g is Map) row(Map<String, dynamic>.from(g), nearby: true),
+        ];
+        await _saveList314(groupsSavedKey314, list);
+        list.forEach(add);
+        fromServer = true;
+      } catch (error) {
+        AppLogger.info('ADMIN_GROUPS_LIST_LOCAL', detail: '$error');
+      }
+    }
+    if (!fromServer) (await _savedList314(groupsSavedKey314)).map((g) => row(g)).forEach(add);
+    for (final g in await localGroups().catchError((_) => <Map<String, dynamic>>[])) {
+      final id = g['id']?.toString() ?? '';
+      if (id.isEmpty || byId.containsKey(id)) continue;
+      final devices = await groupDevices(id).catchError((_) => <String>[]);
+      add({
+        'id': id,
+        'name': g['name']?.toString() ?? '',
+        'members': devices.length,
+        'nearby': false,
+        'member_devices': devices,
+        if (devices.any(mine.contains)) 'me': true,
+      });
+    }
+    (await _reported314()).map((g) => row(g, nearby: true)).forEach(add);
+    // A group a member phone of mine is in is mine (also when only the
+    // local list knows it).
+    final out = <Map<String, dynamic>>[];
+    for (final g in byId.values) {
+      if (g['me'] == true || await _groupIsMine314(g['id'].toString(), mine)) continue;
+      out.add(g);
+    }
+    out.sort((a, b) => '${a['name']}'.toLowerCase().compareTo('${b['name']}'.toLowerCase()));
+    return out;
+  }
+
+  /// Bundle 314 (1): the people picker - everyone but me.
+  Future<List<Map<String, dynamic>>> pickerPeople314() async {
+    final mine = await _mine314();
+    return [
+      for (final p in await people())
+        if (p['me'] != true && !mine.contains(p['id']?.toString() ?? '')) p,
+    ];
+  }
+
+  /// Bundle 314 (1): I am one of the two people / a member of the group.
+  Future<bool> isOwnChat314(ChatPick221 pick) async {
+    final mine = await _mine314();
+    if (pick.isGroup) {
+      if (await _groupIsMine314(pick.groupId, mine)) return true;
+      return (await _knownGroupDevices314(pick.groupId)).any(mine.contains);
+    }
+    if (mine.contains(pick.userA) || mine.contains(pick.userB)) return true;
+    final a = await phonesOf(pick.userA).catchError((_) => <String>[]);
+    final b = await phonesOf(pick.userB).catchError((_) => <String>[]);
+    return [...a, ...b].any((d) => d.isNotEmpty && d == selfDeviceId());
+  }
+
+  /// Member phones of a group this phone is not in: the saved server list or
+  /// a member's nearby note.
+  Future<List<String>> _knownGroupDevices314(String groupId) async {
+    for (final g in [...await _savedList314(groupsSavedKey314), ...await _reported314()]) {
+      if (g['id']?.toString() != groupId) continue;
+      final d = [for (final x in (g['member_devices'] as List? ?? const [])) x.toString()]..remove('');
+      if (d.isNotEmpty) return d;
+    }
+    return const [];
+  }
+
+  /// Bundle 314 (1b): the open (Sent / Reached / Coming) Get chat request
+  /// of this chat, or null. Ready, cancelled, empty and done don't block.
+  Future<ChatRequestRow221?> openRequestFor314(ChatPick221 pick, {List<ChatRequestRow221>? rows}) async {
+    for (final r in rows ?? await requests()) {
+      if (r.action != 'get_chat' || r.state != 'pending' || r.ready || r.empty || r.closed || r.cancelled) continue;
+      final p = ChatPick221.fromRef(r.chat);
+      if (p == null || p.kind != pick.kind) continue;
+      if (pick.isGroup ? p.groupId == pick.groupId : await _samePeople314(p, pick)) return r;
+    }
+    return null;
+  }
+
+  Future<bool> _samePeople314(ChatPick221 x, ChatPick221 y) async {
+    if ({x.userA, x.userB}.containsAll([y.userA, y.userB])) return true;
+    // Server rows have phone ids, saved ones user ids: compare the phones.
+    Future<Set<String>> phones(String who) async =>
+        {who, ...await phonesOf(who).catchError((_) => <String>[])}..remove('');
+    final xa = await phones(x.userA), xb = await phones(x.userB);
+    final ya = await phones(y.userA), yb = await phones(y.userB);
+    bool meet(Set<String> p, Set<String> q) => p.any(q.contains);
+    return (meet(xa, ya) && meet(xb, yb)) || (meet(xa, yb) && meet(xb, ya));
   }
 
   Future<List<Map<String, dynamic>>> _saved() async {
@@ -672,6 +919,11 @@ class ChatRequests221 {
   }
 
   /// The chat ref (all phones of it) + the phones a card goes to (not mine).
+  /// Bundle 314 tests: the offline targets of a pick.
+  @visibleForTesting
+  Future<({Map<String, dynamic> chat, List<String> targets, bool meIn})> resolve314(ChatPick221 pick) =>
+      _resolve(pick);
+
   Future<({Map<String, dynamic> chat, List<String> targets, bool meIn})> _resolve(ChatPick221 pick) async {
     final mine = {selfDeviceId(), ...await phonesOf(selfUserId()).catchError((_) => <String>[])}
       ..remove('');
@@ -679,6 +931,9 @@ class ChatRequests221 {
     Map<String, dynamic> chat;
     if (pick.isGroup) {
       devices = await groupDevices(pick.groupId);
+      // Bundle 314 (K8): a group I am not in - its phones from the saved
+      // server list or a member's nearby note.
+      if (devices.isEmpty) devices = await _knownGroupDevices314(pick.groupId);
       chat = {'kind': 'group', 'group_id': pick.groupId};
     } else {
       final a = await phonesOf(pick.userA);
@@ -701,6 +956,12 @@ class ChatRequests221 {
     if (!pick.isGroup && await samePhone(pick.userA, pick.userB)) {
       throw StateError('These two accounts are on the same phone - there is no chat between them.');
     }
+    // Bundle 314 (1 / 1b): not my own chats; one open request per chat.
+    if (await isOwnChat314(pick)) throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314);
+    final open = await openRequestFor314(pick);
+    if (open != null) {
+      throw ChatAdminRefused(409, alreadyAskedCode314, L.t.alreadyAskedText314, openId: open.id);
+    }
     final token = await _token();
     if (token != null && serverOnline()) {
       final res = await server.create(token, {
@@ -719,6 +980,7 @@ class ChatRequests221 {
     final svc = actions;
     if (svc == null) throw StateError('Admin actions are not ready.');
     final who = await _resolve(pick);
+    if (who.meIn) throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314); // Bundle 314 (1)
     if (who.targets.isEmpty) throw StateError("This phone doesn't know their phones yet.");
     final detail = {'chat': who.chat, 'from': r.from, 'to': r.to, 'plus_day': true};
     final id = await svc.make(

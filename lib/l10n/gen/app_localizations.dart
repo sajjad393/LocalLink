@@ -14045,6 +14045,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'a friend'**
   String get aFriend313;
+
+  /// No description provided for @ownChat314.
+  ///
+  /// In en, this message translates to:
+  /// **'You are in this chat. It\'s already on your phone.'**
+  String get ownChat314;
+
+  /// No description provided for @alreadyAskedText314.
+  ///
+  /// In en, this message translates to:
+  /// **'This chat already has an open request. Open it or cancel it first.'**
+  String get alreadyAskedText314;
+
+  /// No description provided for @alreadyAsked314.
+  ///
+  /// In en, this message translates to:
+  /// **'Already asked'**
+  String get alreadyAsked314;
+
+  /// No description provided for @openIt314.
+  ///
+  /// In en, this message translates to:
+  /// **'Open it'**
+  String get openIt314;
+
+  /// No description provided for @noOtherGroups314.
+  ///
+  /// In en, this message translates to:
+  /// **'No other groups yet'**
+  String get noOtherGroups314;
+
+  /// No description provided for @membersCount314.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} members'**
+  String membersCount314(Object? count);
+
+  /// No description provided for @nearbyMembers314.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearby · {count} members'**
+  String nearbyMembers314(Object? count);
+
+  /// No description provided for @onYourPhone314.
+  ///
+  /// In en, this message translates to:
+  /// **'On your phone'**
+  String get onYourPhone314;
 }
 
 class _AppLocalizationsDelegate

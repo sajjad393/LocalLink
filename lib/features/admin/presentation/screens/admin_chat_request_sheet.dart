@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart';
@@ -9,14 +11,23 @@ import 'package:locallink/l10n/l10n.dart';
 /// Full chat / 7 days / 30 days / Dates. True when a request was sent.
 /// Bundle 307 (B8): two person tiles with a swap button, a 2x2 range grid
 /// and the big blue "Get chat" button.
+/// Bundle 314 (1b): [onOpen] gets the open request of the picked chat when
+/// the Owner taps "Already asked · Open it" (the sheet closes first).
 Future<bool?> showChatRequestSheet(
   BuildContext context, {
   required ChatRequests221 service,
   ChatPick221? preset,
   bool online = false,
-}) =>
-    showAdminSheet216<bool>(context,
-        builder: (ctx) => ChatRequestSheet221(service: service, preset: preset, online: online));
+  void Function(ChatRequestRow221 open)? onOpen,
+}) async {
+  ChatRequestRow221? open;
+  final sent = await showAdminSheet216<bool>(context,
+      builder: (ctx) => ChatRequestSheet221(
+          service: service, preset: preset, online: online, onOpen: (r) => open = r));
+  final o = open;
+  if (o != null && onOpen != null) onOpen(o);
+  return sent;
+}
 
 /// Bundle 254 (21.2): the request label; same names -> @usernames
 /// ("@noshad & @noshad2").
@@ -30,10 +41,13 @@ String chatRequestLabel254(Map<String, dynamic> a, Map<String, dynamic> b) {
 }
 
 class ChatRequestSheet221 extends StatefulWidget {
-  const ChatRequestSheet221({super.key, required this.service, this.preset, this.online = false});
+  const ChatRequestSheet221({super.key, required this.service, this.preset, this.online = false, this.onOpen});
   final ChatRequests221 service;
   final ChatPick221? preset;
   final bool online;
+
+  /// Bundle 314 (1b): "Open it" on the "Already asked" box.
+  final void Function(ChatRequestRow221 open)? onOpen;
 
   @override
   State<ChatRequestSheet221> createState() => _ChatRequestSheet221State();
@@ -51,6 +65,10 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
   DateTimeRange? _dates;
   bool _sending = false;
 
+  /// Bundle 314 (1b): the open request of the picked chat (blocks Get chat).
+  ChatRequestRow221? _open;
+  int _checkSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -63,11 +81,37 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
         _a = {'id': p.userA, 'name': names.isNotEmpty ? names.first : ''};
         _b = {'id': p.userB, 'name': names.length > 1 ? names[1] : ''};
       }
+      unawaited(_checkOpen());
     }
+  }
+
+  ChatPick221? get _pick {
+    if (_group) return _g == null ? null : ChatPick221.group(_g!['id'].toString(), label: _g!['name']?.toString() ?? '');
+    if (_a == null || _b == null || _a!['id'] == _b!['id']) return null;
+    return ChatPick221.direct(_a!['id'].toString(), _b!['id'].toString(), label: _label());
+  }
+
+  /// Bundle 314 (1b): a chat with a Sent / Reached / Coming request can't
+  /// be asked again (any range) - the sheet says "Already asked · Open it".
+  Future<void> _checkOpen() async {
+    final seq = ++_checkSeq;
+    final pick = _pick;
+    ChatRequestRow221? open;
+    if (pick != null) open = await widget.service.openRequestFor314(pick).catchError((_) => null);
+    if (!mounted || seq != _checkSeq) return;
+    setState(() => _open = open);
+  }
+
+  void _openIt() {
+    final o = _open;
+    if (o == null) return;
+    widget.onOpen?.call(o);
+    Navigator.of(context).pop(false);
   }
 
   bool get _ready =>
       !_sending &&
+      _open == null &&
       (_group ? _g != null : _a != null && _b != null && _a!['id'] != _b!['id'] && !_samePhone) &&
       (_ranges[_range] != 'dates' || _dates != null);
 
@@ -78,25 +122,32 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
     return da.isNotEmpty && da == db;
   }
 
-  bool get _meIn => _a?['me'] == true || _b?['me'] == true;
-
   String _label() => chatRequestLabel254(_a!, _b!);
 
+  /// Bundle 314 (1): no "Me" row - a chat I am in is already on my phone.
   Future<void> _pickPerson(bool first) async {
-    final people = await widget.service.people().catchError((_) => <Map<String, dynamic>>[]);
+    final people = await widget.service.pickerPeople314().catchError((_) => <Map<String, dynamic>>[]);
     if (!mounted) return;
     final picked = await _pickFrom(people, title: first ? L.t.firstPerson : L.t.secondPerson);
-    if (picked != null && mounted) setState(() => first ? _a = picked : _b = picked);
+    if (picked != null && mounted) {
+      setState(() => first ? _a = picked : _b = picked);
+      unawaited(_checkOpen());
+    }
   }
 
+  /// Bundle 314 (1): every group I am not in (server, this phone, nearby).
   Future<void> _pickGroup() async {
-    final groups = await widget.service.localGroups().catchError((_) => <Map<String, dynamic>>[]);
+    final groups = await widget.service.pickerGroups314().catchError((_) => <Map<String, dynamic>>[]);
     if (!mounted) return;
-    final picked = await _pickFrom(groups, title: L.t.group);
-    if (picked != null && mounted) setState(() => _g = picked);
+    final picked = await _pickFrom(groups, title: L.t.group, groups: true);
+    if (picked != null && mounted) {
+      setState(() => _g = picked);
+      unawaited(_checkOpen());
+    }
   }
 
-  Future<Map<String, dynamic>?> _pickFrom(List<Map<String, dynamic>> items, {required String title}) =>
+  Future<Map<String, dynamic>?> _pickFrom(List<Map<String, dynamic>> items,
+          {required String title, bool groups = false}) =>
       showAdminSheet216<Map<String, dynamic>>(context, builder: (ctx) {
         final t = A216Text.of(ctx);
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -105,7 +156,7 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
           if (items.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Text(L.t.nobodyKnownOnThisPhoneYet, style: t.rowSub),
+              child: Text(groups ? L.t.noOtherGroups314 : L.t.nobodyKnownOnThisPhoneYet, style: t.rowSub),
             ),
           for (final it in items)
             InkWell(
@@ -118,13 +169,11 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(
-                          it['me'] == true
-                              ? 'Me (${it['name'] ?? ''})'
-                              : ((it['name']?.toString() ?? '').isEmpty ? L.t.someone : it['name'].toString()),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: t.rowTitle),
+                      Text((it['name']?.toString() ?? '').isEmpty ? L.t.someone : it['name'].toString(),
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: t.rowTitle),
+                      // Bundle 314: "3 members" / "Nearby · 4 members".
+                      if (groups)
+                        Text(groupPickLine314(it), key: ValueKey('pick314_line_${it['id']}'), style: t.rowSub),
                       // Bundle 254 (21.2): @username + "old account".
                       if ((it['username']?.toString() ?? '').isNotEmpty || it['old'] == true)
                         Text(
@@ -137,14 +186,6 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
                             style: t.rowSub),
                     ]),
                   ),
-                  if (it['me'] == true)
-                    Container(
-                      key: const ValueKey('pick254_me_tag'),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                          color: A216.colors(ctx).blueSel, borderRadius: BorderRadius.circular(10)),
-                      child: Text('Me', style: t.custom(12, FontWeight.w700, A216.colors(ctx).blue)),
-                    ),
                 ]),
               ),
             ),
@@ -163,11 +204,9 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
   }
 
   Future<void> _send() async {
+    final pick = _pick;
+    if (pick == null) return;
     setState(() => _sending = true);
-    final pick = _group
-        ? ChatPick221.group(_g!['id'].toString(), label: _g!['name']?.toString() ?? '')
-        : ChatPick221.direct(_a!['id'].toString(), _b!['id'].toString(),
-            label: _label());
     try {
       await widget.service.request(pick, range: _ranges[_range], from: _dates?.start, to: _dates?.end);
       if (mounted) Navigator.of(context).pop(true);
@@ -175,6 +214,13 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
       if (!mounted) return;
       setState(() => _sending = false);
       adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
+      // Bundle 314 (1b): the server knew an open request this phone didn't.
+      if (error is ChatAdminRefused && error.code == alreadyAskedCode314 && error.openId.isNotEmpty) {
+        final rows = await widget.service.requests().catchError((_) => <ChatRequestRow221>[]);
+        if (!mounted) return;
+        final open = rows.where((r) => r.id == error.openId).firstOrNull;
+        if (open != null) setState(() => _open = open);
+      }
     }
   }
 
@@ -290,7 +336,10 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
         labels: [L.t.privateChat, L.t.group],
         selected: _group ? 1 : 0,
         height: 40,
-        onSelected: (i) => setState(() => _group = i == 1),
+        onSelected: (i) {
+          setState(() => _group = i == 1);
+          unawaited(_checkOpen());
+        },
       ),
       const SizedBox(height: 14),
       if (_group)
@@ -309,11 +358,14 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
             child: InkWell(
               key: const ValueKey('request307_swap'),
               customBorder: const CircleBorder(),
-              onTap: () => setState(() {
-                final x = _a;
-                _a = _b;
-                _b = x;
-              }),
+              onTap: () {
+                setState(() {
+                  final x = _a;
+                  _a = _b;
+                  _b = x;
+                });
+                unawaited(_checkOpen());
+              },
               child: SizedBox(width: 34, height: 34, child: Icon(Icons.swap_horiz_rounded, size: 18, color: k.blueText)),
             ),
           ),
@@ -331,12 +383,27 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
             style: k.text(13.5, FontWeight.w600, c.toneFg(A216Tone.red), 1.35)),
         const SizedBox(height: 10),
       ],
-      if (!_group && _meIn) ...[
-        Container(
-          key: const ValueKey('request307_me_note'),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(color: k.blueSoft, borderRadius: BorderRadius.circular(14)),
-          child: Text(L.t.youAlreadyHaveThisChatTheir, style: k.text(13.5, FontWeight.w500, k.blueText, 1.4)),
+      if (_open != null) ...[
+        Material(
+          color: k.blueSoft,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            key: const ValueKey('request314_already'),
+            borderRadius: BorderRadius.circular(14),
+            onTap: _openIt,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Row(children: [
+                Icon(Icons.schedule_rounded, size: 18, color: k.blueText),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('${L.t.alreadyAsked314} \u00b7 ${L.t.openIt314}',
+                      style: k.text(13.5, FontWeight.w700, k.blueText, 1.35)),
+                ),
+                Icon(Icons.chevron_right_rounded, size: 20, color: k.blueText),
+              ]),
+            ),
+          ),
         ),
         const SizedBox(height: 10),
       ],
@@ -344,4 +411,11 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
           key: const ValueKey('request221_send'), icon: _sending ? null : Icons.forum_rounded, onTap: _ready ? _send : null),
     ]);
   }
+}
+
+/// Bundle 314: the line under a group in the picker - "3 members" or
+/// "Nearby · 4 members" (a phone-only group a member reported).
+String groupPickLine314(Map<String, dynamic> g) {
+  final n = g['members'] is int ? g['members'] as int : int.tryParse('${g['members'] ?? ''}') ?? 0;
+  return g['nearby'] == true ? L.t.nearbyMembers314(n) : L.t.membersCount314(n);
 }

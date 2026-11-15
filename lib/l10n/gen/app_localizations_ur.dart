@@ -8304,4 +8304,33 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get aFriend313 => '⁧ایک دوست⁩';
+
+  @override
+  String get ownChat314 => '⁧آپ اس چیٹ میں ہیں۔ یہ پہلے سے آپ کے فون پر ہے۔⁩';
+
+  @override
+  String get alreadyAskedText314 =>
+      '⁧اس چیٹ کی ایک درخواست پہلے سے کھلی ہے۔ پہلے اسے کھولیں یا منسوخ کریں۔⁩';
+
+  @override
+  String get alreadyAsked314 => '⁧پہلے ہی مانگی گئی⁩';
+
+  @override
+  String get openIt314 => '⁧اسے کھولیں⁩';
+
+  @override
+  String get noOtherGroups314 => '⁧ابھی کوئی اور گروپ نہیں⁩';
+
+  @override
+  String membersCount314(Object? count) {
+    return '⁧⁨$count⁩ ممبرز⁩';
+  }
+
+  @override
+  String nearbyMembers314(Object? count) {
+    return '⁧قریب · ⁨$count⁩ ممبرز⁩';
+  }
+
+  @override
+  String get onYourPhone314 => '⁧آپ کے فون پر⁩';
 }

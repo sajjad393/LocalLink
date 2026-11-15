@@ -8273,4 +8273,33 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aFriend313 => 'a friend';
+
+  @override
+  String get ownChat314 => 'You are in this chat. It\'s already on your phone.';
+
+  @override
+  String get alreadyAskedText314 =>
+      'This chat already has an open request. Open it or cancel it first.';
+
+  @override
+  String get alreadyAsked314 => 'Already asked';
+
+  @override
+  String get openIt314 => 'Open it';
+
+  @override
+  String get noOtherGroups314 => 'No other groups yet';
+
+  @override
+  String membersCount314(Object? count) {
+    return '$count members';
+  }
+
+  @override
+  String nearbyMembers314(Object? count) {
+    return 'Nearby · $count members';
+  }
+
+  @override
+  String get onYourPhone314 => 'On your phone';
 }

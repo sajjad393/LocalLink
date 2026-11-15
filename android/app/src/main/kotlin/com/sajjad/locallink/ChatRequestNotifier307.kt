@@ -11,6 +11,9 @@ import android.graphics.drawable.Icon
 import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 
@@ -24,6 +27,15 @@ import androidx.core.app.NotificationCompat
  *   No messages are normal notifications (Android: only ongoing cards are
  *   promoted; the group summary never is).
  * - Android 7-15: NotificationCompat with the same words and a plain bar.
+ *
+ * Bundle 314 (3, pick B): on Android 16+ the track has a bubble at the start,
+ * a check at the end and a ring tracker that rocks +-4 every 3 s while the
+ * request is Sent / Reached ("same like the inner card"). Android has no
+ * animation in notifications, so a main-looper timer posts the card again
+ * with the next position. It stops after 10 min (`rock_until` from Dart), on
+ * the next step (parts / Ready / cancel) and when the card is removed.
+ * Android 15 and older keep the sliding line while waiting and a filled bar
+ * once parts come (USER PICK).
  *
  * Dart sends the final words (English or Urdu); this file only draws them.
  * Updates are silent (no sound channel). Ready is posted ONCE on the "Chat
@@ -46,6 +58,8 @@ object ChatRequestNotifier307 {
     const val BLUE = 0xFF209DEB.toInt()
     const val GREEN = 0xFF22C55E.toInt()
     const val GREY = 0xFF8E8E93.toInt()
+    /** Bundle 314: the card's "waiting" orange (Sent / Reached). */
+    const val ORANGE = 0xFFF59E0B.toInt()
 
     /** The stops on the track (Reached, Answer, Ready). */
     val POINTS = listOf(33, 66, 100)
@@ -63,7 +77,15 @@ object ChatRequestNotifier307 {
         val readyPointGreen: Boolean,
         val channel: String,
         val alert: Boolean,
+        /** Bundle 314: the tracker rocks (Android 16+, Sent / Reached). */
+        val rock: Boolean = false,
+        /** Bundle 314: Android 15 and older draw the sliding line. */
+        val compatSliding: Boolean = false,
     )
+
+    /** Bundle 314 (3): how far the tracker rocks and how often. */
+    const val ROCK_STEP = 4
+    const val ROCK_EVERY_MS = 3_000L
 
     fun plan(step: String, progress: Int, buzz: Boolean): Plan {
         val p = progress.coerceIn(0, 100)
@@ -74,14 +96,74 @@ object ChatRequestNotifier307 {
             "empty", "cancelled" -> Plan(step, p, false, ongoing = false, promoted = false, timeoutMs = EMPTY_TIMEOUT_MS,
                 openButton = false, grey = true, readyPointGreen = false, channel = CHANNEL_ID, alert = false)
             "reached", "coming" -> Plan(step, p, false, ongoing = true, promoted = true, timeoutMs = 0,
-                openButton = false, grey = false, readyPointGreen = false, channel = CHANNEL_ID, alert = false)
+                openButton = false, grey = false, readyPointGreen = false, channel = CHANNEL_ID, alert = false,
+                rock = step == "reached", compatSliding = step == "reached")
             else -> Plan("sent", p, true, ongoing = true, promoted = true, timeoutMs = 0,
-                openButton = false, grey = false, readyPointGreen = false, channel = CHANNEL_ID, alert = false)
+                openButton = false, grey = false, readyPointGreen = false, channel = CHANNEL_ID, alert = false,
+                rock = true, compatSliding = true)
         }
     }
 
     /** API 36+ draws the Live Update (ProgressStyle); below = the plain bar. */
     fun useProgressStyle(sdk: Int): Boolean = sdk >= 36
+
+    /** Bundle 314 (3): the tracker position on rock tick [tick] (0 = the
+     *  step's own place, then +4 / -4 / +4 ...), never outside 0-100. */
+    fun rockProgress(base: Int, tick: Int): Int {
+        val b = base.coerceIn(0, 100)
+        if (tick <= 0) return b
+        val at = if (tick % 2 == 1) b + ROCK_STEP else b - ROCK_STEP
+        return at.coerceIn(0, 100)
+    }
+
+    /** Bundle 314 (3): rock now? Android 16+, Sent / Reached, before [rockUntilMs]. */
+    /** Bundle 314 (3): the tracker ring in the step colour, like the card
+     *  (orange Sent / Reached, blue Coming, green Ready, grey ended). */
+    fun trackerColor(plan: Plan): Int = when {
+        plan.grey -> GREY
+        plan.step == "ready" -> GREEN
+        plan.step == "coming" -> BLUE
+        else -> ORANGE
+    }
+
+    fun shouldRock(sdk: Int, plan: Plan, rockUntilMs: Long, nowMs: Long): Boolean =
+        useProgressStyle(sdk) && plan.rock && rockUntilMs > nowMs
+
+    private val main by lazy { Handler(Looper.getMainLooper()) }
+    private val rockers = HashMap<String, Runnable>()
+
+    private fun stopRock(requestId: String) {
+        rockers.remove(requestId)?.let { main.removeCallbacks(it) }
+    }
+
+    private fun stopAllRocks() {
+        for (r in rockers.values) main.removeCallbacks(r)
+        rockers.clear()
+    }
+
+    /** Posts the same card again every 3 s with the next tracker place. */
+    private fun startRock(context: Context, id: String, args: Map<String, Any?>, rockUntilMs: Long) {
+        val app = context.applicationContext
+        var tick = 0
+        val r = object : Runnable {
+            override fun run() {
+                if (rockers[id] !== this) return
+                if (System.currentTimeMillis() >= rockUntilMs) {
+                    rockers.remove(id)
+                    post(app, args, 0) // back to the step's own place
+                    return
+                }
+                tick++
+                if (!post(app, args, tick)) {
+                    rockers.remove(id)
+                    return
+                }
+                main.postAtTime(this, SystemClock.uptimeMillis() + ROCK_EVERY_MS)
+            }
+        }
+        rockers[id] = r
+        main.postDelayed(r, ROCK_EVERY_MS)
+    }
 
     /** Stable, never 0 (the tag keeps it apart from message ids). */
     fun notificationId(requestId: String): Int {
@@ -133,9 +215,27 @@ object ChatRequestNotifier307 {
     fun show(context: Context, args: Map<String, Any?>) {
         val id = (args["request_id"] as? String)?.trim().orEmpty()
         if (id.isEmpty()) return
-        if (!LocalLinkNotificationManager.notificationsEnabled(context)) return
-        initialize(context, (args["channel_name"] as? String).orEmpty(), (args["ready_channel_name"] as? String).orEmpty())
+        stopRock(id) // Bundle 314: a new step / number = a new card
+        if (!post(context, args, 0)) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        showSummary(context, manager, args)
+        val step = plan((args["step"] as? String).orEmpty(), (args["progress"] as? Number)?.toInt() ?: 0, false)
+        val until = (args["rock_until"] as? Number)?.toLong() ?: 0L
+        if (shouldRock(Build.VERSION.SDK_INT, step, until, System.currentTimeMillis())) {
+            // Only the first post may sound (Ready); the rock posts never do.
+            startRock(context, id, args + ("buzz" to false), until)
+        }
+    }
+
+    /** Draws one card; [tick] > 0 = a rock post. False = not posted. */
+    private fun post(context: Context, args: Map<String, Any?>, tick: Int): Boolean {
+        val id = (args["request_id"] as? String)?.trim().orEmpty()
+        if (id.isEmpty()) return false
+        if (!LocalLinkNotificationManager.notificationsEnabled(context)) return false
+        if (tick == 0) {
+            initialize(context, (args["channel_name"] as? String).orEmpty(), (args["ready_channel_name"] as? String).orEmpty())
+        }
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
         val plan = plan((args["step"] as? String).orEmpty(), (args["progress"] as? Number)?.toInt() ?: 0, args["buzz"] == true)
         val title = (args["title"] as? String)?.trim().orEmpty()
         val text = (args["text"] as? String)?.trim().orEmpty()
@@ -153,25 +253,27 @@ object ChatRequestNotifier307 {
         val icon = facesIcon(faces)
         // Same rule as useProgressStyle(); written out so Android lint sees the API check.
         val notification = if (Build.VERSION.SDK_INT >= 36) {
-            buildLive(context, plan, title, text, names, short, openLabel, icon, whenMs, open)
+            buildLive(context, plan, title, text, names, short, openLabel, icon, whenMs, open, rockProgress(plan.progress, tick))
         } else {
             buildCompat(context, plan, title, text, names, openLabel, icon, whenMs, open)
         }
         try {
             manager.notify(TAG, notificationId(id), notification)
         } catch (_: SecurityException) {
-            return
+            return false
         }
-        showSummary(context, manager, args)
+        return true
     }
 
     fun cancel(context: Context, requestId: String, args: Map<String, Any?> = emptyMap()) {
+        stopRock(requestId.trim())
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         if (requestId.isNotBlank()) manager.cancel(TAG, notificationId(requestId))
         showSummary(context, manager, args)
     }
 
     fun cancelAll(context: Context) {
+        stopAllRocks()
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         try {
             for (n in manager.activeNotifications) {
@@ -232,18 +334,23 @@ object ChatRequestNotifier307 {
         icon: Bitmap?,
         whenMs: Long,
         open: PendingIntent,
+        at: Int,
     ): Notification {
+        // Bundle 314 (3, pick B): bubble -> ring tracker -> check; the ring
+        // stands on its step (Sent 4, Reached 33) and rocks from there.
         val style = Notification.ProgressStyle()
-            .setStyledByProgress(false)
+            .setStyledByProgress(true) // filled up to the tracker
             .setProgressSegments(listOf(Notification.ProgressStyle.Segment(100).setColor(if (plan.grey) GREY else BLUE)))
             .setProgressPoints(POINTS.map { at ->
                 Notification.ProgressStyle.Point(at).setColor(
                     if (at == 100 && plan.readyPointGreen) GREEN else if (plan.grey) GREY else BLUE,
                 )
             })
-            .setProgressTrackerIcon(Icon.createWithResource(context, android.R.drawable.sym_action_chat))
-            .setProgress(plan.progress)
-            .setProgressIndeterminate(plan.indeterminate)
+            .setProgressTrackerIcon(Icon.createWithResource(context, R.drawable.ic_req314_tracker).setTint(trackerColor(plan)))
+            .setProgressStartIcon(Icon.createWithResource(context, R.drawable.ic_req314_start))
+            .setProgressEndIcon(Icon.createWithResource(context, R.drawable.ic_req314_end))
+            .setProgress(at)
+            .setProgressIndeterminate(false)
         val b = Notification.Builder(context, plan.channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(BLUE)
@@ -265,7 +372,7 @@ object ChatRequestNotifier307 {
                     .setSmallIcon(R.drawable.ic_notification)
                     .setColor(BLUE)
                     .setContentTitle(title)
-                    .setStyle(Notification.ProgressStyle().setProgress(plan.progress).setProgressIndeterminate(plan.indeterminate))
+                    .setStyle(Notification.ProgressStyle().setProgress(plan.progress).setProgressIndeterminate(false))
                     .build(),
             )
         if (names.isNotEmpty()) b.setSubText(names)
@@ -315,7 +422,9 @@ object ChatRequestNotifier307 {
                     .setContentTitle(title)
                     .build(),
             )
-        if (plan.step != "ready" && !plan.grey) b.setProgress(100, plan.progress, plan.indeterminate)
+        // Bundle 314 (USER PICK): the sliding line while waiting (Sent /
+        // Reached), a filled bar once parts come.
+        if (plan.step != "ready" && !plan.grey) b.setProgress(100, plan.progress, plan.compatSliding)
         if (!plan.alert) b.setSilent(true)
         if (plan.alert && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             // Below Android 8 there are no channels: the message tone only (no buzz permission).

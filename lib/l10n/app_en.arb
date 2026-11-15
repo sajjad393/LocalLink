@@ -5706,5 +5706,27 @@
       }
     }
   },
-  "aFriend313": "a friend"
+  "aFriend313": "a friend",
+  "ownChat314": "You are in this chat. It's already on your phone.",
+  "alreadyAskedText314": "This chat already has an open request. Open it or cancel it first.",
+  "alreadyAsked314": "Already asked",
+  "openIt314": "Open it",
+  "noOtherGroups314": "No other groups yet",
+  "membersCount314": "{count} members",
+  "@membersCount314": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "nearbyMembers314": "Nearby · {count} members",
+  "@nearbyMembers314": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "onYourPhone314": "On your phone"
 }

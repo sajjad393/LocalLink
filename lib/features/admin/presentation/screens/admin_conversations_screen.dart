@@ -144,7 +144,8 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     final s = _svc;
     if (s == null) return;
     final before = {for (final r in _rows) r.id};
-    final sent = await showChatRequestSheet(context, service: s, preset: pick, online: _online);
+    final sent = await showChatRequestSheet(context,
+        service: s, preset: pick, online: _online, onOpen: (r) => unawaited(_openAsked314(r)));
     if (sent == true && mounted) {
       adminSnack216(context, _online ? L.t.requestSentByTheServer : L.t.requestSentToNearbyPhones);
       setState(() => _tab = 1);
@@ -155,6 +156,21 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       if (fresh.isNotEmpty) setState(() => _focusId = fresh.first.id);
     }
   }
+
+  /// Bundle 314 (1b): "Already asked · Open it" - the open request's card
+  /// on the Requests tab (or its viewer once parts came).
+  Future<void> _openAsked314(ChatRequestRow221 r) async {
+    if (!mounted) return;
+    if (r.parts > 0 || r.ready) return _open(r);
+    setState(() {
+      _tab = 1;
+      _focusId = r.id;
+    });
+  }
+
+  /// Bundle 314 (1b): a Sent / Reached / Coming request (blocks Get chat).
+  static bool isOpen314(ChatRequestRow221 r) =>
+      r.state == 'pending' && !r.ready && !r.empty && !r.closed && !r.cancelled;
 
   Future<void> _open(ChatRequestRow221 r) async {
     final s = _svc;
@@ -890,16 +906,30 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     final group = chat['kind'] == 'group';
     final req = _requestOf(chat);
     final pick = chatPickOfRow(chat);
+    // Bundle 314 (1 / K1): a chat I am in is already on my phone - no Get
+    // chat button and the row doesn't open the sheet.
+    final mine = chat['me'] == true;
+    // Bundle 314 (1b): only an open or a ready request shows its chip; an
+    // empty / closed one lets the Owner ask again.
+    final shown = req != null && (isOpen314(req) || (req.ready && !req.closed)) ? req : null;
     final Widget right;
-    if (req == null) {
+    final VoidCallback? tap;
+    if (mine) {
+      right = Text(L.t.onYourPhone314,
+          key: ValueKey('chats314_mine_${chat['id']}'), style: k.text(12.5, FontWeight.w600, k.grey, 1.2));
+      tap = shown != null && (shown.parts > 0 || shown.ready) ? () => _open(shown) : null;
+    } else if (shown == null) {
       right = _capsule(context, L.t.getChat, ValueKey('chats221_ask_${chat['id']}'), () => _ask(pick));
+      tap = () => _ask(pick);
     } else {
-      final step = RequestStep307.of(req);
+      final step = RequestStep307.of(shown);
       right = Chip307(step.step == Step307.coming ? step.short : step.chip, step.step);
+      // K1: an open request opens (never a second sheet).
+      tap = () => _openAsked314(shown);
     }
     return InkWell(
       key: ValueKey('chats221_row_${chat['id']}'),
-      onTap: req != null && (req.parts > 0 || req.ready) ? () => _open(req) : () => _ask(pick),
+      onTap: tap,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
         child: Row(children: [

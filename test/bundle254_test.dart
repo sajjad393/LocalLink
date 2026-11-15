@@ -249,7 +249,9 @@ void main() {
       expect(chatRequestLabel254(_people[0], _people[2]), 'sajjad & noshad');
     });
 
-    testWidgets('picker: Me on top, @username + old account; same phone blocks Send; Me note',
+    // Bundle 314 (Issue 1, USER PICK "hide"): the picker has no "Me" row any
+    // more (a chat I am in is already on my phone); the rest stays.
+    testWidgets('picker: no Me row (314), @username + old account; same phone blocks Send',
         (tester) async {
       await tester.runAsync(loadRoboto216);
       tester.view.physicalSize = const Size(400 * 3, 900 * 3);
@@ -272,8 +274,9 @@ void main() {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      expect(find.text('Me (sajjad)'), findsOneWidget);
-      expect(find.byKey(const ValueKey('pick254_me_tag')), findsOneWidget);
+      expect(find.text('Me (sajjad)'), findsNothing);
+      expect(find.byKey(const ValueKey('pick254_me_tag')), findsNothing);
+      expect(find.byKey(const ValueKey('pick221_u-me')), findsNothing);
       expect(find.text('@noshad · old account'), findsOneWidget);
       expect(find.text('@noshad2'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('pick221_u-n-old')));
@@ -284,14 +287,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('request221_send')));
       await tester.pump();
       expect(server.created, isEmpty);
-      await pick('request221_first', 'u-me');
-      expect(find.byKey(const ValueKey('request254_same_phone')), findsNothing);
-      expect(find.textContaining('You already have this chat'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('request221_send')));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-      await tester.pump();
-      expect(server.created, hasLength(1));
-      expect(server.created.single['user_a'], 'u-me');
+      expect(find.textContaining('You already have this chat'), findsNothing);
     });
 
     test('every target phone has no copy: one CHAT_REQ_EMPTY each, the request closes "No messages"',

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/server_clock_255.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/data/actions/request_step_307.dart';
 import 'package:locallink/l10n/l10n.dart';
@@ -234,6 +235,22 @@ class ChatRequestNotifier307 {
     };
   }
 
+  /// Bundle 314 (3): the tracker stops rocking this long after "made".
+  static const Duration rockFor314 = Duration(minutes: 10);
+
+  /// Bundle 314 (3, USER PICK): "made" in this phone's clock. The server
+  /// stamps a request with the PC clock; when that clock is wrong
+  /// ([ServerClock255.wrong] = server minus phone) the card said "2h" for a
+  /// request made a minute ago (16 Nov). A request made on this phone
+  /// offline has this phone's own time.
+  @visibleForTesting
+  static int madeOnPhoneClock314(ChatRequestRow221 r) {
+    final made = DateTime.tryParse(r.madeAt)?.millisecondsSinceEpoch ?? 0;
+    final wrong = ServerClock255.wrong.value;
+    if (made == 0 || r.offline || wrong == null) return made;
+    return made - wrong.inMilliseconds;
+  }
+
   static String _title(ChatRequestRow221 r) => r.label.isEmpty ? L.t.chat : r.label;
 
   static List<String> namesOf(ChatRequestRow221 r) =>
@@ -241,7 +258,8 @@ class ChatRequestNotifier307 {
 
   /// The words + numbers of one card (the signature; `buzz` is added later).
   static Map<String, Object?> _args(ChatRequestRow221 r, RequestStep307 st, DateTime now) {
-    final made = DateTime.tryParse(r.madeAt)?.millisecondsSinceEpoch ?? 0;
+    final made = madeOnPhoneClock314(r);
+    final waiting = st.step == Step307.sent || st.step == Step307.reached;
     return {
       'request_id': r.id,
       'step': st.step.name,
@@ -253,6 +271,9 @@ class ChatRequestNotifier307 {
       'short': st.short,
       // Ready moves to the top of the group (newest time).
       'when': st.step == Step307.ready ? 0 : made,
+      // Bundle 314 (3, pick B): the tracker rocks while Sent / Reached, for
+      // at most [rockFor314] after the request was made (Android 16+).
+      'rock_until': waiting && made > 0 ? made + rockFor314.inMilliseconds : 0,
       'open_label': L.t.openChat307,
       'channel_name': L.t.chatRequestsChannel307,
       'ready_channel_name': L.t.chatReady307,
