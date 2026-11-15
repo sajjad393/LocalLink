@@ -442,7 +442,8 @@ class Chip307 extends StatelessWidget {
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (check) ...[Icon(Icons.check_rounded, size: 13, color: fg), const SizedBox(width: 3)],
-        Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12, FontWeight.w700, fg, 1.25))),
+        // Bundle 313 (E5): never cut (a long Urdu chip on a small phone wraps).
+        Flexible(child: Text(text, style: k.text(12, FontWeight.w700, fg, 1.25))),
       ]),
     );
   }
@@ -522,8 +523,7 @@ class _LiveCard307State extends State<LiveCard307> with SingleTickerProviderStat
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(widget.brand,
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(13, FontWeight.w700, k.grey, 1.2)),
+            child: Text(widget.brand, style: k.text(13, FontWeight.w700, k.grey, 1.2)), // 313 (E5)
           ),
           AvatarPair307(names: widget.names, size: 36, group: widget.group),
         ]),
@@ -559,23 +559,17 @@ class _LiveCard307State extends State<LiveCard307> with SingleTickerProviderStat
                 },
               ),
               const SizedBox(height: 4),
-              Text(s.sub,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: k.text(13, FontWeight.w400, k.grey, 1.25)),
+              Text(s.sub, style: k.text(13, FontWeight.w400, k.grey, 1.25)), // 313 (E5)
             ]),
           ),
           const SizedBox(width: 10),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 140),
             child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text(widget.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: k.text(14, FontWeight.w700, k.ink, 1.2)),
+              // 313 (E5): full names and dates (they wrap), right-aligned.
+              Text(widget.title, textAlign: TextAlign.end, style: k.text(14, FontWeight.w700, k.ink, 1.2)),
               const SizedBox(height: 2),
-              Text(widget.range,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12, FontWeight.w400, k.grey, 1.2)),
+              Text(widget.range, textAlign: TextAlign.end, style: k.text(12, FontWeight.w400, k.grey, 1.2)),
             ]),
           ),
         ]),
@@ -662,12 +656,16 @@ class Segmented307 extends StatelessWidget {
                   behavior: HitTestBehavior.opaque,
                   onTap: () => onSelected(i),
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    // Bundle 313 (E5): a fixed-height pill - the whole word gets
+                    // a bit smaller on a small phone, never "...".
                     Flexible(
-                      child: Text(labels[i],
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: k.text(14, i == selected ? FontWeight.w700 : FontWeight.w500,
-                              i == selected ? k.ink : k.grey, 1.1)),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(labels[i],
+                            maxLines: 1,
+                            style: k.text(14, i == selected ? FontWeight.w700 : FontWeight.w500,
+                                i == selected ? k.ink : k.grey, 1.1)),
+                      ),
                     ),
                     if (counts != null && counts!.length > i) ...[
                       const SizedBox(width: 6),
@@ -710,8 +708,7 @@ class SectionHead307 extends StatelessWidget {
         Expanded(
           child: Row(children: [
             Flexible(
-              child: Text(title,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(17, FontWeight.w700, k.ink, 1.2, -0.2)),
+              child: Text(title, style: k.text(17, FontWeight.w700, k.ink, 1.2, -0.2)), // 313 (E5)
             ),
             if (count != null) ...[
               const SizedBox(width: 8),
@@ -741,12 +738,17 @@ const LinearGradient kBlueGradient307 =
 
 /// Big blue gradient button (sheet "Get chat"), presses to .96.
 class BigButton307 extends StatefulWidget {
-  const BigButton307(this.label, {super.key, this.onTap, this.icon, this.height = 56, this.radius = 18});
+  const BigButton307(this.label,
+      {super.key, this.onTap, this.icon, this.height = 56, this.radius = 18, this.padH = 0});
   final String label;
   final VoidCallback? onTap;
   final IconData? icon;
   final double height;
   final double radius;
+
+  /// Bundle 313 (E3): room left and right of the words (the round "New
+  /// request" button had none: the text touched its end). 0 = as before.
+  final double padH;
 
   @override
   State<BigButton307> createState() => _BigButton307State();
@@ -773,6 +775,7 @@ class _BigButton307State extends State<BigButton307> {
           duration: Motion307.d(context, 200),
           child: Container(
             height: widget.height,
+            padding: widget.padH > 0 ? EdgeInsets.symmetric(horizontal: widget.padH) : null,
             decoration: BoxDecoration(
               gradient: kBlueGradient307,
               borderRadius: BorderRadius.circular(widget.radius),
@@ -785,11 +788,14 @@ class _BigButton307State extends State<BigButton307> {
                 Icon(widget.icon, color: Colors.white, size: 20),
                 const SizedBox(width: 8),
               ],
+              // Bundle 313 (E5): fixed height - smaller, never "...".
               Flexible(
-                child: Text(widget.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: k.text(widget.height >= 52 ? 17 : 15.5, FontWeight.w700, Colors.white, 1.1)),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(widget.label,
+                      maxLines: 1,
+                      style: k.text(widget.height >= 52 ? 17 : 15.5, FontWeight.w700, Colors.white, 1.1)),
+                ),
               ),
             ]),
           ),
@@ -802,12 +808,15 @@ class _BigButton307State extends State<BigButton307> {
 /// "+ New request" floating capsule (56 high).
 class Fab307 extends StatelessWidget {
   const Fab307(this.label, {super.key, required this.onTap});
+
+  /// Bundle 313 (E3).
+  static const double padH = 22;
   final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => IntrinsicWidth(
-        child: BigButton307(label, onTap: onTap, icon: Icons.add_rounded, height: 56, radius: 28),
+        child: BigButton307(label, onTap: onTap, icon: Icons.add_rounded, height: 56, radius: 28, padH: Fab307.padH),
       );
 }
 

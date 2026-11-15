@@ -196,9 +196,9 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_title(r), maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(17, FontWeight.w700, k.ink)),
+              Text(_title(r), style: k.text(17, FontWeight.w700, k.ink)),
               const SizedBox(height: 2),
-              Text(_range(r), maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(13, FontWeight.w400, k.grey)),
+              Text(_range(r), style: k.text(13, FontWeight.w400, k.grey)),
             ]),
           ),
           ProgressRing307(step: step, size: 44),
@@ -341,14 +341,17 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
           const OwnerChip221(),
         ]),
         const SizedBox(height: 10),
-        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          Flexible(
-            child: Text(L.en('Conversations'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: k.text(30, FontWeight.w700, k.ink, 1.1, -0.6)),
-          ),
-          const SizedBox(width: 10),
+        // Bundle 313 (E1): the title is never cut - with no room the pill
+        // moves under it (was one Row: "Conversatio..." on a 360 dp phone).
+        Wrap(
+            key: const ValueKey('conv313_title_wrap'),
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 10,
+            runSpacing: 6,
+            children: [
+          Text(L.en('Conversations'),
+              key: const ValueKey('conv313_title'),
+              style: k.text(30, FontWeight.w700, k.ink, 1.1, -0.6)),
           ServerPill307(
             online: _online,
             label: _online ? L.t.serverConnected : L.t.noServer307,
@@ -516,7 +519,10 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
               },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
+          // Bundle 313 (E2): the clip (for the swipe) leaves room for the card's
+          // soft shadow - before, it cut the shadow into grey square corners.
           child: ClipRect(
+            clipper: const ShadowRoom313(),
             child: AnimatedSwitcher(
               duration: Motion307.d(context, r.id == _dropId ? 600 : 550),
               switchInCurve: Curves.easeOutCubic,
@@ -590,20 +596,22 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(_title(r),
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(16, FontWeight.w700, k.ink, 1.2)),
+                      style: k.text(16, FontWeight.w700, k.ink, 1.2)),
                   const SizedBox(height: 2),
                   Text(step.sub,
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(13.5, FontWeight.w400, k.grey, 1.3)),
+                      style: k.text(13.5, FontWeight.w400, k.grey, 1.3)),
                   const SizedBox(height: 6),
-                  Row(children: [
+                  // Bundle 313 (E5): chip, range and Cancel wrap to a 2nd line on
+                  // a small phone / big text (was one Row: cut or overflowed).
+                  Wrap(
+                      key: ValueKey('conv313_meta_${r.id}'),
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
                     Chip307(chip, step.step),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(_range(r),
-                          maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12.5, FontWeight.w400, k.grey, 1.2)),
-                    ),
+                    Text(_range(r), style: k.text(12.5, FontWeight.w400, k.grey, 1.2)),
                     if (_canCancel(r)) ...[
-                      const SizedBox(width: 6),
                       GestureDetector(
                         key: ValueKey('requests221_cancel_${r.id}'),
                         behavior: HitTestBehavior.opaque,
@@ -651,7 +659,8 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     final step = RequestStep307.of(r);
     final made = DateTime.tryParse(r.madeAt)?.toLocal();
     final sub = [
-      if (r.of > 0) L.t.tapToOpenParts307(r.of).split('\u00b7').last.trim(),
+      if (r.of == 1) L.t.onePart313, // 313 (E4)
+      if (r.of > 1) L.t.tapToOpenParts307(r.of).split('\u00b7').last.trim(),
       if (made != null) dMMM216(made),
     ].join(' \u00b7 ');
     final opens = step.step == Step307.ready || r.parts > 0;
@@ -666,7 +675,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(_title(r),
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(15, FontWeight.w700, k.ink, 1.2)),
+                  style: k.text(15, FontWeight.w700, k.ink, 1.2)),
               const SizedBox(height: 4),
               Row(children: [
                 Chip307(step.chip, step.step, check: step.step == Step307.ready),
@@ -674,7 +683,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
                   const SizedBox(width: 8),
                   Flexible(
                     child: Text(sub,
-                        maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12.5, FontWeight.w400, k.grey, 1.2)),
+                        style: k.text(12.5, FontWeight.w400, k.grey, 1.2)),
                   ),
                 ],
               ]),
@@ -739,7 +748,8 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       if (ready.isNotEmpty) ...[
         _pad(SectionHead307(L.t.readyToReadSection307, count: ready.length)),
         SizedBox(
-          height: 146,
+          // Bundle 313 (E5): full names (no "…") - the row grows to fit.
+          height: _readyHeight(context, ready),
           child: ListView.separated(
             key: const ValueKey('chats307_ready'),
             scrollDirection: Axis.horizontal,
@@ -799,6 +809,41 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       ? (chat['group_name']?.toString() ?? L.t.group)
       : chatNamesOfRow(chat).join(' & ');
 
+  /// Bundle 313 (E5): the ready tiles' height - 146 or more, so the full
+  /// name and line fit (they wrap) at any text size.
+  double _readyHeight(BuildContext context, List<Map<String, dynamic>> ready) {
+    final k = K307.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    final dir = Directionality.of(context);
+    double tall(String text, TextStyle style) {
+      final tp = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: dir,
+        textScaler: scaler,
+      )..layout(maxWidth: readyTileWidth313 - 24);
+      final h = tp.height;
+      tp.dispose();
+      return h;
+    }
+
+    var most = 146.0;
+    for (final chat in ready) {
+      final group = chat['kind'] == 'group';
+      final h = 24 + 34 + 12 + // padding, faces, least gap
+          tall(_chatTitle(chat), k.text(14, FontWeight.w700, k.ink, 1.2)) +
+          2 +
+          tall(group ? L.t.group : _chatSubShort(chat), k.text(12, FontWeight.w400, k.grey, 1.2)) +
+          8 +
+          10 +
+          tall(L.t.open, k.text(12.5, FontWeight.w700, k.green, 1.2)) +
+          2; // rounding room
+      if (h > most) most = h;
+    }
+    return most.ceilToDouble();
+  }
+
+  static const double readyTileWidth313 = 142;
+
   Widget _readyTile(BuildContext context, Map<String, dynamic> chat) {
     final k = K307.of(context);
     final r = _readyReq(chat)!;
@@ -810,17 +855,17 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
         borderRadius: BorderRadius.circular(20),
         onTap: () => _open(r),
         child: Container(
-          width: 142,
+          width: readyTileWidth313,
           padding: const EdgeInsets.all(12),
           decoration: k.cardBox(),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             AvatarPair307(names: chatNamesOfRow(chat), size: 34, group: group),
             const Spacer(),
             Text(_chatTitle(chat),
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(14, FontWeight.w700, k.ink, 1.2)),
+                style: k.text(14, FontWeight.w700, k.ink, 1.2)),
             const SizedBox(height: 2),
             Text(group ? L.t.group : _chatSubShort(chat),
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12, FontWeight.w400, k.grey, 1.2)),
+                style: k.text(12, FontWeight.w400, k.grey, 1.2)),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
@@ -863,10 +908,10 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(_chatTitle(chat),
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(16, FontWeight.w700, k.ink, 1.2)),
+                  style: k.text(16, FontWeight.w700, k.ink, 1.2)),
               const SizedBox(height: 3),
               Text(_chatSub(chat),
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(13.5, FontWeight.w400, k.grey, 1.25)),
+                  style: k.text(13.5, FontWeight.w400, k.grey, 1.25)),
             ]),
           ),
           const SizedBox(width: 8),
@@ -1136,4 +1181,22 @@ class PartsBar221 extends StatelessWidget {
           ),
         ),
       );
+}
+
+
+/// Bundle 313 (E2): the Live card's clip. Left / right = the screen edges
+/// (the 16 dp page padding), up / down = room for the card shadow
+/// (`K307.shadow`: blur 34, 14 dp down).
+class ShadowRoom313 extends CustomClipper<Rect> {
+  const ShadowRoom313();
+
+  static const double side = 16;
+  static const double up = 40;
+  static const double down = 56;
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(-side, -up, size.width + side, size.height + down);
+
+  @override
+  bool shouldReclip(ShadowRoom313 oldClipper) => false;
 }

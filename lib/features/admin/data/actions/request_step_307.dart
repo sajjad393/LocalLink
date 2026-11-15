@@ -132,7 +132,7 @@ class RequestStep307 {
         bigBefore: b,
         highlight: h,
         bigAfter: a,
-        sub: of > 0 ? t.tapToOpenParts307(of) : t.ready,
+        sub: of > 1 ? t.tapToOpenParts307(of) : (of == 1 ? t.tapToOpenOnePart313 : t.ready), // 313 (E4)
         chip: t.ready,
         short: t.ready,
         live: of > 0 && !r.opened && !r.closed,

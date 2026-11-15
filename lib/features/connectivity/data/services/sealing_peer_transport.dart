@@ -895,6 +895,15 @@ class SealingPeerTransport implements PeerTransportContract {
     });
   }
 
+  /// Bundle 313 (D2): sends [payload] ONLY inside this friend's lock. A phone
+  /// I can't lock for (or no key) gets nothing - never the plain fallback of
+  /// [send]. True = sent.
+  Future<bool> sendLockedOnly313(String peerId, Map<String, dynamic> payload) async {
+    if (!_capable.contains(peerId)) return false;
+    if (!MessageSealService.shouldSeal(payload['type']?.toString())) return false;
+    return _sendSealed(peerId, payload);
+  }
+
   Future<bool> _sendSealed(String peerId, Map<String, dynamic> payload) async {
     final sealed = await _trySeal(peerId, payload);
     if (sealed == null) return false;

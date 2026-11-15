@@ -5657,5 +5657,54 @@
       }
     }
   },
-  "noServerTip307": "No server · requests go to nearby phones"
+  "noServerTip307": "No server · requests go to nearby phones",
+  "onePart313": "1 part",
+  "tapToOpenOnePart313": "Tap to open · 1 part",
+  "getChatsBack313": "Get chats back from friends",
+  "getChatsBackSub313": "Messages and voice notes from friends' phones",
+  "waitingFriendsNearby313": "Waiting for friends nearby",
+  "askingFriend313": "Asking {name}…",
+  "@askingFriend313": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "gettingFrom313": "Getting from {name}… {got} of {total}",
+  "@gettingFrom313": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      },
+      "got": {
+        "type": "Object?"
+      },
+      "total": {
+        "type": "Object?"
+      }
+    }
+  },
+  "restoreDone313": "Done",
+  "noFriendsNearby313": "No friends nearby now · open LinkUp near a friend",
+  "gotMessagesBack313": "Got {count} messages back from {name}",
+  "@gotMessagesBack313": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      },
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "gotOneMessageBack313": "Got 1 message back from {name}",
+  "@gotOneMessageBack313": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "aFriend313": "a friend"
 }

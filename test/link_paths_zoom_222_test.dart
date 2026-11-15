@@ -97,6 +97,6 @@ void main() {
     final src = readEnglish304('lib/features/admin/presentation/widgets/link_paths_map.dart');
     final part = src.substring(src.indexOf('/// Bundle 217: when the map lines may move')).replaceAll('\r\n', '\n');
     expect(sha256.convert(utf8.encode(part)).toString(),
-        '416dd1002fbc074f413c0af7ac05db14137155bfe2cee4b8bf49337199d0c425'); // 308 (F3): red X + "Off" on the down server line; was 845b290a... from 304 (H3): words only (L.en, Urdu font fallback, no const on the Blocked tag); was 2365d7d5... from Bundle 298 (D): small map spread - people on both sides of You (was f3e46e29... from 291 B-4)
+        'bfbcb25bbebbca0fd1baf420479280e9c41f755c054ed0c31843b1e42634a96b'); // 313 (C): pill behind the small map's Server name; was 416dd100... from 308 (F3): red X + "Off" on the down server line; was 845b290a... from 304 (H3): words only (L.en, Urdu font fallback, no const on the Blocked tag); was 2365d7d5... from Bundle 298 (D): small map spread - people on both sides of You (was f3e46e29... from 291 B-4)
   });
 }

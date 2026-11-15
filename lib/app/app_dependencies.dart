@@ -120,6 +120,9 @@ import 'package:locallink/features/messaging/data/repositories/messaging_reposit
 import 'package:locallink/features/groups/data/repositories/group_messaging_repository.dart';
 import 'package:locallink/features/groups/data/repositories/group_repository.dart';
 import 'package:locallink/features/messaging/data/services/reliable_messaging_service.dart';
+import 'package:locallink/features/messaging/data/services/chat_restore_313.dart';
+import 'package:locallink/features/messaging/data/services/chat_restore_store_313.dart';
+import 'package:locallink/core/identity/person_name_258.dart';
 import 'package:locallink/features/recovery/data/repositories/recovery_repository.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
 import 'package:locallink/features/recovery/data/services/account_restoration_service.dart';
@@ -1158,6 +1161,45 @@ class AppDependencies {
   /// Bundle 221: start the carrier, the daily sweep (hidden files after 60
   /// days, the admin phone's opened copies after 24 h) and the late-copy
   /// listener (a message deleted completely that still arrives).
+  /// Bundle 313 (D): get chats back from friends' phones (locked link only).
+  ChatRestore313? chatRestore313;
+
+  void _startRestore313() {
+    if (chatRestore313 != null) return;
+    final link = directTransport;
+    if (link is! SealingPeerTransport) return; // locked only
+    final restoreStore = StoreRestore313(store);
+    final restore = ChatRestore313(
+      transport: link,
+      sendLocked: link.sendLockedOnly313,
+      store: restoreStore,
+      sealCapable: link.isSealCapable,
+      isNear: (id) => PresenceHub.instance.statusOf(id) == PresenceStatus.nearby,
+      allowFile: (fileId) => messaging.allowIncomingFile(fileId),
+      pushFile: messaging.pushRestoredFile313,
+      batteryOk: () => !wifiDirectFallback.batteryLow,
+      nameOf: (id) => NameBook258.instance.lastKnown(id) ?? '',
+    );
+    chatRestore313 = restore;
+    ChatRestore313.instance = restore;
+    // D4: older group messages for a member who reinstalled (G4 `r:1`).
+    final nearby = groupNearby;
+    if (nearby != null) {
+      nearby.restoring313 = () => restore.armed;
+      nearby.olderMessages313 = store.groupMessages;
+      nearby.saveRestored313 = (m) => restoreStore.saveGroup({
+            'id': m.id,
+            'group_id': m.groupId,
+            'sender_id': m.senderId,
+            'body': m.body,
+            'created_at': m.createdAt,
+          }, mine: m.senderId == store.deviceId);
+    }
+    unawaited(restore.start().catchError((Object e) {
+      AppLogger.warning('RESTORE313_START_FAILED', detail: '$e');
+    }));
+  }
+
   void _start221() {
     chatCarrier221.start();
     ChatRequestNotifier307.instance?.start(); // Bundle 307 (C3)
@@ -1659,6 +1701,7 @@ class AppDependencies {
     unawaited(adminRoles.start().catchError((Object _) {})); // Bundle 214
     adminActions.start(); // Bundle 220
     _start221(); // Bundle 221
+    _startRestore313(); // Bundle 313 (D)
     updateRequests.start(); // Bundle 213
     _startSilentUpdate275(); // Bundle 275
     _startAutoFetch(); // Bundle 208 (E)
@@ -1746,6 +1789,7 @@ class AppDependencies {
     unawaited(adminRoles.start().catchError((Object _) {})); // Bundle 214
     adminActions.start(); // Bundle 220
     _start221(); // Bundle 221
+    _startRestore313(); // Bundle 313 (D)
     updateRequests.start(); // Bundle 213
     _startSilentUpdate275(); // Bundle 275
     _startTls243(); // Bundle 243
@@ -1875,6 +1919,13 @@ class AppDependencies {
 
   Future<void> dispose() async {
     ChatRequestNotifier307.instance?.stop(); // Bundle 307 (C3)
+    // Bundle 313 (D)
+    final restore313 = chatRestore313;
+    chatRestore313 = null;
+    if (restore313 != null) {
+      if (identical(ChatRestore313.instance, restore313)) ChatRestore313.instance = null;
+      unawaited(restore313.stop());
+    }
     // Bundle 218: only clear the join hook if it is still ours.
     if (OfflineAccountSyncService.onJoined218 == _onJoined218) {
       OfflineAccountSyncService.onJoined218 = null;

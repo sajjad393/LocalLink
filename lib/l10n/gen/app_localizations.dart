@@ -13973,6 +13973,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No server · requests go to nearby phones'**
   String get noServerTip307;
+
+  /// No description provided for @onePart313.
+  ///
+  /// In en, this message translates to:
+  /// **'1 part'**
+  String get onePart313;
+
+  /// No description provided for @tapToOpenOnePart313.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to open · 1 part'**
+  String get tapToOpenOnePart313;
+
+  /// No description provided for @getChatsBack313.
+  ///
+  /// In en, this message translates to:
+  /// **'Get chats back from friends'**
+  String get getChatsBack313;
+
+  /// No description provided for @getChatsBackSub313.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages and voice notes from friends\' phones'**
+  String get getChatsBackSub313;
+
+  /// No description provided for @waitingFriendsNearby313.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for friends nearby'**
+  String get waitingFriendsNearby313;
+
+  /// No description provided for @askingFriend313.
+  ///
+  /// In en, this message translates to:
+  /// **'Asking {name}…'**
+  String askingFriend313(Object? name);
+
+  /// No description provided for @gettingFrom313.
+  ///
+  /// In en, this message translates to:
+  /// **'Getting from {name}… {got} of {total}'**
+  String gettingFrom313(Object? name, Object? got, Object? total);
+
+  /// No description provided for @restoreDone313.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get restoreDone313;
+
+  /// No description provided for @noFriendsNearby313.
+  ///
+  /// In en, this message translates to:
+  /// **'No friends nearby now · open LinkUp near a friend'**
+  String get noFriendsNearby313;
+
+  /// No description provided for @gotMessagesBack313.
+  ///
+  /// In en, this message translates to:
+  /// **'Got {count} messages back from {name}'**
+  String gotMessagesBack313(Object? count, Object? name);
+
+  /// No description provided for @gotOneMessageBack313.
+  ///
+  /// In en, this message translates to:
+  /// **'Got 1 message back from {name}'**
+  String gotOneMessageBack313(Object? name);
+
+  /// No description provided for @aFriend313.
+  ///
+  /// In en, this message translates to:
+  /// **'a friend'**
+  String get aFriend313;
 }
 
 class _AppLocalizationsDelegate

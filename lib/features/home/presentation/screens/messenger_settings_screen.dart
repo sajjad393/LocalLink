@@ -1,3 +1,4 @@
+import 'package:locallink/features/messaging/presentation/widgets/restore_chats_row_313.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/features/contacts/presentation/widgets/my_links_map_273.dart';
 import 'package:locallink/core/identity/person_name_276.dart';
@@ -345,6 +346,11 @@ class MessengerSettingsScreen extends StatelessWidget {
                 MaterialPageRoute(builder: (_) => const LanguageSettingsScreen()),
               ),
             ),
+          ]),
+          // Bundle 313 (D5): Settings > Chats.
+          MessengerGroupLabel(L.t.chats),
+          const MessengerListGroup(dividerIndent: 66, children: [
+            RestoreChatsRow313(),
           ]),
           MessengerGroupLabel(L.t.thisPhone),
           MessengerListGroup(dividerIndent: 66, children: [

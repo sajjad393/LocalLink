@@ -4019,6 +4019,16 @@ class LocalStore {
     return count > 0;
   }
 
+  /// Bundle 313 (D5): any 1-to-1 or group message on this phone (a fresh
+  /// install has none).
+  Future<bool> hasAnyMessage313() async {
+    for (final table in const ['messages', 'group_messages']) {
+      final rows = await _db.rawQuery('SELECT 1 FROM $table LIMIT 1');
+      if (rows.isNotEmpty) return true;
+    }
+    return false;
+  }
+
   Future<void> markMessageRead(String id) async {
     if (id.isEmpty || _deviceId == null) return;
     await _db.update(

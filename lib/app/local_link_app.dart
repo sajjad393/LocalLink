@@ -1,3 +1,5 @@
+import 'package:locallink/features/messaging/data/services/chat_restore_313.dart';
+import 'package:locallink/features/messaging/data/services/chat_restore_store_313.dart';
 import 'package:locallink/core/widgets/crown_tip_290.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/config/app_build.dart';
@@ -325,6 +327,13 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
           configured = await _deps.store.isConfigured();
           offlinePending = _deps.store.isOfflinePending;
           signedOut = await _deps.store.isSignedOut();
+          // Bundle 313 (D5): a fresh install (no messages yet, before any
+          // sync / sign-in) arms "get chats back from friends".
+          try {
+            await ChatRestore313.armAtLaunch(StoreRestore313(_deps.store));
+          } catch (e) {
+            AppLogger.warning('RESTORE313_ARM_FAILED', detail: '$e');
+          }
           timer.step('settings');
           if (configured || offlinePending) {
             await _deps.initializeCore(localOnly: !configured);

@@ -2311,5 +2311,17 @@
   "requestCancelled307": "⁧درخواست منسوخ ہو گئی⁩",
   "phonesNotAnswered307": "⁧وہ فون جنہوں نے ابھی جواب نہیں دیا⁩",
   "fromPhone307": "⁧⁨{name}⁩ کا فون⁩",
-  "noServerTip307": "⁧سرور نہیں · درخواستیں قریبی فونز کو جاتی ہیں⁩"
+  "noServerTip307": "⁧سرور نہیں · درخواستیں قریبی فونز کو جاتی ہیں⁩",
+  "onePart313": "⁧⁨1⁩ حصہ⁩",
+  "tapToOpenOnePart313": "⁧کھولنے کے لیے ٹیپ کریں · ⁨1⁩ حصہ⁩",
+  "getChatsBack313": "⁧دوستوں سے چیٹس واپس لیں⁩",
+  "getChatsBackSub313": "⁧دوستوں کے فونز سے پیغامات اور وائس نوٹس⁩",
+  "waitingFriendsNearby313": "⁧قریبی دوستوں کا انتظار ہے⁩",
+  "askingFriend313": "⁧⁨{name}⁩ سے پوچھ رہے ہیں…⁩",
+  "gettingFrom313": "⁧⁨{name}⁩ سے لے رہے ہیں… ⁨{total}⁩ میں سے ⁨{got}⁩⁩",
+  "restoreDone313": "⁧مکمل⁩",
+  "noFriendsNearby313": "⁧ابھی کوئی دوست قریب نہیں · کسی دوست کے پاس LinkUp کھولیں⁩",
+  "gotMessagesBack313": "⁧⁨{name}⁩ سے ⁨{count}⁩ پیغامات واپس ملے⁩",
+  "gotOneMessageBack313": "⁧⁨{name}⁩ سے ⁨1⁩ پیغام واپس ملا⁩",
+  "aFriend313": "⁧ایک دوست⁩"
 }

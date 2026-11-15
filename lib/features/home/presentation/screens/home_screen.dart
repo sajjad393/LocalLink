@@ -1,3 +1,5 @@
+import 'package:locallink/features/messaging/data/services/chat_restore_313.dart';
+import 'package:locallink/features/messaging/presentation/widgets/restore_chats_row_313.dart';
 import 'dart:convert';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/identity/person_name_276.dart';
@@ -345,6 +347,8 @@ class _HomeScreenState extends State<HomeScreen> {
     JoinNotice218.changed.addListener(_onJoinChanged218);
     JoinCarrier222.changes.addListener(_onCarry222); // Bundle 222
     unawaited(_readCarry222());
+    // Bundle 313 (D5): chats came back from a friend's phone (silently).
+    ChatRestore313.lastDone.addListener(_onRestored313);
     // First contact from a new peer arrives live: the Chats tab picks them up.
     _incomingSub = widget.messagingRepository.incoming
         .listen((_) {
@@ -370,6 +374,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   StreamSubscription<String>? _groupChangeSub;
   Timer? _groupChangeTimer;
+
+  /// Bundle 313 (D5): one toast per friend, then the lists are read again.
+  void _onRestored313() {
+    final d = ChatRestore313.lastDone.value;
+    if (!mounted || d == null) return;
+    LinkToast.show(context, RestoreChatsRow313.doneText(d), kind: LinkToastKind.done);
+    unawaited(_loadChatPeerIds());
+    unawaited(_controller.load(quiet: true));
+    unawaited(_refreshUnreadCounts());
+  }
 
   // ---------------- Bundle 218e: join cards ---------------
 
@@ -635,6 +649,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _incomingSub?.cancel();
     _groupChangeSub?.cancel();
     _groupChangeTimer?.cancel();
+    ChatRestore313.lastDone.removeListener(_onRestored313); // Bundle 313
     JoinNotice218.changed.removeListener(_onJoinChanged218);
     JoinCarrier222.changes.removeListener(_onCarry222);
     if (identical(GroupPeopleHub.instance, _peopleHub)) {

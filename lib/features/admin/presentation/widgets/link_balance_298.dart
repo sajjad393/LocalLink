@@ -70,7 +70,11 @@ class LinkBalance298 {
     bool leftOf(String id) => out[id]!.dx < self.dx;
     // Everyone counts (server-linked and offline people too), only the
     // movable groups move.
-    int count(bool left) => out.keys.where((id) => leftOf(id) == left).length;
+    // Bundle 313 (B): a person straight above / below You (within 1 px, e.g.
+    // one offline friend on the upper arc: cos 270 deg = -1.8e-16) is on
+    // NEITHER side - before, it counted as "left" and nobody moved.
+    bool middle(String id) => (out[id]!.dx - self.dx).abs() < 1;
+    int count(bool left) => out.keys.where((id) => !middle(id) && leftOf(id) == left).length;
 
     // Best when left - right is 0 or -1: the cloud is on the left, so an
     // odd one out goes right.

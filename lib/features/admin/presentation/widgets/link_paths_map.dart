@@ -518,6 +518,8 @@ class LinkPathsCanvas extends StatefulWidget {
         dark: c.dark,
         small: small,
         extraEdges: extraEdges,
+        // Bundle 313 (C): the card colour behind the small map's "Server".
+        labelBack: small ? c.surface : null,
       );
       final place = painter._placements(size);
       final self = painter._self(size);
@@ -744,6 +746,7 @@ class _LinkPathsPainter extends CustomPainter {
     this.dark = false,
     this.small = false,
     this.extraEdges = const [],
+    this.labelBack,
   })  : crownKey = [
           for (final n in nodes)
             if (!n.blocked && AdminCrown.showFor(n.id)) n.id,
@@ -760,6 +763,10 @@ class _LinkPathsPainter extends CustomPainter {
 
   /// Bundle 272 (B-3): extra lines drawn after the default ones.
   final List<LinkEdge> extraEdges;
+
+  /// Bundle 313 (C): small map only - a pill of this colour behind the
+  /// "Server" name, so the line and its moving dot pass behind the name.
+  final Color? labelBack;
 
   /// Bundle 214 (D6): who gets a crown 👑 above the node (snapshot).
   final String crownKey;
@@ -1149,7 +1156,8 @@ class _LinkPathsPainter extends CustomPainter {
             ..strokeWidth = 2);
       _text(canvas, Icons.cloud_outlined, sv,
           size: r, color: const Color(0xFF1E5BFF));
-      _plainLabel(canvas, sv + Offset(0, r + 10), 'Server', r < 20 ? 10.5 : 11.5);
+      _plainLabel(canvas, sv + Offset(0, r + 10), 'Server', r < 20 ? 10.5 : 11.5,
+          back: small ? labelBack : null);
       return;
     }
     _glassyCircle(canvas, sv, 26, const Color(0xFFE6F1FF),
@@ -1233,7 +1241,7 @@ class _LinkPathsPainter extends CustomPainter {
     tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
   }
 
-  void _plainLabel(Canvas canvas, Offset center, String text, double size) {
+  void _plainLabel(Canvas canvas, Offset center, String text, double size, {Color? back}) {
     final tp = TextPainter(
       text: TextSpan(
         text: L.en(text),
@@ -1248,6 +1256,14 @@ class _LinkPathsPainter extends CustomPainter {
       // Bundle 217: pill as wide as the name (not the 92 px limit).
       textWidthBasis: TextWidthBasis.longestLine,
     )..layout(maxWidth: 92);
+    if (back != null) {
+      // Bundle 313 (C): the pill hides the line under the name.
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromCenter(center: center, width: tp.width + 10, height: tp.height + 4),
+              Radius.circular(tp.height / 2 + 2)),
+          Paint()..color = back);
+    }
     tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
   }
 

@@ -9,6 +9,7 @@ import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/models/group_card.dart';
 import 'package:locallink/core/models/group_event.dart';
 import 'package:locallink/core/models/group_join_code.dart';
+import 'package:locallink/core/models/message_envelope.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/locallink_api.dart'
     show GroupActionException;
@@ -155,6 +156,23 @@ class GroupNearbyService {
   /// group messaging service.
   Future<void> Function(String gid, String messageId, String member,
       String status)? onReceipt;
+
+  /// Bundle 313 (D4): true while this phone gets its chats back after a
+  /// fresh install (ChatRestore313 armed): my `group_have` carries `r:1`.
+  bool Function()? restoring313;
+
+  /// Bundle 313 (D4): the giver's group message table (wire maps, oldest
+  /// first) - the older messages a member who reinstalled lost.
+  Future<List<Map<String, dynamic>>> Function(String gid)? olderMessages313;
+
+  /// Bundle 313 (D4): saves an older message given back (read, silent).
+  Future<bool> Function(GroupMessage message)? saveRestored313;
+
+  /// Bundle 313 (D4): at most this many older messages per group and ask.
+  static const int restoreMax313 = 2000;
+
+  /// Bundle 313 (D4): pause between pages of older messages.
+  Duration restoreGap313 = const Duration(milliseconds: 300);
 
   /// Bundle G4 catch-up: "these I have" / "take these" / "send me the card".
   static const String typeHave = 'group_have';
@@ -1878,6 +1896,7 @@ class GroupNearbyService {
       'gid': c.gid,
       'v': c.version,
       'ids': [for (final m in mine) shortId(m.id)],
+      if (restoring313?.call() ?? false) 'r': 1, // Bundle 313 (D4)
     });
   }
 
@@ -1935,6 +1954,13 @@ class GroupNearbyService {
     }
     // Answer with my own list too (the other phone may not have asked).
     unawaited(_sendHave(c, from, _nowMs()));
+    // Bundle 313 (D4): it reinstalled - older messages from its join date.
+    if (p['r'] == 1) {
+      unawaited(_giveOlder313(c, from, theirs, {for (final m in missing) m.id}, joined)
+          .catchError((Object e) {
+        AppLogger.warning('GROUP_RESTORE313_FAILED', detail: '$e');
+      }));
+    }
     if (missing.isEmpty) return;
     missing.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     final seal = c.member(from)!.seal;
@@ -1979,6 +2005,69 @@ class GroupNearbyService {
     AppLogger.info('GROUP_CATCHUP', detail: 'gave=$gave to=${_id6(from)}');
   }
 
+  /// Bundle 313 (D4): older messages (no 7-day signature copy) for a member
+  /// who reinstalled: words only, never files / control lines, never from
+  /// before its join date, at most [restoreMax313]. Same `group_give`, group
+  /// lock; each item carries `r:1` (no signature - trusted from my phone).
+  Future<void> _giveOlder313(GroupCard c, String to, Set<String> theirs,
+      Set<String> sending, DateTime? joined) async {
+    final read = olderMessages313;
+    if (read == null) return;
+    final seal = c.member(to)?.seal ?? '';
+    if (seal.isEmpty) return;
+    final items = <Map<String, Object>>[];
+    for (final m in await read(c.gid)) {
+      final id = m['id']?.toString() ?? '';
+      final writer = m['sender_id']?.toString() ?? '';
+      final createdAt = m['created_at']?.toString() ?? '';
+      final body = m['body']?.toString() ?? '';
+      if (id.isEmpty || id.length > 128 || writer.isEmpty) continue;
+      if (m['group_id']?.toString() != c.gid) continue;
+      if (sending.contains(id) || theirs.contains(shortId(id))) continue;
+      if (body.trim().isEmpty || body.length > 16 * 1024) continue;
+      if (_control313(body)) continue;
+      if ((m['attachments'] as List?)?.isNotEmpty ?? false) continue;
+      final at = DateTime.tryParse(createdAt);
+      if (at == null || (joined != null && at.isBefore(joined))) continue;
+      if (!c.has(writer)) continue;
+      items.add({'id': id, 'w': writer, 'c': createdAt, 'b': body, 'r': 1});
+    }
+    if (items.isEmpty) return;
+    final take = items.length > restoreMax313
+        ? items.sublist(items.length - restoreMax313)
+        : items;
+    var page = <Map<String, Object>>[];
+    var bytes = 0;
+    Future<void> sendPage() async {
+      if (page.isEmpty) return;
+      final out = page;
+      page = <Map<String, Object>>[];
+      bytes = 0;
+      await send(
+          recipientId: to,
+          theirIdentityKey: seal,
+          payload: {'type': typeGive, 'gid': c.gid, 'items': out});
+      if (restoreGap313 > Duration.zero) await Future<void>.delayed(restoreGap313);
+    }
+
+    for (final item in take) {
+      final size = (item['b'] as String).length + (item['id'] as String).length + 120;
+      if (page.length >= pageItems || (page.isNotEmpty && bytes + size > pageBytes)) {
+        await sendPage();
+      }
+      page.add(item);
+      bytes += size;
+    }
+    await sendPage();
+    AppLogger.info('GROUP_RESTORE313', detail: 'gave=${take.length} to=${_id6(to)}');
+  }
+
+  /// Bundle 313 (D4): control / system bodies never travel as old messages.
+  static bool _control313(String body) =>
+      MessageEnvelope.isControl(body) ||
+      RegExp(r'^ll(gc|pin|vote|sk|skd|skq|ev):v1:').hasMatch(body) ||
+      GroupEvent.parse(body) != null;
+
   Future<void> _onGive(
       String from, String gid, Map<String, dynamic> p, String strangerKey) async {
     final c = await card(gid);
@@ -1989,6 +2078,7 @@ class GroupNearbyService {
     if (raw is! List) return;
     final myJoin = DateTime.tryParse(c.member(_self)!.joinedAt);
     var got = 0;
+    var older313 = 0;
     for (final e in raw.take(pageItems + 10)) {
       if (e is! Map) continue;
       final id = e['id']?.toString() ?? '';
@@ -2000,10 +2090,17 @@ class GroupNearbyService {
       var att = GroupFileWire.parseList(e['a']);
       final sig2 = e['s2']?.toString() ?? '';
       var sig3 = e['s3']?.toString() ?? '';
-      if (id.isEmpty || id.length > 128 || body.length > 16 * 1024 ||
-          writer == _self) {
+      if (id.isEmpty || id.length > 128 || body.length > 16 * 1024) continue;
+      // Bundle 313 (D4): an older message given back after my reinstall
+      // (mine too). Only while I'm getting my chats back.
+      if (e['r'] == 1) {
+        if (await _takeOlder313(c, gid, id, writer, createdAt, body, e['a'], myJoin)) {
+          got++;
+          older313++;
+        }
         continue;
       }
+      if (writer == _self) continue;
       if (att.isEmpty && (body.isEmpty || sig.isEmpty)) continue;
       if (att.isNotEmpty && sig2.isEmpty) continue;
       final w = c.member(writer);
@@ -2046,6 +2143,22 @@ class GroupNearbyService {
     if (got > 0) {
       AppLogger.info('GROUP_CATCHUP', detail: 'got=$got via=${_id6(from)}');
     }
+    // Bundle 313 (D4): older messages came back - the chat list reads again.
+    if (older313 > 0) GroupChangeHub.instance.changed(gid);
+  }
+
+  Future<bool> _takeOlder313(GroupCard c, String gid, String id, String writer,
+      String createdAt, String body, Object? files, DateTime? myJoin) async {
+    final save = saveRestored313;
+    if (save == null || !(restoring313?.call() ?? false)) return false;
+    if (files != null || writer.isEmpty || body.trim().isEmpty) return false;
+    if (_control313(body) || c.member(writer) == null) return false;
+    final at = DateTime.tryParse(createdAt);
+    if (at == null || (myJoin != null && at.isBefore(myJoin))) return false;
+    if (await store.messageExists(id)) return false;
+    // No signature copy is kept (it can't be passed on) and no "got it".
+    return save(GroupMessage(
+        id: id, groupId: gid, senderId: writer, body: body, createdAt: createdAt));
   }
 
   Future<void> _onNeed(String from, String gid, String strangerKey) async {

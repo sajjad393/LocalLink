@@ -157,9 +157,11 @@ class CallHistoryTile extends StatelessWidget {
                   // Bundle 285 (mock 285): "No answer, 1:29 PM · 2 missed".
                   ? Text.rich(
                       TextSpan(children: [
-                        TextSpan(text: '${_statusLine()} · '),
+                        // Bundle 313 (A): no-break spaces - the dot stays with the
+                        // time and "1 missed" moves as one piece (never "1" / "missed").
+                        TextSpan(text: '${_statusLine()}\u00A0· '),
                         TextSpan(
-                          text: L.t.missed(missedInside),
+                          text: L.t.missed(missedInside).replaceAll(' ', '\u00A0'),
                           style: TextStyle(color: colors.error, fontWeight: FontWeight.w600),
                         ),
                       ]),

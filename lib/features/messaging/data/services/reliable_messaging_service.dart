@@ -359,6 +359,38 @@ class ReliableMessagingService {
     return pushed;
   }
 
+  /// Bundle 313 (D): a friend who lost our chat (a reinstall) asks for the
+  /// file of a voice note in our 1-to-1 chat (mine or theirs). Same push as
+  /// [_repushMedia]; [to] must be the other end of the message.
+  Future<bool> pushRestoredFile313(String messageId, String fileId, String to) async {
+    final message = await store.messageById(messageId);
+    final self = store.deviceId ?? '';
+    if (message == null || self.isEmpty || to.isEmpty || to == self) return false;
+    final mine = message.senderId == self && message.recipientId == to;
+    final theirs = message.senderId == to && message.recipientId == self;
+    if (!mine && !theirs) return false;
+    for (final a in message.attachments) {
+      if (a.id != fileId || !a.contentType.startsWith('audio/')) continue;
+      final local = a.localPath ?? '';
+      if (local.isEmpty) return false;
+      try {
+        await directFilesDone.clear(a.id);
+        final path = await _sendablePath(local, a.originalName, fileId: a.id);
+        await files.sendDirectFile(
+          recipientId: to,
+          messageId: message.id,
+          fileId: a.id,
+          file: PickedFile(path: path, name: a.originalName, contentType: a.contentType, size: a.size),
+        );
+        return true;
+      } catch (error) {
+        AppLogger.warning('RESTORE313_FILE_PUSH_FAILED', detail: '$error');
+        return false;
+      }
+    }
+    return false;
+  }
+
   /// A media control message from the other phone.
   Future<void> _handleMediaControl(String type, Map<String, dynamic> data) async {
     final id = data['id']?.toString() ?? '';

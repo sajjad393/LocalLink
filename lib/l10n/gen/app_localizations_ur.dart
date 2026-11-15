@@ -8259,4 +8259,49 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get noServerTip307 => '⁧سرور نہیں · درخواستیں قریبی فونز کو جاتی ہیں⁩';
+
+  @override
+  String get onePart313 => '⁧⁨1⁩ حصہ⁩';
+
+  @override
+  String get tapToOpenOnePart313 => '⁧کھولنے کے لیے ٹیپ کریں · ⁨1⁩ حصہ⁩';
+
+  @override
+  String get getChatsBack313 => '⁧دوستوں سے چیٹس واپس لیں⁩';
+
+  @override
+  String get getChatsBackSub313 => '⁧دوستوں کے فونز سے پیغامات اور وائس نوٹس⁩';
+
+  @override
+  String get waitingFriendsNearby313 => '⁧قریبی دوستوں کا انتظار ہے⁩';
+
+  @override
+  String askingFriend313(Object? name) {
+    return '⁧⁨$name⁩ سے پوچھ رہے ہیں…⁩';
+  }
+
+  @override
+  String gettingFrom313(Object? name, Object? got, Object? total) {
+    return '⁧⁨$name⁩ سے لے رہے ہیں… ⁨$total⁩ میں سے ⁨$got⁩⁩';
+  }
+
+  @override
+  String get restoreDone313 => '⁧مکمل⁩';
+
+  @override
+  String get noFriendsNearby313 =>
+      '⁧ابھی کوئی دوست قریب نہیں · کسی دوست کے پاس LinkUp کھولیں⁩';
+
+  @override
+  String gotMessagesBack313(Object? count, Object? name) {
+    return '⁧⁨$name⁩ سے ⁨$count⁩ پیغامات واپس ملے⁩';
+  }
+
+  @override
+  String gotOneMessageBack313(Object? name) {
+    return '⁧⁨$name⁩ سے ⁨1⁩ پیغام واپس ملا⁩';
+  }
+
+  @override
+  String get aFriend313 => '⁧ایک دوست⁩';
 }

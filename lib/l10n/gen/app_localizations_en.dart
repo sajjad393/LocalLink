@@ -8227,4 +8227,50 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noServerTip307 => 'No server · requests go to nearby phones';
+
+  @override
+  String get onePart313 => '1 part';
+
+  @override
+  String get tapToOpenOnePart313 => 'Tap to open · 1 part';
+
+  @override
+  String get getChatsBack313 => 'Get chats back from friends';
+
+  @override
+  String get getChatsBackSub313 =>
+      'Messages and voice notes from friends\' phones';
+
+  @override
+  String get waitingFriendsNearby313 => 'Waiting for friends nearby';
+
+  @override
+  String askingFriend313(Object? name) {
+    return 'Asking $name…';
+  }
+
+  @override
+  String gettingFrom313(Object? name, Object? got, Object? total) {
+    return 'Getting from $name… $got of $total';
+  }
+
+  @override
+  String get restoreDone313 => 'Done';
+
+  @override
+  String get noFriendsNearby313 =>
+      'No friends nearby now · open LinkUp near a friend';
+
+  @override
+  String gotMessagesBack313(Object? count, Object? name) {
+    return 'Got $count messages back from $name';
+  }
+
+  @override
+  String gotOneMessageBack313(Object? name) {
+    return 'Got 1 message back from $name';
+  }
+
+  @override
+  String get aFriend313 => 'a friend';
 }

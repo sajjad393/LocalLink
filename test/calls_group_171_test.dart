@@ -178,7 +178,8 @@ void main() {
     final red = Theme.of(ctx).colorScheme.error;
     expect(tester.widget<Text>(find.text('Ibrahim')).style?.color, red);
     expect(tester.widget<Text>(find.text('(4)')).style?.color, red);
-    expect(find.text('No answer, 1:29 PM · 2 missed', findRichText: true), findsOneWidget);
+    // Bundle 313 (A): no-break spaces keep "2 missed" in one piece (and the dot with the time).
+    expect(find.text('No answer, 1:29 PM\u00A0· 2\u00A0missed', findRichText: true), findsOneWidget);
   });
 
   testWidgets('a single call has no count and the row calls back',
