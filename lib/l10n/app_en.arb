@@ -5728,5 +5728,181 @@
       }
     }
   },
-  "onYourPhone314": "On your phone"
+  "onYourPhone314": "On your phone",
+  "phoneAnswered317": "{hl} answered",
+  "@phoneAnswered317": {
+    "placeholders": {
+      "hl": {
+        "type": "Object?"
+      }
+    }
+  },
+  "namesPhone317": "{name}'s phone",
+  "@namesPhone317": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "thePhone317": "The phone",
+  "chatOnTheWay317": "The chat is on the way",
+  "fileOnTheWay317": "The file is on the way",
+  "answered317": "Answered",
+  "deletedAt317": "Deleted {when}",
+  "@deletedAt317": {
+    "placeholders": {
+      "when": {
+        "type": "Object?"
+      }
+    }
+  },
+  "nextInLineFrom317": "Next in line from {name}'s phone",
+  "@nextInLineFrom317": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "nextInLine317": "Next in line",
+  "comingFrom317": "Coming from {name}'s phone",
+  "@comingFrom317": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "coming317": "Coming",
+  "notOnPhoneAnyMore317": "Not on {name}'s phone any more",
+  "@notOnPhoneAnyMore317": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "notOnThePhoneAnyMore317": "Not on the phone any more",
+  "tooBigToBring317": "Too big to bring (over 50 MB)",
+  "photoSize317": "Photo · {size}",
+  "@photoSize317": {
+    "placeholders": {
+      "size": {
+        "type": "Object?"
+      }
+    }
+  },
+  "videoSize317": "Video · {size}",
+  "@videoSize317": {
+    "placeholders": {
+      "size": {
+        "type": "Object?"
+      }
+    }
+  },
+  "fileSize317": "File · {size}",
+  "@fileSize317": {
+    "placeholders": {
+      "size": {
+        "type": "Object?"
+      }
+    }
+  },
+  "filesStopped317": "Stopped",
+  "allFilesHere317": "All files here",
+  "filesOf317": "{a} of {b} files",
+  "@filesOf317": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      },
+      "b": {
+        "type": "Object?"
+      }
+    }
+  },
+  "mbOf317": "{a} of {b}",
+  "@mbOf317": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      },
+      "b": {
+        "type": "Object?"
+      }
+    }
+  },
+  "fromPhone317": "from {name}'s phone",
+  "@fromPhone317": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "viaName317": "via {name}",
+  "@viaName317": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "filesWaiting317": "Waiting for a phone to bring them",
+  "filesHereGone317": "{a} files here · {b} not on the phone any more",
+  "@filesHereGone317": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      },
+      "b": {
+        "type": "Object?"
+      }
+    }
+  },
+  "filesHere317": "{a} files here",
+  "@filesHere317": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      }
+    }
+  },
+  "stopFiles317": "Stop files",
+  "openChat317": "Open chat",
+  "filesComingTitle317": "Files coming",
+  "filesWaitTitle317": "Files waiting",
+  "filesDoneTitle317": "Files here",
+  "filesShort317": "Files {a}/{b}",
+  "@filesShort317": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      },
+      "b": {
+        "type": "Object?"
+      }
+    }
+  },
+  "chatReadyFilesComing317": "Chat ready · files coming",
+  "chatReadyWaiting317": "Chat ready · waiting for the next trip",
+  "chatReadyAllHere317": "Chat ready · all files here",
+  "lastPartsAgo317": "last parts {n} min ago",
+  "@lastPartsAgo317": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "filesGoneCount317": "{n} not on the phone any more",
+  "@filesGoneCount317": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "filesDoneShort317": "Files ✓"
 }

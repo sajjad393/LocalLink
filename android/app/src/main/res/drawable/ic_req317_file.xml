@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bundle 317 (G7): the tracker while a chat's photos / videos / files come
+     (a small photo in a ring, square, Material "image" shape). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M6,3 L18,3 C19.66,3 21,4.34 21,6 L21,18 C21,19.66 19.66,21 18,21 L6,21 C4.34,21 3,19.66 3,18 L3,6 C3,4.34 4.34,3 6,3 Z M6,5 C5.45,5 5,5.45 5,6 L5,15.6 L8.6,12 C9,11.6 9.6,11.6 10,12 L13,15 L14.6,13.4 C15,13 15.6,13 16,13.4 L19,16.4 L19,6 C19,5.45 18.55,5 18,5 Z M15.5,7 C16.33,7 17,7.67 17,8.5 C17,9.33 16.33,10 15.5,10 C14.67,10 14,9.33 14,8.5 C14,7.67 14.67,7 15.5,7 Z" />
+</vector>

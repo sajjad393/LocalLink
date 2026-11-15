@@ -279,7 +279,10 @@ class ChatAnswerBuilder {
   }) async {
     final now = _clock();
     final atts = <Map<String, dynamic>>[];
+    final ids = <String>{};
     for (final a in r.atts) {
+      // Bundle 317 (D): the same file twice in one message is sent once.
+      if (a.fileId.isNotEmpty && !ids.add(a.fileId)) continue;
       var gone = a.goneAt.isNotEmpty;
       if (!gone && r.hiddenAt.isNotEmpty) {
         final hid = DateTime.tryParse(r.hiddenAt);
@@ -407,12 +410,15 @@ class ChatAnswerBuilder {
     required String replyTo,
     bool isFile = false,
     String? answerId,
+    int firstPart = 1, // Bundle 317 (G3): a slice of a bigger answer
+    int? totalOf,
   }) async {
     final id = answerId ?? newAnswerId();
-    final of = plains.length;
+    final of = totalOf ?? plains.length;
     final out = <ChatAnswerPart>[];
-    for (var i = 0; i < of; i++) {
-      final plain = {...plains[i], 'part': i + 1, 'of': of};
+    for (var j = 0; j < plains.length; j++) {
+      final i = firstPart - 1 + j;
+      final plain = {...plains[j], 'part': i + 1, 'of': of};
       final data = await AdminActionBoxLock.lock(replyKey, gzip.encode(utf8.encode(jsonEncode(plain))));
       final body = jsonEncode({
         'v': 1,
@@ -469,12 +475,19 @@ class ChatAnswerBuilder {
     return seal(actionId: actionId, replyKey: replyKey, plains: plains, replyTo: replyTo);
   }
 
+  /// Bundle 317 (G3): parts per slice when [buildFile] hands slices out.
+  static const int fileSliceParts = 100;
+
   /// get_file: the full file in raw parts (file meta on part 1).
+  /// Bundle 317 (G3): with [onSlice] the parts are sealed and handed out
+  /// 100 at a time (same ids / numbers / bytes) and [] is returned, so a
+  /// 50 MB file never has all its signed parts in memory.
   Future<List<ChatAnswerPart>> buildFile({
     required String actionId,
     required String replyKey,
     required String replyTo,
     required Map<String, dynamic> detail,
+    Future<void> Function(List<ChatAnswerPart> slice)? onSlice,
   }) async {
     final fileId = detail['file_id']?.toString() ?? '';
     final att = await source.fileOf(fileId, detail['message_id']?.toString() ?? '');
@@ -482,6 +495,31 @@ class ChatAnswerBuilder {
     final bytes = att.goneAt.isNotEmpty ? null : await source.readFile(att);
     if (bytes == null) throw StateError('file_gone');
     if (bytes.length > ChatAnswerRules.maxFileBytes) throw StateError('file_too_big');
+    if (onSlice != null) {
+      const chunk = ChatAnswerRules.fileChunkBytes;
+      final of = bytes.isEmpty ? 1 : (bytes.length + chunk - 1) ~/ chunk;
+      final id = newAnswerId();
+      for (var first = 1; first <= of; first += fileSliceParts) {
+        final last = min(first + fileSliceParts - 1, of);
+        final plains = <Map<String, dynamic>>[
+          for (var n = first; n <= last; n++)
+            {
+              if (n == 1) 'file': {'name': att.name, 'type': att.type, 'size': bytes.length, 'file_id': fileId},
+              'data': b64url(bytes.sublist((n - 1) * chunk, min(n * chunk, bytes.length))),
+            },
+        ];
+        await onSlice(await seal(
+            actionId: actionId,
+            replyKey: replyKey,
+            plains: plains,
+            replyTo: replyTo,
+            isFile: true,
+            answerId: id,
+            firstPart: first,
+            totalOf: of));
+      }
+      return const [];
+    }
     final plains = <Map<String, dynamic>>[];
     for (var at = 0; at < bytes.length || plains.isEmpty; at += ChatAnswerRules.fileChunkBytes) {
       final end = min(at + ChatAnswerRules.fileChunkBytes, bytes.length);

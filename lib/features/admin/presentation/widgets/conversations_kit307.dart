@@ -4,10 +4,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
 import 'package:locallink/features/admin/data/actions/request_step_307.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart'
     show avatarColor221;
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 307 (TODO_307 B0 / B1): bold iOS-style cards for Conversations.
 /// Colours come from the A216 tokens (light + dark); font Roboto216.
@@ -464,9 +466,13 @@ class LiveCard307 extends StatefulWidget {
     required this.brand,
     this.group = false,
     this.onTap,
+    this.files,
   });
 
   final RequestStep307 step;
+
+  /// Bundle 317 (G8): the chat's files coming after Ready (null = none).
+  final FileTrip317? files;
   final List<String> names;
   final String title;
   final String range;
@@ -575,6 +581,8 @@ class _LiveCard307State extends State<LiveCard307> with SingleTickerProviderStat
         ]),
         const SizedBox(height: 10),
         RequestTrack307(step: s),
+        if (ready && widget.files != null && widget.files!.total > 0 && !widget.files!.stopped)
+          FilesStrip317(trip: widget.files!),
       ]),
     );
     return AnimatedBuilder(
@@ -597,6 +605,101 @@ class _LiveCard307State extends State<LiveCard307> with SingleTickerProviderStat
           ),
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- files 317
+
+/// Bundle 317 (G8, mock `trips_mock.html`): under a Ready card while the
+/// chat's files come - "3 of 13 files", "6.2 of 24 MB · from kiran's phone ·
+/// via ayesha", a Coming / Waiting / All here pill, one bar per 8 MB trip,
+/// and the files that are not on the phone any more.
+class FilesStrip317 extends StatelessWidget {
+  const FilesStrip317({super.key, required this.trip});
+
+  final FileTrip317 trip;
+
+  static String mb(int bytes) {
+    final mb = bytes / (1024 * 1024);
+    return '${mb < 10 ? mb.toStringAsFixed(1) : mb.round()} MB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final k = K307.of(context);
+    final f = trip;
+    final color = f.done ? k.green : (f.waiting ? k.orange : k.blueText);
+    final soft = f.done ? k.greenSoft : (f.waiting ? k.orangeSoft : k.blueSoft);
+    final pill = f.done ? L.t.allFilesHere317 : (f.waiting ? L.t.filesWaitTitle317 : L.t.coming317);
+    final sub = f.done
+        ? mb(f.bytesHere)
+        : [
+            L.t.mbOf317(mb(f.bytesHere), mb(f.bytesTotal)),
+            if (f.waiting) L.t.lastPartsAgo317(f.quietMin),
+            if (!f.waiting && f.from.isNotEmpty) L.t.fromPhone317(f.from),
+            if (!f.waiting && f.via.isNotEmpty) L.t.viaName317(f.via),
+          ].join(' \u00b7 ');
+    final big = k.text(14.5, FontWeight.w700, k.ink, 1.25);
+    // Trip bars: each 8 MB piece fills in turn.
+    final trips = f.trips;
+    final per = f.bytesTotal <= 0 ? 1.0 : f.bytesTotal / trips;
+    final gone = f.gone + f.tooBig;
+    return Padding(
+      key: const ValueKey('live317_files'),
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+        Divider(height: 1, color: k.track),
+        const SizedBox(height: 10),
+        Row(children: [
+          Icon(f.done ? Icons.check_circle_rounded : Icons.photo_library_rounded, size: 20, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              RichText(
+                textScaler: MediaQuery.textScalerOf(context),
+                text: f.done
+                    ? TextSpan(style: big, children: [TextSpan(text: L.t.filesHere317(f.here), style: big.copyWith(color: color))])
+                    : TextSpan(style: big, text: L.t.filesOf317(f.here, f.wanted)),
+              ),
+              const SizedBox(height: 1),
+              Text(sub, style: k.text(12, FontWeight.w400, k.grey, 1.25)),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+            decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(999)),
+            child: Text(pill, style: k.text(11.5, FontWeight.w700, color, 1.2)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          for (var i = 0; i < trips; i++) ...[
+            if (i > 0) const SizedBox(width: 4),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  key: ValueKey('live317_trip_$i'),
+                  minHeight: 4,
+                  value: f.done ? 1 : ((f.bytesHere - per * i) / per).clamp(0, 1).toDouble(),
+                  backgroundColor: k.track,
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ]),
+        if (gone > 0) ...[
+          const SizedBox(height: 6),
+          Row(children: [
+            Icon(Icons.block_rounded, size: 13, color: k.grey),
+            const SizedBox(width: 4),
+            Expanded(child: Text(L.t.filesGoneCount317(gone), style: k.text(12, FontWeight.w500, k.grey, 1.25))),
+          ]),
+        ],
+      ]),
     );
   }
 }

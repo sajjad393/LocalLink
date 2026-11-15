@@ -24,6 +24,8 @@ class AdminActionRow {
   /// anything (a receipt, "no copy here" or "can't check yet").
   final int phones;
   final int reached;
+  /// Bundle 317 (G5): why a phone said no (`file_gone`), '' = not refused.
+  final String refused;
 
   const AdminActionRow({
     required this.id,
@@ -44,6 +46,7 @@ class AdminActionRow {
     this.emptyAll = false,
     this.phones = 0,
     this.reached = 0,
+    this.refused = '',
   });
 
   bool get pending => state == 'pending';

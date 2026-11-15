@@ -273,7 +273,9 @@ void main() {
       await ali.addOwn(parts, replyTo: 'dev-admin', isFile: true);
       net.link('dev-ali', 'dev-bob');
       await bob.sendHave('dev-ali', force: true);
-      expect(await bob.store.parts(), isEmpty);
+      // Bundle 317 (G2): a middle phone now carries file parts too (max 6 of
+      // its 8 MB); the file still opens only on the admin phone.
+      expect(await bob.store.parts(), hasLength(parts.length));
       net.link('dev-ali', 'dev-admin');
       await admin.sendHave('dev-ali', force: true);
       final reader = ChatAnswerReader(

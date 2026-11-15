@@ -1,0 +1,481 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
+import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
+import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+
+/// Bundle 317 (G1): every photo / video / voice note / file of a Get chat
+/// answer comes by itself - no Get button. When a chat request is Ready the
+/// Owner's phone reads the answer's attachments ONCE (one entry per file id,
+/// newest message first) and asks for them in turn:
+///
+/// * gone on the phone (`file_gone`) and over 50 MB are never asked;
+/// * at most 2 files / 16 MB on the way at once, at most 3 pending cards;
+/// * the next file is asked when one is here or refused; a refused file is
+///   never asked again;
+/// * Stop files / Close: the files not here yet are stopped (signed stop).
+enum FileState317 { next, coming, here, gone, tooBig, stopped }
+
+/// One attachment of the plan.
+class FilePlanItem317 {
+  const FilePlanItem317({
+    required this.fileId,
+    required this.messageId,
+    required this.name,
+    required this.type,
+    required this.size,
+    this.gone = false,
+  });
+
+  final String fileId;
+  final String messageId;
+  final String name;
+  final String type;
+  final int size;
+  final bool gone;
+
+  bool get tooBig => size > ChatAnswerRules.maxFileBytes;
+
+  Map<String, dynamic> toJson() => {
+        'f': fileId,
+        'm': messageId,
+        'n': name,
+        't': type,
+        's': size,
+        if (gone) 'g': true,
+      };
+
+  static FilePlanItem317? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final id = raw['f']?.toString() ?? '';
+    if (id.isEmpty) return null;
+    final s = raw['s'];
+    return FilePlanItem317(
+      fileId: id,
+      messageId: raw['m']?.toString() ?? '',
+      name: raw['n']?.toString() ?? '',
+      type: raw['t']?.toString() ?? '',
+      size: s is int ? s : int.tryParse('${s ?? ''}') ?? 0,
+      gone: raw['g'] == true,
+    );
+  }
+}
+
+/// What one file shows (viewer rows, app + web).
+class FileView317 {
+  const FileView317(this.state, {this.parts = 0, this.of = 0, this.row});
+  final FileState317 state;
+  final int parts;
+  final int of;
+  final ChatRequestRow221? row;
+}
+
+/// The files of one chat request (phone card, admin card, viewer strip).
+class FileTrip317 {
+  const FileTrip317({
+    required this.requestId,
+    required this.total,
+    required this.here,
+    required this.gone,
+    required this.tooBig,
+    required this.coming,
+    required this.bytesHere,
+    required this.bytesTotal,
+    required this.waiting,
+    required this.stopped,
+    this.from = '',
+    this.via = '',
+    this.quietMin = 0,
+  });
+
+  /// Bytes in one trip (a middle phone carries 8 MB at a time).
+  static const int tripBytes = 8 * 1024 * 1024;
+
+  /// Android 16 progress segments (NOT VERIFIED above 7 on phones).
+  static const int maxTrips = 7;
+
+  final String requestId;
+  final int total;
+  final int here;
+  final int gone; // gone on the phone / refused
+  final int tooBig;
+  final int coming; // asked, not here yet
+  final int bytesHere;
+  final int bytesTotal; // of the files that can come
+  final bool waiting; // no new parts for 2 min
+  final bool stopped;
+  final String from;
+  final String via;
+
+  /// Minutes since the last new part (while files are on the way).
+  final int quietMin;
+
+  /// Waiting more than 30 min: the phone card can be swiped away.
+  bool get waitingLong => waiting && quietMin >= 30;
+
+  /// Files that can come (not gone, not too big).
+  int get wanted => total - gone - tooBig;
+  bool get active => !stopped && here < wanted;
+  bool get done => total > 0 && !active;
+  int get trips {
+    final n = (bytesTotal + tripBytes - 1) ~/ tripBytes;
+    return n < 1 ? 1 : (n > maxTrips ? maxTrips : n);
+  }
+
+  /// 0-1 by bytes (the bar), files here count whole.
+  double get fill => bytesTotal <= 0 ? (wanted <= 0 ? 1 : here / wanted) : (bytesHere / bytesTotal).clamp(0, 1).toDouble();
+
+  @override
+  bool operator ==(Object other) =>
+      other is FileTrip317 &&
+      other.requestId == requestId &&
+      other.coming == coming &&
+      other.stopped == stopped &&
+      mapEquals(other.toArgs(), toArgs());
+
+  @override
+  int get hashCode => Object.hash(requestId, here, coming, bytesHere, waiting, stopped);
+
+  Map<String, Object?> toArgs() => {
+        'files_total': total,
+        'files_here': here,
+        'files_wanted': wanted,
+        'files_gone': gone + tooBig,
+        'files_bytes_here': bytesHere,
+        'files_bytes_total': bytesTotal,
+        'files_trips': trips,
+        'files_waiting': waiting,
+        'files_quiet_min': quietMin,
+        'files_from': from,
+        'files_via': via,
+      };
+}
+
+class FileQueue317 {
+  FileQueue317({
+    required this.rows,
+    required this.mineIds,
+    required this.open,
+    required this.ask,
+    required this.close,
+    required this.isOwner,
+    required this.read,
+    required this.write,
+    this.cancel,
+    this.nameOf,
+    this.changes,
+    this.every = const Duration(seconds: 5),
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now;
+
+  static FileQueue317? instance;
+
+  /// Request id -> its files now (listened to by the cards + viewer).
+  static final ValueNotifier<Map<String, FileTrip317>> trips =
+      ValueNotifier<Map<String, FileTrip317>>(const {});
+
+  static const String planKey = 'file_plans_317';
+  static const int maxOnTheWay = 2;
+  static const int maxBytesOnTheWay = 16 * 1024 * 1024;
+  static const int maxPendingCards = 3;
+  static const Duration waitAfter = Duration(minutes: 2);
+  static const int maxPlans = 50;
+
+  final Future<List<ChatRequestRow221>> Function() rows;
+  final Future<Set<String>> Function() mineIds;
+  final Future<ChatAnswerView> Function(ChatRequestRow221 r) open;
+  final Future<String> Function(ChatRequestRow221 parent,
+      {required String fileId, String messageId, String name}) ask;
+  final Future<void> Function(ChatRequestRow221 r) close;
+  final Future<void> Function(ChatRequestRow221 r)? cancel;
+  final Future<bool> Function() isOwner;
+  final Future<String?> Function(String key) read;
+  final Future<void> Function(String key, String value) write;
+  final Future<String> Function(String deviceId)? nameOf;
+  final Listenable? changes;
+  final Duration every;
+  final DateTime Function() _clock;
+
+  Map<String, Map<String, dynamic>>? _plans;
+  final Map<String, Map<String, FileView317>> _views = {};
+  final Map<String, (int, DateTime)> _moved = {};
+  Timer? _timer;
+  bool _busy = false;
+  bool _again = false;
+
+  /// The state of every file of a request (viewer rows).
+  Map<String, FileView317> viewsOf(String requestId) => Map.unmodifiable(_views[requestId] ?? const {});
+
+  void start() {
+    changes?.addListener(kick);
+    _timer ??= Timer.periodic(every, (_) {
+      if (trips.value.values.any((t) => t.active)) kick();
+    });
+    kick();
+  }
+
+  void stop() {
+    changes?.removeListener(kick);
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void kick() => unawaited(tick());
+
+  Future<void> tick() async {
+    if (_busy) {
+      _again = true;
+      return;
+    }
+    _busy = true;
+    try {
+      do {
+        _again = false;
+        await _tickOnce();
+      } while (_again);
+    } catch (error) {
+      AppLogger.info('FILE_QUEUE_317', detail: 'error=$error');
+    } finally {
+      _busy = false;
+    }
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _load() async {
+    if (_plans != null) return _plans!;
+    final out = <String, Map<String, dynamic>>{};
+    try {
+      final d = jsonDecode(await read(planKey) ?? '{}');
+      if (d is Map) {
+        d.forEach((k, v) {
+          if (v is Map) out['$k'] = Map<String, dynamic>.from(v);
+        });
+      }
+    } catch (_) {}
+    return _plans = out;
+  }
+
+  Future<void> _save() async {
+    final plans = await _load();
+    if (plans.length > maxPlans) {
+      final ids = plans.keys.toList()
+        ..sort((a, b) => '${plans[a]!['at']}'.compareTo('${plans[b]!['at']}'));
+      for (final id in ids.take(plans.length - maxPlans)) {
+        plans.remove(id);
+      }
+    }
+    await write(planKey, jsonEncode(plans));
+  }
+
+  /// The plan of a request: one entry per file id, newest message first.
+  static List<FilePlanItem317> planOf(ChatAnswerView v) {
+    final out = <FilePlanItem317>[];
+    final seen = <String>{};
+    final msgs = [...v.messages]..sort((a, b) => '${b['created_at']}'.compareTo('${a['created_at']}'));
+    for (final m in msgs) {
+      for (final a in (m['attachments'] as List? ?? const [])) {
+        if (a is! Map) continue;
+        final id = a['file_id']?.toString() ?? '';
+        if (id.isEmpty || !seen.add(id)) continue;
+        final s = a['size'];
+        out.add(FilePlanItem317(
+          fileId: id,
+          messageId: m['id']?.toString() ?? '',
+          name: a['name']?.toString() ?? '',
+          type: a['type']?.toString() ?? '',
+          size: s is int ? s : int.tryParse('${s ?? ''}') ?? 0,
+          gone: a['file_gone'] == true,
+        ));
+      }
+    }
+    return out;
+  }
+
+  List<FilePlanItem317> _items(Map<String, dynamic> plan) => [
+        for (final x in (plan['files'] as List? ?? const []))
+          if (FilePlanItem317.fromJson(x) case final i?) i,
+      ];
+
+  Future<void> _tickOnce() async {
+    if (!await isOwner()) return;
+    final all = await rows();
+    final mine = await mineIds();
+    final plans = await _load();
+    var dirty = false;
+    final files = <String, List<ChatRequestRow221>>{};
+    for (final r in all) {
+      if (r.action == 'get_file' && r.parent.isNotEmpty) (files[r.parent] ??= []).add(r);
+    }
+    var pendingCards = all.where((r) => r.action == 'get_file' && r.state == 'pending' && !r.cancelled).length;
+    final out = <String, FileTrip317>{};
+    for (final r in all) {
+      if (r.action != 'get_chat' || !mine.contains(r.id) || r.cancelled || r.empty) continue;
+      var plan = plans[r.id];
+      if (plan == null) {
+        if (!r.ready || r.closed) continue;
+        final v = await open(r);
+        if (!v.complete) continue;
+        final items = planOf(v);
+        plan = plans[r.id] = {
+          'files': [for (final i in items) i.toJson()],
+          'asked': <String, dynamic>{},
+          'from': v.fromName.trim().isNotEmpty ? v.fromName.trim() : r.fromName,
+          'at': _clock().toUtc().toIso8601String(),
+        };
+        dirty = true;
+        AppLogger.info('FILE_QUEUE_PLAN', detail: 'files=${items.length}');
+      }
+      final items = _items(plan);
+      if (items.isEmpty) continue;
+      final asked = Map<String, dynamic>.from(plan['asked'] as Map? ?? const {});
+      var stopped = plan['stopped'] == true;
+      if (r.closed && !stopped) {
+        plan['stopped'] = stopped = true;
+        dirty = true;
+      }
+      final mineFiles = files[r.id] ?? const <ChatRequestRow221>[];
+      ChatRequestRow221? rowOf(String fileId) {
+        ChatRequestRow221? best;
+        for (final f in mineFiles) {
+          if (f.fileId != fileId) continue;
+          if (best == null ||
+              (!best.ready && (f.ready || f.madeAt.compareTo(best.madeAt) > 0))) {
+            best = f;
+          }
+        }
+        return best;
+      }
+
+      final views = <String, FileView317>{};
+      for (final i in items) {
+        final row = rowOf(i.fileId);
+        views[i.fileId] = _stateOf(i, row, asked.containsKey(i.fileId), stopped);
+      }
+      // Ask the next ones (window 2 files / 16 MB, max 3 pending cards).
+      if (!stopped) {
+        var onWay = views.values.where((x) => x.state == FileState317.coming).length;
+        var onWayBytes = 0;
+        for (final i in items) {
+          if (views[i.fileId]!.state == FileState317.coming) onWayBytes += i.size;
+        }
+        for (final i in items) {
+          if (views[i.fileId]!.state != FileState317.next) continue;
+          if (onWay >= maxOnTheWay || pendingCards >= maxPendingCards) break;
+          if (onWay > 0 && onWayBytes + i.size > maxBytesOnTheWay) break;
+          try {
+            final id = await ask(r, fileId: i.fileId, messageId: i.messageId, name: i.name);
+            asked[i.fileId] = id;
+            plan['asked'] = asked;
+            dirty = true;
+            views[i.fileId] = const FileView317(FileState317.coming);
+            onWay++;
+            onWayBytes += i.size;
+            pendingCards++;
+            AppLogger.info('FILE_QUEUE_ASKED', detail: 'size=${i.size}');
+          } catch (error) {
+            AppLogger.info('FILE_QUEUE_LATER', detail: '$error');
+            break;
+          }
+        }
+      }
+      _views[r.id] = views;
+      out[r.id] = await _trip(r, plan, items, views, stopped);
+    }
+    if (dirty) await _save();
+    if (!mapEquals(trips.value, out)) trips.value = out;
+  }
+
+  FileView317 _stateOf(FilePlanItem317 i, ChatRequestRow221? row, bool asked, bool stopped) {
+    if (i.gone) return const FileView317(FileState317.gone);
+    if (i.tooBig) return const FileView317(FileState317.tooBig);
+    if (row != null) {
+      if (row.ready) return FileView317(FileState317.here, parts: row.parts, of: row.of, row: row);
+      if (row.refused == 'file_too_big') return FileView317(FileState317.tooBig, row: row);
+      if (row.refused.isNotEmpty || row.empty) return FileView317(FileState317.gone, row: row);
+      if (row.cancelled || row.closed || stopped) return FileView317(FileState317.stopped, row: row);
+      return FileView317(FileState317.coming, parts: row.parts, of: row.of, row: row);
+    }
+    if (stopped) return const FileView317(FileState317.stopped);
+    return asked ? const FileView317(FileState317.coming) : const FileView317(FileState317.next);
+  }
+
+  Future<FileTrip317> _trip(ChatRequestRow221 r, Map<String, dynamic> plan, List<FilePlanItem317> items,
+      Map<String, FileView317> views, bool stopped) async {
+    var here = 0, gone = 0, big = 0, coming = 0, bytesHere = 0, bytesTotal = 0, moved = 0;
+    String viaDevice = '';
+    for (final i in items) {
+      final v = views[i.fileId]!;
+      switch (v.state) {
+        case FileState317.gone:
+          gone++;
+          continue;
+        case FileState317.tooBig:
+          big++;
+          continue;
+        case FileState317.here:
+          here++;
+          bytesHere += i.size;
+        case FileState317.coming:
+          coming++;
+          if (v.of > 0) bytesHere += (i.size * v.parts / v.of).round();
+        case FileState317.next || FileState317.stopped:
+          break;
+      }
+      bytesTotal += i.size;
+      moved += v.parts + (v.state == FileState317.here ? 1 : 0);
+      final via = v.row == null ? null : ChatAnswerCarrier.lastVia[v.row!.id];
+      if (via != null && via.isNotEmpty) viaDevice = via;
+    }
+    final now = _clock();
+    final last = _moved[r.id];
+    if (last == null || last.$1 != moved) _moved[r.id] = (moved, now);
+    final waiting = coming > 0 && now.difference(_moved[r.id]!.$2) >= waitAfter;
+    var via = '';
+    if (viaDevice.isNotEmpty) via = await nameOf?.call(viaDevice).catchError((_) => '') ?? '';
+    return FileTrip317(
+      requestId: r.id,
+      total: items.length,
+      here: here,
+      gone: gone,
+      tooBig: big,
+      coming: coming,
+      bytesHere: bytesHere,
+      bytesTotal: bytesTotal,
+      waiting: waiting,
+      stopped: stopped,
+      from: plan['from']?.toString() ?? '',
+      via: via.trim(),
+      quietMin: coming > 0 ? now.difference(_moved[r.id]!.$2).inMinutes : 0,
+    );
+  }
+
+  /// Stop files: the queue stops; files not here yet are stopped (pending
+  /// cards cancelled, answers on the way get the signed stop + closed).
+  Future<void> stopFiles(String requestId) async {
+    final plans = await _load();
+    final plan = plans[requestId];
+    if (plan == null) return;
+    plan['stopped'] = true;
+    await _save();
+    for (final v in (_views[requestId] ?? const <String, FileView317>{}).values) {
+      final row = v.row;
+      if (row == null || v.state != FileState317.coming) continue;
+      try {
+        if (row.state == 'pending' && cancel != null) {
+          await cancel!(row);
+        } else {
+          await close(row);
+        }
+      } catch (error) {
+        AppLogger.info('FILE_QUEUE_STOP_LATER', detail: '$error');
+      }
+    }
+    AppLogger.info('FILE_QUEUE_STOPPED', detail: 'id=${requestId.length > 6 ? requestId.substring(requestId.length - 6) : requestId}');
+    await tick();
+  }
+
+  @visibleForTesting
+  Future<Map<String, dynamic>?> planForTest(String requestId) async => (await _load())[requestId];
+}

@@ -37,6 +37,13 @@ import androidx.core.app.NotificationCompat
  * Android 15 and older keep the sliding line while waiting and a filled bar
  * once parts come (USER PICK).
  *
+ * Bundle 317 (G7): after "Chat ready" the same card goes on while the
+ * chat's files come: `files` (blue), `files_wait` (orange, no new parts for
+ * 2 min; swipeable after 30 min) and `files_done` (green, silent). Android
+ * 16+: one ProgressStyle segment per 8 MB trip (max 7) and a photo tracker;
+ * Android 15 and older: a bar by MB. Buttons Open chat + Stop files. The
+ * only buzz stays "Chat ready".
+ *
  * Dart sends the final words (English or Urdu); this file only draws them.
  * Updates are silent (no sound channel). Ready is posted ONCE on the "Chat
  * ready" channel = the message tone + one short buzz; later posts of a Ready
@@ -81,15 +88,41 @@ object ChatRequestNotifier307 {
         val rock: Boolean = false,
         /** Bundle 314: Android 15 and older draw the sliding line. */
         val compatSliding: Boolean = false,
+        /** Bundle 317 (G7): a files step + its Stop files button. */
+        val files: Boolean = false,
+        val stopButton: Boolean = false,
     )
+
+    /** Bundle 317 (G7): the most trip segments on the track. */
+    const val MAX_TRIPS = 7
+    /** Bundle 317 (G7): "Stop files" comes back to Dart as this id prefix. */
+    const val STOP_PREFIX = "stop317:"
+
+    /** Bundle 317 (G7): equal trip pieces (1..7). */
+    fun tripSegments(trips: Int): List<Int> {
+        val n = trips.coerceIn(1, MAX_TRIPS)
+        val base = 100 / n
+        return List(n) { i -> if (i == n - 1) 100 - base * (n - 1) else base }
+    }
 
     /** Bundle 314 (3): how far the tracker rocks and how often. */
     const val ROCK_STEP = 4
     const val ROCK_EVERY_MS = 3_000L
 
-    fun plan(step: String, progress: Int, buzz: Boolean): Plan {
+    fun plan(step: String, progress: Int, buzz: Boolean, swipe: Boolean = false): Plan {
         val p = progress.coerceIn(0, 100)
         return when (step) {
+            // Bundle 317 (G7): files after Ready (the one buzz only if Ready was never posted).
+            "files" -> Plan("files", p, false, ongoing = true, promoted = true, timeoutMs = 0,
+                openButton = true, grey = false, readyPointGreen = true,
+                channel = if (buzz) READY_CHANNEL_ID else CHANNEL_ID, alert = buzz, files = true, stopButton = true)
+            "files_wait" -> Plan("files_wait", p, false, ongoing = !swipe, promoted = !swipe, timeoutMs = 0,
+                openButton = true, grey = false, readyPointGreen = true,
+                channel = if (buzz) READY_CHANNEL_ID else CHANNEL_ID, alert = buzz, compatSliding = true,
+                files = true, stopButton = true)
+            "files_done" -> Plan("files_done", 100, false, ongoing = false, promoted = false, timeoutMs = 0,
+                openButton = true, grey = false, readyPointGreen = true,
+                channel = if (buzz) READY_CHANNEL_ID else CHANNEL_ID, alert = buzz, files = true)
             "ready" -> Plan("ready", 100, false, ongoing = false, promoted = false, timeoutMs = 0,
                 openButton = true, grey = false, readyPointGreen = true,
                 channel = if (buzz) READY_CHANNEL_ID else CHANNEL_ID, alert = buzz)
@@ -121,7 +154,9 @@ object ChatRequestNotifier307 {
      *  (orange Sent / Reached, blue Coming, green Ready, grey ended). */
     fun trackerColor(plan: Plan): Int = when {
         plan.grey -> GREY
-        plan.step == "ready" -> GREEN
+        plan.step == "ready" || plan.step == "files_done" -> GREEN
+        plan.step == "files_wait" -> ORANGE
+        plan.step == "files" -> BLUE
         plan.step == "coming" -> BLUE
         else -> ORANGE
     }
@@ -219,7 +254,8 @@ object ChatRequestNotifier307 {
         if (!post(context, args, 0)) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         showSummary(context, manager, args)
-        val step = plan((args["step"] as? String).orEmpty(), (args["progress"] as? Number)?.toInt() ?: 0, false)
+        val step = plan((args["step"] as? String).orEmpty(), (args["progress"] as? Number)?.toInt() ?: 0, false,
+            args["files_swipe"] == true)
         val until = (args["rock_until"] as? Number)?.toLong() ?: 0L
         if (shouldRock(Build.VERSION.SDK_INT, step, until, System.currentTimeMillis())) {
             // Only the first post may sound (Ready); the rock posts never do.
@@ -236,7 +272,16 @@ object ChatRequestNotifier307 {
             initialize(context, (args["channel_name"] as? String).orEmpty(), (args["ready_channel_name"] as? String).orEmpty())
         }
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
-        val plan = plan((args["step"] as? String).orEmpty(), (args["progress"] as? Number)?.toInt() ?: 0, args["buzz"] == true)
+        val plan = plan((args["step"] as? String).orEmpty(), (args["progress"] as? Number)?.toInt() ?: 0, args["buzz"] == true,
+            args["files_swipe"] == true)
+        val stopLabel = (args["stop_label"] as? String)?.trim().orEmpty()
+        val trips = (args["files_trips"] as? Number)?.toInt() ?: 1
+        val stop = if (plan.stopButton && stopLabel.isNotEmpty()) PendingIntent.getActivity(
+            context,
+            requestCode(id, 1),
+            tapIntent(context, STOP_PREFIX + id),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        ) else null
         val title = (args["title"] as? String)?.trim().orEmpty()
         val text = (args["text"] as? String)?.trim().orEmpty()
         val names = (args["sub_text"] as? String)?.trim().orEmpty()
@@ -253,9 +298,10 @@ object ChatRequestNotifier307 {
         val icon = facesIcon(faces)
         // Same rule as useProgressStyle(); written out so Android lint sees the API check.
         val notification = if (Build.VERSION.SDK_INT >= 36) {
-            buildLive(context, plan, title, text, names, short, openLabel, icon, whenMs, open, rockProgress(plan.progress, tick))
+            buildLive(context, plan, title, text, names, short, openLabel, icon, whenMs, open, rockProgress(plan.progress, tick),
+                trips, stopLabel, stop)
         } else {
-            buildCompat(context, plan, title, text, names, openLabel, icon, whenMs, open)
+            buildCompat(context, plan, title, text, names, openLabel, icon, whenMs, open, stopLabel, stop)
         }
         try {
             manager.notify(TAG, notificationId(id), notification)
@@ -335,10 +381,23 @@ object ChatRequestNotifier307 {
         whenMs: Long,
         open: PendingIntent,
         at: Int,
+        trips: Int = 1,
+        stopLabel: String = "",
+        stop: PendingIntent? = null,
     ): Notification {
+        // Bundle 317 (G7): files - one segment per 8 MB trip, photo tracker.
+        val fileColor = trackerColor(plan)
+        val style = if (plan.files) Notification.ProgressStyle()
+            .setStyledByProgress(true)
+            .setProgressSegments(tripSegments(trips).map { Notification.ProgressStyle.Segment(it).setColor(fileColor) })
+            .setProgressTrackerIcon(Icon.createWithResource(context, R.drawable.ic_req317_file).setTint(fileColor))
+            .setProgressStartIcon(Icon.createWithResource(context, R.drawable.ic_req314_start))
+            .setProgressEndIcon(Icon.createWithResource(context, R.drawable.ic_req314_end))
+            .setProgress(plan.progress)
+            .setProgressIndeterminate(false)
         // Bundle 314 (3, pick B): bubble -> ring tracker -> check; the ring
         // stands on its step (Sent 4, Reached 33) and rocks from there.
-        val style = Notification.ProgressStyle()
+        else Notification.ProgressStyle()
             .setStyledByProgress(true) // filled up to the tracker
             .setProgressSegments(listOf(Notification.ProgressStyle.Segment(100).setColor(if (plan.grey) GREY else BLUE)))
             .setProgressPoints(POINTS.map { at ->
@@ -366,7 +425,7 @@ object ChatRequestNotifier307 {
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .setContentIntent(open)
-            .setAutoCancel(plan.step == "ready")
+            .setAutoCancel(plan.step == "ready" || plan.step == "files_done")
             .setPublicVersion(
                 Notification.Builder(context, plan.channel)
                     .setSmallIcon(R.drawable.ic_notification)
@@ -384,6 +443,11 @@ object ChatRequestNotifier307 {
                 Icon.createWithResource(context, android.R.drawable.sym_action_chat), openLabel, open,
             ).build())
         }
+        if (stop != null) {
+            b.addAction(Notification.Action.Builder(
+                Icon.createWithResource(context, android.R.drawable.ic_menu_close_clear_cancel), stopLabel, stop,
+            ).build())
+        }
         if (plan.promoted) b.extras.putBoolean(EXTRA_PROMOTED, true)
         return b.build()
     }
@@ -398,10 +462,12 @@ object ChatRequestNotifier307 {
         icon: Bitmap?,
         whenMs: Long,
         open: PendingIntent,
+        stopLabel: String = "",
+        stop: PendingIntent? = null,
     ): Notification {
         val b = NotificationCompat.Builder(context, plan.channel)
             .setSmallIcon(R.drawable.ic_notification)
-            .setColor(if (plan.grey) GREY else BLUE)
+            .setColor(if (plan.grey) GREY else if (plan.files) trackerColor(plan) else BLUE)
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(plan.ongoing)
@@ -414,7 +480,7 @@ object ChatRequestNotifier307 {
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(open)
-            .setAutoCancel(plan.step == "ready")
+            .setAutoCancel(plan.step == "ready" || plan.step == "files_done")
             .setPublicVersion(
                 NotificationCompat.Builder(context, plan.channel)
                     .setSmallIcon(R.drawable.ic_notification)
@@ -424,7 +490,8 @@ object ChatRequestNotifier307 {
             )
         // Bundle 314 (USER PICK): the sliding line while waiting (Sent /
         // Reached), a filled bar once parts come.
-        if (plan.step != "ready" && !plan.grey) b.setProgress(100, plan.progress, plan.compatSliding)
+        // Bundle 317 (G7): files = a bar by MB (sliding while waiting); done = no bar.
+        if (plan.step != "ready" && plan.step != "files_done" && !plan.grey) b.setProgress(100, plan.progress, plan.compatSliding)
         if (!plan.alert) b.setSilent(true)
         if (plan.alert && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             // Below Android 8 there are no channels: the message tone only (no buzz permission).
@@ -435,6 +502,7 @@ object ChatRequestNotifier307 {
         if (icon != null) b.setLargeIcon(icon)
         if (plan.timeoutMs > 0) b.setTimeoutAfter(plan.timeoutMs)
         if (plan.openButton && openLabel.isNotEmpty()) b.addAction(0, openLabel, open)
+        if (stop != null) b.addAction(0, stopLabel, stop)
         return b.build()
     }
 

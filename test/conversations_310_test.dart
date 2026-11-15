@@ -317,7 +317,9 @@ void main() {
       expect(s, contains('…'));
     });
 
-    testWidgets('voice: Get -> asks the phone, then Getting', (tester) async {
+    // Bundle 317 (G6, listed change): no Get button - the voice note comes
+    // by itself (the file queue asks); the row says "Next in line".
+    testWidgets('voice: no Get button - Next in line, a tap asks nothing', (tester) async {
       await _phone310(tester);
       final srv = _Srv310(_view310());
       await _open310(tester, srv);
@@ -325,14 +327,12 @@ void main() {
       expect(_voice('f1'), findsOneWidget);
       expect(find.text('voice_1731.m4a'), findsNothing);
       expect(find.byKey(const ValueKey('viewer221_getfile_f1')), findsNothing);
-      expect(_row(tester, 'f1').state, VoiceState310.get);
-      expect(_row(tester, 'f1').label, '0:07');
-      expect(_row(tester, 'f1').levels, hasLength(40));
-      await tester.tap(find.descendant(of: _voice('f1'), matching: find.byType(InkWell)));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 60)));
-      await tester.pump();
-      expect(srv.asked.single['file_id'], 'f1');
       expect(_row(tester, 'f1').state, VoiceState310.getting);
+      expect(_row(tester, 'f1').label, 'Next in line');
+      expect(_row(tester, 'f1').levels, hasLength(40));
+      expect(_row(tester, 'f1').onTap, isNull);
+      await tester.pump();
+      expect(srv.asked, isEmpty);
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -394,7 +394,7 @@ void main() {
           ])));
       expect(_row(tester, 'f1').state, VoiceState310.gone);
       expect(_row(tester, 'f1').onTap, isNull);
-      expect(_row(tester, 'f2').state, VoiceState310.get);
+      expect(_row(tester, 'f2').state, VoiceState310.getting); // Bundle 317 (G6): comes by itself
       expect(_row(tester, 'f2').levels, isEmpty);
       expect(_row(tester, 'f2').label, isNotEmpty);
       await tester.pumpWidget(const SizedBox());
@@ -428,10 +428,11 @@ void main() {
         expect(
             find.descendant(of: find.byKey(const ValueKey('viewer221_msg_m1')), matching: find.byType(BubbleText310)),
             findsOneWidget);
-        // Short file names; Get file stays.
+        // Short file names; Bundle 317 (G6): no Get button, "Next in line".
         expect(find.text('LinkUp_Install_Guide_Final_Version_2026.pdf'), findsNothing);
         expect(find.textContaining('…'), findsWidgets);
-        expect(find.byKey(const ValueKey('viewer221_getfile_f9')), findsOneWidget);
+        expect(find.byKey(const ValueKey('viewer221_getfile_f9')), findsNothing);
+        expect(find.textContaining('Next in line'), findsOneWidget);
         await tester.pumpWidget(const SizedBox());
       });
     }
@@ -466,7 +467,9 @@ void main() {
 
     test('regression: viewer test locks still in the source', () {
       final src = File('lib/features/admin/presentation/screens/admin_chat_viewer_screen.dart').readAsStringSync();
-      expect(src, contains("ValueKey('viewer221_getfile_\${a['file_id']}')"));
+      // Bundle 317 (G6): the Get button is gone; each file shows its state.
+      expect(src, isNot(contains("ValueKey('viewer221_getfile_\${a['file_id']}')")));
+      expect(src, contains("ValueKey('viewer317_file_\${fileId}_\${st.state.name}')"));
       expect(src, contains("ValueKey('viewer221_msg_\${m['id']}')"));
       expect(src, contains('Batch307(batch: shown++ ~/ 3, child: _bubble(v, m))'));
       expect(src, contains("ValueKey('viewer307_ready')"));

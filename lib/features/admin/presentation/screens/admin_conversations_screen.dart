@@ -7,6 +7,7 @@ import 'package:locallink/features/admin/data/actions/admin_action_book.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_service.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
 import 'package:locallink/features/admin/data/actions/request_step_307.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_chat_request_sheet.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_chat_viewer_screen.dart';
@@ -70,16 +71,22 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     super.initState();
     AdminActionBook.instance.addListener(_reload);
     ChatAnswerCarrier.progress.addListener(_reload);
+    FileQueue317.trips.addListener(_files317); // Bundle 317 (G8)
     _viewSub = widget.viewMode?.stream.listen((_) => _reload());
     // A2: the pill flips within 10 s when the server drops or comes back.
     _pill = Timer.periodic(AdminConversationsScreen.pillEvery, (_) => unawaited(_checkPill()));
     unawaited(_load());
   }
 
+  void _files317() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
     AdminActionBook.instance.removeListener(_reload);
     ChatAnswerCarrier.progress.removeListener(_reload);
+    FileQueue317.trips.removeListener(_files317);
     unawaited(_viewSub?.cancel());
     _pill?.cancel();
     _advance?.cancel();
@@ -290,7 +297,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 _header(context),
                 const AdminUiCheckBanner216(),
-                const ServerClockBar255(),
+                // Bundle 315: no server clock banner (the check stays hidden: log + time fix).
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                   child: Segmented307(
@@ -410,7 +417,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
   // --------------------------------------------------------- requests tab
 
   List<Widget> _requestsTab(BuildContext context, List<ChatRequestRow221> requests) {
-    final live = RequestStep307.liveOrder(requests);
+    final live = RequestStep307.liveOrder(requests, files: FileQueue317.trips.value);
     final running = [for (final r in requests) if (RequestStep307.of(r).active) r];
     final done = [for (final r in requests) if (!RequestStep307.of(r).active) r];
     return [
@@ -510,6 +517,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       range: _range(r),
       brand: L.t.getChat,
       group: _isGroup(r),
+      files: FileQueue317.trips.value[r.id], // Bundle 317 (G8)
       onTap: () {
         _touched();
         unawaited(_liveTap(r));
@@ -695,6 +703,14 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
               const SizedBox(height: 4),
               Row(children: [
                 Chip307(step.chip, step.step, check: step.step == Step307.ready),
+                // Bundle 317 (G8): second chip "Files 3/13" / "Files ✓".
+                if (FileQueue317.trips.value[r.id] case final f?
+                    when step.step == Step307.ready && f.total > 0 && !f.stopped) ...[
+                  const SizedBox(width: 6),
+                  Chip307(f.done ? L.t.filesDoneShort317 : L.t.filesShort317(f.here, f.wanted),
+                      f.done ? Step307.ready : Step307.coming,
+                      key: ValueKey('requests317_files_${r.id}')),
+                ],
                 if (sub.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   Flexible(

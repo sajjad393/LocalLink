@@ -4517,6 +4517,7 @@ class LocalLinkTransportService : Service() {
         val now = System.currentTimeMillis()
         if (!MeshIdPolicy.isValid(source) || !MeshIdPolicy.isValid(id)) return false
         val ephemeral = isEphemeralCallMediaType(packet.type)
+        if (!ephemeral) awaitSeenLoad317() // Bundle 317 (F)
         val tracker = if (ephemeral) seenEphemeralMeshPackets else seenMeshPackets
         val firstSeen = tracker.markSeen(source, id, now)
         if (!firstSeen) {
@@ -5404,7 +5405,24 @@ class LocalLinkTransportService : Service() {
     private fun createStateKey():javax.crypto.SecretKey{val ks=KeyStore.getInstance("AndroidKeyStore").apply{load(null)};if(!ks.containsAlias(STATE_KEY_ALIAS)){val g=javax.crypto.KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");g.init(KeyGenParameterSpec.Builder(STATE_KEY_ALIAS,KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).setUserAuthenticationRequired(false).build());g.generateKey()};return ks.getKey(STATE_KEY_ALIAS,null) as javax.crypto.SecretKey}
     private fun persistState(){try{val j=JSONObject().put("active",transportRunning).put("device_id",transportDeviceId).put("group_owner",transportGroupOwner).put("group_owner_address",transportGroupOwnerAddress);val ids=JSONArray();knownPeers.forEach{ids.put(it)};j.put("known_peers",ids);val blocked=JSONArray();blockedPeers.forEach{blocked.put(it)};j.put("blocked_peers",blocked);val verified=JSONArray();linkVerified.forEach{verified.put(it)};j.put("link_verified",verified);j.put("link_keys",linkKeysJson());j.put("peer_file_keys",peerFileKeysJson());val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,createStateKey());val iv=c.iv;getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(STATE_BLOB,Base64.encodeToString(iv+c.doFinal(j.toString().toByteArray(Charsets.UTF_8)),Base64.NO_WRAP)).apply()}catch(_:Exception){}}
     private fun loadPersistedState(){try{val b=getSharedPreferences(PREFS,MODE_PRIVATE).getString(STATE_BLOB,null)?:return;val a=Base64.decode(b,Base64.DEFAULT);if(a.size<28)return;val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,createStateKey(),GCMParameterSpec(128,a.copyOfRange(0,12)));val j=JSONObject(String(c.doFinal(a.copyOfRange(12,a.size)),Charsets.UTF_8));transportRunning=j.optBoolean("active",false);transportDeviceId=j.optString("device_id").takeIf{it.isNotBlank()};transportGroupOwner=j.optBoolean("group_owner",false);transportGroupOwnerAddress=j.optString("group_owner_address").takeIf{it.isNotBlank()};knownPeers.clear();j.optJSONArray("known_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))knownPeers.add(id)}};blockedPeers.clear();j.optJSONArray("blocked_peers")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))blockedPeers.add(id)}};linkVerified.clear();j.optJSONArray("link_verified")?.let{a->for(i in 0 until a.length()){val id=a.optString(i).trim();if(validTransportId(id))linkVerified.add(id)}};parseLinkKeys(j.optJSONObject("link_keys")?.toString())?.let{linkKeys.clear();linkKeys.putAll(it)};parsePeerFileKeys(j.optJSONObject("peer_file_keys")?.toString())?.let{peerFileKeys.clear();peerFileKeys.putAll(it)}}catch(_:Exception){}}
-    private fun restoreDurableState(){loadSeenMeshPackets();restoreIncomingTransfers();restoreOutgoingTransfers()}
+    private fun restoreDurableState(){startSeenLoad317();restoreIncomingTransfers();restoreOutgoingTransfers()}
+
+    // Bundle 317 (F): the .seen files (one per packet) were read on the main
+    // thread at start (MAIN_STALL 0.7-2.5 s at File.listFiles on ayesha).
+    // Now a background thread reads them; a mesh packet waits for the list
+    // (max 10 s) so a replay can never slip in while it loads.
+    private val seenLoaded317 = java.util.concurrent.CountDownLatch(1)
+    private fun startSeenLoad317(){
+        Thread({
+            val t0=System.currentTimeMillis()
+            try{loadSeenMeshPackets()}catch(_:Throwable){}finally{seenLoaded317.countDown()}
+            Log.i(BG_TAG,"SEEN_MESH_LOADED ms=${System.currentTimeMillis()-t0} n=${seenMeshPackets.size()}")
+        },"linkup-seen-load").apply{isDaemon=true}.start()
+    }
+    private fun awaitSeenLoad317(){
+        if(seenLoaded317.count==0L)return
+        try{seenLoaded317.await(10,java.util.concurrent.TimeUnit.SECONDS)}catch(_:InterruptedException){Thread.currentThread().interrupt()}
+    }
     private fun seenFileFor(key:String)=File(seenMeshDir,Base64.encodeToString(key.toByteArray(),Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)+".seen")
     private fun loadSeenMeshPackets(){
         val now=System.currentTimeMillis()

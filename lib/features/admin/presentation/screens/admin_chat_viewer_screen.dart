@@ -4,9 +4,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:locallink/core/models/group_event.dart';
 import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
 import 'package:locallink/features/admin/data/actions/request_step_307.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
@@ -83,6 +86,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     _noteProgress();
     if (_view == null) unawaited(_load());
     ChatAnswerCarrier.progress.addListener(_changed);
+    FileQueue317.trips.addListener(_files317Changed);
     _poll = Timer.periodic(const Duration(seconds: 20), (_) {
       if (!(_view?.complete ?? false)) unawaited(_load());
     });
@@ -108,7 +112,8 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     } catch (_) {}
   }
 
-  static bool _ready310(ChatRequestRow221? r) => r != null && (r.state == 'done' || (r.of > 0 && r.parts >= r.of));
+  // Bundle 317 (A): here = every part here (`done` = the phone only answered).
+  static bool _ready310(ChatRequestRow221? r) => r != null && r.of > 0 && r.parts >= r.of;
 
   /// V4: play / pause a voice note that came from the phone.
   Future<void> _playVoice310(ChatRequestRow221 r) async {
@@ -172,20 +177,106 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   @override
   void dispose() {
     ChatAnswerCarrier.progress.removeListener(_changed);
+    FileQueue317.trips.removeListener(_files317Changed);
     _poll?.cancel();
     _readyTimer?.cancel();
+    _allHereTimer317?.cancel();
     _filePoll310?.cancel();
     unawaited(_stopVoice310());
     // Bundle 310: the voice copies played here go with the screen.
     try {
       for (final f in Directory.systemTemp.listSync()) {
-        if (f is File && f.path.contains('admin_voice310_')) f.deleteSync();
+        if (f is File && (f.path.contains('admin_voice310_') || f.path.contains('admin_file317_'))) f.deleteSync();
       }
     } catch (_) {}
     super.dispose();
   }
 
   void _changed() => unawaited(_load());
+
+  // Bundle 317 (G6): files come by themselves; the viewer only shows them.
+  final Map<String, Uint8List> _bytes317 = <String, Uint8List>{};
+  final Set<String> _loading317 = <String>{};
+  bool _allHereGone317 = false;
+  Timer? _allHereTimer317;
+
+  void _files317Changed() {
+    if (!mounted) return;
+    setState(() {});
+    final trip = FileQueue317.trips.value[widget.request.id];
+    if (trip != null && trip.done && !trip.stopped && _allHereTimer317 == null) {
+      _allHereTimer317 = Timer(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _allHereGone317 = true);
+      });
+    }
+    unawaited(_loadFiles310());
+  }
+
+  /// The state of one file: the queue first, else the Get file rows here.
+  FileView317 _view317(Map<String, dynamic> a) {
+    final fileId = a['file_id']?.toString() ?? '';
+    if (a['file_gone'] == true) return const FileView317(FileState317.gone);
+    final size = a['size'] is num ? (a['size'] as num).toInt() : 0;
+    if (size > 50 * 1024 * 1024) return const FileView317(FileState317.tooBig);
+    final q = FileQueue317.instance?.viewsOf(widget.request.id)[fileId];
+    final row = _files310[fileId];
+    if (row != null && _ready310(row)) return FileView317(FileState317.here, parts: row.parts, of: row.of, row: row);
+    if (q != null) return q;
+    if (row != null) {
+      if (row.refused == 'file_too_big') return FileView317(FileState317.tooBig, row: row);
+      if (row.refused.isNotEmpty || row.empty) return FileView317(FileState317.gone, row: row);
+      return FileView317(FileState317.coming, parts: row.parts, of: row.of, row: row);
+    }
+    return const FileView317(FileState317.next);
+  }
+
+  /// The answering phone's owner (for "Coming from kiran's phone").
+  String get _who317 {
+    final v = _view;
+    final o = v == null ? '' : _owner255(v);
+    return o.isNotEmpty ? o : (FileQueue317.trips.value[widget.request.id]?.from ?? '');
+  }
+
+  Future<Uint8List?> _bytesOf317(ChatRequestRow221 row) async {
+    final have = _bytes317[row.fileId];
+    if (have != null) return have;
+    if (!_loading317.add(row.fileId)) return null;
+    try {
+      final b = await widget.service.fileBytes(row);
+      if (b != null && b.isNotEmpty) _bytes317[row.fileId] = b;
+      return b;
+    } catch (_) {
+      return null;
+    } finally {
+      _loading317.remove(row.fileId);
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// Tap on a file that is here: photos full screen, others to the phone's apps.
+  Future<void> _openFile317(Map<String, dynamic> a, ChatRequestRow221 row) async {
+    final bytes = await _bytesOf317(row);
+    if (bytes == null || !mounted) return;
+    final type = a['type']?.toString() ?? '';
+    if (type.startsWith('image/')) {
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (ctx) => Scaffold(
+                key: const ValueKey('viewer317_photo_full'),
+                backgroundColor: Colors.black,
+                appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white),
+                body: Center(child: InteractiveViewer(maxScale: 6, child: Image.memory(bytes))),
+              )));
+      return;
+    }
+    try {
+      final safe = Viewer310.shortName(a['name']?.toString() ?? 'file').replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final file = File('${Directory.systemTemp.path}/admin_file317_$safe');
+      await file.writeAsBytes(bytes, flush: true);
+      await Share.shareXFiles([XFile(file.path, mimeType: type.isEmpty ? null : type)]);
+    } catch (error) {
+      if (mounted) adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
+    }
+  }
 
   Future<void> _load() async {
     try {
@@ -277,21 +368,6 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   static String _day(String d) {
     final t = DateTime.tryParse(d);
     return t == null ? d : dMMM216(t);
-  }
-
-  Future<void> _getFile(Map<String, dynamic> m, Map<String, dynamic> a) async {
-    try {
-      await widget.service.getFile(widget.request,
-          fileId: a['file_id']?.toString() ?? '',
-          messageId: m['id']?.toString() ?? '',
-          name: a['name']?.toString() ?? '');
-      if (mounted) adminSnack216(context, L.t.askedThePhoneForTheFull);
-      _asked310.add(a['file_id']?.toString() ?? ''); // Bundle 310 (V4)
-      if (mounted) setState(() {});
-      unawaited(_loadFiles310());
-    } catch (error) {
-      if (mounted) adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
-    }
   }
 
   Future<void> _longPress(Map<String, dynamic> m) async {
@@ -471,6 +547,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
             ]),
           ),
           if (v != null && !v.empty && !v.forAdminPhone) _progressCard(v),
+          if (v != null && v.complete && !v.forAdminPhone) _filesStrip317(),
           Expanded(
             child: v == null
                 ? Center(
@@ -555,6 +632,73 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     );
   }
 
+  /// Bundle 317 (G8): the files of this chat on the top: "3 of 13 files ·
+  /// 6.2 of 24 MB", from / via, a bar; "All files here" fades after 3 s.
+  Widget _filesStrip317() {
+    final trip = FileQueue317.trips.value[widget.request.id];
+    final k = K307.of(context);
+    final cs = Theme.of(context).colorScheme;
+    final t = A216Text.of(context);
+    final show = trip != null && trip.total > 0 && !(trip.done && _allHereGone317) && !trip.stopped;
+    Widget inner = const SizedBox(width: double.infinity);
+    if (show) {
+      final done = trip.done;
+      final color = done ? k.green : (trip.waiting ? k.orange : k.blue);
+      final line1 = done
+          ? L.t.allFilesHere317
+          : '${L.t.filesOf317(trip.here, trip.wanted)} \u00b7 ${L.t.mbOf317(size216(trip.bytesHere), size216(trip.bytesTotal))}';
+      final line2 = [
+        if (trip.waiting && !done) L.t.filesWaiting317,
+        if (trip.from.isNotEmpty) L.t.fromPhone317(trip.from),
+        if (trip.via.isNotEmpty) L.t.viaName317(trip.via),
+      ].join(' \u00b7 ');
+      inner = Container(
+        key: const ValueKey('viewer317_files_strip'),
+        margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        decoration: k.cardBox(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            Icon(done ? Icons.check_circle_rounded : Icons.photo_library_rounded, size: 18, color: color),
+            const SizedBox(width: 8),
+            Expanded(child: Text(line1, style: t.custom(14, FontWeight.w700, cs.onSurface, 1.3))),
+            // Bundle 317 (G7): Stop files (the files not here yet stop).
+            if (!done)
+              TextButton(
+                key: const ValueKey('viewer317_stop_files'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(48, 36),
+                  foregroundColor: cs.error,
+                ),
+                onPressed: () =>
+                    unawaited(FileQueue317.instance?.stopFiles(widget.request.id).catchError((Object _) {})),
+                child: Text(L.t.stopFiles317, style: t.custom(13, FontWeight.w600, cs.error, 1.2)),
+              ),
+          ]),
+          if (line2.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(line2, style: t.custom(12, FontWeight.w400, cs.onSurface.withValues(alpha: 0.62), 1.3)),
+          ],
+          if (!done) ...[
+            const SizedBox(height: 7),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(minHeight: 3, value: trip.fill, backgroundColor: k.track, color: color),
+            ),
+          ],
+        ]),
+      );
+    }
+    return AnimatedSize(
+      duration: Motion307.d(context, 300),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: inner,
+    );
+  }
+
   Widget _body(ChatAnswerView v) {
     final c = A216.colors(context);
     final t = A216Text(c);
@@ -562,6 +706,14 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
       return _note(L.t.madeOnAdminPhone304);
     }
     if (v.empty) {
+      // Bundle 317 (A): the phone answered, the chat is not here yet.
+      final r = widget.request;
+      if (r.state == 'done') {
+        final who = r.fromName.isNotEmpty ? L.t.namesPhone317(r.fromName) : L.t.thePhone317;
+        return _note(
+            '${L.t.phoneAnswered317(who)}\n${r.action == 'get_file' ? L.t.fileOnTheWay317 : L.t.chatOnTheWay317}',
+            key: const ValueKey('viewer317_answered'));
+      }
       return _note(L.t.waitingForPhoneOfChat304);
     }
     final items = <Widget>[];
@@ -588,6 +740,15 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           ),
         ));
       }
+      // Bundle 317 (B): a group event ("kiran created group ...") is a
+      // centred system line, never raw `llev:v1:` code; the next bubble
+      // starts a new run (so it shows its name).
+      final event = GroupEvent.parse(m['body']?.toString() ?? '');
+      if (event != null) {
+        lastSender = null;
+        items.add(Batch307(batch: shown++ ~/ 3, child: _systemLines317(v, m, event)));
+        continue;
+      }
       items.add(Batch307(batch: shown++ ~/ 3, child: _bubble(v, m)));
     }
     return Column(children: [
@@ -610,9 +771,41 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     ]);
   }
 
-  Widget _note(String text) {
+  /// Bundle 317 (B): names for a group event - the people in this copy
+  /// (sender id -> name), then the names inside the event.
+  Widget _systemLines317(ChatAnswerView v, Map<String, dynamic> m, GroupEvent event) {
+    final cs = Theme.of(context).colorScheme;
     final t = A216Text.of(context);
-    return Center(child: Padding(padding: const EdgeInsets.all(28), child: Text(text, textAlign: TextAlign.center, style: t.emptyBody)));
+    final names = <String, String>{};
+    for (final x in v.messages) {
+      final id = x['sender']?.toString() ?? '';
+      final n = x['sender_name']?.toString().trim() ?? '';
+      if (id.isNotEmpty && n.isNotEmpty) names[id] = n;
+    }
+    final lines = event.lines('', nameOf: (id) => names[id]);
+    return Padding(
+      key: ValueKey('viewer317_sys_${m['id']}'),
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Column(children: [
+        for (final line in lines)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Center(
+              child: Container(
+                constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .88),
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+                decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(11)),
+                child: Text(line, textAlign: TextAlign.center, style: t.custom(12, FontWeight.w400, cs.onSurfaceVariant, 1.35)),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Widget _note(String text, {Key? key}) {
+    final t = A216Text.of(context);
+    return Center(key: key, child: Padding(padding: const EdgeInsets.all(28), child: Text(text, textAlign: TextAlign.center, style: t.emptyBody)));
   }
 
   Widget _info(String text) {
@@ -646,7 +839,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     // surfaceContainerHighest, right = surfaceContainer), the time inside at
     // the bottom right, the name only in groups on the first bubble of a run.
     final bg = right ? cs.surfaceContainer : cs.surfaceContainerHighest;
-    final ink = deleted ? cs.onSurfaceVariant : cs.onSurface;
+    // Bundle 317 (C): a deleted message keeps its bubble; the text is faded
+    // (55 %) and one small red line says "Deleted 11:41".
+    final ink = deleted ? cs.onSurface.withValues(alpha: 0.55) : cs.onSurface;
     final soft = cs.onSurface.withValues(alpha: 0.62);
     final shown = name.isEmpty ? L.t.someone : name;
     final showName = group && _runStart310.contains('${m['id']}');
@@ -661,10 +856,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
         margin: const EdgeInsets.symmetric(vertical: 2.5),
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
         decoration: BoxDecoration(
-          color: deleted ? Colors.transparent : bg,
+          color: bg,
           borderRadius: BorderRadius.only(
               topLeft: r, topRight: r, bottomLeft: right ? r : tail, bottomRight: right ? tail : r),
-          border: deleted ? Border.all(color: cs.outlineVariant) : null,
         ),
         child: Stack(children: [
         Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -674,7 +868,8 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
               child: Text(shown,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(12.5, FontWeight.w700, avatarColor221(shown))),
             ),
-          for (final a in atts) _attachment(m, a),
+          for (final a in _oneEach317(atts))
+            deleted ? Opacity(opacity: 0.55, child: _attachment(m, a)) : _attachment(m, a),
           if (body.isNotEmpty)
             BubbleText310(
                 text: body + ((m['cut'] == true) ? ' …' : ''),
@@ -682,15 +877,18 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
                 style: t.custom(15, FontWeight.w400, ink, 1.35),
                 timeStyle: timeStyle),
           if (deleted) ...[
-            const SizedBox(height: 6),
-            Container(
+            const SizedBox(height: 3),
+            Row(
               key: ValueKey('viewer221_deleted_${m['id']}'),
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-              decoration: BoxDecoration(
-                  color: k.dark ? const Color(0xFF3B1A1A) : const Color(0xFFFEE4E2),
-                  borderRadius: BorderRadius.circular(10)),
-              child: Text(_deletedWords(m['deleted_at'].toString()),
-                  style: t.custom(12, FontWeight.w700, k.dark ? const Color(0xFFF97066) : c.red)),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.delete_rounded, size: 13, color: k.dark ? const Color(0xFFF97066) : c.red),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(_deletedWords(m['deleted_at'].toString(), m['created_at']?.toString() ?? ''),
+                      style: t.custom(12, FontWeight.w600, k.dark ? const Color(0xFFF97066) : c.red)),
+                ),
+              ],
             ),
           ],
           if (outside) ...[
@@ -710,55 +908,168 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     );
   }
 
-  static String _deletedWords(String iso) {
+  /// Bundle 317 (C): "Deleted 11:41"; the date only when it is another day
+  /// than the message.
+  static String _deletedWords(String iso, [String sentIso = '']) {
     final t = DateTime.tryParse(iso)?.toLocal();
     if (t == null) return L.t.deletedByUser;
     final hm = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-    return L.t.deletedByUser2(dMMM216(t), hm);
+    final sent = DateTime.tryParse(sentIso)?.toLocal();
+    final sameDay = sent != null && sent.year == t.year && sent.month == t.month && sent.day == t.day;
+    return L.t.deletedAt317(sameDay ? hm : '${dMMM216(t)} $hm');
   }
 
+  /// Bundle 317 (D): one row per file id (the same file twice in one
+  /// message is shown once); no id -> same name + size + type once.
+  static List<Map<String, dynamic>> _oneEach317(List<Map<String, dynamic>> atts) {
+    final seen = <String>{};
+    return [
+      for (final a in atts)
+        if (seen.add((a['file_id']?.toString() ?? '').isNotEmpty
+            ? 'id:${a['file_id']}'
+            : 'nt:${a['name']}|${a['size']}|${a['type']}'))
+          a,
+    ];
+  }
+
+  /// Bundle 317 (D / G6): photo / video / file - no Get button. Next in
+  /// line / Coming x / y / shows (tap opens) / Not on the phone any more /
+  /// Too big to bring. Video icon for videos; size under the name.
   Widget _attachment(Map<String, dynamic> m, Map<String, dynamic> a) {
-    final c = A216.colors(context);
-    final t = A216Text(c);
+    final cs = Theme.of(context).colorScheme;
+    final t = A216Text.of(context);
+    final k = K307.of(context);
     Uint8List? thumb;
     try {
       final s = a['thumb']?.toString() ?? '';
       if (s.isNotEmpty) thumb = base64.decode(s);
     } catch (_) {}
-    final gone = a['file_gone'] == true;
     final type = a['type']?.toString() ?? '';
-    final media = type.startsWith('image/') || type.startsWith('video/');
-    if (Viewer310.isAudio(type, a['name']?.toString() ?? '')) return _voice310Row(m, a, gone);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 10, runSpacing: 6, children: [
-        if (thumb != null)
+    final name = a['name']?.toString() ?? '';
+    if (Viewer310.isAudio(type, name)) return _voice310Row(m, a, a['file_gone'] == true);
+    final fileId = a['file_id']?.toString() ?? '';
+    final size = a['size'] is num ? (a['size'] as num).toInt() : 0;
+    final video = type.startsWith('video/');
+    final photo = type.startsWith('image/');
+    final sizeWords = size <= 0
+        ? ''
+        : (video ? L.t.videoSize317(size216(size)) : (photo ? L.t.photoSize317(size216(size)) : L.t.fileSize317(size216(size))));
+    final st = _view317(a);
+    final who = _who317;
+    final soft = cs.onSurface.withValues(alpha: 0.62);
+    final icon = video ? Icons.videocam_rounded : (photo ? Icons.image_rounded : Icons.insert_drive_file_rounded);
+    final row = st.row;
+    if (st.state == FileState317.here && row != null) {
+      final bytes = photo ? _bytes317[fileId] : null;
+      if (photo && bytes == null) unawaited(_bytesOf317(row));
+      final Widget pic = bytes != null
+          ? Image.memory(bytes, width: 220, height: 160, fit: BoxFit.cover, gaplessPlayback: true)
+          : thumb != null
+              ? Image.memory(thumb, width: 220, height: 160, fit: BoxFit.cover, gaplessPlayback: true)
+              : Container(
+                  width: 220,
+                  height: 120,
+                  color: cs.surfaceContainerHigh,
+                  child: Icon(icon, color: cs.onSurfaceVariant, size: 30));
+      return Padding(
+        key: ValueKey('viewer317_file_${fileId}_here'),
+        padding: const EdgeInsets.only(bottom: 6),
+        child: InkWell(
+          onTap: () => unawaited(_openFile317(a, row)),
+          borderRadius: BorderRadius.circular(10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(alignment: Alignment.center, children: [
+                pic,
+                if (video)
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: const BoxDecoration(color: Color(0x99000000), shape: BoxShape.circle),
+                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 28),
+                  ),
+              ]),
+            ),
+            const SizedBox(height: 3),
+            Text([Viewer310.shortName(name.isEmpty ? L.t.file : name), sizeWords].where((x) => x.isNotEmpty).join(' \u00b7 '),
+                maxLines: 2, style: t.custom(12, FontWeight.w400, soft, 1.3)),
+          ]),
+        ),
+      );
+    }
+    final card = Row(mainAxisSize: MainAxisSize.min, children: [
+      if (thumb != null)
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.memory(thumb, width: 44, height: 44, fit: BoxFit.cover, gaplessPlayback: true),
+        )
+      else
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, color: cs.onSurfaceVariant, size: 22),
+        ),
+      const SizedBox(width: 10),
+      Flexible(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(Viewer310.shortName(name.isEmpty ? L.t.file : name),
+              maxLines: 2, style: t.custom(13.5, FontWeight.w600, cs.onSurface, 1.3)),
+          if (sizeWords.isNotEmpty) Text(sizeWords, style: t.custom(12, FontWeight.w400, soft, 1.3)),
+        ]),
+      ),
+    ]);
+    Widget? below;
+    switch (st.state) {
+      case FileState317.next || FileState317.coming:
+        final coming = st.state == FileState317.coming;
+        final words = coming
+            ? (who.isEmpty ? L.t.coming317 : L.t.comingFrom317(who))
+            : (who.isEmpty ? L.t.nextInLine317 : L.t.nextInLineFrom317(who));
+        below = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            Expanded(child: Text(words, style: t.custom(12, FontWeight.w500, soft, 1.3))),
+            if (st.of > 0) Text('${st.parts} / ${st.of}', style: t.custom(12, FontWeight.w600, soft)),
+          ]),
+          const SizedBox(height: 5),
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: Image.memory(thumb, width: 150, height: 108, fit: BoxFit.cover, gaplessPlayback: true),
-          )
-        else
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: c.surfaceMuted, borderRadius: BorderRadius.circular(10)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(media ? Icons.image_outlined : Icons.insert_drive_file_outlined, color: c.grey, size: 20),
-              const SizedBox(width: 6),
-              Flexible(
-                  child: Text(Viewer310.shortName(a['name']?.toString() ?? L.t.file),
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(13, FontWeight.w500, c.ink2))),
-            ]),
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              key: ValueKey('viewer317_bar_$fileId'),
+              minHeight: 3,
+              value: st.of > 0 ? (st.parts / st.of).clamp(0, 1).toDouble() : 0,
+              backgroundColor: k.track,
+              color: k.blue,
+            ),
           ),
-        if (gone)
-          Text(L.t.fileRemovedAfter60DaysThumbnail, style: t.custom(12.5, FontWeight.w500, c.grey))
-        else
-          AdminButton216(type.startsWith('video/') ? L.t.getFullVideo : (media ? L.t.getFullPhoto : L.t.getFile),
-              key: ValueKey('viewer221_getfile_${a['file_id']}'),
-              kind: A216ButtonKind.tonal,
-              height: 40,
-              width: 150,
-              onTap: () => _getFile(m, a)),
-      ]),
+        ]);
+      case FileState317.gone || FileState317.tooBig || FileState317.stopped:
+        final words = switch (st.state) {
+          FileState317.tooBig => L.t.tooBigToBring317,
+          FileState317.stopped => L.t.filesStopped317,
+          // The phone's own 60-day clean-up (flag in the chat) keeps its words.
+          _ when a['file_gone'] == true => L.t.fileRemovedAfter60DaysThumbnail,
+          _ => who.isEmpty ? L.t.notOnThePhoneAnyMore317 : L.t.notOnPhoneAnyMore317(who),
+        };
+        below = Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.block_rounded, size: 13, color: soft),
+          const SizedBox(width: 4),
+          Flexible(child: Text(words, style: t.custom(12, FontWeight.w500, soft, 1.3))),
+        ]);
+      case FileState317.here:
+        break;
+    }
+    return Padding(
+      key: ValueKey('viewer317_file_${fileId}_${st.state.name}'),
+      padding: const EdgeInsets.only(bottom: 6),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 210),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          card,
+          if (below != null) ...[const SizedBox(height: 7), below],
+        ]),
+      ),
     );
   }
 
@@ -776,9 +1087,17 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     double played = 0;
     double? progress;
     VoidCallback? onTap;
-    if (gone) {
+    // Bundle 317 (G6): no Get button - the voice note comes by itself.
+    final st = _view317(a);
+    if (gone || st.state == FileState317.gone || st.state == FileState317.tooBig || st.state == FileState317.stopped) {
       state = VoiceState310.gone;
-      label = L.t.fileRemovedAfter60DaysThumbnail;
+      final who = _who317;
+      label = switch (st.state) {
+        FileState317.tooBig => L.t.tooBigToBring317,
+        FileState317.stopped => L.t.filesStopped317,
+        _ when gone => L.t.fileRemovedAfter60DaysThumbnail,
+        _ => who.isEmpty ? L.t.notOnThePhoneAnyMore317 : L.t.notOnPhoneAnyMore317(who),
+      };
     } else if (_loading310 == fileId) {
       state = VoiceState310.getting;
     } else if (f != null && _ready310(f)) {
@@ -797,8 +1116,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
         label = '${f.parts} / ${f.of}';
       }
     } else {
-      state = VoiceState310.get;
-      onTap = fileId.isEmpty ? null : () => unawaited(_getFile(m, a));
+      state = VoiceState310.getting;
+      progress = 0;
+      label = L.t.nextInLine317;
     }
     return Padding(
       key: ValueKey('viewer310_voice_$fileId'),

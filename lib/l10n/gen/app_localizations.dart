@@ -14093,6 +14093,234 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'On your phone'**
   String get onYourPhone314;
+
+  /// No description provided for @phoneAnswered317.
+  ///
+  /// In en, this message translates to:
+  /// **'{hl} answered'**
+  String phoneAnswered317(Object? hl);
+
+  /// No description provided for @namesPhone317.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s phone'**
+  String namesPhone317(Object? name);
+
+  /// No description provided for @thePhone317.
+  ///
+  /// In en, this message translates to:
+  /// **'The phone'**
+  String get thePhone317;
+
+  /// No description provided for @chatOnTheWay317.
+  ///
+  /// In en, this message translates to:
+  /// **'The chat is on the way'**
+  String get chatOnTheWay317;
+
+  /// No description provided for @fileOnTheWay317.
+  ///
+  /// In en, this message translates to:
+  /// **'The file is on the way'**
+  String get fileOnTheWay317;
+
+  /// No description provided for @answered317.
+  ///
+  /// In en, this message translates to:
+  /// **'Answered'**
+  String get answered317;
+
+  /// No description provided for @deletedAt317.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted {when}'**
+  String deletedAt317(Object? when);
+
+  /// No description provided for @nextInLineFrom317.
+  ///
+  /// In en, this message translates to:
+  /// **'Next in line from {name}\'s phone'**
+  String nextInLineFrom317(Object? name);
+
+  /// No description provided for @nextInLine317.
+  ///
+  /// In en, this message translates to:
+  /// **'Next in line'**
+  String get nextInLine317;
+
+  /// No description provided for @comingFrom317.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming from {name}\'s phone'**
+  String comingFrom317(Object? name);
+
+  /// No description provided for @coming317.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming'**
+  String get coming317;
+
+  /// No description provided for @notOnPhoneAnyMore317.
+  ///
+  /// In en, this message translates to:
+  /// **'Not on {name}\'s phone any more'**
+  String notOnPhoneAnyMore317(Object? name);
+
+  /// No description provided for @notOnThePhoneAnyMore317.
+  ///
+  /// In en, this message translates to:
+  /// **'Not on the phone any more'**
+  String get notOnThePhoneAnyMore317;
+
+  /// No description provided for @tooBigToBring317.
+  ///
+  /// In en, this message translates to:
+  /// **'Too big to bring (over 50 MB)'**
+  String get tooBigToBring317;
+
+  /// No description provided for @photoSize317.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo · {size}'**
+  String photoSize317(Object? size);
+
+  /// No description provided for @videoSize317.
+  ///
+  /// In en, this message translates to:
+  /// **'Video · {size}'**
+  String videoSize317(Object? size);
+
+  /// No description provided for @fileSize317.
+  ///
+  /// In en, this message translates to:
+  /// **'File · {size}'**
+  String fileSize317(Object? size);
+
+  /// No description provided for @filesStopped317.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped'**
+  String get filesStopped317;
+
+  /// No description provided for @allFilesHere317.
+  ///
+  /// In en, this message translates to:
+  /// **'All files here'**
+  String get allFilesHere317;
+
+  /// No description provided for @filesOf317.
+  ///
+  /// In en, this message translates to:
+  /// **'{a} of {b} files'**
+  String filesOf317(Object? a, Object? b);
+
+  /// No description provided for @mbOf317.
+  ///
+  /// In en, this message translates to:
+  /// **'{a} of {b}'**
+  String mbOf317(Object? a, Object? b);
+
+  /// No description provided for @fromPhone317.
+  ///
+  /// In en, this message translates to:
+  /// **'from {name}\'s phone'**
+  String fromPhone317(Object? name);
+
+  /// No description provided for @viaName317.
+  ///
+  /// In en, this message translates to:
+  /// **'via {name}'**
+  String viaName317(Object? name);
+
+  /// No description provided for @filesWaiting317.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for a phone to bring them'**
+  String get filesWaiting317;
+
+  /// No description provided for @filesHereGone317.
+  ///
+  /// In en, this message translates to:
+  /// **'{a} files here · {b} not on the phone any more'**
+  String filesHereGone317(Object? a, Object? b);
+
+  /// No description provided for @filesHere317.
+  ///
+  /// In en, this message translates to:
+  /// **'{a} files here'**
+  String filesHere317(Object? a);
+
+  /// No description provided for @stopFiles317.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop files'**
+  String get stopFiles317;
+
+  /// No description provided for @openChat317.
+  ///
+  /// In en, this message translates to:
+  /// **'Open chat'**
+  String get openChat317;
+
+  /// No description provided for @filesComingTitle317.
+  ///
+  /// In en, this message translates to:
+  /// **'Files coming'**
+  String get filesComingTitle317;
+
+  /// No description provided for @filesWaitTitle317.
+  ///
+  /// In en, this message translates to:
+  /// **'Files waiting'**
+  String get filesWaitTitle317;
+
+  /// No description provided for @filesDoneTitle317.
+  ///
+  /// In en, this message translates to:
+  /// **'Files here'**
+  String get filesDoneTitle317;
+
+  /// No description provided for @filesShort317.
+  ///
+  /// In en, this message translates to:
+  /// **'Files {a}/{b}'**
+  String filesShort317(Object? a, Object? b);
+
+  /// No description provided for @chatReadyFilesComing317.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat ready · files coming'**
+  String get chatReadyFilesComing317;
+
+  /// No description provided for @chatReadyWaiting317.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat ready · waiting for the next trip'**
+  String get chatReadyWaiting317;
+
+  /// No description provided for @chatReadyAllHere317.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat ready · all files here'**
+  String get chatReadyAllHere317;
+
+  /// No description provided for @lastPartsAgo317.
+  ///
+  /// In en, this message translates to:
+  /// **'last parts {n} min ago'**
+  String lastPartsAgo317(Object? n);
+
+  /// No description provided for @filesGoneCount317.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} not on the phone any more'**
+  String filesGoneCount317(Object? n);
+
+  /// No description provided for @filesDoneShort317.
+  ///
+  /// In en, this message translates to:
+  /// **'Files ✓'**
+  String get filesDoneShort317;
 }
 
 class _AppLocalizationsDelegate

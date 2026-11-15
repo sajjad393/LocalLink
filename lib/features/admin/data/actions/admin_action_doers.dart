@@ -70,13 +70,11 @@ class ChatDoer221 {
         final replyTo = replyToOf(card);
         if (card.replyKey.isEmpty || replyTo.isEmpty) return 'refused:no_reply_key';
         final file = card.action == 'get_file';
+        if (file) return _fileInTurn(() => _buildFile(card, plain, replyTo));
         List<ChatAnswerPart> parts;
         try {
-          parts = file
-              ? await builder.buildFile(
-                  actionId: card.id, replyKey: card.replyKey, replyTo: replyTo, detail: plain.detail)
-              : await builder.buildChat(
-                  actionId: card.id, replyKey: card.replyKey, replyTo: replyTo, detail: plain.detail);
+          parts = await builder.buildChat(
+              actionId: card.id, replyKey: card.replyKey, replyTo: replyTo, detail: plain.detail);
         } on StateError catch (e) {
           final why = e.message;
           if (why == 'no_copy_here' || why == 'no_file') rethrow; // another phone answers
@@ -89,6 +87,37 @@ class ChatDoer221 {
         return 'ok';
     }
     return 'refused:unknown';
+  }
+
+  /// Bundle 317 (G3): one file is built at a time (cards wait in turn).
+  static Future<void> _fileChain = Future<void>.value();
+
+  static Future<String> _fileInTurn(Future<String> Function() job) {
+    final run = _fileChain.then((_) => job());
+    _fileChain = run.then((_) {}, onError: (_) {});
+    return run;
+  }
+
+  /// Bundle 317 (G3): built + kept 100 parts at a time.
+  Future<String> _buildFile(AdminActionCard card, AdminActionPlain plain, String replyTo) async {
+    var slices = 0;
+    try {
+      await builder.buildFile(
+          actionId: card.id,
+          replyKey: card.replyKey,
+          replyTo: replyTo,
+          detail: plain.detail,
+          onSlice: (slice) async {
+            slices++;
+            await carrier.addOwn(slice, replyTo: replyTo, isFile: true, announce: false);
+          });
+    } on StateError catch (e) {
+      final why = e.message;
+      if (why == 'no_copy_here' || why == 'no_file') rethrow; // another phone answers
+      return 'refused:$why';
+    }
+    if (slices > 0) await carrier.announceOwn(replyTo);
+    return 'ok';
   }
 }
 

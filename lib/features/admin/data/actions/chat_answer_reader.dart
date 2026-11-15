@@ -268,13 +268,14 @@ class ChatAnswerReader {
 
   /// The best local answer of a request (most parts), opened.
   Future<ChatAnswerView> read(String actionId, {String action = 'get_chat'}) async {
-    final mine = (await store.parts())
+    // Bundle 316 (F1): light rows first; each blob is read when opened.
+    final mine = (await store.metas())
         .where((p) => p.actionId == actionId && p.replyTo == selfDeviceId())
         .toList();
     if (mine.isEmpty) return ChatAnswerView(id: actionId, action: action);
-    final by = <String, Map<int, HeldPart>>{};
+    final by = <String, Map<int, PartMeta>>{};
     for (final p in mine) {
-      (by[p.answerId] ??= <int, HeldPart>{})[p.part] = p; // duplicates joined by number
+      (by[p.answerId] ??= <int, PartMeta>{})[p.part] = p; // duplicates joined by number
     }
     final best = by.entries.reduce((a, b) => b.value.length > a.value.length ? b : a);
     final parts = best.value.values.toList()..sort((a, b) => a.part.compareTo(b.part));
@@ -287,7 +288,8 @@ class ChatAnswerReader {
     var broken = 0;
     final data = BytesBuilder(copy: false);
     for (final p in parts) {
-      final plain = await openPart(pairs, p);
+      final full = await store.part(p.answerId, p.part);
+      final plain = full == null ? null : await openPart(pairs, full);
       if (plain == null) {
         broken++;
         continue;
@@ -342,7 +344,7 @@ class ChatAnswerReader {
   /// Close: the admin phone's copy goes now.
   Future<void> close(String actionId) async {
     final ids = {
-      for (final p in await store.parts())
+      for (final p in await store.metas())
         if (p.actionId == actionId && p.replyTo == selfDeviceId()) p.answerId,
     };
     for (final id in ids) {
@@ -430,6 +432,8 @@ class ChatRequestRow221 {
   final String fromName;
   final bool opened;
   final bool closed;
+  /// Bundle 317 (G5): why the phone said no (`file_gone`), '' = not refused.
+  final String refused;
 
   const ChatRequestRow221({
     required this.id,
@@ -453,6 +457,7 @@ class ChatRequestRow221 {
     this.fromName = '',
     this.opened = false,
     this.closed = false,
+    this.refused = '',
   });
 
   bool get ready => of > 0 && parts >= of;
@@ -495,6 +500,7 @@ class ChatRequestRow221 {
       fromName: s('from_name'),
       opened: m['opened'] == true,
       closed: m['closed'] == true,
+      refused: s('refused'),
     );
   }
 
@@ -837,7 +843,24 @@ class ChatRequests221 {
   Future<void> _remember(ChatRequestRow221 r) async {
     final all = await _saved()..removeWhere((m) => m['id'] == r.id);
     all.insert(0, r.toSaved());
-    await write(savedKey, jsonEncode(all.take(200).toList()));
+    // Bundle 317 (G1): Get file rows don't push Get chat rows out: 200 other
+    // rows; a Get file row stays while its chat request stays (max 600).
+    final kept = <Map<String, dynamic>>[];
+    for (final m in all) {
+      if (m['action'] != 'get_file' && kept.length < 200) kept.add(m);
+    }
+    final parents = {for (final m in kept) m['id']?.toString() ?? ''};
+    var files = 0;
+    for (final m in all) {
+      if (m['action'] == 'get_file' && files < 600 && (parents.contains(m['parent']?.toString() ?? '') ||
+          !all.any((x) => x['id'] == m['parent']))) {
+        kept.add(m);
+        files++;
+      }
+    }
+    final order = {for (var i = 0; i < all.length; i++) all[i]['id']?.toString() ?? '': i};
+    kept.sort((a, b) => (order[a['id']?.toString() ?? ''] ?? 0).compareTo(order[b['id']?.toString() ?? ''] ?? 0));
+    await write(savedKey, jsonEncode(kept));
   }
 
   /// Requests: the server list when online + this phone's own ones.
@@ -881,6 +904,7 @@ class ChatRequests221 {
         fromName: known?.fromName ?? '',
         opened: known?.opened ?? false,
         closed: known?.closed ?? false,
+        refused: (st?.refused ?? '').isNotEmpty ? st!.refused : known?.refused ?? '',
       );
     }
     final list = out.values.toList()..sort((a, b) => b.madeAt.compareTo(a.madeAt));
@@ -1086,8 +1110,17 @@ class ChatRequests221 {
     return (await reader.read(r.id, action: 'get_file')).fileBytes;
   }
 
+  /// Bundle 317 (G2): signs the stop for the parts of a request that are
+  /// still on the way (set by the app to the carrier's `stopRequest`).
+  static Future<void> Function(String actionId)? stopCarried317;
+
+  /// Bundle 317 (G1): ids of the requests made on this phone (no server call).
+  Future<Set<String>> mineIds317() async =>
+      {...await _mine307(), for (final m in await _saved()) m['id']?.toString() ?? ''}..remove('');
+
   /// Close: the copy goes now (server and this phone).
   Future<void> close(ChatRequestRow221 r) async {
+    await stopCarried317?.call(r.id).catchError((Object _) {});
     final token = await _token();
     if (!r.offline && token != null && serverOnline()) {
       await server.close(token, r.id).catchError((_) {});

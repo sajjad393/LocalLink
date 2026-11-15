@@ -8302,4 +8302,154 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onYourPhone314 => 'On your phone';
+
+  @override
+  String phoneAnswered317(Object? hl) {
+    return '$hl answered';
+  }
+
+  @override
+  String namesPhone317(Object? name) {
+    return '$name\'s phone';
+  }
+
+  @override
+  String get thePhone317 => 'The phone';
+
+  @override
+  String get chatOnTheWay317 => 'The chat is on the way';
+
+  @override
+  String get fileOnTheWay317 => 'The file is on the way';
+
+  @override
+  String get answered317 => 'Answered';
+
+  @override
+  String deletedAt317(Object? when) {
+    return 'Deleted $when';
+  }
+
+  @override
+  String nextInLineFrom317(Object? name) {
+    return 'Next in line from $name\'s phone';
+  }
+
+  @override
+  String get nextInLine317 => 'Next in line';
+
+  @override
+  String comingFrom317(Object? name) {
+    return 'Coming from $name\'s phone';
+  }
+
+  @override
+  String get coming317 => 'Coming';
+
+  @override
+  String notOnPhoneAnyMore317(Object? name) {
+    return 'Not on $name\'s phone any more';
+  }
+
+  @override
+  String get notOnThePhoneAnyMore317 => 'Not on the phone any more';
+
+  @override
+  String get tooBigToBring317 => 'Too big to bring (over 50 MB)';
+
+  @override
+  String photoSize317(Object? size) {
+    return 'Photo · $size';
+  }
+
+  @override
+  String videoSize317(Object? size) {
+    return 'Video · $size';
+  }
+
+  @override
+  String fileSize317(Object? size) {
+    return 'File · $size';
+  }
+
+  @override
+  String get filesStopped317 => 'Stopped';
+
+  @override
+  String get allFilesHere317 => 'All files here';
+
+  @override
+  String filesOf317(Object? a, Object? b) {
+    return '$a of $b files';
+  }
+
+  @override
+  String mbOf317(Object? a, Object? b) {
+    return '$a of $b';
+  }
+
+  @override
+  String fromPhone317(Object? name) {
+    return 'from $name\'s phone';
+  }
+
+  @override
+  String viaName317(Object? name) {
+    return 'via $name';
+  }
+
+  @override
+  String get filesWaiting317 => 'Waiting for a phone to bring them';
+
+  @override
+  String filesHereGone317(Object? a, Object? b) {
+    return '$a files here · $b not on the phone any more';
+  }
+
+  @override
+  String filesHere317(Object? a) {
+    return '$a files here';
+  }
+
+  @override
+  String get stopFiles317 => 'Stop files';
+
+  @override
+  String get openChat317 => 'Open chat';
+
+  @override
+  String get filesComingTitle317 => 'Files coming';
+
+  @override
+  String get filesWaitTitle317 => 'Files waiting';
+
+  @override
+  String get filesDoneTitle317 => 'Files here';
+
+  @override
+  String filesShort317(Object? a, Object? b) {
+    return 'Files $a/$b';
+  }
+
+  @override
+  String get chatReadyFilesComing317 => 'Chat ready · files coming';
+
+  @override
+  String get chatReadyWaiting317 => 'Chat ready · waiting for the next trip';
+
+  @override
+  String get chatReadyAllHere317 => 'Chat ready · all files here';
+
+  @override
+  String lastPartsAgo317(Object? n) {
+    return 'last parts $n min ago';
+  }
+
+  @override
+  String filesGoneCount317(Object? n) {
+    return '$n not on the phone any more';
+  }
+
+  @override
+  String get filesDoneShort317 => 'Files ✓';
 }

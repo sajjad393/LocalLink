@@ -102,7 +102,7 @@ class AdminPage216 extends StatelessWidget {
                     back: back,
                     viewMode: needsServer ? viewMode : null),
                 const AdminUiCheckBanner216(),
-                const ServerClockBar255(),
+                // Bundle 315: no server clock banner (the check stays hidden: log + time fix).
                 Expanded(child: content),
               ],
             ),

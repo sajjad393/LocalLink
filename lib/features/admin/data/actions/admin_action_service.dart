@@ -285,6 +285,10 @@ class AdminActionService {
         emptyAll: e.extra['empty_all'] == true,
         phones: _targets307(e).length,
         reached: _reached307(e),
+        refused: e.receipts.values
+            .map((r) => r.result)
+            .firstWhere((x) => x.startsWith('refused:'), orElse: () => '')
+            .replaceFirst('refused:', ''),
       ));
     }
     out.sort((a, b) => b.madeAt.compareTo(a.madeAt));

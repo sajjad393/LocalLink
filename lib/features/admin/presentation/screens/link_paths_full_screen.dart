@@ -107,6 +107,14 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   LinkMapFilter _filter = LinkMapFilter.all;
   String? _selected;
   bool _hint = false;
+  // Bundle 317 (E): the hint fades out after 4 s.
+  bool _hintGone = false;
+  Timer? _hintTimer;
+
+  /// Bundle 317 (E): the zoom buttons column (14 + 44 + 12 px) and the hint
+  /// line at the bottom - the first view keeps circles and names out of them.
+  static const double controlsInset317 = 70;
+  static const double hintInset317 = 40;
   // Bundle 217 (mock A-2): the first view shows the group, not the corner.
   bool _framed = false;
   Offset? _doubleTapAt;
@@ -168,6 +176,9 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     } catch (_) {}
     if (n >= 3 || !mounted) return;
     setState(() => _hint = true);
+    _hintTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _hintGone = true);
+    });
     try {
       await widget.writeHint?.call(LinkPathsFullScreen.hintKey, '${n + 1}');
     } catch (_) {}
@@ -176,6 +187,7 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
   @override
   void dispose() {
     _wholeTimer?.cancel();
+    _hintTimer?.cancel();
     if (_full) {
       // Bundle 298: leaving the map gives the phone its bars back.
       unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values)
@@ -261,11 +273,19 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
     }
     // Centre when the group fits (node + name margin); else keep the left /
     // top side (Server) in view.
+    // Bundle 317 (E): the free area starts right of the zoom buttons and
+    // ends above the hint line.
     const margin = 44.0;
-    double axis(double lo, double hi, double view) =>
-        hi - lo + 2 * margin <= view ? view / 2 - (lo + hi) / 2 : margin - lo;
-    final dx = axis(minX, maxX, _view.width).clamp(math.min(0.0, _view.width - canvas.width), 0.0).toDouble();
-    final dy = axis(minY, maxY, _view.height).clamp(math.min(0.0, _view.height - canvas.height), 0.0).toDouble();
+    const left = controlsInset317;
+    const bottom = hintInset317;
+    double axis(double lo, double hi, double start, double view) =>
+        hi - lo + 2 * margin <= view ? start + view / 2 - (lo + hi) / 2 : start + margin - lo;
+    final dx = axis(minX, maxX, left, math.max(0.0, _view.width - left))
+        .clamp(math.min(0.0, _view.width - canvas.width), left)
+        .toDouble();
+    final dy = axis(minY, maxY, 0, math.max(0.0, _view.height - bottom))
+        .clamp(math.min(0.0, _view.height - bottom - canvas.height), 0.0)
+        .toDouble();
     _zoom.value = Matrix4.identity()..translateByDouble(dx, dy, 0, 1);
   }
 
@@ -608,9 +628,16 @@ class _LinkPathsFullScreenState extends State<LinkPathsFullScreen> {
             left: 76,
             right: 12,
             bottom: 22,
-            child: Center(
-              child: Text(L.t.dragToScrollPinchToZoom,
-                  key: const ValueKey('link_map_hint'), style: t.custom(11, FontWeight.w400, c.grey)),
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                key: const ValueKey('link_map_hint_fade317'),
+                opacity: _hintGone ? 0 : 1,
+                duration: const Duration(milliseconds: 600),
+                child: Center(
+                  child: Text(L.t.dragToScrollPinchToZoom,
+                      key: const ValueKey('link_map_hint'), style: t.custom(11, FontWeight.w400, c.grey)),
+                ),
+              ),
             ),
           ),
         Positioned(

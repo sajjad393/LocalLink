@@ -26,6 +26,7 @@ import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/data/actions/chat_request_notifier_307.dart'; // Bundle 307
+import 'package:locallink/features/admin/data/actions/file_queue_317.dart'; // Bundle 317
 import 'package:locallink/features/admin/data/actions/admin_action_book.dart' show AdminActionBook; // Bundle 307
 import 'package:flutter/foundation.dart' show Listenable; // Bundle 307
 import 'package:locallink/features/admin/data/actions/delete_completely_doer.dart';
@@ -1156,11 +1157,32 @@ class AppDependencies {
       isOwner: requests307.isOwner,
       read: store.readSetting,
       write: store.writeSetting,
-      changes: Listenable.merge([AdminActionBook.instance, ChatAnswerCarrier.progress]),
+      changes: Listenable.merge([AdminActionBook.instance, ChatAnswerCarrier.progress, FileQueue317.trips]),
       taps: notifications.platform.chatRequestTaps307,
+      files317: () => FileQueue317.trips.value, // Bundle 317 (G7)
     );
     ChatRequestNotifier307.instance = card307;
     ChatRequests221.changed307 = card307.kick;
+    // Bundle 317 (G1): the files of a Ready chat come by themselves.
+    FileQueue317.instance?.stop();
+    final carrier = chatCarrier221;
+    ChatRequests221.stopCarried317 = (id) async {
+      await carrier.stopRequest(id);
+    };
+    FileQueue317.instance = FileQueue317(
+      rows: requests307.requests,
+      mineIds: requests307.mineIds317,
+      open: requests307.open,
+      ask: (parent, {required fileId, messageId = '', name = ''}) =>
+          requests307.getFile(parent, fileId: fileId, messageId: messageId, name: name),
+      close: requests307.close,
+      cancel: (r) => r.offline ? adminActions.cancel(r.id) : requests307.close(r),
+      isOwner: requests307.isOwner,
+      read: store.readSetting,
+      write: store.writeSetting,
+      nameOf: _name221,
+      changes: Listenable.merge([AdminActionBook.instance, ChatAnswerCarrier.progress]),
+    );
   }
 
   /// Bundle 221: start the carrier, the daily sweep (hidden files after 60
@@ -1265,6 +1287,7 @@ class AppDependencies {
   void _start221() {
     chatCarrier221.start();
     ChatRequestNotifier307.instance?.start(); // Bundle 307 (C3)
+    FileQueue317.instance?.start(); // Bundle 317 (G1)
     joinCarrier222.start(); // Bundle 222
     unawaited(chatCarrier221.refreshProgress().catchError((Object _) {}));
     Future<void> sweep() async {

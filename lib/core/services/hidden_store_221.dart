@@ -744,6 +744,56 @@ class SqlAnswerPartStore implements AnswerPartStore {
     return [for (final r in rows) if (_row(r) case final HeldPart h) h];
   }
 
+  /// Bundle 316 (F1): the columns of a light read (no body / sig).
+  static const List<String> _metaColumns = [
+    'answer_id', 'part', 'of', 'action_id', 'device', 'reply_to', 'is_file', 'own', 'at',
+    'length(body)+length(sig) AS size',
+  ];
+
+  static PartMeta _meta(Map<String, Object?> r) {
+    int n(Object? v) => v is int ? v : int.tryParse('$v') ?? 0;
+    return PartMeta(
+      answerId: r['answer_id']?.toString() ?? '',
+      part: n(r['part']),
+      of: n(r['of']),
+      actionId: r['action_id']?.toString() ?? '',
+      device: r['device']?.toString() ?? '',
+      replyTo: r['reply_to']?.toString() ?? '',
+      isFile: r['is_file'] == 1,
+      own: r['own'] == 1,
+      at: r['at']?.toString() ?? '',
+      size: n(r['size']),
+    );
+  }
+
+  @override
+  Future<List<PartMeta>> metas({String? answerId}) async {
+    await hidden.ensure();
+    final rows = answerId == null
+        ? await db().query('answer_parts', columns: _metaColumns)
+        : await db().query('answer_parts', columns: _metaColumns, where: 'answer_id=?', whereArgs: [answerId]);
+    return [for (final r in rows) _meta(r)];
+  }
+
+  @override
+  Future<HeldPart?> part(String answerId, int part) async {
+    await hidden.ensure();
+    final rows = await db()
+        .query('answer_parts', where: 'answer_id=? AND part=?', whereArgs: [answerId, part], limit: 1);
+    return rows.isEmpty ? null : _row(rows.first);
+  }
+
+  @override
+  Future<int> othersBytes(String self, {bool? files}) async {
+    await hidden.ensure();
+    final rows = await db().rawQuery(
+        'SELECT COALESCE(SUM(length(body)+length(sig)),0) AS n FROM answer_parts WHERE own=0 AND reply_to<>?'
+        '${files == null ? '' : ' AND is_file=${files ? 1 : 0}'}',
+        [self]);
+    final v = rows.isEmpty ? 0 : rows.first['n'];
+    return v is int ? v : int.tryParse('$v') ?? 0;
+  }
+
   @override
   Future<void> remove(String answerId, Iterable<int> parts) async {
     final list = parts.toList();

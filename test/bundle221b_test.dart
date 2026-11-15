@@ -216,10 +216,13 @@ void main() {
     expect(find.text('Server'), findsNothing);
     expect(find.text('Mesh'), findsNothing);
     expect(find.text('Local Wi-Fi'), findsNothing);
-    expect(find.text('Deleted by user · 5 Nov 14:02'), findsOneWidget);
+    // Bundle 317 (C): the lighter deleted look - "Deleted 14:02" (same day).
+    expect(find.text('Deleted 14:02'), findsOneWidget);
     expect(find.text('Outside the dates (phone clock)'), findsOneWidget);
     expect(find.text('File removed after 60 days · thumbnail only'), findsOneWidget);
-    expect(find.byKey(const ValueKey('viewer221_getfile_f2')), findsOneWidget);
+    // Bundle 317 (G6): no Get button - the file comes by itself.
+    expect(find.byKey(const ValueKey('viewer221_getfile_f2')), findsNothing);
+    expect(find.textContaining('Next in line'), findsOneWidget);
     expect(find.text('40 of 80 parts · the rest is on the way'), findsOneWidget);
     // The answering phone's owner (Ali) on the left, Sara on the right.
     expect(tester.getCenter(find.text('Salam')).dx, lessThan(tester.getCenter(find.text('Hi')).dx));

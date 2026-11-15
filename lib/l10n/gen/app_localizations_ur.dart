@@ -8333,4 +8333,154 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get onYourPhone314 => '⁧آپ کے فون پر⁩';
+
+  @override
+  String phoneAnswered317(Object? hl) {
+    return '⁧⁨$hl⁩ نے جواب دے دیا⁩';
+  }
+
+  @override
+  String namesPhone317(Object? name) {
+    return '⁧⁨$name⁩ کا فون⁩';
+  }
+
+  @override
+  String get thePhone317 => '⁧فون⁩';
+
+  @override
+  String get chatOnTheWay317 => '⁧چیٹ راستے میں ہے⁩';
+
+  @override
+  String get fileOnTheWay317 => '⁧فائل راستے میں ہے⁩';
+
+  @override
+  String get answered317 => '⁧جواب آ گیا⁩';
+
+  @override
+  String deletedAt317(Object? when) {
+    return '⁧⁨$when⁩ کو ڈیلیٹ ہوا⁩';
+  }
+
+  @override
+  String nextInLineFrom317(Object? name) {
+    return '⁧⁨$name⁩ کے فون سے اگلی باری⁩';
+  }
+
+  @override
+  String get nextInLine317 => '⁧اگلی باری⁩';
+
+  @override
+  String comingFrom317(Object? name) {
+    return '⁧⁨$name⁩ کے فون سے آ رہی ہے⁩';
+  }
+
+  @override
+  String get coming317 => '⁧آ رہی ہے⁩';
+
+  @override
+  String notOnPhoneAnyMore317(Object? name) {
+    return '⁧اب ⁨$name⁩ کے فون پر نہیں⁩';
+  }
+
+  @override
+  String get notOnThePhoneAnyMore317 => '⁧اب فون پر نہیں⁩';
+
+  @override
+  String get tooBigToBring317 => '⁧لانے کے لیے بہت بڑی (50 MB سے زیادہ)⁩';
+
+  @override
+  String photoSize317(Object? size) {
+    return '⁧تصویر · ⁨$size⁩⁩';
+  }
+
+  @override
+  String videoSize317(Object? size) {
+    return '⁧ویڈیو · ⁨$size⁩⁩';
+  }
+
+  @override
+  String fileSize317(Object? size) {
+    return '⁧فائل · ⁨$size⁩⁩';
+  }
+
+  @override
+  String get filesStopped317 => '⁧روک دیا گیا⁩';
+
+  @override
+  String get allFilesHere317 => '⁧سب فائلیں آ گئیں⁩';
+
+  @override
+  String filesOf317(Object? a, Object? b) {
+    return '⁧⁨$b⁩ میں سے ⁨$a⁩ فائلیں⁩';
+  }
+
+  @override
+  String mbOf317(Object? a, Object? b) {
+    return '⁧⁨$b⁩ میں سے ⁨$a⁩⁩';
+  }
+
+  @override
+  String fromPhone317(Object? name) {
+    return '⁧⁨$name⁩ کے فون سے⁩';
+  }
+
+  @override
+  String viaName317(Object? name) {
+    return '⁧⁨$name⁩ کے ذریعے⁩';
+  }
+
+  @override
+  String get filesWaiting317 => '⁧لانے والے فون کا انتظار⁩';
+
+  @override
+  String filesHereGone317(Object? a, Object? b) {
+    return '⁧⁨$a⁩ فائلیں آ گئیں · ⁨$b⁩ اب فون پر نہیں⁩';
+  }
+
+  @override
+  String filesHere317(Object? a) {
+    return '⁧⁨$a⁩ فائلیں آ گئیں⁩';
+  }
+
+  @override
+  String get stopFiles317 => '⁧فائلیں روکیں⁩';
+
+  @override
+  String get openChat317 => '⁧چیٹ کھولیں⁩';
+
+  @override
+  String get filesComingTitle317 => '⁧فائلیں آ رہی ہیں⁩';
+
+  @override
+  String get filesWaitTitle317 => '⁧فائلیں انتظار میں⁩';
+
+  @override
+  String get filesDoneTitle317 => '⁧فائلیں آ گئیں⁩';
+
+  @override
+  String filesShort317(Object? a, Object? b) {
+    return '⁧فائلیں ⁨$a⁩/⁨$b⁩⁩';
+  }
+
+  @override
+  String get chatReadyFilesComing317 => '⁧چیٹ تیار · فائلیں آ رہی ہیں⁩';
+
+  @override
+  String get chatReadyWaiting317 => '⁧چیٹ تیار · اگلے چکر کا انتظار⁩';
+
+  @override
+  String get chatReadyAllHere317 => '⁧چیٹ تیار · سب فائلیں آ گئیں⁩';
+
+  @override
+  String lastPartsAgo317(Object? n) {
+    return '⁧آخری حصے ⁨$n⁩ منٹ پہلے⁩';
+  }
+
+  @override
+  String filesGoneCount317(Object? n) {
+    return '⁧⁨$n⁩ اب فون پر نہیں⁩';
+  }
+
+  @override
+  String get filesDoneShort317 => '⁧فائلیں ✓⁩';
 }

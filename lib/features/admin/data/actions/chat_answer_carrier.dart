@@ -16,7 +16,11 @@ import 'package:locallink/features/admin/data/models/admin_block_record.dart';
 /// sends the real stop: a signed `answer_ack` with `all:true`. A partial ack
 /// tells carriers which parts the admin side already has, so the next phone
 /// only brings the missing ones.
-class HeldPart {
+/// Bundle 316 (F1): a held part WITHOUT its body / signature (ids, numbers,
+/// size). Every bulk read uses this; a blob is read one part at a time just
+/// before it is sent, uploaded or opened (the 16 Nov crash loop was one
+/// `SELECT *` of every 64 KB body in one plugin reply).
+class PartMeta {
   final String answerId;
   final int part;
   final int of;
@@ -24,11 +28,13 @@ class HeldPart {
   final String device; // the phone that built the answer
   final String replyTo; // 'server' or the admin phone's device id
   final bool isFile;
-  final SignedBlob blob;
   final bool own;
   final String at;
 
-  const HeldPart({
+  /// body + sig characters (the stored size).
+  final int size;
+
+  const PartMeta({
     required this.answerId,
     required this.part,
     required this.of,
@@ -36,12 +42,27 @@ class HeldPart {
     required this.device,
     required this.replyTo,
     required this.isFile,
-    required this.blob,
     required this.own,
     required this.at,
+    required this.size,
   });
+}
 
-  int get size => blob.body.length + blob.sig.length;
+class HeldPart extends PartMeta {
+  final SignedBlob blob;
+
+  HeldPart({
+    required super.answerId,
+    required super.part,
+    required super.of,
+    required super.actionId,
+    required super.device,
+    required super.replyTo,
+    required super.isFile,
+    required this.blob,
+    required super.own,
+    required super.at,
+  }) : super(size: blob.body.length + blob.sig.length);
 
   /// Reads a part blob (no signature check here). Null = not a part.
   static HeldPart? fromBlob(SignedBlob blob, {bool own = false, String at = ''}) {
@@ -106,6 +127,7 @@ class AnswerAck {
     required Set<int> have,
     required int of,
     required DateTime at,
+    bool stop = false, // Bundle 317 (G2): closed / Stop files = the real stop
   }) =>
       jsonEncode({
         'v': 1,
@@ -114,7 +136,7 @@ class AnswerAck {
         'action_id': actionId,
         'have': PartRanges.write(have),
         'of': of,
-        'all': of > 0 && have.length >= of,
+        'all': stop || (of > 0 && have.length >= of),
         'at': at.toUtc().toIso8601String(),
       });
 }
@@ -157,6 +179,16 @@ abstract final class PartRanges {
 abstract class AnswerPartStore {
   Future<bool> put(HeldPart p); // false when it was there already
   Future<List<HeldPart>> parts({String? answerId});
+
+  /// Bundle 316 (F1): every held part without body / sig.
+  Future<List<PartMeta>> metas({String? answerId});
+
+  /// Bundle 316 (F1): one part with its blob (null = not here).
+  Future<HeldPart?> part(String answerId, int part);
+
+  /// Bundle 316 (F1): size of other people's parts held here (not own, not
+  /// for [self]). [files]: null = all, true = file parts, false = chat parts.
+  Future<int> othersBytes(String self, {bool? files});
   Future<void> remove(String answerId, Iterable<int> parts);
 
   /// Drops the parts of an answer except the ones kept for [keepFor].
@@ -185,6 +217,20 @@ class MemoryAnswerPartStore implements AnswerPartStore {
         for (final p in _parts.values)
           if (answerId == null || p.answerId == answerId) p,
       ];
+
+  @override
+  Future<List<PartMeta>> metas({String? answerId}) async => [
+        for (final p in _parts.values)
+          if (answerId == null || p.answerId == answerId) p,
+      ];
+
+  @override
+  Future<HeldPart?> part(String answerId, int part) async => _parts['$answerId#$part'];
+
+  @override
+  Future<int> othersBytes(String self, {bool? files}) async => _parts.values
+      .where((p) => !p.own && p.replyTo != self && (files == null || p.isFile == files))
+      .fold<int>(0, (n, p) => n + p.size);
 
   @override
   Future<void> remove(String answerId, Iterable<int> parts) async {
@@ -299,10 +345,24 @@ typedef AnswerProgress = ({int have, int of, bool all});
 
 class ChatAnswerCarrier {
   static const int maxPartBytes = 64 * 1024;
-  static const int capOthers = 20 * 1024 * 1024;
+  // Bundle 316 (F3): 20 MB -> 8 MB (a 192 MB heap phone crash-looped).
+  static const int capOthers = 8 * 1024 * 1024;
   static const int perMeeting = 40;
   static const int perMeetingAdmin = 400;
   static const int uploadBatchBytes = 6 * 1024 * 1024;
+
+  /// Bundle 317 (G2): middle phones carry file parts too, at most 6 of the
+  /// 8 MB (text always has 2 MB); other people's file parts go after 3 days.
+  static const int capOthersFiles = 6 * 1024 * 1024;
+  static const Duration fileKeep = Duration(days: 3);
+
+  /// Bundle 317 (G4): the admin phone signs at most once per 2 s per answer
+  /// (and when the answer is complete / a have frame goes out).
+  static const Duration ackGap = Duration(seconds: 2);
+
+  /// Bundle 317 (G7): the phone that brought the last parts of a request
+  /// (action id -> device id), when it was not the answering phone.
+  static final Map<String, String> lastVia = <String, String>{};
   static const Duration haveEvery = Duration(seconds: 60);
 
   static ChatAnswerCarrier? instance;
@@ -379,7 +439,7 @@ class ChatAnswerCarrier {
   Future<void> refreshProgress() async {
     final ids = <String>{
       for (final a in (await store.acks()).values) a.actionId,
-      for (final p in await store.parts()) if (_isMine(p)) p.actionId,
+      for (final p in await store.metas()) if (_isMine(p)) p.actionId,
     }..remove('');
     final out = <String, AnswerProgress>{};
     for (final id in ids) {
@@ -399,21 +459,27 @@ class ChatAnswerCarrier {
     _sub = null;
     _timer?.cancel();
     _timer = null;
+    for (final t in _ackLater.values) {
+      t.cancel();
+    }
+    _ackLater.clear();
   }
 
   Future<void> tick() async {
+    await expireOld();
     for (final peer in await linkedPeers()) {
       await sendHave(peer);
     }
     await syncWithServer();
   }
 
-  bool _isMine(HeldPart p) => p.replyTo.isNotEmpty && p.replyTo == selfDeviceId();
+  bool _isMine(PartMeta p) => p.replyTo.isNotEmpty && p.replyTo == selfDeviceId();
 
   // --------------------------------------------------------------- the target
 
   /// The target phone built an answer: keep it until the stop and send it.
-  Future<void> addOwn(List<ChatAnswerPart> parts, {required String replyTo, bool isFile = false}) async {
+  Future<void> addOwn(List<ChatAnswerPart> parts,
+      {required String replyTo, bool isFile = false, bool announce = true}) async {
     final at = _now();
     for (final p in parts) {
       final h = HeldPart.fromBlob(p.blob, own: true, at: at);
@@ -421,6 +487,12 @@ class ChatAnswerCarrier {
     }
     AppLogger.info('ADMIN_ANSWER_BUILT',
         detail: 'parts=${parts.length} file=$isFile to=${replyTo == 'server' ? 'server' : 'admin_phone'}');
+    // Bundle 317 (G3): file slices are kept quietly; told once at the end.
+    if (announce) await announceOwn(replyTo);
+  }
+
+  /// Tells the server + the phones near me that I have new own parts.
+  Future<void> announceOwn(String replyTo) async {
     _changed();
     unawaited(syncWithServer().catchError((_) {}));
     for (final peer in await linkedPeers().catchError((_) => <String>[])) {
@@ -446,39 +518,163 @@ class ChatAnswerCarrier {
       }
     }
     if (!_isMine(p)) {
-      // A full file only goes to the admin's phone (or the server).
-      if (p.isFile) return false;
-      final held = await store.parts();
-      final others = held.where((h) => !h.own && !_isMine(h)).fold<int>(0, (n, h) => n + h.size);
+      // Bundle 316 (F1): one SUM, no bodies.
+      final others = await store.othersBytes(selfDeviceId());
       if (others + p.size > capOthers) {
         AppLogger.info('ADMIN_ANSWER_CAP_FULL', detail: 'held=$others');
         return false;
       }
+      // Bundle 317 (G2): file parts ride along, max 6 MB of them.
+      if (p.isFile) {
+        final files = await store.othersBytes(selfDeviceId(), files: true);
+        if (files + p.size > capOthersFiles) return false;
+      }
     }
     final added = await store.put(p);
-    if (!added) return false;
+    if (!added) {
+      // Bundle 316 (F2): a part I already hold came again -> the sender never
+      // got my ack; answer it with the signed ack (max once per 2 s).
+      if (_isMine(p)) await _ackRepeat(p, from);
+      return false;
+    }
     if (_isMine(p)) {
+      if (from.isNotEmpty && from != 'server' && from != p.device) {
+        lastVia[p.actionId] = from;
+      } else if (from == p.device) {
+        lastVia.remove(p.actionId);
+      }
       onMine?.call(p.actionId);
-      await _ackMine(p.answerId);
+      await _ackSoon(p.answerId);
     }
     _changed();
     return true;
   }
 
-  /// Admin phone: signs what it has; `all` = the real stop.
-  Future<void> _ackMine(String answerId) async {
+  final Map<String, DateTime> _ackAt = <String, DateTime>{};
+  final Map<String, Timer> _ackLater = <String, Timer>{};
+
+  /// Bundle 317 (G4): sign now when the answer is complete or 2 s went by,
+  /// else once 2 s after the last ack (one signature for many parts).
+  Future<void> _ackSoon(String answerId) async {
+    final last = _ackAt[answerId];
+    final now = _clock();
+    var complete = false;
+    if (last != null && now.difference(last) < ackGap) {
+      final mine = (await store.metas(answerId: answerId)).where(_isMine).toList();
+      complete = mine.isNotEmpty && mine.map((p) => p.part).toSet().length >= mine.first.of;
+    }
+    if (last == null || complete || now.difference(last) >= ackGap) {
+      _ackLater.remove(answerId)?.cancel();
+      _ackAt[answerId] = now;
+      await _ackMine(answerId);
+      return;
+    }
+    _ackLater[answerId] ??= Timer(ackGap - now.difference(last), () {
+      _ackLater.remove(answerId);
+      _ackAt[answerId] = _clock();
+      unawaited(_ackMine(answerId).catchError((_) => null));
+    });
+  }
+
+  /// Bundle 317 (G4): acks waiting for their 2 s are signed now (before a
+  /// have frame / upload, so the other side always gets the newest one).
+  Future<void> flushAcks() async {
+    for (final id in _ackLater.keys.toList()) {
+      _ackLater.remove(id)?.cancel();
+      _ackAt[id] = _clock();
+      await _ackMine(id);
+    }
+  }
+
+  /// Bundle 317 (G2): close / Stop files - a signed stop (`all`) for an
+  /// answer meant for me, kept and sent to the phones near me so carriers
+  /// and the answering phone drop it.
+  Future<bool> stopAnswer(String answerId, String actionId, int of) async {
     final sign = signAdminAck;
-    if (sign == null) return;
-    final mine = (await store.parts(answerId: answerId)).where(_isMine).toList();
-    if (mine.isEmpty) return;
+    if (sign == null || answerId.isEmpty) return false;
+    final body = AnswerAck.newBody(
+        answerId: answerId, actionId: actionId, have: const <int>{}, of: of, at: _clock(), stop: true);
+    final raw = await sign(body).catchError((_) => null);
+    if (raw == null) return false;
+    final ack = await checkAck(raw);
+    if (ack == null || !ack.all) return false;
+    await store.saveAck(ack);
+    await store.stop(ack.answerId, ack.actionId, _now());
+    _ackLater.remove(answerId)?.cancel();
+    AppLogger.info('ADMIN_ANSWER_STOP_SENT', detail: 'of=$of');
+    for (final peer in await linkedPeers().catchError((_) => <String>[])) {
+      unawaited(send(peer, {'type': ChatAnswerRules.partsType, 'op': 'acks', 'acks': [ack.raw]})
+          .catchError((_) {}));
+    }
+    return true;
+  }
+
+  /// Bundle 317 (G2): the signed stop for every answer of a request that is
+  /// meant for me (close / Stop files).
+  Future<int> stopRequest(String actionId) async {
+    final answers = <String, int>{};
+    for (final p in await store.metas()) {
+      if (p.actionId == actionId && _isMine(p)) answers[p.answerId] = p.of;
+    }
+    var n = 0;
+    for (final e in answers.entries) {
+      if (await stopAnswer(e.key, actionId, e.value)) n++;
+    }
+    return n;
+  }
+
+  /// Bundle 317 (G2): other people's file parts older than 3 days go.
+  Future<int> expireOld() async {
+    final cut = _clock().toUtc().subtract(fileKeep);
+    final old = <String, List<int>>{};
+    for (final p in await store.metas()) {
+      if (p.own || _isMine(p) || !p.isFile) continue;
+      final at = DateTime.tryParse(p.at);
+      if (at != null && at.isBefore(cut)) (old[p.answerId] ??= <int>[]).add(p.part);
+    }
+    var n = 0;
+    for (final e in old.entries) {
+      await store.remove(e.key, e.value);
+      n += e.value.length;
+    }
+    if (n > 0) AppLogger.info('ADMIN_ANSWER_FILE_EXPIRED', detail: 'parts=$n');
+    return n;
+  }
+
+  final Map<String, DateTime> _repeatAckAt = <String, DateTime>{};
+
+  /// Bundle 316 (F2): the ack for a repeated own part goes back to [from]
+  /// (the kept ack when it covers the part, else a fresh signed one).
+  Future<void> _ackRepeat(PartMeta p, String from) async {
+    if (signAdminAck == null) return;
+    final last = _repeatAckAt[p.answerId];
+    if (last != null && _clock().difference(last) < const Duration(seconds: 2)) return;
+    _repeatAckAt[p.answerId] = _clock();
+    var ack = (await store.acks())[p.answerId];
+    if (ack == null || !(ack.all || ack.have.contains(p.part))) {
+      ack = await _ackMine(p.answerId);
+    }
+    if (ack == null) return;
+    AppLogger.info('ADMIN_ANSWER_REPEAT_ACK', detail: 'part=${p.part} all=${ack.all}');
+    if (from.isEmpty || from == 'server') return;
+    unawaited(send(from, {'type': ChatAnswerRules.partsType, 'op': 'acks', 'acks': [ack.raw]})
+        .catchError((_) {}));
+  }
+
+  /// Admin phone: signs what it has; `all` = the real stop.
+  Future<AnswerAck?> _ackMine(String answerId) async {
+    final sign = signAdminAck;
+    if (sign == null) return null;
+    final mine = (await store.metas(answerId: answerId)).where(_isMine).toList();
+    if (mine.isEmpty) return null;
     final have = {for (final p in mine) p.part};
     final of = mine.first.of;
     final body = AnswerAck.newBody(
         answerId: answerId, actionId: mine.first.actionId, have: have, of: of, at: _clock());
     final raw = await sign(body).catchError((_) => null);
-    if (raw == null) return;
+    if (raw == null) return null;
     final ack = await checkAck(raw);
-    if (ack == null) return;
+    if (ack == null) return null;
     await _applyAck(ack);
     // Tell the phones near me now (so they stop / skip these parts).
     if (ack.all || have.length % 20 == 0) {
@@ -487,6 +683,7 @@ class ChatAnswerCarrier {
             .catchError((_) {}));
       }
     }
+    return ack;
   }
 
   /// Server ack `{body, sig}` (server key) or admin-phone ack
@@ -543,7 +740,7 @@ class ChatAnswerCarrier {
       await store.dropAnswer(ack.answerId, keepFor: selfDeviceId());
       AppLogger.info('ADMIN_ANSWER_STOP', detail: 'parts=${ack.of}');
     } else {
-      final held = await store.parts(answerId: ack.answerId);
+      final held = await store.metas(answerId: ack.answerId);
       await store.remove(ack.answerId,
           [for (final p in held) if (ack.have.contains(p.part) && !_isMine(p)) p.part]);
     }
@@ -554,10 +751,11 @@ class ChatAnswerCarrier {
 
   /// "I carry parts 1-40 of 80" for every answer + the acks I know.
   Future<Map<String, dynamic>> haveFrame() async {
-    final held = await store.parts();
-    final by = <String, List<HeldPart>>{};
+    await flushAcks();
+    final held = await store.metas();
+    final by = <String, List<PartMeta>>{};
     for (final p in held) {
-      (by[p.answerId] ??= <HeldPart>[]).add(p);
+      (by[p.answerId] ??= <PartMeta>[]).add(p);
     }
     final acks = await store.acks();
     return {
@@ -572,7 +770,21 @@ class ChatAnswerCarrier {
           },
       },
       'acks': [for (final a in acks.values.take(100)) a.raw],
+      // Bundle 317 (G2): bytes of file parts I can still take (old phones
+      // send no room = take no file parts).
+      'room': await fileRoom(),
     };
+  }
+
+  /// Bundle 317 (G2): file bytes this phone can still carry.
+  Future<int> fileRoom() async {
+    final self = selfDeviceId();
+    final all = await store.othersBytes(self);
+    final files = await store.othersBytes(self, files: true);
+    final left = capOthersFiles - files;
+    final total = capOthers - all;
+    final room = left < total ? left : total;
+    return room < 0 ? 0 : room;
   }
 
   Future<void> sendHave(String peer, {bool force = false}) async {
@@ -621,38 +833,52 @@ class ChatAnswerCarrier {
       case 'have':
         final answers = msg['answers'];
         if (from.isNotEmpty) {
-          await _sendMissing(from, answers is Map ? Map<String, dynamic>.from(answers) : const {});
+          final room = msg['room'];
+          await _sendMissing(from, answers is Map ? Map<String, dynamic>.from(answers) : const {},
+              room: room is int ? room : int.tryParse('${room ?? ''}') ?? 0);
         }
     }
   }
 
   /// Sends the peer parts it lacks and the admin side doesn't have yet
   /// (one part per frame, up to 40 per meeting; all for the admin phone).
-  Future<int> _sendMissing(String peer, Map<String, dynamic> theirs) async {
-    final held = await store.parts();
+  Future<int> _sendMissing(String peer, Map<String, dynamic> theirs, {int room = 0}) async {
+    final held = await store.metas();
     final acks = await store.acks();
     final stops = await store.stops();
     var sent = 0;
-    final byAnswer = <String, List<HeldPart>>{};
+    final byAnswer = <String, List<PartMeta>>{};
     for (final p in held) {
       if (stops.contains(p.answerId) && !p.own) continue;
       final ack = acks[p.answerId];
       if (ack != null && (ack.all || ack.have.contains(p.part))) continue;
-      (byAnswer[p.answerId] ??= <HeldPart>[]).add(p);
+      (byAnswer[p.answerId] ??= <PartMeta>[]).add(p);
     }
-    for (final e in byAnswer.entries) {
+    // Bundle 317 (G3): text answers go before file answers.
+    final order = byAnswer.entries.toList()
+      ..sort((a, b) => (a.value.first.isFile ? 1 : 0).compareTo(b.value.first.isFile ? 1 : 0));
+    var roomLeft = room;
+    for (final e in order) {
       final their = theirs[e.key];
       final has = their is Map ? PartRanges.read(their['have']?.toString() ?? '') : <int>{};
       final toAdmin = e.value.first.replyTo == peer;
-      // A full file: only to the admin's phone.
-      if (e.value.first.isFile && !toAdmin) continue;
+      final file = e.value.first.isFile;
+      // Bundle 317 (G2): file parts to a middle phone only while it has room.
+      if (file && !toAdmin && roomLeft <= 0) continue;
       final limit = toAdmin ? perMeetingAdmin : perMeeting;
       final list = e.value.where((p) => !has.contains(p.part)).toList()
         ..sort((a, b) => a.part.compareTo(b.part));
       for (final p in list) {
         if (sent >= limit) break;
+        if (file && !toAdmin) {
+          if (roomLeft < p.size) break;
+          roomLeft -= p.size;
+        }
         try {
-          await send(peer, {'type': ChatAnswerRules.partsType, 'op': 'parts', 'parts': [p.blob.toJson()]});
+          // Bundle 316 (F1): the blob is read only now, one part at a time.
+          final full = await store.part(p.answerId, p.part);
+          if (full == null) continue;
+          await send(peer, {'type': ChatAnswerRules.partsType, 'op': 'parts', 'parts': [full.blob.toJson()]});
           sent++;
         } catch (_) {
           return sent; // link gone: the next meeting goes on
@@ -670,7 +896,9 @@ class ChatAnswerCarrier {
     if (srv == null || _uploading || !(serverOnline?.call() ?? true)) return;
     _uploading = true;
     try {
-      final held = await store.parts();
+      await flushAcks();
+      // Bundle 317 (G3): text parts go up before file parts.
+      final held = (await store.metas())..sort((a, b) => (a.isFile ? 1 : 0).compareTo(b.isFile ? 1 : 0));
       final acks = await store.acks();
       final stops = await store.stops();
       final send = <SignedBlob>[];
@@ -683,8 +911,11 @@ class ChatAnswerCarrier {
         final ack = acks[p.answerId];
         if (ack != null && (ack.all || ack.have.contains(p.part))) continue;
         if (size + p.size > uploadBatchBytes || send.length >= 200) continue;
+        // Bundle 316 (F1): one blob read per part going up.
+        final full = await store.part(p.answerId, p.part);
+        if (full == null) continue;
         size += p.size;
-        send.add(p.blob);
+        send.add(full.blob);
       }
       if (send.isNotEmpty || ids.isNotEmpty) {
         final got = await srv.upload(parts: send, have: ids.toList(), signingKey: await signingKey());
@@ -704,7 +935,7 @@ class ChatAnswerCarrier {
   /// Admin phone: parts of its own offline requests kept by the server.
   Future<void> _fetchMine(ChatAnswerServer srv) async {
     for (var round = 0; round < 10; round++) {
-      final mine = (await store.parts()).where(_isMine);
+      final mine = (await store.metas()).where(_isMine);
       final have = <String, Set<int>>{};
       for (final p in mine) {
         (have[p.answerId] ??= <int>{}).add(p.part);
@@ -724,13 +955,15 @@ class ChatAnswerCarrier {
     AnswerProgress? best;
     for (final a in (await store.acks()).values) {
       if (a.actionId != actionId) continue;
+      if (a.all && a.have.length < a.of) continue; // Bundle 317: a stop, not "all here"
       if (best == null || a.all || a.have.length > best.have) {
         best = (have: a.all ? a.of : a.have.length, of: a.of, all: a.all);
       }
     }
-    if (best == null) {
-      // The admin's phone counts what it holds itself.
-      final mine = (await store.parts()).where((p) => p.actionId == actionId && _isMine(p));
+    {
+      // The admin's phone counts what it holds itself (Bundle 317 G4: an
+      // ack can be up to 2 s behind the parts here -> the larger count).
+      final mine = (await store.metas()).where((p) => p.actionId == actionId && _isMine(p));
       final by = <String, Set<int>>{};
       var of = 0;
       for (final p in mine) {
@@ -739,7 +972,7 @@ class ChatAnswerCarrier {
       }
       if (by.isNotEmpty) {
         final n = by.values.map((s) => s.length).reduce((a, b) => a > b ? a : b);
-        best = (have: n, of: of, all: n >= of);
+        if (best == null || (!best.all && n > best.have)) best = (have: n, of: of, all: n >= of);
       }
     }
     return best;
@@ -747,9 +980,9 @@ class ChatAnswerCarrier {
 
   /// "I carry 1-40 of 80" lines for the carrier's own view (logs / tests).
   Future<Map<String, String>> carrying() async {
-    final by = <String, List<HeldPart>>{};
-    for (final p in await store.parts()) {
-      (by[p.answerId] ??= <HeldPart>[]).add(p);
+    final by = <String, List<PartMeta>>{};
+    for (final p in await store.metas()) {
+      (by[p.answerId] ??= <PartMeta>[]).add(p);
     }
     return {
       for (final e in by.entries)

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/server_clock_255.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
 import 'package:locallink/features/admin/data/actions/request_step_307.dart';
 import 'package:locallink/l10n/l10n.dart';
 
@@ -62,6 +63,7 @@ class ChatRequestNotifier307 {
     this.changes,
     this.taps,
     this.checkEvery = const Duration(seconds: 5),
+    this.files317,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
@@ -69,6 +71,12 @@ class ChatRequestNotifier307 {
   static const String buzzedKey = 'chat_req_ready_buzzed_307';
   static const Duration minGap = Duration(seconds: 1);
   static const int maxBuzzed = 100;
+
+  /// Bundle 317 (G7): the Stop files button comes back as a tap with this prefix.
+  static const String stopPrefix317 = 'stop317:';
+
+  /// Bundle 317 (G7): the files of each request (null = no queue; tests).
+  final Map<String, FileTrip317> Function()? files317;
 
   /// Opens the answer viewer for a tapped card (set by the app shell).
   static Future<void> Function(String requestId)? openViewer;
@@ -103,6 +111,12 @@ class ChatRequestNotifier307 {
     _started = true;
     changes?.addListener(kick);
     _tapSub = taps?.listen((id) {
+      // Bundle 317 (G7): "Stop files" on the card.
+      if (id.startsWith(stopPrefix317)) {
+        final rid = id.substring(stopPrefix317.length);
+        unawaited(FileQueue317.instance?.stopFiles(rid).catchError((Object _) {}));
+        return;
+      }
       final open = openViewer;
       if (open != null && id.isNotEmpty) unawaited(open(id).catchError((Object _) {}));
     });
@@ -178,8 +192,17 @@ class ChatRequestNotifier307 {
     final buzzed = await _buzzedIds();
     final now = _clock();
     final want = <String, (ChatRequestRow221, RequestStep307)>{};
+    final files = files317?.call() ?? const <String, FileTrip317>{};
     for (final r in rows) {
       final st = RequestStep307.of(r);
+      // Bundle 317 (G7): a Ready card stays while its files come (even
+      // after the chat was opened); when all are here it goes once opened.
+      final trip = files[r.id];
+      if (st.step == Step307.ready && trip != null && trip.total > 0 && !trip.stopped && !r.closed &&
+          (trip.active || !r.opened)) {
+        want[r.id] = (r, st);
+        continue;
+      }
       final keep = switch (st.step) {
         Step307.sent || Step307.reached || Step307.coming => true,
         // Ready: until opened / closed; not again after a restart once it buzzed.
@@ -191,7 +214,7 @@ class ChatRequestNotifier307 {
       if (keep) want[r.id] = (r, st);
     }
     // Gone / cancelled / opened -> remove.
-    final summary = _summary(want.values.where((w) => w.$2.step != Step307.empty));
+    final summary = _summary(want.values.where((w) => w.$2.step != Step307.empty), files);
     for (final id in _shown.keys.toList()) {
       if (want.containsKey(id)) continue;
       _shown.remove(id);
@@ -200,7 +223,10 @@ class ChatRequestNotifier307 {
     }
     var wait = Duration.zero;
     for (final MapEntry(key: id, value: (r, st)) in want.entries) {
-      final args = _args(r, st, now);
+      final trip = files[id];
+      final args = st.step == Step307.ready && trip != null && trip.total > 0 && !trip.stopped
+          ? filesArgs317(r, st, trip, now)
+          : _args(r, st, now);
       final sig = jsonEncode(args);
       if (_shown[id] == sig) continue;
       final last = _lastPost[id];
@@ -225,14 +251,24 @@ class ChatRequestNotifier307 {
     }
   }
 
-  static Map<String, Object?> _summary(Iterable<(ChatRequestRow221, RequestStep307)> live) {
+  static Map<String, Object?> _summary(Iterable<(ChatRequestRow221, RequestStep307)> live,
+      [Map<String, FileTrip317> files = const {}]) {
     final list = live.toList();
     final ready = list.where((w) => w.$2.step == Step307.ready).length;
     return {
       'summary_count': list.length,
       'summary_title': L.t.chatRequestsSummary307(list.length, ready),
-      'summary_lines': [for (final (r, st) in list) '${_title(r)} \u00b7 ${st.chip}'],
+      'summary_lines': [for (final (r, st) in list) '${_title(r)} \u00b7 ${filesLine317(st, files[r.id]) ?? st.chip}'],
     };
+  }
+
+  /// Bundle 317 (G7): the summary line of a Ready request while files come:
+  /// "Files 3/13" / "Waiting · files 3/13" / "All files here".
+  @visibleForTesting
+  static String? filesLine317(RequestStep307 st, FileTrip317? f) {
+    if (st.step != Step307.ready || f == null || f.total <= 0 || f.stopped) return null;
+    if (f.done) return L.t.allFilesHere317;
+    return f.waiting ? '${L.t.filesWaitTitle317} \u00b7 ${f.here}/${f.wanted}' : L.t.filesShort317(f.here, f.wanted);
   }
 
   /// Bundle 314 (3): the tracker stops rocking this long after "made".
@@ -255,6 +291,50 @@ class ChatRequestNotifier307 {
 
   static List<String> namesOf(ChatRequestRow221 r) =>
       r.label.contains(' & ') ? r.label.split(' & ') : [_title(r)];
+
+  /// Bundle 317 (G7): the card after "Chat ready" while files come (mock
+  /// `trips_mock.html`): Chat ready · files coming / waiting / all here.
+  @visibleForTesting
+  static Map<String, Object?> filesArgs317(ChatRequestRow221 r, RequestStep307 st, FileTrip317 f, DateTime now) {
+    final base = _args(r, st, now);
+    final step = f.done ? 'files_done' : (f.waiting ? 'files_wait' : 'files');
+    final mb = L.t.mbOf317(_mb(f.bytesHere), _mb(f.bytesTotal));
+    final from = [
+      if (f.from.isNotEmpty) L.t.fromPhone317(f.from),
+      if (f.via.isNotEmpty) L.t.viaName317(f.via),
+    ].join(' \u00b7 ');
+    final String title;
+    final String text;
+    if (f.done) {
+      title = L.t.chatReadyAllHere317;
+      final gone = f.gone + f.tooBig;
+      text = gone > 0 ? L.t.filesHereGone317(f.here, gone) : L.t.filesHere317(f.here);
+    } else if (f.waiting) {
+      title = L.t.chatReadyWaiting317;
+      text = '${L.t.filesOf317(f.here, f.wanted)} \u00b7 $mb \u00b7 ${L.t.lastPartsAgo317(f.quietMin)}';
+    } else {
+      title = L.t.chatReadyFilesComing317;
+      text = [L.t.filesOf317(f.here, f.wanted), mb, if (from.isNotEmpty) from].join(' \u00b7 ');
+    }
+    return {
+      ...base,
+      'step': step,
+      'progress': (f.fill * 100).round(),
+      'title': title,
+      'text': text,
+      'short': f.done ? '' : '${f.here}/${f.wanted}',
+      'when': base['when'],
+      'rock_until': 0,
+      'stop_label': L.t.stopFiles317,
+      'files_swipe': f.waitingLong,
+      ...f.toArgs(),
+    };
+  }
+
+  static String _mb(int bytes) {
+    final mb = bytes / (1024 * 1024);
+    return '${mb < 10 ? mb.toStringAsFixed(1) : mb.round()} MB';
+  }
 
   /// The words + numbers of one card (the signature; `buzz` is added later).
   static Map<String, Object?> _args(ChatRequestRow221 r, RequestStep307 st, DateTime now) {

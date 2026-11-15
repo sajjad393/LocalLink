@@ -1,4 +1,5 @@
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 307 (TODO_307 B1 / C0): one place that turns a Get chat request
@@ -122,7 +123,12 @@ class RequestStep307 {
         count: -1,
       );
     }
-    if ((of > 0 && parts >= of) || r.state == 'done') {
+    // Bundle 317 (A): a Get chat / Get file is Ready only when every part is
+    // here. `done` only means "the phone answered" (its first receipt); the
+    // chat itself may come 30 s or hours later. A closed copy stays Ready.
+    final carried = r.action == 'get_chat' || r.action == 'get_file';
+    final here = of > 0 && parts >= of;
+    if (here || (r.state == 'done' && (!carried || r.closed))) {
       final (b, h, a) = _split((hl) => t.stepReady307(hl), t.ready);
       return RequestStep307(
         step: Step307.ready,
@@ -155,6 +161,25 @@ class RequestStep307 {
         short: '$parts/$of',
         live: true,
         count: parts,
+      );
+    }
+    if (r.state == 'done') {
+      // Bundle 317 (A): "kiran's phone answered · the chat is on the way", 0 %.
+      final hl = r.fromName.isNotEmpty ? t.namesPhone317(r.fromName) : t.thePhone317;
+      final (b, h, a) = _split((x) => t.phoneAnswered317(x), hl);
+      return RequestStep307(
+        step: Step307.coming,
+        progress: answerAt,
+        ring: '0%',
+        ringFill: 0,
+        bigBefore: b,
+        highlight: h,
+        bigAfter: a,
+        sub: r.action == 'get_file' ? t.fileOnTheWay317 : t.chatOnTheWay317,
+        chip: t.answered317,
+        short: '0%',
+        live: true,
+        count: 0,
       );
     }
     if (reached > 0) {
@@ -197,7 +222,9 @@ class RequestStep307 {
       '${before.trim()} ${after.trim()}'.replaceAll(RegExp('[\u2066-\u2069]'), '').trim();
 
   /// Live row order: Ready first, then the ones furthest along, newest first.
-  static List<ChatRequestRow221> liveOrder(Iterable<ChatRequestRow221> rows) {
+  /// Bundle 317 (G8): a Ready request stays live while its files come.
+  static List<ChatRequestRow221> liveOrder(Iterable<ChatRequestRow221> rows,
+      {Map<String, FileTrip317> files = const {}}) {
     int rank(Step307 s) => switch (s) {
           Step307.ready => 0,
           Step307.coming => 1,
@@ -207,7 +234,9 @@ class RequestStep307 {
         };
     final list = [
       for (final r in rows)
-        if (r.action == 'get_chat' && of(r).live) r,
+        if (r.action == 'get_chat' &&
+            (of(r).live || (of(r).step == Step307.ready && !r.closed && (files[r.id]?.active ?? false))))
+          r,
     ];
     list.sort((a, b) {
       final c = rank(of(a).step).compareTo(rank(of(b).step));
