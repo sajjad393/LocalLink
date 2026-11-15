@@ -8,6 +8,7 @@ import 'package:locallink/app/local_link_app.dart';
 import 'package:locallink/core/diagnostics/app_log_file.dart';
 import 'package:locallink/core/network/tls_pin_243.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/widgets/error_screen_311.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,6 +37,10 @@ void main() {
     );
     return true;
   };
+
+  // Bundle 311: a screen that breaks shows what broke (with Copy), not a
+  // plain grey box, so it can be reported without logs.
+  ErrorWidget.builder = ErrorScreen311.builder;
 
   runApp(const LocalLinkApp());
 }
