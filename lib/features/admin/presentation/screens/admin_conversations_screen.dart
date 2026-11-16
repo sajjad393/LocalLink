@@ -15,6 +15,7 @@ import 'package:locallink/features/admin/presentation/ui_check/admin_ui_check216
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/conversations_kit307.dart';
+import 'package:locallink/features/admin/presentation/widgets/conversations_kit320.dart';
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 221 (mock A-1): the Owner's chat list. Online it is the server's
@@ -22,10 +23,14 @@ import 'package:locallink/l10n/l10n.dart';
 /// knows. "Get chat" makes a Get chat request; a row with an answer opens
 /// the viewer (half answers too).
 ///
-/// Bundle 307 (TODO_307 B2-B7, B10): bold iOS-style cards. Requests tab =
-/// "Live" carousel (one Uber-like card per running request) + "In
-/// progress" cards + a grouped "Finished" list; Chats tab = search,
-/// "Ready to read" tiles and "All chats". No path words on this screen.
+/// Bundle 307 (TODO_307 B2-B7, B10): bold iOS-style cards. No path words
+/// on this screen.
+///
+/// Bundle 320 (TODO_320 R1-R4, pick A): ONE list, no tabs. Search "Find a
+/// chat", filter chips All / Coming / Ready / Kept, a "Now" card with only
+/// the requests on their way (one status line, a thin bar when coming, X =
+/// cancel) and a "Chats" card where every chat shows once with one button
+/// (Open / New / Get chat). No carousel, nothing slides by itself.
 class AdminConversationsScreen extends StatefulWidget {
   const AdminConversationsScreen({super.key, this.viewMode, this.requests});
 
@@ -35,35 +40,20 @@ class AdminConversationsScreen extends StatefulWidget {
   /// A2: how often the server pill re-checks the link.
   static const Duration pillEvery = Duration(seconds: 10);
 
-  /// B4: carousel auto-advance, and the pause after a touch.
-  static const Duration advanceEvery = Duration(seconds: 5);
-  static const Duration pauseAfterTouch = Duration(seconds: 10);
-
   @override
   State<AdminConversationsScreen> createState() => _AdminConversationsScreenState();
 }
 
 class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
-  int _tab = 0; // 0 chats, 1 requests
+  /// Bundle 320 (R1): 0 all, 1 coming, 2 ready, 3 kept.
+  int _filter = 0;
   List<Map<String, dynamic>> _chats = const [];
   List<ChatRequestRow221> _rows = const [];
-
-  /// Bundle 318 (K7): request id -> its kept copy line (new-only cards).
-  Map<String, String> _copyLines318 = const {};
   bool _loading = true;
   String _error = '';
   String _query = '';
   StreamSubscription<AppViewModeState>? _viewSub;
   Timer? _pill;
-
-  // B4 carousel.
-  int _live = 0;
-  int _swipeDir = 1;
-  Timer? _advance;
-  int _pauseTicks = 0; // ticks left to skip after a touch (10 s / 5 s)
-  String _focusId = '';
-  String _dropId = '';
-  final GlobalKey _progressHead = GlobalKey();
 
   ChatRequests221? get _svc => widget.requests ?? ChatRequests221.instance;
   bool _srvOnline = false;
@@ -92,7 +82,6 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     FileQueue317.trips.removeListener(_files317);
     unawaited(_viewSub?.cancel());
     _pill?.cancel();
-    _advance?.cancel();
     _reload319.close();
     super.dispose();
   }
@@ -122,16 +111,11 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       final online = await s.online();
       final chats = await s.conversations();
       final rows = await s.requests();
-      final lines = <String, String>{
-        for (final r in rows)
-          if (r.newOnly318) r.id: await s.copyLine318(r.id).catchError((Object _) => ''),
-      };
       if (!mounted) return;
       setState(() {
         _srvOnline = online;
         _chats = chats;
         _rows = rows;
-        _copyLines318 = lines;
         _loading = false;
         _error = '';
       });
@@ -145,52 +129,41 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     }
   }
 
-  /// The newest get_chat request of a chat row (to show its status).
-  ChatRequestRow221? _requestOf(Map<String, dynamic> chat) {
-    final pick = chatPickOfRow(chat);
-    if (pick == null) return null;
-    for (final r in _rows) {
-      if (r.action != 'get_chat' || r.cancelled) continue;
-      final p = ChatPick221.fromRef(r.chat);
-      if (p == null || p.kind != pick.kind) continue;
-      if (pick.isGroup ? p.groupId == pick.groupId : {p.userA, p.userB}.containsAll([pick.userA, pick.userB])) {
-        return r;
-      }
-    }
-    return null;
-  }
-
   Future<void> _ask([ChatPick221? pick]) async {
     final s = _svc;
     if (s == null) return;
-    final before = {for (final r in _rows) r.id};
     final sent = await showChatRequestSheet(context,
         service: s, preset: pick, online: _online, onOpen: (r) => unawaited(_openAsked314(r)));
     if (sent == true && mounted) {
       adminSnack216(context, _online ? L.t.requestSentByTheServer : L.t.requestSentToNearbyPhones);
-      setState(() => _tab = 1);
+      // Bundle 320 (R2): the new request shows in "Now" (top of the list).
+      setState(() => _filter = 0);
       await _load();
-      // B8 / E: the new live card drops in at the front of the carousel.
-      if (!mounted) return;
-      final fresh = [for (final r in _rows) if (!before.contains(r.id) && r.action == 'get_chat') r];
-      if (fresh.isNotEmpty) setState(() => _focusId = fresh.first.id);
     }
   }
 
-  /// Bundle 314 (1b): "Already asked · Open it" - the open request's card
-  /// on the Requests tab (or its viewer once parts came).
+  /// Bundle 314 (1b): "Already asked · Open it" - its viewer once parts
+  /// came, else (320) the small "where it is" sheet of its Now row.
   Future<void> _openAsked314(ChatRequestRow221 r) async {
     if (!mounted) return;
     if (r.parts > 0 || r.ready) return _open(r);
-    setState(() {
-      _tab = 1;
-      _focusId = r.id;
-    });
+    await _liveTap(r);
   }
 
-  /// Bundle 314 (1b): a Sent / Reached / Coming request (blocks Get chat).
-  static bool isOpen314(ChatRequestRow221 r) =>
-      r.state == 'pending' && !r.ready && !r.empty && !r.closed && !r.cancelled;
+  /// Bundle 320 (R3): "New" on a kept copy = Get new messages only (318 K4).
+  Future<void> _askNew320(ChatPick221 pick) async {
+    final s = _svc;
+    if (s == null) return;
+    try {
+      await s.requestNew318(pick);
+      if (!mounted) return;
+      adminSnack216(context, _online ? L.t.requestSentByTheServer : L.t.requestSentToNearbyPhones);
+      setState(() => _filter = 0);
+    } catch (error) {
+      if (mounted) adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
+    }
+    unawaited(_load());
+  }
 
   Future<void> _open(ChatRequestRow221 r) async {
     final s = _svc;
@@ -311,16 +284,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
                 _header(context),
                 const AdminUiCheckBanner216(),
                 // Bundle 315: no server clock banner (the check stays hidden: log + time fix).
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                  child: Segmented307(
-                    labels: [L.t.chats, L.t.requests],
-                    counts: [_chats.length, requests.length],
-                    keys: const [ValueKey('tabs221_0'), ValueKey('tabs221_1')],
-                    selected: _tab,
-                    onSelected: (i) => setState(() => _tab = i),
-                  ),
-                ),
+                // Bundle 320 (R1): no Chats / Requests tabs - one list.
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: _load,
@@ -331,9 +295,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
                           ? [_pad(const Shimmer307())]
                           : _error.isNotEmpty
                               ? [_pad(_errorCard(context))]
-                              : _tab == 0
-                                  ? _chatsTab(context)
-                                  : _requestsTab(context, requests),
+                              : _list320(context, requests),
                     ),
                   ),
                 ),
@@ -427,428 +389,6 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     );
   }
 
-  // --------------------------------------------------------- requests tab
-
-  List<Widget> _requestsTab(BuildContext context, List<ChatRequestRow221> requests) {
-    final live = RequestStep307.liveOrder(requests, files: FileQueue317.trips.value);
-    final running = [for (final r in requests) if (RequestStep307.of(r).active) r];
-    final done = [for (final r in requests) if (!RequestStep307.of(r).active) r];
-    return [
-      if (live.isNotEmpty) ...[
-        _pad(SectionHead307(L.t.live,
-            count: live.length,
-            link: running.isEmpty ? null : L.t.seeAll307,
-            linkKey: const ValueKey('live307_see_all'),
-            onLink: () {
-              final c = _progressHead.currentContext;
-              if (c != null) {
-                unawaited(Scrollable.ensureVisible(c, duration: Motion307.d(context, 350), curve: Curves.easeOutCubic));
-              }
-            })),
-        _carousel(context, live),
-      ],
-      _pad(SectionHead307(L.t.inProgress307, key: _progressHead, count: running.length)),
-      if (running.isEmpty)
-        _pad(AdminEmptyState216(
-          key: const ValueKey('requests221_empty'),
-          icon: Icons.pending_actions_rounded,
-          tone: A216Tone.orange,
-          title: L.t.noRequests,
-          body: L.t.requestsWaitHereUntilAPhone,
-        ))
-      else
-        for (var i = 0; i < running.length; i++)
-          _pad(Enter307(
-              index: i,
-              child: Padding(
-                  padding: EdgeInsets.only(bottom: i == running.length - 1 ? 0 : 10),
-                  child: _progressCard(context, running[i])))),
-      if (done.isNotEmpty) ...[
-        _pad(SectionHead307(L.t.finished307, count: done.length)),
-        _pad(Container(
-          key: const ValueKey('requests307_finished'),
-          decoration: K307.of(context).cardBox(),
-          clipBehavior: Clip.antiAlias,
-          child: Column(children: [
-            for (var i = 0; i < done.length; i++) ...[
-              if (i > 0)
-                Padding(
-                  padding: const EdgeInsets.only(left: 70),
-                  child: Divider(height: 1, thickness: 1, color: K307.of(context).line),
-                ),
-              _finishedRow(context, done[i]),
-            ],
-          ]),
-        )),
-      ],
-    ];
-  }
-
-  void _syncAdvance(BuildContext context, int count) {
-    final want = count >= 2 && Motion307.loops(context);
-    if (!want) {
-      _advance?.cancel();
-      _advance = null;
-      return;
-    }
-    _advance ??= Timer.periodic(AdminConversationsScreen.advanceEvery, (_) {
-      if (!mounted || _tab != 1) return;
-      if (_pauseTicks > 0) {
-        _pauseTicks--;
-        return;
-      }
-      setState(() {
-        _swipeDir = 1;
-        _live = _live + 1;
-        _dropId = '';
-      });
-    });
-  }
-
-  void _touched() => _pauseTicks = AdminConversationsScreen.pauseAfterTouch.inSeconds ~/
-      AdminConversationsScreen.advanceEvery.inSeconds;
-
-  Widget _carousel(BuildContext context, List<ChatRequestRow221> live) {
-    if (_focusId.isNotEmpty) {
-      final i = live.indexWhere((r) => r.id == _focusId);
-      if (i >= 0) {
-        _live = i;
-        _dropId = _focusId; // E: the new card drops in from above
-      }
-      _focusId = '';
-    }
-    final n = live.length;
-    final index = ((_live % n) + n) % n;
-    _syncAdvance(context, n);
-    final r = live[index];
-    final step = RequestStep307.of(r);
-    final card = LiveCard307(
-      key: ValueKey('live307_card_${r.id}'),
-      step: step,
-      names: _namesOf(r),
-      title: _title(r),
-      range: _range(r),
-      // Bundle 318 (K7): "Get chat · new only" + the kept copy line.
-      brand: r.newOnly318 ? L.t.getChatNewOnly318 : L.t.getChat,
-      copyLine318: _copyLines318[r.id],
-      group: _isGroup(r),
-      files: FileQueue317.trips.value[r.id], // Bundle 317 (G8)
-      onTap: () {
-        _touched();
-        unawaited(_liveTap(r));
-      },
-    );
-    final dir = _swipeDir;
-    return Column(children: [
-      GestureDetector(
-        key: const ValueKey('live307_carousel'),
-        behavior: HitTestBehavior.translucent,
-        onPanDown: (_) => _touched(),
-        onHorizontalDragEnd: n < 2
-            ? null
-            : (d) {
-                final v = d.primaryVelocity ?? 0;
-                if (v.abs() < 80) return;
-                _touched();
-                setState(() {
-                  _swipeDir = v < 0 ? 1 : -1;
-                  _live = index + _swipeDir;
-                  _dropId = '';
-                });
-              },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          // Bundle 313 (E2): the clip (for the swipe) leaves room for the card's
-          // soft shadow - before, it cut the shadow into grey square corners.
-          child: ClipRect(
-            clipper: const ShadowRoom313(),
-            child: AnimatedSwitcher(
-              duration: Motion307.d(context, r.id == _dropId ? 600 : 550),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              layoutBuilder: (current, previous) => Stack(
-                alignment: Alignment.topCenter,
-                children: [...previous, if (current != null) current],
-              ),
-              transitionBuilder: (child, a) {
-                // In: from the swipe side. Out (animation runs back): to the other side.
-                final incoming = child.key == card.key;
-                if (incoming && r.id == _dropId) {
-                  // E (send): a small spring from above.
-                  return FadeTransition(
-                    opacity: a,
-                    child: SlideTransition(
-                      position: Tween(begin: const Offset(0, -0.35), end: Offset.zero)
-                          .animate(CurvedAnimation(parent: a, curve: Curves.easeOutBack)),
-                      child: child,
-                    ),
-                  );
-                }
-                final begin = Offset(incoming ? dir * 1.05 : -dir * 1.05, 0);
-                return SlideTransition(position: Tween(begin: begin, end: Offset.zero).animate(a), child: child);
-              },
-              child: card,
-            ),
-          ),
-        ),
-      ),
-      if (n > 1) ...[
-        const SizedBox(height: 10),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          for (var i = 0; i < n; i++)
-            AnimatedContainer(
-              key: ValueKey('live307_dot_$i'),
-              duration: Motion307.d(context, 550),
-              curve: Curves.easeOutCubic,
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: i == index ? 18 : 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: i == index ? K307.of(context).blue : K307.of(context).dash,
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-        ]),
-      ],
-    ]);
-  }
-
-  /// B5: one card per running request.
-  Widget _progressCard(BuildContext context, ChatRequestRow221 r) {
-    final k = K307.of(context);
-    final step = RequestStep307.of(r);
-    // The chip: "Sent" / "1 of 2 phones" / "40 of 80 parts".
-    final chip = step.step == Step307.coming ? L.t.ofParts(r.parts, r.of) : step.chip;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: ValueKey('requests221_row_${r.id}'),
-        borderRadius: BorderRadius.circular(20),
-        onTap: r.parts > 0 ? () => _open(r) : () => _liveTap(r),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-          decoration: k.cardBox(),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-              AvatarPair307(names: _namesOf(r), size: 42, group: _isGroup(r)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(_title(r),
-                      style: k.text(16, FontWeight.w700, k.ink, 1.2)),
-                  const SizedBox(height: 2),
-                  Text(step.sub,
-                      style: k.text(13.5, FontWeight.w400, k.grey, 1.3)),
-                  const SizedBox(height: 6),
-                  // Bundle 313 (E5): chip, range and Cancel wrap to a 2nd line on
-                  // a small phone / big text (was one Row: cut or overflowed).
-                  Wrap(
-                      key: ValueKey('conv313_meta_${r.id}'),
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                    Chip307(chip, step.step),
-                    if (r.newOnly318) Chip307(L.t.newOnly318, Step307.cancelled), // Bundle 318 (K7)
-                    Text(_range(r), style: k.text(12.5, FontWeight.w400, k.grey, 1.2)),
-                    if (_canCancel(r)) ...[
-                      GestureDetector(
-                        key: ValueKey('requests221_cancel_${r.id}'),
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _cancel(r),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                          child: Text(L.t.cancel, style: k.text(13, FontWeight.w700, A216.colors(context).red, 1.2)),
-                        ),
-                      ),
-                    ],
-                  ]),
-                ]),
-              ),
-              const SizedBox(width: 10),
-              ProgressRing307(step: step),
-            ]),
-            if (r.half) ...[
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: SizedBox(
-                  height: 3,
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(end: r.of <= 0 ? 0 : (r.parts / r.of).clamp(0, 1).toDouble()),
-                    duration: Motion307.d(context, 400),
-                    builder: (context, v, _) => LinearProgressIndicator(
-                      key: const ValueKey('parts221_bar'),
-                      value: v,
-                      backgroundColor: k.track,
-                      color: k.blue,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ]),
-        ),
-      ),
-    );
-  }
-
-  /// B6: Ready / No messages / Cancelled rows (no "since", no path note).
-  Widget _finishedRow(BuildContext context, ChatRequestRow221 r) {
-    final k = K307.of(context);
-    final step = RequestStep307.of(r);
-    final made = DateTime.tryParse(r.madeAt)?.toLocal();
-    final sub = [
-      if (r.of == 1) L.t.onePart313, // 313 (E4)
-      if (r.of > 1) L.t.tapToOpenParts307(r.of).split('\u00b7').last.trim(),
-      if (made != null) dMMM216(made),
-    ].join(' \u00b7 ');
-    final opens = step.step == Step307.ready || r.parts > 0;
-    return InkWell(
-      key: ValueKey('requests221_row_${r.id}'),
-      onTap: opens ? () => _open(r) : null,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-        child: Row(children: [
-          AvatarPair307(names: _namesOf(r), size: 36, group: _isGroup(r)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_title(r),
-                  style: k.text(15, FontWeight.w700, k.ink, 1.2)),
-              const SizedBox(height: 4),
-              Row(children: [
-                Chip307(step.chip, step.step, check: step.step == Step307.ready),
-                // Bundle 318 (K7): "New only" / "Kept · 7 days".
-                if (r.newOnly318 || r.keptUntil318.isNotEmpty) ...[
-                  const SizedBox(width: 6),
-                  Chip307(r.newOnly318 ? L.t.newOnly318 : L.t.keptDays318, Step307.cancelled,
-                      key: ValueKey('requests318_tag_${r.id}')),
-                ],
-                // Bundle 317 (G8): second chip "Files 3/13" / "Files ✓".
-                if (FileQueue317.trips.value[r.id] case final f?
-                    when step.step == Step307.ready && f.total > 0 && !f.stopped) ...[
-                  const SizedBox(width: 6),
-                  Chip307(f.done ? L.t.filesDoneShort317 : L.t.filesShort317(f.here, f.wanted),
-                      f.done ? Step307.ready : Step307.coming,
-                      key: ValueKey('requests317_files_${r.id}')),
-                ],
-                if (sub.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(sub,
-                        style: k.text(12.5, FontWeight.w400, k.grey, 1.2)),
-                  ),
-                ],
-              ]),
-            ]),
-          ),
-          if (opens) Icon(Icons.chevron_right_rounded, color: k.grey2),
-        ]),
-      ),
-    );
-  }
-
-  // ------------------------------------------------------------ chats tab
-
-  List<Widget> _chatsTab(BuildContext context) {
-    final k = K307.of(context);
-    final q = _query.trim().toLowerCase();
-    bool match(Map<String, dynamic> chat) {
-      if (q.isEmpty) return true;
-      final words = [
-        ...chatNamesOfRow(chat),
-        chat['group_name']?.toString() ?? '',
-        for (final x in (chat['participants'] as List? ?? const []))
-          if (x is Map) x['username']?.toString() ?? '',
-      ];
-      return words.any((w) => w.toLowerCase().contains(q));
-    }
-
-    final shown = [for (final c in _chats) if (match(c)) c];
-    final ready = [
-      for (final c in shown)
-        if (_readyReq(c) != null) c,
-    ];
-    return [
-      _pad(Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: Container(
-          height: 44,
-          decoration: BoxDecoration(
-            color: k.card,
-            borderRadius: BorderRadius.circular(14),
-            border: k.dark ? Border.all(color: k.cardEdge) : null,
-            boxShadow: k.shadowSmall,
-          ),
-          child: TextField(
-            key: const ValueKey('chats307_search'),
-            onChanged: (v) => setState(() => _query = v),
-            style: k.text(15, FontWeight.w400, k.ink, 1.2),
-            decoration: InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              filled: false,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              prefixIcon: Icon(Icons.search_rounded, color: k.grey, size: 20),
-              hintText: L.t.searchPeopleOrGroups307,
-              hintStyle: k.text(15, FontWeight.w400, k.grey, 1.2),
-            ),
-          ),
-        ),
-      )),
-      if (ready.isNotEmpty) ...[
-        _pad(SectionHead307(L.t.readyToReadSection307, count: ready.length)),
-        SizedBox(
-          // Bundle 313 (E5): full names (no "…") - the row grows to fit.
-          height: _readyHeight(context, ready),
-          child: ListView.separated(
-            key: const ValueKey('chats307_ready'),
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: ready.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (context, i) => _readyTile(context, ready[i]),
-          ),
-        ),
-      ],
-      _pad(SectionHead307(L.t.allChats307, count: shown.length)),
-      if (_chats.isEmpty)
-        _pad(AdminEmptyState216(
-          key: const ValueKey('chats221_empty'),
-          icon: Icons.forum_outlined,
-          tone: A216Tone.blue,
-          title: L.t.noChatsYet,
-          body: L.t.useNewRequestToAskThe,
-        ))
-      else
-        _pad(Container(
-          key: const ValueKey('chats221_list'),
-          decoration: k.cardBox(),
-          clipBehavior: Clip.antiAlias,
-          child: Column(children: [
-            for (var i = 0; i < shown.length; i++) ...[
-              if (i > 0)
-                Padding(
-                  padding: const EdgeInsets.only(left: 76),
-                  child: Divider(height: 1, thickness: 1, color: k.line),
-                ),
-              _chatRow(context, shown[i]),
-            ],
-          ]),
-        )),
-    ];
-  }
-
-  /// A finished answer whose copy is still kept.
-  ChatRequestRow221? _readyReq(Map<String, dynamic> chat) {
-    final r = _requestOf(chat);
-    if (r == null || r.closed) return null;
-    return RequestStep307.of(r).step == Step307.ready ? r : null;
-  }
-
   String _chatSub(Map<String, dynamic> chat) {
     if (chat['kind'] == 'group') {
       final members = chat['member_count'] is int ? chat['member_count'] as int : 0;
@@ -863,123 +403,323 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       ? (chat['group_name']?.toString() ?? L.t.group)
       : chatNamesOfRow(chat).join(' & ');
 
-  /// Bundle 313 (E5): the ready tiles' height - 146 or more, so the full
-  /// name and line fit (they wrap) at any text size.
-  double _readyHeight(BuildContext context, List<Map<String, dynamic>> ready) {
-    final k = K307.of(context);
-    final scaler = MediaQuery.textScalerOf(context);
-    final dir = Directionality.of(context);
-    double tall(String text, TextStyle style) {
-      final tp = TextPainter(
-        text: TextSpan(text: text, style: style),
-        textDirection: dir,
-        textScaler: scaler,
-      )..layout(maxWidth: readyTileWidth313 - 24);
-      final h = tp.height;
-      tp.dispose();
-      return h;
-    }
+  // ------------------------------------------------------------ one list
 
-    var most = 146.0;
-    for (final chat in ready) {
-      final group = chat['kind'] == 'group';
-      final h = 24 + 34 + 12 + // padding, faces, least gap
-          tall(_chatTitle(chat), k.text(14, FontWeight.w700, k.ink, 1.2)) +
-          2 +
-          tall(group ? L.t.group : _chatSubShort(chat), k.text(12, FontWeight.w400, k.grey, 1.2)) +
-          8 +
-          10 +
-          tall(L.t.open, k.text(12.5, FontWeight.w700, k.green, 1.2)) +
-          2; // rounding room
-      if (h > most) most = h;
-    }
-    return most.ceilToDouble();
+  /// Bundle 320 (R3): one key per chat (the group / the two people), so a
+  /// server chat, its requests and its kept copy are ONE row.
+  static String chatKey320(ChatPick221? p) {
+    if (p == null) return '';
+    if (p.isGroup) return 'g:${p.groupId}';
+    final two = <String>[p.userA, p.userB]..sort();
+    return 'd:${two.join('|')}';
   }
 
-  static const double readyTileWidth313 = 142;
+  static String _keyOf320(ChatRequestRow221 r) => chatKey320(ChatPick221.fromRef(r.chat));
 
-  Widget _readyTile(BuildContext context, Map<String, dynamic> chat) {
+  /// R2: the requests on their way (Sent / Reached / Coming), furthest first.
+  List<ChatRequestRow221> _now320(List<ChatRequestRow221> requests) => [
+        for (final r in RequestStep307.liveOrder(requests, files: FileQueue317.trips.value))
+          if (RequestStep307.of(r).active && !r.closed && !r.inside318) r,
+      ];
+
+  /// R3 / R4: every other chat once - server chats first, then chats this
+  /// phone only knows from a request (offline, kept copies).
+  List<Row320> _rows320(List<ChatRequestRow221> requests, Set<String> busy) {
+    final byChat = <String, List<ChatRequestRow221>>{};
+    final newest = [...requests]..sort((a, b) => b.madeAt.compareTo(a.madeAt));
+    for (final r in newest) {
+      final key = _keyOf320(r);
+      if (key.isNotEmpty) (byChat[key] ??= <ChatRequestRow221>[]).add(r);
+    }
+    final out = <Row320>[];
+    final seen = <String>{};
+    for (final c in _chats) {
+      final key = chatKey320(chatPickOfRow(c));
+      if (key.isNotEmpty && (busy.contains(key) || !seen.add(key))) continue;
+      out.add(_rowOf320(chat: c, reqs: byChat[key] ?? const []));
+    }
+    for (final e in byChat.entries) {
+      if (busy.contains(e.key) || !seen.add(e.key)) continue;
+      out.add(_rowOf320(reqs: e.value));
+    }
+    return out;
+  }
+
+  Row320 _rowOf320({Map<String, dynamic>? chat, required List<ChatRequestRow221> reqs}) {
+    final first = reqs.isEmpty ? null : reqs.first;
+    final group = chat != null ? chat['kind'] == 'group' : (first != null && _isGroup(first));
+    final title = chat != null ? _chatTitle(chat) : _title(first!);
+    final names = chat != null ? chatNamesOfRow(chat) : _namesOf(first!);
+    final pick = chat != null ? chatPickOfRow(chat) : ChatPick221.fromRef(first!.chat, label: first.label);
+    final id = chat != null ? '${chat['id']}' : first!.id;
+    ChatRequestRow221? ready;
+    ChatRequestRow221? kept;
+    for (final r in reqs) {
+      if (r.cancelled || r.closed) continue;
+      if (ready == null && RequestStep307.of(r).step == Step307.ready) ready = r;
+      if (kept == null && r.keptUntil318.isNotEmpty) kept = r;
+    }
+    final until = kept == null ? null : DateTime.tryParse(kept.keptUntil318)?.toLocal();
+    if (until == null || !until.isAfter(DateTime.now())) kept = null;
+    Row320 make(Kind320 kind, String status, Tone320 tone, {ChatRequestRow221? open, IconData? icon}) => Row320(
+          id: id,
+          title: title,
+          names: names,
+          group: group,
+          pick: pick,
+          kind: kind,
+          status: status,
+          tone: tone,
+          open: open,
+          icon: icon,
+        );
+    if (chat?['me'] == true) {
+      // Bundle 314 (1 / K1): a chat I am in is already on my phone.
+      return make(Kind320.mine, _chatSub(chat!), Tone320.grey, open: ready);
+    }
+    if (ready != null && (!ready.opened || kept == null || pick == null)) {
+      final step = RequestStep307.of(ready);
+      final words = ready.newOnly318 && ready.newCount318 >= 0
+          ? (step.upToDate ? L.t.upToDate318 : '${L.t.ready} \u00b7 ${L.t.nNew318(ready.newCount318)}')
+          : L.t.readyToReadSection307;
+      return make(Kind320.ready, words, Tone320.green, open: ready);
+    }
+    if (kept != null) {
+      final up = ready != null && ready.newOnly318 && RequestStep307.of(ready).upToDate;
+      final words = L.t.keptUntil320(dMMM216(until!));
+      return make(Kind320.kept, up ? '${L.t.upToDate318} \u00b7 $words' : words, Tone320.grey,
+          open: ready ?? kept, icon: Icons.lock_rounded);
+    }
+    if (first != null && RequestStep307.of(first).step == Step307.empty && !first.closed) {
+      return make(Kind320.ask, L.t.noPhoneHasThisChat307, Tone320.grey);
+    }
+    if (first != null && first.cancelled) {
+      final made = DateTime.tryParse(first.madeAt)?.toLocal();
+      return make(Kind320.ask, made == null ? L.t.cancelled : L.t.cancelledOn320(dMMM216(made)), Tone320.grey);
+    }
+    return make(Kind320.ask, chat != null ? _chatSub(chat) : _range(first!), Tone320.grey);
+  }
+
+  List<Widget> _list320(BuildContext context, List<ChatRequestRow221> requests) {
     final k = K307.of(context);
-    final r = _readyReq(chat)!;
-    final group = chat['kind'] == 'group';
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: ValueKey('chats307_ready_${chat['id']}'),
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => _open(r),
-        child: Container(
-          width: readyTileWidth313,
-          padding: const EdgeInsets.all(12),
+    final now = _now320(requests);
+    final busy = {for (final r in now) _keyOf320(r)}..remove('');
+    final rows = _rows320(requests, busy);
+    final readyN = rows.where((x) => x.kind == Kind320.ready).length;
+    final keptN = rows.where((x) => x.kind == Kind320.kept).length;
+    final q = _query.trim().toLowerCase();
+    bool match(String title, List<String> names) =>
+        q.isEmpty || [title, ...names].any((w) => w.toLowerCase().contains(q));
+    final nowShown = _filter == 0 || _filter == 1
+        ? [for (final r in now) if (match(_title(r), _namesOf(r))) r]
+        : const <ChatRequestRow221>[];
+    final rowsShown = [
+      for (final x in rows)
+        if (match(x.title, x.names) &&
+            (_filter == 0 || (_filter == 2 && x.kind == Kind320.ready) || (_filter == 3 && x.kind == Kind320.kept)))
+          x,
+    ];
+    Widget card(Key key, List<Widget> children) => _pad(Container(
+          key: key,
           decoration: k.cardBox(),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            AvatarPair307(names: chatNamesOfRow(chat), size: 34, group: group),
-            const Spacer(),
-            Text(_chatTitle(chat),
-                style: k.text(14, FontWeight.w700, k.ink, 1.2)),
-            const SizedBox(height: 2),
-            Text(group ? L.t.group : _chatSubShort(chat),
-                style: k.text(12, FontWeight.w400, k.grey, 1.2)),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(color: k.greenSoft, borderRadius: BorderRadius.circular(14)),
-              child: Text(L.t.open, style: k.text(12.5, FontWeight.w700, k.green, 1.2)),
-            ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(children: [
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0)
+                Padding(
+                  padding: const EdgeInsets.only(left: 68),
+                  child: Divider(height: 1, thickness: 1, color: k.line),
+                ),
+              children[i],
+            ],
           ]),
+        ));
+    return [
+      _pad(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Container(
+          height: 46,
+          decoration: BoxDecoration(
+            color: k.card,
+            borderRadius: BorderRadius.circular(23),
+            border: k.dark ? Border.all(color: k.cardEdge) : null,
+            boxShadow: k.shadowSmall,
+          ),
+          child: TextField(
+            key: const ValueKey('chats307_search'),
+            onChanged: (v) => setState(() => _query = v),
+            style: k.text(15, FontWeight.w400, k.ink, 1.2),
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              filled: false,
+              contentPadding: const EdgeInsets.symmetric(vertical: 13),
+              prefixIcon: Icon(Icons.search_rounded, color: k.grey, size: 20),
+              hintText: L.t.findAChat320,
+              hintStyle: k.text(15, FontWeight.w400, k.grey, 1.2),
+            ),
+          ),
         ),
+      )),
+      _pad(Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: FilterChips320(
+          labels: [L.t.filterAll320, L.t.filterComing320, L.t.ready, L.t.filterKept320],
+          counts: [now.length + rows.length, now.length, readyN, keptN],
+          selected: _filter,
+          onSelected: (i) => setState(() => _filter = i),
+        ),
+      )),
+      if (nowShown.isNotEmpty) ...[
+        _pad(SmallHead320(L.t.now320)),
+        card(const ValueKey('conv320_now'), [for (final r in nowShown) _nowRow320(context, r)]),
+      ],
+      if (rowsShown.isNotEmpty) ...[
+        _pad(SmallHead320(L.t.chats)),
+        card(const ValueKey('chats221_list'), [for (final x in rowsShown) _chatRow320(context, x)]),
+      ],
+      if (_chats.isEmpty && requests.isEmpty)
+        _pad(Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: AdminEmptyState216(
+            key: const ValueKey('chats221_empty'),
+            icon: Icons.forum_outlined,
+            tone: A216Tone.blue,
+            title: L.t.noChatsYet,
+            body: L.t.useNewRequestToAskThe,
+          ),
+        ))
+      else if (nowShown.isEmpty && rowsShown.isEmpty)
+        _pad(Padding(
+          key: const ValueKey('conv320_nothing'),
+          padding: const EdgeInsets.symmetric(vertical: 28),
+          child: Text(L.t.nothingHere320, textAlign: TextAlign.center, style: k.text(14, FontWeight.w500, k.grey, 1.3)),
+        )),
+    ];
+  }
+
+  /// R2: one Now row: faces, name, ONE status line, a thin bar + "40 of 80
+  /// parts" when coming, X = cancel (asks first). Tap = where it is.
+  Widget _nowRow320(BuildContext context, ChatRequestRow221 r) {
+    final k = K307.of(context);
+    final step = RequestStep307.of(r);
+    final coming = step.step == Step307.coming;
+    final bar = coming && r.of > 0 && r.parts > 0;
+    final String words;
+    if (coming) {
+      words = r.fromName.isNotEmpty ? L.t.comingFrom320(r.fromName) : L.t.coming320;
+    } else {
+      final base = step.step == Step307.reached
+          ? step.sub
+          : (r.oldApp ? L.t.oldApp : L.t.waitingForAPhone320);
+      final age = AdminConversationsScreenAge320.of(r.madeAt);
+      words = age.isEmpty ? base : '$base \u00b7 $age';
+    }
+    return InkWell(
+      key: ValueKey('requests221_row_${r.id}'),
+      onTap: r.parts > 0 ? () => _open(r) : () => _liveTap(r),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+        child: Row(children: [
+          AvatarPair307(names: _namesOf(r), size: 42, group: _isGroup(r)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(_title(r), style: k.text(16, FontWeight.w700, k.ink, 1.2)),
+              const SizedBox(height: 3),
+              StatusLine320(words, coming ? Tone320.blue : Tone320.orange,
+                  key: ValueKey('now320_status_${r.id}'), pulse: !coming),
+              if (bar) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: SizedBox(
+                    height: 3,
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(end: (r.parts / r.of).clamp(0, 1).toDouble()),
+                      duration: Motion307.d(context, 400),
+                      builder: (context, v, _) => LinearProgressIndicator(
+                        key: const ValueKey('parts221_bar'),
+                        value: v,
+                        backgroundColor: k.track,
+                        color: k.blue,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ]),
+          ),
+          const SizedBox(width: 8),
+          if (bar)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 78),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(L.t.ofParts(r.parts, r.of),
+                    key: ValueKey('now320_parts_${r.id}'),
+                    textAlign: TextAlign.end,
+                    style: k.text(12.5, FontWeight.w700, k.ink, 1.3)),
+              ),
+            )
+          else if (_canCancel(r))
+            IconButton(
+              key: ValueKey('requests221_cancel_${r.id}'),
+              tooltip: L.t.cancelRequest,
+              onPressed: () => _cancel(r),
+              icon: Icon(Icons.close_rounded, color: k.grey, size: 22),
+            ),
+        ]),
       ),
     );
   }
 
-  /// The tile line: same as the row but its own Text (the row keeps the
-  /// "42 messages" text once).
-  String _chatSubShort(Map<String, dynamic> chat) {
-    final last = DateTime.tryParse('${chat['last_message_at'] ?? ''}')?.toLocal();
-    return last == null ? L.t.ready : '${L.t.ready} \u00b7 ${_when(last)}';
-  }
-
-  Widget _chatRow(BuildContext context, Map<String, dynamic> chat) {
+  /// R3: one Chats row: ONE status line and ONE button.
+  Widget _chatRow320(BuildContext context, Row320 x) {
     final k = K307.of(context);
-    final group = chat['kind'] == 'group';
-    final req = _requestOf(chat);
-    final pick = chatPickOfRow(chat);
-    // Bundle 314 (1 / K1): a chat I am in is already on my phone - no Get
-    // chat button and the row doesn't open the sheet.
-    final mine = chat['me'] == true;
-    // Bundle 314 (1b): only an open or a ready request shows its chip; an
-    // empty / closed one lets the Owner ask again.
-    final shown = req != null && (isOpen314(req) || (req.ready && !req.closed)) ? req : null;
+    final r = x.open;
+    final pick = x.pick;
     final Widget right;
-    final VoidCallback? tap;
-    if (mine) {
-      right = Text(L.t.onYourPhone314,
-          key: ValueKey('chats314_mine_${chat['id']}'), style: k.text(12.5, FontWeight.w600, k.grey, 1.2));
-      tap = shown != null && (shown.parts > 0 || shown.ready) ? () => _open(shown) : null;
-    } else if (shown == null) {
-      right = _capsule(context, L.t.getChat, ValueKey('chats221_ask_${chat['id']}'), () => _ask(pick));
-      tap = () => _ask(pick);
-    } else {
-      final step = RequestStep307.of(shown);
-      right = Chip307(step.step == Step307.coming ? step.short : step.chip, step.step);
-      // K1: an open request opens (never a second sheet).
-      tap = () => _openAsked314(shown);
+    VoidCallback? tap;
+    switch (x.kind) {
+      case Kind320.mine:
+        right = Text(L.t.onYourPhone314,
+            key: ValueKey('chats314_mine_${x.id}'), style: k.text(12.5, FontWeight.w600, k.grey, 1.2));
+        tap = r == null ? null : () => _open(r);
+      case Kind320.ready:
+        tap = () => _open(r!);
+        right = ActionPill320(L.t.open, Pill320.open, key: ValueKey('chats320_open_${x.id}'), onTap: tap);
+      case Kind320.kept:
+        tap = () => _open(r!);
+        right = ActionPill320(L.t.new320, Pill320.tonal,
+            key: ValueKey('chats320_new_${x.id}'), icon: Icons.refresh_rounded, onTap: () => _askNew320(pick!));
+      case Kind320.ask:
+        tap = () => _ask(pick);
+        right = ActionPill320(L.t.getChat, Pill320.tonal, key: ValueKey('chats221_ask_${x.id}'), onTap: tap);
     }
+    // Bundle 317 (G8): files of a Ready chat still coming - in the same line.
+    final f = r == null ? null : _filesOf320(files: FileQueue317.trips.value[r.id], // Bundle 317 (G8)
+        ready: x.kind == Kind320.ready || x.kind == Kind320.kept);
+    final status = f == null ? x.status : '${x.status} \u00b7 $f';
     return InkWell(
-      key: ValueKey('chats221_row_${chat['id']}'),
+      key: ValueKey('chats221_row_${x.id}'),
       onTap: tap,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
         child: Row(children: [
-          AvatarPair307(names: chatNamesOfRow(chat), size: 42, group: group),
+          AvatarPair307(names: x.names, size: 42, group: x.group),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_chatTitle(chat),
-                  style: k.text(16, FontWeight.w700, k.ink, 1.2)),
+              Text(x.title, style: k.text(16, FontWeight.w700, k.ink, 1.2)),
               const SizedBox(height: 3),
-              Text(_chatSub(chat),
-                  style: k.text(13.5, FontWeight.w400, k.grey, 1.25)),
+              StatusLine320(status, x.tone,
+                  key: f != null && r != null
+                      ? ValueKey('requests317_files_${r.id}')
+                      : ValueKey('chats320_status_${x.id}'),
+                  icon: x.icon),
             ]),
           ),
           const SizedBox(width: 8),
@@ -989,22 +729,58 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     );
   }
 
-  Widget _capsule(BuildContext context, String label, Key key, VoidCallback onTap) {
-    final k = K307.of(context);
-    return Material(
-      color: k.blue,
-      shape: const StadiumBorder(),
-      child: InkWell(
-        key: key,
-        customBorder: const StadiumBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Text(label, style: k.text(13.5, FontWeight.w700, Colors.white, 1.2)),
-        ),
-      ),
-    );
+  /// "Files 3/13" / "Files ✓" while a Ready chat's files come (null = none).
+  static String? _filesOf320({FileTrip317? files, required bool ready}) {
+    if (!ready || files == null || files.total <= 0 || files.stopped) return null;
+    return files.done ? L.t.filesDoneShort317 : L.t.filesShort317(files.here, files.wanted);
   }
+}
+
+/// Bundle 320 (R2): "just now" / "5 min" / "2 h" / "3 d" since a request
+/// was made (the waiting line of a Now row).
+abstract final class AdminConversationsScreenAge320 {
+  static String of(String madeAt, [DateTime? now]) {
+    final t = DateTime.tryParse(madeAt);
+    if (t == null) return '';
+    final d = (now ?? DateTime.now()).toUtc().difference(t.toUtc());
+    if (d.inMinutes < 1) return L.t.justNow;
+    if (d.inMinutes < 60) return L.t.ageMin320(d.inMinutes);
+    if (d.inHours < 24) return L.t.ageH320(d.inHours);
+    return L.t.ageD320(d.inDays);
+  }
+}
+
+/// Bundle 320 (R3): what a Chats row shows - Open / New / Get chat / mine.
+enum Kind320 { ready, kept, ask, mine }
+
+/// Bundle 320 (R3): one chat of the list (server chat + its requests + its
+/// kept copy merged).
+class Row320 {
+  const Row320({
+    required this.id,
+    required this.title,
+    required this.names,
+    required this.group,
+    required this.pick,
+    required this.kind,
+    required this.status,
+    required this.tone,
+    this.open,
+    this.icon,
+  });
+
+  final String id;
+  final String title;
+  final List<String> names;
+  final bool group;
+  final ChatPick221? pick;
+  final Kind320 kind;
+  final String status;
+  final Tone320 tone;
+
+  /// The request Open / a row tap opens (null = none).
+  final ChatRequestRow221? open;
+  final IconData? icon;
 }
 
 /// The chat a list row is about (server or local row).
@@ -1158,45 +934,6 @@ class LinkBanner221 extends StatelessWidget {
               online ? L.t.serverConnectedRequestsGoByThe : L.t.noServerRequestsGoByWi,
               style: t.custom(13, FontWeight.w600, fg)),
         ),
-      ]),
-    );
-  }
-}
-
-class Tabs221 extends StatelessWidget {
-  const Tabs221({super.key, required this.labels, required this.selected, required this.onSelected});
-  final List<String> labels;
-  final int selected;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = A216.colors(context);
-    final t = A216Text(c);
-    return Container(
-      height: 44,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: const Color(0xFFECEFF4), borderRadius: BorderRadius.circular(22)),
-      child: Row(children: [
-        for (var i = 0; i < labels.length; i++)
-          Expanded(
-            child: GestureDetector(
-              key: ValueKey('tabs221_$i'),
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onSelected(i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: i == selected ? c.surface : Colors.transparent,
-                  borderRadius: BorderRadius.circular(19),
-                ),
-                child: Text(labels[i],
-                    style: t.custom(14, i == selected ? FontWeight.w700 : FontWeight.w500,
-                        i == selected ? c.ink : c.grey)),
-              ),
-            ),
-          ),
       ]),
     );
   }

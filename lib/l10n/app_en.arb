@@ -6049,5 +6049,140 @@
       }
     }
   },
-  "more318": "More"
+  "more318": "More",
+  "findAChat320": "Find a chat",
+  "filterAll320": "All",
+  "filterComing320": "Coming",
+  "filterKept320": "Kept",
+  "now320": "Now",
+  "nothingHere320": "Nothing here",
+  "comingFrom320": "Coming · {name}'s phone",
+  "@comingFrom320": {
+    "placeholders": {
+      "name": {
+        "type": "Object?"
+      }
+    }
+  },
+  "coming320": "Coming",
+  "waitingForAPhone320": "Waiting for a phone",
+  "ageMin320": "{n} min",
+  "@ageMin320": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ageH320": "{n} h",
+  "@ageH320": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "ageD320": "{n} d",
+  "@ageD320": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "keptUntil320": "Kept until {day}",
+  "@keptUntil320": {
+    "placeholders": {
+      "day": {
+        "type": "Object?"
+      }
+    }
+  },
+  "cancelledOn320": "Cancelled · {day}",
+  "@cancelledOn320": {
+    "placeholders": {
+      "day": {
+        "type": "Object?"
+      }
+    }
+  },
+  "new320": "New",
+  "waitingFor1Phone320": "Waiting for {a}'s phone",
+  "@waitingFor1Phone320": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      }
+    }
+  },
+  "waitingFor2Phones320": "Waiting for {a}'s or {b}'s phone",
+  "@waitingFor2Phones320": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      },
+      "b": {
+        "type": "Object?"
+      }
+    }
+  },
+  "waitingForGroup320": "Waiting for a phone in {group}",
+  "@waitingForGroup320": {
+    "placeholders": {
+      "group": {
+        "type": "Object?"
+      }
+    }
+  },
+  "comesByItself320": "The chat comes by itself as soon as one of their phones is online or near you. There's no time limit.",
+  "youWord320": "You",
+  "askedWord320": "Asked",
+  "sentToWord320": "Sent to",
+  "nPhones320": "{n} phones",
+  "@nPhones320": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "onePhone320": "1 phone",
+  "comingParts320": "Coming · {parts} of {total} parts",
+  "@comingParts320": {
+    "placeholders": {
+      "parts": {
+        "type": "Object?"
+      },
+      "total": {
+        "type": "Object?"
+      }
+    }
+  },
+  "aboutMin320": "about {n} min",
+  "@aboutMin320": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "underMin320": "less than a minute",
+  "moreOnTheWay320": "More messages on the way…",
+  "keptOnPhoneUntil320": "Kept on this phone until {day}",
+  "@keptOnPhoneUntil320": {
+    "placeholders": {
+      "day": {
+        "type": "Object?"
+      }
+    }
+  },
+  "comingByItself320": "Coming by itself",
+  "allHere320": "All here · {n} parts",
+  "@allHere320": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  }
 }

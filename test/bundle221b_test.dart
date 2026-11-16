@@ -142,7 +142,8 @@ void main() {
     expect(server.created.first, {'kind': 'direct', 'user_a': 'u-ali', 'user_b': 'u-sara', 'range': '7'});
   });
 
-  testWidgets('221-b3 Requests tab: pending row with Cancel, half row with parts', (tester) async {
+  // Bundle 320 (R1/R2): no Requests tab - both requests are rows of the "Now" card.
+  testWidgets('221-b3 Now card: pending row with Cancel, half row with parts', (tester) async {
     await _phone(tester);
     final server = _Server(chats: _chats, reqs: const [
       {
@@ -161,9 +162,9 @@ void main() {
     await tester.pump();
     // The chat with a request shows its state instead of Ask phones.
     expect(find.byKey(const ValueKey('chats221_ask_c1')), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('tabs221_1')));
-    await tester.pump();
-    expect(find.descendant(of: find.byKey(const ValueKey('tabs221_1')), matching: find.text('Requests')), findsOneWidget); expect(find.descendant(of: find.byKey(const ValueKey('tabs221_1')), matching: find.text('2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('tabs221_1')), findsNothing);
+    expect(find.descendant(of: find.byKey(const ValueKey('conv320_now')), matching: find.byKey(const ValueKey('requests221_row_r1'))), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('conv320_filter_coming')), matching: find.text('2')), findsOneWidget);
     expect(find.byKey(const ValueKey('requests221_cancel_r1')), findsOneWidget);
     expect(find.byKey(const ValueKey('requests221_cancel_r2')), findsNothing);
     expect(find.textContaining('40 of 80 parts'), findsOneWidget);
@@ -223,7 +224,7 @@ void main() {
     // Bundle 317 (G6): no Get button - the file comes by itself.
     expect(find.byKey(const ValueKey('viewer221_getfile_f2')), findsNothing);
     expect(find.textContaining('Next in line'), findsOneWidget);
-    expect(find.text('40 of 80 parts · the rest is on the way'), findsOneWidget);
+    expect(find.text('Coming · 40 of 80 parts'), findsOneWidget); // Bundle 320 (R7): thin strip
     // The answering phone's owner (Ali) on the left, Sara on the right.
     expect(tester.getCenter(find.text('Salam')).dx, lessThan(tester.getCenter(find.text('Hi')).dx));
     // Long-press: Copy text + Delete completely.

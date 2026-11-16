@@ -187,8 +187,9 @@ void main() {
       final src = File('lib/features/admin/presentation/screens/admin_chat_viewer_screen.dart').readAsStringSync();
       expect(src, contains('Batch307(batch: shown++ ~/ 3, child: _bubble(v, m))'));
       final screen = File('lib/features/admin/presentation/screens/admin_conversations_screen.dart').readAsStringSync();
-      expect(screen, contains('curve: Curves.easeOutBack'));
-      expect(screen, contains("duration: Motion307.d(context, 550),"));
+      // Bundle 320 (R2): the carousel (spring drop-in, sliding dots) is gone - nothing slides by itself.
+      expect(screen, isNot(contains('live307_carousel')));
+      expect(screen, isNot(contains('advanceEvery')));
     });
   });
 }
@@ -493,75 +494,67 @@ void _tests307() {
     for (final dark in [false, true]) {
       final tag = dark ? 'dark' : 'light';
 
-      testWidgets('header pill + Requests tab: live card, In progress, Finished ($tag)', (tester) async {
+      // Bundle 320 (R1-R4): one list - "Now" (on their way) + "Chats" (each chat once).
+      testWidgets('header pill + one list: Now card, Chats card, filter counts ($tag)', (tester) async {
         await _phone307(tester);
         await _open307(tester, _svc307(_Srv307(chats: _chats307, reqs: _reqs307)), dark: dark);
         expect(tester.takeException(), isNull);
         expect(find.byKey(const ValueKey('chats221_online_bar')), findsOneWidget);
         expect(find.text('Server connected'), findsOneWidget);
-        await tester.tap(find.byKey(const ValueKey('tabs221_1')));
-        await tester.pump();
         await tester.pump(const Duration(seconds: 1));
         expect(tester.takeException(), isNull);
-        // Live: Ready first, 3 live (r1 ready, r2 parts, r3 reached), dots.
-        expect(find.byKey(const ValueKey('live307_card_r1')), findsOneWidget);
-        for (var i = 0; i < 3; i++) {
-          expect(find.byKey(ValueKey('live307_dot_$i')), findsOneWidget);
-        }
-        expect(find.byKey(const ValueKey('live307_dot_3')), findsNothing);
-        // In progress: chip + ring; the parts row keeps its text and bar.
-        expect(find.byKey(const ValueKey('requests221_row_r2')), findsOneWidget);
+        expect(find.byKey(const ValueKey('tabs221_1')), findsNothing);
+        expect(find.byKey(const ValueKey('live307_carousel')), findsNothing);
+        expect(find.byKey(const ValueKey('live307_dot_0')), findsNothing);
+        expect(find.byType(ProgressRing307), findsNothing);
+        // Now: the parts row keeps its text and bar; the reached one has no bar.
+        final now = find.byKey(const ValueKey('conv320_now'));
+        expect(find.descendant(of: now, matching: find.byKey(const ValueKey('requests221_row_r2'))), findsOneWidget);
+        expect(find.descendant(of: now, matching: find.byKey(const ValueKey('requests221_row_r3'))), findsOneWidget);
         expect(find.text('12 of 40 parts'), findsOneWidget);
         expect(find.byKey(const ValueKey('parts221_bar')), findsOneWidget);
-        expect(find.text('1 of 2 phones'), findsOneWidget);
-        expect(find.byType(ProgressRing307), findsNWidgets(2));
-        // Finished: Ready + No messages tags; no "since", no path words.
-        expect(find.byKey(const ValueKey('requests307_finished')), findsOneWidget);
-        expect(find.text('No messages'), findsOneWidget);
+        expect(find.textContaining('Looking for the chat'), findsOneWidget);
+        // Chats: c1 is ready (Open), c2 is in Now (not twice), r5 = no phone has it.
+        expect(find.byKey(const ValueKey('chats320_open_c1')), findsOneWidget);
+        expect(find.byKey(const ValueKey('chats221_row_c2')), findsNothing);
+        expect(find.byKey(const ValueKey('chats221_row_r5')), findsOneWidget);
+        expect(find.text('No phone has this chat'), findsOneWidget);
+        for (final (f, n) in [('all', '4'), ('coming', '2'), ('ready', '1'), ('kept', '0')]) {
+          expect(find.descendant(of: find.byKey(ValueKey('conv320_filter_$f')), matching: find.text(n)), findsOneWidget,
+              reason: f);
+        }
         expect(find.textContaining('since'), findsNothing);
         expect(find.textContaining('Wi-Fi Direct'), findsNothing);
       });
     }
 
-    testWidgets('carousel: swipe, auto-advance, a touch pauses it', (tester) async {
+    testWidgets('nothing slides by itself (loops on): same rows after 20 s', (tester) async {
       Motion307.loopsForTest = true;
       await _phone307(tester);
       await _open307(tester, _svc307(_Srv307(chats: _chats307, reqs: _reqs307)));
-      await tester.tap(find.byKey(const ValueKey('tabs221_1')));
       await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byKey(const ValueKey('requests221_row_r2')), findsOneWidget);
+      await tester.pump(const Duration(seconds: 20));
       await tester.pump(const Duration(milliseconds: 500));
-      expect(find.byKey(const ValueKey('live307_card_r1')), findsOneWidget);
-      // Swipe left -> the next card (r2).
-      await tester.fling(find.byKey(const ValueKey('live307_carousel')), const Offset(-300, 0), 1200);
-      await tester.pump(const Duration(milliseconds: 500));
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(find.byKey(const ValueKey('live307_card_r2')), findsOneWidget);
-      // The touch pauses auto-advance for 10 s.
-      await tester.pump(const Duration(seconds: 6));
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(find.byKey(const ValueKey('live307_card_r2')), findsOneWidget);
-      // After the pause, it moves on by itself.
-      await tester.pump(const Duration(seconds: 10));
-      await tester.pump(const Duration(milliseconds: 500));
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(find.byKey(const ValueKey('live307_card_r2')), findsNothing);
+      expect(find.byKey(const ValueKey('requests221_row_r2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('requests221_row_r3')), findsOneWidget);
+      expect(find.byKey(const ValueKey('live307_carousel')), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('Chats tab: Ready to read tile only for a ready answer; Get chat capsule; search', (tester) async {
+    testWidgets('Chats card: Open only for a ready answer; Get chat; search finds Now rows too', (tester) async {
       await _phone307(tester);
       await _open307(tester, _svc307(_Srv307(chats: _chats307, reqs: _reqs307)));
-      expect(find.byKey(const ValueKey('chats307_ready_c1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('chats307_ready_c2')), findsNothing);
-      expect(find.text('12/40'), findsOneWidget); // c2's request is running
+      expect(find.byKey(const ValueKey('chats320_open_c1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chats320_open_c2')), findsNothing);
       await tester.enterText(find.byKey(const ValueKey('chats307_search')), 'kir');
       await tester.pump();
       expect(find.byKey(const ValueKey('chats221_row_c1')), findsNothing);
-      expect(find.byKey(const ValueKey('chats221_row_c2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('requests221_row_r2')), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
       await _open307(tester, _svc307(_Srv307(chats: _chats307)));
-      expect(find.byKey(const ValueKey('chats307_ready')), findsNothing);
+      expect(find.byKey(const ValueKey('conv320_now')), findsNothing);
       expect(find.byKey(const ValueKey('chats221_ask_c1')), findsOneWidget);
       expect(find.text('Get chat'), findsNWidgets(2));
     });
@@ -616,7 +609,8 @@ void _tests307() {
       expect(server.created.single['user_b'], 'u-k');
     });
 
-    testWidgets('viewer: progress card with ring, then Ready (no route words)', (tester) async {
+    // Bundle 320 (R7): a thin "Coming · 28 of 40 parts" strip (no ring) + shimmer rows at the end.
+    testWidgets('viewer: coming strip, then Ready (no route words)', (tester) async {
       await _phone307(tester);
       const req = ChatRequestRow221(
           id: 'r2', action: 'get_chat', label: 'kiran & ayesha', chat: {'kind': 'direct', 'users': ['u-k', 'u-a']});
@@ -629,9 +623,10 @@ void _tests307() {
       await tester.pump();
       expect(tester.takeException(), isNull);
       expect(find.byKey(const ValueKey('viewer221_parts')), findsOneWidget);
-      expect(find.text('28 of 40 parts · the rest is on the way'), findsOneWidget);
+      expect(find.text('Coming · 28 of 40 parts'), findsOneWidget);
       expect(find.descendant(of: find.byKey(const ValueKey('viewer221_parts')), matching: find.byType(ProgressRing307)),
-          findsOneWidget);
+          findsNothing);
+      expect(find.byKey(const ValueKey('viewer320_more')), findsOneWidget);
       expect(find.text('Mesh'), findsNothing);
       const full = ChatAnswerView(id: 'r2', answerId: 'a', fromDevice: 'dev-a', fromName: 'ayesha', of: 40, parts: 40,
           complete: true, messages: []);

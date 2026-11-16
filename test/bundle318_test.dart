@@ -679,7 +679,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(tester.takeException(), isNull);
       expect(find.textContaining('+1 new', findRichText: true), findsOneWidget);
-      expect(find.textContaining('Full chat \u00b7 got ', findRichText: true), findsOneWidget);
+      // Bundle 320 (R8): short header; until when it is kept is its own line.
+      expect(find.textContaining('Full chat', findRichText: true), findsWidgets);
+      expect(find.textContaining('\u00b7 got ', findRichText: true), findsNothing);
+      expect(find.byKey(const ValueKey('viewer320_kept')), findsOneWidget);
       expect(find.byKey(const ValueKey('unread_bar_304')), findsOneWidget);
       expect(find.text('New message'), findsOneWidget);
       expect(find.text('hello m31'), findsOneWidget);

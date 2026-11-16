@@ -8560,4 +8560,126 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get more318 => 'More';
+
+  @override
+  String get findAChat320 => 'Find a chat';
+
+  @override
+  String get filterAll320 => 'All';
+
+  @override
+  String get filterComing320 => 'Coming';
+
+  @override
+  String get filterKept320 => 'Kept';
+
+  @override
+  String get now320 => 'Now';
+
+  @override
+  String get nothingHere320 => 'Nothing here';
+
+  @override
+  String comingFrom320(Object? name) {
+    return 'Coming · $name\'s phone';
+  }
+
+  @override
+  String get coming320 => 'Coming';
+
+  @override
+  String get waitingForAPhone320 => 'Waiting for a phone';
+
+  @override
+  String ageMin320(Object? n) {
+    return '$n min';
+  }
+
+  @override
+  String ageH320(Object? n) {
+    return '$n h';
+  }
+
+  @override
+  String ageD320(Object? n) {
+    return '$n d';
+  }
+
+  @override
+  String keptUntil320(Object? day) {
+    return 'Kept until $day';
+  }
+
+  @override
+  String cancelledOn320(Object? day) {
+    return 'Cancelled · $day';
+  }
+
+  @override
+  String get new320 => 'New';
+
+  @override
+  String waitingFor1Phone320(Object? a) {
+    return 'Waiting for $a\'s phone';
+  }
+
+  @override
+  String waitingFor2Phones320(Object? a, Object? b) {
+    return 'Waiting for $a\'s or $b\'s phone';
+  }
+
+  @override
+  String waitingForGroup320(Object? group) {
+    return 'Waiting for a phone in $group';
+  }
+
+  @override
+  String get comesByItself320 =>
+      'The chat comes by itself as soon as one of their phones is online or near you. There\'s no time limit.';
+
+  @override
+  String get youWord320 => 'You';
+
+  @override
+  String get askedWord320 => 'Asked';
+
+  @override
+  String get sentToWord320 => 'Sent to';
+
+  @override
+  String nPhones320(Object? n) {
+    return '$n phones';
+  }
+
+  @override
+  String get onePhone320 => '1 phone';
+
+  @override
+  String comingParts320(Object? parts, Object? total) {
+    return 'Coming · $parts of $total parts';
+  }
+
+  @override
+  String aboutMin320(Object? n) {
+    return 'about $n min';
+  }
+
+  @override
+  String get underMin320 => 'less than a minute';
+
+  @override
+  String get moreOnTheWay320 => 'More messages on the way…';
+
+  @override
+  String keptOnPhoneUntil320(Object? day) {
+    return 'Kept on this phone until $day';
+  }
+
+  @override
+  String get comingByItself320 => 'Coming by itself';
+
+  @override
+  String allHere320(Object? n) {
+    return 'All here · $n parts';
+  }
 }

@@ -172,8 +172,9 @@ List<String> _cut(WidgetTester tester) {
   return out;
 }
 
-Future<void> _tab(WidgetTester tester, int i) async {
-  await tester.tap(find.byKey(ValueKey('tabs221_$i')));
+// Bundle 320 (R1): no tabs - the filter chips of the one list.
+Future<void> _filter(WidgetTester tester, String name) async {
+  await tester.tap(find.byKey(ValueKey('conv320_filter_$name')));
   await tester.pump();
   await tester.pump(const Duration(seconds: 1));
 }
@@ -200,8 +201,8 @@ void main() {
             expect(title.overflow, isNull);
             expect(title.data, L.en('Conversations'));
 
-            // E5: Chats tab - no text cut anywhere.
-            expect(_cut(tester), isEmpty, reason: 'chats tab');
+            // E5 / 320: the one list (Now + Chats) - no text cut anywhere.
+            expect(_cut(tester), isEmpty, reason: 'one list');
 
             // E3: the Fab text has 22 dp room on both sides.
             final fab = find.byKey(const ValueKey('chats221_new_request'));
@@ -211,10 +212,12 @@ void main() {
             expect(text.left - box.left, greaterThanOrEqualTo(22 - 0.5));
             expect(box.right - text.right, greaterThanOrEqualTo(22 - 0.5));
 
-            // E5: Requests tab (Live card, in progress, finished).
-            await _tab(tester, 1);
-            expect(tester.takeException(), isNull);
-            expect(_cut(tester), isEmpty, reason: 'requests tab');
+            // 320: each filter (Coming / Ready / Kept) - still nothing cut.
+            for (final f in ['coming', 'ready', 'kept']) {
+              await _filter(tester, f);
+              expect(tester.takeException(), isNull);
+              expect(_cut(tester), isEmpty, reason: 'filter $f');
+            }
           });
         }
       }
@@ -231,13 +234,13 @@ void main() {
     expect(pill.left, moreOrLessEquals(title.left, epsilon: 1));
   });
 
-  testWidgets('E4: "1 part" and "2 parts" in Finished (English and Urdu)', (tester) async {
+  // Bundle 320 (R4): the Finished list is gone (a ready chat is one "Ready to
+  // read" row); the words never say "1 parts" and Urdu keeps its words.
+  testWidgets('E4: no "1 parts" on the one list (English and Urdu words)', (tester) async {
     await tester.runAsync(loadRoboto216);
     addTearDown(tester.view.reset);
     await _open(tester, width: 411, scale: 1.0, dark: false);
-    await _tab(tester, 1);
-    expect(find.textContaining('1 part \u00b7', findRichText: true), findsWidgets);
-    expect(find.textContaining('2 parts', findRichText: true), findsWidgets);
+    expect(find.text('Ready to read'), findsOneWidget);
     expect(find.textContaining('1 parts', findRichText: true), findsNothing);
     LanguageBook304.instance.load('ur');
     expect(L.t.onePart313, '\u2067\u20681\u2069 حصہ\u2069');

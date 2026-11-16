@@ -14483,6 +14483,192 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'More'**
   String get more318;
+
+  /// No description provided for @findAChat320.
+  ///
+  /// In en, this message translates to:
+  /// **'Find a chat'**
+  String get findAChat320;
+
+  /// No description provided for @filterAll320.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get filterAll320;
+
+  /// No description provided for @filterComing320.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming'**
+  String get filterComing320;
+
+  /// No description provided for @filterKept320.
+  ///
+  /// In en, this message translates to:
+  /// **'Kept'**
+  String get filterKept320;
+
+  /// No description provided for @now320.
+  ///
+  /// In en, this message translates to:
+  /// **'Now'**
+  String get now320;
+
+  /// No description provided for @nothingHere320.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing here'**
+  String get nothingHere320;
+
+  /// No description provided for @comingFrom320.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming · {name}\'s phone'**
+  String comingFrom320(Object? name);
+
+  /// No description provided for @coming320.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming'**
+  String get coming320;
+
+  /// No description provided for @waitingForAPhone320.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for a phone'**
+  String get waitingForAPhone320;
+
+  /// No description provided for @ageMin320.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} min'**
+  String ageMin320(Object? n);
+
+  /// No description provided for @ageH320.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} h'**
+  String ageH320(Object? n);
+
+  /// No description provided for @ageD320.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} d'**
+  String ageD320(Object? n);
+
+  /// No description provided for @keptUntil320.
+  ///
+  /// In en, this message translates to:
+  /// **'Kept until {day}'**
+  String keptUntil320(Object? day);
+
+  /// No description provided for @cancelledOn320.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled · {day}'**
+  String cancelledOn320(Object? day);
+
+  /// No description provided for @new320.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get new320;
+
+  /// No description provided for @waitingFor1Phone320.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for {a}\'s phone'**
+  String waitingFor1Phone320(Object? a);
+
+  /// No description provided for @waitingFor2Phones320.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for {a}\'s or {b}\'s phone'**
+  String waitingFor2Phones320(Object? a, Object? b);
+
+  /// No description provided for @waitingForGroup320.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for a phone in {group}'**
+  String waitingForGroup320(Object? group);
+
+  /// No description provided for @comesByItself320.
+  ///
+  /// In en, this message translates to:
+  /// **'The chat comes by itself as soon as one of their phones is online or near you. There\'s no time limit.'**
+  String get comesByItself320;
+
+  /// No description provided for @youWord320.
+  ///
+  /// In en, this message translates to:
+  /// **'You'**
+  String get youWord320;
+
+  /// No description provided for @askedWord320.
+  ///
+  /// In en, this message translates to:
+  /// **'Asked'**
+  String get askedWord320;
+
+  /// No description provided for @sentToWord320.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to'**
+  String get sentToWord320;
+
+  /// No description provided for @nPhones320.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} phones'**
+  String nPhones320(Object? n);
+
+  /// No description provided for @onePhone320.
+  ///
+  /// In en, this message translates to:
+  /// **'1 phone'**
+  String get onePhone320;
+
+  /// No description provided for @comingParts320.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming · {parts} of {total} parts'**
+  String comingParts320(Object? parts, Object? total);
+
+  /// No description provided for @aboutMin320.
+  ///
+  /// In en, this message translates to:
+  /// **'about {n} min'**
+  String aboutMin320(Object? n);
+
+  /// No description provided for @underMin320.
+  ///
+  /// In en, this message translates to:
+  /// **'less than a minute'**
+  String get underMin320;
+
+  /// No description provided for @moreOnTheWay320.
+  ///
+  /// In en, this message translates to:
+  /// **'More messages on the way…'**
+  String get moreOnTheWay320;
+
+  /// No description provided for @keptOnPhoneUntil320.
+  ///
+  /// In en, this message translates to:
+  /// **'Kept on this phone until {day}'**
+  String keptOnPhoneUntil320(Object? day);
+
+  /// No description provided for @comingByItself320.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming by itself'**
+  String get comingByItself320;
+
+  /// No description provided for @allHere320.
+  ///
+  /// In en, this message translates to:
+  /// **'All here · {n} parts'**
+  String allHere320(Object? n);
 }
 
 class _AppLocalizationsDelegate

@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:locallink/core/models/group_event.dart';
 import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/core/widgets/unread_bar_304.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_service.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
@@ -17,6 +18,7 @@ import 'package:locallink/features/admin/presentation/screens/admin_conversation
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/conversations_kit307.dart';
+import 'package:locallink/features/admin/presentation/widgets/conversations_kit320.dart';
 import 'package:locallink/features/admin/presentation/widgets/viewer_bubbles310.dart';
 import 'package:locallink/l10n/l10n.dart';
 
@@ -28,6 +30,10 @@ import 'package:locallink/l10n/l10n.dart';
 /// Bundle 307 (B9): round header, a progress card (ring + "28 of 40 parts"
 /// -> "Ready to read", then it shrinks away), iOS bubbles. The route words
 /// are no longer shown; the class stays so nothing else breaks.
+/// Bundle 320 (TODO_320 R5-R8): grey bubble shapes while loading (no
+/// spinner), a waiting card (who we wait for, asked, sent to, Cancel), a thin
+/// "Coming · 40 of 80 parts" strip + shimmer rows at the end while the rest
+/// comes, and one quiet "Kept on this phone until ..." line when ready.
 /// Route words, same as the web (`ROUTE221`).
 abstract final class AdminChatViewerScreenRoutes {
   static String word(String r) => switch (r) {
@@ -37,6 +43,24 @@ abstract final class AdminChatViewerScreenRoutes {
         'mesh' => L.t.mesh,
         _ => '',
       };
+}
+
+/// Bundle 320 (R7): "about 2 min" / "less than a minute" from 2+ part
+/// updates; '' when there is no rate yet (then nothing is shown).
+abstract final class AdminChatViewerScreenEta320 {
+  static String of(List<(DateTime, int)> samples, int total) {
+    if (samples.length < 2 || total <= 0) return '';
+    final first = samples.first;
+    final last = samples.last;
+    final dp = last.$2 - first.$2;
+    final ms = last.$1.difference(first.$1).inMilliseconds;
+    if (dp <= 0 || ms <= 0) return '';
+    final left = total - last.$2;
+    if (left <= 0) return '';
+    final seconds = left * ms / dp / 1000;
+    if (seconds < 60) return L.t.underMin320;
+    return L.t.aboutMin320((seconds / 60).ceil());
+  }
 }
 
 class AdminChatViewerScreen extends StatefulWidget {
@@ -65,6 +89,10 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   // B9: the progress card turns "Ready to read" when the last part lands,
   // then shrinks away after 3 s.
   bool _sawHalf = false;
+
+  /// Bundle 320 (R7): (when, parts) each time more parts came - the time
+  /// estimate shows only once 2+ updates give a rate.
+  final List<(DateTime, int)> _rate320 = <(DateTime, int)>[];
   bool _readyGone = false;
   Timer? _readyTimer;
 
@@ -340,6 +368,8 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     if (v == null || v.empty || v.forAdminPhone) return;
     if (!v.complete) {
       _sawHalf = true;
+      if (_rate320.isEmpty || _rate320.last.$2 != v.parts) _rate320.add((DateTime.now(), v.parts));
+      if (_rate320.length > 6) _rate320.removeAt(0);
       return;
     }
     if (_sawHalf && _readyTimer == null && !_readyGone) {
@@ -360,11 +390,14 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final range = r.from.isEmpty ? L.t.fullChat : '${_day(r.from)} - ${_day(r.to)}';
     final v = _view;
     // Bundle 318 (K7): "Full chat · got 15 Nov 10:05 · +12 new today 10:43".
+    // Bundle 320 (R8): short - "Full chat · from kiran's phone"; until when
+    // it is kept is its own quiet line under the header.
     if (v != null && v.fromKept318) {
       final kr = r.inside318 ? range : (v.keptFull318 ? L.t.fullChat : '${_day(v.from)} - ${_day(v.to)}');
-      final got = L.t.viewerKept318(kr, Kept318.dayTime(v.keptGotAt318));
+      final owner = _owner255(v);
+      final head = owner.isEmpty ? kr : L.t.fromSPhone(kr, owner);
       final n = v.newIds318.length;
-      return v.newOnly318 && n > 0 ? '$got \u00b7 ${L.t.plusNew318(n, whenSub216(v.keptNewAt318))}' : got;
+      return v.newOnly318 && n > 0 ? '$head \u00b7 ${L.t.plusNew318(n, whenSub216(v.keptNewAt318))}' : head;
     }
     final from = v == null ? '' : _owner255(v);
     return from.isEmpty ? range : L.t.fromSPhone(range, from);
@@ -598,14 +631,19 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
               ))),
             ]),
           ),
+          if (v != null && v.fromKept318 && v.keptUntil318.isNotEmpty) _keptLine320(v),
           if (v != null && !v.empty && !v.forAdminPhone) _progressCard(v),
           if (v != null && v.complete && !v.forAdminPhone) _filesStrip317(),
           Expanded(
             child: v == null
-                ? Center(
-                    child: _error.isNotEmpty
-                        ? Padding(padding: const EdgeInsets.all(24), child: Text(_error, style: t.rowSub))
-                        : const CircularProgressIndicator(strokeWidth: 2))
+                ? (_error.isNotEmpty
+                    ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error, style: t.rowSub)))
+                    // Bundle 320 (R5): grey bubble shapes, not a spinner on a blank page.
+                    : const Padding(
+                        key: ValueKey('viewer320_loading'),
+                        padding: EdgeInsets.fromLTRB(14, 12, 14, 0),
+                        child: Align(alignment: Alignment.topCenter, child: BubbleSkeleton320()),
+                      ))
                 : _body(v),
           ),
         ]),
@@ -623,45 +661,53 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final show = !v.complete || (_sawHalf && !_readyGone);
     final Widget inner;
     if (!v.complete) {
+      // Bundle 320 (R7): a thin strip "Coming · 40 of 80 parts" (+ "about
+      // 1 min" once 2+ updates give a rate) instead of the big B9 card.
+      final eta = AdminChatViewerScreenEta320.of(_rate320, v.of);
+      final words = v.of > 0 ? L.t.comingParts320(v.parts, v.of) : L.t.coming320;
       inner = Container(
         key: const ValueKey('viewer221_parts'),
         margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-        decoration: k.cardBox(),
-        child: Row(children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text(L.t.ofPartsTheRestIsOn(v.parts, v.of), style: k.text(14.5, FontWeight.w700, k.ink, 1.3)),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: SizedBox(
-                  height: 3,
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(end: v.of <= 0 ? 0 : (v.parts / v.of).clamp(0, 1).toDouble()),
-                    duration: Motion307.d(context, 400),
-                    builder: (context, x, _) => LinearProgressIndicator(
-                      key: const ValueKey('parts221_bar'),
-                      value: x,
-                      backgroundColor: k.track,
-                      color: k.blue,
-                    ),
-                  ),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        decoration: k.cardBox(radius: 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Icons.downloading_rounded, size: 17, color: k.blue),
+            const SizedBox(width: 8),
+            Expanded(child: Text(words, style: k.text(13.5, FontWeight.w600, k.ink, 1.3))),
+            if (eta.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(eta, key: const ValueKey('viewer320_eta'), style: k.text(12.5, FontWeight.w500, k.grey, 1.3)),
+            ],
+          ]),
+          const SizedBox(height: 7),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: SizedBox(
+              height: 3,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(end: v.of <= 0 ? 0 : (v.parts / v.of).clamp(0, 1).toDouble()),
+                duration: Motion307.d(context, 400),
+                builder: (context, x, _) => LinearProgressIndicator(
+                  key: const ValueKey('parts221_bar'),
+                  value: x,
+                  backgroundColor: k.track,
+                  color: k.blue,
                 ),
               ),
-            ]),
+            ),
           ),
-          const SizedBox(width: 12),
-          ProgressRing307(step: step, size: 42),
         ]),
       );
     } else {
       inner = Container(
         key: const ValueKey('viewer307_ready'),
         margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-        decoration: k.cardBox(edge: K307.ok, edgeWidth: 2),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        decoration: k.cardBox(radius: 14, edge: K307.ok, edgeWidth: 1.5),
         child: Row(children: [
+          Icon(Icons.check_circle_rounded, size: 17, color: k.green),
+          const SizedBox(width: 8),
           Expanded(
             child: Text.rich(
               TextSpan(children: [
@@ -669,10 +715,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
                 TextSpan(text: step.highlight, style: TextStyle(color: k.green, fontWeight: FontWeight.w800)),
                 TextSpan(text: step.bigAfter),
               ]),
-              style: k.text(16, FontWeight.w700, k.ink, 1.25),
+              style: k.text(14, FontWeight.w700, k.ink, 1.3),
             ),
           ),
-          ProgressRing307(step: step, size: 42),
         ]),
       );
     }
@@ -766,7 +811,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
             '${L.t.phoneAnswered317(who)}\n${r.action == 'get_file' ? L.t.fileOnTheWay317 : L.t.chatOnTheWay317}',
             key: const ValueKey('viewer317_answered'));
       }
-      return _note(L.t.waitingForPhoneOfChat304);
+      return _waiting320();
     }
     final items = <Widget>[];
     String lastDay = '';
@@ -835,8 +880,19 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           children: [
             if (v.trimmed)
               _info(L.t.someOldPicturesWereLeftOut),
-            if (v.messages.isEmpty) _info(L.t.noMessagesInTheseDates),
+            if (v.messages.isEmpty && v.complete) _info(L.t.noMessagesInTheseDates),
             ...items,
+            // Bundle 320 (R7): the next messages' place while the rest comes.
+            if (!v.complete) ...[
+              const SizedBox(height: 6),
+              const BubbleSkeleton320(key: ValueKey('viewer320_more_shimmer')),
+              Padding(
+                key: const ValueKey('viewer320_more'),
+                padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+                child: Text(L.t.moreOnTheWay320,
+                    textAlign: TextAlign.center, style: t.custom(12.5, FontWeight.w500, c.grey, 1.3)),
+              ),
+            ],
           ],
         ),
         ),
@@ -874,6 +930,140 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           ),
       ]),
     );
+  }
+
+  /// Bundle 320 (R8): one quiet green line "Kept on this phone until 23 Nov".
+  Widget _keptLine320(ChatAnswerView v) {
+    final k = K307.of(context);
+    return Padding(
+      key: const ValueKey('viewer320_kept'),
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(padding: const EdgeInsets.only(top: 2), child: Icon(Icons.lock_rounded, size: 14, color: k.green)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(L.t.keptOnPhoneUntil320(Kept318.day(v.keptUntil318)),
+              style: k.text(13, FontWeight.w600, k.green, 1.3)),
+        ),
+      ]),
+    );
+  }
+
+  /// Bundle 320 (R6): no phone of this chat has answered yet - who we wait
+  /// for, that it comes by itself, Asked / Sent to (a row hides when not
+  /// known) and Cancel request (asks first).
+  Widget _waiting320() {
+    final k = K307.of(context);
+    final c = A216.colors(context);
+    final r = widget.request;
+    final group = _pick?.isGroup ?? false;
+    final names = [for (final n in _names) if (n.trim().isNotEmpty) n.trim()];
+    final title = group
+        ? L.t.waitingForGroup320(r.label.isEmpty ? L.t.group : r.label)
+        : names.length >= 2
+            ? L.t.waitingFor2Phones320(names[0], names[1])
+            : names.length == 1
+                ? L.t.waitingFor1Phone320(names[0])
+                : L.t.waitingForAPhone320;
+    // "Today 9:54" / "Yesterday 18:05" / "3 Nov 12:00".
+    final at = parseAdminTime216(r.madeAt);
+    final now = adminNow216();
+    final today = at != null && at.year == now.year && at.month == now.month && at.day == now.day;
+    final asked = today ? '${L.t.today} ${whenAudit216(r.madeAt)}' : whenAudit216(r.madeAt);
+    final facts = <(String, String, String)>[
+      if (asked.isNotEmpty) ('asked', L.t.askedWord320, asked),
+      if (r.phones > 0) ('sent', L.t.sentToWord320, r.phones == 1 ? L.t.onePhone320 : L.t.nPhones320(r.phones)),
+    ];
+    final canCancel = r.state == 'pending' && r.parts == 0 && !r.cancelled && !r.closed;
+    Widget face(Widget circle, String label) => ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 120),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            circle,
+            const SizedBox(height: 5),
+            Text(label, textAlign: TextAlign.center, style: k.text(12.5, FontWeight.w600, k.grey, 1.25)),
+          ]),
+        );
+    return SingleChildScrollView(
+      key: const ValueKey('viewer320_waiting'),
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 24),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        decoration: k.cardBox(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            face(
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(color: k.blueSoft, shape: BoxShape.circle),
+                  child: Icon(Icons.person_rounded, color: k.blue, size: 22),
+                ),
+                L.t.youWord320),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 19, 8, 0),
+                child: Container(height: 2, decoration: BoxDecoration(color: k.dash, borderRadius: BorderRadius.circular(1))),
+              ),
+            ),
+            face(AvatarPair307(names: names.isEmpty ? [L.t.chat] : names, size: 40, group: group),
+                group ? (r.label.isEmpty ? L.t.group : r.label) : names.join(' \u00b7 ')),
+          ]),
+          const SizedBox(height: 16),
+          Text(title, key: const ValueKey('viewer320_waiting_title'), style: k.text(17, FontWeight.w700, k.ink, 1.3)),
+          const SizedBox(height: 6),
+          Text(L.t.comesByItself320, style: k.text(13.5, FontWeight.w400, k.grey, 1.4)),
+          if (facts.isNotEmpty) const SizedBox(height: 10),
+          for (final f in facts) ...[
+            Divider(height: 1, thickness: 1, color: k.line),
+            Padding(
+              key: ValueKey('viewer320_fact_${f.$1}'),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(f.$2, style: k.text(13.5, FontWeight.w400, k.grey, 1.3)),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Text(f.$3, textAlign: TextAlign.end, style: k.text(13.5, FontWeight.w600, k.ink, 1.3))),
+              ]),
+            ),
+          ],
+          if (canCancel) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 48,
+              child: TextButton(
+                key: const ValueKey('viewer320_cancel'),
+                style: TextButton.styleFrom(
+                  backgroundColor: c.red.withValues(alpha: k.dark ? 0.18 : 0.10),
+                  foregroundColor: c.red,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: () => unawaited(_cancel320()),
+                child: Text(L.t.cancelRequest, style: k.text(15, FontWeight.w700, c.red, 1.2)),
+              ),
+            ),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _cancel320() async {
+    final ok = await confirmAdmin216(context,
+        title: L.t.cancelThisRequest,
+        body: L.t.phonesThatHavenTAnsweredYet,
+        yes: L.t.cancelRequest,
+        danger: true,
+        yesKey: const ValueKey('chat_request_cancel_yes'));
+    if (!ok || !mounted) return;
+    try {
+      await (widget.service.actions ?? AdminActionService.instance)?.cancel(widget.request.id);
+      ChatRequests221.changed307?.call(); // C3: the phone card goes at once
+      if (!mounted) return;
+      adminSnack216(context, L.t.cancelled);
+      await Navigator.of(context).maybePop();
+    } catch (error) {
+      if (mounted) adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
+    }
   }
 
   Widget _note(String text, {Key? key}) {
@@ -1101,6 +1291,20 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
             ? (who.isEmpty ? L.t.coming317 : L.t.comingFrom317(who))
             : (who.isEmpty ? L.t.nextInLine317 : L.t.nextInLineFrom317(who));
         below = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          // Bundle 320 (R8): a photo / video still on its way says so (no Get button).
+          if (photo || video)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Container(
+                  key: ValueKey('viewer320_by_itself_$fileId'),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: k.blueSoft, borderRadius: BorderRadius.circular(10)),
+                  child: Text(L.t.comingByItself320, style: t.custom(11.5, FontWeight.w600, k.blueText, 1.25)),
+                ),
+              ),
+            ),
           Row(children: [
             Expanded(child: Text(words, style: t.custom(12, FontWeight.w500, soft, 1.3))),
             if (st.of > 0) Text('${st.parts} / ${st.of}', style: t.custom(12, FontWeight.w600, soft)),

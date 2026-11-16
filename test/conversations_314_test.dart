@@ -457,12 +457,14 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('chats221_row_c-mine')));
       await _settle(tester);
       expect(find.byKey(const ValueKey('request221_send')), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('chats221_row_c-open')));
+      // Bundle 320 (R2/R3): the open request is a "Now" row, not a second
+      // Chats row; a tap shows where it is - never a second request sheet.
+      expect(find.byKey(const ValueKey('chats221_row_c-open')), findsNothing);
+      expect(find.byKey(const ValueKey('requests221_row_r-open')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('requests221_row_r-open')));
       await _settle(tester);
       expect(find.byKey(const ValueKey('request221_send')), findsNothing);
-      // The open request's card is shown on the Requests tab (not a sheet).
-      expect(find.byKey(const ValueKey('chats221_row_c-open')), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('tabs221_0')));
+      await tester.tapAt(const Offset(10, 10)); // closes the small sheet
       await _settle(tester);
       // The free row still opens the sheet.
       await tester.tap(find.byKey(const ValueKey('chats221_ask_c-free')));

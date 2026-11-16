@@ -8591,4 +8591,126 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get more318 => '⁧مزید⁩';
+
+  @override
+  String get findAChat320 => '⁧چیٹ تلاش کریں⁩';
+
+  @override
+  String get filterAll320 => '⁧سب⁩';
+
+  @override
+  String get filterComing320 => '⁧آ رہی ہیں⁩';
+
+  @override
+  String get filterKept320 => '⁧محفوظ⁩';
+
+  @override
+  String get now320 => '⁧ابھی⁩';
+
+  @override
+  String get nothingHere320 => '⁧یہاں کچھ نہیں⁩';
+
+  @override
+  String comingFrom320(Object? name) {
+    return '⁧آ رہی ہے · ⁨$name⁩ کے فون سے⁩';
+  }
+
+  @override
+  String get coming320 => '⁧آ رہی ہے⁩';
+
+  @override
+  String get waitingForAPhone320 => '⁧فون کا انتظار⁩';
+
+  @override
+  String ageMin320(Object? n) {
+    return '⁧⁨$n⁩ منٹ⁩';
+  }
+
+  @override
+  String ageH320(Object? n) {
+    return '⁧⁨$n⁩ گھنٹے⁩';
+  }
+
+  @override
+  String ageD320(Object? n) {
+    return '⁧⁨$n⁩ دن⁩';
+  }
+
+  @override
+  String keptUntil320(Object? day) {
+    return '⁧⁨$day⁩ تک محفوظ⁩';
+  }
+
+  @override
+  String cancelledOn320(Object? day) {
+    return '⁧منسوخ · ⁨$day⁩⁩';
+  }
+
+  @override
+  String get new320 => '⁧نئے⁩';
+
+  @override
+  String waitingFor1Phone320(Object? a) {
+    return '⁧⁨$a⁩ کے فون کا انتظار⁩';
+  }
+
+  @override
+  String waitingFor2Phones320(Object? a, Object? b) {
+    return '⁧⁨$a⁩ یا ⁨$b⁩ کے فون کا انتظار⁩';
+  }
+
+  @override
+  String waitingForGroup320(Object? group) {
+    return '⁧⁨$group⁩ کے کسی فون کا انتظار⁩';
+  }
+
+  @override
+  String get comesByItself320 =>
+      '⁧جیسے ہی ان کا کوئی فون آن لائن یا آپ کے قریب ہو، چیٹ خود آ جائے گی۔ کوئی وقت کی حد نہیں۔⁩';
+
+  @override
+  String get youWord320 => '⁧آپ⁩';
+
+  @override
+  String get askedWord320 => '⁧مانگی گئی⁩';
+
+  @override
+  String get sentToWord320 => '⁧بھیجی گئی⁩';
+
+  @override
+  String nPhones320(Object? n) {
+    return '⁧⁨$n⁩ فون⁩';
+  }
+
+  @override
+  String get onePhone320 => '⁧1 فون⁩';
+
+  @override
+  String comingParts320(Object? parts, Object? total) {
+    return '⁧آ رہی ہے · ⁨$total⁩ میں سے ⁨$parts⁩ حصے⁩';
+  }
+
+  @override
+  String aboutMin320(Object? n) {
+    return '⁧تقریباً ⁨$n⁩ منٹ⁩';
+  }
+
+  @override
+  String get underMin320 => '⁧ایک منٹ سے کم⁩';
+
+  @override
+  String get moreOnTheWay320 => '⁧مزید پیغامات راستے میں ہیں…⁩';
+
+  @override
+  String keptOnPhoneUntil320(Object? day) {
+    return '⁧اس فون پر ⁨$day⁩ تک محفوظ⁩';
+  }
+
+  @override
+  String get comingByItself320 => '⁧خود آ رہی ہے⁩';
+
+  @override
+  String allHere320(Object? n) {
+    return '⁧سب آ گیا · ⁨$n⁩ حصے⁩';
+  }
 }
