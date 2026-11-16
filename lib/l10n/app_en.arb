@@ -5904,5 +5904,150 @@
       }
     }
   },
-  "filesDoneShort317": "Files ✓"
+  "filesDoneShort317": "Files ✓",
+  "upToDate318": "Up to date",
+  "noNewSince318": "No new messages since {when}",
+  "@noNewSince318": {
+    "placeholders": {
+      "when": {
+        "type": "Object?"
+      }
+    }
+  },
+  "upToDateNoNew318": "Up to date · no new messages",
+  "stepReadyNew318": "{hl} · {n} new",
+  "@stepReadyNew318": {
+    "placeholders": {
+      "hl": {
+        "type": "Object?"
+      },
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "nNew318": "{n} new",
+  "@nNew318": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "addedToCopy318": "Tap to open · added to your copy",
+  "chatReadyNew318": "Chat ready · {n} new",
+  "@chatReadyNew318": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "newSince318": "New messages since {when}",
+  "@newSince318": {
+    "placeholders": {
+      "when": {
+        "type": "Object?"
+      }
+    }
+  },
+  "askingNew318": "Asking for new messages",
+  "newOnly318": "New only",
+  "keptDays318": "Kept · 7 days",
+  "getChatNewOnly318": "Get chat · new only",
+  "yourCopy318": "Your copy:",
+  "copyLine318": "{range} · got {got} · kept until {until}",
+  "@copyLine318": {
+    "placeholders": {
+      "range": {
+        "type": "Object?"
+      },
+      "got": {
+        "type": "Object?"
+      },
+      "until": {
+        "type": "Object?"
+      }
+    }
+  },
+  "fullChatLower318": "full chat",
+  "alreadyHere318": "Already here · {range}",
+  "@alreadyHere318": {
+    "placeholders": {
+      "range": {
+        "type": "Object?"
+      }
+    }
+  },
+  "gotFrom318": "Got {got} from {name}'s phone · kept until {until}",
+  "@gotFrom318": {
+    "placeholders": {
+      "got": {
+        "type": "Object?"
+      },
+      "name": {
+        "type": "Object?"
+      },
+      "until": {
+        "type": "Object?"
+      }
+    }
+  },
+  "gotKept318": "Got {got} · kept until {until}",
+  "@gotKept318": {
+    "placeholders": {
+      "got": {
+        "type": "Object?"
+      },
+      "until": {
+        "type": "Object?"
+      }
+    }
+  },
+  "insideTitle318": "Already here · {range} is inside your {copy}",
+  "@insideTitle318": {
+    "placeholders": {
+      "range": {
+        "type": "Object?"
+      },
+      "copy": {
+        "type": "Object?"
+      }
+    }
+  },
+  "insideSub318": "Got {got} · opens at once, nothing is sent",
+  "@insideSub318": {
+    "placeholders": {
+      "got": {
+        "type": "Object?"
+      }
+    }
+  },
+  "getNewOnly318": "Get new messages only",
+  "noCardNoPhone318": "No card, no phone is asked.",
+  "getAllAgain318": "Get all again",
+  "getAllAgainSub318": "The whole range comes again from their phones. Slower, uses more battery.",
+  "viewerKept318": "{range} · got {got}",
+  "@viewerKept318": {
+    "placeholders": {
+      "range": {
+        "type": "Object?"
+      },
+      "got": {
+        "type": "Object?"
+      }
+    }
+  },
+  "plusNew318": "+{n} new {when}",
+  "@plusNew318": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      },
+      "when": {
+        "type": "Object?"
+      }
+    }
+  },
+  "more318": "More"
 }

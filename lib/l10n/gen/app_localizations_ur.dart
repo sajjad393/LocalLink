@@ -8483,4 +8483,112 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get filesDoneShort317 => '⁧فائلیں ✓⁩';
+
+  @override
+  String get upToDate318 => '⁧تازہ ترین⁩';
+
+  @override
+  String noNewSince318(Object? when) {
+    return '⁧⁨$when⁩ کے بعد کوئی نیا پیغام نہیں⁩';
+  }
+
+  @override
+  String get upToDateNoNew318 => '⁧تازہ ترین · کوئی نیا پیغام نہیں⁩';
+
+  @override
+  String stepReadyNew318(Object? hl, Object? n) {
+    return '⁧⁨$hl⁩ · ⁨$n⁩ نئے⁩';
+  }
+
+  @override
+  String nNew318(Object? n) {
+    return '⁧⁨$n⁩ نئے⁩';
+  }
+
+  @override
+  String get addedToCopy318 => '⁧کھولنے کے لیے ٹیپ کریں · آپ کی کاپی میں شامل⁩';
+
+  @override
+  String chatReadyNew318(Object? n) {
+    return '⁧چیٹ تیار · ⁨$n⁩ نئے⁩';
+  }
+
+  @override
+  String newSince318(Object? when) {
+    return '⁧⁨$when⁩ کے بعد کے نئے پیغامات⁩';
+  }
+
+  @override
+  String get askingNew318 => '⁧نئے پیغامات مانگے جا رہے ہیں⁩';
+
+  @override
+  String get newOnly318 => '⁧صرف نئے⁩';
+
+  @override
+  String get keptDays318 => '⁧محفوظ · 7 دن⁩';
+
+  @override
+  String get getChatNewOnly318 => '⁧چیٹ منگوائیں · صرف نئے⁩';
+
+  @override
+  String get yourCopy318 => '⁧آپ کی کاپی:⁩';
+
+  @override
+  String copyLine318(Object? range, Object? got, Object? until) {
+    return '⁧⁨$range⁩ · ⁨$got⁩ کو ملی · ⁨$until⁩ تک محفوظ⁩';
+  }
+
+  @override
+  String get fullChatLower318 => '⁧پوری چیٹ⁩';
+
+  @override
+  String alreadyHere318(Object? range) {
+    return '⁧پہلے سے موجود · ⁨$range⁩⁩';
+  }
+
+  @override
+  String gotFrom318(Object? got, Object? name, Object? until) {
+    return '⁧⁨$got⁩ کو ⁨$name⁩ کے فون سے ملی · ⁨$until⁩ تک محفوظ⁩';
+  }
+
+  @override
+  String gotKept318(Object? got, Object? until) {
+    return '⁧⁨$got⁩ کو ملی · ⁨$until⁩ تک محفوظ⁩';
+  }
+
+  @override
+  String insideTitle318(Object? range, Object? copy) {
+    return '⁧پہلے سے موجود · ⁨$range⁩ آپ کی ⁨$copy⁩ میں شامل ہے⁩';
+  }
+
+  @override
+  String insideSub318(Object? got) {
+    return '⁧⁨$got⁩ کو ملی · فوراً کھلتی ہے، کچھ نہیں بھیجا جاتا⁩';
+  }
+
+  @override
+  String get getNewOnly318 => '⁧صرف نئے پیغامات منگوائیں⁩';
+
+  @override
+  String get noCardNoPhone318 => '⁧نہ کارڈ، نہ کسی فون سے پوچھا جاتا ہے۔⁩';
+
+  @override
+  String get getAllAgain318 => '⁧سب دوبارہ منگوائیں⁩';
+
+  @override
+  String get getAllAgainSub318 =>
+      '⁧پوری مدت ان کے فونز سے دوبارہ آتی ہے۔ آہستہ، زیادہ بیٹری۔⁩';
+
+  @override
+  String viewerKept318(Object? range, Object? got) {
+    return '⁧⁨$range⁩ · ⁨$got⁩ کو ملی⁩';
+  }
+
+  @override
+  String plusNew318(Object? n, Object? when) {
+    return '⁧+⁨$n⁩ نئے ⁨$when⁩⁩';
+  }
+
+  @override
+  String get more318 => '⁧مزید⁩';
 }

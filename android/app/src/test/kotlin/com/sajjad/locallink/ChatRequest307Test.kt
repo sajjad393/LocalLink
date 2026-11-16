@@ -108,4 +108,26 @@ class ChatRequest307Test {
         assertTrue(card.contains("setGroupSummary(true)"))
         assertTrue(card.contains("if (plan.promoted) b.extras.putBoolean(EXTRA_PROMOTED, true)"))
     }
+
+    @Test
+    fun `Bundle 318 Up to date is green, never buzzes, not ongoing and goes by itself`() {
+        for (buzz in listOf(true, false)) {
+            val up = ChatRequestNotifier307.plan("up_to_date", 30, buzz = buzz)
+            assertEquals("up_to_date", up.step)
+            assertEquals(100, up.progress)
+            assertFalse(up.ongoing)
+            assertFalse(up.promoted)
+            assertFalse(up.alert)
+            assertFalse(up.grey)
+            assertTrue(up.readyPointGreen)
+            assertTrue(up.openButton)
+            assertEquals(ChatRequestNotifier307.CHANNEL_ID, up.channel)
+            assertEquals(ChatRequestNotifier307.UP_TO_DATE_TIMEOUT_MS, up.timeoutMs)
+            assertEquals(ChatRequestNotifier307.GREEN, ChatRequestNotifier307.trackerColor(up))
+        }
+        // Ready is unchanged (no timeout; buzz only when asked).
+        val ready = ChatRequestNotifier307.plan("ready", 100, buzz = true)
+        assertEquals(0L, ready.timeoutMs)
+        assertTrue(ready.alert)
+    }
 }

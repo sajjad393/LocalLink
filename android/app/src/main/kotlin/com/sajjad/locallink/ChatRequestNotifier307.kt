@@ -62,6 +62,8 @@ object ChatRequestNotifier307 {
     /** Notification.EXTRA_REQUEST_PROMOTED_ONGOING (API 36.1); a plain key, so older SDK stubs compile. */
     const val EXTRA_PROMOTED = "android.requestPromotedOngoing"
     const val EMPTY_TIMEOUT_MS = 10_000L
+    /** Bundle 318 (K7): "Up to date" goes by itself after this. */
+    const val UP_TO_DATE_TIMEOUT_MS = 60_000L
     const val BLUE = 0xFF209DEB.toInt()
     const val GREEN = 0xFF22C55E.toInt()
     const val GREY = 0xFF8E8E93.toInt()
@@ -126,6 +128,10 @@ object ChatRequestNotifier307 {
             "ready" -> Plan("ready", 100, false, ongoing = false, promoted = false, timeoutMs = 0,
                 openButton = true, grey = false, readyPointGreen = true,
                 channel = if (buzz) READY_CHANNEL_ID else CHANNEL_ID, alert = buzz)
+            // Bundle 318 (K7): new only, nothing new - green like Ready, never buzzes, goes by itself.
+            "up_to_date" -> Plan("up_to_date", 100, false, ongoing = false, promoted = false,
+                timeoutMs = UP_TO_DATE_TIMEOUT_MS, openButton = true, grey = false, readyPointGreen = true,
+                channel = CHANNEL_ID, alert = false)
             "empty", "cancelled" -> Plan(step, p, false, ongoing = false, promoted = false, timeoutMs = EMPTY_TIMEOUT_MS,
                 openButton = false, grey = true, readyPointGreen = false, channel = CHANNEL_ID, alert = false)
             "reached", "coming" -> Plan(step, p, false, ongoing = true, promoted = true, timeoutMs = 0,
@@ -154,7 +160,7 @@ object ChatRequestNotifier307 {
      *  (orange Sent / Reached, blue Coming, green Ready, grey ended). */
     fun trackerColor(plan: Plan): Int = when {
         plan.grey -> GREY
-        plan.step == "ready" || plan.step == "files_done" -> GREEN
+        plan.step == "ready" || plan.step == "files_done" || plan.step == "up_to_date" -> GREEN
         plan.step == "files_wait" -> ORANGE
         plan.step == "files" -> BLUE
         plan.step == "coming" -> BLUE
@@ -438,6 +444,7 @@ object ChatRequestNotifier307 {
         if (icon != null) b.setLargeIcon(icon)
         if (short.isNotEmpty() && plan.ongoing) b.setShortCriticalText(short)
         if (plan.timeoutMs > 0) b.setTimeoutAfter(plan.timeoutMs)
+        if (plan.step == "up_to_date") b.setAutoCancel(true) // Bundle 318 (K7)
         if (plan.openButton && openLabel.isNotEmpty()) {
             b.addAction(Notification.Action.Builder(
                 Icon.createWithResource(context, android.R.drawable.sym_action_chat), openLabel, open,
@@ -491,7 +498,7 @@ object ChatRequestNotifier307 {
         // Bundle 314 (USER PICK): the sliding line while waiting (Sent /
         // Reached), a filled bar once parts come.
         // Bundle 317 (G7): files = a bar by MB (sliding while waiting); done = no bar.
-        if (plan.step != "ready" && plan.step != "files_done" && !plan.grey) b.setProgress(100, plan.progress, plan.compatSliding)
+        if (plan.step != "ready" && plan.step != "files_done" && plan.step != "up_to_date" && !plan.grey) b.setProgress(100, plan.progress, plan.compatSliding)
         if (!plan.alert) b.setSilent(true)
         if (plan.alert && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             // Below Android 8 there are no channels: the message tone only (no buzz permission).
@@ -501,6 +508,7 @@ object ChatRequestNotifier307 {
         if (names.isNotEmpty()) b.setSubText(names)
         if (icon != null) b.setLargeIcon(icon)
         if (plan.timeoutMs > 0) b.setTimeoutAfter(plan.timeoutMs)
+        if (plan.step == "up_to_date") b.setAutoCancel(true) // Bundle 318 (K7)
         if (plan.openButton && openLabel.isNotEmpty()) b.addAction(0, openLabel, open)
         if (stop != null) b.addAction(0, stopLabel, stop)
         return b.build()

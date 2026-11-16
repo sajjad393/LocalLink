@@ -14321,6 +14321,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Files ✓'**
   String get filesDoneShort317;
+
+  /// No description provided for @upToDate318.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to date'**
+  String get upToDate318;
+
+  /// No description provided for @noNewSince318.
+  ///
+  /// In en, this message translates to:
+  /// **'No new messages since {when}'**
+  String noNewSince318(Object? when);
+
+  /// No description provided for @upToDateNoNew318.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to date · no new messages'**
+  String get upToDateNoNew318;
+
+  /// No description provided for @stepReadyNew318.
+  ///
+  /// In en, this message translates to:
+  /// **'{hl} · {n} new'**
+  String stepReadyNew318(Object? hl, Object? n);
+
+  /// No description provided for @nNew318.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} new'**
+  String nNew318(Object? n);
+
+  /// No description provided for @addedToCopy318.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to open · added to your copy'**
+  String get addedToCopy318;
+
+  /// No description provided for @chatReadyNew318.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat ready · {n} new'**
+  String chatReadyNew318(Object? n);
+
+  /// No description provided for @newSince318.
+  ///
+  /// In en, this message translates to:
+  /// **'New messages since {when}'**
+  String newSince318(Object? when);
+
+  /// No description provided for @askingNew318.
+  ///
+  /// In en, this message translates to:
+  /// **'Asking for new messages'**
+  String get askingNew318;
+
+  /// No description provided for @newOnly318.
+  ///
+  /// In en, this message translates to:
+  /// **'New only'**
+  String get newOnly318;
+
+  /// No description provided for @keptDays318.
+  ///
+  /// In en, this message translates to:
+  /// **'Kept · 7 days'**
+  String get keptDays318;
+
+  /// No description provided for @getChatNewOnly318.
+  ///
+  /// In en, this message translates to:
+  /// **'Get chat · new only'**
+  String get getChatNewOnly318;
+
+  /// No description provided for @yourCopy318.
+  ///
+  /// In en, this message translates to:
+  /// **'Your copy:'**
+  String get yourCopy318;
+
+  /// No description provided for @copyLine318.
+  ///
+  /// In en, this message translates to:
+  /// **'{range} · got {got} · kept until {until}'**
+  String copyLine318(Object? range, Object? got, Object? until);
+
+  /// No description provided for @fullChatLower318.
+  ///
+  /// In en, this message translates to:
+  /// **'full chat'**
+  String get fullChatLower318;
+
+  /// No description provided for @alreadyHere318.
+  ///
+  /// In en, this message translates to:
+  /// **'Already here · {range}'**
+  String alreadyHere318(Object? range);
+
+  /// No description provided for @gotFrom318.
+  ///
+  /// In en, this message translates to:
+  /// **'Got {got} from {name}\'s phone · kept until {until}'**
+  String gotFrom318(Object? got, Object? name, Object? until);
+
+  /// No description provided for @gotKept318.
+  ///
+  /// In en, this message translates to:
+  /// **'Got {got} · kept until {until}'**
+  String gotKept318(Object? got, Object? until);
+
+  /// No description provided for @insideTitle318.
+  ///
+  /// In en, this message translates to:
+  /// **'Already here · {range} is inside your {copy}'**
+  String insideTitle318(Object? range, Object? copy);
+
+  /// No description provided for @insideSub318.
+  ///
+  /// In en, this message translates to:
+  /// **'Got {got} · opens at once, nothing is sent'**
+  String insideSub318(Object? got);
+
+  /// No description provided for @getNewOnly318.
+  ///
+  /// In en, this message translates to:
+  /// **'Get new messages only'**
+  String get getNewOnly318;
+
+  /// No description provided for @noCardNoPhone318.
+  ///
+  /// In en, this message translates to:
+  /// **'No card, no phone is asked.'**
+  String get noCardNoPhone318;
+
+  /// No description provided for @getAllAgain318.
+  ///
+  /// In en, this message translates to:
+  /// **'Get all again'**
+  String get getAllAgain318;
+
+  /// No description provided for @getAllAgainSub318.
+  ///
+  /// In en, this message translates to:
+  /// **'The whole range comes again from their phones. Slower, uses more battery.'**
+  String get getAllAgainSub318;
+
+  /// No description provided for @viewerKept318.
+  ///
+  /// In en, this message translates to:
+  /// **'{range} · got {got}'**
+  String viewerKept318(Object? range, Object? got);
+
+  /// No description provided for @plusNew318.
+  ///
+  /// In en, this message translates to:
+  /// **'+{n} new {when}'**
+  String plusNew318(Object? n, Object? when);
+
+  /// No description provided for @more318.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get more318;
 }
 
 class _AppLocalizationsDelegate

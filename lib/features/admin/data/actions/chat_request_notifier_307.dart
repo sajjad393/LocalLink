@@ -235,7 +235,9 @@ class ChatRequestNotifier307 {
         if (wait == Duration.zero || left < wait) wait = left;
         continue;
       }
-      final buzz = st.step == Step307.ready && !buzzed.contains(id);
+      // Bundle 318 (K7): "Up to date" never buzzes (posted once, goes by itself).
+      final buzz = st.step == Step307.ready && !st.upToDate && !buzzed.contains(id);
+      final once318 = st.step == Step307.ready && st.upToDate && !buzzed.contains(id);
       _shown[id] = sig;
       _lastPost[id] = now;
       if (st.step == Step307.empty) {
@@ -243,7 +245,7 @@ class ChatRequestNotifier307 {
         _shown.remove(id); // Android drops it after 10 s; nothing left to update.
       }
       await cards.show({...args, 'buzz': buzz, ...summary});
-      if (buzz) await _rememberBuzz(id);
+      if (buzz || once318) await _rememberBuzz(id);
     }
     if (wait > Duration.zero) {
       _later?.cancel();
@@ -357,6 +359,21 @@ class ChatRequestNotifier307 {
       'open_label': L.t.openChat307,
       'channel_name': L.t.chatRequestsChannel307,
       'ready_channel_name': L.t.chatReady307,
+      // Bundle 318 (K7): new-only words (mock repeat_mock.html B).
+      if (r.newOnly318) ...newOnlyArgs318(r, st),
     };
+  }
+
+  /// Bundle 318 (K7): a "Get new messages only" card: "Asking for new
+  /// messages" while asking, "Up to date · no new messages" (step
+  /// `up_to_date`: green, silent, not ongoing, goes by itself) or
+  /// "Chat ready · 12 new" (one buzz, like Ready).
+  @visibleForTesting
+  static Map<String, Object?> newOnlyArgs318(ChatRequestRow221 r, RequestStep307 st) {
+    if (st.step == Step307.sent || st.step == Step307.reached) return {'title': L.t.askingNew318};
+    if (st.step != Step307.ready) return const {};
+    if (st.upToDate) return {'step': 'up_to_date', 'title': L.t.upToDateNoNew318, 'when': 0};
+    if (r.newCount318 > 0) return {'title': L.t.chatReadyNew318(r.newCount318)};
+    return const {};
   }
 }

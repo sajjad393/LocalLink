@@ -1,5 +1,6 @@
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
+import 'package:locallink/features/admin/data/actions/kept_copy_318.dart';
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 307 (TODO_307 B1 / C0): one place that turns a Get chat request
@@ -32,7 +33,11 @@ class RequestStep307 {
     required this.short,
     required this.live,
     required this.count,
+    this.upToDate = false,
   });
+
+  /// Bundle 318 (K7): a new-only request found nothing new (green, no buzz).
+  final bool upToDate;
 
   final Step307 step;
 
@@ -129,6 +134,27 @@ class RequestStep307 {
     final carried = r.action == 'get_chat' || r.action == 'get_file';
     final here = of > 0 && parts >= of;
     if (here || (r.state == 'done' && (!carried || r.closed))) {
+      // Bundle 318 (K7): new only -> "Up to date" / "Ready · 12 new".
+      if (r.newOnly318 && r.newCount318 >= 0) {
+        final up = r.upToDate318 || r.newCount318 == 0;
+        final since = Kept318.shortWhen(r.sinceAt318, DateTime.now());
+        final (b, h, a) = up ? ('', t.upToDate318, '') : _split((hl) => t.stepReadyNew318(hl, r.newCount318), t.ready);
+        return RequestStep307(
+          step: Step307.ready,
+          progress: 100,
+          ring: '',
+          ringFill: 1,
+          bigBefore: b,
+          highlight: h,
+          bigAfter: a,
+          sub: up ? (since.isEmpty ? t.upToDateNoNew318 : t.noNewSince318(since)) : t.addedToCopy318,
+          chip: up ? t.upToDate318 : t.nNew318(r.newCount318),
+          short: up ? t.upToDate318 : t.nNew318(r.newCount318),
+          live: r.of > 0 && !r.opened && !r.closed,
+          count: -1,
+          upToDate: up,
+        );
+      }
       final (b, h, a) = _split((hl) => t.stepReady307(hl), t.ready);
       return RequestStep307(
         step: Step307.ready,
@@ -209,7 +235,11 @@ class RequestStep307 {
       bigBefore: b,
       highlight: h,
       bigAfter: a,
-      sub: r.oldApp ? t.oldApp : t.waitingForTheirPhones307,
+      sub: r.oldApp
+          ? t.oldApp
+          : (r.newOnly318 && r.sinceAt318.isNotEmpty
+              ? t.newSince318(Kept318.dayTime(r.sinceAt318)) // Bundle 318 (K7)
+              : t.waitingForTheirPhones307),
       chip: t.sent,
       short: t.sent,
       live: true,

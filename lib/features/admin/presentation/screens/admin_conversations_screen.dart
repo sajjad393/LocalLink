@@ -47,6 +47,9 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
   int _tab = 0; // 0 chats, 1 requests
   List<Map<String, dynamic>> _chats = const [];
   List<ChatRequestRow221> _rows = const [];
+
+  /// Bundle 318 (K7): request id -> its kept copy line (new-only cards).
+  Map<String, String> _copyLines318 = const {};
   bool _loading = true;
   String _error = '';
   String _query = '';
@@ -114,11 +117,16 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       final online = await s.online();
       final chats = await s.conversations();
       final rows = await s.requests();
+      final lines = <String, String>{
+        for (final r in rows)
+          if (r.newOnly318) r.id: await s.copyLine318(r.id).catchError((Object _) => ''),
+      };
       if (!mounted) return;
       setState(() {
         _srvOnline = online;
         _chats = chats;
         _rows = rows;
+        _copyLines318 = lines;
         _loading = false;
         _error = '';
       });
@@ -515,7 +523,9 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       names: _namesOf(r),
       title: _title(r),
       range: _range(r),
-      brand: L.t.getChat,
+      // Bundle 318 (K7): "Get chat · new only" + the kept copy line.
+      brand: r.newOnly318 ? L.t.getChatNewOnly318 : L.t.getChat,
+      copyLine318: _copyLines318[r.id],
       group: _isGroup(r),
       files: FileQueue317.trips.value[r.id], // Bundle 317 (G8)
       onTap: () {
@@ -634,6 +644,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                     Chip307(chip, step.step),
+                    if (r.newOnly318) Chip307(L.t.newOnly318, Step307.cancelled), // Bundle 318 (K7)
                     Text(_range(r), style: k.text(12.5, FontWeight.w400, k.grey, 1.2)),
                     if (_canCancel(r)) ...[
                       GestureDetector(
@@ -703,6 +714,12 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
               const SizedBox(height: 4),
               Row(children: [
                 Chip307(step.chip, step.step, check: step.step == Step307.ready),
+                // Bundle 318 (K7): "New only" / "Kept · 7 days".
+                if (r.newOnly318 || r.keptUntil318.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Chip307(r.newOnly318 ? L.t.newOnly318 : L.t.keptDays318, Step307.cancelled,
+                      key: ValueKey('requests318_tag_${r.id}')),
+                ],
                 // Bundle 317 (G8): second chip "Files 3/13" / "Files ✓".
                 if (FileQueue317.trips.value[r.id] case final f?
                     when step.step == Step307.ready && f.total > 0 && !f.stopped) ...[

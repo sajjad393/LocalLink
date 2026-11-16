@@ -7,7 +7,10 @@ import 'package:locallink/l10n/l10n.dart';
 /// was unread when the chat opened. A soft band across the whole chat width
 /// with a small pill in the middle. Shown until you send or leave the chat.
 class UnreadBar304 extends StatelessWidget {
-  const UnreadBar304({super.key, required this.count, this.bleed = LocalLinkSpacing.md});
+  const UnreadBar304({super.key, required this.count, this.bleed = LocalLinkSpacing.md, this.text});
+
+  /// Bundle 318 (K7): other words in the pill ("12 new messages").
+  final String? text;
 
   /// How many messages were unread when the chat opened.
   final int count;
@@ -49,7 +52,7 @@ class UnreadBar304 extends StatelessWidget {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  child: Text(label(count), style: style),
+                  child: Text(text ?? label(count), style: style),
                 ),
               ),
             ),

@@ -8452,4 +8452,112 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get filesDoneShort317 => 'Files ✓';
+
+  @override
+  String get upToDate318 => 'Up to date';
+
+  @override
+  String noNewSince318(Object? when) {
+    return 'No new messages since $when';
+  }
+
+  @override
+  String get upToDateNoNew318 => 'Up to date · no new messages';
+
+  @override
+  String stepReadyNew318(Object? hl, Object? n) {
+    return '$hl · $n new';
+  }
+
+  @override
+  String nNew318(Object? n) {
+    return '$n new';
+  }
+
+  @override
+  String get addedToCopy318 => 'Tap to open · added to your copy';
+
+  @override
+  String chatReadyNew318(Object? n) {
+    return 'Chat ready · $n new';
+  }
+
+  @override
+  String newSince318(Object? when) {
+    return 'New messages since $when';
+  }
+
+  @override
+  String get askingNew318 => 'Asking for new messages';
+
+  @override
+  String get newOnly318 => 'New only';
+
+  @override
+  String get keptDays318 => 'Kept · 7 days';
+
+  @override
+  String get getChatNewOnly318 => 'Get chat · new only';
+
+  @override
+  String get yourCopy318 => 'Your copy:';
+
+  @override
+  String copyLine318(Object? range, Object? got, Object? until) {
+    return '$range · got $got · kept until $until';
+  }
+
+  @override
+  String get fullChatLower318 => 'full chat';
+
+  @override
+  String alreadyHere318(Object? range) {
+    return 'Already here · $range';
+  }
+
+  @override
+  String gotFrom318(Object? got, Object? name, Object? until) {
+    return 'Got $got from $name\'s phone · kept until $until';
+  }
+
+  @override
+  String gotKept318(Object? got, Object? until) {
+    return 'Got $got · kept until $until';
+  }
+
+  @override
+  String insideTitle318(Object? range, Object? copy) {
+    return 'Already here · $range is inside your $copy';
+  }
+
+  @override
+  String insideSub318(Object? got) {
+    return 'Got $got · opens at once, nothing is sent';
+  }
+
+  @override
+  String get getNewOnly318 => 'Get new messages only';
+
+  @override
+  String get noCardNoPhone318 => 'No card, no phone is asked.';
+
+  @override
+  String get getAllAgain318 => 'Get all again';
+
+  @override
+  String get getAllAgainSub318 =>
+      'The whole range comes again from their phones. Slower, uses more battery.';
+
+  @override
+  String viewerKept318(Object? range, Object? got) {
+    return '$range · got $got';
+  }
+
+  @override
+  String plusNew318(Object? n, Object? when) {
+    return '+$n new $when';
+  }
+
+  @override
+  String get more318 => 'More';
 }

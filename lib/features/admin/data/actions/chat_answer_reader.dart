@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show gzip;
 import 'dart:typed_data';
@@ -14,6 +15,7 @@ import 'package:locallink/features/admin/data/actions/delete_completely_doer.dar
 import 'package:locallink/features/admin/data/services/admin_block_service.dart' show AdminSignIn;
 import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
+import 'package:locallink/features/admin/data/actions/kept_copy_318.dart';
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 221: what the Owner reads. Online the server opens the parts
@@ -41,6 +43,23 @@ class ChatAnswerView {
   /// The request was made on the admin's phone: it opens only there.
   final bool forAdminPhone;
 
+  /// Bundle 318 (K5): a new-only answer - `since`, per-day counts (UTC) of
+  /// the whole range, and "nothing new" (one part, no messages).
+  final String since318;
+  final Map<String, int> days318;
+  final bool upToDate318;
+
+  /// Bundle 318 (K7): shown from the kept copy - the ids of the last
+  /// new-only answer ([newOnly318] = opened from that request: the
+  /// "12 new messages" bar), when the copy came and when the new ones came.
+  final bool fromKept318;
+  final bool newOnly318;
+  final List<String> newIds318;
+  final String keptGotAt318;
+  final String keptNewAt318;
+  final String keptUntil318;
+  final bool keptFull318;
+
   const ChatAnswerView({
     required this.id,
     this.action = 'get_chat',
@@ -59,7 +78,24 @@ class ChatAnswerView {
     this.fileBytes,
     this.broken = 0,
     this.forAdminPhone = false,
+    this.since318 = '',
+    this.days318 = const {},
+    this.upToDate318 = false,
+    this.fromKept318 = false,
+    this.newOnly318 = false,
+    this.newIds318 = const [],
+    this.keptGotAt318 = '',
+    this.keptNewAt318 = '',
+    this.keptUntil318 = '',
+    this.keptFull318 = false,
   });
+
+  /// Bundle 318 (K5): `days` of a part / server answer.
+  static Map<String, int> days318Of(Object? raw) => {
+        if (raw is Map)
+          for (final e in raw.entries)
+            if (e.value is num) '${e.key}': (e.value as num).toInt() else if (int.tryParse('${e.value}') case final n?) '${e.key}': n,
+      };
 
   bool get empty => answerId.isEmpty;
 
@@ -88,6 +124,9 @@ class ChatAnswerView {
       ],
       file: j['file'] is Map ? Map<String, dynamic>.from(j['file'] as Map) : null,
       broken: n('broken'),
+      since318: s('since'),
+      days318: days318Of(j['days']),
+      upToDate318: j['up_to_date'] == true,
     );
   }
 }
@@ -235,7 +274,13 @@ class ChatAnswerReader {
   static ChatAnswerReader? instance;
 
   /// The admin phone's copy goes 24 h after it was first opened (or Close).
-  static const Duration keepAfterOpen = Duration(hours: 24);
+  /// Bundle 318 (K1/K2, USER PICK): 7 days.
+  static const Duration keepAfterOpen = Duration(days: 7);
+
+  /// Bundle 318 (K2): the first-open times live here (setting, JSON
+  /// `{answer id: UTC time}`), so an app restart does not forget them
+  /// (they were only in memory: copies stayed until Close).
+  static const String openedKey318 = 'answer_opened_318';
 
   final AnswerPartStore store;
   final String Function() selfDeviceId;
@@ -244,13 +289,49 @@ class ChatAnswerReader {
   final DateTime Function() _clock;
   final Map<String, DateTime> _openedAt = <String, DateTime>{};
 
+  /// Bundle 318 (K2): settings (null = memory only; tests).
+  final Future<String?> Function(String key)? readSetting;
+  final Future<void> Function(String key, String value)? writeSetting;
+  bool _loaded318 = false;
+
   ChatAnswerReader({
     required this.store,
     required this.selfDeviceId,
     required this.boxKeys,
     required this.nameOf,
     DateTime Function()? clock,
+    this.readSetting,
+    this.writeSetting,
   }) : _clock = clock ?? DateTime.now;
+
+  /// Bundle 318 (K2): the saved first-open times (once).
+  Future<void> _load318() async {
+    if (_loaded318) return;
+    _loaded318 = true;
+    final read = readSetting;
+    if (read == null) return;
+    try {
+      final d = jsonDecode(await read(openedKey318) ?? '{}');
+      if (d is Map) {
+        d.forEach((k, v) {
+          final at = DateTime.tryParse('$v');
+          if (at != null) _openedAt.putIfAbsent('$k', () => at);
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _save318() async {
+    final write = writeSetting;
+    if (write == null) return;
+    try {
+      await write(openedKey318,
+          jsonEncode({for (final e in _openedAt.entries) e.key: e.value.toUtc().toIso8601String()}));
+    } catch (_) {}
+  }
+
+  @visibleForTesting
+  Map<String, DateTime> get openedAt318 => Map.unmodifiable(_openedAt);
 
   /// One part opened: null when it doesn't open with this phone's keys.
   static Future<Map<String, dynamic>?> openPart(List<SimpleKeyPair> pairs, HeldPart p) async {
@@ -286,6 +367,9 @@ class ChatAnswerReader {
     var from = '', to = '';
     var trimmed = false;
     var broken = 0;
+    var since = '';
+    var days = const <String, int>{};
+    var upToDate = false;
     final data = BytesBuilder(copy: false);
     for (final p in parts) {
       final full = await store.part(p.answerId, p.part);
@@ -299,6 +383,9 @@ class ChatAnswerReader {
         from = plain['from']?.toString() ?? '';
         to = plain['to']?.toString() ?? '';
         trimmed = plain['trimmed'] == true;
+        since = plain['since']?.toString() ?? ''; // Bundle 318 (K5)
+        days = ChatAnswerView.days318Of(plain['days']);
+        upToDate = plain['up_to_date'] == true;
       }
       if (plain['file'] is Map) file = Map<String, dynamic>.from(plain['file'] as Map);
       for (final m in (plain['messages'] as List? ?? const [])) {
@@ -316,7 +403,11 @@ class ChatAnswerReader {
     messages.sort((a, b) => '${a['created_at']}'.compareTo('${b['created_at']}'));
     final of = parts.first.of;
     final complete = parts.length >= of && broken == 0;
-    _openedAt.putIfAbsent(best.key, _clock);
+    await _load318();
+    if (!_openedAt.containsKey(best.key)) {
+      _openedAt[best.key] = _clock();
+      await _save318();
+    }
     return ChatAnswerView(
       id: actionId,
       action: action,
@@ -338,6 +429,9 @@ class ChatAnswerReader {
       file: file,
       fileBytes: action == 'get_file' && complete ? data.takeBytes() : null,
       broken: broken,
+      since318: since,
+      days318: days,
+      upToDate318: upToDate,
     );
   }
 
@@ -347,16 +441,20 @@ class ChatAnswerReader {
       for (final p in await store.metas())
         if (p.actionId == actionId && p.replyTo == selfDeviceId()) p.answerId,
     };
+    await _load318();
     for (final id in ids) {
       await store.dropAnswer(id);
       await store.stop(id, actionId, _clock().toUtc().toIso8601String());
       _openedAt.remove(id);
     }
+    if (ids.isNotEmpty) await _save318();
     AppLogger.info('ADMIN_ANSWER_CLOSED', detail: 'answers=${ids.length}');
   }
 
-  /// Copies opened more than 24 h ago go (called with the daily sweep).
+  /// Copies opened more than [keepAfterOpen] ago go (called at start and
+  /// every 6 h; Bundle 318 K2: the open times survive a restart).
   Future<int> sweep() async {
+    await _load318();
     final now = _clock();
     final old = [
       for (final e in _openedAt.entries)
@@ -366,6 +464,7 @@ class ChatAnswerReader {
       await store.dropAnswer(id);
       _openedAt.remove(id);
     }
+    if (old.isNotEmpty) await _save318();
     return old.length;
   }
 }
@@ -435,6 +534,20 @@ class ChatRequestRow221 {
   /// Bundle 317 (G5): why the phone said no (`file_gone`), '' = not refused.
   final String refused;
 
+  /// Bundle 318 (K7): a "Get new messages only" request (made on this
+  /// phone): how many new ones it added (-1 = not known yet), nothing new,
+  /// and since when (the copy's last time, UTC).
+  final bool newOnly318;
+  final int newCount318;
+  final bool upToDate318;
+  final String sinceAt318;
+
+  /// Bundle 318 (K7): this request made the kept copy ('' = none): until when.
+  final String keptUntil318;
+
+  /// Bundle 318 (K3): opens the kept copy only (a range inside it; no request).
+  final bool inside318;
+
   const ChatRequestRow221({
     required this.id,
     required this.action,
@@ -458,7 +571,52 @@ class ChatRequestRow221 {
     this.opened = false,
     this.closed = false,
     this.refused = '',
+    this.newOnly318 = false,
+    this.newCount318 = -1,
+    this.upToDate318 = false,
+    this.sinceAt318 = '',
+    this.keptUntil318 = '',
+    this.inside318 = false,
   });
+
+  /// Bundle 318: the same row with the kept-copy facts of this phone.
+  ChatRequestRow221 with318({
+    bool? newOnly,
+    int? newCount,
+    bool? upToDate,
+    String? sinceAt,
+    String? keptUntil,
+  }) =>
+      ChatRequestRow221(
+        id: id,
+        action: action,
+        label: label,
+        words: words,
+        state: state,
+        parts: parts,
+        of: of,
+        offline: offline,
+        oldApp: oldApp,
+        madeAt: madeAt,
+        parent: parent,
+        fileId: fileId,
+        chat: chat,
+        from: from,
+        to: to,
+        empty: empty,
+        phones: phones,
+        reached: reached,
+        fromName: fromName,
+        opened: opened,
+        closed: closed,
+        refused: refused,
+        newOnly318: newOnly ?? newOnly318,
+        newCount318: newCount ?? newCount318,
+        upToDate318: upToDate ?? upToDate318,
+        sinceAt318: sinceAt ?? sinceAt318,
+        keptUntil318: keptUntil ?? keptUntil318,
+        inside318: inside318,
+      );
 
   bool get ready => of > 0 && parts >= of;
   bool get half => parts > 0 && !ready;
@@ -582,8 +740,12 @@ class ChatRequests221 {
     this.progressOf,
     this.serverGroups,
     this.reportedGroups,
+    this.kept,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
+
+  /// Bundle 318 (K1): the Owner phone's kept copies (null = none; tests).
+  final Kept318? kept;
 
   /// Bundle 314 (K5): the last server chat list (owner phone, no message
   /// text) and group list, for the offline Chats tab and offline Get chat.
@@ -908,7 +1070,7 @@ class ChatRequests221 {
       );
     }
     final list = out.values.toList()..sort((a, b) => b.madeAt.compareTo(a.madeAt));
-    return list;
+    return _with318(list); // Bundle 318 (K7)
   }
 
   // -------------------------------------------------------------- requests
@@ -974,7 +1136,8 @@ class ChatRequests221 {
   }
 
   /// Get chat. Returns the request id.
-  Future<String> request(ChatPick221 pick, {String range = 'full', DateTime? from, DateTime? to}) async {
+  Future<String> request(ChatPick221 pick,
+      {String range = 'full', DateTime? from, DateTime? to, Map<String, dynamic> since318 = const {}}) async {
     final r = rangeOf(range, from: from, to: to);
     // Bundle 254 (21.12): two accounts on ONE phone have no chat together.
     if (!pick.isGroup && await samePhone(pick.userA, pick.userB)) {
@@ -993,6 +1156,7 @@ class ChatRequests221 {
         'range': range,
         if (range == 'dates') 'from': r.from,
         if (range == 'dates') 'to': r.to,
+        ...since318, // Bundle 318 (K4)
       });
       final id = res['id']?.toString() ?? '';
       if (id.isNotEmpty) {
@@ -1006,7 +1170,7 @@ class ChatRequests221 {
     final who = await _resolve(pick);
     if (who.meIn) throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314); // Bundle 314 (1)
     if (who.targets.isEmpty) throw StateError("This phone doesn't know their phones yet.");
-    final detail = {'chat': who.chat, 'from': r.from, 'to': r.to, 'plus_day': true};
+    final detail = {'chat': who.chat, 'from': r.from, 'to': r.to, 'plus_day': true, ...since318};
     final id = await svc.make(
       action: 'get_chat',
       targetUserId: '',
@@ -1055,7 +1219,277 @@ class ChatRequests221 {
   }
 
   /// Opens an answer (half answers too).
+  /// Bundle 318 (K1/K6): a request of a kept copy opens the copy; a
+  /// new-only answer is merged into it first (once); a complete full answer
+  /// becomes the copy of its chat.
   Future<ChatAnswerView> open(ChatRequestRow221 r) async {
+    final k = kept;
+    if (k == null || r.action != 'get_chat') return _openRaw(r);
+    if (r.inside318) {
+      final c = await k.store.copy(r.id);
+      if (c != null) return _keptView318(c, r.id, messages: Kept318.within(c.messages, r.from, r.to));
+    }
+    final entry = (await _newOnly318())[r.id];
+    if (entry != null) {
+      // Block body: returning the removed Future would make it wait on itself.
+      return _merging318[r.id] ??= _openNew318(r, entry).whenComplete(() {
+        _merging318.remove(r.id);
+      });
+    }
+    final meta = await k.forRequest(r.id);
+    if (meta != null) {
+      final c = await k.store.copy(meta.id);
+      if (c != null) return _keptView318(c, r.id);
+    }
+    final v = await _openRaw(r);
+    if (v.complete && !v.empty && !v.forAdminPhone && v.messages.isNotEmpty && r.chat != null) {
+      try {
+        await k.keepAnswer(
+          requestId: r.id,
+          chat: r.chat!,
+          label: r.label,
+          from: r.from,
+          to: r.to,
+          fromName: v.fromName.trim().isNotEmpty ? v.fromName.trim() : r.fromName,
+          messages: v.messages,
+          sameChat: (chat) => _sameChat318(chat, r.chat!),
+        );
+      } catch (error) {
+        AppLogger.info('KEPT318_SAVE_FAILED', detail: '$error');
+      }
+    }
+    return v;
+  }
+
+  // ------------------------------------------------- Bundle 318 kept copy
+
+  /// Request id -> `{copy, n, up, since_at, merged, fix, at}` of the
+  /// "Get new messages only" requests made on this phone.
+  static const String newOnlyKey318 = 'chat_new_only_318';
+  static const int maxNewOnly318 = 100;
+  final Map<String, Future<ChatAnswerView>> _merging318 = {};
+  final Set<String> _settling318 = {};
+
+  Future<Map<String, Map<String, dynamic>>> _newOnly318() async {
+    try {
+      final d = jsonDecode(await read(newOnlyKey318) ?? '{}');
+      return {
+        if (d is Map)
+          for (final e in d.entries)
+            if (e.value is Map) '${e.key}': Map<String, dynamic>.from(e.value as Map),
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _saveNewOnly318(Map<String, Map<String, dynamic>> all) async {
+    final ids = all.keys.toList()..sort((a, b) => '${all[b]!['at']}'.compareTo('${all[a]!['at']}'));
+    await write(newOnlyKey318, jsonEncode({for (final id in ids.take(maxNewOnly318)) id: all[id]}));
+  }
+
+  Future<void> _setNewOnly318(String id, Map<String, dynamic> e) async {
+    final all = await _newOnly318();
+    all[id] = e;
+    await _saveNewOnly318(all);
+  }
+
+  Future<bool> _sameChat318(Map<String, dynamic> a, Map<String, dynamic> b) async {
+    final x = ChatPick221.fromRef(a);
+    final y = ChatPick221.fromRef(b);
+    if (x == null || y == null || x.kind != y.kind) return false;
+    if (x.isGroup) return x.groupId == y.groupId;
+    return _samePeople314(x, y);
+  }
+
+  ChatAnswerView _keptView318(KeptCopy318 c, String id,
+          {List<Map<String, dynamic>>? messages, bool newOnly = false}) =>
+      ChatAnswerView(
+        id: id,
+        answerId: 'kept318:${c.id}',
+        fromName: c.fromName,
+        of: 1,
+        parts: 1,
+        complete: true,
+        chat: c.chat,
+        from: c.from,
+        to: c.to,
+        messages: messages ?? c.messages,
+        fromKept318: true,
+        newOnly318: newOnly,
+        newIds318: newOnly ? c.newIds : const [],
+        keptGotAt318: c.gotAt,
+        keptNewAt318: c.newAt,
+        keptUntil318: c.until?.toUtc().toIso8601String() ?? '',
+        keptFull318: c.full,
+      );
+
+  /// K6: a new-only request: its answer goes into the copy once.
+  Future<ChatAnswerView> _openNew318(ChatRequestRow221 r, Map<String, dynamic> entry) async {
+    final k = kept!;
+    final meta = await k.store.copy(entry['copy']?.toString() ?? '');
+    if (meta == null) return _openRaw(r); // the copy went (Close / 7 days)
+    if (entry['merged'] == true) return _keptView318(meta, r.id, newOnly: true);
+    final v = await _openRaw(r);
+    if (!v.complete || v.empty || v.forAdminPhone) return v;
+    final m = await k.merge(meta,
+        kidId: r.id, incoming: v.messages, days: v.days318, since: v.since318.isNotEmpty ? v.since318 : '${entry['since'] ?? ''}');
+    final fix = entry['fix'] == true;
+    await _setNewOnly318(r.id, {
+      ...entry,
+      'merged': true,
+      'n': m.added.length,
+      'up': m.added.isEmpty,
+    });
+    AppLogger.info('KEPT318_NEW', detail: 'added=${m.added.length} up_to_date=${v.upToDate318}');
+    // K6: late messages with an old time: that day once, by itself.
+    if (!fix && m.shortDays.isNotEmpty) unawaited(_askDays318(m.copy, m.shortDays).catchError((Object _) => ''));
+    return _keptView318(m.copy, r.id, newOnly: true);
+  }
+
+  Future<String> _askDays318(KeptCopy318 c, List<String> days) async {
+    final pick = ChatPick221.fromRef(c.chat, label: c.label);
+    final from = DateTime.tryParse(days.first);
+    final to = DateTime.tryParse(days.last);
+    if (pick == null || from == null || to == null) return '';
+    final id = await request(pick, range: 'dates', from: from, to: to);
+    if (id.isNotEmpty) {
+      await _setNewOnly318(id, {
+        'copy': c.id,
+        'n': -1,
+        'up': false,
+        'since_at': c.lastAt,
+        'fix': true,
+        'at': _clock().toUtc().toIso8601String(),
+      });
+    }
+    return id;
+  }
+
+  /// K3: the kept copy of a chat (null = none).
+  Future<KeptCopy318?> keptFor318(ChatPick221 pick) async {
+    final k = kept;
+    if (k == null) return null;
+    for (final c in await k.store.metas().catchError((Object _) => <KeptCopy318>[])) {
+      final p = ChatPick221.fromRef(c.chat);
+      if (p == null || p.kind != pick.kind) continue;
+      if (pick.isGroup ? p.groupId == pick.groupId : await _samePeople314(p, pick)) return c;
+    }
+    return null;
+  }
+
+  /// K3: `inside` (opens at once), `same` (Already here) or `none`.
+  String keptMode318(KeptCopy318 c, String range, {DateTime? from, DateTime? to}) {
+    final r = rangeOf(range, from: from, to: to);
+    return Kept318.modeOf(c, from: r.from, to: r.to, today: _day(_clock()));
+  }
+
+  /// K3: the row "Open it" opens (the copy, or a range inside it).
+  ChatRequestRow221 keptRow318(KeptCopy318 c, {String range = '', DateTime? from, DateTime? to}) {
+    final inside = range.isNotEmpty;
+    final r = inside ? rangeOf(range, from: from, to: to) : (from: c.from, to: c.to, words: '');
+    return ChatRequestRow221(
+      id: c.id,
+      action: 'get_chat',
+      label: c.label,
+      state: 'done',
+      parts: 1,
+      of: 1,
+      chat: c.chat,
+      from: r.from,
+      to: r.to,
+      fromName: c.fromName,
+      opened: true,
+      madeAt: c.gotAt,
+      keptUntil318: c.until?.toUtc().toIso8601String() ?? '',
+      inside318: inside,
+    );
+  }
+
+  /// K4: "Get new messages only": the copy's range up to today, with
+  /// `since` / `since_n` / `since_h`. No copy -> a normal request.
+  Future<String> requestNew318(ChatPick221 pick) async {
+    final k = kept;
+    final meta = await keptFor318(pick);
+    final c = meta == null || k == null ? null : await k.store.copy(meta.id);
+    final since = c == null ? null : Kept318.sinceOf(c);
+    if (c == null || since == null) return request(pick);
+    final now = _clock();
+    final id = await request(pick,
+        range: c.full ? 'full' : 'dates',
+        from: c.full ? null : DateTime.tryParse(c.from),
+        to: c.full ? null : now,
+        since318: {'since': since.since, 'since_n': since.n, 'since_h': since.h});
+    if (id.isNotEmpty) {
+      await _setNewOnly318(id, {
+        'copy': c.id,
+        'n': -1,
+        'up': false,
+        'since_at': c.lastAt,
+        'since': since.since,
+        'at': now.toUtc().toIso8601String(),
+      });
+      changed307?.call();
+    }
+    return id;
+  }
+
+  /// K7/K8: the requests of one kept copy (its own + new-only ones).
+  Future<Set<String>> family318(String requestId) async {
+    final c = await kept?.forRequest(requestId).catchError((Object _) => null);
+    return c == null ? {requestId} : {...c.family, requestId};
+  }
+
+  /// K7: "full chat · got 15 Nov 10:05 · kept until 22 Nov" ('' = no copy).
+  Future<String> copyLine318(String requestId) async {
+    final c = await kept?.forRequest(requestId).catchError((Object _) => null);
+    if (c == null) return '';
+    return L.t.copyLine318(
+        Kept318.rangeWords(c), Kept318.dayTime(c.gotAt), Kept318.day(c.until?.toIso8601String() ?? ''));
+  }
+
+  /// K8: file ids already here (kept bytes).
+  Future<Set<String>> keptFileIds318() async =>
+      await kept?.fileIds().catchError((Object _) => <String>{}) ?? <String>{};
+
+  /// K7: rows with the kept-copy facts; a Ready new-only request is merged
+  /// once here, so the card knows "12 new" / "Up to date" before opening.
+  Future<List<ChatRequestRow221>> _with318(List<ChatRequestRow221> rows) async {
+    final k = kept;
+    if (k == null) return rows;
+    var news = await _newOnly318();
+    final metas = await k.store.metas().catchError((Object _) => <KeptCopy318>[]);
+    if (news.isEmpty && metas.isEmpty) return rows;
+    for (final r in rows) {
+      final e = news[r.id];
+      if (e == null || e['merged'] == true || !r.ready || r.closed || r.cancelled) continue;
+      if (!_settling318.add(r.id)) continue;
+      try {
+        await open(r);
+      } catch (_) {
+      } finally {
+        _settling318.remove(r.id);
+      }
+      news = await _newOnly318();
+    }
+    final until = {for (final c in metas) c.id: c.until?.toUtc().toIso8601String() ?? ''};
+    return [
+      for (final r in rows)
+        if (news[r.id] case final e?)
+          r.with318(
+            newOnly: true,
+            newCount: e['merged'] == true && e['n'] is int ? e['n'] as int : -1,
+            upToDate: e['merged'] == true && e['up'] == true,
+            sinceAt: e['since_at']?.toString() ?? '',
+          )
+        else if (until[r.id] case final u?)
+          r.with318(keptUntil: u)
+        else
+          r,
+    ];
+  }
+
+  Future<ChatAnswerView> _openRaw(ChatRequestRow221 r) async {
     if (!r.offline) {
       final token = await _token();
       if (token != null && serverOnline()) {
@@ -1103,11 +1537,25 @@ class ChatRequests221 {
   }
 
   Future<Uint8List?> fileBytes(ChatRequestRow221 r) async {
+    // Bundle 318 (K8): a file already here is never fetched again.
+    final k = kept;
+    final have = k == null ? null : await k.fileBytes(r.fileId).catchError((Object _) => null);
+    if (have != null && have.isNotEmpty) return have;
+    Uint8List? bytes;
+    var fromServer = false;
     if (!r.offline) {
       final token = await _token();
-      if (token != null && serverOnline()) return server.download(token, r.id);
+      if (token != null && serverOnline()) {
+        fromServer = true;
+        bytes = await server.download(token, r.id);
+      }
     }
-    return (await reader.read(r.id, action: 'get_file')).fileBytes;
+    if (!fromServer) bytes = (await reader.read(r.id, action: 'get_file')).fileBytes;
+    if (k != null && bytes != null && bytes.isNotEmpty && r.action == 'get_file' && r.parent.isNotEmpty) {
+      final c = await k.forRequest(r.parent).catchError((Object _) => null);
+      if (c != null) await k.keepFile(r.fileId, c.id, bytes).catchError((Object _) {});
+    }
+    return bytes;
   }
 
   /// Bundle 317 (G2): signs the stop for the parts of a request that are
@@ -1126,6 +1574,10 @@ class ChatRequests221 {
       await server.close(token, r.id).catchError((_) {});
     }
     await reader.close(r.id);
+    // Bundle 318 (K1): Close = the kept copy goes now (with its files).
+    final k = kept;
+    final c = k == null ? null : await k.forRequest(r.id).catchError((Object _) => null);
+    if (c != null) await k!.drop(c.id).catchError((Object _) {});
   }
 
   /// Delete completely: message ids / full / range. Returns words for the
@@ -1133,6 +1585,17 @@ class ChatRequests221 {
   Future<String> deleteCompletely(ChatPick221 pick,
       {required String scope, List<String> ids = const [], String range = '', DateTime? from, DateTime? to}) async {
     final r = rangeOf(range, from: from, to: to);
+    // Bundle 318 (K1/K6): the kept copy follows Delete completely.
+    final k = kept;
+    if (k != null) {
+      try {
+        if (scope == 'message') {
+          await k.dropIds(ids);
+        } else if (await keptFor318(pick) case final c?) {
+          await k.drop(c.id);
+        }
+      } catch (_) {}
+    }
     final token = await _token();
     if (token != null && serverOnline()) {
       final res = await server.purge(token, {

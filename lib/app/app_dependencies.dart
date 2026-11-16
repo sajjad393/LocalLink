@@ -27,6 +27,8 @@ import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/data/actions/chat_request_notifier_307.dart'; // Bundle 307
 import 'package:locallink/features/admin/data/actions/file_queue_317.dart'; // Bundle 317
+import 'package:locallink/features/admin/data/actions/kept_copy_318.dart'; // Bundle 318
+import 'package:locallink/core/services/kept_sql_318.dart'; // Bundle 318
 import 'package:locallink/features/admin/data/actions/admin_action_book.dart' show AdminActionBook; // Bundle 307
 import 'package:flutter/foundation.dart' show Listenable; // Bundle 307
 import 'package:locallink/features/admin/data/actions/delete_completely_doer.dart';
@@ -826,6 +828,9 @@ class AppDependencies {
   /// Bundle 222: nearby phones carry an offline account's join box.
   late final JoinCarrier222 joinCarrier222;
   Timer? _sweep221;
+
+  /// Bundle 318 (K2): the opened-copies sweep runs at start and this often.
+  static const Duration sweepEvery318 = Duration(hours: 6);
   final List<StreamSubscription<Object?>> _late221 = <StreamSubscription<Object?>>[];
 
   Future<String> _name221(String device) async {
@@ -1099,8 +1104,14 @@ class AppDependencies {
       selfDeviceId: () => store.deviceId ?? '',
       boxKeys: crypto.sealKeyPairs,
       nameOf: _name221,
+      // Bundle 318 (K2): first-open times survive a restart.
+      readSetting: store.readSetting,
+      writeSetting: store.writeSetting,
     );
     ChatAnswerReader.instance = reader;
+    // Bundle 318 (K1): the Owner phone's kept copies (locked DB, 7 days).
+    final kept318 = Kept318(store: SqlKeptStore318(() => hide.db));
+    Kept318.instance = kept318;
     final local = LocalChats221(
       db: () => hide.db,
       selfDeviceId: () => store.deviceId ?? '',
@@ -1142,6 +1153,7 @@ class AppDependencies {
       // reported to this phone (read when asked: the notes start later).
       serverGroups: HttpChatAdminServer(baseUrl: () => api.baseUrl).groups314,
       reportedGroups: () async => await GroupNotes314.instance?.reported() ?? const <Map<String, dynamic>>[],
+      kept: kept318, // Bundle 318
     );
     // Bundle 312: the 307 request card is made in _buildChatRequestCard307,
     // after `notifications` exists (here it is not set yet: the app broke on start).
@@ -1182,6 +1194,11 @@ class AppDependencies {
       write: store.writeSetting,
       nameOf: _name221,
       changes: Listenable.merge([AdminActionBook.instance, ChatAnswerCarrier.progress]),
+      // Bundle 318 (K8): files already here are never asked again.
+      keptFiles318: requests307.keptFileIds318,
+      keep318: (row) async {
+        await requests307.fileBytes(row);
+      },
     );
   }
 
@@ -1293,9 +1310,11 @@ class AppDependencies {
     Future<void> sweep() async {
       await store.hide221.sweep(deleteFile: files.deleteLocalFile).catchError((Object _) => 0);
       await ChatAnswerReader.instance?.sweep().catchError((Object _) => 0);
+      await Kept318.instance?.sweep().catchError((Object _) => 0); // Bundle 318 (K1)
     }
     unawaited(sweep());
-    _sweep221 ??= Timer.periodic(const Duration(hours: 24), (_) => unawaited(sweep()));
+    // Bundle 318 (K2): every 6 h (was 24 h: a copy could stay a day too long).
+    _sweep221 ??= Timer.periodic(sweepEvery318, (_) => unawaited(sweep()));
     if (_late221.isEmpty) {
       _late221.add(messaging.incoming.listen(
           (m) => unawaited(purge221.dropLate(m.id, group: false).catchError((Object _) => false))));

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+import 'package:locallink/features/admin/data/actions/kept_copy_318.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/conversations_kit307.dart';
@@ -69,6 +70,9 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
   ChatRequestRow221? _open;
   int _checkSeq = 0;
 
+  /// Bundle 318 (K3): the kept copy of the picked chat on this phone.
+  KeptCopy318? _kept;
+
   @override
   void initState() {
     super.initState();
@@ -97,9 +101,47 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
     final seq = ++_checkSeq;
     final pick = _pick;
     ChatRequestRow221? open;
+    KeptCopy318? kept;
     if (pick != null) open = await widget.service.openRequestFor314(pick).catchError((_) => null);
+    if (pick != null) kept = await widget.service.keptFor318(pick).catchError((_) => null);
     if (!mounted || seq != _checkSeq) return;
-    setState(() => _open = open);
+    setState(() {
+      _open = open;
+      _kept = kept;
+    });
+  }
+
+  /// Bundle 318 (K3): `same` = Already here (Get new messages only),
+  /// `inside` = the range is inside the copy (opens at once), `none`.
+  String get _keptMode318 {
+    final c = _kept;
+    if (c == null || _open != null || _sending) return 'none';
+    final range = _ranges[_range];
+    if (range == 'dates' && _dates == null) return 'none';
+    return widget.service.keptMode318(c, range, from: _dates?.start, to: _dates?.end);
+  }
+
+  void _openKept318({bool inside = false}) {
+    final c = _kept;
+    if (c == null) return;
+    widget.onOpen?.call(inside
+        ? widget.service.keptRow318(c, range: _ranges[_range], from: _dates?.start, to: _dates?.end)
+        : widget.service.keptRow318(c));
+    Navigator.of(context).pop(false);
+  }
+
+  Future<void> _sendNew318() async {
+    final pick = _pick;
+    if (pick == null) return;
+    setState(() => _sending = true);
+    try {
+      await widget.service.requestNew318(pick);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _sending = false);
+      adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
+    }
   }
 
   void _openIt() {
@@ -407,9 +449,137 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
         ),
         const SizedBox(height: 10),
       ],
-      BigButton307(_sending ? L.t.sending : L.t.getChat,
-          key: const ValueKey('request221_send'), icon: _sending ? null : Icons.forum_rounded, onTap: _ready ? _send : null),
+      if (_keptMode318 case final mode when mode != 'none')
+        ..._keptPart318(mode)
+      else
+        BigButton307(_sending ? L.t.sending : L.t.getChat,
+            key: const ValueKey('request221_send'), icon: _sending ? null : Icons.forum_rounded, onTap: _ready ? _send : null),
     ]);
+  }
+
+  /// Bundle 318 (K3, mock repeat_mock.html A): the green "Already here" box
+  /// and its buttons. `same`: Get new messages only + Open it + More (Get
+  /// all again). `inside`: Open it (no card, no phone asked) + More.
+  List<Widget> _keptPart318(String mode) {
+    final k = K307.of(context);
+    final c = _kept!;
+    final inside = mode == 'inside';
+    final got = Kept318.dayTime(c.lastAt);
+    final until = Kept318.day(c.until?.toIso8601String() ?? '');
+    final title = inside
+        ? L.t.insideTitle318(_rangeWords[_range], Kept318.rangeWords(c))
+        : L.t.alreadyHere318(c.full ? L.t.fullChat : Kept318.rangeWords(c));
+    final sub = inside
+        ? L.t.insideSub318(got)
+        : (c.fromName.trim().isNotEmpty ? L.t.gotFrom318(got, c.fromName.trim(), until) : L.t.gotKept318(got, until));
+    final more = PopupMenuButton<String>(
+      key: const ValueKey('request318_more'),
+      tooltip: L.t.more318,
+      position: PopupMenuPosition.over,
+      constraints: const BoxConstraints(minWidth: 236, maxWidth: 260),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: k.card,
+      onSelected: (_) => unawaited(_send()),
+      itemBuilder: (_) => [
+        PopupMenuItem<String>(
+          key: const ValueKey('request318_all_again'),
+          value: 'all',
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(Icons.refresh_rounded, size: 20, color: k.grey)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(L.t.getAllAgain318, style: k.text(14.5, FontWeight.w600, k.ink, 1.25)),
+                const SizedBox(height: 2),
+                Text(L.t.getAllAgainSub318, style: k.text(12, FontWeight.w400, k.grey, 1.35)),
+              ]),
+            ),
+          ]),
+        ),
+      ],
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: k.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: k.dash),
+        ),
+        child: Icon(Icons.more_vert_rounded, size: 20, color: k.grey),
+      ),
+    );
+    return [
+      Container(
+        key: ValueKey('request318_here_$mode'),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(color: k.greenSoft, borderRadius: BorderRadius.circular(14)),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(Icons.check_circle_rounded, size: 18, color: k.green)),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: k.text(13.5, FontWeight.w700, k.green, 1.35)),
+              const SizedBox(height: 1),
+              Text(sub, style: k.text(12.5, FontWeight.w400, k.grey, 1.4)),
+            ]),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 10),
+      if (inside) ...[
+        BigButton307(L.t.openIt314,
+            key: const ValueKey('request318_open_inside'),
+            icon: Icons.open_in_new_rounded,
+            onTap: () => _openKept318(inside: true)),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: Text(L.t.noCardNoPhone318,
+                  key: const ValueKey('request318_no_card'), style: k.text(12.5, FontWeight.w400, k.grey, 1.35)),
+            ),
+          ),
+          const SizedBox(width: 10),
+          more,
+        ]),
+      ] else ...[
+        BigButton307(L.t.getNewOnly318,
+            key: const ValueKey('request318_new_only'), icon: Icons.sync_rounded, onTap: _sendNew318),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: Material(
+              color: k.card,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                key: const ValueKey('request318_open'),
+                borderRadius: BorderRadius.circular(16),
+                onTap: _openKept318,
+                child: Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: k.dash),
+                  ),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.open_in_new_rounded, size: 18, color: k.blueText),
+                    const SizedBox(width: 7),
+                    Flexible(child: Text(L.t.openIt314, style: k.text(14.5, FontWeight.w700, k.blueText, 1.2))),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          more,
+        ]),
+      ],
+    ];
   }
 }
 

@@ -450,6 +450,12 @@ class ChatAnswerBuilder {
     final chat = ChatRef221.fromJson(detail['chat']);
     if (chat == null || !chat.valid) throw StateError('no_chat');
     final range = ChatRange221.of(detail);
+    // Bundle 318 (K5): the Owner already has a copy - only what is new.
+    final since = DateTime.tryParse(detail['since']?.toString() ?? '');
+    if (since != null) {
+      return _buildNew318(
+          actionId: actionId, replyKey: replyKey, replyTo: replyTo, detail: detail, chat: chat, range: range, since: since);
+    }
     final got = await messages(chat, range);
     // No copy of this chat at all on this phone: no answer (and no receipt),
     // another phone of the chat answers.
@@ -469,6 +475,131 @@ class ChatAnswerBuilder {
             'to': detail['to']?.toString() ?? '',
             if (trimmed) 'trimmed': true,
           },
+          'messages': groups[i],
+        },
+    ];
+    return seal(actionId: actionId, replyKey: replyKey, plains: plains, replyTo: replyTo);
+  }
+
+  /// Bundle 318 (K5): the UTC day of a message time (`YYYY-MM-DD`); both
+  /// phones count days the same way whatever their time zone.
+  static String utcDay318(DateTime at) {
+    final u = at.toUtc();
+    return '${u.year.toString().padLeft(4, '0')}-${u.month.toString().padLeft(2, '0')}-${u.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Bundle 318 (K4/K5): one short check of the messages from `since` on
+  /// (ids, deleted or not, reactions). The Owner phone sends it with the
+  /// request (`since_h`); the same check here = nothing new.
+  static String sinceHash318(Iterable<({String id, bool deleted, List<Map<String, String>> reactions})> list) {
+    final lines = <String>[
+      for (final m in list)
+        '${m.id}|${m.deleted ? 1 : 0}|${([for (final r in m.reactions) '${r['by'] ?? ''}:${r['emoji'] ?? ''}']..sort()).join(',')}',
+    ]..sort();
+    return sha256Hex(lines.join('\n')).substring(0, 16);
+  }
+
+  /// Bundle 318 (K4): [sinceHash318] of message JSON maps (the Owner's copy).
+  static String sinceHashOfJson318(Iterable<Map<String, dynamic>> messages) => sinceHash318([
+        for (final m in messages)
+          (
+            id: m['id']?.toString() ?? '',
+            deleted: (m['deleted_at']?.toString() ?? '').isNotEmpty,
+            reactions: [
+              for (final r in (m['reactions'] as List? ?? const []))
+                if (r is Map) {for (final e in r.entries) '${e.key}': '${e.value}'},
+            ],
+          ),
+      ]);
+
+  /// Bundle 318 (K5): get_chat with `since`. Sends the messages from
+  /// `since` on, older ones deleted after `since`, and per-day counts of the
+  /// whole range (part 1). Same check as the Owner's copy and nothing
+  /// deleted later -> ONE small part `up_to_date` (no messages).
+  Future<List<ChatAnswerPart>> _buildNew318({
+    required String actionId,
+    required String replyKey,
+    required String replyTo,
+    required Map<String, dynamic> detail,
+    required ChatRef221 chat,
+    required ChatRange221 range,
+    required DateTime since,
+  }) async {
+    final rows = await source.rows(chat);
+    if (rows.isEmpty) throw StateError('no_copy_here');
+    final picked = <(ChatRow221, DateTime, bool)>[];
+    final seen = <String>{};
+    for (final r in rows) {
+      if (r.id.isEmpty || MessageEnvelope.isControl(r.body)) continue;
+      final at = DateTime.tryParse(r.createdAt);
+      if (at == null) continue;
+      final place = range.place(at);
+      if (place == null) continue;
+      if (!seen.add(r.id)) {
+        if (r.hiddenAt.isNotEmpty) continue;
+        picked.removeWhere((p) => p.$1.id == r.id);
+      }
+      picked.add((r, at, place));
+    }
+    picked.sort((a, b) => a.$2.compareTo(b.$2));
+    final days = <String, int>{};
+    for (final p in picked) {
+      final d = utcDay318(p.$2);
+      days[d] = (days[d] ?? 0) + 1;
+    }
+    final newer = [for (final p in picked) if (!p.$2.isBefore(since)) p];
+    final deletedLater = [
+      for (final p in picked)
+        if (p.$2.isBefore(since) && p.$1.hiddenAt.isNotEmpty)
+          if (DateTime.tryParse(p.$1.hiddenAt) case final h? when !h.isBefore(since)) p,
+    ];
+    final hash = sinceHash318([
+      for (final p in newer) (id: p.$1.id, deleted: p.$1.hiddenAt.isNotEmpty, reactions: p.$1.reactions),
+    ]);
+    final upToDate = deletedLater.isEmpty && hash == (detail['since_h']?.toString() ?? '');
+    final head = <String, dynamic>{
+      'chat': chat.toJson(),
+      'from': detail['from']?.toString() ?? '',
+      'to': detail['to']?.toString() ?? '',
+      'since': detail['since']?.toString() ?? '',
+      'days': days,
+    };
+    if (upToDate) {
+      return seal(
+          actionId: actionId,
+          replyKey: replyKey,
+          plains: [
+            {...head, 'up_to_date': true, 'messages': const <Map<String, dynamic>>[]},
+          ],
+          replyTo: replyTo);
+    }
+    final names = <String, String>{};
+    final out = <Map<String, dynamic>>[
+      for (final p in [...deletedLater, ...newer]) await messageJson(p.$1, outside: p.$3, names: names),
+    ];
+    var trimmed = false;
+    var total = out.fold<int>(0, (n, m) => n + jsonEncode(m).length);
+    for (var i = 0; i < out.length && total > ChatAnswerRules.phoneAnswerBytes; i++) {
+      final atts = out[i]['attachments'];
+      if (atts is! List) continue;
+      for (final a in atts.whereType<Map>()) {
+        final t = a.remove('thumb');
+        a.remove('thumb_type');
+        if (t is String) {
+          total -= t.length;
+          trimmed = true;
+        }
+      }
+    }
+    var groups = pack(out);
+    if (groups.length > ChatAnswerRules.maxParts) {
+      groups = groups.sublist(groups.length - ChatAnswerRules.maxParts);
+      trimmed = true;
+    }
+    final plains = <Map<String, dynamic>>[
+      for (var i = 0; i < groups.length; i++)
+        {
+          if (i == 0) ...{...head, if (trimmed) 'trimmed': true},
           'messages': groups[i],
         },
     ];

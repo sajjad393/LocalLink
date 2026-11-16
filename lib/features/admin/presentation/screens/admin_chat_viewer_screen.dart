@@ -7,9 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:locallink/core/models/group_event.dart';
 import 'package:locallink/core/utils/phone_label_255.dart';
+import 'package:locallink/core/widgets/unread_bar_304.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
+import 'package:locallink/features/admin/data/actions/kept_copy_318.dart';
 import 'package:locallink/features/admin/data/actions/request_step_307.dart';
 import 'package:locallink/features/admin/presentation/screens/admin_conversations_screen.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
@@ -96,10 +98,18 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   /// V4: the Get file requests of this chat (ready ones can play here).
   Future<void> _loadFiles310() async {
     try {
+      // Bundle 318 (K8): files of the whole kept copy (full + new-only
+      // requests) and files already kept here - never asked twice.
+      final family = await widget.service.family318(widget.request.id);
+      final kept = await widget.service.keptFileIds318();
+      if (mounted) {
+        _family318 = family;
+        _keptFiles318 = kept;
+      }
       final all = await widget.service.requests();
       final out = <String, ChatRequestRow221>{};
       for (final r in all) {
-        if (r.action != 'get_file' || r.parent != widget.request.id || r.fileId.isEmpty) continue;
+        if (r.action != 'get_file' || !family.contains(r.parent) || r.fileId.isEmpty) continue;
         if (r.state == 'cancelled') continue;
         final old = out[r.fileId];
         if (old == null || (!_ready310(old) && (_ready310(r) || r.madeAt.compareTo(old.madeAt) > 0))) out[r.fileId] = r;
@@ -182,6 +192,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     _readyTimer?.cancel();
     _allHereTimer317?.cancel();
     _filePoll310?.cancel();
+    _list318.dispose();
     unawaited(_stopVoice310());
     // Bundle 310: the voice copies played here go with the screen.
     try {
@@ -193,6 +204,14 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   }
 
   void _changed() => unawaited(_load());
+
+  // Bundle 318 (K7/K8): the new-messages bar, the list, the copy's requests
+  // and the files kept here.
+  final GlobalKey _newBar318 = GlobalKey();
+  final ScrollController _list318 = ScrollController();
+  bool _scrolled318 = false;
+  Set<String> _family318 = const {};
+  Set<String> _keptFiles318 = const {};
 
   // Bundle 317 (G6): files come by themselves; the viewer only shows them.
   final Map<String, Uint8List> _bytes317 = <String, Uint8List>{};
@@ -218,9 +237,26 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     if (a['file_gone'] == true) return const FileView317(FileState317.gone);
     final size = a['size'] is num ? (a['size'] as num).toInt() : 0;
     if (size > 50 * 1024 * 1024) return const FileView317(FileState317.tooBig);
-    final q = FileQueue317.instance?.viewsOf(widget.request.id)[fileId];
+    FileView317? q = FileQueue317.instance?.viewsOf(widget.request.id)[fileId];
+    for (final id in _family318) {
+      q ??= FileQueue317.instance?.viewsOf(id)[fileId];
+    }
     final row = _files310[fileId];
     if (row != null && _ready310(row)) return FileView317(FileState317.here, parts: row.parts, of: row.of, row: row);
+    // Bundle 318 (K8): the bytes are kept on this phone already.
+    if (_keptFiles318.contains(fileId)) {
+      return FileView317(FileState317.here,
+          parts: 1,
+          of: 1,
+          row: ChatRequestRow221(
+              id: 'kept318_$fileId',
+              action: 'get_file',
+              parent: widget.request.id,
+              fileId: fileId,
+              state: 'done',
+              parts: 1,
+              of: 1));
+    }
     if (q != null) return q;
     if (row != null) {
       if (row.refused == 'file_too_big') return FileView317(FileState317.tooBig, row: row);
@@ -314,6 +350,13 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final r = widget.request;
     final range = r.from.isEmpty ? L.t.fullChat : '${_day(r.from)} - ${_day(r.to)}';
     final v = _view;
+    // Bundle 318 (K7): "Full chat · got 15 Nov 10:05 · +12 new today 10:43".
+    if (v != null && v.fromKept318) {
+      final kr = r.inside318 ? range : (v.keptFull318 ? L.t.fullChat : '${_day(v.from)} - ${_day(v.to)}');
+      final got = L.t.viewerKept318(kr, Kept318.dayTime(v.keptGotAt318));
+      final n = v.newIds318.length;
+      return v.newOnly318 && n > 0 ? '$got \u00b7 ${L.t.plusNew318(n, whenSub216(v.keptNewAt318))}' : got;
+    }
     final from = v == null ? '' : _owner255(v);
     return from.isEmpty ? range : L.t.fromSPhone(range, from);
   }
@@ -719,6 +762,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final items = <Widget>[];
     String lastDay = '';
     var shown = 0; // E: batches of 3 fade in
+    // Bundle 318 (K7): the "12 new messages" bar above the first new one.
+    final news318 = v.newOnly318 ? v.newIds318.toSet() : const <String>{};
+    var barAt318 = -1;
     // Bundle 310 (V4): a group shows the name on the first bubble of a run.
     _runStart310.clear();
     String? lastSender;
@@ -749,7 +795,24 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
         items.add(Batch307(batch: shown++ ~/ 3, child: _systemLines317(v, m, event)));
         continue;
       }
+      if (barAt318 < 0 && news318.contains('${m['id']}')) {
+        barAt318 = items.length;
+        items.add(UnreadBar304(
+            key: _newBar318,
+            count: news318.length,
+            bleed: 14,
+            text: news318.length == 1 ? L.t.newMessage : L.t.newMessages2(news318.length)));
+      }
       items.add(Batch307(batch: shown++ ~/ 3, child: _bubble(v, m)));
+    }
+    if (barAt318 >= 0 && !_scrolled318) {
+      _scrolled318 = true;
+      final at = barAt318;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_list318.hasClients) return;
+        _list318.jumpTo(_list318.position.maxScrollExtent);
+        showUnreadBar304(_list318, _newBar318, at);
+      });
     }
     return Column(children: [
       Expanded(
@@ -758,6 +821,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
           color: Theme.of(context).colorScheme.surface,
           child: ListView(
           key: const ValueKey('viewer221_list'),
+          controller: _list318,
           padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
           children: [
             if (v.trimmed)

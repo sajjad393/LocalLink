@@ -467,9 +467,14 @@ class LiveCard307 extends StatefulWidget {
     this.group = false,
     this.onTap,
     this.files,
+    this.copyLine318,
   });
 
   final RequestStep307 step;
+
+  /// Bundle 318 (K7): "full chat · got 15 Nov 10:05 · kept until 22 Nov"
+  /// under a new-only card (null = none).
+  final String? copyLine318;
 
   /// Bundle 317 (G8): the chat's files coming after Ready (null = none).
   final FileTrip317? files;
@@ -583,6 +588,26 @@ class _LiveCard307State extends State<LiveCard307> with SingleTickerProviderStat
         RequestTrack307(step: s),
         if (ready && widget.files != null && widget.files!.total > 0 && !widget.files!.stopped)
           FilesStrip317(trip: widget.files!),
+        if (widget.copyLine318 case final line? when line.isNotEmpty)
+          Container(
+            key: const ValueKey('live318_copy'),
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.only(top: 11),
+            decoration: BoxDecoration(border: Border(top: BorderSide(color: k.track))),
+            child: Row(children: [
+              Icon(Icons.phone_android_rounded, size: 16, color: k.grey2),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: '${L.t.yourCopy318} ', style: k.text(12.5, FontWeight.w600, k.ink, 1.35)),
+                    TextSpan(text: line),
+                  ]),
+                  style: k.text(12.5, FontWeight.w400, k.grey, 1.35),
+                ),
+              ),
+            ]),
+          ),
       ]),
     );
     return AnimatedBuilder(

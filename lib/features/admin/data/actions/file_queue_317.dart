@@ -168,8 +168,19 @@ class FileQueue317 {
     this.nameOf,
     this.changes,
     this.every = const Duration(seconds: 5),
+    this.keptFiles318,
+    this.keep318,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
+
+  /// Bundle 318 (K8): file ids whose bytes are kept on this phone (null = none).
+  final Future<Set<String>> Function()? keptFiles318;
+
+  /// Bundle 318 (K8): reads a file that is here once so its bytes are kept
+  /// with the copy (the server copy goes 24 h after open). One per tick.
+  final Future<void> Function(ChatRequestRow221 row)? keep318;
+  final Set<String> _keepTried318 = {};
+  bool _keeping318 = false;
 
   static FileQueue317? instance;
 
@@ -270,10 +281,15 @@ class FileQueue317 {
   }
 
   /// The plan of a request: one entry per file id, newest message first.
+  /// Bundle 318 (K8): a new-only request plans only its new messages.
   static List<FilePlanItem317> planOf(ChatAnswerView v) {
     final out = <FilePlanItem317>[];
     final seen = <String>{};
-    final msgs = [...v.messages]..sort((a, b) => '${b['created_at']}'.compareTo('${a['created_at']}'));
+    final only = v.newOnly318 ? v.newIds318.toSet() : null;
+    final msgs = [
+      for (final m in v.messages)
+        if (only == null || only.contains(m['id']?.toString())) m,
+    ]..sort((a, b) => '${b['created_at']}'.compareTo('${a['created_at']}'));
     for (final m in msgs) {
       for (final a in (m['attachments'] as List? ?? const [])) {
         if (a is! Map) continue;
@@ -305,9 +321,15 @@ class FileQueue317 {
     final plans = await _load();
     var dirty = false;
     final files = <String, List<ChatRequestRow221>>{};
+    // Bundle 318 (K8): every live Get file by file id (any request).
+    final byFile = <String, List<ChatRequestRow221>>{};
     for (final r in all) {
       if (r.action == 'get_file' && r.parent.isNotEmpty) (files[r.parent] ??= []).add(r);
+      if (r.action == 'get_file' && r.fileId.isNotEmpty && !r.cancelled && !r.closed && !r.empty && r.refused.isEmpty) {
+        (byFile[r.fileId] ??= []).add(r);
+      }
     }
+    final keptIds = await keptFiles318?.call().catchError((Object _) => <String>{}) ?? const <String>{};
     var pendingCards = all.where((r) => r.action == 'get_file' && r.state == 'pending' && !r.cancelled).length;
     final out = <String, FileTrip317>{};
     for (final r in all) {
@@ -345,13 +367,28 @@ class FileQueue317 {
             best = f;
           }
         }
+        // Bundle 318 (K8): here / on the way for another request of this
+        // phone -> reuse or wait (never asked twice).
+        if (best == null) {
+          for (final f in byFile[fileId] ?? const <ChatRequestRow221>[]) {
+            if (best == null || (!best.ready && f.ready)) best = f;
+          }
+        }
         return best;
       }
 
       final views = <String, FileView317>{};
       for (final i in items) {
         final row = rowOf(i.fileId);
-        views[i.fileId] = _stateOf(i, row, asked.containsKey(i.fileId), stopped);
+        views[i.fileId] = row == null && keptIds.contains(i.fileId)
+            ? const FileView317(FileState317.here) // Bundle 318 (K8): kept here
+            : _stateOf(i, row, asked.containsKey(i.fileId), stopped);
+        final keep = keep318;
+        if (keep != null && !_keeping318 && row != null && row.ready && !keptIds.contains(i.fileId) &&
+            _keepTried318.add(i.fileId)) {
+          _keeping318 = true;
+          unawaited(keep(row).catchError((Object _) {}).whenComplete(() => _keeping318 = false));
+        }
       }
       // Ask the next ones (window 2 files / 16 MB, max 3 pending cards).
       if (!stopped) {
