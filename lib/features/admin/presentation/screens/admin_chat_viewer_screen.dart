@@ -86,11 +86,11 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     super.initState();
     _view = widget.view;
     _noteProgress();
-    if (_view == null) unawaited(_load());
+    if (_view == null) unawaited(_reload319());
     ChatAnswerCarrier.progress.addListener(_changed);
     FileQueue317.trips.addListener(_files317Changed);
     _poll = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (!(_view?.complete ?? false)) unawaited(_load());
+      if (!(_view?.complete ?? false)) unawaited(_reload319());
     });
     if (widget.view == null) unawaited(_loadFiles310());
   }
@@ -188,6 +188,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   void dispose() {
     ChatAnswerCarrier.progress.removeListener(_changed);
     FileQueue317.trips.removeListener(_files317Changed);
+    _reload319.close();
     _poll?.cancel();
     _readyTimer?.cancel();
     _allHereTimer317?.cancel();
@@ -203,7 +204,15 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     super.dispose();
   }
 
-  void _changed() => unawaited(_load());
+  /// Bundle 319 (F7): a complete answer is not opened (decrypted) again on
+  /// every part that lands elsewhere; other reloads are merged (max once
+  /// per 2 s, one at a time).
+  void _changed() {
+    if (_view?.complete ?? false) return;
+    unawaited(_reload319());
+  }
+
+  late final MergedRun319 _reload319 = MergedRun319(_load, gap: const Duration(seconds: 2));
 
   // Bundle 318 (K7/K8): the new-messages bar, the list, the copy's requests
   // and the files kept here.

@@ -1311,6 +1311,7 @@ class AppDependencies {
       await store.hide221.sweep(deleteFile: files.deleteLocalFile).catchError((Object _) => 0);
       await ChatAnswerReader.instance?.sweep().catchError((Object _) => 0);
       await Kept318.instance?.sweep().catchError((Object _) => 0); // Bundle 318 (K1)
+      await chatCarrier221.forgetOld().catchError((Object _) => 0); // Bundle 319 (F3)
     }
     unawaited(sweep());
     // Bundle 318 (K2): every 6 h (was 24 h: a copy could stay a day too long).

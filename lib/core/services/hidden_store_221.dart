@@ -708,6 +708,15 @@ class SqlAnswerPartStore implements AnswerPartStore {
   final Hidden221 hidden;
   final Database Function() db;
 
+  /// Bundle 319 (F2): acks + stops in memory (loaded once; every write goes
+  /// through this store). Each incoming part read both whole tables before:
+  /// with hundreds of acks the one SQLCipher queue jammed for minutes.
+  Map<String, AnswerAck>? _acksMem;
+  Set<String>? _stopsMem;
+
+  /// Bumped on every write: a load that raced a write is not kept.
+  int _gen319 = 0;
+
   HeldPart? _row(Map<String, Object?> r) => HeldPart.fromBlob(
       SignedBlob(body: r['body']?.toString() ?? '', sig: r['sig']?.toString() ?? ''),
       own: r['own'] == 1,
@@ -820,12 +829,40 @@ class SqlAnswerPartStore implements AnswerPartStore {
     await hidden.ensure();
     await db().insert('answer_stops', {'answer_id': answerId, 'action_id': actionId, 'at': at},
         conflictAlgorithm: ConflictAlgorithm.replace);
+    _gen319++;
+    _stopsMem?.add(answerId);
   }
 
   @override
   Future<Set<String>> stops() async {
+    final mem = _stopsMem;
+    if (mem != null) return Set.of(mem);
     await hidden.ensure();
-    return {for (final r in await db().query('answer_stops', columns: ['answer_id'])) r['answer_id'].toString()};
+    final gen = _gen319;
+    final got = {for (final r in await db().query('answer_stops', columns: ['answer_id'])) r['answer_id'].toString()};
+    if (gen == _gen319) _stopsMem = got;
+    return Set.of(got);
+  }
+
+  /// Bundle 319 (F3): acks / stops older than [before] go, except for the
+  /// answers in [keep] (parts still held here).
+  @override
+  Future<int> forgetOld(String before, Set<String> keep) async {
+    await hidden.ensure();
+    var n = 0;
+    for (final table in ['answer_acks', 'answer_stops']) {
+      final rows = await db().query(table, columns: ['answer_id'], where: "at<>'' AND at<?", whereArgs: [before]);
+      final ids = [for (final r in rows) r['answer_id'].toString()]..removeWhere(keep.contains);
+      for (var i = 0; i < ids.length; i += 200) {
+        final chunk = ids.sublist(i, i + 200 < ids.length ? i + 200 : ids.length);
+        n += await db().delete(table,
+            where: 'answer_id IN (${List.filled(chunk.length, '?').join(',')})', whereArgs: chunk);
+      }
+    }
+    _gen319++;
+    _acksMem = null;
+    _stopsMem = null;
+    return n;
   }
 
   @override
@@ -848,11 +885,16 @@ class SqlAnswerPartStore implements AnswerPartStore {
           'at': ack.at,
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
+    _gen319++;
+    _acksMem?[ack.answerId] = ack;
   }
 
   @override
   Future<Map<String, AnswerAck>> acks() async {
+    final mem = _acksMem;
+    if (mem != null) return Map.of(mem);
     await hidden.ensure();
+    final gen = _gen319;
     final out = <String, AnswerAck>{};
     for (final r in await db().query('answer_acks')) {
       try {
@@ -870,7 +912,8 @@ class SqlAnswerPartStore implements AnswerPartStore {
         );
       } catch (_) {}
     }
-    return out;
+    if (gen == _gen319) _acksMem = out;
+    return Map.of(out);
   }
 }
 

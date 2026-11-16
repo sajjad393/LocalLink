@@ -197,6 +197,10 @@ abstract class AnswerPartStore {
   Future<Set<String>> stops();
   Future<void> saveAck(AnswerAck ack);
   Future<Map<String, AnswerAck>> acks();
+
+  /// Bundle 319 (F3): acks / stops older than [before] (ISO UTC) go, except
+  /// for the answers in [keep]. Returns how many rows went.
+  Future<int> forgetOld(String before, Set<String> keep);
 }
 
 class MemoryAnswerPartStore implements AnswerPartStore {
@@ -256,6 +260,26 @@ class MemoryAnswerPartStore implements AnswerPartStore {
 
   @override
   Future<Map<String, AnswerAck>> acks() async => Map.of(_acks);
+
+  @override
+  Future<int> forgetOld(String before, Set<String> keep) async {
+    var n = 0;
+    for (final id in _acks.keys.toList()) {
+      final at = _acks[id]!.at;
+      if (at.isNotEmpty && at.compareTo(before) < 0 && !keep.contains(id)) {
+        _acks.remove(id);
+        n++;
+      }
+    }
+    for (final id in _stops.keys.toList()) {
+      final at = _stops[id]!;
+      if (at.isNotEmpty && at.compareTo(before) < 0 && !keep.contains(id)) {
+        _stops.remove(id);
+        n++;
+      }
+    }
+    return n;
+  }
 }
 
 /// The phone endpoints (device auth).
@@ -343,6 +367,74 @@ class HttpChatAnswerServer implements ChatAnswerServer {
 /// Progress the Admin actions list shows (only confirmed parts).
 typedef AnswerProgress = ({int have, int of, bool all});
 
+/// Bundle 319 (F1/F7): runs [run] at most once per [gap], one run at a
+/// time; calls made while it waits or runs are merged into one more run.
+/// The 16 Nov Owner phone ran a full recount (and a viewer reload) for
+/// every incoming part and the one database queue jammed for minutes.
+class MergedRun319 {
+  MergedRun319(this.run, {required this.gap});
+
+  final Future<void> Function() run;
+  final Duration gap;
+  final Stopwatch _since = Stopwatch();
+  Completer<void>? _done;
+  bool _again = false;
+  bool _closed = false;
+  Timer? _wait;
+  Completer<void>? _woke;
+
+  /// True while a run is waiting or going.
+  bool get busy => _done != null;
+
+  Future<void> call() {
+    if (_closed) return Future<void>.value();
+    final going = _done;
+    if (going != null) {
+      _again = true;
+      return going.future;
+    }
+    final d = _done = Completer<void>();
+    unawaited(_loop(d));
+    return d.future;
+  }
+
+  Future<void> _loop(Completer<void> d) async {
+    try {
+      do {
+        if (_since.isRunning && _since.elapsed < gap) {
+          final w = _woke = Completer<void>();
+          _wait = Timer(gap - _since.elapsed, () {
+            if (!w.isCompleted) w.complete();
+          });
+          await w.future;
+          _wait = null;
+          _woke = null;
+        }
+        if (_closed) return;
+        _again = false;
+        _since
+          ..reset()
+          ..start();
+        try {
+          await run();
+        } catch (_) {}
+      } while (_again && !_closed);
+    } finally {
+      _done = null;
+      if (!d.isCompleted) d.complete();
+    }
+  }
+
+  /// No more runs (a screen went away); a waiting run ends now.
+  void close() {
+    _closed = true;
+    _wait?.cancel();
+    _wait = null;
+    final w = _woke;
+    if (w != null && !w.isCompleted) w.complete();
+  }
+}
+
 class ChatAnswerCarrier {
   static const int maxPartBytes = 64 * 1024;
   // Bundle 316 (F3): 20 MB -> 8 MB (a 192 MB heap phone crash-looped).
@@ -364,6 +456,19 @@ class ChatAnswerCarrier {
   /// (action id -> device id), when it was not the answering phone.
   static final Map<String, String> lastVia = <String, String>{};
   static const Duration haveEvery = Duration(seconds: 60);
+
+  /// Bundle 319 (F1): progress is recounted at most once per second.
+  static const Duration progressGap = Duration(seconds: 1);
+
+  /// Bundle 319 (F3): acks / stops older than this go (unless still held).
+  static const Duration ackKeep = Duration(days: 7);
+
+  /// Bundle 319 (F5): a stop goes back to a phone max once per 30 s.
+  static const Duration stopBackGap = Duration(seconds: 30);
+
+  /// Bundle 319 (F6): the same part is not sent to the same phone again
+  /// within 3 min (ayesha sent the same 400 parts 12 times in 25 min).
+  static const Duration resendGap = Duration(minutes: 3);
 
   static ChatAnswerCarrier? instance;
 
@@ -436,17 +541,55 @@ class ChatAnswerCarrier {
   }
 
   /// Recounts [progress] from the acks + the parts this admin phone holds.
-  Future<void> refreshProgress() async {
-    final ids = <String>{
-      for (final a in (await store.acks()).values) a.actionId,
-      for (final p in await store.metas()) if (_isMine(p)) p.actionId,
-    }..remove('');
+  /// Bundle 319 (F1): one acks read + one parts read, counted in memory;
+  /// max once per second, one run at a time (calls in between merged).
+  Future<void> refreshProgress() => _recount319();
+
+  late final MergedRun319 _recount319 = MergedRun319(_recountNow319, gap: progressGap);
+
+  Future<void> _recountNow319() async {
+    final watch = Stopwatch()..start();
+    final acks = await store.acks();
+    final metas = await store.metas();
+    progress.value = countProgress(acks.values, metas.where(_isMine));
+    final ms = watch.elapsedMilliseconds;
+    if (ms > 500) AppLogger.info('ADMIN_PROGRESS_SLOW', detail: 'ms=$ms acks=${acks.length} parts=${metas.length}');
+  }
+
+  /// Bundle 319 (F1): progress of every request from the acks + the parts
+  /// meant for this phone ([mine]), with no store read.
+  static Map<String, AnswerProgress> countProgress(Iterable<AnswerAck> acks, Iterable<PartMeta> mine) {
     final out = <String, AnswerProgress>{};
-    for (final id in ids) {
-      final p = await progressOf(id);
-      if (p != null) out[id] = p;
+    for (final a in acks) {
+      if (a.actionId.isEmpty) continue;
+      if (a.all && a.have.length < a.of) continue; // Bundle 317: a stop, not "all here"
+      final best = out[a.actionId];
+      if (best == null || a.all || a.have.length > best.have) {
+        out[a.actionId] = (have: a.all ? a.of : a.have.length, of: a.of, all: a.all);
+      }
     }
-    progress.value = out;
+    // The admin's phone counts what it holds itself (Bundle 317 G4: an
+    // ack can be up to 2 s behind the parts here -> the larger count).
+    final by = <String, Map<String, Set<int>>>{};
+    final ofs = <String, int>{};
+    for (final p in mine) {
+      if (p.actionId.isEmpty) continue;
+      ((by[p.actionId] ??= <String, Set<int>>{})[p.answerId] ??= <int>{}).add(p.part);
+      ofs[p.answerId] = p.of;
+    }
+    for (final e in by.entries) {
+      var n = 0;
+      var of = 0;
+      for (final a in e.value.entries) {
+        if (a.value.length > n) {
+          n = a.value.length;
+          of = ofs[a.key] ?? 0;
+        }
+      }
+      final best = out[e.key];
+      if (best == null || (!best.all && n > best.have)) out[e.key] = (have: n, of: of, all: n >= of);
+    }
+    return out;
   }
 
   void start() {
@@ -463,6 +606,7 @@ class ChatAnswerCarrier {
       t.cancel();
     }
     _ackLater.clear();
+    _recount319.close();
   }
 
   Future<void> tick() async {
@@ -510,6 +654,12 @@ class ChatAnswerCarrier {
     final acks = await store.acks();
     final ack = acks[p.answerId];
     if (ack != null && (ack.all || ack.have.contains(p.part)) && !_isMine(p)) return false;
+    // Bundle 319 (F5): an answer I closed (my signed stop: all, not every
+    // part) is not stored again; the stop goes back to the sender.
+    if (ack != null && _isMine(p) && ack.all && ack.have.length < ack.of) {
+      _stopBack(p.answerId, ack, from);
+      return false;
+    }
     if (p.device != selfDeviceId()) {
       final key = await signingKeyOf(p.device).catchError((_) => '');
       if (key.isNotEmpty && !await verify(blob.body, blob.sig, key)) {
@@ -641,6 +791,36 @@ class ChatAnswerCarrier {
     return n;
   }
 
+  final Map<String, DateTime> _stopBackAt = <String, DateTime>{};
+
+  /// Bundle 319 (F5): the kept stop goes back to [from] (max once per 30 s
+  /// per answer; not to the server).
+  void _stopBack(String answerId, AnswerAck stop, String from) {
+    if (from.isEmpty || from == 'server') return;
+    final k = '$from|$answerId';
+    final last = _stopBackAt[k];
+    if (last != null && _clock().difference(last) < stopBackGap) return;
+    _stopBackAt[k] = _clock();
+    AppLogger.info('ADMIN_ANSWER_STOP_BACK', detail: 'answer=${_short(answerId)} to=${_short(from)}');
+    unawaited(send(from, {'type': ChatAnswerRules.partsType, 'op': 'acks', 'acks': [stop.raw]})
+        .catchError((_) {}));
+  }
+
+  static String _short(String id) => id.length <= 6 ? id : id.substring(0, 6);
+
+  /// Bundle 319 (F3): acks / stops older than 7 days go, except those of
+  /// answers still held here (start + every 6 h).
+  Future<int> forgetOld() async {
+    final cut = _clock().toUtc().subtract(ackKeep).toIso8601String();
+    final keep = {for (final p in await store.metas()) p.answerId};
+    final n = await store.forgetOld(cut, keep);
+    if (n > 0) AppLogger.info('ADMIN_ANSWER_ACKS_SWEPT', detail: 'rows=$n');
+    final now = _clock();
+    _sentAt319.removeWhere((_, t) => now.difference(t) >= resendGap);
+    _stopBackAt.removeWhere((_, t) => now.difference(t) >= stopBackGap);
+    return n;
+  }
+
   final Map<String, DateTime> _repeatAckAt = <String, DateTime>{};
 
   /// Bundle 316 (F2): the ack for a repeated own part goes back to [from]
@@ -769,11 +949,42 @@ class ChatAnswerCarrier {
             'have': PartRanges.write(e.value.map((p) => p.part)),
           },
       },
-      'acks': [for (final a in acks.values.take(100)) a.raw],
+      // Bundle 319 (F4): the NEWEST 100 acks (it was the oldest 100, so a
+      // new stop never reached the answering phone).
+      'acks': [for (final a in newestAcks(acks.values, 100)) a.raw],
       // Bundle 317 (G2): bytes of file parts I can still take (old phones
       // send no room = take no file parts).
       'room': await fileRoom(),
     };
+  }
+
+  /// Bundle 319 (F4): the [n] newest acks (by their signed time).
+  static List<AnswerAck> newestAcks(Iterable<AnswerAck> acks, int n) {
+    final list = acks.toList()..sort((a, b) => b.at.compareTo(a.at));
+    return list.length <= n ? list : list.sublist(0, n);
+  }
+
+  /// Bundle 319 (F4): the acks of the answers a peer says it carries that
+  /// tell it something (a stop / all, or parts it holds that are here).
+  Future<int> _acksFor(String peer, Map<String, dynamic> theirs) async {
+    if (theirs.isEmpty) return 0;
+    final acks = await store.acks();
+    final out = <Map<String, dynamic>>[];
+    for (final e in theirs.entries) {
+      final ack = acks[e.key];
+      if (ack == null) continue;
+      final v = e.value;
+      final has = v is Map ? PartRanges.read(v['have']?.toString() ?? '') : <int>{};
+      if (ack.all || has.any(ack.have.contains)) out.add(ack.raw);
+      if (out.length >= 100) break;
+    }
+    if (out.isEmpty) return 0;
+    try {
+      await send(peer, {'type': ChatAnswerRules.partsType, 'op': 'acks', 'acks': out});
+    } catch (_) {
+      return 0;
+    }
+    return out.length;
   }
 
   /// Bundle 317 (G2): file bytes this phone can still carry.
@@ -834,8 +1045,10 @@ class ChatAnswerCarrier {
         final answers = msg['answers'];
         if (from.isNotEmpty) {
           final room = msg['room'];
-          await _sendMissing(from, answers is Map ? Map<String, dynamic>.from(answers) : const {},
-              room: room is int ? room : int.tryParse('${room ?? ''}') ?? 0);
+          final theirs = answers is Map ? Map<String, dynamic>.from(answers) : const <String, dynamic>{};
+          // Bundle 319 (F4): what it carries that is already here / stopped.
+          await _acksFor(from, theirs);
+          await _sendMissing(from, theirs, room: room is int ? room : int.tryParse('${room ?? ''}') ?? 0);
         }
     }
   }
@@ -858,6 +1071,8 @@ class ChatAnswerCarrier {
     final order = byAnswer.entries.toList()
       ..sort((a, b) => (a.value.first.isFile ? 1 : 0).compareTo(b.value.first.isFile ? 1 : 0));
     var roomLeft = room;
+    final now = _clock();
+    final to = <String>{};
     for (final e in order) {
       final their = theirs[e.key];
       final has = their is Map ? PartRanges.read(their['have']?.toString() ?? '') : <int>{};
@@ -866,7 +1081,12 @@ class ChatAnswerCarrier {
       // Bundle 317 (G2): file parts to a middle phone only while it has room.
       if (file && !toAdmin && roomLeft <= 0) continue;
       final limit = toAdmin ? perMeetingAdmin : perMeeting;
-      final list = e.value.where((p) => !has.contains(p.part)).toList()
+      // Bundle 319 (F6): a part sent to this phone in the last 3 min waits.
+      final list = e.value.where((p) {
+        if (has.contains(p.part)) return false;
+        final at = _sentAt319['$peer|${p.answerId}#${p.part}'];
+        return at == null || now.difference(at) >= resendGap;
+      }).toList()
         ..sort((a, b) => a.part.compareTo(b.part));
       for (final p in list) {
         if (sent >= limit) break;
@@ -880,14 +1100,23 @@ class ChatAnswerCarrier {
           if (full == null) continue;
           await send(peer, {'type': ChatAnswerRules.partsType, 'op': 'parts', 'parts': [full.blob.toJson()]});
           sent++;
+          _sentAt319['$peer|${p.answerId}#${p.part}'] = now;
+          to.add(_short(p.answerId));
         } catch (_) {
           return sent; // link gone: the next meeting goes on
         }
       }
     }
-    if (sent > 0) AppLogger.info('ADMIN_ANSWER_PARTS_SENT', detail: 'parts=$sent');
+    if (sent > 0) {
+      // Bundle 319 (F8): which answers, to which phone.
+      AppLogger.info('ADMIN_ANSWER_PARTS_SENT',
+          detail: 'parts=$sent answer=${to.join('+')} to=${_short(peer)}');
+    }
+    if (_sentAt319.length > 20000) _sentAt319.removeWhere((_, t) => now.difference(t) >= resendGap);
     return sent;
   }
+
+  final Map<String, DateTime> _sentAt319 = <String, DateTime>{};
 
   // ------------------------------------------------------------------ server
 
@@ -951,31 +1180,11 @@ class ChatAnswerCarrier {
   // ------------------------------------------------------------------- views
 
   /// Confirmed parts of the best answer of a card (server / admin phone).
+  /// Bundle 319 (F1): the same count as [refreshProgress], for one card.
   Future<AnswerProgress?> progressOf(String actionId) async {
-    AnswerProgress? best;
-    for (final a in (await store.acks()).values) {
-      if (a.actionId != actionId) continue;
-      if (a.all && a.have.length < a.of) continue; // Bundle 317: a stop, not "all here"
-      if (best == null || a.all || a.have.length > best.have) {
-        best = (have: a.all ? a.of : a.have.length, of: a.of, all: a.all);
-      }
-    }
-    {
-      // The admin's phone counts what it holds itself (Bundle 317 G4: an
-      // ack can be up to 2 s behind the parts here -> the larger count).
-      final mine = (await store.metas()).where((p) => p.actionId == actionId && _isMine(p));
-      final by = <String, Set<int>>{};
-      var of = 0;
-      for (final p in mine) {
-        (by[p.answerId] ??= <int>{}).add(p.part);
-        of = p.of;
-      }
-      if (by.isNotEmpty) {
-        final n = by.values.map((s) => s.length).reduce((a, b) => a > b ? a : b);
-        if (best == null || (!best.all && n > best.have)) best = (have: n, of: of, all: n >= of);
-      }
-    }
-    return best;
+    final acks = [for (final a in (await store.acks()).values) if (a.actionId == actionId) a];
+    final mine = (await store.metas()).where((p) => p.actionId == actionId && _isMine(p));
+    return countProgress(acks, mine)[actionId];
   }
 
   /// "I carry 1-40 of 80" lines for the carrier's own view (logs / tests).

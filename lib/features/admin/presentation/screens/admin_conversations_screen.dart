@@ -78,7 +78,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     _viewSub = widget.viewMode?.stream.listen((_) => _reload());
     // A2: the pill flips within 10 s when the server drops or comes back.
     _pill = Timer.periodic(AdminConversationsScreen.pillEvery, (_) => unawaited(_checkPill()));
-    unawaited(_load());
+    unawaited(_reload319());
   }
 
   void _files317() {
@@ -93,10 +93,15 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     unawaited(_viewSub?.cancel());
     _pill?.cancel();
     _advance?.cancel();
+    _reload319.close();
     super.dispose();
   }
 
-  void _reload() => unawaited(_load());
+  /// Bundle 319 (F7): every part / card change reloaded the whole list
+  /// (open + decrypt); now merged - max once per 2 s, one at a time.
+  void _reload() => unawaited(_reload319());
+
+  late final MergedRun319 _reload319 = MergedRun319(_load, gap: const Duration(seconds: 2));
 
   Future<void> _checkPill() async {
     final s = _svc;
