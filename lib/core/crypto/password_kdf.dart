@@ -209,6 +209,19 @@ abstract interface class OfflineLoginReason278 {
 
 /// Bundle 278: the words for each reason (the same words as before for a
 /// wrong password).
+/// Bundle 321 (L13 / L14): what the phone could not open, said AFTER the
+/// server reason (so it never reads as a password problem).
+String offlineAfterServerText321(String reason) {
+  switch (reason) {
+    case 'no_copy':
+      return L.t.offlineNoCopy321;
+    case 'other_user':
+      return L.t.offlineOtherUser321;
+    default:
+      return L.t.offlineBadPassword321;
+  }
+}
+
 String offlineLoginText278(String reason) {
   switch (reason) {
     case 'no_copy':

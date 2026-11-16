@@ -751,8 +751,10 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
   Future<void> _resetAccount() async {
     ChatVideoHub.instance.stopAll();
     await ChatRequestNotifier307.instance?.clearAll(); // Bundle 307 (C1)
-    // Bundle 180: logging out removes the saved logs too.
-    unawaited(AppLogFile.instance.clearAll());
+    // Bundle 321 (L17 / D3): Reset keeps the last hour of logs (was: all
+    // logs deleted - why no failed sign-in after a reset was ever in a log).
+    AppLogger.info('RESET_SETUP', detail: 'logs=kept_last_hour');
+    AppLogFile.instance.keepLastHour321();
     PresenceHub.instance.forgetPeople();
     MediaViewCache.instance.forgetAll();
     try {

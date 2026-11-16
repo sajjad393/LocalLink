@@ -348,7 +348,7 @@ void main() {
       final row = _row(tester, 'f1');
       expect(row.state, VoiceState310.getting);
       expect(row.progress, closeTo(1 / 3, 0.001));
-      expect(row.label, '1 / 3');
+      expect(row.label, 'Coming \u00b7 1 / 3'); // Bundle 321 (R4, listed change)
       // Now the file is here.
       srv.reqs = [
         {

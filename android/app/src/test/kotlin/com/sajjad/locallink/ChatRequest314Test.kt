@@ -49,12 +49,14 @@ class ChatRequest314Test {
     }
 
     @Test
-    fun `Android 15 and older keep the sliding line while waiting, a filled bar once parts come`() {
+    fun `Android 15 and older - waiting shows the hourglass bar, parts the filled bar (321 N3 replaces the sliding line)`() {
         assertTrue(ChatRequestNotifier307.plan("sent", 4, false).compatSliding)
         assertTrue(ChatRequestNotifier307.plan("reached", 33, false).compatSliding)
         assertFalse(ChatRequestNotifier307.plan("coming", 70, false).compatSliding)
-        val card = src("kotlin/com/sajjad/locallink/ChatRequestNotifier307.kt")
-        assertTrue(card.contains("b.setProgress(100, plan.progress, plan.compatSliding)"))
+        assertEquals("wait", ChatRequestNotifier307.bar321(ChatRequestNotifier307.plan("sent", 4, false), "", "", "", 4).tracker)
+        assertEquals(70, ChatRequestNotifier307.bar321(ChatRequestNotifier307.plan("coming", 70, false), "", "", "", 70).progress)
+        val compat = src("kotlin/com/sajjad/locallink/ChatCard321.kt")
+        assertTrue(compat.contains("NotificationCompat.DecoratedCustomViewStyle()"))
     }
 
     @Test

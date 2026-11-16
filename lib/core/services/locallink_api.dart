@@ -656,9 +656,11 @@ class LocalLinkApi {
     var duplicate = false;
     var ownerUserId = '';
     var ownerName = '';
+    var minVersion = ''; // Bundle 321 (L-10)
     try {
       final json = jsonDecode(response.body);
       if (json is Map) {
+        minVersion = json['min_version']?.toString() ?? '';
         code = json['error_code']?.toString() ?? '';
         owner = json['owner']?.toString() ?? '';
         // Bundle 235: this very phone has another account.
@@ -673,7 +675,8 @@ class LocalLinkApi {
         status: response.statusCode,
         duplicate: duplicate,
         ownerUserId: ownerUserId,
-        ownerName: ownerName);
+        ownerName: ownerName,
+        minVersion: minVersion);
   }
 
   Future<LocalProfile> getProfile({bool downloadAvatar = true}) async {
@@ -1596,13 +1599,17 @@ class ApiError218 implements Exception {
   final String ownerUserId;
   final String ownerName;
 
+  /// Bundle 321 (L-10): the version a 426 asks for ('' = not said).
+  final String minVersion;
+
   const ApiError218(this.message,
       {this.code = '',
       this.owner = '',
       this.status = 0,
       this.duplicate = false,
       this.ownerUserId = '',
-      this.ownerName = ''});
+      this.ownerName = '',
+      this.minVersion = ''});
 
   @override
   String toString() => 'Exception: $message';

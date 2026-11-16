@@ -30,7 +30,8 @@ import 'package:locallink/features/admin/data/actions/file_queue_317.dart'; // B
 import 'package:locallink/features/admin/data/actions/kept_copy_318.dart'; // Bundle 318
 import 'package:locallink/core/services/kept_sql_318.dart'; // Bundle 318
 import 'package:locallink/features/admin/data/actions/admin_action_book.dart' show AdminActionBook; // Bundle 307
-import 'package:flutter/foundation.dart' show Listenable; // Bundle 307
+import 'package:flutter/foundation.dart' show Listenable, visibleForTesting; // Bundle 307
+import 'package:locallink/core/state/server_status_321.dart';
 import 'package:locallink/features/admin/data/actions/delete_completely_doer.dart';
 import 'package:locallink/core/services/hidden_store_221.dart';
 import 'package:locallink/features/admin/data/models/admin_block_record.dart' show AdminBlockRecord;
@@ -208,7 +209,7 @@ class AppDependencies {
     );
     _serverConnectionSubscription = socket.connectionState.listen(
       (connected) {
-        viewMode.setServerConnected(connected);
+        serverStatus321(connected); // Bundle 321 (F11)
         // Bundle 109: server just dropped → nudge local linking for trusted
         // devices so conversations reroute onto Wi-Fi Direct/mesh by
         // themselves.
@@ -266,6 +267,9 @@ class AppDependencies {
         (peerId) => routePolicy.routes[peerId]?.isAvailable ?? false;
     // Bundle 158: phones on this Wi-Fi (a bridge is only for the others).
     wifiDirectFallback.lanPeerIds = () => routePolicy.lanPeerIds;
+    // Bundle 321 (L19b): the server's state for the group self-repair.
+    wifiDirectFallback.serverDownSince321 = () => _serverDownAt321;
+    wifiDirectFallback.serverRetry321 = () => unawaited(_serverRetry321());
     // Bundle 260 (A1): phones linked through the Wi-Fi Direct group (a
     // member with none of them for 30 s leaves a dead group).
     wifiDirectFallback.groupPeerIds = () => [
@@ -798,6 +802,39 @@ class AppDependencies {
   late final AdminCapabilityService adminCapability;
   StreamSubscription<bool>? _serverConnectionSubscription;
 
+  /// Bundle 321 (F11): ONE server status for every screen (see
+  /// [ServerStatus321]).
+  late final ServerStatus321 _serverStatus321 = ServerStatus321(
+    set: viewMode.setServerConnected,
+    current: () => viewMode.state.serverConnected,
+    socketUp: () => socket.isConnected,
+  );
+
+  /// Bundle 321 (L19b): since when (ms) the server socket is down (0 = up
+  /// or no server set up) - for the Wi-Fi Direct self-repair.
+  int _serverDownAt321 = 0;
+
+  /// Bundle 321 (L19b): after leaving the own group, ask the server again.
+  Future<void> _serverRetry321() async {
+    try {
+      await Future<void>.delayed(const Duration(seconds: 3));
+      if (socket.isConnected) return;
+      if ((store.serverAddress ?? '').trim().isEmpty) return;
+      AppLogger.info('WD_GROUP_DROP_RETRY');
+      await api.connectRealtime();
+    } catch (_) {}
+  }
+
+  @visibleForTesting
+  void serverStatus321(bool connected) {
+    if (!connected && _serverDownAt321 == 0 && (store.serverAddress ?? '').trim().isNotEmpty) {
+      _serverDownAt321 = DateTime.now().millisecondsSinceEpoch;
+    }
+    if (connected) _serverDownAt321 = 0;
+    _serverStatus321.onSocket(connected);
+  }
+
+
   /// Bundle 212: admin block / unblock of any user with no internet.
   late final AdminBlockService adminBlocks;
 
@@ -923,7 +960,7 @@ class AppDependencies {
         deviceId: () => store.deviceId ?? '',
         deviceToken: () => store.deviceToken ?? '',
       ),
-      serverOnline: () => socket.isConnected,
+      serverOnline: () => viewMode.state.serverConnected, // Bundle 321 (F11)
       signAdminAck: (body) async {
         final cert = await adminBlocks.usableCert();
         if (cert == null) return null;
@@ -959,7 +996,7 @@ class AppDependencies {
         deviceId: () => store.deviceId ?? '',
         deviceToken: () => store.deviceToken ?? '',
       ),
-      serverOnline: () => socket.isConnected,
+      serverOnline: () => viewMode.state.serverConnected, // Bundle 321 (F11)
       serverUrl: () => store.serverAddress ?? '',
       pinnedServerKey: () => adminBlocks.serverKey,
       peerName: _name221,
@@ -1020,7 +1057,7 @@ class AppDependencies {
         deviceToken: () => store.deviceToken ?? '',
       ),
       hints: socket.messages,
-      serverOnline: () => socket.isConnected,
+      serverOnline: () => viewMode.state.serverConnected, // Bundle 321 (F11)
       online: socket.connectionState, // Bundle 310 (P2)
       viaOf: (peer) => switch (routePolicy.routes[peer]?.kind) {
         LocalRouteKind.lan => 'wifi',
@@ -1125,7 +1162,7 @@ class AppDependencies {
         if (s == null || !s.usable) return null;
         return (token: s.token, role: s.role, username: s.username);
       },
-      serverOnline: () => socket.isConnected,
+      serverOnline: () => viewMode.state.serverConnected, // Bundle 321 (F11)
       actions: adminActions,
       reader: reader,
       myBoxKey: crypto.publicKey,
@@ -1149,6 +1186,7 @@ class AppDependencies {
       write: store.writeSetting,
       purgeHere: purge221,
       progressOf: chatCarrier221.progressOf,
+      progressAll: chatCarrier221.progressAll, // Bundle 321 (F2)
       // Bundle 314 (1 / 1c): the server's groups + the nearby groups members
       // reported to this phone (read when asked: the notes start later).
       serverGroups: HttpChatAdminServer(baseUrl: () => api.baseUrl).groups314,
@@ -1278,7 +1316,7 @@ class AppDependencies {
         deviceId: () => store.deviceId ?? '',
         deviceToken: () => store.deviceToken ?? '',
       ).post,
-      serverOnline: () => socket.isConnected,
+      serverOnline: () => viewMode.state.serverConnected, // Bundle 321 (F11)
       ownerPhones: () async {
         final owners = {
           for (final b in AdminBadgeBook.instance.badges)
@@ -1785,6 +1823,7 @@ class AppDependencies {
   Future<void> initializeLocalOnlyServices({bool coreDone = false}) async {
     if (!coreDone) await initializeCore(localOnly: true);
     await connectivity.start();
+    _serverStatus321.reset();
     viewMode.setServerConnected(false);
     await mesh.start();
     await wifiDirectFallback.start();
@@ -2100,6 +2139,7 @@ class AppDependencies {
     // service - only Log out does (LocalLinkApp sign-out path).
     await _serverConnectionSubscription?.cancel();
     _serverConnectionSubscription = null;
+    _serverStatus321.reset();
     socket.dispose();
     httpClient.close();
     await store.close();

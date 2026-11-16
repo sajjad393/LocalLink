@@ -101,6 +101,7 @@ import 'package:locallink/core/models/attachment.dart';
 import 'package:locallink/features/messaging/presentation/widgets/message_options.dart';
 import 'package:locallink/features/authentication/data/services/offline_account_sync_service.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
+import 'package:locallink/features/authentication/domain/login_problem_321.dart';
 import 'package:locallink/features/account/presentation/widgets/private_profile_card.dart';
 import 'package:locallink/core/identity/person_name_258.dart';
 import 'package:locallink/l10n/l10n.dart';
@@ -190,6 +191,18 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       _sharingLogs = false;
     }
+  }
+
+  /// Bundle 321 (L2 / D2): once after the saved account was opened
+  /// because the server did not answer.
+  Future<void> _loginNote321() async {
+    try {
+      final text = await LoginNote321.take(
+          read: widget.store.readSetting, write: widget.store.writeSetting);
+      if (text == null || !mounted) return;
+      AppLogger.info('LOGIN_NOTE_SHOWN');
+      LinkToast.show(context, text, kind: LinkToastKind.info, duration: const Duration(seconds: 6));
+    } catch (_) {}
   }
 
   late final HomeBloc _controller = HomeBloc(
@@ -320,6 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
             context, widget.notifications);
       }
     });
+    unawaited(_loginNote321()); // Bundle 321 (L2 / D2)
     _themeMode = widget.themeMode;
     if (widget.store.isOfflinePending) {
       _offlineSync = OfflineAccountSyncService(
@@ -1373,6 +1387,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   serverOnline: _serverOn273,
                   onOpenChat: (id) => unawaited(_openMyLink273(id)),
                   selfId: widget.store.deviceId,
+                  // Bundle 321 (F6): my own letter in the middle, not "Y" from "You".
+                  selfName: (widget.store.username?.trim().isNotEmpty ?? false) ? widget.store.username!.trim() : 'You',
                 ),
                 // Bundle 153 / 183 (O): the shared small grey CAPITALS title
                 // ("CONVERSATIONS"), 12 below the top bar.

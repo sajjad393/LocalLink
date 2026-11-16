@@ -37,6 +37,7 @@ import 'package:locallink/core/services/message_delete_book.dart';
 import 'package:locallink/core/services/person_phones_237.dart';
 import 'package:locallink/core/services/media_book.dart';
 import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/core/services/own_profile_261.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/features/calls/data/transport/network_policy.dart';
@@ -159,12 +160,15 @@ class LocalStore {
 
   Future<void> init() async {
     if (_databaseOpened) return;
+    final open321 = Stopwatch()..start(); // Bundle 321 (S2)
     final dbPath = p.join(await getDatabasesPath(), DatabaseConfig.name);
     _db = await _databaseEncryption.open(
       path: dbPath,
       version: _dbVersion,
       onCreate: (db, version) async => _createSchema(db),
       onUpgrade: (db, oldVersion, newVersion) async {
+        // Bundle 321 (S2): the slow first start after an update, in the log.
+        final up321 = Stopwatch()..start();
         if (oldVersion < 2) await _upgradeTo2(db);
         if (oldVersion < 3) await _upgradeTo3(db);
         if (oldVersion < 4) await _upgradeTo4(db);
@@ -197,6 +201,8 @@ class LocalStore {
         if (oldVersion < 32) await _upgradeTo32(db);
         if (oldVersion < 33) await _upgradeTo33(db);
         if (oldVersion < 34) await _upgradeTo34(db);
+        AppLogger.info('STARTUP_DB_SCHEMA_UPGRADE',
+            detail: 'from=$oldVersion to=$newVersion ms=${up321.elapsedMilliseconds}');
       },
     );
     _databaseOpened = true;
@@ -213,6 +219,17 @@ class LocalStore {
     await _migrateLegacySharedPreferences();
     await _ensureStableDeviceId();
     await repairOwnProfile261(); // Bundle 261 (A1)
+    // Bundle 321 (S2): the first start of a new app build is the slow one
+    // (2.9 s vs ~0.2 s) - say so in the log, with the open time.
+    try {
+      final before = (await readSetting('last_build_321')) ?? '';
+      final now = '${AppBuild.sent}';
+      if (before != now) {
+        AppLogger.info('STARTUP_DB_UPGRADE',
+            detail: 'from=${before.isEmpty ? '-' : before} to=$now ms=${open321.elapsedMilliseconds}');
+        await writeSetting('last_build_321', now);
+      }
+    } catch (_) {}
   }
 
   // A per-install random device id made every reinstall register a duplicate
@@ -1659,7 +1676,14 @@ class LocalStore {
     await _secureStorage.delete(key: _offlineLoginKey);
   }
 
+  /// Bundle 321 (L15): the server address of the account that was reset -
+  /// a search candidate only (checked like a search result; the key pin is
+  /// cleared with the rest).
+  static const String lastServerKey321 = 'last_server_321';
+  Future<String> lastServer321() async => (await readSetting(lastServerKey321))?.trim() ?? '';
+
   Future<void> clearConfiguration() async {
+    final last321 = _serverAddress?.trim() ?? '';
     _serverAddress = null;
     _deviceId = null;
     _deviceName = null;
@@ -1717,6 +1741,7 @@ class LocalStore {
     } catch (_) {}
     await _secureStorage.delete(key: _tokenKey);
     await _secureStorage.delete(key: _recoveryRequestSecretKey);
+    if (last321.isNotEmpty) await writeSetting(lastServerKey321, last321); // Bundle 321 (L15)
   }
 
   Future<void> saveProfile(LocalProfile profile) async {

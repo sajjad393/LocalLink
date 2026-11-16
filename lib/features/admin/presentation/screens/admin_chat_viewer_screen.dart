@@ -20,6 +20,7 @@ import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart'
 import 'package:locallink/features/admin/presentation/widgets/conversations_kit307.dart';
 import 'package:locallink/features/admin/presentation/widgets/conversations_kit320.dart';
 import 'package:locallink/features/admin/presentation/widgets/viewer_bubbles310.dart';
+import 'package:locallink/features/admin/presentation/widgets/viewer_kit321.dart';
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 221 (mock A-3): the copy of a chat the phones sent. Route tag per
@@ -134,20 +135,32 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
         _family318 = family;
         _keptFiles318 = kept;
       }
-      final all = await widget.service.requests();
-      final out = <String, ChatRequestRow221>{};
-      for (final r in all) {
-        if (r.action != 'get_file' || !family.contains(r.parent) || r.fileId.isEmpty) continue;
-        if (r.state == 'cancelled') continue;
-        final old = out[r.fileId];
-        if (old == null || (!_ready310(old) && (_ready310(r) || r.madeAt.compareTo(old.madeAt) > 0))) out[r.fileId] = r;
+      // Bundle 321 (F9): this phone's own rows first (no server wait), then
+      // the full list.
+      if (_files310.isEmpty) {
+        final saved = _pickFiles321(await widget.service.savedRequests321(), family);
+        if (mounted && saved.isNotEmpty && _files310.isEmpty) setState(() => _files310 = saved);
       }
+      final all = await widget.service.requests();
+      final out = _pickFiles321(all, family);
       if (!mounted) return;
       setState(() => _files310 = out);
       final waiting = _asked310.any((f) => !_ready310(out[f])) || out.values.any((r) => !_ready310(r));
       _filePoll310?.cancel();
       _filePoll310 = waiting ? Timer(const Duration(seconds: 10), () => unawaited(_loadFiles310())) : null;
     } catch (_) {}
+  }
+
+  /// The newest / ready Get file row per file of this chat's family.
+  static Map<String, ChatRequestRow221> _pickFiles321(List<ChatRequestRow221> all, Set<String> family) {
+    final out = <String, ChatRequestRow221>{};
+    for (final r in all) {
+      if (r.action != 'get_file' || !family.contains(r.parent) || r.fileId.isEmpty) continue;
+      if (r.state == 'cancelled') continue;
+      final old = out[r.fileId];
+      if (old == null || (!_ready310(old) && (_ready310(r) || r.madeAt.compareTo(old.madeAt) > 0))) out[r.fileId] = r;
+    }
+    return out;
   }
 
   // Bundle 317 (A): here = every part here (`done` = the phone only answered).
@@ -253,6 +266,10 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   // Bundle 317 (G6): files come by themselves; the viewer only shows them.
   final Map<String, Uint8List> _bytes317 = <String, Uint8List>{};
   final Set<String> _loading317 = <String>{};
+
+  /// Bundle 321 (F10): a picture is fetched by itself once per screen (a
+  /// failed one is not asked again on every redraw; a tap still retries).
+  final Set<String> _tried321 = <String>{};
   bool _allHereGone317 = false;
   Timer? _allHereTimer317;
 
@@ -310,9 +327,10 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     return o.isNotEmpty ? o : (FileQueue317.trips.value[widget.request.id]?.from ?? '');
   }
 
-  Future<Uint8List?> _bytesOf317(ChatRequestRow221 row) async {
+  Future<Uint8List?> _bytesOf317(ChatRequestRow221 row, {bool auto = false}) async {
     final have = _bytes317[row.fileId];
     if (have != null) return have;
+    if (auto && !_tried321.add(row.fileId)) return null;
     if (!_loading317.add(row.fileId)) return null;
     try {
       final b = await widget.service.fileBytes(row);
@@ -613,7 +631,31 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(widget.request.label.isEmpty ? L.t.chat : widget.request.label,
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(16, FontWeight.w700, k.ink, 1.2)),
-                  Text(_sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12.5, FontWeight.w400, k.grey, 1.25)),
+                  // Bundle 321 (R4): an icon line; a kept copy says "Kept here
+                  // until 24 Nov" here (green, no extra line).
+                  if (v != null && v.fromKept318 && v.keptUntil318.isNotEmpty)
+                    Row(key: const ValueKey('viewer320_kept'), children: [
+                      Icon(Icons.lock_rounded, size: 13, color: k.green),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                            [
+                              L.t.keptHereUntil321(Kept318.day(v.keptUntil318)),
+                              if (v.newOnly318 && v.newIds318.isNotEmpty)
+                                L.t.plusNew318(v.newIds318.length, whenSub216(v.keptNewAt318)),
+                            ].join(' \u00b7 '),
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12.5, FontWeight.w600, k.green, 1.25)),
+                      ),
+                    ])
+                  else
+                    Row(children: [
+                      Icon(Icons.smartphone_rounded, size: 13, color: k.grey),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(_sub,
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: k.text(12.5, FontWeight.w400, k.grey, 1.25)),
+                      ),
+                    ]),
                 ]),
               ),
               const SizedBox(width: 6),
@@ -631,7 +673,6 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
               ))),
             ]),
           ),
-          if (v != null && v.fromKept318 && v.keptUntil318.isNotEmpty) _keptLine320(v),
           if (v != null && !v.empty && !v.forAdminPhone) _progressCard(v),
           if (v != null && v.complete && !v.forAdminPhone) _filesStrip317(),
           Expanded(
@@ -664,60 +705,27 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
       // Bundle 320 (R7): a thin strip "Coming · 40 of 80 parts" (+ "about
       // 1 min" once 2+ updates give a rate) instead of the big B9 card.
       final eta = AdminChatViewerScreenEta320.of(_rate320, v.of);
-      final words = v.of > 0 ? L.t.comingParts320(v.parts, v.of) : L.t.coming320;
-      inner = Container(
+      // Bundle 321 (R4): the same card as the files card - "Coming · 40 of
+      // 80 parts" (count in blue), "about 1 min · read what is here already".
+      final count = L.t.countOf321('${v.parts}', '${v.of}');
+      inner = TopCard321(
         key: const ValueKey('viewer221_parts'),
-        margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-        decoration: k.cardBox(radius: 14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(Icons.downloading_rounded, size: 17, color: k.blue),
-            const SizedBox(width: 8),
-            Expanded(child: Text(words, style: k.text(13.5, FontWeight.w600, k.ink, 1.3))),
-            if (eta.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Text(eta, key: const ValueKey('viewer320_eta'), style: k.text(12.5, FontWeight.w500, k.grey, 1.3)),
-            ],
-          ]),
-          const SizedBox(height: 7),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: SizedBox(
-              height: 3,
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(end: v.of <= 0 ? 0 : (v.parts / v.of).clamp(0, 1).toDouble()),
-                duration: Motion307.d(context, 400),
-                builder: (context, x, _) => LinearProgressIndicator(
-                  key: const ValueKey('parts221_bar'),
-                  value: x,
-                  backgroundColor: k.track,
-                  color: k.blue,
-                ),
-              ),
-            ),
-          ),
-        ]),
+        icon: Icons.downloading_rounded,
+        tone: k.blue,
+        title: v.of > 0 ? countSpan321(L.t.comingCount321(count), count, k.blueText) : TextSpan(text: L.t.coming320),
+        sub: [if (eta.isNotEmpty) eta, L.t.readWhatIsHere321].join(' \u00b7 '),
+        bar: v.of <= 0 ? 0 : (v.parts / v.of).clamp(0, 1).toDouble(),
+        barKey: const ValueKey('parts221_bar'),
       );
     } else {
-      inner = Container(
+      inner = TopCard321(
         key: const ValueKey('viewer307_ready'),
-        margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-        decoration: k.cardBox(radius: 14, edge: K307.ok, edgeWidth: 1.5),
-        child: Row(children: [
-          Icon(Icons.check_circle_rounded, size: 17, color: k.green),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text.rich(
-              TextSpan(children: [
-                TextSpan(text: step.bigBefore),
-                TextSpan(text: step.highlight, style: TextStyle(color: k.green, fontWeight: FontWeight.w800)),
-                TextSpan(text: step.bigAfter),
-              ]),
-              style: k.text(14, FontWeight.w700, k.ink, 1.3),
-            ),
-          ),
+        icon: Icons.check_rounded,
+        tone: k.green,
+        title: TextSpan(children: [
+          TextSpan(text: step.bigBefore),
+          TextSpan(text: step.highlight, style: TextStyle(color: k.green, fontWeight: FontWeight.w800)),
+          TextSpan(text: step.bigAfter),
         ]),
       );
     }
@@ -734,58 +742,54 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   Widget _filesStrip317() {
     final trip = FileQueue317.trips.value[widget.request.id];
     final k = K307.of(context);
-    final cs = Theme.of(context).colorScheme;
-    final t = A216Text.of(context);
     final show = trip != null && trip.total > 0 && !(trip.done && _allHereGone317) && !trip.stopped;
     Widget inner = const SizedBox(width: double.infinity);
     if (show) {
+      // Bundle 321 (R4): icon tile, "3 of 7 files here" (count in blue),
+      // MB + who brings them, red Stop pill, one segment per file; all here
+      // -> green "All files here" (slides away after 3 s).
       final done = trip.done;
       final color = done ? k.green : (trip.waiting ? k.orange : k.blue);
-      final line1 = done
-          ? L.t.allFilesHere317
-          : '${L.t.filesOf317(trip.here, trip.wanted)} \u00b7 ${L.t.mbOf317(size216(trip.bytesHere), size216(trip.bytesTotal))}';
-      final line2 = [
-        if (trip.waiting && !done) L.t.filesWaiting317,
-        if (trip.from.isNotEmpty) L.t.fromPhone317(trip.from),
-        if (trip.via.isNotEmpty) L.t.viaName317(trip.via),
-      ].join(' \u00b7 ');
-      inner = Container(
+      final count = L.t.countOf321('${trip.here}', '${trip.wanted}');
+      final title = done
+          ? TextSpan(text: L.t.allFilesHere317, style: TextStyle(color: k.green))
+          : countSpan321(L.t.filesHere321(count), count, trip.waiting ? k.orange : k.blueText);
+      final sub = done
+          ? L.t.nFilesSize321('${trip.here}', size216(trip.bytesTotal))
+          : [
+              L.t.mbOf317(size216(trip.bytesHere), size216(trip.bytesTotal)),
+              if (trip.waiting) L.t.filesWaiting317,
+              if (trip.from.isNotEmpty) L.t.fromPhone317(trip.from),
+              if (trip.via.isNotEmpty) L.t.viaName317(trip.via),
+            ].join(' \u00b7 ');
+      final views = FileQueue317.instance?.viewsOf(widget.request.id) ?? const <String, FileView317>{};
+      final pieces = <Piece321>[
+        for (final x in views.values)
+          if (x.state == FileState317.here)
+            const Piece321(1, done: true)
+          else if (x.state == FileState317.coming)
+            Piece321(x.of > 0 ? (x.parts / x.of).clamp(0.12, 1).toDouble() : 0.12)
+          else if (x.state == FileState317.next)
+            const Piece321(0),
+      ];
+      inner = TopCard321(
         key: const ValueKey('viewer317_files_strip'),
-        margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-        decoration: k.cardBox(),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-          Row(children: [
-            Icon(done ? Icons.check_circle_rounded : Icons.photo_library_rounded, size: 18, color: color),
-            const SizedBox(width: 8),
-            Expanded(child: Text(line1, style: t.custom(14, FontWeight.w700, cs.onSurface, 1.3))),
-            // Bundle 317 (G7): Stop files (the files not here yet stop).
-            if (!done)
-              TextButton(
+        icon: done ? Icons.check_rounded : (trip.waiting ? Icons.hourglass_top_rounded : Icons.photo_library_rounded),
+        tone: color,
+        title: title,
+        sub: sub,
+        // Bundle 317 (G7): Stop files (the files not here yet stop).
+        trailing: done
+            ? null
+            : StopPill321(
                 key: const ValueKey('viewer317_stop_files'),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: const Size(48, 36),
-                  foregroundColor: cs.error,
-                ),
-                onPressed: () =>
-                    unawaited(FileQueue317.instance?.stopFiles(widget.request.id).catchError((Object _) {})),
-                child: Text(L.t.stopFiles317, style: t.custom(13, FontWeight.w600, cs.error, 1.2)),
+                label: L.t.stop,
+                onTap: () => unawaited(FileQueue317.instance?.stopFiles(widget.request.id).catchError((Object _) {})),
               ),
-          ]),
-          if (line2.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(line2, style: t.custom(12, FontWeight.w400, cs.onSurface.withValues(alpha: 0.62), 1.3)),
-          ],
-          if (!done) ...[
-            const SizedBox(height: 7),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(minHeight: 3, value: trip.fill, backgroundColor: k.track, color: color),
-            ),
-          ],
-        ]),
+        pieces: pieces.isEmpty || pieces.length > 40
+            ? null
+            : (done ? [for (final _ in pieces) const Piece321(1, done: true)] : pieces),
+        bar: pieces.isEmpty || pieces.length > 40 ? (done ? 1 : trip.fill) : null,
       );
     }
     return AnimatedSize(
@@ -928,23 +932,6 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
               ),
             ),
           ),
-      ]),
-    );
-  }
-
-  /// Bundle 320 (R8): one quiet green line "Kept on this phone until 23 Nov".
-  Widget _keptLine320(ChatAnswerView v) {
-    final k = K307.of(context);
-    return Padding(
-      key: const ValueKey('viewer320_kept'),
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(padding: const EdgeInsets.only(top: 2), child: Icon(Icons.lock_rounded, size: 14, color: k.green)),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(L.t.keptOnPhoneUntil320(Kept318.day(v.keptUntil318)),
-              style: k.text(13, FontWeight.w600, k.green, 1.3)),
-        ),
       ]),
     );
   }
@@ -1111,13 +1098,20 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     const r = Radius.circular(18);
     const tail = Radius.circular(6);
     final timeStyle = t.custom(11, FontWeight.w500, soft);
+    // Bundle 321 (R4): a photo / video alone fills the bubble (time on the
+    // picture or in its "from X's phone" line).
+    bool isMedia(Map<String, dynamic> a) {
+      final ty = a['type']?.toString() ?? '';
+      return (ty.startsWith('image/') || ty.startsWith('video/')) && !Viewer310.isAudio(ty, a['name']?.toString() ?? '');
+    }
+    final media = body.isEmpty && !deleted && !outside && atts.isNotEmpty && atts.every(isMedia);
     final bubble = GestureDetector(
       key: ValueKey('viewer221_msg_${m['id']}'),
       onLongPress: () => _longPress(m),
       child: Container(
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
         margin: const EdgeInsets.symmetric(vertical: 2.5),
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        padding: media ? const EdgeInsets.all(4) : const EdgeInsets.fromLTRB(12, 8, 12, 4),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.only(
@@ -1127,12 +1121,12 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
         Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           if (showName)
             Padding(
-              padding: const EdgeInsets.only(bottom: 1),
+              padding: media ? const EdgeInsets.fromLTRB(8, 4, 8, 3) : const EdgeInsets.only(bottom: 1),
               child: Text(shown,
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(12.5, FontWeight.w700, avatarColor221(shown))),
             ),
           for (final a in _oneEach317(atts))
-            deleted ? Opacity(opacity: 0.55, child: _attachment(m, a)) : _attachment(m, a),
+            deleted ? Opacity(opacity: 0.55, child: _attachment(m, a)) : _attachment(m, a, time: media ? time : ''),
           if (body.isNotEmpty)
             BubbleText310(
                 text: body + ((m['cut'] == true) ? ' …' : ''),
@@ -1159,9 +1153,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
             Text(L.t.outsideTheDatesPhoneClock, style: t.custom(12, FontWeight.w500, soft)),
           ],
           // No text: the time sits alone on the last line, right.
-          SizedBox(height: body.isEmpty ? 16 : 2),
+          SizedBox(height: media ? 0 : (body.isEmpty ? 16 : 2)),
         ]),
-        if (body.isEmpty) Positioned(right: 0, bottom: 2, child: Text(time, style: timeStyle)),
+        if (body.isEmpty && !media) Positioned(right: 0, bottom: 2, child: Text(time, style: timeStyle)),
         ]),
       ),
     );
@@ -1198,7 +1192,7 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
   /// Bundle 317 (D / G6): photo / video / file - no Get button. Next in
   /// line / Coming x / y / shows (tap opens) / Not on the phone any more /
   /// Too big to bring. Video icon for videos; size under the name.
-  Widget _attachment(Map<String, dynamic> m, Map<String, dynamic> a) {
+  Widget _attachment(Map<String, dynamic> m, Map<String, dynamic> a, {String time = ''}) {
     final cs = Theme.of(context).colorScheme;
     final t = A216Text.of(context);
     final k = K307.of(context);
@@ -1222,9 +1216,10 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     final soft = cs.onSurface.withValues(alpha: 0.62);
     final icon = video ? Icons.videocam_rounded : (photo ? Icons.image_rounded : Icons.insert_drive_file_rounded);
     final row = st.row;
+    if (photo || video) return _media321(a, st, fileId: fileId, video: video, size: size, thumb: thumb, time: time);
     if (st.state == FileState317.here && row != null) {
       final bytes = photo ? _bytes317[fileId] : null;
-      if (photo && bytes == null) unawaited(_bytesOf317(row));
+      if (photo && bytes == null) unawaited(_bytesOf317(row, auto: true));
       final Widget pic = bytes != null
           ? Image.memory(bytes, width: 220, height: 160, fit: BoxFit.cover, gaplessPlayback: true)
           : thumb != null
@@ -1350,6 +1345,93 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
     );
   }
 
+  /// Bundle 321 (R4): a photo / video as one picture tile (mock 1-4):
+  /// coming / next = blurred preview + ring + words + "from X's phone";
+  /// here = the picture fills the bubble (time on it; tap opens);
+  /// can't come = dark greyed preview + block sign + reason.
+  Widget _media321(Map<String, dynamic> a, FileView317 st,
+      {required String fileId, required bool video, required int size, Uint8List? thumb, String time = ''}) {
+    final cs = Theme.of(context).colorScheme;
+    final t = A216Text.of(context);
+    final soft = cs.onSurface.withValues(alpha: 0.62);
+    final who = _who317;
+    final sz = size > 0 ? size216(size) : '';
+    final chip = sz.isEmpty ? (video ? L.t.video : L.t.photo) : (video ? L.t.videoSize317(sz) : L.t.photoSize317(sz));
+    final row = st.row;
+    switch (st.state) {
+      case FileState317.here when row != null:
+        final bytes = video ? null : _bytes317[fileId];
+        if (!video && bytes == null) unawaited(_bytesOf317(row, auto: true));
+        return Padding(
+          key: ValueKey('viewer317_file_${fileId}_here'),
+          padding: const EdgeInsets.only(bottom: 2),
+          child: MediaTile321(
+              kind: Media321.here,
+              video: video,
+              chip: chip,
+              time: time,
+              picture: bytes,
+              thumb: thumb,
+              onTap: () => unawaited(_openFile317(a, row))),
+        );
+      case FileState317.here || FileState317.next || FileState317.coming:
+        final coming = st.state == FileState317.coming;
+        final tile = MediaTile321(
+          key: ValueKey('viewer320_by_itself_$fileId'),
+          kind: coming ? Media321.coming : Media321.next,
+          video: video,
+          chip: chip,
+          time: time,
+          thumb: thumb,
+          progress: st.of > 0 ? st.parts / st.of : 0,
+          line1: coming ? L.t.comingByItself320 : L.t.nextInLine317,
+          line2: coming ? (st.of > 0 ? L.t.partsCount321('${st.parts}', '${st.of}') : '') : L.t.comesByItself321,
+        );
+        return Padding(
+          key: ValueKey('viewer317_file_${fileId}_${st.state.name}'),
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            tile,
+            SizedBox(
+              width: MediaTile321.width,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(6, 5, 4, 1),
+                child: Row(children: [
+                  Icon(Icons.smartphone_rounded, size: 13, color: soft),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(who.isEmpty ? '' : L.t.fromPhone317(who),
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: t.custom(12, FontWeight.w400, soft, 1.3)),
+                  ),
+                  if (time.isNotEmpty) Text(time, style: t.custom(11, FontWeight.w500, soft)),
+                ]),
+              ),
+            ),
+          ]),
+        );
+      case FileState317.gone || FileState317.tooBig || FileState317.stopped:
+        final words = switch (st.state) {
+          FileState317.tooBig => L.t.tooBigToBring317,
+          FileState317.stopped => L.t.filesStopped317,
+          _ when a['file_gone'] == true => L.t.fileRemovedAfter60DaysThumbnail,
+          _ => who.isEmpty ? L.t.notOnThePhoneAnyMore317 : L.t.notOnPhoneAnyMore317(who),
+        };
+        return Padding(
+          key: ValueKey('viewer317_file_${fileId}_${st.state.name}'),
+          padding: const EdgeInsets.only(bottom: 2),
+          child: MediaTile321(
+            kind: Media321.gone,
+            video: video,
+            chip: '',
+            time: time,
+            thumb: thumb,
+            line1: words,
+            line2: chip,
+          ),
+        );
+    }
+  }
+
   /// Bundle 310 (V4): a voice note = the voice row (bars + length). Get =
   /// ask the phones (as Get file); when the file is here it plays here.
   Widget _voice310Row(Map<String, dynamic> m, Map<String, dynamic> a, bool gone) {
@@ -1377,7 +1459,9 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
       };
     } else if (_loading310 == fileId) {
       state = VoiceState310.getting;
-    } else if (f != null && _ready310(f)) {
+    } else if ((f != null && _ready310(f)) || (st.state == FileState317.here && st.row != null)) {
+      // Bundle 321 (F8): the same "here" as photos (a kept voice note too).
+      final playRow = f != null && _ready310(f) ? f : st.row!;
       final playing = _playing310 == fileId;
       state = playing ? VoiceState310.playing : VoiceState310.ready;
       if (playing) {
@@ -1385,12 +1469,19 @@ class _AdminChatViewerScreenState extends State<AdminChatViewerScreen> {
         played = len > 0 ? _playMs310 / len : 0;
         label = '${Viewer310.clock(_playMs310)} / ${Viewer310.clock(len)}';
       }
-      onTap = () => unawaited(_playVoice310(f));
-    } else if (f != null || _asked310.contains(fileId)) {
+      onTap = () => unawaited(_playVoice310(playRow));
+    } else if (f != null || _asked310.contains(fileId) || st.state == FileState317.coming) {
       state = VoiceState310.getting;
-      if (f != null && f.of > 0) {
-        progress = f.parts / f.of;
-        label = '${f.parts} / ${f.of}';
+      // Bundle 321 (F8): the queue's parts while it comes (never stuck on
+      // "Next in line"); no parts yet -> "Coming from X's phone".
+      final parts = f != null && f.of > 0 ? f.parts : st.parts;
+      final of = f != null && f.of > 0 ? f.of : st.of;
+      if (of > 0) {
+        progress = parts / of;
+        label = L.t.voiceComing321('$parts', '$of'); // Bundle 321 (R4)
+      } else {
+        final who = _who317;
+        label = who.isEmpty ? L.t.coming317 : L.t.comingFrom317(who);
       }
     } else {
       state = VoiceState310.getting;

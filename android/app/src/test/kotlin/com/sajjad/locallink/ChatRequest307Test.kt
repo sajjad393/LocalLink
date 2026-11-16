@@ -39,12 +39,12 @@ class ChatRequest307Test {
     }
 
     @Test
-    fun `Ready is not ongoing, has Open chat, and buzzes only when asked`() {
+    fun `Ready is not ongoing, has no buttons (321 pick B), and buzzes only when asked`() {
         val ready = ChatRequestNotifier307.plan("ready", 80, buzz = true)
         assertFalse(ready.ongoing)
         assertFalse(ready.promoted)
         assertEquals(100, ready.progress)
-        assertTrue(ready.openButton)
+        assertFalse(ready.openButton) // Bundle 321 (N1): tap opens the chat
         assertTrue(ready.readyPointGreen)
         assertTrue(ready.alert)
         assertEquals(ChatRequestNotifier307.READY_CHANNEL_ID, ready.channel)
@@ -120,7 +120,7 @@ class ChatRequest307Test {
             assertFalse(up.alert)
             assertFalse(up.grey)
             assertTrue(up.readyPointGreen)
-            assertTrue(up.openButton)
+            assertFalse(up.openButton) // Bundle 321 (N1)
             assertEquals(ChatRequestNotifier307.CHANNEL_ID, up.channel)
             assertEquals(ChatRequestNotifier307.UP_TO_DATE_TIMEOUT_MS, up.timeoutMs)
             assertEquals(ChatRequestNotifier307.GREEN, ChatRequestNotifier307.trackerColor(up))

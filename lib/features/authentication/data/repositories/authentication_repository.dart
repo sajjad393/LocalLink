@@ -6,7 +6,7 @@ import 'package:locallink/core/crypto/password_kdf.dart';
 import 'package:locallink/core/crypto/recovery_code.dart';
 import 'package:locallink/core/models/profile.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
-import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/features/authentication/domain/login_problem_321.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/local_store.dart';
 import 'package:locallink/features/authentication/data/services/server_hint_256.dart';
@@ -104,55 +104,79 @@ class AuthenticationRepository
   }) async {
     final name = deviceName.trim().isEmpty ? 'My Android Phone' : deviceName.trim();
     final savedServer = _store.serverAddress?.trim() ?? '';
-
-    final candidates = <String>{};
-    if (savedServer.isNotEmpty) {
-      candidates.add(savedServer);
-    }
-
-    var foundCount = 0; // Bundle 265 (R1): for the first-trust log only
+    // Bundle 321 (L15): the address of the account that was reset - a
+    // search candidate only, checked like any search result.
+    var lastServer = '';
     try {
-      final discovered = await discoverServers();
-      foundCount = discovered.length;
-      candidates.addAll(discovered.map((server) => server.address));
+      lastServer = savedServer.isEmpty ? await _store.lastServer321() : '';
     } catch (_) {}
-    // Bundle 256 A3: the address a nearby LinkUp phone told (checked by
-    // the same server proof below, plus its key tail).
-    final hint = ServerHint256.instance.address?.trim() ?? '';
-    if (hint.isNotEmpty) candidates.add(hint);
+    final started = DateTime.now();
 
-    if (candidates.isEmpty) {
-      throw StateError('No LinkUp server is available on the local network.');
+    // Bundle 321 (L8 / L16): the search runs WHILE the saved address is
+    // asked; a second round only when the first found nothing and the
+    // saved address did not pass.
+    var done = false;
+    var foundCount = 0; // Bundle 265 (R1): for the first-trust log only
+    var rounds = 0;
+    Future<List<DiscoveredServer>> search() async {
+      for (var round = 1; round <= 2; round++) {
+        if (done) return const [];
+        rounds = round;
+        try {
+          final found = await discoverServers();
+          if (found.isNotEmpty) return found;
+        } catch (_) {}
+      }
+      if (!done) {
+        AppLogger.info('SERVER_SEARCH', detail: 'none reason=no_reply rounds=$rounds');
+      }
+      return const [];
     }
 
-    Object? lastError;
+    final searching = search();
+    final tried = <String>{};
+    LoginProblem321? network; // first network failure (saved address first)
+    LoginProblem321? answered; // a server answered but the check failed (L-11)
     // Bundle 256 A5: a server that ANSWERED with a problem (identity
     // changed, bad proof) is not "no server": no phone-only account then.
     String? problem;
-    for (final candidate in candidates) {
+    final hint = ServerHint256.instance.address?.trim() ?? '';
+
+    Future<bool> tryOne(String candidate) async {
+      if (candidate.isEmpty || !tried.add(candidate)) return false;
+      final t0 = DateTime.now();
+      String addr() => LoginProblem321.hostOf(candidate);
+      int ms() => DateTime.now().difference(t0).inMilliseconds;
       try {
-        final info = await verifyServer(address: candidate, deviceName: name);
+        // Bundle 321 (L6): asked BEFORE it is saved - a failed try keeps
+        // the old address.
+        final info = await _api.probePairingInfo(candidate);
         if (candidate == hint &&
             hint != savedServer &&
             !ServerHint256.instance.keyMatches(info.serverKey)) {
           AppLogger.info('SERVER_HINT_IGNORED', detail: 'reason=key_tail');
-          lastError = StateError('No LinkUp server is available on the local network.');
-          continue;
+          AppLogger.info('AUTH_VERIFY', detail: 'addr=${addr()} result=hint_ignored ms=${ms()}');
+          return false;
         }
         final identityError = serverIdentityError(info);
         if (identityError != null) {
-          lastError = StateError(identityError);
           problem ??= identityError;
-          continue;
+          AppLogger.info('AUTH_VERIFY', detail: 'addr=${addr()} result=key_changed ms=${ms()}');
+          return false;
         }
         // Bundle 231 (audit S2): the pinned server key must match the proof.
         final proofError =
             await ServerProof231.check(info, read: _store.readSetting);
         if (proofError != null) {
-          lastError = StateError(proofError);
           problem ??= proofError;
-          continue;
+          AppLogger.info('AUTH_VERIFY', detail: 'addr=${addr()} result=bad_proof ms=${ms()}');
+          return false;
         }
+        await _store.saveConfiguration(
+          server: LocalLinkApi.normalizeServerAddress(candidate),
+          id: _store.deviceId ?? _store.generateDeviceId(),
+          name: name,
+        );
 
         // First-contact trust is automatic so the authentication UI never
         // exposes server identity/setup controls. Existing pinned trust is
@@ -163,23 +187,51 @@ class AuthenticationRepository
         }
         await ServerProof231.pin(info,
             read: _store.readSetting, write: _store.writeSetting);
-
-        return;
+        AppLogger.info('AUTH_VERIFY', detail: 'addr=${addr()} result=ok ms=${ms()}');
+        return true;
       } catch (error) {
-        lastError = error;
         if (error is StateError && error.message == ServerProof231.identityChanged) {
           problem ??= error.message;
+          AppLogger.info('AUTH_VERIFY', detail: 'addr=${addr()} result=bad_proof ms=${ms()}');
+          return false;
         }
+        final p = LoginProblem321.of(error, stage: 'verify', address: candidate);
+        if (p.noServer) {
+          network ??= p;
+        } else {
+          answered ??= p;
+        }
+        AppLogger.info('AUTH_VERIFY',
+            detail: 'addr=${addr()} result=${LoginProblem321.verifyWord(p.code)} ms=${ms()}');
+        return false;
       }
     }
 
-    if (problem != null) throw ServerProblem256(problem);
-    final last = lastError;
-    throw StateError(
-      last == null
-          ? 'LinkUp server could not be verified.'
-          : cleanBlocError(last),
-    );
+    try {
+      if (await tryOne(savedServer)) return;
+      if (await tryOne(lastServer)) return;
+      final discovered = await searching;
+      foundCount = discovered.length;
+      AppLogger.info('AUTH_CANDIDATES',
+          detail: 'saved=${savedServer.isEmpty ? 0 : 1} last=${lastServer.isEmpty ? 0 : 1} '
+              'found=$foundCount hint=${hint.isEmpty ? 0 : 1} rounds=$rounds');
+      for (final server in discovered) {
+        if (await tryOne(server.address)) return;
+      }
+      // Bundle 256 A3: the address a nearby LinkUp phone told (checked by
+      // the same server proof, plus its key tail).
+      if (await tryOne(hint)) return;
+    } finally {
+      done = true;
+    }
+
+    final p = problem;
+    if (p != null) throw ServerProblem256(p);
+    AppLogger.info('AUTH_SEARCH_DONE',
+        detail: 'ok=0 ms=${DateTime.now().difference(started).inMilliseconds}');
+    if (answered != null) throw answered!;
+    if (network != null) throw network!;
+    throw const LoginProblem321('L-01');
   }
 
   @override

@@ -6184,5 +6184,185 @@
         "type": "Object?"
       }
     }
+  },
+  "loginL01_321": "No LinkUp server answered on this Wi-Fi. Check that the server PC is on and this phone is on the same Wi-Fi.",
+  "loginL02a_321": "This phone can't reach the server PC ({address}) on this Wi-Fi. Turn Wi-Fi off and on, then try again.",
+  "@loginL02a_321": {
+    "placeholders": {
+      "address": {
+        "type": "Object?"
+      }
+    }
+  },
+  "loginL02b_321": "The server PC is not answering. Try again.",
+  "loginL02c_321": "The server program is not running on {address}.",
+  "@loginL02c_321": {
+    "placeholders": {
+      "address": {
+        "type": "Object?"
+      }
+    }
+  },
+  "loginL03_321": "Wrong username or password.",
+  "loginL04_321": "Too many wrong tries. This account is locked for a few minutes.",
+  "loginL05_321": "Too many tries from this phone. Wait 1 minute.",
+  "loginL06_321": "This server is not the one this phone knows. Ask the admin.",
+  "loginL07_321": "This phone must be paired by the admin first.",
+  "loginL08_321": "This phone was removed by the admin.",
+  "loginL09_321": "This account is turned off. Ask the admin.",
+  "loginL10_321": "Update LinkUp to sign in (version {version} or newer).",
+  "@loginL10_321": {
+    "placeholders": {
+      "version": {
+        "type": "Object?"
+      }
+    }
+  },
+  "loginL11_321": "The server had a problem (code {status}). Try again; if it repeats, share logs.",
+  "@loginL11_321": {
+    "placeholders": {
+      "status": {
+        "type": "Object?"
+      }
+    }
+  },
+  "loginL12_321": "The server was found but did not finish signing in. Try again.",
+  "loginL13_321": "Signed in on this phone only - server not answering ({reason}). It connects by itself later.",
+  "@loginL13_321": {
+    "placeholders": {
+      "reason": {
+        "type": "Object?"
+      }
+    }
+  },
+  "loginCode321": "Code {code} · {address}",
+  "@loginCode321": {
+    "placeholders": {
+      "code": {
+        "type": "Object?"
+      },
+      "address": {
+        "type": "Object?"
+      }
+    }
+  },
+  "loginCodeOnly321": "Code {code}",
+  "@loginCodeOnly321": {
+    "placeholders": {
+      "code": {
+        "type": "Object?"
+      }
+    }
+  },
+  "offlineNoCopy321": "This phone has no saved sign-in to open offline.",
+  "offlineOtherUser321": "Offline, this phone opens only the last account used on it.",
+  "offlineBadPassword321": "Offline, the username and password do not match the copy saved on this phone.",
+  "loginStepSearch321": "Looking for the server…",
+  "loginStepFound321": "Server found · {address} · signing in…",
+  "@loginStepFound321": {
+    "placeholders": {
+      "address": {
+        "type": "Object?"
+      }
+    }
+  },
+  "messagesHere321": "Messages here · {here} of {total} files coming",
+  "@messagesHere321": {
+    "placeholders": {
+      "here": {
+        "type": "Object?"
+      },
+      "total": {
+        "type": "Object?"
+      }
+    }
+  },
+  "filesNotAvailable321": "{n} files not available",
+  "@filesNotAvailable321": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
+  },
+  "fileNotAvailable321": "1 file not available",
+  "filesHere321": "{count} files here",
+  "@filesHere321": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "comingCount321": "Coming · {count} parts",
+  "@comingCount321": {
+    "placeholders": {
+      "count": {
+        "type": "Object?"
+      }
+    }
+  },
+  "countOf321": "{a} of {b}",
+  "@countOf321": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      },
+      "b": {
+        "type": "Object?"
+      }
+    }
+  },
+  "readWhatIsHere321": "read what is here already",
+  "nFilesSize321": "{n} files · {size}",
+  "@nFilesSize321": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      },
+      "size": {
+        "type": "Object?"
+      }
+    }
+  },
+  "partsCount321": "{a} / {b} parts",
+  "@partsCount321": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      },
+      "b": {
+        "type": "Object?"
+      }
+    }
+  },
+  "comesByItself321": "comes by itself",
+  "keptHereUntil321": "Kept here until {day}",
+  "@keptHereUntil321": {
+    "placeholders": {
+      "day": {
+        "type": "Object?"
+      }
+    }
+  },
+  "voiceComing321": "Coming · {a} / {b}",
+  "@voiceComing321": {
+    "placeholders": {
+      "a": {
+        "type": "Object?"
+      },
+      "b": {
+        "type": "Object?"
+      }
+    }
+  },
+  "waitingShort321": "waiting",
+  "nChats321": "{n} chats",
+  "@nChats321": {
+    "placeholders": {
+      "n": {
+        "type": "Object?"
+      }
+    }
   }
 }

@@ -51,6 +51,8 @@ class _Repo implements RecoveryRepositoryContract {
 
   @override
   Future<({AccountRecoveryStart start, String server})> createNoCodeRequest222({required String username}) async {
+    // Bundle 321 (L10): a tap searches + sends; no server found = StateError.
+    if (!online) throw StateError('No LinkUp server is available on the local network.');
     saved = {'request_id': 'req-123456789', 'request_secret': 'sec'};
     return (
       start: AccountRecoveryStart.fromJson({'request': {'request_id': 'req-123456789', 'status': 'pending', 'username': username}, 'request_secret': 'sec'}),
@@ -197,7 +199,9 @@ void main() {
       final bloc = ForgotPasswordBloc222(repo);
       await bloc.start();
       await bloc.askAdmin(username: 'sajjad');
-      expect(bloc.state.error, 'This needs the server. Try again when the server is back.');
+      // Bundle 321 (L10): it tried (search + send) and says what it found.
+      expect(bloc.state.error,
+          'No LinkUp server answered on this Wi-Fi. Check that the server PC is on and this phone is on the same Wi-Fi.');
       expect(repo.saved, isNull);
       await bloc.close();
     });

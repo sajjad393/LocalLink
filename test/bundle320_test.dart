@@ -431,8 +431,9 @@ void main() {
           chat: {'kind': 'group', 'group_id': 'g-f'});
       await openViewer(tester, _Svc(_Srv()), r, view: kept);
       expect(tester.takeException(), isNull);
-      expect(find.text('Kept on this phone until 23 Nov'), findsOneWidget);
-      expect(find.text("Full chat \u00b7 from kiran's phone"), findsOneWidget);
+      // Bundle 321 (R4, listed change): the kept line moved into the header.
+      expect(find.text('Kept here until 23 Nov'), findsOneWidget);
+      expect(find.byKey(const ValueKey('viewer320_kept')), findsOneWidget);
       expect(find.textContaining('got ', findRichText: true), findsNothing);
       expect(find.byKey(const ValueKey('viewer221_parts')), findsNothing);
     });

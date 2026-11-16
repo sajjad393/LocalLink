@@ -14669,6 +14669,222 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All here · {n} parts'**
   String allHere320(Object? n);
+
+  /// No description provided for @loginL01_321.
+  ///
+  /// In en, this message translates to:
+  /// **'No LinkUp server answered on this Wi-Fi. Check that the server PC is on and this phone is on the same Wi-Fi.'**
+  String get loginL01_321;
+
+  /// No description provided for @loginL02a_321.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone can\'t reach the server PC ({address}) on this Wi-Fi. Turn Wi-Fi off and on, then try again.'**
+  String loginL02a_321(Object? address);
+
+  /// No description provided for @loginL02b_321.
+  ///
+  /// In en, this message translates to:
+  /// **'The server PC is not answering. Try again.'**
+  String get loginL02b_321;
+
+  /// No description provided for @loginL02c_321.
+  ///
+  /// In en, this message translates to:
+  /// **'The server program is not running on {address}.'**
+  String loginL02c_321(Object? address);
+
+  /// No description provided for @loginL03_321.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong username or password.'**
+  String get loginL03_321;
+
+  /// No description provided for @loginL04_321.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many wrong tries. This account is locked for a few minutes.'**
+  String get loginL04_321;
+
+  /// No description provided for @loginL05_321.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many tries from this phone. Wait 1 minute.'**
+  String get loginL05_321;
+
+  /// No description provided for @loginL06_321.
+  ///
+  /// In en, this message translates to:
+  /// **'This server is not the one this phone knows. Ask the admin.'**
+  String get loginL06_321;
+
+  /// No description provided for @loginL07_321.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone must be paired by the admin first.'**
+  String get loginL07_321;
+
+  /// No description provided for @loginL08_321.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone was removed by the admin.'**
+  String get loginL08_321;
+
+  /// No description provided for @loginL09_321.
+  ///
+  /// In en, this message translates to:
+  /// **'This account is turned off. Ask the admin.'**
+  String get loginL09_321;
+
+  /// No description provided for @loginL10_321.
+  ///
+  /// In en, this message translates to:
+  /// **'Update LinkUp to sign in (version {version} or newer).'**
+  String loginL10_321(Object? version);
+
+  /// No description provided for @loginL11_321.
+  ///
+  /// In en, this message translates to:
+  /// **'The server had a problem (code {status}). Try again; if it repeats, share logs.'**
+  String loginL11_321(Object? status);
+
+  /// No description provided for @loginL12_321.
+  ///
+  /// In en, this message translates to:
+  /// **'The server was found but did not finish signing in. Try again.'**
+  String get loginL12_321;
+
+  /// No description provided for @loginL13_321.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in on this phone only - server not answering ({reason}). It connects by itself later.'**
+  String loginL13_321(Object? reason);
+
+  /// No description provided for @loginCode321.
+  ///
+  /// In en, this message translates to:
+  /// **'Code {code} · {address}'**
+  String loginCode321(Object? code, Object? address);
+
+  /// No description provided for @loginCodeOnly321.
+  ///
+  /// In en, this message translates to:
+  /// **'Code {code}'**
+  String loginCodeOnly321(Object? code);
+
+  /// No description provided for @offlineNoCopy321.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone has no saved sign-in to open offline.'**
+  String get offlineNoCopy321;
+
+  /// No description provided for @offlineOtherUser321.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline, this phone opens only the last account used on it.'**
+  String get offlineOtherUser321;
+
+  /// No description provided for @offlineBadPassword321.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline, the username and password do not match the copy saved on this phone.'**
+  String get offlineBadPassword321;
+
+  /// No description provided for @loginStepSearch321.
+  ///
+  /// In en, this message translates to:
+  /// **'Looking for the server…'**
+  String get loginStepSearch321;
+
+  /// No description provided for @loginStepFound321.
+  ///
+  /// In en, this message translates to:
+  /// **'Server found · {address} · signing in…'**
+  String loginStepFound321(Object? address);
+
+  /// No description provided for @messagesHere321.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages here · {here} of {total} files coming'**
+  String messagesHere321(Object? here, Object? total);
+
+  /// No description provided for @filesNotAvailable321.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} files not available'**
+  String filesNotAvailable321(Object? n);
+
+  /// No description provided for @fileNotAvailable321.
+  ///
+  /// In en, this message translates to:
+  /// **'1 file not available'**
+  String get fileNotAvailable321;
+
+  /// No description provided for @filesHere321.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} files here'**
+  String filesHere321(Object? count);
+
+  /// No description provided for @comingCount321.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming · {count} parts'**
+  String comingCount321(Object? count);
+
+  /// No description provided for @countOf321.
+  ///
+  /// In en, this message translates to:
+  /// **'{a} of {b}'**
+  String countOf321(Object? a, Object? b);
+
+  /// No description provided for @readWhatIsHere321.
+  ///
+  /// In en, this message translates to:
+  /// **'read what is here already'**
+  String get readWhatIsHere321;
+
+  /// No description provided for @nFilesSize321.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} files · {size}'**
+  String nFilesSize321(Object? n, Object? size);
+
+  /// No description provided for @partsCount321.
+  ///
+  /// In en, this message translates to:
+  /// **'{a} / {b} parts'**
+  String partsCount321(Object? a, Object? b);
+
+  /// No description provided for @comesByItself321.
+  ///
+  /// In en, this message translates to:
+  /// **'comes by itself'**
+  String get comesByItself321;
+
+  /// No description provided for @keptHereUntil321.
+  ///
+  /// In en, this message translates to:
+  /// **'Kept here until {day}'**
+  String keptHereUntil321(Object? day);
+
+  /// No description provided for @voiceComing321.
+  ///
+  /// In en, this message translates to:
+  /// **'Coming · {a} / {b}'**
+  String voiceComing321(Object? a, Object? b);
+
+  /// No description provided for @waitingShort321.
+  ///
+  /// In en, this message translates to:
+  /// **'waiting'**
+  String get waitingShort321;
+
+  /// No description provided for @nChats321.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} chats'**
+  String nChats321(Object? n);
 }
 
 class _AppLocalizationsDelegate

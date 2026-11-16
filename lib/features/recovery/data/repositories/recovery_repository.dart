@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:locallink/core/security/server_proof_231.dart';
 import 'dart:convert';
 import 'dart:math';
@@ -41,6 +42,13 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
     final savedServer = _store.serverAddress?.trim() ?? '';
     final candidates = <String>{};
     if (savedServer.isNotEmpty) candidates.add(savedServer);
+    // Bundle 321 (L9): the address kept through "Reset setup".
+    if (savedServer.isEmpty) {
+      try {
+        final last = await _store.lastServer321();
+        if (last.isNotEmpty) candidates.add(last);
+      } catch (_) {}
+    }
 
     try {
       final discovered = await discoverServers();
@@ -177,19 +185,68 @@ final class RecoveryRepository implements RecoveryRepositoryContract {
   static String codeHash222(String code) =>
       sha256.convert(utf8.encode(formatCode222(code))).toString();
 
+  /// Bundle 321 (L9 / L12): the same check as sign-in - the saved (or
+  /// last) address first, then a search of the Wi-Fi. Was: "no saved
+  /// address -> offline" with no network request at all. Saves nothing.
   @override
   Future<bool> serverOnline222() async {
-    final saved = _store.serverAddress?.trim() ?? '';
-    if (saved.isEmpty) return false;
-    try {
-      final info = await verifyServer(saved).timeout(const Duration(seconds: 4));
-      final pinned = _store.serverFingerprint ?? '';
-      if (pinned.isNotEmpty && pinned.toUpperCase() != info.fingerprint.toUpperCase()) return false;
-      // Bundle 231: a server that fails the key check counts as not reachable.
-      return await ServerProof231.check(info, read: _store.readSetting) == null;
-    } catch (_) {
-      return false;
+    final t0 = DateTime.now();
+    var result = 'none';
+    Future<bool> ask(String address) async {
+      try {
+        final info = await verifyServer(address).timeout(const Duration(seconds: 4));
+        final pinned = _store.serverFingerprint ?? '';
+        if (pinned.isNotEmpty && pinned.toUpperCase() != info.fingerprint.toUpperCase()) {
+          result = 'key_changed';
+          return false;
+        }
+        // Bundle 231: a server that fails the key check counts as not reachable.
+        if (await ServerProof231.check(info, read: _store.readSetting) != null) {
+          result = 'key_changed';
+          return false;
+        }
+        result = 'ok';
+        return true;
+      } on TimeoutException {
+        if (result == 'none') result = 'timeout';
+        return false;
+      } catch (_) {
+        return false;
+      }
     }
+
+    final saved = _store.serverAddress?.trim() ?? '';
+    var last = '';
+    if (saved.isEmpty) {
+      try {
+        last = await _store.lastServer321();
+      } catch (_) {}
+    }
+    var found = 0;
+    var ok = false;
+    final tried = <String>{};
+    for (final a in [saved, last]) {
+      if (a.isNotEmpty && tried.add(a) && await ask(a)) {
+        ok = true;
+        break;
+      }
+    }
+    if (!ok) {
+      try {
+        final list = await discoverServers();
+        found = list.length;
+        for (final s in list) {
+          if (tried.add(s.address) && await ask(s.address)) {
+            ok = true;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+    AppLogger.info('RECOVERY_SERVER_CHECK',
+        detail: 'saved=${saved.isEmpty && last.isEmpty ? 0 : 1} found=$found result=$result '
+            'ms=${DateTime.now().difference(t0).inMilliseconds}');
+    return ok;
   }
 
   @override

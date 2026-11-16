@@ -87,12 +87,12 @@ void main() {
     expect(a['request_id'], 'r1');
     expect(a['step'], 'sent');
     expect(a['progress'], 4);
-    expect(a['title'], 'Sent to 2 phones');
-    expect(a['text'], 'Waiting for their phones');
-    expect(a['sub_text'], 'kiran & ayesha');
+    // Bundle 321 (N1, pick B): one line, no text line, no buttons.
+    expect(a['title'], 'kiran & ayesha \u00b7 waiting');
+    expect(a.containsKey('text'), isFalse);
     expect(a['names'], ['kiran', 'ayesha']);
     expect(a['buzz'], false);
-    expect(a['open_label'], 'Open chat');
+    expect(a.containsKey('open_label'), isFalse);
     expect(a['channel_name'], 'LinkUp chat requests');
     expect(a['when'], DateTime.parse('2026-11-15T10:00:00Z').millisecondsSinceEpoch);
 
@@ -102,18 +102,17 @@ void main() {
     a = cards.shows.last;
     expect(a['step'], 'reached');
     expect(a['progress'], 33);
-    expect(a['title'], '1 of 2 phones');
+    expect(a['title'], 'kiran & ayesha \u00b7 waiting');
     expect(a['short'], '1/2');
-    expect(a['text'], 'Looking for the chat');
 
     now = now.add(const Duration(seconds: 2));
     rows = [_row('r1', reached: 1, parts: 12, of: 40, fromName: 'ayesha')];
     await n.refresh();
     a = cards.shows.last;
     expect(a['step'], 'coming');
-    expect(a['title'], '12 of 40 parts');
+    expect(a['title'], 'kiran & ayesha \u00b7 12/40');
     expect(a['short'], '12/40');
-    expect(a['text'], "Answer coming from ayesha's phone");
+    expect(a['from_name'], 'ayesha');
     expect(a['progress'], 77); // 66.7 + 33.3 * 12 / 40
 
     now = now.add(const Duration(seconds: 2));
@@ -122,8 +121,7 @@ void main() {
     a = cards.shows.last;
     expect(a['step'], 'ready');
     expect(a['progress'], 100);
-    expect(a['title'], 'Ready to read');
-    expect(a['text'], 'Tap to open \u00b7 40 parts');
+    expect(a['title'], 'kiran & ayesha \u2713');
     expect(a['when'], 0); // newest = top of the group
     expect(a['buzz'], true);
     expect(cards.shows, hasLength(4));
@@ -178,14 +176,14 @@ void main() {
     rows = [_row('r1'), _row('r2')];
     await n.refresh();
     expect(cards.shows.last['summary_count'], 2);
-    expect(cards.shows.last['summary_title'], '2 chat requests \u00b7 0 ready');
-    expect(cards.shows.last['summary_lines'], ['kiran & ayesha \u00b7 Sent', 'kiran & ayesha \u00b7 Sent']);
+    expect(cards.shows.last['summary_title'], '2 chats');
+    expect(cards.shows.last['summary_lines'], ['kiran & ayesha \u00b7 waiting', 'kiran & ayesha \u00b7 waiting']);
     now = now.add(const Duration(seconds: 2));
     rows = [_row('r1', empty: true), _row('r2', state: 'cancelled')];
     await n.refresh();
     final empty = cards.shows.lastWhere((a) => a['request_id'] == 'r1');
     expect(empty['step'], 'empty');
-    expect(empty['title'], 'No messages');
+    expect(empty['title'], 'kiran & ayesha \u00b7 No messages');
     expect(cards.cancels.single['request_id'], 'r2');
     expect(cards.cancels.single['summary_count'], 0);
     final count = cards.shows.length;

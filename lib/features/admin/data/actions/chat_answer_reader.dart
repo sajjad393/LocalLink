@@ -166,6 +166,10 @@ class HttpChatAdminServer implements ChatAdminServer {
   final http.Client _client;
   static const Duration _timeout = Duration(seconds: 30);
 
+  /// Bundle 321 (F4): the lists (conversations / requests / groups) give
+  /// up after 8 s - the screen already shows what is saved here.
+  static const Duration listTimeout = Duration(seconds: 8);
+
   Map<String, String> _h(String token) =>
       {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'};
 
@@ -205,12 +209,12 @@ class HttpChatAdminServer implements ChatAdminServer {
 
   @override
   Future<List<Map<String, dynamic>>> conversations(String token) async => _list(
-      await _client.get(_uri('/api/v1/admin/conversations'), headers: _h(token)).timeout(_timeout),
+      await _client.get(_uri('/api/v1/admin/conversations'), headers: _h(token)).timeout(listTimeout),
       'conversations');
 
   @override
   Future<List<Map<String, dynamic>>> requests(String token) async => _list(
-      await _client.get(_uri('/api/v1/admin/chat-requests'), headers: _h(token)).timeout(_timeout),
+      await _client.get(_uri('/api/v1/admin/chat-requests'), headers: _h(token)).timeout(listTimeout),
       'requests');
 
   @override
@@ -266,7 +270,7 @@ class HttpChatAdminServer implements ChatAdminServer {
   /// nearby groups members reported (`nearby`).
   Future<Map<String, dynamic>> groups314(String token) async => _map(await _client
       .get(_uri('/api/v1/admin/groups?limit=200'), headers: _h(token))
-      .timeout(_timeout));
+      .timeout(listTimeout));
 }
 
 /// Opens answers meant for this (admin) phone from the local parts.
@@ -465,7 +469,29 @@ class ChatAnswerReader {
       _openedAt.remove(id);
     }
     if (old.isNotEmpty) await _save318();
-    return old.length;
+    // Bundle 321 (F3 / D1): a copy for this phone that was NEVER opened
+    // goes [keepAfterOpen] after its last part came (it stayed forever).
+    // The 318 kept copies live in their own store and are not touched.
+    final self = selfDeviceId();
+    final lastPart = <String, DateTime>{};
+    for (final p in await store.metas()) {
+      if (p.replyTo != self || _openedAt.containsKey(p.answerId)) continue;
+      final t = DateTime.tryParse(p.at);
+      if (t == null) continue;
+      final seen = lastPart[p.answerId];
+      if (seen == null || t.isAfter(seen)) lastPart[p.answerId] = t;
+    }
+    final never = [
+      for (final e in lastPart.entries)
+        if (now.difference(e.value) >= keepAfterOpen) e.key,
+    ];
+    for (final id in never) {
+      await store.dropAnswer(id);
+    }
+    if (never.isNotEmpty) {
+      AppLogger.info('ADMIN_ANSWER_SWEPT_UNOPENED', detail: 'answers=${never.length}');
+    }
+    return old.length + never.length;
   }
 }
 
@@ -712,6 +738,9 @@ class ChatRequests221 {
   final DeleteCompletelyDoer? purgeHere;
   final Future<AnswerProgress?> Function(String actionId)? progressOf;
 
+  /// Bundle 321 (F2): the progress of every request in one count.
+  final Future<Map<String, AnswerProgress>> Function()? progressAll;
+
   /// Bundle 314 (1): the server's group list `{groups:[...], nearby:[...]}`.
   final Future<Map<String, dynamic>> Function(String token)? serverGroups;
 
@@ -738,6 +767,7 @@ class ChatRequests221 {
     required this.write,
     this.purgeHere,
     this.progressOf,
+    this.progressAll,
     this.serverGroups,
     this.reportedGroups,
     this.kept,
@@ -767,8 +797,14 @@ class ChatRequests221 {
   /// Bundle 314: online = the server list (my own chats marked `me`, no
   /// Get chat); offline = the last server list saved here + the nearby
   /// groups members reported, without my own chats (USER PICK K5).
-  Future<List<Map<String, dynamic>>> conversations() async {
-    final token = await _token();
+  Future<List<Map<String, dynamic>>> conversations() => _chats321();
+
+  /// Bundle 321 (F13): the saved list only (no server call) - the first
+  /// paint of Conversations.
+  Future<List<Map<String, dynamic>>> savedConversations321() => _chats321(ask: false);
+
+  Future<List<Map<String, dynamic>>> _chats321({bool ask = true}) async {
+    final token = ask ? await _token() : null;
     if (token != null && serverOnline()) {
       try {
         final list = await server.conversations(token);
@@ -1026,9 +1062,14 @@ class ChatRequests221 {
   }
 
   /// Requests: the server list when online + this phone's own ones.
-  Future<List<ChatRequestRow221>> requests() async {
+  Future<List<ChatRequestRow221>> requests() => _rows321();
+
+  /// Bundle 321 (F13): this phone's own requests only (no server call).
+  Future<List<ChatRequestRow221>> savedRequests321() => _rows321(ask: false);
+
+  Future<List<ChatRequestRow221>> _rows321({bool ask = true}) async {
     final out = <String, ChatRequestRow221>{};
-    final token = await _token();
+    final token = ask ? await _token() : null;
     if (token != null && serverOnline()) {
       try {
         for (final m in await server.requests(token)) {
@@ -1038,10 +1079,16 @@ class ChatRequests221 {
       } catch (_) {}
     }
     final states = {for (final r in actions?.rows() ?? const []) r.id: r};
+    // Bundle 321 (F2): ONE count for all requests (was one parts read per
+    // saved request).
+    Map<String, AnswerProgress>? all;
+    try {
+      all = await progressAll?.call();
+    } catch (_) {}
     for (final m in await _saved()) {
       final id = m['id']?.toString() ?? '';
       if (id.isEmpty) continue;
-      final p = await progressOf?.call(id);
+      final p = all != null ? all[id] : await progressOf?.call(id);
       final st = states[id];
       final known = out[id];
       out[id] = ChatRequestRow221(
@@ -1547,10 +1594,20 @@ class ChatRequests221 {
       final token = await _token();
       if (token != null && serverOnline()) {
         fromServer = true;
-        bytes = await server.download(token, r.id);
+        try {
+          bytes = await server.download(token, r.id);
+        } catch (error) {
+          // Bundle 321 (F10): the server copy failed - the parts on this
+          // phone are tried below.
+          AppLogger.info('ADMIN_FILE_LOCAL', detail: 'why=server_failed id=${r.id}');
+          bytes = null;
+        }
       }
     }
-    if (!fromServer) bytes = (await reader.read(r.id, action: 'get_file')).fileBytes;
+    if (!fromServer || bytes == null || bytes.isEmpty) {
+      final local = (await reader.read(r.id, action: 'get_file')).fileBytes;
+      if (local != null && local.isNotEmpty) bytes = local;
+    }
     if (k != null && bytes != null && bytes.isNotEmpty && r.action == 'get_file' && r.parent.isNotEmpty) {
       final c = await k.forRequest(r.parent).catchError((Object _) => null);
       if (c != null) await k.keepFile(r.fileId, c.id, bytes).catchError((Object _) {});

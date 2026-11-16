@@ -20,15 +20,15 @@ class ChatRequest317Test {
         assertTrue(files.files)
         assertTrue(files.ongoing)
         assertTrue(files.promoted)
-        assertTrue(files.openButton)
-        assertTrue(files.stopButton)
+        assertFalse(files.openButton) // Bundle 321 (N1): no buttons
+        assertFalse(files.stopButton)
         assertFalse(files.alert)
         assertEquals(40, files.progress)
         assertEquals(ChatRequestNotifier307.CHANNEL_ID, files.channel)
         val wait = ChatRequestNotifier307.plan("files_wait", 40, buzz = false)
         assertTrue(wait.ongoing)
         assertTrue(wait.compatSliding)
-        assertTrue(wait.stopButton)
+        assertFalse(wait.stopButton)
         val done = ChatRequestNotifier307.plan("files_done", 10, buzz = false)
         assertFalse(done.ongoing)
         assertFalse(done.promoted)
@@ -82,11 +82,11 @@ class ChatRequest317Test {
     }
 
     @Test
-    fun `source - photo tracker, Stop files button, done auto-cancels`() {
+    fun `source - photo tracker, no Stop button (321 N1), done auto-cancels`() {
         val s = src("kotlin/com/sajjad/locallink/ChatRequestNotifier307.kt")
         assertTrue(s.contains("R.drawable.ic_req317_file"))
-        assertTrue(s.contains("tapIntent(context, STOP_PREFIX + id)"))
-        assertTrue(s.contains("requestCode(id, 1)"))
+        assertFalse(s.contains("tapIntent(context, STOP_PREFIX + id)"))
+        assertFalse(s.contains("addAction("))
         assertTrue(s.contains(".setAutoCancel(plan.step == \"ready\" || plan.step == \"files_done\")"))
         assertTrue(src("res/drawable/ic_req317_file.xml").contains("android:viewportWidth=\"24\""))
     }

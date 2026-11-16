@@ -101,12 +101,28 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     } catch (_) {}
   }
 
+  Future<void> _savedFirst321(ChatRequests221 s) async {
+    try {
+      final chats = await s.savedConversations321();
+      final rows = await s.savedRequests321();
+      if (!mounted || (chats.isEmpty && rows.isEmpty) || !_loading) return;
+      setState(() {
+        _chats = chats;
+        _rows = rows;
+        _loading = false;
+      });
+    } catch (_) {}
+  }
+
   Future<void> _load() async {
     final s = _svc;
     if (s == null) {
       if (mounted) setState(() => _loading = false);
       return;
     }
+    // Bundle 321 (F13): the saved requests + kept copies at once; the
+    // server lists fill in behind (8 s max each).
+    if (_loading && _chats.isEmpty && _rows.isEmpty) await _savedFirst321(s);
     try {
       final online = await s.online();
       final chats = await s.conversations();
@@ -461,6 +477,11 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     }
     final until = kept == null ? null : DateTime.tryParse(kept.keptUntil318)?.toLocal();
     if (until == null || !until.isAfter(DateTime.now())) kept = null;
+    // Bundle 321 (R1): "Ready to read" only when every file is here.
+    final base321 = ready ?? kept;
+    final trip = base321 == null ? null : FileQueue317.trips.value[base321.id];
+    final coming321 = trip != null && trip.total > 0 && trip.active;
+    final notHere321 = trip == null || trip.stopped ? 0 : trip.gone + trip.tooBig;
     Row320 make(Kind320 kind, String status, Tone320 tone, {ChatRequestRow221? open, IconData? icon}) => Row320(
           id: id,
           title: title,
@@ -472,6 +493,8 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
           tone: tone,
           open: open,
           icon: icon,
+          filesComing321: coming321 && (kind == Kind320.ready || kind == Kind320.kept) && tone != Tone320.grey,
+          notHere321: kind == Kind320.ready || kind == Kind320.kept ? notHere321 : 0,
         );
     if (chat?['me'] == true) {
       // Bundle 314 (1 / K1): a chat I am in is already on my phone.
@@ -482,6 +505,9 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       final words = ready.newOnly318 && ready.newCount318 >= 0
           ? (step.upToDate ? L.t.upToDate318 : '${L.t.ready} \u00b7 ${L.t.nNew318(ready.newCount318)}')
           : L.t.readyToReadSection307;
+      if (coming321 && !(ready.newOnly318 && step.upToDate)) {
+        return make(Kind320.ready, L.t.messagesHere321('${trip.here}', '${trip.wanted}'), Tone320.blue, open: ready);
+      }
       return make(Kind320.ready, words, Tone320.green, open: ready);
     }
     if (kept != null) {
@@ -505,7 +531,8 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     final now = _now320(requests);
     final busy = {for (final r in now) _keyOf320(r)}..remove('');
     final rows = _rows320(requests, busy);
-    final readyN = rows.where((x) => x.kind == Kind320.ready).length;
+    final readyN = rows.where((x) => x.kind == Kind320.ready && !x.filesComing321).length;
+    final comingRows321 = rows.where((x) => x.filesComing321).length;
     final keptN = rows.where((x) => x.kind == Kind320.kept).length;
     final q = _query.trim().toLowerCase();
     bool match(String title, List<String> names) =>
@@ -516,7 +543,10 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
     final rowsShown = [
       for (final x in rows)
         if (match(x.title, x.names) &&
-            (_filter == 0 || (_filter == 2 && x.kind == Kind320.ready) || (_filter == 3 && x.kind == Kind320.kept)))
+            (_filter == 0 ||
+                (_filter == 1 && x.filesComing321) ||
+                (_filter == 2 && x.kind == Kind320.ready && !x.filesComing321) ||
+                (_filter == 3 && x.kind == Kind320.kept)))
           x,
     ];
     Widget card(Key key, List<Widget> children) => _pad(Container(
@@ -567,7 +597,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
         padding: const EdgeInsets.only(top: 12),
         child: FilterChips320(
           labels: [L.t.filterAll320, L.t.filterComing320, L.t.ready, L.t.filterKept320],
-          counts: [now.length + rows.length, now.length, readyN, keptN],
+          counts: [now.length + rows.length, now.length + comingRows321, readyN, keptN],
           selected: _filter,
           onSelected: (i) => setState(() => _filter = i),
         ),
@@ -700,8 +730,12 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
         right = ActionPill320(L.t.getChat, Pill320.tonal, key: ValueKey('chats221_ask_${x.id}'), onTap: tap);
     }
     // Bundle 317 (G8): files of a Ready chat still coming - in the same line.
-    final f = r == null ? null : _filesOf320(files: FileQueue317.trips.value[r.id], // Bundle 317 (G8)
-        ready: x.kind == Kind320.ready || x.kind == Kind320.kept);
+    // Bundle 321 (R1): a Ready row says it in its own words (blue) - no
+    // "Files 3/7" added; a kept copy keeps the 317 short count.
+    final f = r == null || x.kind == Kind320.ready
+        ? null
+        : _filesOf320(files: FileQueue317.trips.value[r.id], // Bundle 317 (G8)
+            ready: x.kind == Kind320.kept);
     final status = f == null ? x.status : '${x.status} \u00b7 $f';
     return InkWell(
       key: ValueKey('chats221_row_${x.id}'),
@@ -716,10 +750,19 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
               Text(x.title, style: k.text(16, FontWeight.w700, k.ink, 1.2)),
               const SizedBox(height: 3),
               StatusLine320(status, x.tone,
-                  key: f != null && r != null
+                  key: (f != null || x.filesComing321) && r != null
                       ? ValueKey('requests317_files_${r.id}')
                       : ValueKey('chats320_status_${x.id}'),
                   icon: x.icon),
+              // Bundle 321 (R1): files that can't come - a grey 2nd line.
+              if (x.notHere321 > 0) ...[
+                const SizedBox(height: 2),
+                StatusLine320(
+                    x.notHere321 == 1 ? L.t.fileNotAvailable321 : L.t.filesNotAvailable321('${x.notHere321}'),
+                    Tone320.grey,
+                    key: ValueKey('chats321_gone_${x.id}'),
+                    icon: Icons.block_rounded),
+              ],
             ]),
           ),
           const SizedBox(width: 8),
@@ -767,7 +810,16 @@ class Row320 {
     required this.tone,
     this.open,
     this.icon,
+    this.filesComing321 = false,
+    this.notHere321 = 0,
   });
+
+  /// Bundle 321 (R1): the text is here, files still on their way (blue
+  /// words; counted under Coming, not Ready).
+  final bool filesComing321;
+
+  /// Bundle 321 (R1): files that can't come (grey 2nd line).
+  final int notHere321;
 
   final String id;
   final String title;

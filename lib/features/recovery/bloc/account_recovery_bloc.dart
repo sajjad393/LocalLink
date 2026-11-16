@@ -367,10 +367,11 @@ final class ForgotPasswordState222 extends Equatable {
     String? requestStatus,
     String? rejectedReason,
     bool clearRequest = false,
+    bool clearOnline = false,
   }) {
     return ForgotPasswordState222(
       tab: tab ?? this.tab,
-      online: online ?? this.online,
+      online: clearOnline ? null : (online ?? this.online),
       busy: busy ?? this.busy,
       error: clearError ? null : (error ?? this.error),
       doneCode: doneCode ?? this.doneCode,
@@ -399,7 +400,13 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
 
   ForgotPasswordBloc222(this.repository) : super(const ForgotPasswordState222());
 
+  /// Bundle 321 (L9): checked again this often while the screen is open.
+  static const recheckEvery = Duration(seconds: 20);
+  Timer? _recheck;
+  bool _checking = false;
+
   Future<void> start() async {
+    _recheck ??= Timer.periodic(recheckEvery, (_) => unawaited(checkServer()));
     await checkServer();
     final saved = await repository.pendingRequest();
     final server = repository.serverAddress ?? '';
@@ -417,8 +424,17 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
   }
 
   Future<void> checkServer() async {
-    final online = await repository.serverOnline222();
-    if (!isClosed) emit(state.copyWith(online: online));
+    if (_checking || isClosed) return;
+    _checking = true;
+    try {
+      // Bundle 321 (L9): grey "Checking the server" while it runs (kept
+      // "connected" while a re-check runs, so it does not flicker).
+      if (state.online != true) emit(state.copyWith(clearOnline: true));
+      final online = await repository.serverOnline222();
+      if (!isClosed) emit(state.copyWith(online: online));
+    } finally {
+      _checking = false;
+    }
   }
 
   void selectTab(ForgotTab222 tab) {
@@ -457,7 +473,9 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
     final problem = passwordProblem(newPassword, again);
     if (problem != null) return _fail(problem);
     emit(state.copyWith(busy: true, clearError: true));
-    final online = state.online ?? await repository.serverOnline222();
+    // Bundle 321 (L10): the offline reset only after a FRESH check (saved
+    // address + search) found nothing - never on an old "offline".
+    final online = await repository.serverOnline222();
     try {
       if (online) {
         final result = await repository.resetWithCode222(username: user, recoveryCode: recoveryCode, newPassword: newPassword);
@@ -483,7 +501,8 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
     if (state.busy) return;
     final user = username.trim().toLowerCase();
     if (user.isEmpty) return _fail(L.t.enterYourUsername);
-    if (state.online == false) return _fail(L.t.thisNeedsTheServerTryAgain);
+    // Bundle 321 (L10): a tap = search + send (was: refused at once when
+    // the screen had said "offline").
     emit(state.copyWith(busy: true, clearError: true));
     try {
       final out = await repository.createNoCodeRequest222(username: user);
@@ -497,7 +516,11 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
       ));
       _startPolling();
     } catch (error) {
-      emit(state.copyWith(busy: false, error: _isNetwork(error) ? L.t.thisNeedsTheServerTryAgain : textFor222(error)));
+      // Bundle 321 (L10): no server found -> the L-01 words.
+      emit(state.copyWith(
+          busy: false,
+          online: _isNetwork(error) ? false : null,
+          error: _isNetwork(error) ? L.t.loginL01_321 : textFor222(error)));
     }
   }
 
@@ -617,6 +640,7 @@ final class ForgotPasswordBloc222 extends Cubit<ForgotPasswordState222> {
   @override
   Future<void> close() async {
     _poll?.cancel();
+    _recheck?.cancel();
     return super.close();
   }
 }

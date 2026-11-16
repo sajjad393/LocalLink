@@ -1187,6 +1187,14 @@ class ChatAnswerCarrier {
     return countProgress(acks, mine)[actionId];
   }
 
+  /// Bundle 321 (F2): every card's progress in one count (Conversations
+  /// asked [progressOf] once per saved request).
+  Future<Map<String, AnswerProgress>> progressAll() async {
+    final acks = (await store.acks()).values;
+    final mine = (await store.metas()).where(_isMine);
+    return countProgress(acks, mine);
+  }
+
   /// "I carry 1-40 of 80" lines for the carrier's own view (logs / tests).
   Future<Map<String, String>> carrying() async {
     final by = <String, List<PartMeta>>{};

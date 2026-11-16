@@ -8713,4 +8713,156 @@ class AppLocalizationsUr extends AppLocalizations {
   String allHere320(Object? n) {
     return '⁧سب آ گیا · ⁨$n⁩ حصے⁩';
   }
+
+  @override
+  String get loginL01_321 =>
+      '⁧اس وائی فائی پر کسی LinkUp سرور نے جواب نہیں دیا۔ دیکھیں کہ سرور والا کمپیوٹر آن ہے اور یہ فون اسی وائی فائی پر ہے۔⁩';
+
+  @override
+  String loginL02a_321(Object? address) {
+    return '⁧یہ فون اس وائی فائی پر سرور والے کمپیوٹر (⁨$address⁩) تک نہیں پہنچ پا رہا۔ وائی فائی بند کر کے دوبارہ آن کریں، پھر کوشش کریں۔⁩';
+  }
+
+  @override
+  String get loginL02b_321 =>
+      '⁧سرور والا کمپیوٹر جواب نہیں دے رہا۔ دوبارہ کوشش کریں۔⁩';
+
+  @override
+  String loginL02c_321(Object? address) {
+    return '⁧⁨$address⁩ پر سرور پروگرام نہیں چل رہا۔⁩';
+  }
+
+  @override
+  String get loginL03_321 => '⁧یوزر نیم یا پاس ورڈ غلط ہے۔⁩';
+
+  @override
+  String get loginL04_321 =>
+      '⁧بہت زیادہ غلط کوششیں۔ یہ اکاؤنٹ چند منٹ کے لیے بند ہے۔⁩';
+
+  @override
+  String get loginL05_321 => '⁧اس فون سے بہت زیادہ کوششیں۔ 1 منٹ انتظار کریں۔⁩';
+
+  @override
+  String get loginL06_321 =>
+      '⁧یہ وہ سرور نہیں جسے یہ فون جانتا ہے۔ ایڈمن سے پوچھیں۔⁩';
+
+  @override
+  String get loginL07_321 => '⁧پہلے ایڈمن کو یہ فون جوڑنا ہوگا۔⁩';
+
+  @override
+  String get loginL08_321 => '⁧ایڈمن نے یہ فون ہٹا دیا ہے۔⁩';
+
+  @override
+  String get loginL09_321 => '⁧یہ اکاؤنٹ بند ہے۔ ایڈمن سے پوچھیں۔⁩';
+
+  @override
+  String loginL10_321(Object? version) {
+    return '⁧سائن ان کے لیے LinkUp اپ ڈیٹ کریں (ورژن ⁨$version⁩ یا نیا)۔⁩';
+  }
+
+  @override
+  String loginL11_321(Object? status) {
+    return '⁧سرور میں مسئلہ آیا (کوڈ ⁨$status⁩)۔ دوبارہ کوشش کریں؛ اگر پھر ہو تو لاگز بھیجیں۔⁩';
+  }
+
+  @override
+  String get loginL12_321 =>
+      '⁧سرور مل گیا مگر سائن ان مکمل نہیں ہوا۔ دوبارہ کوشش کریں۔⁩';
+
+  @override
+  String loginL13_321(Object? reason) {
+    return '⁧صرف اس فون پر سائن ان ہوا - سرور جواب نہیں دے رہا (⁨$reason⁩)۔ بعد میں خود جڑ جائے گا۔⁩';
+  }
+
+  @override
+  String loginCode321(Object? code, Object? address) {
+    return '⁧کوڈ ⁨$code⁩ · ⁨$address⁩⁩';
+  }
+
+  @override
+  String loginCodeOnly321(Object? code) {
+    return '⁧کوڈ ⁨$code⁩⁩';
+  }
+
+  @override
+  String get offlineNoCopy321 =>
+      '⁧اس فون پر آف لائن کھولنے کے لیے کوئی محفوظ سائن ان نہیں۔⁩';
+
+  @override
+  String get offlineOtherUser321 =>
+      '⁧آف لائن یہ فون صرف وہی اکاؤنٹ کھولتا ہے جو اس پر آخری بار استعمال ہوا۔⁩';
+
+  @override
+  String get offlineBadPassword321 =>
+      '⁧آف لائن، یوزر نیم اور پاس ورڈ اس فون پر محفوظ کاپی سے نہیں ملتے۔⁩';
+
+  @override
+  String get loginStepSearch321 => '⁧سرور تلاش ہو رہا ہے…⁩';
+
+  @override
+  String loginStepFound321(Object? address) {
+    return '⁧سرور مل گیا · ⁨$address⁩ · سائن ان ہو رہا ہے…⁩';
+  }
+
+  @override
+  String messagesHere321(Object? here, Object? total) {
+    return '⁧پیغامات آ گئے · ⁨$total⁩ میں سے ⁨$here⁩ فائلیں آ رہی ہیں⁩';
+  }
+
+  @override
+  String filesNotAvailable321(Object? n) {
+    return '⁧⁨$n⁩ فائلیں دستیاب نہیں⁩';
+  }
+
+  @override
+  String get fileNotAvailable321 => '⁧1 فائل دستیاب نہیں⁩';
+
+  @override
+  String filesHere321(Object? count) {
+    return '⁧⁨$count⁩ فائلیں آ گئیں⁩';
+  }
+
+  @override
+  String comingCount321(Object? count) {
+    return '⁧آ رہا ہے · ⁨$count⁩ حصے⁩';
+  }
+
+  @override
+  String countOf321(Object? a, Object? b) {
+    return '⁧⁨$b⁩ میں سے ⁨$a⁩⁩';
+  }
+
+  @override
+  String get readWhatIsHere321 => '⁧جو آ گیا ہے وہ ابھی پڑھیں⁩';
+
+  @override
+  String nFilesSize321(Object? n, Object? size) {
+    return '⁧⁨$n⁩ فائلیں · ⁨$size⁩⁩';
+  }
+
+  @override
+  String partsCount321(Object? a, Object? b) {
+    return '⁧⁨$a⁩ / ⁨$b⁩ حصے⁩';
+  }
+
+  @override
+  String get comesByItself321 => '⁧خود آ جائے گا⁩';
+
+  @override
+  String keptHereUntil321(Object? day) {
+    return '⁧⁨$day⁩ تک یہاں محفوظ⁩';
+  }
+
+  @override
+  String voiceComing321(Object? a, Object? b) {
+    return '⁧آ رہا ہے · ⁨$a⁩ / ⁨$b⁩⁩';
+  }
+
+  @override
+  String get waitingShort321 => '⁧انتظار⁩';
+
+  @override
+  String nChats321(Object? n) {
+    return '⁧⁨$n⁩ چیٹس⁩';
+  }
 }

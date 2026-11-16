@@ -2,6 +2,8 @@ import 'package:locallink/core/theme/app_tokens.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/diagnostics/ui_hidden_263.dart';
+import 'package:locallink/core/diagnostics/log_share_flow.dart';
+import 'package:locallink/core/diagnostics/tap_burst_counter.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -17,6 +19,7 @@ import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/account_restore.dart';
 import 'package:locallink/features/recovery/domain/account_restoration_repository_contract.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
+import 'package:locallink/features/authentication/domain/login_problem_321.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/recovery/domain/recovery_repository_contract.dart';
 import 'package:locallink/features/recovery/presentation/screens/account_recovery_screen.dart';
@@ -57,6 +60,22 @@ class _SetupScreenState extends State<SetupScreen> {
   final _password = TextEditingController();
   late final AuthenticationBloc _controller;
   bool _obscurePassword = true;
+
+  // Bundle 321 (L4): 5 fast taps on the app bar title share the logs (no
+  // account needed, no visible link).
+  final TapBurstCounter _titleTaps321 = TapBurstCounter();
+  bool _sharingLogs321 = false;
+
+  Future<void> _onTitleTap321() async {
+    if (!_titleTaps321.tap() || _sharingLogs321) return;
+    _sharingLogs321 = true;
+    try {
+      AppLogger.info('LOG_SHARE_FROM', detail: 'screen=login');
+      await runLogShare(context);
+    } finally {
+      _sharingLogs321 = false;
+    }
+  }
 
   @override
   void initState() {
@@ -108,6 +127,13 @@ class _SetupScreenState extends State<SetupScreen> {
         // Bundle 263 (B7): no "Saved on this phone" dialog any more - the
         // account goes up to the server by itself (log line only).
         if (outcome.madeOffline) UiHidden263.note('signup_saved');
+        // Bundle 321 (L2 / D2): Home says once why the server was not used.
+        final why321 = outcome.problem;
+        if (why321 != null) {
+          try {
+            await widget.store.writeSetting(LoginNote321.key, why321.code);
+          } catch (_) {}
+        }
         // Bundle 286 (R-1): a new account shows the recovery code card on
         // Home (no password there: it was just typed).
         if (_controller.registerMode) {
@@ -373,7 +399,13 @@ class _SetupScreenState extends State<SetupScreen> {
           backgroundColor: p.screen,
           appBar: AppBar(
             // Bundle 288: "Create account" (was "Register").
-            title: Text(register ? L.t.createAccount : L.t.logIn),
+            // Bundle 321 (L4): 5 fast taps here = share logs.
+            title: GestureDetector(
+              key: const ValueKey('auth321-title'),
+              behavior: HitTestBehavior.opaque,
+              onTap: _onTitleTap321,
+              child: Text(register ? L.t.createAccount : L.t.logIn),
+            ),
             backgroundColor: p.screen,
             surfaceTintColor: Colors.transparent,
             foregroundColor: p.text,
@@ -466,6 +498,22 @@ class _SetupScreenState extends State<SetupScreen> {
                   text: label,
                   loading: busy,
                 ),
+                // Bundle 321 (L3): the step while it works; (L1) the code
+                // of the last failure.
+                if (busy && state.stage != null)
+                  _StepLine321(
+                    key: const ValueKey('auth321-step'),
+                    text: state.stage == 'found'
+                        ? L.t.loginStepFound321(state.server.isEmpty ? '-' : state.server)
+                        : L.t.loginStepSearch321,
+                    color: p.muted,
+                  )
+                else if (!busy && state.error != null && state.code != null)
+                  _StepLine321(
+                    key: const ValueKey('auth321-code'),
+                    text: state.code!,
+                    color: p.muted,
+                  ),
                 const SizedBox(height: 8),
                 LinkAltLine290(
                   key: const ValueKey('auth288-switch'),
@@ -480,4 +528,26 @@ class _SetupScreenState extends State<SetupScreen> {
       },
     );
   }
+}
+
+/// Bundle 321 (L3 / L1): one small grey line under the button.
+class _StepLine321 extends StatelessWidget {
+  const _StepLine321({super.key, required this.text, required this.color});
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: LocalLinkLook.fontFamily,
+            fontFamilyFallback: L.fontFallback,
+            fontSize: 12.5,
+            color: color,
+          ),
+        ),
+      );
 }

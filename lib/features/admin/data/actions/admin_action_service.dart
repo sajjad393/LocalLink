@@ -1431,7 +1431,9 @@ class AdminActionService {
         for (final b in out.states) {
           await takeState(b, from: 'server');
         }
-        for (final e in _entries.values.where((e) => e.mine || e.applied)) {
+        // Bundle 321 (F5): a copy of the list - a Nearby card changed the
+        // map during the await ("Concurrent modification during iteration").
+        for (final e in _entries.values.where((e) => e.mine || e.applied).toList()) {
           await _save(e);
         }
         if (!out.more) break;

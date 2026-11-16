@@ -11,6 +11,7 @@ import 'package:locallink/features/connectivity/data/services/nearby_experiments
 import 'package:locallink/features/connectivity/data/services/nearby_friend_link.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_ble.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_group_planner.dart';
+import 'package:locallink/features/connectivity/data/services/server_group_repair_321.dart';
 import 'package:locallink/features/connectivity/data/services/nearby_local_net_planner.dart';
 import 'package:locallink/features/connectivity/data/services/p2p_pause_262.dart';
 import 'package:locallink/features/connectivity/data/services/host_rehost_295.dart';
@@ -410,6 +411,13 @@ final class WifiDirectFallbackService {
   /// Device ids linked through the Wi-Fi Direct group now (bound by
   /// AppDependencies; null = not known, never "dead").
   Iterable<String> Function()? groupPeerIds;
+
+  /// Bundle 321 (L19b): since when (ms) the server has not answered; 0 =
+  /// it answers / none set up. [serverRetry321] asks the server again.
+  int Function()? serverDownSince321;
+  void Function()? serverRetry321;
+  final ServerGroupRepair321 _repair321 = ServerGroupRepair321();
+  String _hostHeldLogged321 = '';
   static const int groupDeadMs = 30 * 1000;
   static const int groupDeadCoolMs = 10 * 60 * 1000;
   int _memberSince = 0;
@@ -1452,6 +1460,23 @@ final class WifiDirectFallbackService {
         unawaited(_setCallFlag(busy));
       }
       final groupDead = _groupDeadNow(now, busy);
+      // Bundle 321 (L19b): the server has been unreachable for 2 min while
+      // this phone is in a group on Wi-Fi -> leave it once, then retry.
+      final down321 = serverDownSince321?.call() ?? 0;
+      if (_repair321.shouldDrop(
+          now: now,
+          serverDownSince: down321,
+          inGroup: _myGroup != null && _role != NearbyGroupRole.none,
+          onWifi: _usableWifi)) {
+        AppLogger.info('WD_GROUP_DROP',
+            detail: 'reason=server_no_route role=${_role.name} down_s=${(now - down321) ~/ 1000}');
+        _record('group_drop_321');
+        try {
+          await connectivity.disconnectWifiDirect();
+        } catch (_) {}
+        serverRetry321?.call();
+        return;
+      }
       _coolDeadGroups(now);
       _forgetRenamedHosts261(now); // Bundle 261 (G1)
       final planned = planNearbyGroup(NearbyGroupInput(
@@ -1524,6 +1549,17 @@ final class WifiDirectFallbackService {
           _createHeldLogged261 = plan.reason;
           AppLogger.info('NEARBY',
               detail: 'group create_held reason=${plan.reason} why=deaf_leave');
+        }
+        return;
+      }
+      // Bundle 321 (L19b): no own new group on this Wi-Fi for 15 min after
+      // the server-repair leave (joins still go; the user's Pair tap too).
+      if (plan.kind == NearbyGroupActionKind.create &&
+          plan.reason != 'pair_create' &&
+          _repair321.hostHeld(now: now, onWifi: _usableWifi)) {
+        if (_hostHeldLogged321 != plan.reason) {
+          _hostHeldLogged321 = plan.reason;
+          AppLogger.info('NEARBY', detail: 'group create_held reason=${plan.reason} why=server_repair');
         }
         return;
       }

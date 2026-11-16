@@ -564,14 +564,15 @@ void main() {
     test('notification words: asking / up to date (no progress) / 12 new', () {
       final asking = newOnly(parts: 0).with318();
       final sent = const ChatRequestRow221(id: 'x', action: 'get_chat', phones: 2).with318(newOnly: true);
-      expect(ChatRequestNotifier307.newOnlyArgs318(sent, RequestStep307.of(sent))['title'], 'Asking for new messages');
+      // Bundle 321 (N1, pick B): the one line comes from cardTitle321.
+      expect(ChatRequestNotifier307.cardTitle321(sent, RequestStep307.of(sent)), endsWith(' \u00b7 waiting'));
       expect(asking.newOnly318, isTrue);
       final up = newOnly(n: 0, up: true);
       final a = ChatRequestNotifier307.newOnlyArgs318(up, RequestStep307.of(up));
       expect(a['step'], 'up_to_date');
-      expect(a['title'], 'Up to date \u00b7 no new messages');
+      expect(ChatRequestNotifier307.cardTitle321(up, RequestStep307.of(up)), endsWith(' \u00b7 Up to date'));
       final twelve = newOnly(n: 12);
-      expect(ChatRequestNotifier307.newOnlyArgs318(twelve, RequestStep307.of(twelve))['title'], 'Chat ready \u00b7 12 new');
+      expect(ChatRequestNotifier307.cardTitle321(twelve, RequestStep307.of(twelve)), endsWith(' \u00b7 12 new \u2713'));
       expect(RequestStep307.of(twelve).chip, '12 new');
       expect(RequestStep307.of(twelve).upToDate, isFalse);
     });
@@ -680,7 +681,8 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.textContaining('+1 new', findRichText: true), findsOneWidget);
       // Bundle 320 (R8): short header; until when it is kept is its own line.
-      expect(find.textContaining('Full chat', findRichText: true), findsWidgets);
+      // Bundle 321 (R4, listed change): the header line is "Kept here until ...".
+      expect(find.textContaining('Kept here until', findRichText: true), findsOneWidget);
       expect(find.textContaining('\u00b7 got ', findRichText: true), findsNothing);
       expect(find.byKey(const ValueKey('viewer320_kept')), findsOneWidget);
       expect(find.byKey(const ValueKey('unread_bar_304')), findsOneWidget);

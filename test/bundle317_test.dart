@@ -323,16 +323,14 @@ void main() {
     final row = _chat('r1', parts: 40, of: 40);
     final now = DateTime.utc(2026, 11, 16, 12);
 
-    test('files coming: title, "3 of 13 files", MB, from / via, short, Stop files', () {
+    test('files coming: one line "chat · 3/13" (321 pick B), short, no Stop button', () {
       final a = ChatRequestNotifier307.filesArgs317(row, ready, _trip(), now);
       expect(a['step'], 'files');
-      expect(a['title'], 'Chat ready · files coming');
-      expect(a['text'], contains('3 of 13 files'));
-      expect(a['text'], contains("from kiran's phone"));
-      expect(a['text'], contains('via ayesha'));
-      expect(a['text'], contains('24 MB'));
+      expect(a['title'], 'kiran & ayesha · 3/13');
+      expect(a.containsKey('text'), isFalse);
+      expect(a['from_name'], 'kiran');
       expect(a['short'], '3/13');
-      expect(a['stop_label'], 'Stop files');
+      expect(a.containsKey('stop_label'), isFalse);
       expect(a['progress'], 25);
       expect(a['files_trips'], 3);
       expect(a['files_swipe'], isFalse);
@@ -342,8 +340,7 @@ void main() {
     test('waiting: orange step + "last parts 4 min ago"; 30 min = swipeable', () {
       final a = ChatRequestNotifier307.filesArgs317(row, ready, _trip(waiting: true, quietMin: 4), now);
       expect(a['step'], 'files_wait');
-      expect(a['title'], 'Chat ready · waiting for the next trip');
-      expect(a['text'], contains('last parts 4 min ago'));
+      expect(a['title'], 'kiran & ayesha · waiting');
       expect(ChatRequestNotifier307.filesArgs317(row, ready, _trip(waiting: true, quietMin: 31), now)['files_swipe'],
           isTrue);
     });
@@ -352,8 +349,9 @@ void main() {
       final a = ChatRequestNotifier307.filesArgs317(
           row, ready, _trip(here: 11, gone: 2, coming: 0, bytesHere: 19 * _mb, bytesTotal: 19 * _mb), now);
       expect(a['step'], 'files_done');
-      expect(a['title'], 'Chat ready · all files here');
-      expect(a['text'], '11 files here · 2 not on the phone any more');
+      // 2 files can't come: no check (Ready = all files), the count instead.
+      expect(a['title'], 'kiran & ayesha · 11/13');
+      expect(ChatRequestNotifier307.filesArgs317(row, ready, _trip(here: 13, coming: 0), now)['title'], 'kiran & ayesha \u2713');
       expect(a['short'], '');
     });
 

@@ -256,11 +256,11 @@ class ChatRequestNotifier307 {
   static Map<String, Object?> _summary(Iterable<(ChatRequestRow221, RequestStep307)> live,
       [Map<String, FileTrip317> files = const {}]) {
     final list = live.toList();
-    final ready = list.where((w) => w.$2.step == Step307.ready).length;
     return {
       'summary_count': list.length,
-      'summary_title': L.t.chatRequestsSummary307(list.length, ready),
-      'summary_lines': [for (final (r, st) in list) '${_title(r)} \u00b7 ${filesLine317(st, files[r.id]) ?? st.chip}'],
+      // Bundle 321 (N1/N3): "3 chats" + each card's own one line.
+      'summary_title': L.t.nChats321(list.length),
+      'summary_lines': [for (final (r, st) in list) cardTitle321(r, st, files[r.id])],
     };
   }
 
@@ -291,6 +291,30 @@ class ChatRequestNotifier307 {
 
   static String _title(ChatRequestRow221 r) => r.label.isEmpty ? L.t.chat : r.label;
 
+  /// Bundle 321 (N1, USER PICK B "minimal"): the card is ONE line - the chat
+  /// + "3/7", "waiting" or a green check (Android colours the check). No text
+  /// line, no buttons: the bar and the colour say the rest; tap opens the chat
+  /// and Stop is inside the chat. Same words on every Android version.
+  static const String tick321 = '\u2713';
+
+  @visibleForTesting
+  static String cardTitle321(ChatRequestRow221 r, RequestStep307 st, [FileTrip317? f]) {
+    final n = _title(r);
+    if (st.step == Step307.ready && f != null && f.total > 0 && !f.stopped) {
+      if (f.done) return f.gone + f.tooBig > 0 ? '$n \u00b7 ${f.here}/${f.total}' : '$n $tick321';
+      return f.waiting ? '$n \u00b7 ${L.t.waitingShort321}' : '$n \u00b7 ${f.here}/${f.wanted}';
+    }
+    return switch (st.step) {
+      Step307.sent || Step307.reached => '$n \u00b7 ${L.t.waitingShort321}',
+      Step307.coming => '$n \u00b7 ${st.short}',
+      Step307.ready when r.newOnly318 && st.upToDate => '$n \u00b7 ${L.t.upToDate318}',
+      Step307.ready when r.newOnly318 && r.newCount318 > 0 => '$n \u00b7 ${L.t.nNew318(r.newCount318)} $tick321',
+      Step307.ready => '$n $tick321',
+      Step307.empty => '$n \u00b7 ${L.t.noMessages}',
+      Step307.cancelled => '$n \u00b7 ${L.t.cancelled}',
+    };
+  }
+
   static List<String> namesOf(ChatRequestRow221 r) =>
       r.label.contains(' & ') ? r.label.split(' & ') : [_title(r)];
 
@@ -300,42 +324,18 @@ class ChatRequestNotifier307 {
   static Map<String, Object?> filesArgs317(ChatRequestRow221 r, RequestStep307 st, FileTrip317 f, DateTime now) {
     final base = _args(r, st, now);
     final step = f.done ? 'files_done' : (f.waiting ? 'files_wait' : 'files');
-    final mb = L.t.mbOf317(_mb(f.bytesHere), _mb(f.bytesTotal));
-    final from = [
-      if (f.from.isNotEmpty) L.t.fromPhone317(f.from),
-      if (f.via.isNotEmpty) L.t.viaName317(f.via),
-    ].join(' \u00b7 ');
-    final String title;
-    final String text;
-    if (f.done) {
-      title = L.t.chatReadyAllHere317;
-      final gone = f.gone + f.tooBig;
-      text = gone > 0 ? L.t.filesHereGone317(f.here, gone) : L.t.filesHere317(f.here);
-    } else if (f.waiting) {
-      title = L.t.chatReadyWaiting317;
-      text = '${L.t.filesOf317(f.here, f.wanted)} \u00b7 $mb \u00b7 ${L.t.lastPartsAgo317(f.quietMin)}';
-    } else {
-      title = L.t.chatReadyFilesComing317;
-      text = [L.t.filesOf317(f.here, f.wanted), mb, if (from.isNotEmpty) from].join(' \u00b7 ');
-    }
     return {
       ...base,
       'step': step,
       'progress': (f.fill * 100).round(),
-      'title': title,
-      'text': text,
+      'title': cardTitle321(r, st, f),
       'short': f.done ? '' : '${f.here}/${f.wanted}',
       'when': base['when'],
       'rock_until': 0,
-      'stop_label': L.t.stopFiles317,
       'files_swipe': f.waitingLong,
+      'from_name': f.from.isNotEmpty ? f.from : base['from_name'],
       ...f.toArgs(),
     };
-  }
-
-  static String _mb(int bytes) {
-    final mb = bytes / (1024 * 1024);
-    return '${mb < 10 ? mb.toStringAsFixed(1) : mb.round()} MB';
   }
 
   /// The words + numbers of one card (the signature; `buzz` is added later).
@@ -346,17 +346,15 @@ class ChatRequestNotifier307 {
       'request_id': r.id,
       'step': st.step.name,
       'progress': st.progress.round(),
-      'title': st.big,
-      'text': st.sub,
-      'sub_text': _title(r),
+      'title': cardTitle321(r, st),
       'names': namesOf(r),
+      'from_name': r.fromName,
       'short': st.short,
       // Ready moves to the top of the group (newest time).
       'when': st.step == Step307.ready ? 0 : made,
       // Bundle 314 (3, pick B): the tracker rocks while Sent / Reached, for
       // at most [rockFor314] after the request was made (Android 16+).
       'rock_until': waiting && made > 0 ? made + rockFor314.inMilliseconds : 0,
-      'open_label': L.t.openChat307,
       'channel_name': L.t.chatRequestsChannel307,
       'ready_channel_name': L.t.chatReady307,
       // Bundle 318 (K7): new-only words (mock repeat_mock.html B).
@@ -370,10 +368,9 @@ class ChatRequestNotifier307 {
   /// "Chat ready · 12 new" (one buzz, like Ready).
   @visibleForTesting
   static Map<String, Object?> newOnlyArgs318(ChatRequestRow221 r, RequestStep307 st) {
-    if (st.step == Step307.sent || st.step == Step307.reached) return {'title': L.t.askingNew318};
+    // Bundle 321 (N1): the one line comes from cardTitle321 (waiting / Up to date / 12 new).
     if (st.step != Step307.ready) return const {};
-    if (st.upToDate) return {'step': 'up_to_date', 'title': L.t.upToDateNoNew318, 'when': 0};
-    if (r.newCount318 > 0) return {'title': L.t.chatReadyNew318(r.newCount318)};
+    if (st.upToDate) return {'step': 'up_to_date', 'when': 0};
     return const {};
   }
 }

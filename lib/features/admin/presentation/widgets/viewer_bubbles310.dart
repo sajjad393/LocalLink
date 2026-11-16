@@ -144,20 +144,39 @@ class VoiceRow310 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final blue = dark ? const Color(0xFF7AA7FF) : const Color(0xFF1E5BFF);
     Widget button;
     if (state == VoiceState310.getting) {
+      // Bundle 321 (R4): coming = the mic inside a ring (parts so far).
       button = SizedBox(
+        key: const ValueKey('voice321_coming'),
         width: 42,
         height: 42,
-        child: Padding(
-          padding: const EdgeInsets.all(3),
-          child: CircularProgressIndicator(
-            value: progress == null || progress! <= 0 ? null : progress,
-            strokeWidth: 3,
-            color: cs.primary,
-            backgroundColor: cs.onSurfaceVariant.withValues(alpha: 0.22),
+        child: Stack(alignment: Alignment.center, children: [
+          Container(
+            decoration: BoxDecoration(color: blue.withValues(alpha: dark ? 0.16 : 0.10), shape: BoxShape.circle),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.all(2),
+            child: CircularProgressIndicator(
+              value: progress == null || progress! <= 0 ? null : progress,
+              strokeWidth: 2.5,
+              color: blue,
+              backgroundColor: cs.onSurfaceVariant.withValues(alpha: 0.18),
+            ),
+          ),
+          Icon(Icons.mic_rounded, size: 20, color: blue),
+        ]),
+      );
+    } else if (state == VoiceState310.gone) {
+      // Bundle 321 (R4): can't come = a block sign.
+      button = Container(
+        key: const ValueKey('voice321_gone'),
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.16), shape: BoxShape.circle),
+        child: Icon(Icons.block_rounded, size: 22, color: cs.onSurfaceVariant),
       );
     } else {
       final icon = switch (state) {
@@ -165,16 +184,30 @@ class VoiceRow310 extends StatelessWidget {
         VoiceState310.playing => Icons.pause_rounded,
         _ => Icons.download_rounded,
       };
-      button = Material(
-        color: state == VoiceState310.gone ? cs.primary.withValues(alpha: 0.45) : cs.primary,
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: state == VoiceState310.gone ? null : onTap,
-          child: SizedBox(width: 42, height: 42, child: Icon(icon, size: 26, color: cs.onPrimary)),
+      // Bundle 321 (R4): the gradient play button.
+      button = DecoratedBox(
+        key: const ValueKey('voice321_play'),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF4C8DFF), Color(0xFF1E5BFF)],
+          ),
+          boxShadow: [BoxShadow(color: const Color(0xFF1E5BFF).withValues(alpha: 0.30), blurRadius: 8, offset: const Offset(0, 3))],
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(width: 42, height: 42, child: Icon(icon, size: 26, color: Colors.white)),
+          ),
         ),
       );
     }
+    final coming = state == VoiceState310.getting;
     return SizedBox(
       width: 224,
       child: Padding(
@@ -190,9 +223,11 @@ class VoiceRow310 extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: cs.onSurfaceVariant)),
+                  maxLines: 2,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: coming ? FontWeight.w600 : FontWeight.w500,
+                      color: coming ? blue : cs.onSurfaceVariant)),
             ]),
           ),
         ]),

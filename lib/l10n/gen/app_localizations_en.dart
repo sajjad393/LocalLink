@@ -8682,4 +8682,155 @@ class AppLocalizationsEn extends AppLocalizations {
   String allHere320(Object? n) {
     return 'All here · $n parts';
   }
+
+  @override
+  String get loginL01_321 =>
+      'No LinkUp server answered on this Wi-Fi. Check that the server PC is on and this phone is on the same Wi-Fi.';
+
+  @override
+  String loginL02a_321(Object? address) {
+    return 'This phone can\'t reach the server PC ($address) on this Wi-Fi. Turn Wi-Fi off and on, then try again.';
+  }
+
+  @override
+  String get loginL02b_321 => 'The server PC is not answering. Try again.';
+
+  @override
+  String loginL02c_321(Object? address) {
+    return 'The server program is not running on $address.';
+  }
+
+  @override
+  String get loginL03_321 => 'Wrong username or password.';
+
+  @override
+  String get loginL04_321 =>
+      'Too many wrong tries. This account is locked for a few minutes.';
+
+  @override
+  String get loginL05_321 => 'Too many tries from this phone. Wait 1 minute.';
+
+  @override
+  String get loginL06_321 =>
+      'This server is not the one this phone knows. Ask the admin.';
+
+  @override
+  String get loginL07_321 => 'This phone must be paired by the admin first.';
+
+  @override
+  String get loginL08_321 => 'This phone was removed by the admin.';
+
+  @override
+  String get loginL09_321 => 'This account is turned off. Ask the admin.';
+
+  @override
+  String loginL10_321(Object? version) {
+    return 'Update LinkUp to sign in (version $version or newer).';
+  }
+
+  @override
+  String loginL11_321(Object? status) {
+    return 'The server had a problem (code $status). Try again; if it repeats, share logs.';
+  }
+
+  @override
+  String get loginL12_321 =>
+      'The server was found but did not finish signing in. Try again.';
+
+  @override
+  String loginL13_321(Object? reason) {
+    return 'Signed in on this phone only - server not answering ($reason). It connects by itself later.';
+  }
+
+  @override
+  String loginCode321(Object? code, Object? address) {
+    return 'Code $code · $address';
+  }
+
+  @override
+  String loginCodeOnly321(Object? code) {
+    return 'Code $code';
+  }
+
+  @override
+  String get offlineNoCopy321 =>
+      'This phone has no saved sign-in to open offline.';
+
+  @override
+  String get offlineOtherUser321 =>
+      'Offline, this phone opens only the last account used on it.';
+
+  @override
+  String get offlineBadPassword321 =>
+      'Offline, the username and password do not match the copy saved on this phone.';
+
+  @override
+  String get loginStepSearch321 => 'Looking for the server…';
+
+  @override
+  String loginStepFound321(Object? address) {
+    return 'Server found · $address · signing in…';
+  }
+
+  @override
+  String messagesHere321(Object? here, Object? total) {
+    return 'Messages here · $here of $total files coming';
+  }
+
+  @override
+  String filesNotAvailable321(Object? n) {
+    return '$n files not available';
+  }
+
+  @override
+  String get fileNotAvailable321 => '1 file not available';
+
+  @override
+  String filesHere321(Object? count) {
+    return '$count files here';
+  }
+
+  @override
+  String comingCount321(Object? count) {
+    return 'Coming · $count parts';
+  }
+
+  @override
+  String countOf321(Object? a, Object? b) {
+    return '$a of $b';
+  }
+
+  @override
+  String get readWhatIsHere321 => 'read what is here already';
+
+  @override
+  String nFilesSize321(Object? n, Object? size) {
+    return '$n files · $size';
+  }
+
+  @override
+  String partsCount321(Object? a, Object? b) {
+    return '$a / $b parts';
+  }
+
+  @override
+  String get comesByItself321 => 'comes by itself';
+
+  @override
+  String keptHereUntil321(Object? day) {
+    return 'Kept here until $day';
+  }
+
+  @override
+  String voiceComing321(Object? a, Object? b) {
+    return 'Coming · $a / $b';
+  }
+
+  @override
+  String get waitingShort321 => 'waiting';
+
+  @override
+  String nChats321(Object? n) {
+    return '$n chats';
+  }
 }

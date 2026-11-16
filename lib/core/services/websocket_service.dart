@@ -21,6 +21,9 @@ class WebSocketService {
   /// say `ready`; a try used to hang up to 65 s on Android's own timeout.
   @visibleForTesting
   Duration retryReadyLimit = const Duration(seconds: 10);
+
+  /// Bundle 321 (F4): keep-alive ping; no pong in time = the link closes.
+  static const Duration pingInterval321 = Duration(seconds: 20);
   Timer? _retryTimer;
 
   WebSocketChannel? _channel;
@@ -146,10 +149,14 @@ class WebSocketService {
       // certificate rule (PinnedHttpOverrides243) always applies - dart:io's
       // shared WebSocket client may be made before the rule is installed.
       final wss243 = url.startsWith('wss://') ? HttpClient() : null;
+      // Bundle 321 (F4): a ping every 20 s - a dead link (no pong) closes
+      // within a minute and the normal retry starts (Owner stayed
+      // "connected" for 20 min with 0 frames in).
       final channel = IOWebSocketChannel.connect(
         Uri.parse(url),
         headers: _headers,
         customClient: wss243,
+        pingInterval: pingInterval321,
       );
       if (wss243 != null) {
         unawaited(channel.ready.then<void>((_) => wss243.close(),

@@ -44,6 +44,17 @@ import androidx.core.app.NotificationCompat
  * Android 15 and older: a bar by MB. Buttons Open chat + Stop files. The
  * only buzz stays "Chat ready".
  *
+ * Bundle 321 (N1-N3, USER PICK B "minimal", same look on every phone): the
+ * card is ONE line (the chat + "3/7" / "waiting" / a green check), no text
+ * line and no buttons (tap opens the chat; Stop is inside the chat). The bar
+ * has one piece per file (green points when files are in), the tracker is
+ * the kind of file coming (photo / video / mic; hourglass while waiting),
+ * start = the sender's letter, end = the check; the large picture is the
+ * file coming (the faces when there is none). Android 16+ draws it with
+ * ProgressStyle; Android 15 and older get the same card from [ChatCard321]
+ * (a custom body + a picture of the same bar). Ready / all files here = no
+ * bar, only the line with the check.
+ *
  * Dart sends the final words (English or Urdu); this file only draws them.
  * Updates are silent (no sound channel). Ready is posted ONCE on the "Chat
  * ready" channel = the message tone + one short buzz; later posts of a Ready
@@ -90,8 +101,9 @@ object ChatRequestNotifier307 {
         val rock: Boolean = false,
         /** Bundle 314: Android 15 and older draw the sliding line. */
         val compatSliding: Boolean = false,
-        /** Bundle 317 (G7): a files step + its Stop files button. */
+        /** Bundle 317 (G7): a files step. */
         val files: Boolean = false,
+        /** Bundle 321 (N1, pick B): the card has no buttons - always false. */
         val stopButton: Boolean = false,
     )
 
@@ -116,21 +128,21 @@ object ChatRequestNotifier307 {
         return when (step) {
             // Bundle 317 (G7): files after Ready (the one buzz only if Ready was never posted).
             "files" -> Plan("files", p, false, ongoing = true, promoted = true, timeoutMs = 0,
-                openButton = true, grey = false, readyPointGreen = true,
-                channel = if (buzz) READY_CHANNEL_ID else CHANNEL_ID, alert = buzz, files = true, stopButton = true)
+                openButton = false, grey = false, readyPointGreen = true,
+                channel = if (buzz) READY_CHANNEL_ID else CHANNEL_ID, alert = buzz, files = true)
             "files_wait" -> Plan("files_wait", p, false, ongoing = !swipe, promoted = !swipe, timeoutMs = 0,
-                openButton = true, grey = false, readyPointGreen = true,
+                openButton = false, grey = false, readyPointGreen = true,
                 channel = if (buzz) READY_CHANNEL_ID else CHANNEL_ID, alert = buzz, compatSliding = true,
-                files = true, stopButton = true)
+                files = true)
             "files_done" -> Plan("files_done", 100, false, ongoing = false, promoted = false, timeoutMs = 0,
-                openButton = true, grey = false, readyPointGreen = true,
+                openButton = false, grey = false, readyPointGreen = true,
                 channel = if (buzz) READY_CHANNEL_ID else CHANNEL_ID, alert = buzz, files = true)
             "ready" -> Plan("ready", 100, false, ongoing = false, promoted = false, timeoutMs = 0,
-                openButton = true, grey = false, readyPointGreen = true,
+                openButton = false, grey = false, readyPointGreen = true,
                 channel = if (buzz) READY_CHANNEL_ID else CHANNEL_ID, alert = buzz)
             // Bundle 318 (K7): new only, nothing new - green like Ready, never buzzes, goes by itself.
             "up_to_date" -> Plan("up_to_date", 100, false, ongoing = false, promoted = false,
-                timeoutMs = UP_TO_DATE_TIMEOUT_MS, openButton = true, grey = false, readyPointGreen = true,
+                timeoutMs = UP_TO_DATE_TIMEOUT_MS, openButton = false, grey = false, readyPointGreen = true,
                 channel = CHANNEL_ID, alert = false)
             "empty", "cancelled" -> Plan(step, p, false, ongoing = false, promoted = false, timeoutMs = EMPTY_TIMEOUT_MS,
                 openButton = false, grey = true, readyPointGreen = false, channel = CHANNEL_ID, alert = false)
@@ -143,8 +155,97 @@ object ChatRequestNotifier307 {
         }
     }
 
-    /** API 36+ draws the Live Update (ProgressStyle); below = the plain bar. */
+    /** API 36+ draws the Live Update (ProgressStyle); below = [ChatCard321]. */
     fun useProgressStyle(sdk: Int): Boolean = sdk >= 36
+
+    /** Bundle 321 (N2): Android keeps at most 10 segments and 4 points. */
+    const val MAX_SEGMENTS_321 = 10
+    const val MAX_POINTS_321 = 4
+
+    /** Bundle 321 (N2/N3): the bar of one card - the same on every Android. */
+    data class Bar321(
+        val show: Boolean,
+        val segments: List<Int>,
+        val points: List<Int>,
+        val progress: Int,
+        val color: Int,
+        val pointColor: Int,
+        /** ring / wait / photo / video / voice / file */
+        val tracker: String,
+        val startLetter: String,
+        val startColor: Int,
+    )
+
+    /** "100,40,0" from Dart -> one fill 0-100 per file. */
+    fun fills321(pieces: String): List<Int> =
+        pieces.split(',').mapNotNull { it.trim().toIntOrNull()?.coerceIn(0, 100) }
+
+    /** Equal pieces that add up to 100: one per file, at most 10. */
+    fun segments321(files: Int): List<Int> {
+        val n = files.coerceIn(1, MAX_SEGMENTS_321)
+        val base = 100 / n
+        return List(n) { i -> if (i == n - 1) 100 - base * (n - 1) else base }
+    }
+
+    /** A green point at the end of each file that is in (the last 4; never at 0 / 100). */
+    fun points321(fills: List<Int>): List<Int> {
+        val n = fills.size
+        if (n < 2) return emptyList()
+        val done = fills.takeWhile { it >= 100 }.size
+        return (1..done).filter { it < n }.map { it * 100 / n }.takeLast(MAX_POINTS_321)
+    }
+
+    /** Where the tracker stands: the average fill of the files. */
+    fun progress321(fills: List<Int>, fallback: Int): Int =
+        if (fills.isEmpty()) fallback.coerceIn(0, 100) else (fills.sum().toDouble() / fills.size).toInt().coerceIn(0, 100)
+
+    fun tracker321(plan: Plan, kind: String): String = when {
+        plan.step == "files_wait" || plan.step == "sent" || plan.step == "reached" -> "wait"
+        plan.files -> when (kind) { "video", "voice", "file" -> kind; else -> "photo" }
+        else -> "ring"
+    }
+
+    /** Ready / all files here / up to date / ended: only the line, no bar. */
+    fun showBar321(plan: Plan): Boolean =
+        !plan.grey && plan.step != "ready" && plan.step != "files_done" && plan.step != "up_to_date"
+
+    fun bar321(plan: Plan, pieces: String, kind: String, from: String, at: Int): Bar321 {
+        val color = trackerColor(plan)
+        val fills = if (plan.files) fills321(pieces) else emptyList()
+        return Bar321(
+            show = showBar321(plan),
+            segments = if (plan.files) segments321(fills.size) else listOf(100),
+            points = if (plan.files) points321(fills) else POINTS.filter { it < 100 },
+            progress = if (plan.files) progress321(fills, plan.progress) else at.coerceIn(0, 100),
+            color = color,
+            pointColor = if (plan.files) GREEN else color,
+            tracker = tracker321(plan, kind),
+            startLetter = if (from.isBlank()) "" else initialOf(from),
+            startColor = colorOf(from),
+        )
+    }
+
+    /** The green check at the end of the line (index, or -1). */
+    fun checkAt321(title: String): Int = if (title.endsWith("\u2713")) title.length - 1 else -1
+
+    /** The line with its check in green (the same on every phone). */
+    fun title321(title: String): CharSequence {
+        val at = checkAt321(title)
+        if (at < 0) return title
+        return android.text.SpannableString(title).apply {
+            setSpan(android.text.style.ForegroundColorSpan(GREEN), at, at + 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), at, at + 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+
+    fun trackerRes321(tracker: String): Int = when (tracker) {
+        "wait" -> R.drawable.ic_req321_wait
+        "video" -> R.drawable.ic_req321_video
+        "voice" -> R.drawable.ic_req321_mic
+        "file" -> R.drawable.ic_req321_doc
+        "photo" -> R.drawable.ic_req317_file
+        else -> R.drawable.ic_req314_tracker
+    }
 
     /** Bundle 314 (3): the tracker position on rock tick [tick] (0 = the
      *  step's own place, then +4 / -4 / +4 ...), never outside 0-100. */
@@ -280,20 +381,10 @@ object ChatRequestNotifier307 {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
         val plan = plan((args["step"] as? String).orEmpty(), (args["progress"] as? Number)?.toInt() ?: 0, args["buzz"] == true,
             args["files_swipe"] == true)
-        val stopLabel = (args["stop_label"] as? String)?.trim().orEmpty()
-        val trips = (args["files_trips"] as? Number)?.toInt() ?: 1
-        val stop = if (plan.stopButton && stopLabel.isNotEmpty()) PendingIntent.getActivity(
-            context,
-            requestCode(id, 1),
-            tapIntent(context, STOP_PREFIX + id),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        ) else null
         val title = (args["title"] as? String)?.trim().orEmpty()
-        val text = (args["text"] as? String)?.trim().orEmpty()
-        val names = (args["sub_text"] as? String)?.trim().orEmpty()
         val short = (args["short"] as? String)?.trim().orEmpty()
-        val openLabel = (args["open_label"] as? String)?.trim().orEmpty()
         val faces = (args["names"] as? List<*>)?.mapNotNull { (it as? String)?.trim()?.takeIf { s -> s.isNotEmpty() } }.orEmpty()
+        val from = (args["from_name"] as? String)?.trim().orEmpty()
         val whenMs = (args["when"] as? Number)?.toLong()?.takeIf { it > 0 } ?: System.currentTimeMillis()
         val open = PendingIntent.getActivity(
             context,
@@ -301,13 +392,15 @@ object ChatRequestNotifier307 {
             tapIntent(context, id),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val icon = facesIcon(faces)
+        // Bundle 321 (N1/N2): the picture of the file coming, else the faces.
+        val picture = thumb321((args["files_thumb"] as? String).orEmpty()) ?: facesIcon(faces)
+        val bar = bar321(plan, (args["files_pieces"] as? String).orEmpty(), (args["files_kind"] as? String).orEmpty(), from,
+            rockProgress(plan.progress, tick))
         // Same rule as useProgressStyle(); written out so Android lint sees the API check.
         val notification = if (Build.VERSION.SDK_INT >= 36) {
-            buildLive(context, plan, title, text, names, short, openLabel, icon, whenMs, open, rockProgress(plan.progress, tick),
-                trips, stopLabel, stop)
+            buildLive(context, plan, title321(title), short, picture, whenMs, open, bar)
         } else {
-            buildCompat(context, plan, title, text, names, openLabel, icon, whenMs, open, stopLabel, stop)
+            ChatCard321.build(context, plan, title, picture, whenMs, open, bar)
         }
         try {
             manager.notify(TAG, notificationId(id), notification)
@@ -378,50 +471,17 @@ object ChatRequestNotifier307 {
     private fun buildLive(
         context: Context,
         plan: Plan,
-        title: String,
-        text: String,
-        names: String,
+        title: CharSequence,
         short: String,
-        openLabel: String,
-        icon: Bitmap?,
+        picture: Bitmap?,
         whenMs: Long,
         open: PendingIntent,
-        at: Int,
-        trips: Int = 1,
-        stopLabel: String = "",
-        stop: PendingIntent? = null,
+        bar: Bar321,
     ): Notification {
-        // Bundle 317 (G7): files - one segment per 8 MB trip, photo tracker.
-        val fileColor = trackerColor(plan)
-        val style = if (plan.files) Notification.ProgressStyle()
-            .setStyledByProgress(true)
-            .setProgressSegments(tripSegments(trips).map { Notification.ProgressStyle.Segment(it).setColor(fileColor) })
-            .setProgressTrackerIcon(Icon.createWithResource(context, R.drawable.ic_req317_file).setTint(fileColor))
-            .setProgressStartIcon(Icon.createWithResource(context, R.drawable.ic_req314_start))
-            .setProgressEndIcon(Icon.createWithResource(context, R.drawable.ic_req314_end))
-            .setProgress(plan.progress)
-            .setProgressIndeterminate(false)
-        // Bundle 314 (3, pick B): bubble -> ring tracker -> check; the ring
-        // stands on its step (Sent 4, Reached 33) and rocks from there.
-        else Notification.ProgressStyle()
-            .setStyledByProgress(true) // filled up to the tracker
-            .setProgressSegments(listOf(Notification.ProgressStyle.Segment(100).setColor(if (plan.grey) GREY else BLUE)))
-            .setProgressPoints(POINTS.map { at ->
-                Notification.ProgressStyle.Point(at).setColor(
-                    if (at == 100 && plan.readyPointGreen) GREEN else if (plan.grey) GREY else BLUE,
-                )
-            })
-            .setProgressTrackerIcon(Icon.createWithResource(context, R.drawable.ic_req314_tracker).setTint(trackerColor(plan)))
-            .setProgressStartIcon(Icon.createWithResource(context, R.drawable.ic_req314_start))
-            .setProgressEndIcon(Icon.createWithResource(context, R.drawable.ic_req314_end))
-            .setProgress(at)
-            .setProgressIndeterminate(false)
         val b = Notification.Builder(context, plan.channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(BLUE)
             .setContentTitle(title)
-            .setContentText(text)
-            .setStyle(style)
             .setOngoing(plan.ongoing)
             .setOnlyAlertOnce(!plan.alert)
             .setWhen(whenMs)
@@ -437,81 +497,46 @@ object ChatRequestNotifier307 {
                     .setSmallIcon(R.drawable.ic_notification)
                     .setColor(BLUE)
                     .setContentTitle(title)
-                    .setStyle(Notification.ProgressStyle().setProgress(plan.progress).setProgressIndeterminate(false))
                     .build(),
             )
-        if (names.isNotEmpty()) b.setSubText(names)
-        if (icon != null) b.setLargeIcon(icon)
+        if (bar.show) b.setStyle(progressStyle321(context, bar))
+        if (picture != null) b.setLargeIcon(picture)
         if (short.isNotEmpty() && plan.ongoing) b.setShortCriticalText(short)
         if (plan.timeoutMs > 0) b.setTimeoutAfter(plan.timeoutMs)
         if (plan.step == "up_to_date") b.setAutoCancel(true) // Bundle 318 (K7)
-        if (plan.openButton && openLabel.isNotEmpty()) {
-            b.addAction(Notification.Action.Builder(
-                Icon.createWithResource(context, android.R.drawable.sym_action_chat), openLabel, open,
-            ).build())
-        }
-        if (stop != null) {
-            b.addAction(Notification.Action.Builder(
-                Icon.createWithResource(context, android.R.drawable.ic_menu_close_clear_cancel), stopLabel, stop,
-            ).build())
-        }
         if (plan.promoted) b.extras.putBoolean(EXTRA_PROMOTED, true)
         return b.build()
     }
 
-    private fun buildCompat(
-        context: Context,
-        plan: Plan,
-        title: String,
-        text: String,
-        names: String,
-        openLabel: String,
-        icon: Bitmap?,
-        whenMs: Long,
-        open: PendingIntent,
-        stopLabel: String = "",
-        stop: PendingIntent? = null,
-    ): Notification {
-        val b = NotificationCompat.Builder(context, plan.channel)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setColor(if (plan.grey) GREY else if (plan.files) trackerColor(plan) else BLUE)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setOngoing(plan.ongoing)
-            .setOnlyAlertOnce(!plan.alert)
-            .setWhen(whenMs)
-            .setShowWhen(true)
-            .setGroup(GROUP_KEY)
-            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
-            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(open)
-            .setAutoCancel(plan.step == "ready" || plan.step == "files_done")
-            .setPublicVersion(
-                NotificationCompat.Builder(context, plan.channel)
-                    .setSmallIcon(R.drawable.ic_notification)
-                    .setColor(BLUE)
-                    .setContentTitle(title)
-                    .build(),
-            )
-        // Bundle 314 (USER PICK): the sliding line while waiting (Sent /
-        // Reached), a filled bar once parts come.
-        // Bundle 317 (G7): files = a bar by MB (sliding while waiting); done = no bar.
-        if (plan.step != "ready" && plan.step != "files_done" && plan.step != "up_to_date" && !plan.grey) b.setProgress(100, plan.progress, plan.compatSliding)
-        if (!plan.alert) b.setSilent(true)
-        if (plan.alert && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            // Below Android 8 there are no channels: the message tone only (no buzz permission).
-            val soundId = context.resources.getIdentifier("locallink_message", "raw", context.packageName)
-            if (soundId != 0) b.setSound(Uri.parse("android.resource://${context.packageName}/$soundId"))
+    /** Bundle 321 (N2): one segment per file, green points, the tracker =
+     *  the kind of file coming, start = the sender's letter, end = the check.
+     *  Bundle 314 (3, pick B): Sent / Reached keep the bubble start and the
+     *  rocking tracker (now the hourglass). */
+    @RequiresApi(36)
+    private fun progressStyle321(context: Context, bar: Bar321): Notification.ProgressStyle {
+        val style = Notification.ProgressStyle()
+            .setStyledByProgress(true) // filled up to the tracker
+            .setProgressSegments(bar.segments.map { Notification.ProgressStyle.Segment(it).setColor(bar.color) })
+            .setProgressPoints(bar.points.map { Notification.ProgressStyle.Point(it).setColor(bar.pointColor) })
+            .setProgressTrackerIcon(Icon.createWithResource(context, trackerRes321(bar.tracker)).setTint(bar.color))
+            .setProgressEndIcon(Icon.createWithResource(context, R.drawable.ic_req314_end))
+            .setProgress(bar.progress)
+            .setProgressIndeterminate(false)
+        val letter = if (bar.startLetter.isEmpty()) null else ChatCard321.letterBitmap(bar.startLetter, bar.startColor, 96)
+        if (letter != null) style.setProgressStartIcon(Icon.createWithBitmap(letter))
+        else style.setProgressStartIcon(Icon.createWithResource(context, R.drawable.ic_req314_start))
+        return style
+    }
+
+    /** Bundle 321 (N1): the small picture Dart sends (base64), or null. */
+    private fun thumb321(b64: String): Bitmap? {
+        if (b64.isEmpty()) return null
+        return try {
+            val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { ChatCard321.roundSquare(it, 192) }
+        } catch (_: Throwable) {
+            null
         }
-        if (names.isNotEmpty()) b.setSubText(names)
-        if (icon != null) b.setLargeIcon(icon)
-        if (plan.timeoutMs > 0) b.setTimeoutAfter(plan.timeoutMs)
-        if (plan.step == "up_to_date") b.setAutoCancel(true) // Bundle 318 (K7)
-        if (plan.openButton && openLabel.isNotEmpty()) b.addAction(0, openLabel, open)
-        if (stop != null) b.addAction(0, stopLabel, stop)
-        return b.build()
     }
 
     /** Same colours as the app's avatar circles (LocalLinkAvatarColor.forName). */

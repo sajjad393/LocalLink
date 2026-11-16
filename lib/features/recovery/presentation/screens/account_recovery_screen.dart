@@ -226,7 +226,7 @@ class ForgotPasswordScreen222 extends StatefulWidget {
 
 enum ForgotField287 { username, code, password, again, oneTime, none }
 
-class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
+class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> with WidgetsBindingObserver {
   late final ForgotPasswordBloc222 _bloc = ForgotPasswordBloc222(widget.repository);
   late final _username = TextEditingController(text: widget.initialUsername);
   final _code = TextEditingController();
@@ -239,14 +239,22 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // Bundle 321 (L9)
     unawaited(_bloc.start());
     for (final c in [_username, _code, _oneTime, _password, _again]) {
       c.addListener(() => setState(() {}));
     }
   }
 
+  /// Bundle 321 (L9): checked again when the app comes back to the front.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed) unawaited(_bloc.checkServer());
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final c in [_username, _code, _oneTime, _password, _again]) {
       c.dispose();
     }
@@ -467,7 +475,8 @@ class _ForgotPasswordScreen222State extends State<ForgotPasswordScreen222> {
         ]),
         ..._general(state),
         _button(state, L.t.askTheAdmin, filled: _username.text.trim().isNotEmpty, icon: Icons.send_rounded),
-        LinkNote290(L.t.needsTheServer2),
+        // Bundle 321 (L11): one note only - not under a red error.
+        if (state.error == null) LinkNote290(L.t.needsTheServer2),
       ];
     }
     final rejected = state.requestStatus == 'rejected';

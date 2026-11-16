@@ -91,6 +91,16 @@ class AppLogFile {
     } catch (_) {}
   }
 
+  /// Bundle 321 (L17 / D3): "Reset setup" keeps the last hour of logs (the
+  /// files already hold only the last hour - LogRules), so a failed sign-in
+  /// after a reset can still be shared. Writes what is waiting, then prunes.
+  void keepLastHour321({DateTime? now}) {
+    flushNow(now: now);
+    final dir = _dir;
+    if (dir == null) return;
+    LogRules.prune(dir, LogRules.slotOf((now ?? DateTime.now()).millisecondsSinceEpoch));
+  }
+
   /// Account reset / log out: every log file goes (they can hold messages).
   Future<void> clearAll() async {
     _pending.clear();

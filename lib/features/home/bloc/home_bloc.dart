@@ -6,6 +6,7 @@ import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/identity/person_name_258.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/models/device.dart';
+import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/models/group.dart';
 import 'package:locallink/core/services/person_phones_237.dart';
 import 'package:locallink/features/home/domain/home_repository_contract.dart';
@@ -118,12 +119,62 @@ final class HomeBloc extends Cubit<HomeState> {
     emit(state.copyWith(deviceLabels: labels));
   }
 
+  /// Bundle 321 (F12): the saved list was painted once already.
+  bool _savedShown321 = false;
+
+  /// Bundle 321 (F12): what was last written per contact (no presence).
+  final Map<String, String> _written321 = {};
+
+  static String _sig321(Device d) => [
+        d.name,
+        d.platform,
+        d.createdAt,
+        d.lastSeenAt,
+        d.networkStatus.apiValue,
+        d.serverConnected,
+        d.wifiDirectConnected,
+        d.lanAvailable,
+        d.meshAvailable,
+        d.statusUpdatedAt,
+      ].join('|');
+
+  Future<void> _showSaved321() async {
+    final sw = Stopwatch()..start();
+    try {
+      final localDevices = await repository.localDevices();
+      final localGroups = await repository.localGroups();
+      if (_closed || (localDevices.isEmpty && localGroups.isEmpty)) return;
+      if (state.devices.isNotEmpty || state.groups.isNotEmpty) return;
+      final visible = await _collapseDeviceDuplicates(
+          localDevices.where((d) => d.id != repository.localDeviceId).toList());
+      if (_closed) return;
+      emit(state.copyWith(
+        devices: visible,
+        groups: localGroups,
+        deviceLabels: await _labelsFor(visible),
+        loading: false,
+      ));
+      AppLogger.info('CHATS_SAVED_FIRST',
+          detail: 'chats=${visible.length} groups=${localGroups.length} ms=${sw.elapsedMilliseconds}');
+    } catch (_) {
+      // The server list below still runs.
+    }
+  }
+
   Future<void> load({bool userInitiated = false, bool quiet = false}) async {
     if (_closed) return;
     // quiet=true (Bundle 129): silent membership refresh when a new chat peer
     // appears mid-session — no loading shimmer flash on the Chats tab.
     if (!quiet) {
-      emit(state.copyWith(loading: true, clearError: true, clearSyncNotice: true));
+      // Bundle 321 (F12): the saved list at once; the shimmer only when
+      // nothing is saved. The server list updates it behind.
+      if (!_savedShown321) {
+        _savedShown321 = true;
+        await _showSaved321();
+        if (_closed) return;
+      }
+      final nothing = state.devices.isEmpty && state.groups.isEmpty;
+      emit(state.copyWith(loading: nothing, clearError: true, clearSyncNotice: true));
     }
     try {
       final rawDevices = await repository.devices();
@@ -149,7 +200,13 @@ final class HomeBloc extends Cubit<HomeState> {
         if (device.id != repository.localDeviceId) {
           presence.serverReport(device.id, connected: device.serverConnected);
         }
-        await repository.cacheDevice(device);
+        // Bundle 321 (F12): a DB write only for a changed contact (the
+        // liveness stamp is refreshed by markDeviceSeen below).
+        final sig = _sig321(device);
+        if (_written321[device.id] != sig) {
+          await repository.cacheDevice(device);
+          _written321[device.id] = sig;
+        }
         if (wasReportedOnline(device)) {
           unawaited(repository.markDeviceSeen(device.id));
         }

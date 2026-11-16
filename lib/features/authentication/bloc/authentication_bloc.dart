@@ -5,6 +5,7 @@ import 'package:locallink/core/bloc/bloc_utils.dart';
 import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/authentication/data/models/authentication_models.dart';
 import 'package:locallink/features/authentication/domain/authentication_repository_contract.dart';
+import 'package:locallink/features/authentication/domain/login_problem_321.dart';
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 110: submit() outcome — either a server-authenticated session or a
@@ -14,13 +15,18 @@ final class AuthOutcome {
   final AuthResult? result;
   final bool offline;
 
-  const AuthOutcome.offline({this.madeOffline = false})
+  const AuthOutcome.offline({this.madeOffline = false, this.problem})
       : result = null,
         offline = true;
 
   const AuthOutcome.online(this.result)
       : offline = false,
-        madeOffline = false;
+        madeOffline = false,
+        problem = null;
+
+  /// Bundle 321 (L2 / L-13): why the server was not used when the saved
+  /// account was opened (null = not known). Home tells it once.
+  final LoginProblem321? problem;
 
   /// Bundle 256 A4: a NEW phone-only account was made because no server
   /// answered - the screen says so once ("Saved on this phone").
@@ -42,12 +48,22 @@ final class AuthenticationState extends Equatable {
   /// 'search' = looking for the server, 'found' = server found. Null = none.
   final String? stage;
 
+  /// Bundle 321 (L3): the server address shown in the step line
+  /// ("Server found · 192.168.18.27 · signing in…"). '' = none.
+  final String server;
+
+  /// Bundle 321 (L1): the code line under the button, e.g.
+  /// "Code L-02a · 192.168.18.27". Null = none.
+  final String? code;
+
   const AuthenticationState({
     this.registerMode = false,
     this.busy = false,
     this.error,
     this.offlineRegisterAvailable = false,
     this.stage,
+    this.server = '',
+    this.code,
   });
 
   AuthenticationState copyWith({
@@ -58,6 +74,8 @@ final class AuthenticationState extends Equatable {
     bool? offlineRegisterAvailable,
     String? stage,
     bool clearStage = false,
+    String? server,
+    String? code,
   }) {
     return AuthenticationState(
       registerMode: registerMode ?? this.registerMode,
@@ -66,12 +84,15 @@ final class AuthenticationState extends Equatable {
       offlineRegisterAvailable:
           offlineRegisterAvailable ?? this.offlineRegisterAvailable,
       stage: clearStage ? null : (stage ?? this.stage),
+      server: clearStage ? '' : (server ?? this.server),
+      // Bundle 321: the code goes with the error it belongs to.
+      code: clearError ? null : (code ?? this.code),
     );
   }
 
   @override
   List<Object?> get props =>
-      [registerMode, busy, error, offlineRegisterAvailable, stage];
+      [registerMode, busy, error, offlineRegisterAvailable, stage, server, code];
 }
 
 final class AuthenticationBloc extends Cubit<AuthenticationState> {
@@ -110,11 +131,13 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
     final what = state.registerMode ? 'create' : 'sign_in';
     emit(state.copyWith(busy: true, clearError: true, stage: 'search'));
     var serverFound = false;
+    final started = DateTime.now();
+    int ms() => DateTime.now().difference(started).inMilliseconds;
     try {
       final deviceName = repository.generateUniqueDeviceName();
       await repository.prepareForAuthentication(deviceName: deviceName);
       serverFound = true;
-      emit(state.copyWith(stage: 'found'));
+      emit(state.copyWith(stage: 'found', server: LoginProblem321.hostOf(_serverAddress())));
       if (state.registerMode) {
         final result = await repository.register(
           username: user,
@@ -123,7 +146,7 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
         );
         await _mirror(user, password, result);
         await repository.completeOfflineLogin(); // clears any prior sign-out gate
-        AppLogger.info('AUTH_RESULT', detail: 'what=$what mode=server');
+        AppLogger.info('AUTH_RESULT', detail: 'what=$what mode=server ms=${ms()}');
         return AuthOutcome.online(result);
       }
       final result = await repository.login(
@@ -133,24 +156,43 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
       );
       await _mirror(user, password, result);
       await repository.completeOfflineLogin();
-      AppLogger.info('AUTH_RESULT', detail: 'what=$what mode=server');
+      AppLogger.info('AUTH_RESULT', detail: 'what=$what mode=server ms=${ms()}');
       return AuthOutcome.online(result);
     } catch (error) {
+      final stage = serverFound ? 'login' : 'verify';
+      // Bundle 321 (L1 / L7 / L14): the code comes from the error TYPE,
+      // the HTTP status and the server's error code. A bare StateError
+      // from the search step = "no server found" (older repositories).
+      final LoginProblem321? problem;
+      if (error is ServerProblem256) {
+        problem = const LoginProblem321('L-06');
+      } else if (error is StateError && !serverFound) {
+        problem = null;
+      } else {
+        problem = LoginProblem321.of(error,
+            stage: stage, address: serverFound ? _serverAddress() : '');
+      }
       // Bundle 256 A5: offline ONLY when no server answered.
-      if (_isOfflineEligible(error)) {
+      final offlineOk = problem == null ? true : problem.noServer;
+      if (offlineOk) {
         final reason = serverFound ? 'server_lost' : 'no_server';
         // Bundle 110: server-first → offline fallback.
-        final offline = await _offlineFallback(user, password);
+        final offline = await _offlineFallback(user, password, problem);
         if (offline != null) {
-          AppLogger.info('AUTH_RESULT', detail: 'what=$what mode=offline reason=$reason');
+          AppLogger.info('AUTH_RESULT',
+              detail: 'what=$what mode=offline reason=$reason code=${problem?.code ?? 'L-01'} '
+                  'stage=$stage ms=${ms()}');
           return offline;
         }
       }
+      final shown = problem ?? const LoginProblem321('L-01');
       AppLogger.info('AUTH_RESULT',
-          detail: 'what=$what mode=none reason=${error is ServerProblem256 ? 'server_problem' : 'error'}');
-      final message = error is ServerProblem256 ? error.message : cleanBlocError(error);
+          detail: 'what=$what mode=none reason=${error is ServerProblem256 ? 'server_problem' : 'error'} '
+              'code=${shown.code} status=${shown.status} err=${error.runtimeType} stage=$stage ms=${ms()}');
       emit(state.copyWith(
-        error: error is ServerProblem256 ? message : _cleanAuthenticationError(message),
+        // Bundle 256: a server problem is shown as it is.
+        error: error is ServerProblem256 ? error.message : shown.words,
+        code: shown.codeLine,
         offlineRegisterAvailable: false,
       ));
       rethrow;
@@ -175,14 +217,15 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
   /// Silent offline path (Bundle 110). Registering while offline creates a
   /// fully local account; logging in reopens a locally known account via its
   /// password, or via its recovery code typed in the password field.
-  Future<AuthOutcome?> _offlineFallback(String user, String password) async {
+  Future<AuthOutcome?> _offlineFallback(
+      String user, String password, LoginProblem321? problem) async {
     if (state.registerMode) {
       if (password.length < 8) {
         throw _validation(L.t.passwordMustBeAtLeast8);
       }
       await repository.registerOffline(username: user, password: password);
       await repository.completeOfflineLogin();
-      return const AuthOutcome.offline(madeOffline: true);
+      return AuthOutcome.offline(madeOffline: true, problem: problem);
     }
     // Bundle 223 (J): the password check runs off the screen thread.
     // Bundle 278: with the reason, so a phone with nothing saved does not
@@ -206,7 +249,7 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
       // Bundle 123: self-heal accounts created before offline registration
       // seeded a profile — pairing read LocalStore.profile() and found null.
       await repository.ensureOfflineProfileSeed();
-      return const AuthOutcome.offline();
+      return AuthOutcome.offline(problem: problem ?? const LoginProblem321('L-01'));
     }
     // Known receiver: the credential simply did not match — say so plainly,
     // with a single fixed message and no connectivity chatter.
@@ -214,8 +257,13 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
     // wrong password); the log has the reason, never a name.
     final why278 = reason278 ?? 'bad_password';
     AppLogger.info('AUTH_OFFLINE_LOGIN', detail: 'bad reason=$why278');
-    final text278 = offlineLoginText278(why278);
-    emit(state.copyWith(error: text278));
+    // Bundle 321 (L13 / L14): the server reason comes first, then what
+    // the phone could (not) open - never "turn the server on" / "do not
+    // match" alone when it was the server that failed.
+    final text278 = problem == null
+        ? offlineLoginText278(why278)
+        : '${problem.words} ${offlineAfterServerText321(why278)}';
+    emit(state.copyWith(error: text278, code: problem?.codeLine));
     throw Exception(text278);
   }
 
@@ -251,28 +299,13 @@ final class AuthenticationBloc extends Cubit<AuthenticationState> {
     }
   }
 
-  bool _isOfflineEligible(Object error) {
-    if (error is ServerProblem256) return false; // Bundle 256 A5
-    if (error is StateError) return true; // prepareForAuthentication failures
-    final text = error.toString().toLowerCase();
-    return text.contains('socketexception') ||
-        text.contains('timeout') ||
-        text.contains('clientexception') ||
-        text.contains('connection refused') ||
-        text.contains('failed host lookup') ||
-        text.contains('network is unreachable') ||
-        text.contains('no route to host');
-  }
-
-  String _cleanAuthenticationError(String value) {
-    final lower = value.toLowerCase();
-    if (lower.contains('server') ||
-        lower.contains('network') ||
-        lower.contains('connection') ||
-        lower.contains('socket')) {
-      return L.t.couldNotConnectToLinkupMake;
+  /// The saved server address ('' when none / a test double has none).
+  String _serverAddress() {
+    try {
+      return repository.serverAddress ?? '';
+    } catch (_) {
+      return '';
     }
-    return value;
   }
 
   Exception _validation(String message) {

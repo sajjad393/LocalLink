@@ -89,7 +89,19 @@ class FileTrip317 {
     this.from = '',
     this.via = '',
     this.quietMin = 0,
+    this.kind321 = '',
+    this.thumb321 = '',
+    this.pieces321 = '',
   });
+
+  /// Bundle 321 (N1/N2): the file the phone card shows - its type
+  /// (`photo` / `video` / `voice` / `file`; the one coming, else the newest
+  /// here), its small picture (base64, '' = none -> the faces) and one fill
+  /// 0-100 per file that can come (here first, then coming, then next),
+  /// comma separated so [toArgs] compares by value.
+  final String kind321;
+  final String thumb321;
+  final String pieces321;
 
   /// Bytes in one trip (a middle phone carries 8 MB at a time).
   static const int tripBytes = 8 * 1024 * 1024;
@@ -151,7 +163,19 @@ class FileTrip317 {
         'files_quiet_min': quietMin,
         'files_from': from,
         'files_via': via,
+        'files_kind': kind321,
+        'files_thumb': thumb321,
+        'files_pieces': pieces321,
       };
+
+  /// Bundle 321 (N2): `image/*` -> photo, `video/*` -> video, `audio/*` -> voice.
+  static String kindOf321(String type) {
+    final t = type.toLowerCase();
+    if (t.startsWith('image/')) return 'photo';
+    if (t.startsWith('video/')) return 'video';
+    if (t.startsWith('audio/')) return 'voice';
+    return 'file';
+  }
 }
 
 class FileQueue317 {
@@ -194,6 +218,32 @@ class FileQueue317 {
   static const int maxPendingCards = 3;
   static const Duration waitAfter = Duration(minutes: 2);
   static const int maxPlans = 50;
+
+  /// Bundle 321 (F7): a file with no new part this long is asked once
+  /// more; the 2nd time it is gone.
+  static const Duration stuckAfter321 = Duration(minutes: 10);
+
+  /// Bundle 321 (F7): pending Get file cards older than this do not count.
+  static const Duration oldCardAfter321 = Duration(days: 1);
+
+  static bool _older321(String madeAt, DateTime than) {
+    final t = DateTime.tryParse(madeAt);
+    return t != null && t.toUtc().isBefore(than.toUtc());
+  }
+
+  final Map<String, (int, DateTime)> _fileMoved321 = {};
+
+  /// Bundle 321 (N1): request id -> file id -> small picture (base64), read
+  /// from the answer once per run (not saved: the plan stays small).
+  final Map<String, Map<String, String>> _thumbs321 = {};
+
+  /// Bundle 321 (N1): the small pictures of an answer's attachments.
+  static Map<String, String> thumbsOf321(ChatAnswerView v) => {
+        for (final m in v.messages)
+          for (final a in (m['attachments'] as List? ?? const []))
+            if (a is Map && '${a['file_id'] ?? ''}'.isNotEmpty && '${a['thumb'] ?? ''}'.isNotEmpty)
+              '${a['file_id']}': '${a['thumb']}',
+      };
 
   final Future<List<ChatRequestRow221>> Function() rows;
   final Future<Set<String>> Function() mineIds;
@@ -330,7 +380,17 @@ class FileQueue317 {
       }
     }
     final keptIds = await keptFiles318?.call().catchError((Object _) => <String>{}) ?? const <String>{};
-    var pendingCards = all.where((r) => r.action == 'get_file' && r.state == 'pending' && !r.cancelled).length;
+    // Bundle 321 (F7): old pending Get file cards (over a day, e.g. the
+    // 3.0.107 manual ones) no longer fill the 3-card window.
+    final cardCut = _clock().toUtc().subtract(oldCardAfter321);
+    var pendingCards = all
+        .where((r) => r.action == 'get_file' && r.state == 'pending' && !r.cancelled && !_older321(r.madeAt, cardCut))
+        .length;
+    // Bundle 321 (F7): the Get file ids the queue asked (any request).
+    final queueIds = <String>{
+      for (final p in plans.values)
+        for (final v in (p['asked'] as Map? ?? const {}).values) '$v',
+    };
     final out = <String, FileTrip317>{};
     for (final r in all) {
       if (r.action != 'get_chat' || !mine.contains(r.id) || r.cancelled || r.empty) continue;
@@ -340,6 +400,7 @@ class FileQueue317 {
         final v = await open(r);
         if (!v.complete) continue;
         final items = planOf(v);
+        _thumbs321[r.id] = thumbsOf321(v);
         plan = plans[r.id] = {
           'files': [for (final i in items) i.toJson()],
           'asked': <String, dynamic>{},
@@ -358,10 +419,19 @@ class FileQueue317 {
         dirty = true;
       }
       final mineFiles = files[r.id] ?? const <ChatRequestRow221>[];
+      // Bundle 321 (F7): stuck files - asked once more, then gone.
+      final retry = Map<String, dynamic>.from(plan['retry321'] as Map? ?? const {});
+      final dead = Map<String, dynamic>.from(plan['dead321'] as Map? ?? const {});
+      final planAt = DateTime.tryParse(plan['at']?.toString() ?? '');
       ChatRequestRow221? rowOf(String fileId) {
         ChatRequestRow221? best;
         for (final f in mineFiles) {
           if (f.fileId != fileId) continue;
+          // Bundle 321 (F7): a row made before this plan and not by the
+          // queue (old manual Get file) counts only once it is here.
+          if (!f.ready && !queueIds.contains(f.id) && planAt != null && _older321(f.madeAt, planAt)) continue;
+          // The row stopped by the retry (until the new one shows).
+          if (retry.containsKey(fileId) && f.id != '${asked[fileId] ?? ''}' && (f.cancelled || f.closed)) continue;
           if (best == null ||
               (!best.ready && (f.ready || f.madeAt.compareTo(best.madeAt) > 0))) {
             best = f;
@@ -371,6 +441,7 @@ class FileQueue317 {
         // phone -> reuse or wait (never asked twice).
         if (best == null) {
           for (final f in byFile[fileId] ?? const <ChatRequestRow221>[]) {
+            if (f.parent == r.id && !f.ready && !queueIds.contains(f.id)) continue; // Bundle 321 (F7)
             if (best == null || (!best.ready && f.ready)) best = f;
           }
         }
@@ -378,11 +449,58 @@ class FileQueue317 {
       }
 
       final views = <String, FileView317>{};
+      final now = _clock();
       for (final i in items) {
         final row = rowOf(i.fileId);
         views[i.fileId] = row == null && keptIds.contains(i.fileId)
             ? const FileView317(FileState317.here) // Bundle 318 (K8): kept here
             : _stateOf(i, row, asked.containsKey(i.fileId), stopped);
+        if (dead.containsKey(i.fileId) && views[i.fileId]!.state != FileState317.here) {
+          views[i.fileId] = const FileView317(FileState317.gone);
+          continue;
+        }
+        // Bundle 321 (F7): no new part for 10 min -> asked once more; the
+        // 2nd time -> gone (the window is free for the next file).
+        final v = views[i.fileId]!;
+        final key = '${r.id}/${i.fileId}';
+        if (v.state != FileState317.coming || stopped) {
+          _fileMoved321.remove(key);
+        } else {
+          final m = _fileMoved321[key];
+          if (m == null || m.$1 != v.parts) {
+            _fileMoved321[key] = (v.parts, now);
+          } else if (now.difference(m.$2) >= stuckAfter321) {
+            _fileMoved321.remove(key);
+            final old = v.row;
+            if (old != null) {
+              try {
+                if (old.state == 'pending' && cancel != null) {
+                  await cancel!(old);
+                } else {
+                  await close(old);
+                }
+              } catch (error) {
+                AppLogger.info('FILE_QUEUE_STOP_LATER', detail: '$error');
+              }
+            }
+            final tries = retry[i.fileId] is int ? retry[i.fileId] as int : 0;
+            if (tries < 1) {
+              retry[i.fileId] = tries + 1;
+              plan['retry321'] = retry;
+              asked.remove(i.fileId);
+              plan['asked'] = asked;
+              views[i.fileId] = const FileView317(FileState317.next);
+              AppLogger.info('FILE_QUEUE_RETRY', detail: 'quiet_min=${stuckAfter321.inMinutes} parts=${v.parts}/${v.of}');
+            } else {
+              dead[i.fileId] = true;
+              plan['dead321'] = dead;
+              views[i.fileId] = const FileView317(FileState317.gone);
+              AppLogger.info('FILE_QUEUE_GONE', detail: 'why=stuck_twice parts=${v.parts}/${v.of}');
+            }
+            dirty = true;
+            continue;
+          }
+        }
         final keep = keep318;
         if (keep != null && !_keeping318 && row != null && row.ready && !keptIds.contains(i.fileId) &&
             _keepTried318.add(i.fileId)) {
@@ -418,6 +536,14 @@ class FileQueue317 {
         }
       }
       _views[r.id] = views;
+      // Bundle 321 (N1): after a restart the plan is saved but the pictures
+      // are not - read the answer once (only while files still come).
+      if (!_thumbs321.containsKey(r.id) && !stopped && views.values.any((v) => v.state != FileState317.here)) {
+        _thumbs321[r.id] = const {};
+        try {
+          _thumbs321[r.id] = thumbsOf321(await open(r));
+        } catch (_) {}
+      }
       out[r.id] = await _trip(r, plan, items, views, stopped);
     }
     if (dirty) await _save();
@@ -442,8 +568,23 @@ class FileQueue317 {
       Map<String, FileView317> views, bool stopped) async {
     var here = 0, gone = 0, big = 0, coming = 0, bytesHere = 0, bytesTotal = 0, moved = 0;
     String viaDevice = '';
+    // Bundle 321 (N1/N2): the card's file + one fill per file that can come.
+    final fillsHere = <int>[], fillsComing = <int>[], fillsNext = <int>[];
+    FilePlanItem317? show, newestHere;
     for (final i in items) {
       final v = views[i.fileId]!;
+      switch (v.state) {
+        case FileState317.here:
+          fillsHere.add(100);
+          newestHere ??= i;
+        case FileState317.coming:
+          fillsComing.add(v.of > 0 ? (100 * v.parts / v.of).floor().clamp(0, 99) : 0);
+          show ??= i;
+        case FileState317.next || FileState317.stopped:
+          fillsNext.add(0);
+        case FileState317.gone || FileState317.tooBig:
+          break;
+      }
       switch (v.state) {
         case FileState317.gone:
           gone++;
@@ -467,10 +608,18 @@ class FileQueue317 {
     }
     final now = _clock();
     final last = _moved[r.id];
-    if (last == null || last.$1 != moved) _moved[r.id] = (moved, now);
+    // Bundle 321 (F7): a retried file starts at 0 parts again - that is
+    // not a new part (the quiet time goes on).
+    if (last == null || moved > last.$1) {
+      _moved[r.id] = (moved, now);
+    } else if (moved < last.$1) {
+      _moved[r.id] = (moved, last.$2);
+    }
     final waiting = coming > 0 && now.difference(_moved[r.id]!.$2) >= waitAfter;
     var via = '';
     if (viaDevice.isNotEmpty) via = await nameOf?.call(viaDevice).catchError((_) => '') ?? '';
+    show ??= newestHere;
+    final pics = _thumbs321[r.id] ?? const <String, String>{};
     return FileTrip317(
       requestId: r.id,
       total: items.length,
@@ -485,6 +634,9 @@ class FileQueue317 {
       from: plan['from']?.toString() ?? '',
       via: via.trim(),
       quietMin: coming > 0 ? now.difference(_moved[r.id]!.$2).inMinutes : 0,
+      kind321: show == null ? '' : FileTrip317.kindOf321(show.type),
+      thumb321: show == null ? '' : pics[show.fileId] ?? '',
+      pieces321: [...fillsHere, ...fillsComing, ...fillsNext].join(','),
     );
   }
 

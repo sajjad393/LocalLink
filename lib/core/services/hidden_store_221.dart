@@ -86,6 +86,13 @@ class Hidden221 {
     await db.execute('''CREATE TABLE IF NOT EXISTS answer_acks (
       answer_id TEXT PRIMARY KEY, action_id TEXT NOT NULL DEFAULT '', raw TEXT NOT NULL, at TEXT NOT NULL DEFAULT ''
     )''');
+    // Bundle 321 (F1): the light rows of answer_parts (no body / sig).
+    await db.execute('''CREATE TABLE IF NOT EXISTS answer_meta (
+      answer_id TEXT NOT NULL, part INTEGER NOT NULL, of INTEGER NOT NULL, action_id TEXT NOT NULL,
+      device TEXT NOT NULL, reply_to TEXT NOT NULL DEFAULT '', is_file INTEGER NOT NULL DEFAULT 0,
+      own INTEGER NOT NULL DEFAULT 0, at TEXT NOT NULL DEFAULT '', size INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(answer_id, part)
+    )''');
     _ready = true;
   }
 
@@ -717,6 +724,69 @@ class SqlAnswerPartStore implements AnswerPartStore {
   /// Bumped on every write: a load that raced a write is not kept.
   int _gen319 = 0;
 
+  /// Bundle 321 (F1): the light part rows, in memory after one read of
+  /// `answer_meta` (filled ONCE from `answer_parts`, then kept in step by
+  /// put / remove / dropAnswer). metas() never touches a body again - it
+  /// read every saved part (1,786 on Owner) and jammed the database.
+  Map<String, Map<int, PartMeta>>? _metaMem;
+  Future<Map<String, Map<int, PartMeta>>>? _metaLoading;
+  final List<void Function(Map<String, Map<int, PartMeta>>)> _metaOps = [];
+  static const String metaFilledKey321 = 'answer_meta_filled_321';
+
+  /// A change to the rows: applied to the memory copy now, and again on a
+  /// load that is running (every change is safe to apply twice).
+  void _metaChange(void Function(Map<String, Map<int, PartMeta>>) op) {
+    final mem = _metaMem;
+    if (mem != null) op(mem);
+    if (_metaLoading != null) _metaOps.add(op);
+  }
+
+  Future<Map<String, Map<int, PartMeta>>> _metaRows() {
+    final mem = _metaMem;
+    if (mem != null) return Future.value(mem);
+    final running = _metaLoading;
+    if (running != null) return running;
+    final next = _loadMeta();
+    _metaLoading = next;
+    return next;
+  }
+
+  Future<Map<String, Map<int, PartMeta>>> _loadMeta() async {
+    try {
+      await hidden.ensure();
+      final t0 = DateTime.now();
+      final flag = await db().query('settings',
+          columns: ['value'], where: 'key=?', whereArgs: [metaFilledKey321], limit: 1);
+      final filled = flag.isNotEmpty && flag.first['value']?.toString() == '1';
+      if (!filled) {
+        // Once per phone: the sizes are counted inside the database (the
+        // bodies never come to the app).
+        await db().execute('INSERT OR IGNORE INTO answer_meta '
+            '(answer_id, part, of, action_id, device, reply_to, is_file, own, at, size) '
+            'SELECT ${_metaColumns.join(', ')} FROM answer_parts');
+        await db().insert('settings', {'key': metaFilledKey321, 'value': '1'},
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      final rows = await db().query('answer_meta');
+      final out = <String, Map<int, PartMeta>>{};
+      for (final r in rows) {
+        final m = _meta(r);
+        (out[m.answerId] ??= <int, PartMeta>{})[m.part] = m;
+      }
+      for (final op in _metaOps) {
+        op(out);
+      }
+      _metaMem = out;
+      AppLogger.info('ANSWER_META_LOAD',
+          detail: 'rows=${rows.length} filled_now=${filled ? 0 : 1} '
+              'ms=${DateTime.now().difference(t0).inMilliseconds}');
+      return out;
+    } finally {
+      _metaOps.clear();
+      _metaLoading = null;
+    }
+  }
+
   HeldPart? _row(Map<String, Object?> r) => HeldPart.fromBlob(
       SignedBlob(body: r['body']?.toString() ?? '', sig: r['sig']?.toString() ?? ''),
       own: r['own'] == 1,
@@ -741,6 +811,37 @@ class SqlAnswerPartStore implements AnswerPartStore {
           'at': x.at,
         },
         conflictAlgorithm: ConflictAlgorithm.ignore);
+    if (id > 0) {
+      // Bundle 321 (F1): the light row too.
+      final meta = PartMeta(
+        answerId: x.answerId,
+        part: x.part,
+        of: x.of,
+        actionId: x.actionId,
+        device: x.device,
+        replyTo: x.replyTo,
+        isFile: x.isFile,
+        own: x.own,
+        at: x.at,
+        size: x.blob.body.length + x.blob.sig.length,
+      );
+      await db().insert(
+          'answer_meta',
+          {
+            'answer_id': meta.answerId,
+            'part': meta.part,
+            'of': meta.of,
+            'action_id': meta.actionId,
+            'device': meta.device,
+            'reply_to': meta.replyTo,
+            'is_file': meta.isFile ? 1 : 0,
+            'own': meta.own ? 1 : 0,
+            'at': meta.at,
+            'size': meta.size,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+      _metaChange((m) => (m[meta.answerId] ??= <int, PartMeta>{})[meta.part] ??= meta);
+    }
     return id > 0;
   }
 
@@ -777,11 +878,9 @@ class SqlAnswerPartStore implements AnswerPartStore {
 
   @override
   Future<List<PartMeta>> metas({String? answerId}) async {
-    await hidden.ensure();
-    final rows = answerId == null
-        ? await db().query('answer_parts', columns: _metaColumns)
-        : await db().query('answer_parts', columns: _metaColumns, where: 'answer_id=?', whereArgs: [answerId]);
-    return [for (final r in rows) _meta(r)];
+    final rows = await _metaRows();
+    if (answerId != null) return [...?rows[answerId]?.values];
+    return [for (final byPart in rows.values) ...byPart.values];
   }
 
   @override
@@ -794,6 +893,14 @@ class SqlAnswerPartStore implements AnswerPartStore {
 
   @override
   Future<int> othersBytes(String self, {bool? files}) async {
+    // Bundle 321 (F1): counted from the light rows in memory.
+    try {
+      var n = 0;
+      for (final m in await metas()) {
+        if (!m.own && m.replyTo != self && (files == null || m.isFile == files)) n += m.size;
+      }
+      return n;
+    } catch (_) {}
     await hidden.ensure();
     final rows = await db().rawQuery(
         'SELECT COALESCE(SUM(length(body)+length(sig)),0) AS n FROM answer_parts WHERE own=0 AND reply_to<>?'
@@ -811,6 +918,17 @@ class SqlAnswerPartStore implements AnswerPartStore {
     await db().delete('answer_parts',
         where: 'answer_id=? AND part IN (${List.filled(list.length, '?').join(',')})',
         whereArgs: [answerId, ...list]);
+    await db().delete('answer_meta',
+        where: 'answer_id=? AND part IN (${List.filled(list.length, '?').join(',')})',
+        whereArgs: [answerId, ...list]);
+    _metaChange((m) {
+      final byPart = m[answerId];
+      if (byPart == null) return;
+      for (final n in list) {
+        byPart.remove(n);
+      }
+      if (byPart.isEmpty) m.remove(answerId);
+    });
   }
 
   @override
@@ -818,10 +936,23 @@ class SqlAnswerPartStore implements AnswerPartStore {
     await hidden.ensure();
     if (keepFor.isEmpty) {
       await db().delete('answer_parts', where: 'answer_id=?', whereArgs: [answerId]);
+      await db().delete('answer_meta', where: 'answer_id=?', whereArgs: [answerId]);
     } else {
       await db().delete('answer_parts',
           where: 'answer_id=? AND reply_to<>?', whereArgs: [answerId, keepFor]);
+      await db().delete('answer_meta',
+          where: 'answer_id=? AND reply_to<>?', whereArgs: [answerId, keepFor]);
     }
+    _metaChange((m) {
+      final byPart = m[answerId];
+      if (byPart == null) return;
+      if (keepFor.isEmpty) {
+        m.remove(answerId);
+        return;
+      }
+      byPart.removeWhere((_, v) => v.replyTo != keepFor);
+      if (byPart.isEmpty) m.remove(answerId);
+    });
   }
 
   @override

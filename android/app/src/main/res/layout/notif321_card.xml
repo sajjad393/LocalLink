@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bundle 321 (N3): Android 15 and older draw the same card as Android 16
+     (USER PICK B): one line (the chat + "3/7" / "waiting" / a green check),
+     the piece bar as a picture and the photo on the right. The frame, the
+     "LinkUp · now" header and the corners come from the phone's own skin
+     (DecoratedCustomViewStyle). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/n321_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Compat.Notification.Title" />
+
+        <ImageView
+            android:id="@+id/n321_bar"
+            android:layout_width="match_parent"
+            android:layout_height="20dp"
+            android:layout_marginTop="6dp"
+            android:importantForAccessibility="no"
+            android:scaleType="fitStart" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/n321_pic"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="12dp"
+        android:importantForAccessibility="no"
+        android:scaleType="centerCrop" />
+</LinearLayout>
