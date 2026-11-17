@@ -40,6 +40,17 @@ class AdminConversationsScreen extends StatefulWidget {
   /// A2: how often the server pill re-checks the link.
   static const Duration pillEvery = Duration(seconds: 10);
 
+  /// Bundle 323 (P6): "Saved 18:44" when the list on screen was saved today,
+  /// "Saved 16 Nov 18:44" when it is older, "" when nothing was ever saved.
+  /// Offline only - while the server answers the list is today's.
+  static String savedLabel323(DateTime? at, DateTime now) {
+    if (at == null) return '';
+    String two(int n) => n.toString().padLeft(2, '0');
+    final time = '${two(at.hour)}:${two(at.minute)}';
+    final sameDay = at.year == now.year && at.month == now.month && at.day == now.day;
+    return sameDay ? '${L.t.saved} $time' : '${L.t.saved} ${dMMM216(at)} $time';
+  }
+
   @override
   State<AdminConversationsScreen> createState() => _AdminConversationsScreenState();
 }
@@ -57,6 +68,9 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
 
   ChatRequests221? get _svc => widget.requests ?? ChatRequests221.instance;
   bool _srvOnline = false;
+
+  /// Bundle 323 (P6): when this phone last saved the conversation list.
+  DateTime? _savedAt;
   bool get _online => _srvOnline && (widget.viewMode?.state.serverConnected ?? true);
 
   @override
@@ -120,6 +134,9 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       if (mounted) setState(() => _loading = false);
       return;
     }
+    // Bundle 323 (P6): the saved list's own time, before anything else.
+    final savedAt = await s.savedAt323().catchError((_) => null);
+    if (mounted && savedAt != _savedAt) setState(() => _savedAt = savedAt);
     // Bundle 321 (F13): the saved requests + kept copies at once; the
     // server lists fill in behind (8 s max each).
     if (_loading && _chats.isEmpty && _rows.isEmpty) await _savedFirst321(s);
@@ -373,9 +390,21 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
                 context, _online ? L.t.serverConnectedRequestsGoByThe : L.t.noServerTip307),
           ),
         ]),
+        // Bundle 323 (P6): offline, say how old the list on screen is - the
+        // one honest line the 17 Nov review asked for. Nothing is shown while
+        // the server answers (the list is today's).
+        if (!_online && _savedLabel323.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(_savedLabel323,
+              key: const ValueKey('conv323_saved'),
+              style: k.text(12.5, FontWeight.w500, k.grey, 1.2)),
+        ],
       ]),
     );
   }
+
+  /// Bundle 323 (P6): the header line of the saved list.
+  String get _savedLabel323 => AdminConversationsScreen.savedLabel323(_savedAt, DateTime.now());
 
   Widget _errorCard(BuildContext context) {
     final k = K307.of(context);

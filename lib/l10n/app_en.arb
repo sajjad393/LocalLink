@@ -3873,6 +3873,8 @@
   "serverLinks": "Server links",
   "serverLost": "Server lost",
   "serverOffYourLinksOnly": "Server off - your links only",
+  "serverOffGroupPhones324": "Server off - this group's phones are not known yet.",
+  "serverOffPersonPhone324": "Server off - this person's phone is not known yet.",
   "serverPcClockIsH": "Server PC clock is {h} h {fast}",
   "@serverPcClockIsH": {
     "placeholders": {

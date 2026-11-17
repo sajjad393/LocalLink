@@ -94,7 +94,19 @@ Future<Uint8List> _png(int w, int h, List<Color> colors) async {
 }
 
 ChatRequestRow221 _f(String id, String fid, {String state = 'done', int parts = 0, int of = 0}) => ChatRequestRow221(
-    id: id, action: 'get_file', state: state, parts: parts, of: of, parent: 'r1', fileId: fid, madeAt: '2026-11-17T12:01:00Z');
+    id: id,
+    action: 'get_file',
+    state: state,
+    parts: parts,
+    of: of,
+    parent: 'r1',
+    fileId: fid,
+    // Bundle 323: relative to now, one minute AHEAD of it. The fixed
+    // '2026-11-17T12:01:00Z' was only "newer than the plan" before 12:01 UTC
+    // that day; after that these rows counted as old manual cards and the
+    // queue skipped them, so this test started failing on a clock, not on
+    // code. A row must stay newer than the plan (that is the 321 F7 rule).
+    madeAt: DateTime.now().toUtc().add(const Duration(minutes: 1)).toIso8601String());
 
 
 void main() {

@@ -9718,6 +9718,18 @@ abstract class AppLocalizations {
   /// **'Server off - your links only'**
   String get serverOffYourLinksOnly;
 
+  /// No description provided for @serverOffGroupPhones324.
+  ///
+  /// In en, this message translates to:
+  /// **'Server off - this group\'s phones are not known yet.'**
+  String get serverOffGroupPhones324;
+
+  /// No description provided for @serverOffPersonPhone324.
+  ///
+  /// In en, this message translates to:
+  /// **'Server off - this person\'s phone is not known yet.'**
+  String get serverOffPersonPhone324;
+
   /// No description provided for @serverPcClockIsH.
   ///
   /// In en, this message translates to:

@@ -264,6 +264,10 @@ class FileQueue317 {
   /// Bundle 322 (S2): request/file -> (not before, last try) after a failed ask.
   final Map<String, (DateTime, int)> _askLater322 = {};
 
+  /// Bundle 323 (P7): the last reason this chat's files were not asked, so the
+  /// line is logged once per change and not on every tick.
+  final Map<String, String> _skip323 = <String, String>{};
+
   /// Bundle 322 (S2): the wait for the [tries]-th retry (0-based index).
   static Duration askWait322(int tries) =>
       askBackoff322[tries.clamp(0, askBackoff322.length - 1)];
@@ -415,17 +419,28 @@ class FileQueue317 {
       }
     }
     final keptIds = await keptFiles318?.call().catchError((Object _) => <String>{}) ?? const <String>{};
-    // Bundle 321 (F7): old pending Get file cards (over a day, e.g. the
-    // 3.0.107 manual ones) no longer fill the 3-card window.
-    final cardCut = _clock().toUtc().subtract(oldCardAfter321);
-    var pendingCards = all
-        .where((r) => r.action == 'get_file' && r.state == 'pending' && !r.cancelled && !_older321(r.madeAt, cardCut))
-        .length;
     // Bundle 321 (F7): the Get file ids the queue asked (any request).
     final queueIds = <String>{
       for (final p in plans.values)
-        for (final v in (p['asked'] as Map? ?? const {}).values) '$v',
+        for (final v in (p['asked'] as Map? ?? const {}).values)
+          if ('$v'.isNotEmpty) '$v',
     };
+    // Bundle 321 (F7): old pending Get file cards (over a day, e.g. the
+    // 3.0.107 manual ones) no longer fill the 3-card window.
+    final cardCut = _clock().toUtc().subtract(oldCardAfter321);
+    // Bundle 323 (P7): a card the queue itself asked is already counted as
+    // "on the way"; counting it again as a pending card filled the 3-card
+    // window with the queue's own two asks, so the ask loop broke on its
+    // first item and asked nothing at all - silently (17 Nov 18:45:58
+    // files=6, not one FILE_QUEUE_ASKED in the whole hour).
+    var pendingCards = all
+        .where((r) =>
+            r.action == 'get_file' &&
+            r.state == 'pending' &&
+            !r.cancelled &&
+            !_older321(r.madeAt, cardCut) &&
+            !queueIds.contains(r.id))
+        .length;
     final out = <String, FileTrip317>{};
     for (final r in all) {
       if (r.action != 'get_chat' || !mine.contains(r.id) || r.cancelled || r.empty) continue;
@@ -577,14 +592,22 @@ class FileQueue317 {
         for (final i in items) {
           if (views[i.fileId]!.state == FileState317.coming) onWayBytes += i.size;
         }
+        // Bundle 323 (P7): why nothing was asked (logged once per change).
+        var skip323 = '';
         for (final i in items) {
           if (views[i.fileId]!.state != FileState317.next) continue;
           // Bundle 322 (S2): a file whose ask just failed waits its turn; a
           // failed ask never keeps the window full.
           final later = _askLater322['${r.id}/${i.fileId}'];
           if (later != null && now.isBefore(later.$1)) continue;
-          if (onWay >= maxOnTheWay || pendingCards >= maxPendingCards) break;
-          if (onWay > 0 && onWayBytes + i.size > maxBytesOnTheWay) break;
+          if (onWay >= maxOnTheWay || pendingCards >= maxPendingCards) {
+            skip323 = 'window on_way=$onWay cards=$pendingCards';
+            break;
+          }
+          if (onWay > 0 && onWayBytes + i.size > maxBytesOnTheWay) {
+            skip323 = 'bytes on_way=$onWay mb=${(onWayBytes + i.size) ~/ (1024 * 1024)}';
+            break;
+          }
           try {
             final id = await ask(r, fileId: i.fileId, messageId: i.messageId, name: i.name);
             _askLater322.remove('${r.id}/${i.fileId}');
@@ -620,6 +643,16 @@ class FileQueue317 {
             dirty = true;
             continue;
           }
+        }
+        // Bundle 323 (P7): why nothing was asked (logged once per change).
+        if (skip323.isNotEmpty) {
+          if (_skip323[r.id] != skip323) {
+            _skip323[r.id] = skip323;
+            AppLogger.info('FILE_QUEUE_SKIP323',
+                detail: 'why=$skip323 left=${items.where((i) => views[i.fileId]!.state == FileState317.next).length}');
+          }
+        } else {
+          _skip323.remove(r.id);
         }
       }
       _views[r.id] = views;

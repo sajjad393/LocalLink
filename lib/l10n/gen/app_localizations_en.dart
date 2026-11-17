@@ -5658,6 +5658,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverOffYourLinksOnly => 'Server off - your links only';
 
   @override
+  String get serverOffGroupPhones324 =>
+      'Server off - this group\'s phones are not known yet.';
+
+  @override
+  String get serverOffPersonPhone324 =>
+      'Server off - this person\'s phone is not known yet.';
+
+  @override
   String serverPcClockIsH(Object? h, Object? fast) {
     return 'Server PC clock is $h h $fast';
   }

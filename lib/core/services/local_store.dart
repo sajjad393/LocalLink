@@ -4463,9 +4463,13 @@ class LocalStore {
       final cached = await txn.query(
         'group_message_attachments',
         columns: ['local_path'],
+        // Bundle 323 (P4): the closing two quotes were missing since bundle
+        // 308, so this statement was "…AND local_path != " - SQLite answered
+        // "incomplete input", the whole delete_group_tx rolled back and
+        // "Delete locally" never deleted anything (17 Nov 18:41:32/39/42:01).
         where:
             'group_message_id IN (SELECT id FROM group_messages WHERE group_id=?) AND local_path IS NOT NULL AND local_path != '
-            '',
+            "''",
         whereArgs: [groupId],
       );
       for (final row in cached) {

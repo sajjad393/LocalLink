@@ -1663,6 +1663,8 @@
   "serverLinks": "⁧سرور لنکس⁩",
   "serverLost": "⁧سرور سے رابطہ ٹوٹ گیا⁩",
   "serverOffYourLinksOnly": "⁧سرور بند - صرف آپ کے لنکس⁩",
+  "serverOffGroupPhones324": "⁧سرور بند - اس گروپ کے فون ابھی معلوم نہیں⁩",
+  "serverOffPersonPhone324": "⁧سرور بند - اس شخص کا فون ابھی معلوم نہیں⁩",
   "serverPcClockIsH": "⁧سرور PC کی گھڑی ⁨{h}⁩ گھنٹے ⁨{fast}⁩ ہے⁩",
   "serverReturnedNoRecoveryCodeEn304": "⁧سرور نے کوئی ریکوری کوڈ نہیں دیا⁩",
   "serverTraffic": "⁧سرور ٹریفک⁩",

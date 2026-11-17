@@ -783,6 +783,12 @@ class ChatRequests221 {
   static const String groupsSavedKey314 = 'admin_groups_saved_314';
   static const int maxSaved314 = 500;
 
+  /// Bundle 323 (P6): when the saved conversations list was last written, so
+  /// the Conversations header can say "Saved 18:44" instead of pretending an
+  /// old list is today's (17 Nov: the list on screen was 10 minutes old and
+  /// nothing said so).
+  static const String chatsSavedAt314 = 'admin_chats_saved_at_314';
+
   Future<String?> _token() async {
     final s = await signIn();
     return s == null || s.role != 'owner' ? null : s.token;
@@ -813,6 +819,12 @@ class ChatRequests221 {
           for (final c in list) {...c, if (c['me'] == true || await _rowIsMine314(c, mine)) 'me': true},
         ];
         await _saveList314(chatsSavedKey314, [for (final c in out) if (c['me'] != true) c]);
+        await _stamp323();
+        // Bundle 323 (P2): the group list carries `member_devices` - the only
+        // place a group's phones can come from while the server is off. It
+        // used to be saved only by the picker (which may never be opened while
+        // the server answers), so offline Get chat had no phones to ask.
+        await _saveGroups323(token);
         return out;
       } catch (error) {
         AppLogger.info('ADMIN_CHATS_LIST_LOCAL', detail: '$error');
@@ -842,6 +854,56 @@ class ChatRequests221 {
       });
     }
     return out;
+  }
+
+  /// Bundle 323 (P2): `/admin/groups` (+ the nearby groups the server knows)
+  /// into [groupsSavedKey314], the same shape [pickerGroups314] writes.
+  /// Best effort: a failure leaves the old list alone.
+  Future<void> _saveGroups323(String token) async {
+    final load = serverGroups;
+    if (load == null) return;
+    try {
+      final d = await load(token);
+      List<String> devsOf(Map<String, dynamic> m) =>
+          [for (final x in (m['member_devices'] as List? ?? const [])) if ('$x'.isNotEmpty) '$x'];
+      final list = <Map<String, dynamic>>[];
+      for (final g in (d['groups'] as List? ?? const [])) {
+        if (g is! Map) continue;
+        final m = Map<String, dynamic>.from(g);
+        final id = m['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        final devices = devsOf(m);
+        final n = m['members'];
+        list.add({
+          'id': id,
+          'name': m['name']?.toString() ?? '',
+          'members': n is int ? n : int.tryParse('${n ?? ''}') ?? devices.length,
+          'nearby': false,
+          'member_devices': devices,
+          if (m['me'] == true) 'me': true,
+        });
+      }
+      for (final g in (d['nearby'] as List? ?? const [])) {
+        if (g is! Map) continue;
+        final m = Map<String, dynamic>.from(g);
+        final id = m['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        final devices = devsOf(m);
+        list.add({
+          'id': id,
+          'name': m['name']?.toString() ?? '',
+          'members': devices.length,
+          'nearby': true,
+          'member_devices': devices,
+          if (m['me'] == true) 'me': true,
+        });
+      }
+      if (list.isEmpty) return;
+      await _saveList314(groupsSavedKey314, list);
+      AppLogger.info('GROUPS_SAVED323', detail: 'groups=${list.length}');
+    } catch (error) {
+      AppLogger.info('ADMIN_GROUPS_LIST323_SKIP', detail: '$error');
+    }
   }
 
   // ----------------------------------------------------- Bundle 314 lists
@@ -880,6 +942,32 @@ class ChatRequests221 {
     try {
       await write(key, jsonEncode(list.take(maxSaved314).toList()));
     } catch (_) {}
+  }
+
+  /// Bundle 323 (P6): the time the saved list was written.
+  Future<void> _stamp323() async {
+    try {
+      await write(chatsSavedAt314, _clock().toUtc().toIso8601String());
+    } catch (_) {}
+  }
+
+  /// Bundle 323 (P5): the words a person sees when this phone cannot reach a
+  /// chat yet. Online, the old sentence is true and stays. Offline, it is a
+  /// dead end - the phones live in the server's group list, so say that.
+  @visibleForTesting
+  static String unknownPhonesWords323({required bool group, required bool serverOff}) {
+    if (!serverOff) return "This phone doesn't know their phones yet.";
+    return group ? L.t.serverOffGroupPhones324 : L.t.serverOffPersonPhone324;
+  }
+
+  /// Bundle 323 (P6): null when this phone never saved a list yet.
+  Future<DateTime?> savedAt323() async {
+    try {
+      final raw = await read(chatsSavedAt314);
+      return raw == null || raw.isEmpty ? null : DateTime.tryParse(raw)?.toLocal();
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Reported nearby groups, `me` when one of my phones is a member.
@@ -929,6 +1017,8 @@ class ChatRequests221 {
       };
     }
 
+    // Bundle 323 (P3): where the rows came from, for the one log line below.
+    var src323 = 'local';
     var fromServer = false;
     final token = await _token();
     final load = serverGroups;
@@ -943,11 +1033,37 @@ class ChatRequests221 {
         await _saveList314(groupsSavedKey314, list);
         list.forEach(add);
         fromServer = true;
+        src323 = 'server';
       } catch (error) {
         AppLogger.info('ADMIN_GROUPS_LIST_LOCAL', detail: '$error');
       }
     }
-    if (!fromServer) (await _savedList314(groupsSavedKey314)).map((g) => row(g)).forEach(add);
+    if (!fromServer) {
+      final savedGroups323 = await _savedList314(groupsSavedKey314);
+      savedGroups323.map((g) => row(g)).forEach(add);
+      // Bundle 323 (P1): the groups the Conversations list already shows are
+      // askable here too. The saved server chats carry the name and the member
+      // count only (no phones), so a group the saved server list already knows
+      // keeps that row - and its `member_devices`.
+      var fromChats323 = 0;
+      for (final c in await _savedList314(chatsSavedKey314)) {
+        if (c['kind'] != 'group') continue;
+        final id = c['group_id']?.toString() ?? '';
+        if (id.isEmpty || byId.containsKey(id)) continue;
+        final n = c['member_count'];
+        add({
+          'id': id,
+          'name': c['group_name']?.toString() ?? '',
+          'members': n is int ? n : int.tryParse('${n ?? ''}') ?? 0,
+          'nearby': false,
+          'member_devices': const <String>[],
+        });
+        fromChats323++;
+      }
+      src323 = savedGroups323.isNotEmpty
+          ? (fromChats323 > 0 ? 'saved+chats' : 'saved')
+          : (fromChats323 > 0 ? 'chats' : 'local');
+    }
     for (final g in await localGroups().catchError((_) => <Map<String, dynamic>>[])) {
       final id = g['id']?.toString() ?? '';
       if (id.isEmpty || byId.containsKey(id)) continue;
@@ -970,6 +1086,10 @@ class ChatRequests221 {
       out.add(g);
     }
     out.sort((a, b) => '${a['name']}'.toLowerCase().compareTo('${b['name']}'.toLowerCase()));
+    // Bundle 323 (P3): one line per picker open - 17 Nov had no line at all,
+    // so "only one group" could not be explained from a log.
+    AppLogger.info('PICKER_LIST323',
+        detail: 'src=$src323 known=${byId.length} shown=${out.length} mine=${byId.length - out.length}');
     return out;
   }
 
@@ -1188,12 +1308,17 @@ class ChatRequests221 {
     final r = rangeOf(range, from: from, to: to);
     // Bundle 254 (21.12): two accounts on ONE phone have no chat together.
     if (!pick.isGroup && await samePhone(pick.userA, pick.userB)) {
+      AppLogger.info('GET_CHAT_FAIL323', detail: 'why=same_phone');
       throw StateError('These two accounts are on the same phone - there is no chat between them.');
     }
     // Bundle 314 (1 / 1b): not my own chats; one open request per chat.
-    if (await isOwnChat314(pick)) throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314);
+    if (await isOwnChat314(pick)) {
+      AppLogger.info('GET_CHAT_FAIL323', detail: 'why=own group=${pick.isGroup}');
+      throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314);
+    }
     final open = await openRequestFor314(pick);
     if (open != null) {
+      AppLogger.info('GET_CHAT_FAIL323', detail: 'why=already open=${open.id.length > 6 ? open.id.substring(open.id.length - 6) : open.id}');
       throw ChatAdminRefused(409, alreadyAskedCode314, L.t.alreadyAskedText314, openId: open.id);
     }
     final token = await _token();
@@ -1213,10 +1338,26 @@ class ChatRequests221 {
       return id;
     }
     final svc = actions;
-    if (svc == null) throw StateError('Admin actions are not ready.');
+    if (svc == null) {
+      AppLogger.info('GET_CHAT_FAIL323', detail: 'why=actions_not_ready');
+      throw StateError('Admin actions are not ready.');
+    }
     final who = await _resolve(pick);
-    if (who.meIn) throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314); // Bundle 314 (1)
-    if (who.targets.isEmpty) throw StateError("This phone doesn't know their phones yet.");
+    if (who.meIn) {
+      AppLogger.info('GET_CHAT_FAIL323', detail: 'why=own_devices group=${pick.isGroup}');
+      throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314); // Bundle 314 (1)
+    }
+    if (who.targets.isEmpty) {
+      // Bundle 323 (P3): the 17 Nov dead end - a group on screen whose phones
+      // this phone never learned. Was a silent StateError with no log line.
+      final off323 = !serverOnline();
+      AppLogger.info('GET_CHAT_FAIL323',
+          detail: 'why=targets_empty group=${pick.isGroup} server=${!off323} words=${off323 ? 'server_off' : 'unknown'}');
+      // Bundle 323 (P5): with the server off the old sentence was a dead end
+      // that said nothing about why (the phones live in the server's group
+      // list). Say it in the words we already use for an off server.
+      throw StateError(unknownPhonesWords323(group: pick.isGroup, serverOff: off323));
+    }
     final detail = {'chat': who.chat, 'from': r.from, 'to': r.to, 'plus_day': true, ...since318};
     final id = await svc.make(
       action: 'get_chat',

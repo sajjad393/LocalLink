@@ -5681,6 +5681,14 @@ class AppLocalizationsUr extends AppLocalizations {
   String get serverOffYourLinksOnly => '⁧سرور بند - صرف آپ کے لنکس⁩';
 
   @override
+  String get serverOffGroupPhones324 =>
+      '⁧سرور بند - اس گروپ کے فون ابھی معلوم نہیں⁩';
+
+  @override
+  String get serverOffPersonPhone324 =>
+      '⁧سرور بند - اس شخص کا فون ابھی معلوم نہیں⁩';
+
+  @override
   String serverPcClockIsH(Object? h, Object? fast) {
     return '⁧سرور PC کی گھڑی ⁨$h⁩ گھنٹے ⁨$fast⁩ ہے⁩';
   }
