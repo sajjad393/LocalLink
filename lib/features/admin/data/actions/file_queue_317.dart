@@ -125,8 +125,13 @@ class FileTrip317 {
   /// Minutes since the last new part (while files are on the way).
   final int quietMin;
 
-  /// Waiting more than 30 min: the phone card can be swiped away.
-  bool get waitingLong => waiting && quietMin >= 30;
+  /// Bundle 322 (S6): nothing moved for this long -> the card can be swiped.
+  /// Set to [Duration.zero] to go back to the 321 value of 30 min.
+  static const Duration swipeAfter322 = Duration(minutes: 10);
+
+  /// Waiting more than 30 min (321) / [swipeAfter322] (322): swiped away.
+  bool get waitingLong =>
+      waiting && quietMin >= (swipeAfter322 > Duration.zero ? swipeAfter322 : const Duration(minutes: 30)).inMinutes;
 
   /// Files that can come (not gone, not too big).
   int get wanted => total - gone - tooBig;
@@ -179,6 +184,13 @@ class FileTrip317 {
 }
 
 class FileQueue317 {
+  /// Bundle 322 (S1): a [ChatRequestRow221] for this file is on the server
+  /// but no new part came. A `pending` row (or one this queue does not know)
+  /// means the card was made and the answer is lost - it is on the way, so
+  /// the 321 clock must run on it. Turning this off restores 321 exactly
+  /// (such a file showed `next` and could never time out).
+  static const bool cardMeansComing322 = true;
+
   FileQueue317({
     required this.rows,
     required this.mineIds,
@@ -231,7 +243,30 @@ class FileQueue317 {
     return t != null && t.toUtc().isBefore(than.toUtc());
   }
 
+  /// Bundle 322 (S2): an ask that fails releases its slot and waits this
+  /// long before the same file is tried again (last value repeats).
+  static const List<Duration> askBackoff322 = [
+    Duration(minutes: 1),
+    Duration(minutes: 2),
+    Duration(minutes: 5),
+    Duration(minutes: 10),
+  ];
+
+  /// Bundle 322 (S2): after this many failed asks the file counts as gone.
+  static const int maxAskTries322 = 5;
+
   final Map<String, (int, DateTime)> _fileMoved321 = {};
+
+  /// Bundle 322 (S1): request/file -> (state, parts, since) for EVERY file,
+  /// not only the coming ones.
+  final Map<String, (FileState317, int, DateTime)> _stateMoved322 = {};
+
+  /// Bundle 322 (S2): request/file -> (not before, last try) after a failed ask.
+  final Map<String, (DateTime, int)> _askLater322 = {};
+
+  /// Bundle 322 (S2): the wait for the [tries]-th retry (0-based index).
+  static Duration askWait322(int tries) =>
+      askBackoff322[tries.clamp(0, askBackoff322.length - 1)];
 
   /// Bundle 321 (N1): request id -> file id -> small picture (base64), read
   /// from the answer once per run (not saved: the plan stays small).
@@ -422,6 +457,8 @@ class FileQueue317 {
       // Bundle 321 (F7): stuck files - asked once more, then gone.
       final retry = Map<String, dynamic>.from(plan['retry321'] as Map? ?? const {});
       final dead = Map<String, dynamic>.from(plan['dead321'] as Map? ?? const {});
+      // Bundle 322 (S2): failed asks per file (kept across a restart).
+      final fails322 = Map<String, dynamic>.from(plan['fails322'] as Map? ?? const {});
       final planAt = DateTime.tryParse(plan['at']?.toString() ?? '');
       ChatRequestRow221? rowOf(String fileId) {
         ChatRequestRow221? best;
@@ -454,15 +491,40 @@ class FileQueue317 {
         final row = rowOf(i.fileId);
         views[i.fileId] = row == null && keptIds.contains(i.fileId)
             ? const FileView317(FileState317.here) // Bundle 318 (K8): kept here
-            : _stateOf(i, row, asked.containsKey(i.fileId), stopped);
+            : _stateOf(i, row, asked.containsKey(i.fileId) || (cardMeansComing322 && row != null), stopped);
         if (dead.containsKey(i.fileId) && views[i.fileId]!.state != FileState317.here) {
           views[i.fileId] = const FileView317(FileState317.gone);
+          continue;
+        }
+        // Bundle 322 (S3): a file whose request was stopped on the other
+        // phone can never come - it counts as gone, not as "still wanted"
+        // (321 left it `next`/`stopped`, which kept the card at "6/8").
+        if (views[i.fileId]!.state == FileState317.stopped) {
+          views[i.fileId] = const FileView317(FileState317.gone);
+          dead[i.fileId] = true;
+          plan['dead321'] = dead;
+          AppLogger.info('FILE_QUEUE_GONE', detail: 'why=stopped');
+          dirty = true;
           continue;
         }
         // Bundle 321 (F7): no new part for 10 min -> asked once more; the
         // 2nd time -> gone (the window is free for the next file).
         final v = views[i.fileId]!;
         final key = '${r.id}/${i.fileId}';
+        // Bundle 322 (S1/S2): the file's state now, seen last time.
+        final seen = _stateMoved322[key];
+        if (seen == null || seen.$1 != v.state || seen.$2 != v.parts) {
+          final was = seen?.$1;
+          _stateMoved322[key] = (v.state, v.parts, now);
+          // Bundle 322 (S2): the file really moved (a part came, or a card
+          // appeared) - the failed-ask counter starts again.
+          if (was != v.state || (seen != null && seen.$2 != v.parts)) {
+            if (fails322.remove(i.fileId) != null) {
+              plan['fails322'] = fails322;
+              dirty = true;
+            }
+          }
+        }
         if (v.state != FileState317.coming || stopped) {
           _fileMoved321.remove(key);
         } else {
@@ -517,10 +579,15 @@ class FileQueue317 {
         }
         for (final i in items) {
           if (views[i.fileId]!.state != FileState317.next) continue;
+          // Bundle 322 (S2): a file whose ask just failed waits its turn; a
+          // failed ask never keeps the window full.
+          final later = _askLater322['${r.id}/${i.fileId}'];
+          if (later != null && now.isBefore(later.$1)) continue;
           if (onWay >= maxOnTheWay || pendingCards >= maxPendingCards) break;
           if (onWay > 0 && onWayBytes + i.size > maxBytesOnTheWay) break;
           try {
             final id = await ask(r, fileId: i.fileId, messageId: i.messageId, name: i.name);
+            _askLater322.remove('${r.id}/${i.fileId}');
             asked[i.fileId] = id;
             plan['asked'] = asked;
             dirty = true;
@@ -530,8 +597,28 @@ class FileQueue317 {
             pendingCards++;
             AppLogger.info('FILE_QUEUE_ASKED', detail: 'size=${i.size}');
           } catch (error) {
+            // Bundle 322 (S2): the slot is released and the file is retried
+            // later with a backoff; after [maxAskTries322] it is gone.
+            final k = '${r.id}/${i.fileId}';
+            final tries = (fails322[i.fileId] is int ? fails322[i.fileId] as int : 0) + 1;
+            fails322[i.fileId] = tries;
+            plan['fails322'] = fails322;
+            if (tries >= maxAskTries322) {
+              _askLater322.remove(k);
+              dead[i.fileId] = true;
+              plan['dead321'] = dead;
+              views[i.fileId] = const FileView317(FileState317.gone);
+              AppLogger.info('FILE_QUEUE_GONE',
+                  detail: 'why=ask_failed tries=$tries');
+            } else {
+              final wait = askWait322(tries - 1);
+              _askLater322[k] = (now.add(wait), tries);
+              AppLogger.info('FILE_QUEUE_ASK_FAILED',
+                  detail: 'try=$tries next_s=${wait.inSeconds}');
+            }
             AppLogger.info('FILE_QUEUE_LATER', detail: '$error');
-            break;
+            dirty = true;
+            continue;
           }
         }
       }
@@ -545,6 +632,18 @@ class FileQueue317 {
         } catch (_) {}
       }
       out[r.id] = await _trip(r, plan, items, views, stopped);
+    }
+    // Bundle 322 (S1/S2): drop the clocks of requests that are no longer
+    // tracked and of files that are done (keeps the maps small).
+    if (_stateMoved322.length > 200 || _askLater322.length > 200) {
+      final live = {
+        for (final e in out.entries)
+          for (final v in (_views[e.key] ?? const <String, FileView317>{}).entries)
+            if (v.value.state == FileState317.next || v.value.state == FileState317.coming)
+              '${e.key}/${v.key}',
+      };
+      _stateMoved322.removeWhere((k, _) => !live.contains(k));
+      _askLater322.removeWhere((k, _) => !live.contains(k));
     }
     if (dirty) await _save();
     if (!mapEquals(trips.value, out)) trips.value = out;

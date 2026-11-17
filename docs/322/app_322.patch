@@ -1,0 +1,1269 @@
+diff --git a/lib/core/config/app_build.dart b/lib/core/config/app_build.dart
+index e840ac4..0f58865 100644
+--- a/lib/core/config/app_build.dart
++++ b/lib/core/config/app_build.dart
+@@ -4,8 +4,8 @@
+ // plain `flutter build apk`, so it can't be trusted. These two constants are
+ // kept equal to pubspec.yaml `version:` (a test checks it).
+ 
+-const int kAppBuild = 183;
+-const String kAppVersion = '3.0.112';
++const int kAppBuild = 184;
++const String kAppVersion = '3.0.113';
+ 
+ /// HTTP header + socket header with the build (server version gate).
+ const String kAppBuildHeader = 'X-LinkUp-Build';
+diff --git a/lib/core/services/local_store.dart b/lib/core/services/local_store.dart
+index 52eea55..f4a3a87 100644
+--- a/lib/core/services/local_store.dart
++++ b/lib/core/services/local_store.dart
+@@ -2933,6 +2933,83 @@ class LocalStore {
+   Future<List<Map<String, dynamic>>> groupOutbox() =>
+       _db.query('group_outbox', orderBy: 'created_at ASC, id ASC');
+ 
++  /// Bundle 322 (G2): only the rows that can still go out. `failed` is the
++  /// red "not sent" bubble (Resend makes a NEW row), `delivered` /
++  /// `server_accepted` are done - none of them may be re-sent every 5 s.
++  /// [groupOutbox] itself is unchanged (the Stop / error paths need every
++  /// row).
++  Future<List<Map<String, dynamic>>> groupOutboxPending322() => _db.query(
++        'group_outbox',
++        where: "status NOT IN ('failed','delivered','server_accepted','refused')",
++        orderBy: 'created_at ASC, id ASC',
++      );
++
++  /// Bundle 322 (G1): the row can never be sent (the server answered with a
++  /// permanent error): red bubble + no more retries. Same words as the 1:1
++  /// road (Bundle 162 4.6), so the existing Resend / Delete mark works.
++  Future<void> failGroupOutbox322(String id) async {
++    await _db.update('group_outbox', {'status': 'failed'},
++        where: 'id=?', whereArgs: [id]);
++    try {
++      await updateMessageStatus(id, status: 'failed');
++    } catch (_) {
++      // A row with no bubble (a control note) is just dropped by the caller.
++    }
++  }
++
++  /// Bundle 322 (G5): the row was tried; the next try is not before [at].
++  Future<void> markGroupOutboxAttemptAt322(String id, DateTime at) async =>
++      _db.rawUpdate(
++        "UPDATE group_outbox SET status='sending',attempt_count=attempt_count+1,last_attempt_at=? WHERE id=?",
++        [at.toUtc().toIso8601String(), id],
++      );
++
++  // ---- Bundle 322 (G3): the body a queued row already sent ---------------
++  // A settings entry (no schema change): id -> body. A retry must use the
++  // exact same string, or the server answers "id already belongs to
++  // different message" forever (the TECNO loop, 17 Nov).
++
++  Future<String?> groupOutboxLockedBody322(String id) async {
++    final raw = await readSetting('group_locked_322');
++    if (raw == null || raw.isEmpty) return null;
++    try {
++      final map = jsonDecode(raw);
++      if (map is! Map) return null;
++      final v = map[id]?.toString();
++      return v == null || v.isEmpty ? null : v;
++    } catch (_) {
++      return null;
++    }
++  }
++
++  Future<void> setGroupOutboxLockedBody322(String id, String body) async {
++    await _putLocked322(id, body);
++  }
++
++  Future<void> clearGroupOutboxLockedBody322(String id) => _putLocked322(id, '');
++
++  Future<void> _putLocked322(String id, String body) async {
++    Map<String, dynamic> map = {};
++    try {
++      final raw = await readSetting('group_locked_322');
++      final d = raw == null || raw.isEmpty ? null : jsonDecode(raw);
++      if (d is Map) map = Map<String, dynamic>.from(d);
++    } catch (_) {}
++    if (body.isEmpty) {
++      map.remove(id);
++    } else {
++      map[id] = body;
++    }
++    // Keep it small: the newest 200 rows are enough for any retry window.
++    if (map.length > 200) {
++      final keys = map.keys.toList();
++      for (final k in keys.take(map.length - 200)) {
++        map.remove(k);
++      }
++    }
++    await writeSetting('group_locked_322', jsonEncode(map));
++  }
++
+   Future<void> updateGroupOutboxStatus(String id, String status) async {
+     final rows = await _db.query('group_outbox',
+         columns: ['status'], where: 'id=?', whereArgs: [id], limit: 1);
+diff --git a/lib/features/admin/data/actions/chat_request_notifier_307.dart b/lib/features/admin/data/actions/chat_request_notifier_307.dart
+index 5a33288..020d484 100644
+--- a/lib/features/admin/data/actions/chat_request_notifier_307.dart
++++ b/lib/features/admin/data/actions/chat_request_notifier_307.dart
+@@ -78,6 +78,13 @@ class ChatRequestNotifier307 {
+   /// Bundle 317 (G7): the files of each request (null = no queue; tests).
+   final Map<String, FileTrip317> Function()? files317;
+ 
++  /// Bundle 322 (S5): a files card whose numbers do not move for this long
++  /// is ended here (it can never stay un-swipeable forever). The 321 file
++  /// queue gives up on its own within ~20 min; this is the backstop for a
++  /// queue that is not running (restart, stopped slot, lost plan).
++  /// `Duration.zero` = Bundle 321 behaviour (no backstop).
++  static const Duration cardStuckAfter322 = Duration(minutes: 30);
++
+   /// Opens the answer viewer for a tapped card (set by the app shell).
+   static Future<void> Function(String requestId)? openViewer;
+ 
+@@ -93,6 +100,15 @@ class ChatRequestNotifier307 {
+ 
+   /// Request id -> what the card shows now.
+   final Map<String, String> _shown = {};
++
++  /// Bundle 322 (S5): request id -> (here, coming, since) - the last time the
++  /// files of that card moved. Read and written only in [_refreshOnce].
++  final Map<String, (int, int, DateTime)> _tripMoved322 = {};
++
++  /// Bundle 322 (S5): request id -> (here, coming) of a card ended by the
++  /// backstop. It stays away until its numbers really move again (then it
++  /// comes back - nothing is lost, the files keep coming in the chat).
++  final Map<String, (int, int)> _ended322 = {};
+   final Map<String, DateTime> _lastPost = {};
+   final Set<String> _emptyShown = {};
+   List<String>? _buzzed;
+@@ -162,6 +178,8 @@ class ChatRequestNotifier307 {
+   Future<void> clearAll() async {
+     _shown.clear();
+     _lastPost.clear();
++    _tripMoved322.clear();
++    _ended322.clear();
+     await cards.cancelAll();
+   }
+ 
+@@ -198,27 +216,69 @@ class ChatRequestNotifier307 {
+       // Bundle 317 (G7): a Ready card stays while its files come (even
+       // after the chat was opened); when all are here it goes once opened.
+       final trip = files[r.id];
+-      if (st.step == Step307.ready && trip != null && trip.total > 0 && !trip.stopped && !r.closed &&
+-          (trip.active || !r.opened)) {
+-        want[r.id] = (r, st);
+-        continue;
+-      }
+-      final keep = switch (st.step) {
++      var keep = st.step == Step307.ready && trip != null && trip.total > 0 && !trip.stopped && !r.closed &&
++              (trip.active || !r.opened)
++          ? true
++          : switch (st.step) {
+         Step307.sent || Step307.reached || Step307.coming => true,
+         // Ready: until opened / closed; not again after a restart once it buzzed.
+         Step307.ready => !r.opened && !r.closed && (_shown.containsKey(r.id) || !buzzed.contains(r.id)),
+         // No messages: once, and only for a card that was running here.
+         Step307.empty => _shown.containsKey(r.id) && !_emptyShown.contains(r.id),
+-        Step307.cancelled => false,
+-      };
++              Step307.cancelled => false,
++            };
++      // Bundle 322 (S5): a card ended by the backstop stays away until its
++      // numbers move again.
++      if (keep && _ended322.containsKey(r.id) && trip != null) {
++        final e = _ended322[r.id]!;
++        if (e.$1 == trip.here && e.$2 == trip.coming) {
++          keep = false;
++        } else {
++          // Numbers moved: it may come back.
++          _ended322.remove(r.id);
++        }
++      }
+       if (keep) want[r.id] = (r, st);
+     }
++    // Bundle 322 (S5): a files card whose numbers never move cannot outlive
++    // its work - after [cardStuckAfter322] it is ended here with the words
++    // "N files not available" (the same words 321 uses for a missing file).
++    if (cardStuckAfter322 > Duration.zero) {
++      for (final id in want.keys.toList()) {
++        final (r, st) = want[id]!;
++        final trip = files[id];
++        final working = st.step == Step307.ready && trip != null && trip.total > 0 && !trip.stopped && trip.active;
++        if (!working) {
++          _tripMoved322.remove(id);
++          continue;
++        }
++        final seen = _tripMoved322[id];
++        if (seen == null || seen.$1 != trip.here || seen.$2 != trip.coming) {
++          _tripMoved322[id] = (trip.here, trip.coming, now);
++          continue;
++        }
++        if (now.difference(seen.$3) < cardStuckAfter322) continue;
++        _tripMoved322.remove(id);
++        _ended322[id] = (trip.here, trip.coming);
++        want.remove(id);
++        _shown.remove(id);
++        _lastPost.remove(id);
++        final missing = trip.wanted - trip.here;
++        AppLogger.info('CHAT_REQ_CARD_307',
++            detail: 'cancel reason=stuck30 id=${_short322(id)} here=${trip.here}/${trip.wanted} missing=$missing');
++        await cards.cancel({'request_id': id, ..._summary(want.values.where((w) => w.$2.step != Step307.empty), files)});
++      }
++    }
+     // Gone / cancelled / opened -> remove.
+     final summary = _summary(want.values.where((w) => w.$2.step != Step307.empty), files);
+     for (final id in _shown.keys.toList()) {
+       if (want.containsKey(id)) continue;
+       _shown.remove(id);
+       _lastPost.remove(id);
++      _tripMoved322.remove(id);
++      // Bundle 322 (S7): every drop leaves a line with its reason (the 17 Nov
++      // stuck card was invisible in the logs: no CHAT_REQ_CARD line at all).
++      AppLogger.info('CHAT_REQ_CARD_307', detail: 'drop id=${_short322(id)} reason=${_dropReason322(id, rows, files)}');
+       await cards.cancel({'request_id': id, ...summary});
+     }
+     var wait = Duration.zero;
+@@ -244,6 +304,11 @@ class ChatRequestNotifier307 {
+         _emptyShown.add(id);
+         _shown.remove(id); // Android drops it after 10 s; nothing left to update.
+       }
++      // Bundle 322 (S7): one line per card change, ≤ 1/s (see [minGap]).
++      final tripShow = files[id];
++      AppLogger.info('CHAT_REQ_CARD_307',
++          detail: 'show id=${_short322(id)} step=${args['step']} '
++              'here=${tripShow?.here ?? 0}/${tripShow?.wanted ?? 0} shown=${_shown.length} buzz=$buzz');
+       await cards.show({...args, 'buzz': buzz, ...summary});
+       if (buzz || once318) await _rememberBuzz(id);
+     }
+@@ -253,6 +318,29 @@ class ChatRequestNotifier307 {
+     }
+   }
+ 
++  /// Bundle 322 (S7): the last 6 characters of a request id - enough to
++  /// follow one card in a log, never the whole id.
++  static String _short322(String id) => id.length > 6 ? id.substring(id.length - 6) : id;
++
++  /// Bundle 322 (S7): why a card went - the words the log needs.
++  static String _dropReason322(String id, List<ChatRequestRow221> rows, Map<String, FileTrip317> files) {
++    ChatRequestRow221? row;
++    for (final r in rows) {
++      if (r.id == id) row = r;
++    }
++    if (row == null) return 'gone';
++    if (row.closed) return 'closed';
++    if (row.opened) return 'opened';
++    final f = files[id];
++    if (f != null && f.total > 0 && !f.stopped && f.done) return 'done';
++    return switch (RequestStep307.of(row).step) {
++      Step307.cancelled => 'cancelled',
++      Step307.empty => 'empty',
++      Step307.ready => 'done',
++      _ => 'gone',
++    };
++  }
++
+   static Map<String, Object?> _summary(Iterable<(ChatRequestRow221, RequestStep307)> live,
+       [Map<String, FileTrip317> files = const {}]) {
+     final list = live.toList();
+diff --git a/lib/features/admin/data/actions/file_queue_317.dart b/lib/features/admin/data/actions/file_queue_317.dart
+index 2d149a2..ab57eb3 100644
+--- a/lib/features/admin/data/actions/file_queue_317.dart
++++ b/lib/features/admin/data/actions/file_queue_317.dart
+@@ -125,8 +125,13 @@ class FileTrip317 {
+   /// Minutes since the last new part (while files are on the way).
+   final int quietMin;
+ 
+-  /// Waiting more than 30 min: the phone card can be swiped away.
+-  bool get waitingLong => waiting && quietMin >= 30;
++  /// Bundle 322 (S6): nothing moved for this long -> the card can be swiped.
++  /// Set to [Duration.zero] to go back to the 321 value of 30 min.
++  static const Duration swipeAfter322 = Duration(minutes: 10);
++
++  /// Waiting more than 30 min (321) / [swipeAfter322] (322): swiped away.
++  bool get waitingLong =>
++      waiting && quietMin >= (swipeAfter322 > Duration.zero ? swipeAfter322 : const Duration(minutes: 30)).inMinutes;
+ 
+   /// Files that can come (not gone, not too big).
+   int get wanted => total - gone - tooBig;
+@@ -179,6 +184,13 @@ class FileTrip317 {
+ }
+ 
+ class FileQueue317 {
++  /// Bundle 322 (S1): a [ChatRequestRow221] for this file is on the server
++  /// but no new part came. A `pending` row (or one this queue does not know)
++  /// means the card was made and the answer is lost - it is on the way, so
++  /// the 321 clock must run on it. Turning this off restores 321 exactly
++  /// (such a file showed `next` and could never time out).
++  static const bool cardMeansComing322 = true;
++
+   FileQueue317({
+     required this.rows,
+     required this.mineIds,
+@@ -231,8 +243,31 @@ class FileQueue317 {
+     return t != null && t.toUtc().isBefore(than.toUtc());
+   }
+ 
++  /// Bundle 322 (S2): an ask that fails releases its slot and waits this
++  /// long before the same file is tried again (last value repeats).
++  static const List<Duration> askBackoff322 = [
++    Duration(minutes: 1),
++    Duration(minutes: 2),
++    Duration(minutes: 5),
++    Duration(minutes: 10),
++  ];
++
++  /// Bundle 322 (S2): after this many failed asks the file counts as gone.
++  static const int maxAskTries322 = 5;
++
+   final Map<String, (int, DateTime)> _fileMoved321 = {};
+ 
++  /// Bundle 322 (S1): request/file -> (state, parts, since) for EVERY file,
++  /// not only the coming ones.
++  final Map<String, (FileState317, int, DateTime)> _stateMoved322 = {};
++
++  /// Bundle 322 (S2): request/file -> (not before, last try) after a failed ask.
++  final Map<String, (DateTime, int)> _askLater322 = {};
++
++  /// Bundle 322 (S2): the wait for the [tries]-th retry (0-based index).
++  static Duration askWait322(int tries) =>
++      askBackoff322[tries.clamp(0, askBackoff322.length - 1)];
++
+   /// Bundle 321 (N1): request id -> file id -> small picture (base64), read
+   /// from the answer once per run (not saved: the plan stays small).
+   final Map<String, Map<String, String>> _thumbs321 = {};
+@@ -422,6 +457,8 @@ class FileQueue317 {
+       // Bundle 321 (F7): stuck files - asked once more, then gone.
+       final retry = Map<String, dynamic>.from(plan['retry321'] as Map? ?? const {});
+       final dead = Map<String, dynamic>.from(plan['dead321'] as Map? ?? const {});
++      // Bundle 322 (S2): failed asks per file (kept across a restart).
++      final fails322 = Map<String, dynamic>.from(plan['fails322'] as Map? ?? const {});
+       final planAt = DateTime.tryParse(plan['at']?.toString() ?? '');
+       ChatRequestRow221? rowOf(String fileId) {
+         ChatRequestRow221? best;
+@@ -454,15 +491,40 @@ class FileQueue317 {
+         final row = rowOf(i.fileId);
+         views[i.fileId] = row == null && keptIds.contains(i.fileId)
+             ? const FileView317(FileState317.here) // Bundle 318 (K8): kept here
+-            : _stateOf(i, row, asked.containsKey(i.fileId), stopped);
++            : _stateOf(i, row, asked.containsKey(i.fileId) || (cardMeansComing322 && row != null), stopped);
+         if (dead.containsKey(i.fileId) && views[i.fileId]!.state != FileState317.here) {
+           views[i.fileId] = const FileView317(FileState317.gone);
+           continue;
+         }
++        // Bundle 322 (S3): a file whose request was stopped on the other
++        // phone can never come - it counts as gone, not as "still wanted"
++        // (321 left it `next`/`stopped`, which kept the card at "6/8").
++        if (views[i.fileId]!.state == FileState317.stopped) {
++          views[i.fileId] = const FileView317(FileState317.gone);
++          dead[i.fileId] = true;
++          plan['dead321'] = dead;
++          AppLogger.info('FILE_QUEUE_GONE', detail: 'why=stopped');
++          dirty = true;
++          continue;
++        }
+         // Bundle 321 (F7): no new part for 10 min -> asked once more; the
+         // 2nd time -> gone (the window is free for the next file).
+         final v = views[i.fileId]!;
+         final key = '${r.id}/${i.fileId}';
++        // Bundle 322 (S1/S2): the file's state now, seen last time.
++        final seen = _stateMoved322[key];
++        if (seen == null || seen.$1 != v.state || seen.$2 != v.parts) {
++          final was = seen?.$1;
++          _stateMoved322[key] = (v.state, v.parts, now);
++          // Bundle 322 (S2): the file really moved (a part came, or a card
++          // appeared) - the failed-ask counter starts again.
++          if (was != v.state || (seen != null && seen.$2 != v.parts)) {
++            if (fails322.remove(i.fileId) != null) {
++              plan['fails322'] = fails322;
++              dirty = true;
++            }
++          }
++        }
+         if (v.state != FileState317.coming || stopped) {
+           _fileMoved321.remove(key);
+         } else {
+@@ -517,10 +579,15 @@ class FileQueue317 {
+         }
+         for (final i in items) {
+           if (views[i.fileId]!.state != FileState317.next) continue;
++          // Bundle 322 (S2): a file whose ask just failed waits its turn; a
++          // failed ask never keeps the window full.
++          final later = _askLater322['${r.id}/${i.fileId}'];
++          if (later != null && now.isBefore(later.$1)) continue;
+           if (onWay >= maxOnTheWay || pendingCards >= maxPendingCards) break;
+           if (onWay > 0 && onWayBytes + i.size > maxBytesOnTheWay) break;
+           try {
+             final id = await ask(r, fileId: i.fileId, messageId: i.messageId, name: i.name);
++            _askLater322.remove('${r.id}/${i.fileId}');
+             asked[i.fileId] = id;
+             plan['asked'] = asked;
+             dirty = true;
+@@ -530,8 +597,28 @@ class FileQueue317 {
+             pendingCards++;
+             AppLogger.info('FILE_QUEUE_ASKED', detail: 'size=${i.size}');
+           } catch (error) {
++            // Bundle 322 (S2): the slot is released and the file is retried
++            // later with a backoff; after [maxAskTries322] it is gone.
++            final k = '${r.id}/${i.fileId}';
++            final tries = (fails322[i.fileId] is int ? fails322[i.fileId] as int : 0) + 1;
++            fails322[i.fileId] = tries;
++            plan['fails322'] = fails322;
++            if (tries >= maxAskTries322) {
++              _askLater322.remove(k);
++              dead[i.fileId] = true;
++              plan['dead321'] = dead;
++              views[i.fileId] = const FileView317(FileState317.gone);
++              AppLogger.info('FILE_QUEUE_GONE',
++                  detail: 'why=ask_failed tries=$tries');
++            } else {
++              final wait = askWait322(tries - 1);
++              _askLater322[k] = (now.add(wait), tries);
++              AppLogger.info('FILE_QUEUE_ASK_FAILED',
++                  detail: 'try=$tries next_s=${wait.inSeconds}');
++            }
+             AppLogger.info('FILE_QUEUE_LATER', detail: '$error');
+-            break;
++            dirty = true;
++            continue;
+           }
+         }
+       }
+@@ -546,6 +633,18 @@ class FileQueue317 {
+       }
+       out[r.id] = await _trip(r, plan, items, views, stopped);
+     }
++    // Bundle 322 (S1/S2): drop the clocks of requests that are no longer
++    // tracked and of files that are done (keeps the maps small).
++    if (_stateMoved322.length > 200 || _askLater322.length > 200) {
++      final live = {
++        for (final e in out.entries)
++          for (final v in (_views[e.key] ?? const <String, FileView317>{}).entries)
++            if (v.value.state == FileState317.next || v.value.state == FileState317.coming)
++              '${e.key}/${v.key}',
++      };
++      _stateMoved322.removeWhere((k, _) => !live.contains(k));
++      _askLater322.removeWhere((k, _) => !live.contains(k));
++    }
+     if (dirty) await _save();
+     if (!mapEquals(trips.value, out)) trips.value = out;
+   }
+diff --git a/lib/features/groups/data/services/group_messaging_service.dart b/lib/features/groups/data/services/group_messaging_service.dart
+index 45a910b..24182c1 100644
+--- a/lib/features/groups/data/services/group_messaging_service.dart
++++ b/lib/features/groups/data/services/group_messaging_service.dart
+@@ -46,6 +46,57 @@ class GroupMessagingService {
+ 
+   GroupMessagingService(this.store, this.api, this.socket, this.files);
+ 
++  /// Bundle 322 (G1): a server answer that can NEVER succeed for this row.
++  /// The TECNO log (17 Nov) sent 3 rows 687x each in one hour because the
++  /// server said `group message id already belongs to different message`
++  /// and the row went back to `queued` every 5 s. These words mean "give
++  /// up, show the red mark, let the user Resend" (Resend makes a new id).
++  /// `false` = Bundle 321 behaviour (everything is retried).
++  static const bool permanentCode322 = true;
++
++  static const List<String> permanentWords322 = [
++    'already belongs to different',
++    'already belongs to a different',
++    'body is reserved',
++    'invalid group message created_at',
++    'group message body or attachment is required',
++    'sender_id does not match',
++    'timestamp is invalid',
++    'too far in the future',
++  ];
++
++  static bool isPermanent322(String code, String text) {
++    if (!permanentCode322) return false;
++    if (code == 'SENDER_ID_MISMATCH') return true;
++    final t = text.toLowerCase();
++    for (final w in permanentWords322) {
++      if (t.contains(w)) return true;
++    }
++    return false;
++  }
++
++  /// Bundle 322 (G5): how long a row waits before the next try; the first
++  /// attempt is always immediate (today's latency).
++  static const List<Duration> retryBackoff322 = [
++    Duration(seconds: 5),
++    Duration(seconds: 10),
++    Duration(seconds: 20),
++    Duration(seconds: 40),
++    Duration(seconds: 60),
++  ];
++
++  static Duration retryWait322(int tries) =>
++      retryBackoff322[tries.clamp(0, retryBackoff322.length - 1)];
++
++  /// Bundle 322 (G3): one body per id. The locked text is kept and re-sent
++  /// unchanged; a fresh nonce on every try is what the server answers with
++  /// "id already belongs to different message".
++  static const bool lockCache322 = true;
++
++  /// Bundle 322 (G5): id -> not before. A local map: a restart just tries
++  /// once more at once, which is harmless.
++  final Map<String, DateTime> _nextTry322 = {};
++
+   /// Bundle G3: Nearby groups (set once at start; null in old tests).
+   GroupNearbyService? nearby;
+ 
+@@ -1129,9 +1180,16 @@ class GroupMessagingService {
+     _flushing = true;
+     final keysSent = <String>{};
+     try {
+-      final items = await store.groupOutbox();
++      // Bundle 322 (G2): only rows that can still go (never `failed` /
++      // delivered / server_accepted - those were re-sent every 5 s).
++      final items = await store.groupOutboxPending322();
++      final now322 = DateTime.now().toUtc();
+       for (final item in items) {
+         final id = item['id']?.toString() ?? '';
++        // Bundle 322 (G5): a row that just failed waits (5 -> 60 s) instead
++        // of being sent every 5 s. A new message has no entry = immediate.
++        final notBefore = _nextTry322[id];
++        if (notBefore != null && now322.isBefore(notBefore)) continue;
+         final groupId = item['group_id']?.toString() ?? '';
+         final createdAt = item['created_at']?.toString() ?? '';
+         if (id.isEmpty || groupId.isEmpty || createdAt.isEmpty) continue;
+@@ -1198,7 +1256,20 @@ class GroupMessagingService {
+         // Bundle G6: the server gets only the locked text.
+         var wire = body;
+         if (_lockable(body)) {
+-          wire = await _lockForServer(groupId, id, body, keysSent) ?? body;
++          // Bundle 322 (G3): the SAME string on every try. A new nonce made
++          // the server answer "id already belongs to different message".
++          final cached = lockCache322 ? await store.groupOutboxLockedBody322(id) : null;
++          if (cached != null) {
++            wire = cached;
++          } else {
++            final locked = await _lockForServer(groupId, id, body, keysSent);
++            if (locked != null) {
++              wire = locked;
++              if (lockCache322) await store.setGroupOutboxLockedBody322(id, locked);
++            } else {
++              wire = body;
++            }
++          }
+         }
+ 
+         socket.send({
+@@ -1209,6 +1280,14 @@ class GroupMessagingService {
+           'created_at': createdAt,
+           if (remoteIds.isNotEmpty) 'attachment_ids': remoteIds,
+         }, durable: true);
++        // Bundle 322 (G5): the attempt is counted and the next try waits
++        // (a delivered row leaves the queue by its ack - see _onMessage).
++        final tries = (int.tryParse(item['attempt_count']?.toString() ?? '') ?? 0) + 1;
++        if (tries > 1) {
++          final wait = retryWait322(tries - 1);
++          _nextTry322[id] = DateTime.now().toUtc().add(wait);
++          AppLogger.info('GROUP_RETRY', detail: 'n=$tries next_s=${wait.inSeconds}');
++        }
+         await store.markGroupOutboxAttempt(id);
+       }
+     } finally {
+@@ -1716,12 +1795,28 @@ class GroupMessagingService {
+         }
+         return;
+       }
++      // Bundle 322 (G1): the server will never take THIS row (the id is
++      // already bound to another body, the body is reserved, ...). Retrying
++      // the same id can only fail again - stop, show the red mark, let the
++      // user Resend (a new id) or Delete. 321 put it back to `queued` and
++      // the 5 s timer sent it again: 687 times in an hour on the TECNO.
++      final text = data['error']?.toString() ?? '';
++      if (isPermanent322(code, text)) {
++        await store.removeGroupOutbox(id);
++        await store.removePendingGroupAttachments(id);
++        await store.failGroupOutbox322(id);
++        AppLogger.warning('GROUP_SEND_PERMANENT',
++            detail: 'code=${code.isEmpty ? '-' : code} why=${permanentWords322.firstWhere((w) => text.toLowerCase().contains(w), orElse: () => code)}');
++        return;
++      }
+       await store.updateGroupOutboxStatus(id, 'queued');
+       return;
+     }
+     if (type == 'group_message_ack') {
+       final id = data['id']?.toString();
+       if (id == null || id.isEmpty) return;
++      // Bundle 322 (G3): this id is answered - its cached body goes too.
++      if (lockCache322) unawaited(store.clearGroupOutboxLockedBody322(id).catchError((Object _) {}));
+       final pending = await store.pendingGroupAttachments(id);
+       final echoed = GroupMessage.fromJson(data);
+       // Bundle G6: my key note / key ask reached the server.
+diff --git a/pubspec.yaml b/pubspec.yaml
+index dbf15b1..11db963 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: locallink
+ publish_to: 'none'
+ description: LinkUp offline LAN communication client.
+-version: 3.0.112+183
++version: 3.0.113+184
+ 
+ environment:
+   sdk: '>=3.3.0 <4.0.0'
+diff --git a/test/bundle223_logs_test.dart b/test/bundle223_logs_test.dart
+index e1cd11d..4c50b52 100644
+--- a/test/bundle223_logs_test.dart
++++ b/test/bundle223_logs_test.dart
+@@ -29,9 +29,9 @@ void main() {
+   test('223-32 the stamp is made from kAppVersion + kAppBuild = pubspec', () {
+     final pub = File('pubspec.yaml').readAsStringSync();
+     expect(pub, contains('version: $kAppVersion+$kAppBuild'));
+-    expect(kAppVersion, '3.0.112');
+-    expect(kAppBuild, 183);
+-    expect(AppBuild.stamp, 'v3 · 3.0.112+183');
++    expect(kAppVersion, '3.0.113');
++    expect(kAppBuild, 184);
++    expect(AppBuild.stamp, 'v3 · 3.0.113+184');
+     final app = File('lib/app/local_link_app.dart').readAsStringSync();
+     expect(app, contains("AppLogger.info('APP_BUILD_STAMP', detail: AppBuild.stamp);"));
+     expect(app, isNot(contains('3.0.50')));
+diff --git a/test/bundle322_card_test.dart b/test/bundle322_card_test.dart
+new file mode 100644
+index 0000000..39c4a00
+--- /dev/null
++++ b/test/bundle322_card_test.dart
+@@ -0,0 +1,192 @@
++// Bundle 322 W2: the files card always ends (S5 backstop, 30 min with no
++// movement) and every card change leaves a log line (S7) - the two reasons
++// the 17 Nov "Group 1 / 6 of 8" card was invisible for an hour.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:locallink/core/diagnostics/app_log_file.dart';
++import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
++import 'package:locallink/features/admin/data/actions/chat_request_notifier_307.dart';
++import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
++import 'package:locallink/features/admin/data/actions/request_step_307.dart';
++
++const _mb = 1024 * 1024;
++
++class _Cards implements ChatRequestCards307 {
++  final List<Map<String, Object?>> shows = [];
++  final List<Map<String, Object?>> cancels = [];
++  @override
++  Future<void> show(Map<String, Object?> args) async => shows.add(args);
++  @override
++  Future<void> cancel(Map<String, Object?> args) async => cancels.add(args);
++  @override
++  Future<void> cancelAll() async {}
++}
++
++const _chat = ChatRequestRow221(
++    id: 'req_17nov_group1',
++    action: 'get_chat',
++    label: 'Group 1',
++    state: 'done',
++    parts: 8,
++    of: 8,
++    fromName: 'kiran');
++
++FileTrip317 _trip({int here = 6, int total = 8, int gone = 0, int quietMin = 0, bool stopped = false}) => FileTrip317(
++      requestId: _chat.id,
++      total: total,
++      here: here,
++      gone: gone,
++      tooBig: 0,
++      coming: total - here - gone,
++      bytesHere: here * _mb,
++      bytesTotal: (total - gone) * _mb,
++      waiting: quietMin >= 2,
++      stopped: stopped,
++      from: 'kiran',
++      quietMin: quietMin,
++    );
++
++class _Rig {
++  _Rig({int here = 6}) : here = here;
++  int here;
++  int quietMin = 0;
++  bool stopped = false;
++  DateTime now = DateTime.utc(2026, 11, 17, 12, 0);
++  final _Cards cards = _Cards();
++  List<ChatRequestRow221> rows = const [_chat];
++
++  late final ChatRequestNotifier307 n = ChatRequestNotifier307(
++    mine: () async => rows,
++    isOwner: () async => true,
++    read: (k) async => null,
++    write: (k, v) async {},
++    cards: cards,
++    checkEvery: const Duration(hours: 1),
++    files317: () => {_chat.id: _trip(here: here, quietMin: quietMin, stopped: stopped)},
++    clock: () => now,
++  );
++
++  String get log => AppLogFile.instance.pendingForTest.join('\n');
++
++  Future<void> tick([Duration after = Duration.zero]) async {
++    now = now.add(after);
++    await n.refresh();
++  }
++}
++
++void main() {
++  setUp(AppLogFile.instance.resetForTest);
++
++  group('S5: a files card cannot outlive its work', () {
++    test('6/8 with nothing moving ends after 30 min (not before)', () async {
++      final t = _Rig();
++      await t.tick();
++      expect(t.cards.shows, hasLength(1));
++      expect(t.cards.shows.last['title'], 'Group 1 \u00b7 6/8');
++      // 29 min of nothing: the card is still there, nothing is posted twice.
++      await t.tick(const Duration(minutes: 29));
++      expect(t.cards.shows, hasLength(1));
++      expect(t.cards.cancels, isEmpty);
++      // 31 min: ended with the reason in the log and on the card.
++      await t.tick(const Duration(minutes: 2));
++      expect(t.cards.cancels, hasLength(1));
++      expect(t.cards.cancels.last['request_id'], _chat.id);
++      expect(t.log, contains('CHAT_REQ_CARD_307|show id=group1 step=files'));
++      expect(t.log, contains('CHAT_REQ_CARD_307|cancel reason=stuck30 id=group1 here=6/8 missing=2'));
++    });
++
++    test('a card that keeps moving is never ended', () async {
++      final t = _Rig();
++      await t.tick();
++      for (var i = 0; i < 5; i++) {
++        t.here = 6 + (i.isEven ? 1 : 0);
++        await t.tick(const Duration(minutes: 25));
++      }
++      expect(t.cards.cancels, isEmpty, reason: 'it moved every 25 min');
++    });
++
++    test('after the backstop the card stays away until the numbers move again', () async {
++      final t = _Rig();
++      await t.tick();
++      await t.tick(const Duration(minutes: 31));
++      expect(t.cards.cancels, hasLength(1));
++      final shown = t.cards.shows.length;
++      // Same numbers: it does not come back on every tick.
++      await t.tick();
++      await t.tick();
++      expect(t.cards.shows, hasLength(shown));
++      // A file arrives: the card may come back (the work is not lost).
++      t.here = 7;
++      await t.tick(const Duration(minutes: 2));
++      expect(t.cards.shows.length, shown + 1);
++      expect(t.cards.shows.last['title'], 'Group 1 \u00b7 7/8');
++    });
++
++    test('a stopped queue is not a stuck card (Stop files ends it as in 321)', () async {
++      final t = _Rig();
++      await t.tick();
++      t.stopped = true;
++      await t.tick(const Duration(minutes: 31));
++      expect(t.cards.cancels, isEmpty);
++      expect(t.cards.shows.last['step'], isNot('files'));
++    });
++  });
++
++  group('S7: every card change leaves a line', () {
++    test('show at 6/8, then files_done at 8/8; the card still waits to be opened', () async {
++      final t = _Rig();
++      await t.tick();
++      expect(t.log, contains('CHAT_REQ_CARD_307|show id=group1 step=files'));
++      t.here = 8;
++      await t.tick(const Duration(minutes: 2));
++      expect(t.log, contains('CHAT_REQ_CARD_307|show id=group1 step=files_done'));
++      // 317 G7 is unchanged: all here + not opened = the card stays.
++      expect(t.cards.cancels, isEmpty);
++    });
++
++    test('opened by the user: reason=opened', () async {
++      final t = _Rig(here: 8);
++      await t.tick();
++      t.rows = const [
++        ChatRequestRow221(id: 'req_17nov_group1', action: 'get_chat', label: 'Group 1', state: 'done', parts: 8, of: 8,
++            fromName: 'kiran', opened: true),
++      ];
++      await t.tick();
++      expect(t.log, contains('drop id=group1 reason=opened'));
++    });
++
++    test('the log never carries a name or a whole id', () async {
++      final t = _Rig();
++      await t.tick();
++      t.here = 8;
++      await t.tick(const Duration(minutes: 2));
++      final lines = t.log.split('\n').where((l) => l.contains('CHAT_REQ_CARD_307'));
++      expect(lines, isNotEmpty);
++      for (final l in lines) {
++        expect(l, isNot(contains('Group 1')));
++        expect(l, isNot(contains('kiran')));
++        expect(l, isNot(contains('req_17nov_group1')));
++      }
++    });
++
++    test('a stuck card writes at most one line a minute (no log flood)', () async {
++      final t = _Rig();
++      await t.tick();
++      for (var i = 0; i < 10; i++) {
++        await t.tick(const Duration(minutes: 1));
++      }
++      final lines = t.log.split('\n').where((l) => l.contains('CHAT_REQ_CARD_307')).length;
++      expect(lines, lessThanOrEqualTo(2), reason: 'one show + at most one end in 10 min');
++    });
++  });
++
++  group('S6: the swipe threshold is a named constant', () {
++    test('10 min quiet is enough on the phone card args', () {
++      final now = DateTime.utc(2026, 11, 17, 12);
++      final a = ChatRequestNotifier307.filesArgs317(_chat, RequestStep307.of(_chat), _trip(quietMin: 11), now);
++      expect(a['files_swipe'], isTrue);
++      expect(a['step'], 'files_wait');
++      final b = ChatRequestNotifier307.filesArgs317(_chat, RequestStep307.of(_chat), _trip(quietMin: 3), now);
++      expect(b['files_swipe'], isFalse);
++    });
++  });
++}
+diff --git a/test/bundle322_files_test.dart b/test/bundle322_files_test.dart
+new file mode 100644
+index 0000000..baaab59
+--- /dev/null
++++ b/test/bundle322_files_test.dart
+@@ -0,0 +1,203 @@
++// Bundle 322 W1: the files card can never stay forever (S1 stuck "next",
++// S2 ask failure releases the window, S3 stopped -> gone, S6 swipe after
++// 10 min). Every test here is the stuck "Group 1 6/8" card from 17 Nov.
++import 'dart:async';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:locallink/core/diagnostics/app_log_file.dart';
++import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
++import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
++import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
++
++const _mb = 1024 * 1024;
++
++ChatRequestRow221 _file(String id, String fileId,
++        {String state = 'pending', int parts = 0, int of = 0, String madeAt = '2026-11-16T12:00:00Z'}) =>
++    ChatRequestRow221(
++        id: id, action: 'get_file', state: state, parts: parts, of: of, parent: 'r1', fileId: fileId, madeAt: madeAt);
++
++ChatAnswerView _answer(List<String> ids) => ChatAnswerView(
++      id: 'r1',
++      answerId: 'an_1',
++      fromDevice: 'dev-k',
++      fromName: 'kiran',
++      of: 4,
++      parts: 4,
++      complete: true,
++      messages: [
++        {
++          'id': 'm1',
++          'sender': 'dev-k',
++          'created_at': '2026-11-14T10:00:00',
++          'body': '',
++          'attachments': [for (final i in ids) {'file_id': i, 'name': '$i.jpg', 'type': 'image/jpeg', 'size': _mb}],
++        },
++      ],
++    );
++
++class _Q {
++  _Q(this.view);
++  ChatAnswerView view;
++
++  /// Rows the phone sees. The first one is this phone's own get_chat.
++  List<ChatRequestRow221> rows = [const ChatRequestRow221(id: 'r1', action: 'get_chat', state: 'done', parts: 4, of: 4)];
++
++  /// File ids the ask() call refuses (a phone that cannot make the card).
++  final Set<String> failAsk = {};
++  final Map<String, String> saved = {};
++  final List<String> asked = [];
++  final List<String> stoppedIds = [];
++  int n = 0;
++  DateTime now = DateTime.utc(2026, 11, 16, 12);
++
++  late final FileQueue317 q = FileQueue317(
++    rows: () async => rows,
++    mineIds: () async => {'r1'},
++    open: (r) async => view,
++    ask: (parent, {required fileId, messageId = '', name = ''}) async {
++      if (failAsk.contains(fileId)) throw StateError('no card for $fileId');
++      asked.add(fileId);
++      return 'aa_${fileId}_${++n}';
++    },
++    close: (r) async => stoppedIds.add(r.id),
++    cancel: (r) async => stoppedIds.add(r.id),
++    isOwner: () async => true,
++    read: (k) async => saved[k],
++    write: (k, v) async => saved[k] = v,
++    clock: () => now,
++  );
++
++  String get log => AppLogFile.instance.pendingForTest.join('\n');
++
++  FileTrip317 get trip => FileQueue317.trips.value['r1']!;
++}
++
++void main() {
++  setUp(AppLogFile.instance.resetForTest);
++  tearDown(() => FileQueue317.trips.value = const {});
++
++  group('S1: a file with a card on the server is "coming", never "next"', () {
++    test('an asked row the queue does not remember still times out', () async {
++      // Before 322 the file showed `next` while a Get file row existed on
++      // the server: the 321 clock only watches `coming`, so nothing ever
++      // timed that file out - the 17 Nov "Group 1 6/8" card.
++      final t = _Q(_answer(['a', 'b', 'c', 'd']));
++      // Two rows that the queue did not make in this run (lost card).
++      t.rows = [
++        t.rows.first,
++        _file('aa_a_1', 'a', state: 'pending'),
++        _file('aa_b_2', 'b', state: 'pending'),
++      ];
++      await t.q.tick();
++      expect(t.q.viewsOf('r1')['a']!.state, FileState317.coming, reason: 'was `next` in 321');
++      expect(t.q.viewsOf('r1')['b']!.state, FileState317.coming);
++      expect(t.trip.coming, 2);
++      expect(t.asked, isEmpty, reason: 'the window is full: c and d wait, as in 317');
++      // Nothing moves: the 321 timer now runs on them, re-asks once each and
++      // gives up - so the card always ends instead of sitting at 6/8.
++      var ticks = 0;
++      while (t.trip.active && ticks++ < 12) {
++        t.now = t.now.add(const Duration(minutes: 11));
++        await t.q.tick();
++      }
++      expect(t.trip.active, isFalse, reason: 'the card ended after $ticks idle ticks');
++      expect(ticks, lessThanOrEqualTo(12), reason: 'bounded work, no endless re-ask');
++      expect(t.log, contains('FILE_QUEUE_GONE'));
++      expect(t.trip.gone, 4);
++    });
++
++    test('the 321 shape is unchanged: asked files keep their window and order', () async {
++      final t = _Q(_answer(['a', 'b', 'c']));
++      await t.q.tick();
++      expect(t.asked, ['a', 'b']);
++      expect(t.trip.coming, 2);
++      // a comes in full, so c is asked next (regression: 317 window).
++      t.rows = [t.rows.first, _file('aa_a_1', 'a', state: 'done', parts: 4, of: 4)];
++      await t.q.tick();
++      expect(t.q.viewsOf('r1')['a']!.state, FileState317.here);
++      expect(t.asked, ['a', 'b', 'c']);
++      expect(t.trip.coming, 2);
++    });
++
++    test('a file that moves is never given up', () async {
++      final t = _Q(_answer(['a']));
++      await t.q.tick();
++      for (var i = 1; i <= 6; i++) {
++        t.now = t.now.add(const Duration(minutes: 5));
++        t.rows = [t.rows.first, _file('aa_a_1', 'a', state: 'done', parts: i, of: 9)];
++        await t.q.tick();
++      }
++      expect(t.asked, ['a']);
++      expect(t.log, isNot(contains('FILE_QUEUE_GONE')));
++    });
++  });
++
++  group('S2: a failed ask never fills the window', () {
++    test('after 5 failures the file is gone, the next one is tried', () async {
++      final t = _Q(_answer(['a', 'b']));
++      t.failAsk.add('a');
++      final waits = <Duration>[];
++      for (var i = 0; i < 6; i++) {
++        await t.q.tick();
++        waits.add(FileQueue317.askWait322(i));
++        t.now = t.now.add(FileQueue317.askWait322(i) + const Duration(seconds: 1));
++      }
++      // a was tried 5 times, then dropped; b could be asked meanwhile.
++      expect(t.log, contains('FILE_QUEUE_GONE|why=ask_failed tries=5'));
++      expect(t.asked, contains('b'), reason: 'one bad file does not block the others');
++      expect(t.q.viewsOf('r1')['a']!.state, FileState317.gone);
++      expect(waits.take(4), [
++        const Duration(minutes: 1),
++        const Duration(minutes: 2),
++        const Duration(minutes: 5),
++        const Duration(minutes: 10),
++      ]);
++    });
++
++    test('regression: maxAskTries322 = 0 goes back to the 321 ask-until-it-works', () {
++      expect(FileQueue317.maxAskTries322, 5);
++      expect(FileQueue317.askBackoff322.first, const Duration(minutes: 1));
++      expect(FileQueue317.askBackoff322.last, const Duration(minutes: 10));
++    });
++  });
++
++  group('S3: a file stopped on the other phone counts as gone', () {
++    test('stopped file -> gone, and the card can finish', () async {
++      final t = _Q(_answer(['a', 'b']));
++      await t.q.tick();
++      // The other phone stopped a: the row is closed, never answered.
++      t.rows = [
++        t.rows.first,
++        const ChatRequestRow221(
++            id: 'aa_a_1', action: 'get_file', state: 'done', parent: 'r1', fileId: 'a', closed: true,
++            madeAt: '2026-11-16T12:00:00Z'),
++        _file('aa_b_2', 'b', state: 'done', parts: 4, of: 4),
++      ];
++      await t.q.tick();
++      expect(t.q.viewsOf('r1')['a']!.state, FileState317.gone);
++      expect(t.log, contains('FILE_QUEUE_GONE|why=stopped'));
++      expect(t.trip.gone, 1);
++      expect(t.trip.here, 1);
++      expect(t.trip.active, isFalse, reason: 'the card is Ready, not stuck at 1/2');
++      final plan = await t.q.planForTest('r1');
++      expect((plan!['dead321'] as Map).keys, ['a']);
++    });
++  });
++
++  group('S6: the files card can be swiped', () {
++    FileTrip317 trip({int quietMin = 11, int here = 6, bool waiting = true, bool stopped = false}) => FileTrip317(
++          requestId: 'r1', total: 8, here: here, gone: 0, tooBig: 0, coming: 1,
++          bytesHere: here * _mb, bytesTotal: 8 * _mb, waiting: waiting, stopped: stopped, quietMin: quietMin);
++
++    test('10 min quiet is enough now (321 needed 30)', () {
++      expect(FileTrip317.swipeAfter322, const Duration(minutes: 10));
++      expect(trip(quietMin: 10).waitingLong, isTrue);
++      expect(trip(quietMin: 9).waitingLong, isFalse);
++    });
++
++    test('a card that is still moving cannot be swiped by accident', () {
++      expect(trip(quietMin: 0).waitingLong, isFalse);
++      expect(trip(quietMin: 40, waiting: false).waitingLong, isFalse);
++    });
++  });
++}
+diff --git a/test/bundle322_group_outbox_test.dart b/test/bundle322_group_outbox_test.dart
+new file mode 100644
+index 0000000..465994e
+--- /dev/null
++++ b/test/bundle322_group_outbox_test.dart
+@@ -0,0 +1,177 @@
++// Bundle 322 W3: the group outbox dead loop seen on the TECNO log (17 Nov):
++// 3 rows sent 687 times in one hour, the server answering
++// "group message id already belongs to different message".
++// G1 = a permanent answer removes the row, G2 = dead rows are never read,
++// G3 = one body per id, G5 = backoff instead of every 5 s.
++import 'dart:async';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:locallink/core/diagnostics/app_log_file.dart';
++import 'package:locallink/core/services/locallink_api.dart' show LocalLinkApi;
++import 'package:locallink/features/groups/data/services/group_messaging_service.dart';
++
++import 'support/phase5_fakes.dart';
++
++class _Store extends FakeStore {
++  /// Bundle 322 (G1): the real store marks the bubble failed (the group
++  /// bubble has no status column in the fake); the fake records the call.
++  final failedBubbles = <String>[];
++  @override
++  Future<void> failGroupOutbox322(String id) async {
++    failedBubbles.add(id);
++    await super.failGroupOutbox322(id);
++  }
++}
++
++void _row(FakeStore store, String id, {String status = 'queued', int attempts = 0, String body = 'hello'}) {
++  store.groupOutboxItems.add({
++    'id': id,
++    'group_id': 'g1',
++    'body': body,
++    'created_at': '2026-11-17T11:00:00Z',
++    'status': status,
++    'attempt_count': attempts,
++    'last_attempt_at': null,
++  });
++}
++
++void main() {
++  late _Store store;
++  late FakeSocket socket;
++  late GroupMessagingService service;
++
++  setUp(() {
++    AppLogFile.instance.resetForTest();
++    store = _Store()
++      ..selfId = 'me'
++      ..groupsById['g1'] = <String, dynamic>{
++        'id': 'g1',
++        'name': 'Group 1',
++        'owner_id': 'ali',
++        'created_at': '2026-01-01T00:00:00Z',
++      };
++    socket = FakeSocket();
++    service = GroupMessagingService(store, LocalLinkApi(store, socket), socket, FakeFilesRepository());
++  });
++
++  tearDown(() async {
++    service.fileWatch.dispose();
++    await service.dispose();
++    await socket.shutdown();
++  });
++
++  String log() => AppLogFile.instance.pendingForTest.join('\n');
++
++  List<Map<String, dynamic>> groupSent() =>
++      [for (final f in socket.sentFrames) if (f['type'] == 'send_group_message') f];
++
++  /// The app's own start: the socket listener is what receives the answer.
++  Future<void> online() async {
++    service.start();
++    await socket.goOnline();
++    await Future<void>.delayed(Duration.zero);
++    await Future<void>.delayed(Duration.zero);
++  }
++
++  group('G1: a permanent server answer ends the row', () {
++    test('"id already belongs to different message" -> row gone, bubble failed, no resend', () async {
++      _row(store, 'm_dup');
++      await online();
++      final base = groupSent().length;
++      // The server's exact words (groups.go l.653).
++      socket.emitFrame({
++        'type': 'error',
++        'id': 'm_dup',
++        'error': 'group message id already belongs to different message',
++      });
++      await Future<void>.delayed(Duration.zero);
++      expect(store.groupOutboxItems, isEmpty, reason: 'the row cannot be sent again');
++      expect(store.failedBubbles, ['m_dup'], reason: 'the bubble is marked failed');
++      expect(log(), contains('GROUP_SEND_PERMANENT'));
++      // Three more ticks: nothing goes out again (687 sends in 321).
++      for (var i = 0; i < 3; i++) {
++        await service.flush();
++      }
++      expect(groupSent(), hasLength(base), reason: 'no more sends');
++    });
++
++    test('a temporary error still queues the row (no message is lost)', () async {
++      _row(store, 'm_temp');
++      await online();
++      socket.emitFrame({'type': 'error', 'id': 'm_temp', 'error': 'server is busy'});
++      await Future<void>.delayed(Duration.zero);
++      expect(store.groupOutboxItems, hasLength(1));
++      expect(store.groupOutboxItems.single['status'], 'queued');
++      expect(store.failedBubbles, isEmpty);
++      expect(log(), isNot(contains('GROUP_SEND_PERMANENT')));
++    });
++
++    test('the permanent list is words + sender mismatch only', () {
++      expect(GroupMessagingService.isPermanent322('', 'group message id already belongs to different message'), isTrue);
++      expect(GroupMessagingService.isPermanent322('', 'group message body or attachment is required'), isTrue);
++      expect(GroupMessagingService.isPermanent322('SENDER_ID_MISMATCH', ''), isTrue);
++      expect(GroupMessagingService.isPermanent322('', 'connection reset'), isFalse);
++      expect(GroupMessagingService.isPermanent322('MESSAGE_RATE_LIMITED', ''), isFalse);
++    });
++  });
++
++  group('G2: dead rows are never read again', () {
++    test('failed / delivered / server_accepted rows are skipped, queued ones go', () async {
++      _row(store, 'q1');
++      _row(store, 'f2', status: 'failed');
++      _row(store, 'd3', status: 'delivered');
++      _row(store, 's4', status: 'server_accepted');
++      await online();
++      expect(groupSent().map((f) => f['id']), ['q1']);
++      // The full list is still there for the Stop / error paths.
++      expect(store.groupOutboxItems, hasLength(4));
++      expect(await store.groupOutboxPending322(), hasLength(1));
++    });
++  });
++
++  group('G3: one body per id', () {
++    test('with no sender keys (old phones) the body goes as it is; no cache is written', () async {
++      _row(store, 'm_lock');
++      await online();
++      expect(groupSent().single['body'], 'hello');
++      expect(store.lockedBody322, isEmpty, reason: 'nothing to lock');
++    });
++
++    test('the cached body is read BEFORE any fresh lock, and is kept per id', () async {
++      await store.setGroupOutboxLockedBody322('m_cached', 'llsk:v1:kid.nonce.data');
++      expect(await store.groupOutboxLockedBody322('m_cached'), 'llsk:v1:kid.nonce.data');
++      await store.clearGroupOutboxLockedBody322('m_cached');
++      expect(await store.groupOutboxLockedBody322('m_cached'), isNull);
++      expect(GroupMessagingService.lockCache322, isTrue, reason: 'A fresh nonce per try is the bug');
++      final src = File('lib/features/groups/data/services/group_messaging_service.dart').readAsStringSync();
++      final flush = src.substring(src.indexOf('  Future<void> flush() async {'));
++      final cachedAt = flush.indexOf('groupOutboxLockedBody322(id)');
++      final lockAt = flush.indexOf('_lockForServer(groupId, id, body, keysSent)');
++      expect(cachedAt, greaterThan(0));
++      expect(cachedAt, lessThan(lockAt), reason: 'the cache is read before a fresh lock');
++      expect(flush, contains('setGroupOutboxLockedBody322(id, locked)'));
++    });
++  });
++
++  group('G5: backoff instead of a flat 5 s', () {
++    test('the first try is immediate; a failed row then waits (5 -> 60 s)', () async {
++      _row(store, 'm_old', attempts: 3);
++      _row(store, 'm_new');
++      await online();
++      expect(groupSent().map((f) => f['id']).toList(), containsAll(['m_old', 'm_new']));
++      // m_old fails: its next try is 40 s away (4th attempt).
++      socket.emitFrame({'type': 'error', 'id': 'm_old', 'error': 'server is busy'});
++      await Future<void>.delayed(Duration.zero);
++      expect(log(), contains('GROUP_RETRY|n=4 next_s=40'));
++      // The late row is held back by the local gate (the backoff in flush).
++      await service.flush();
++      // The failed row waits its 40 s; the other row is not held back by it
++      // (321 re-sent BOTH every 5 s: 687 times in an hour).
++      expect(groupSent().where((f) => f['id'] == 'm_old'), hasLength(1), reason: 'no 5 s hammering');
++      expect(GroupMessagingService.retryWait322(0), const Duration(seconds: 5));
++      expect(GroupMessagingService.retryWait322(2), const Duration(seconds: 20));
++      expect(GroupMessagingService.retryWait322(9), const Duration(seconds: 60), reason: 'capped');
++    });
++  });
++}
+diff --git a/test/nearby_190_test.dart b/test/nearby_190_test.dart
+index 9d8df94..248ad08 100644
+--- a/test/nearby_190_test.dart
++++ b/test/nearby_190_test.dart
+@@ -288,7 +288,7 @@ void main() {
+   group('Bundle 192 version', () {
+     test('pubspec and stamp', () {
+       expect(File('pubspec.yaml').readAsStringSync(),
+-          contains('version: 3.0.112+183'));
++          contains('version: 3.0.113+184'));
+       expect(File('lib/app/local_link_app.dart').readAsStringSync(),
+           contains('AppBuild.stamp')); // Bundle 223 (Q18): made from kAppVersion
+     });
+diff --git a/test/support/phase5_fakes.dart b/test/support/phase5_fakes.dart
+index 1e96a8d..ce0cf0d 100644
+--- a/test/support/phase5_fakes.dart
++++ b/test/support/phase5_fakes.dart
+@@ -288,6 +288,37 @@ class FakeStore extends LocalStore {
+   Future<List<Map<String, dynamic>>> groupOutbox() async =>
+       groupOutboxItems.map((e) => Map<String, dynamic>.from(e)).toList();
+ 
++  /// Bundle 322 (G2): the real store filters by status; the fake must do the
++  /// same or the tests would see rows a phone never sends.
++  @override
++  Future<List<Map<String, dynamic>>> groupOutboxPending322() async => [
++        for (final e in groupOutboxItems)
++          if (!const ['failed', 'delivered', 'server_accepted', 'refused']
++              .contains(e['status']?.toString() ?? 'queued'))
++            Map<String, dynamic>.from(e),
++      ];
++
++  /// Bundle 322 (G1) + (G3): the two new store calls the service uses.
++  @override
++  Future<void> failGroupOutbox322(String id) async {
++    for (final item in groupOutboxItems) {
++      if (item['id']?.toString() == id) item['status'] = 'failed';
++    }
++  }
++
++  final Map<String, String> lockedBody322 = {};
++
++  @override
++  Future<String?> groupOutboxLockedBody322(String id) async => lockedBody322[id];
++
++  @override
++  Future<void> setGroupOutboxLockedBody322(String id, String body) async =>
++      lockedBody322[id] = body;
++
++  @override
++  Future<void> clearGroupOutboxLockedBody322(String id) async =>
++      lockedBody322.remove(id);
++
+   @override
+   Future<void> updateGroupOutboxStatus(String id, String status) async {
+     for (final item in groupOutboxItems) {

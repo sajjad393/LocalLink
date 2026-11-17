@@ -288,6 +288,37 @@ class FakeStore extends LocalStore {
   Future<List<Map<String, dynamic>>> groupOutbox() async =>
       groupOutboxItems.map((e) => Map<String, dynamic>.from(e)).toList();
 
+  /// Bundle 322 (G2): the real store filters by status; the fake must do the
+  /// same or the tests would see rows a phone never sends.
+  @override
+  Future<List<Map<String, dynamic>>> groupOutboxPending322() async => [
+        for (final e in groupOutboxItems)
+          if (!const ['failed', 'delivered', 'server_accepted', 'refused']
+              .contains(e['status']?.toString() ?? 'queued'))
+            Map<String, dynamic>.from(e),
+      ];
+
+  /// Bundle 322 (G1) + (G3): the two new store calls the service uses.
+  @override
+  Future<void> failGroupOutbox322(String id) async {
+    for (final item in groupOutboxItems) {
+      if (item['id']?.toString() == id) item['status'] = 'failed';
+    }
+  }
+
+  final Map<String, String> lockedBody322 = {};
+
+  @override
+  Future<String?> groupOutboxLockedBody322(String id) async => lockedBody322[id];
+
+  @override
+  Future<void> setGroupOutboxLockedBody322(String id, String body) async =>
+      lockedBody322[id] = body;
+
+  @override
+  Future<void> clearGroupOutboxLockedBody322(String id) async =>
+      lockedBody322.remove(id);
+
   @override
   Future<void> updateGroupOutboxStatus(String id, String status) async {
     for (final item in groupOutboxItems) {

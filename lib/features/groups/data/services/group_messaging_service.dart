@@ -46,6 +46,57 @@ class GroupMessagingService {
 
   GroupMessagingService(this.store, this.api, this.socket, this.files);
 
+  /// Bundle 322 (G1): a server answer that can NEVER succeed for this row.
+  /// The TECNO log (17 Nov) sent 3 rows 687x each in one hour because the
+  /// server said `group message id already belongs to different message`
+  /// and the row went back to `queued` every 5 s. These words mean "give
+  /// up, show the red mark, let the user Resend" (Resend makes a new id).
+  /// `false` = Bundle 321 behaviour (everything is retried).
+  static const bool permanentCode322 = true;
+
+  static const List<String> permanentWords322 = [
+    'already belongs to different',
+    'already belongs to a different',
+    'body is reserved',
+    'invalid group message created_at',
+    'group message body or attachment is required',
+    'sender_id does not match',
+    'timestamp is invalid',
+    'too far in the future',
+  ];
+
+  static bool isPermanent322(String code, String text) {
+    if (!permanentCode322) return false;
+    if (code == 'SENDER_ID_MISMATCH') return true;
+    final t = text.toLowerCase();
+    for (final w in permanentWords322) {
+      if (t.contains(w)) return true;
+    }
+    return false;
+  }
+
+  /// Bundle 322 (G5): how long a row waits before the next try; the first
+  /// attempt is always immediate (today's latency).
+  static const List<Duration> retryBackoff322 = [
+    Duration(seconds: 5),
+    Duration(seconds: 10),
+    Duration(seconds: 20),
+    Duration(seconds: 40),
+    Duration(seconds: 60),
+  ];
+
+  static Duration retryWait322(int tries) =>
+      retryBackoff322[tries.clamp(0, retryBackoff322.length - 1)];
+
+  /// Bundle 322 (G3): one body per id. The locked text is kept and re-sent
+  /// unchanged; a fresh nonce on every try is what the server answers with
+  /// "id already belongs to different message".
+  static const bool lockCache322 = true;
+
+  /// Bundle 322 (G5): id -> not before. A local map: a restart just tries
+  /// once more at once, which is harmless.
+  final Map<String, DateTime> _nextTry322 = {};
+
   /// Bundle G3: Nearby groups (set once at start; null in old tests).
   GroupNearbyService? nearby;
 
@@ -1129,9 +1180,16 @@ class GroupMessagingService {
     _flushing = true;
     final keysSent = <String>{};
     try {
-      final items = await store.groupOutbox();
+      // Bundle 322 (G2): only rows that can still go (never `failed` /
+      // delivered / server_accepted - those were re-sent every 5 s).
+      final items = await store.groupOutboxPending322();
+      final now322 = DateTime.now().toUtc();
       for (final item in items) {
         final id = item['id']?.toString() ?? '';
+        // Bundle 322 (G5): a row that just failed waits (5 -> 60 s) instead
+        // of being sent every 5 s. A new message has no entry = immediate.
+        final notBefore = _nextTry322[id];
+        if (notBefore != null && now322.isBefore(notBefore)) continue;
         final groupId = item['group_id']?.toString() ?? '';
         final createdAt = item['created_at']?.toString() ?? '';
         if (id.isEmpty || groupId.isEmpty || createdAt.isEmpty) continue;
@@ -1198,7 +1256,20 @@ class GroupMessagingService {
         // Bundle G6: the server gets only the locked text.
         var wire = body;
         if (_lockable(body)) {
-          wire = await _lockForServer(groupId, id, body, keysSent) ?? body;
+          // Bundle 322 (G3): the SAME string on every try. A new nonce made
+          // the server answer "id already belongs to different message".
+          final cached = lockCache322 ? await store.groupOutboxLockedBody322(id) : null;
+          if (cached != null) {
+            wire = cached;
+          } else {
+            final locked = await _lockForServer(groupId, id, body, keysSent);
+            if (locked != null) {
+              wire = locked;
+              if (lockCache322) await store.setGroupOutboxLockedBody322(id, locked);
+            } else {
+              wire = body;
+            }
+          }
         }
 
         socket.send({
@@ -1209,6 +1280,14 @@ class GroupMessagingService {
           'created_at': createdAt,
           if (remoteIds.isNotEmpty) 'attachment_ids': remoteIds,
         }, durable: true);
+        // Bundle 322 (G5): the attempt is counted and the next try waits
+        // (a delivered row leaves the queue by its ack - see _onMessage).
+        final tries = (int.tryParse(item['attempt_count']?.toString() ?? '') ?? 0) + 1;
+        if (tries > 1) {
+          final wait = retryWait322(tries - 1);
+          _nextTry322[id] = DateTime.now().toUtc().add(wait);
+          AppLogger.info('GROUP_RETRY', detail: 'n=$tries next_s=${wait.inSeconds}');
+        }
         await store.markGroupOutboxAttempt(id);
       }
     } finally {
@@ -1716,12 +1795,28 @@ class GroupMessagingService {
         }
         return;
       }
+      // Bundle 322 (G1): the server will never take THIS row (the id is
+      // already bound to another body, the body is reserved, ...). Retrying
+      // the same id can only fail again - stop, show the red mark, let the
+      // user Resend (a new id) or Delete. 321 put it back to `queued` and
+      // the 5 s timer sent it again: 687 times in an hour on the TECNO.
+      final text = data['error']?.toString() ?? '';
+      if (isPermanent322(code, text)) {
+        await store.removeGroupOutbox(id);
+        await store.removePendingGroupAttachments(id);
+        await store.failGroupOutbox322(id);
+        AppLogger.warning('GROUP_SEND_PERMANENT',
+            detail: 'code=${code.isEmpty ? '-' : code} why=${permanentWords322.firstWhere((w) => text.toLowerCase().contains(w), orElse: () => code)}');
+        return;
+      }
       await store.updateGroupOutboxStatus(id, 'queued');
       return;
     }
     if (type == 'group_message_ack') {
       final id = data['id']?.toString();
       if (id == null || id.isEmpty) return;
+      // Bundle 322 (G3): this id is answered - its cached body goes too.
+      if (lockCache322) unawaited(store.clearGroupOutboxLockedBody322(id).catchError((Object _) {}));
       final pending = await store.pendingGroupAttachments(id);
       final echoed = GroupMessage.fromJson(data);
       // Bundle G6: my key note / key ask reached the server.

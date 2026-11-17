@@ -78,6 +78,13 @@ class ChatRequestNotifier307 {
   /// Bundle 317 (G7): the files of each request (null = no queue; tests).
   final Map<String, FileTrip317> Function()? files317;
 
+  /// Bundle 322 (S5): a files card whose numbers do not move for this long
+  /// is ended here (it can never stay un-swipeable forever). The 321 file
+  /// queue gives up on its own within ~20 min; this is the backstop for a
+  /// queue that is not running (restart, stopped slot, lost plan).
+  /// `Duration.zero` = Bundle 321 behaviour (no backstop).
+  static const Duration cardStuckAfter322 = Duration(minutes: 30);
+
   /// Opens the answer viewer for a tapped card (set by the app shell).
   static Future<void> Function(String requestId)? openViewer;
 
@@ -93,6 +100,15 @@ class ChatRequestNotifier307 {
 
   /// Request id -> what the card shows now.
   final Map<String, String> _shown = {};
+
+  /// Bundle 322 (S5): request id -> (here, coming, since) - the last time the
+  /// files of that card moved. Read and written only in [_refreshOnce].
+  final Map<String, (int, int, DateTime)> _tripMoved322 = {};
+
+  /// Bundle 322 (S5): request id -> (here, coming) of a card ended by the
+  /// backstop. It stays away until its numbers really move again (then it
+  /// comes back - nothing is lost, the files keep coming in the chat).
+  final Map<String, (int, int)> _ended322 = {};
   final Map<String, DateTime> _lastPost = {};
   final Set<String> _emptyShown = {};
   List<String>? _buzzed;
@@ -162,6 +178,8 @@ class ChatRequestNotifier307 {
   Future<void> clearAll() async {
     _shown.clear();
     _lastPost.clear();
+    _tripMoved322.clear();
+    _ended322.clear();
     await cards.cancelAll();
   }
 
@@ -198,20 +216,58 @@ class ChatRequestNotifier307 {
       // Bundle 317 (G7): a Ready card stays while its files come (even
       // after the chat was opened); when all are here it goes once opened.
       final trip = files[r.id];
-      if (st.step == Step307.ready && trip != null && trip.total > 0 && !trip.stopped && !r.closed &&
-          (trip.active || !r.opened)) {
-        want[r.id] = (r, st);
-        continue;
-      }
-      final keep = switch (st.step) {
+      var keep = st.step == Step307.ready && trip != null && trip.total > 0 && !trip.stopped && !r.closed &&
+              (trip.active || !r.opened)
+          ? true
+          : switch (st.step) {
         Step307.sent || Step307.reached || Step307.coming => true,
         // Ready: until opened / closed; not again after a restart once it buzzed.
         Step307.ready => !r.opened && !r.closed && (_shown.containsKey(r.id) || !buzzed.contains(r.id)),
         // No messages: once, and only for a card that was running here.
         Step307.empty => _shown.containsKey(r.id) && !_emptyShown.contains(r.id),
-        Step307.cancelled => false,
-      };
+              Step307.cancelled => false,
+            };
+      // Bundle 322 (S5): a card ended by the backstop stays away until its
+      // numbers move again.
+      if (keep && _ended322.containsKey(r.id) && trip != null) {
+        final e = _ended322[r.id]!;
+        if (e.$1 == trip.here && e.$2 == trip.coming) {
+          keep = false;
+        } else {
+          // Numbers moved: it may come back.
+          _ended322.remove(r.id);
+        }
+      }
       if (keep) want[r.id] = (r, st);
+    }
+    // Bundle 322 (S5): a files card whose numbers never move cannot outlive
+    // its work - after [cardStuckAfter322] it is ended here with the words
+    // "N files not available" (the same words 321 uses for a missing file).
+    if (cardStuckAfter322 > Duration.zero) {
+      for (final id in want.keys.toList()) {
+        final (r, st) = want[id]!;
+        final trip = files[id];
+        final working = st.step == Step307.ready && trip != null && trip.total > 0 && !trip.stopped && trip.active;
+        if (!working) {
+          _tripMoved322.remove(id);
+          continue;
+        }
+        final seen = _tripMoved322[id];
+        if (seen == null || seen.$1 != trip.here || seen.$2 != trip.coming) {
+          _tripMoved322[id] = (trip.here, trip.coming, now);
+          continue;
+        }
+        if (now.difference(seen.$3) < cardStuckAfter322) continue;
+        _tripMoved322.remove(id);
+        _ended322[id] = (trip.here, trip.coming);
+        want.remove(id);
+        _shown.remove(id);
+        _lastPost.remove(id);
+        final missing = trip.wanted - trip.here;
+        AppLogger.info('CHAT_REQ_CARD_307',
+            detail: 'cancel reason=stuck30 id=${_short322(id)} here=${trip.here}/${trip.wanted} missing=$missing');
+        await cards.cancel({'request_id': id, ..._summary(want.values.where((w) => w.$2.step != Step307.empty), files)});
+      }
     }
     // Gone / cancelled / opened -> remove.
     final summary = _summary(want.values.where((w) => w.$2.step != Step307.empty), files);
@@ -219,6 +275,10 @@ class ChatRequestNotifier307 {
       if (want.containsKey(id)) continue;
       _shown.remove(id);
       _lastPost.remove(id);
+      _tripMoved322.remove(id);
+      // Bundle 322 (S7): every drop leaves a line with its reason (the 17 Nov
+      // stuck card was invisible in the logs: no CHAT_REQ_CARD line at all).
+      AppLogger.info('CHAT_REQ_CARD_307', detail: 'drop id=${_short322(id)} reason=${_dropReason322(id, rows, files)}');
       await cards.cancel({'request_id': id, ...summary});
     }
     var wait = Duration.zero;
@@ -244,6 +304,11 @@ class ChatRequestNotifier307 {
         _emptyShown.add(id);
         _shown.remove(id); // Android drops it after 10 s; nothing left to update.
       }
+      // Bundle 322 (S7): one line per card change, ≤ 1/s (see [minGap]).
+      final tripShow = files[id];
+      AppLogger.info('CHAT_REQ_CARD_307',
+          detail: 'show id=${_short322(id)} step=${args['step']} '
+              'here=${tripShow?.here ?? 0}/${tripShow?.wanted ?? 0} shown=${_shown.length} buzz=$buzz');
       await cards.show({...args, 'buzz': buzz, ...summary});
       if (buzz || once318) await _rememberBuzz(id);
     }
@@ -251,6 +316,29 @@ class ChatRequestNotifier307 {
       _later?.cancel();
       _later = Timer(wait, kick);
     }
+  }
+
+  /// Bundle 322 (S7): the last 6 characters of a request id - enough to
+  /// follow one card in a log, never the whole id.
+  static String _short322(String id) => id.length > 6 ? id.substring(id.length - 6) : id;
+
+  /// Bundle 322 (S7): why a card went - the words the log needs.
+  static String _dropReason322(String id, List<ChatRequestRow221> rows, Map<String, FileTrip317> files) {
+    ChatRequestRow221? row;
+    for (final r in rows) {
+      if (r.id == id) row = r;
+    }
+    if (row == null) return 'gone';
+    if (row.closed) return 'closed';
+    if (row.opened) return 'opened';
+    final f = files[id];
+    if (f != null && f.total > 0 && !f.stopped && f.done) return 'done';
+    return switch (RequestStep307.of(row).step) {
+      Step307.cancelled => 'cancelled',
+      Step307.empty => 'empty',
+      Step307.ready => 'done',
+      _ => 'gone',
+    };
   }
 
   static Map<String, Object?> _summary(Iterable<(ChatRequestRow221, RequestStep307)> live,

@@ -2933,6 +2933,83 @@ class LocalStore {
   Future<List<Map<String, dynamic>>> groupOutbox() =>
       _db.query('group_outbox', orderBy: 'created_at ASC, id ASC');
 
+  /// Bundle 322 (G2): only the rows that can still go out. `failed` is the
+  /// red "not sent" bubble (Resend makes a NEW row), `delivered` /
+  /// `server_accepted` are done - none of them may be re-sent every 5 s.
+  /// [groupOutbox] itself is unchanged (the Stop / error paths need every
+  /// row).
+  Future<List<Map<String, dynamic>>> groupOutboxPending322() => _db.query(
+        'group_outbox',
+        where: "status NOT IN ('failed','delivered','server_accepted','refused')",
+        orderBy: 'created_at ASC, id ASC',
+      );
+
+  /// Bundle 322 (G1): the row can never be sent (the server answered with a
+  /// permanent error): red bubble + no more retries. Same words as the 1:1
+  /// road (Bundle 162 4.6), so the existing Resend / Delete mark works.
+  Future<void> failGroupOutbox322(String id) async {
+    await _db.update('group_outbox', {'status': 'failed'},
+        where: 'id=?', whereArgs: [id]);
+    try {
+      await updateMessageStatus(id, status: 'failed');
+    } catch (_) {
+      // A row with no bubble (a control note) is just dropped by the caller.
+    }
+  }
+
+  /// Bundle 322 (G5): the row was tried; the next try is not before [at].
+  Future<void> markGroupOutboxAttemptAt322(String id, DateTime at) async =>
+      _db.rawUpdate(
+        "UPDATE group_outbox SET status='sending',attempt_count=attempt_count+1,last_attempt_at=? WHERE id=?",
+        [at.toUtc().toIso8601String(), id],
+      );
+
+  // ---- Bundle 322 (G3): the body a queued row already sent ---------------
+  // A settings entry (no schema change): id -> body. A retry must use the
+  // exact same string, or the server answers "id already belongs to
+  // different message" forever (the TECNO loop, 17 Nov).
+
+  Future<String?> groupOutboxLockedBody322(String id) async {
+    final raw = await readSetting('group_locked_322');
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final map = jsonDecode(raw);
+      if (map is! Map) return null;
+      final v = map[id]?.toString();
+      return v == null || v.isEmpty ? null : v;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setGroupOutboxLockedBody322(String id, String body) async {
+    await _putLocked322(id, body);
+  }
+
+  Future<void> clearGroupOutboxLockedBody322(String id) => _putLocked322(id, '');
+
+  Future<void> _putLocked322(String id, String body) async {
+    Map<String, dynamic> map = {};
+    try {
+      final raw = await readSetting('group_locked_322');
+      final d = raw == null || raw.isEmpty ? null : jsonDecode(raw);
+      if (d is Map) map = Map<String, dynamic>.from(d);
+    } catch (_) {}
+    if (body.isEmpty) {
+      map.remove(id);
+    } else {
+      map[id] = body;
+    }
+    // Keep it small: the newest 200 rows are enough for any retry window.
+    if (map.length > 200) {
+      final keys = map.keys.toList();
+      for (final k in keys.take(map.length - 200)) {
+        map.remove(k);
+      }
+    }
+    await writeSetting('group_locked_322', jsonEncode(map));
+  }
+
   Future<void> updateGroupOutboxStatus(String id, String status) async {
     final rows = await _db.query('group_outbox',
         columns: ['status'], where: 'id=?', whereArgs: [id], limit: 1);
