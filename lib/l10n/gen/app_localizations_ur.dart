@@ -9,12 +9,10 @@ class AppLocalizationsUr extends AppLocalizations {
   AppLocalizationsUr([String locale = 'ur']) : super(locale);
 
   @override
-  String get aConsistentCopyOfTheLinkup =>
-      '⁧LinkUp ڈیٹا بیس کی مکمل کاپی سرور کی بیک اپ ڈائریکٹری میں لکھی جائے گی۔⁩';
+  String get aConsistentCopyOfTheLinkup => '⁧LinkUp ڈیٹا بیس کی مکمل کاپی سرور کی بیک اپ ڈائریکٹری میں لکھی جائے گی۔⁩';
 
   @override
-  String get aLinkupPhoneHelpingToPass =>
-      '⁧ایک LinkUp فون جو آپ کے میسجز آگے پہنچانے میں مدد کر رہا ہے۔ یہ انہیں پڑھ نہیں سکتا۔⁩';
+  String get aLinkupPhoneHelpingToPass => '⁧ایک LinkUp فون جو آپ کے میسجز آگے پہنچانے میں مدد کر رہا ہے۔ یہ انہیں پڑھ نہیں سکتا۔⁩';
 
   @override
   String get aNearbyPhone => '⁧ایک قریبی فون⁩';
@@ -25,16 +23,13 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get aNewAccountIdentityKeyWill =>
-      '⁧ایک نئی اکاؤنٹ شناختی کی فعال ہو جائے گی۔ پچھلی کی اس فون پر مقامی تاریخ کے طور پر رہے گی۔ دوسری ڈیوائسز نئی پبلک کی خود جان لیں گی۔⁩';
+  String get aNewAccountIdentityKeyWill => '⁧ایک نئی اکاؤنٹ شناختی کی فعال ہو جائے گی۔ پچھلی کی اس فون پر مقامی تاریخ کے طور پر رہے گی۔ دوسری ڈیوائسز نئی پبلک کی خود جان لیں گی۔⁩';
 
   @override
-  String get aNewerLinkupIsNeededPlease =>
-      '⁧نئی LinkUp ضروری ہے۔ براہِ کرم اپ ڈیٹ کریں۔⁩';
+  String get aNewerLinkupIsNeededPlease => '⁧نئی LinkUp ضروری ہے۔ براہِ کرم اپ ڈیٹ کریں۔⁩';
 
   @override
-  String get aSmallMapOfYourContacts =>
-      '⁧چیٹس کے اوپر آپ کے کانٹیکٹس کا چھوٹا نقشہ⁩';
+  String get aSmallMapOfYourContacts => '⁧چیٹس کے اوپر آپ کے کانٹیکٹس کا چھوٹا نقشہ⁩';
 
   @override
   String aboutFreeSpace(Object? sizeLabel) {
@@ -57,8 +52,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get accountClosedByAdmin => '⁧ایڈمن نے اکاؤنٹ بند کر دیا⁩';
 
   @override
-  String get accountClosedByAdminYouCan =>
-      '⁧ایڈمن نے اکاؤنٹ بند کر دیا۔ آپ پرانی چیٹس پڑھ سکتے ہیں لیکن میسج یا کال نہیں کر سکتے۔⁩';
+  String get accountClosedByAdminYouCan => '⁧ایڈمن نے اکاؤنٹ بند کر دیا۔ آپ پرانی چیٹس پڑھ سکتے ہیں لیکن میسج یا کال نہیں کر سکتے۔⁩';
 
   @override
   String get accountDataRestored => '⁧اکاؤنٹ کا ڈیٹا بحال ہو گیا⁩';
@@ -72,15 +66,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get accountPhonesBackup2 => '⁧اکاؤنٹ، فون، بیک اپ⁩';
 
   @override
-  String get accountProfileMetadataDevicesGroupsMessages =>
-      '⁧اکاؤنٹ/پروفائل کی معلومات، ڈیوائسز، گروپس، میسجز، گروپ میسجز اور کال ہسٹری۔ فائلیں خود بخود ڈاؤن لوڈ نہیں ہوتیں۔⁩';
+  String get accountProfileMetadataDevicesGroupsMessages => '⁧اکاؤنٹ/پروفائل کی معلومات، ڈیوائسز، گروپس، میسجز، گروپ میسجز اور کال ہسٹری۔ فائلیں خود بخود ڈاؤن لوڈ نہیں ہوتیں۔⁩';
 
   @override
   String get accountRecoveredOnThisPhone => '⁧اکاؤنٹ اس فون پر بحال ہو گیا۔⁩';
 
   @override
-  String get accountRecoveredPreviousActiveDevicesWere =>
-      '⁧اکاؤنٹ بحال ہو گیا۔ پچھلی فعال ڈیوائسز ہٹا دی گئیں۔⁩';
+  String get accountRecoveredPreviousActiveDevicesWere => '⁧اکاؤنٹ بحال ہو گیا۔ پچھلی فعال ڈیوائسز ہٹا دی گئیں۔⁩';
 
   @override
   String get accountRecoveredSuccessfully => '⁧اکاؤنٹ کامیابی سے بحال ہو گیا۔⁩';
@@ -101,16 +93,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get accountsAndProfiles => '⁧اکاؤنٹس اور پروفائلز⁩';
 
   @override
-  String get actionsGoToHerPhoneBy =>
-      '⁧ایکشن کارڈ کے ذریعے ان کے فون پر جاتے ہیں (مکمل ہونے تک زیرِ التوا)۔ سرور پر آنے کے بعد مزید ایکشن۔⁩';
+  String get actionsGoToHerPhoneBy => '⁧ایکشن کارڈ کے ذریعے ان کے فون پر جاتے ہیں (مکمل ہونے تک زیرِ التوا)۔ سرور پر آنے کے بعد مزید ایکشن۔⁩';
 
   @override
-  String get actionsThePhonesDidShowHere =>
-      '⁧فونز کے مکمل کیے گئے ایکشن یہاں نظر آتے ہیں۔⁩';
+  String get actionsThePhonesDidShowHere => '⁧فونز کے مکمل کیے گئے ایکشن یہاں نظر آتے ہیں۔⁩';
 
   @override
-  String get actionsWaitHereUntilEachPhone =>
-      '⁧ایکشن یہاں انتظار کرتے ہیں جب تک ہر فون اسے مکمل نہ کر لے۔ کوئی وقت کی حد نہیں۔⁩';
+  String get actionsWaitHereUntilEachPhone => '⁧ایکشن یہاں انتظار کرتے ہیں جب تک ہر فون اسے مکمل نہ کر لے۔ کوئی وقت کی حد نہیں۔⁩';
 
   @override
   String get active => '⁧فعال⁩';
@@ -131,8 +120,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get add => '⁧شامل کریں⁩';
 
   @override
-  String get addAContactOrDiscoverNearby =>
-      '⁧کانٹیکٹ شامل کریں یا قریبی LinkUp فون تلاش کریں۔⁩';
+  String get addAContactOrDiscoverNearby => '⁧کانٹیکٹ شامل کریں یا قریبی LinkUp فون تلاش کریں۔⁩';
 
   @override
   String addAsAFriend(Object? displayName) {
@@ -245,8 +233,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get adminActions => '⁧ایڈمن ایکشنز⁩';
 
   @override
-  String get adminActionsAreNotReadyOn =>
-      '⁧اس فون پر ایڈمن ایکشن ابھی تیار نہیں⁩';
+  String get adminActionsAreNotReadyOn => '⁧اس فون پر ایڈمن ایکشن ابھی تیار نہیں⁩';
 
   @override
   String get adminActionsSaved => '⁧ایڈمن ایکشن محفوظ ہوتے ہیں⁩';
@@ -267,8 +254,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get adminPolicy => '⁧ایڈمن پالیسی⁩';
 
   @override
-  String get adminSessionExpiredPleaseSignIn =>
-      '⁧ایڈمن سیشن ختم ہو گیا۔ براہِ کرم دوبارہ سائن اِن کریں۔⁩';
+  String get adminSessionExpiredPleaseSignIn => '⁧ایڈمن سیشن ختم ہو گیا۔ براہِ کرم دوبارہ سائن اِن کریں۔⁩';
 
   @override
   String get adminSettings => '⁧ایڈمن سیٹنگز⁩';
@@ -297,8 +283,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get admins => '⁧ایڈمنز⁩';
 
   @override
-  String get adminsApprovePeopleWhoJoinBy =>
-      '⁧QR سے شامل ہونے والوں کو ایڈمنز منظور کرتے ہیں⁩';
+  String get adminsApprovePeopleWhoJoinBy => '⁧QR سے شامل ہونے والوں کو ایڈمنز منظور کرتے ہیں⁩';
 
   @override
   String get adminsDecide => '⁧ایڈمنز فیصلہ کرتے ہیں⁩';
@@ -343,12 +328,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get allMembersAddPeople => '⁧تمام ممبرز لوگوں کو شامل کر سکتے ہیں⁩';
 
   @override
-  String get allMessagesPhotosAndFilesIn =>
-      '⁧اس چیٹ کے تمام میسجز، تصاویر اور فائلیں ⁩';
+  String get allMessagesPhotosAndFilesIn => '⁧اس چیٹ کے تمام میسجز، تصاویر اور فائلیں ⁩';
 
   @override
-  String get allMessagesPhotosAndFilesOf =>
-      '⁧اس گروپ کے تمام میسجز، تصاویر اور فائلیں اس فون سے ہٹا دی جائیں گی۔⁩';
+  String get allMessagesPhotosAndFilesOf => '⁧اس گروپ کے تمام میسجز، تصاویر اور فائلیں اس فون سے ہٹا دی جائیں گی۔⁩';
 
   @override
   String get allTools => '⁧تمام ٹولز⁩';
@@ -357,20 +340,16 @@ class AppLocalizationsUr extends AppLocalizations {
   String get allow => '⁧اجازت دیں⁩';
 
   @override
-  String get allowNameSearchesToReturnYour =>
-      '⁧نام کی تلاش میں آپ کا پروفائل دکھانے دیں⁩';
+  String get allowNameSearchesToReturnYour => '⁧نام کی تلاش میں آپ کا پروفائل دکھانے دیں⁩';
 
   @override
-  String get allowNearbyDevicesToReachPeople =>
-      '⁧انٹرنیٹ کے بغیر لوگوں تک پہنچنے کے لیے قریبی ڈیوائسز کی اجازت دیں۔⁩';
+  String get allowNearbyDevicesToReachPeople => '⁧انٹرنیٹ کے بغیر لوگوں تک پہنچنے کے لیے قریبی ڈیوائسز کی اجازت دیں۔⁩';
 
   @override
-  String get allowPeopleToFindYouWith =>
-      '⁧لوگوں کو آپ کے فون نمبر سے آپ کو ڈھونڈنے دیں⁩';
+  String get allowPeopleToFindYouWith => '⁧لوگوں کو آپ کے فون نمبر سے آپ کو ڈھونڈنے دیں⁩';
 
   @override
-  String get allowTheNearbyDevicesPermissionThen =>
-      '⁧\"Nearby devices\" کی اجازت دیں، پھر دوبارہ دوست شامل کریں پر ٹیپ کریں۔⁩';
+  String get allowTheNearbyDevicesPermissionThen => '⁧\"Nearby devices\" کی اجازت دیں، پھر دوبارہ دوست شامل کریں پر ٹیپ کریں۔⁩';
 
   @override
   String get allowed => '⁧اجازت ہے⁩';
@@ -411,8 +390,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get anAdminMustSayYesThis =>
-      '⁧ایک ایڈمن کو ہاں کہنا ہو گا۔ یہ 24 گھنٹے رہتی ہے۔ مکمل ہونے پر گروپ آپ کی چیٹس میں کھل جائے گا۔⁩';
+  String get anAdminMustSayYesThis => '⁧ایک ایڈمن کو ہاں کہنا ہو گا۔ یہ 24 گھنٹے رہتی ہے۔ مکمل ہونے پر گروپ آپ کی چیٹس میں کھل جائے گا۔⁩';
 
   @override
   String get anAndroidPhone => '⁧•  ایک Android فون⁩';
@@ -428,8 +406,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get andItLeavesYourChatsList =>
-      '⁧ اور یہ آپ کی چیٹس کی فہرست سے ہٹ جائے گی۔⁩';
+  String get andItLeavesYourChatsList => '⁧ اور یہ آپ کی چیٹس کی فہرست سے ہٹ جائے گی۔⁩';
 
   @override
   String andMoreAskedToJoin(Object? first, Object? n) {
@@ -440,23 +417,19 @@ class AppLocalizationsUr extends AppLocalizations {
   String get android => '⁧Android⁩';
 
   @override
-  String get android14FullScreenWhenLocked =>
-      '⁧Android 14+: لاک ہونے پر پوری اسکرین⁩';
+  String get android14FullScreenWhenLocked => '⁧Android 14+: لاک ہونے پر پوری اسکرین⁩';
 
   @override
   String get androidControls => '⁧Android کنٹرولز⁩';
 
   @override
-  String get androidTurnedTheLinkupWiFi =>
-      '⁧Android نے LinkUp وائی فائی بند کر دیا۔⁩';
+  String get androidTurnedTheLinkupWiFi => '⁧Android نے LinkUp وائی فائی بند کر دیا۔⁩';
 
   @override
-  String get androidWillAskConnectEachTime =>
-      '⁧جب بھی یہ فون کسی اور گروپ یا ہاٹ اسپاٹ سے جڑے گا، Android \"Connect?\" پوچھے گا۔ اجازت کے لیے Connect پر ٹیپ کریں۔ Android 10 یا نیا ضروری ہے۔⁩';
+  String get androidWillAskConnectEachTime => '⁧جب بھی یہ فون کسی اور گروپ یا ہاٹ اسپاٹ سے جڑے گا، Android \"Connect?\" پوچھے گا۔ اجازت کے لیے Connect پر ٹیپ کریں۔ Android 10 یا نیا ضروری ہے۔⁩';
 
   @override
-  String get androidWillAskYouToAllow =>
-      '⁧Android آپ سے LinkUp سے انسٹال کی اجازت مانگے گا۔ اسے آن کریں، پھر واپس آئیں۔⁩';
+  String get androidWillAskYouToAllow => '⁧Android آپ سے LinkUp سے انسٹال کی اجازت مانگے گا۔ اسے آن کریں، پھر واپس آئیں۔⁩';
 
   @override
   String get anotherAccount => '⁧کوئی اور اکاؤنٹ⁩';
@@ -468,44 +441,34 @@ class AppLocalizationsUr extends AppLocalizations {
   String get answer => '⁧اٹھائیں⁩';
 
   @override
-  String get answerTheyCanChangeItFor =>
-      '⁧ جواب چنتا ہے۔ ووٹ کے بعد 3 منٹ تک بدل سکتے ہیں، پھر حتمی ہے۔⁩';
+  String get answerTheyCanChangeItFor => '⁧ جواب چنتا ہے۔ ووٹ کے بعد 3 منٹ تک بدل سکتے ہیں، پھر حتمی ہے۔⁩';
 
   @override
-  String get anyoneCanFindYouByName =>
-      '⁧کوئی بھی آپ کو نام سے ڈھونڈ سکتا ہے اور آپ کا فون نمبر دیکھ سکتا ہے۔⁩';
+  String get anyoneCanFindYouByName => '⁧کوئی بھی آپ کو نام سے ڈھونڈ سکتا ہے اور آپ کا فون نمبر دیکھ سکتا ہے۔⁩';
 
   @override
-  String get anyoneThisPhoneHasSeenOr =>
-      '⁧جو بھی اس فون نے دیکھا ہو، یا قریب ہو⁩';
+  String get anyoneThisPhoneHasSeenOr => '⁧جو بھی اس فون نے دیکھا ہو، یا قریب ہو⁩';
 
   @override
-  String get anyoneWhoScansThisNearA =>
-      '⁧کسی ممبر کے قریب جو بھی اسے اسکین کرے وہ شامل ہونے کی درخواست کر سکتا ہے۔ یہ انٹرنیٹ کے بغیر کام کرتا ہے۔\n⁩';
+  String get anyoneWhoScansThisNearA => '⁧کسی ممبر کے قریب جو بھی اسے اسکین کرے وہ شامل ہونے کی درخواست کر سکتا ہے۔ یہ انٹرنیٹ کے بغیر کام کرتا ہے۔\n⁩';
 
   @override
-  String get anyoneWithLinkupWhoOpensThis =>
-      '⁧LinkUp والا کوئی بھی جو یہ لنک کھولے، کہیں سے بھی شامل ہونے کی درخواست کر سکتا ہے۔ اس کے لیے انٹرنیٹ (سرور) ضروری ہے۔ \"نئے ممبرز منظور کریں\" آن ہو تو ایک ایڈمن کو ہاں کہنا ہو گا۔⁩';
+  String get anyoneWithLinkupWhoOpensThis => '⁧LinkUp والا کوئی بھی جو یہ لنک کھولے، کہیں سے بھی شامل ہونے کی درخواست کر سکتا ہے۔ اس کے لیے انٹرنیٹ (سرور) ضروری ہے۔ \"نئے ممبرز منظور کریں\" آن ہو تو ایک ایڈمن کو ہاں کہنا ہو گا۔⁩';
 
   @override
-  String get anyoneWithTheLinkCanAsk =>
-      '⁧لنک والا کوئی بھی شامل ہونے کی درخواست کر سکتا ہے⁩';
+  String get anyoneWithTheLinkCanAsk => '⁧لنک والا کوئی بھی شامل ہونے کی درخواست کر سکتا ہے⁩';
 
   @override
-  String get anyoneWithThisCodeCanReset =>
-      '⁧اس کوڈ والا کوئی بھی آپ کا پاس ورڈ ری سیٹ کر سکتا ہے۔ LinkUp کبھی یہ نہیں مانگے گی۔⁩';
+  String get anyoneWithThisCodeCanReset => '⁧اس کوڈ والا کوئی بھی آپ کا پاس ورڈ ری سیٹ کر سکتا ہے۔ LinkUp کبھی یہ نہیں مانگے گی۔⁩';
 
   @override
-  String get appInfoBatteryAllowBackgroundActivity =>
-      '⁧App info > Battery: Allow background activity آن کریں⁩';
+  String get appInfoBatteryAllowBackgroundActivity => '⁧App info > Battery: Allow background activity آن کریں⁩';
 
   @override
-  String get appInfoBatterySaverChooseNo =>
-      '⁧App info > Battery saver: No restrictions چنیں⁩';
+  String get appInfoBatterySaverChooseNo => '⁧App info > Battery saver: No restrictions چنیں⁩';
 
   @override
-  String get appLaunchTurnOffManageAutomatically =>
-      '⁧App launch: LinkUp کے لیے Manage automatically بند کریں⁩';
+  String get appLaunchTurnOffManageAutomatically => '⁧App launch: LinkUp کے لیے Manage automatically بند کریں⁩';
 
   @override
   String get appTooOldToAnswer => '⁧ایپ جواب دینے کے لیے بہت پرانی ہے⁩';
@@ -526,8 +489,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get approved => '⁧منظور⁩';
 
   @override
-  String get approvedEnterTheRecoveryCodeProvided =>
-      '⁧منظور ہو گئی۔ ایڈمن کا دیا ہوا ریکوری کوڈ درج کریں۔⁩';
+  String get approvedEnterTheRecoveryCodeProvided => '⁧منظور ہو گئی۔ ایڈمن کا دیا ہوا ریکوری کوڈ درج کریں۔⁩';
 
   @override
   String approvedRecoveryFor(Object? admin, Object? target) {
@@ -535,8 +497,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get appsBefore3054Can =>
-      '⁧3.0.54 سے پہلے کی ایپس یہ اصول نہیں پڑھ سکتیں۔ سرور انہیں روک دیتا ہے۔⁩';
+  String get appsBefore3054Can => '⁧3.0.54 سے پہلے کی ایپس یہ اصول نہیں پڑھ سکتیں۔ سرور انہیں روک دیتا ہے۔⁩';
 
   @override
   String get apr => '⁧اپریل⁩';
@@ -565,8 +526,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get askTheAdminToApproveIt => '⁧ایڈمن سے منظوری لیں⁩';
 
   @override
-  String get askThemToOpenTheLink =>
-      '⁧ان سے کہیں کہ نئی LinkUp سے لنک دوبارہ کھولیں۔⁩';
+  String get askThemToOpenTheLink => '⁧ان سے کہیں کہ نئی LinkUp سے لنک دوبارہ کھولیں۔⁩';
 
   @override
   String get askToJoin => '⁧شامل ہونے کی درخواست کریں⁩';
@@ -592,8 +552,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get auditLog2 => '⁧آڈٹ لاگ⁩';
 
   @override
-  String get auditedEventsSessionsAndOutstandingRecovery =>
-      '⁧آڈٹ شدہ واقعات، سیشنز اور باقی ریکوری کا کام⁩';
+  String get auditedEventsSessionsAndOutstandingRecovery => '⁧آڈٹ شدہ واقعات، سیشنز اور باقی ریکوری کا کام⁩';
 
   @override
   String get auditor => '⁧آڈیٹر⁩';
@@ -623,8 +582,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get available => '⁧دستیاب⁩';
 
   @override
-  String get avoidWiFiDirectAndMesh =>
-      '⁧وائی فائی ڈائریکٹ اور میش میسجنگ سے بچیں۔ دستیاب ہونے پر LinkUp سیٹ کیا گیا سرور کنکشن استعمال کرتی ہے؛ اس کا مطلب یہ نہیں کہ سرور خود عوامی انٹرنیٹ پر ہے۔⁩';
+  String get avoidWiFiDirectAndMesh => '⁧وائی فائی ڈائریکٹ اور میش میسجنگ سے بچیں۔ دستیاب ہونے پر LinkUp سیٹ کیا گیا سرور کنکشن استعمال کرتی ہے؛ اس کا مطلب یہ نہیں کہ سرور خود عوامی انٹرنیٹ پر ہے۔⁩';
 
   @override
   String get back => '⁧واپس⁩';
@@ -636,8 +594,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get backUpNow => '⁧ابھی بیک اپ کریں⁩';
 
   @override
-  String get backgroundPowerUseAllowLinkup =>
-      '⁧Background power use: LinkUp کو اجازت دیں⁩';
+  String get backgroundPowerUseAllowLinkup => '⁧Background power use: LinkUp کو اجازت دیں⁩';
 
   @override
   String get backup => '⁧بیک اپ⁩';
@@ -677,8 +634,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get batteryPermissionDialogsAreShownOnly =>
-      '⁧بیٹری اجازت کے ڈائیلاگ صرف کسی قطار پر ٹیپ کرنے پر دکھتے ہیں۔ کچھ بھی خاموشی سے آن نہیں ہوتا۔⁩';
+  String get batteryPermissionDialogsAreShownOnly => '⁧بیٹری اجازت کے ڈائیلاگ صرف کسی قطار پر ٹیپ کرنے پر دکھتے ہیں۔ کچھ بھی خاموشی سے آن نہیں ہوتا۔⁩';
 
   @override
   String get becomesTheNewOwner => '⁧ نئے اونر بن جائیں گے۔⁩';
@@ -687,8 +643,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get below => '⁧ پر ٹیپ کریں۔⁩';
 
   @override
-  String get biggestFirstTapToOpenHold =>
-      '⁧سب سے بڑی پہلے۔ کھولنے کے لیے ٹیپ کریں، چننے کے لیے دبائے رکھیں۔⁩';
+  String get biggestFirstTapToOpenHold => '⁧سب سے بڑی پہلے۔ کھولنے کے لیے ٹیپ کریں، چننے کے لیے دبائے رکھیں۔⁩';
 
   @override
   String get block => '⁧بلاک⁩';
@@ -768,8 +723,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get blockedByAdmin => '⁧ایڈمن نے بلاک کیا⁩';
 
   @override
-  String get blockedByAdminYouCanT =>
-      '⁧ایڈمن نے بلاک کیا ہے۔ آپ بھیج نہیں سکتے۔⁩';
+  String get blockedByAdminYouCanT => '⁧ایڈمن نے بلاک کیا ہے۔ آپ بھیج نہیں سکتے۔⁩';
 
   @override
   String get blockedList => '⁧بلاک لسٹ⁩';
@@ -843,8 +797,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get call => '⁧کال⁩';
 
   @override
-  String get callAlertsOffTapToTurn =>
-      '⁧کال الرٹس بند - آن کرنے کے لیے ٹیپ کریں⁩';
+  String get callAlertsOffTapToTurn => '⁧کال الرٹس بند - آن کرنے کے لیے ٹیپ کریں⁩';
 
   @override
   String get callAlertsOn => '⁧کال الرٹس آن⁩';
@@ -896,16 +849,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get callsPassedOnNow => '⁧ابھی آگے پہنچائی گئی کالز⁩';
 
   @override
-  String get callsRingButNoAcceptButton =>
-      '⁧کالز بجتی ہیں، لیکن اٹھانے کا بٹن نہیں⁩';
+  String get callsRingButNoAcceptButton => '⁧کالز بجتی ہیں، لیکن اٹھانے کا بٹن نہیں⁩';
 
   @override
-  String get callsRingWithAcceptReject =>
-      '⁧کالز اٹھائیں / مسترد کے ساتھ بجتی ہیں⁩';
+  String get callsRingWithAcceptReject => '⁧کالز اٹھائیں / مسترد کے ساتھ بجتی ہیں⁩';
 
   @override
-  String get callsShowHereWithNamesAnd =>
-      '⁧کالز یہاں ناموں اور وقت کے ساتھ نظر آتی ہیں۔⁩';
+  String get callsShowHereWithNamesAnd => '⁧کالز یہاں ناموں اور وقت کے ساتھ نظر آتی ہیں۔⁩';
 
   @override
   String get callsToday => '⁧آج کی کالز⁩';
@@ -931,8 +881,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get canHelpIfYouForgetYour =>
-      '⁧اگر آپ پاس ورڈ بھول جائیں، فون گم ہو جائے، یا وائی فائی سیٹنگز ٹھیک کرنی ہوں تو مدد کر سکتے ہیں۔⁩';
+  String get canHelpIfYouForgetYour => '⁧اگر آپ پاس ورڈ بھول جائیں، فون گم ہو جائے، یا وائی فائی سیٹنگز ٹھیک کرنی ہوں تو مدد کر سکتے ہیں۔⁩';
 
   @override
   String get canOnlyLook => '⁧صرف دیکھ سکتا ہے⁩';
@@ -954,15 +903,13 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get canTOpenTheLinkNow =>
-      '⁧ابھی لنک نہیں کھل سکتا۔ انٹرنیٹ چیک کر کے دوبارہ کوشش کریں۔⁩';
+  String get canTOpenTheLinkNow => '⁧ابھی لنک نہیں کھل سکتا۔ انٹرنیٹ چیک کر کے دوبارہ کوشش کریں۔⁩';
 
   @override
   String get canTPlayThisVideo => '⁧یہ ویڈیو نہیں چل سکتی⁩';
 
   @override
-  String get canTSendOrGetThem =>
-      '⁧کسی بھی فون پر ان کو بھیج یا ان سے وصول نہیں کر سکتے⁩';
+  String get canTSendOrGetThem => '⁧کسی بھی فون پر ان کو بھیج یا ان سے وصول نہیں کر سکتے⁩';
 
   @override
   String get canTSignInForNow => '⁧ابھی سائن اِن نہیں کر سکتے⁩';
@@ -1114,8 +1061,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get chat => '⁧چیٹ⁩';
 
   @override
-  String get chatAndCallEvenWithoutInternet =>
-      '⁧انٹرنیٹ کے بغیر بھی چیٹ اور کال⁩';
+  String get chatAndCallEvenWithoutInternet => '⁧انٹرنیٹ کے بغیر بھی چیٹ اور کال⁩';
 
   @override
   String get chats => '⁧چیٹس⁩';
@@ -1130,8 +1076,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get checkAgain => '⁧دوبارہ چیک کریں⁩';
 
   @override
-  String get checkTheNewPasswordAndTry =>
-      '⁧نیا پاس ورڈ چیک کریں اور دوبارہ کوشش کریں۔⁩';
+  String get checkTheNewPasswordAndTry => '⁧نیا پاس ورڈ چیک کریں اور دوبارہ کوشش کریں۔⁩';
 
   @override
   String get checkedByTheServerForEvery => '⁧ہر ایڈمن کے لیے سرور چیک کرتا ہے⁩';
@@ -1146,19 +1091,16 @@ class AppLocalizationsUr extends AppLocalizations {
   String get checkingTheServer => '⁧سرور چیک ہو رہا ہے…⁩';
 
   @override
-  String get checksThatLinkupWorksWellCan =>
-      '⁧چیک کرتے ہیں کہ LinkUp ٹھیک کام کرے۔ صرف دیکھ سکتے ہیں، آپ کا اکاؤنٹ نہیں بدل سکتے۔⁩';
+  String get checksThatLinkupWorksWellCan => '⁧چیک کرتے ہیں کہ LinkUp ٹھیک کام کرے۔ صرف دیکھ سکتے ہیں، آپ کا اکاؤنٹ نہیں بدل سکتے۔⁩';
 
   @override
   String get chooseAPasswordOfAtLeast => '⁧کم از کم 8 حروف کا پاس ورڈ چنیں۔⁩';
 
   @override
-  String get chooseHowLinkupLooksOnThis =>
-      '⁧چنیں کہ اس فون پر LinkUp کیسا دکھے۔⁩';
+  String get chooseHowLinkupLooksOnThis => '⁧چنیں کہ اس فون پر LinkUp کیسا دکھے۔⁩';
 
   @override
-  String get chooseHowMuchMessageDetailAppears =>
-      '⁧چنیں کہ فون لاک ہونے پر میسج کی کتنی تفصیل نظر آئے۔⁩';
+  String get chooseHowMuchMessageDetailAppears => '⁧چنیں کہ فون لاک ہونے پر میسج کی کتنی تفصیل نظر آئے۔⁩';
 
   @override
   String get clear => '⁧صاف کریں⁩';
@@ -1181,8 +1123,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get closeDeleteThisCopy => '⁧بند کریں (یہ کاپی ڈیلیٹ کریں)⁩';
 
   @override
-  String get closeOtherSharingAppsAndTry =>
-      '⁧دوسری شیئرنگ ایپس بند کر کے دوبارہ کوشش کریں۔⁩';
+  String get closeOtherSharingAppsAndTry => '⁧دوسری شیئرنگ ایپس بند کر کے دوبارہ کوشش کریں۔⁩';
 
   @override
   String get closeSearch => '⁧تلاش بند کریں⁩';
@@ -1214,12 +1155,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get completed => '⁧مکمل⁩';
 
   @override
-  String get completingSecureAccountRecovery =>
-      '⁧اکاؤنٹ کی محفوظ بحالی مکمل ہو رہی ہے…⁩';
+  String get completingSecureAccountRecovery => '⁧اکاؤنٹ کی محفوظ بحالی مکمل ہو رہی ہے…⁩';
 
   @override
-  String get completingSecureDeviceTransfer =>
-      '⁧ڈیوائس کی محفوظ منتقلی مکمل ہو رہی ہے…⁩';
+  String get completingSecureDeviceTransfer => '⁧ڈیوائس کی محفوظ منتقلی مکمل ہو رہی ہے…⁩';
 
   @override
   String get confirm => '⁧تصدیق کریں⁩';
@@ -1228,8 +1167,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get confirmItSMe => '⁧تصدیق کریں کہ یہ میں ہوں⁩';
 
   @override
-  String get confirmItSYouToKeep =>
-      '⁧اس فون پر LinkUp استعمال کرتے رہنے کے لیے تصدیق کریں کہ یہ آپ ہیں۔⁩';
+  String get confirmItSYouToKeep => '⁧اس فون پر LinkUp استعمال کرتے رہنے کے لیے تصدیق کریں کہ یہ آپ ہیں۔⁩';
 
   @override
   String get confirmPassphrase => '⁧پاس فریز کی تصدیق کریں⁩';
@@ -1238,16 +1176,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get confirmYourAccount => '⁧اپنے اکاؤنٹ کی تصدیق کریں⁩';
 
   @override
-  String get connectToTheServerOnceTo =>
-      '⁧آف لائن بلاکنگ آن کرنے کے لیے ایک بار سرور سے کنکٹ کریں⁩';
+  String get connectToTheServerOnceTo => '⁧آف لائن بلاکنگ آن کرنے کے لیے ایک بار سرور سے کنکٹ کریں⁩';
 
   @override
-  String get connectToTheServerOnceTo2 =>
-      '⁧آف لائن بلاکنگ آن کرنے کے لیے ایک بار سرور سے کنکٹ کریں۔⁩';
+  String get connectToTheServerOnceTo2 => '⁧آف لائن بلاکنگ آن کرنے کے لیے ایک بار سرور سے کنکٹ کریں۔⁩';
 
   @override
-  String get connectToTheServerToUse =>
-      '⁧پرانا پاس ورڈ استعمال کرنے کے لیے سرور سے کنکٹ کریں۔⁩';
+  String get connectToTheServerToUse => '⁧پرانا پاس ورڈ استعمال کرنے کے لیے سرور سے کنکٹ کریں۔⁩';
 
   @override
   String get connected => '⁧کنکٹ ہے⁩';
@@ -1309,8 +1244,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get contactsWithAnOlderLinkupWill =>
-      '⁧پرانی LinkUp والے کانٹیکٹس اپ ڈیٹ کرنے تک قریب سے کنکٹ نہیں ہوں گے۔ انٹرنیٹ کے ذریعے میسجز پھر بھی کام کرتے ہیں۔⁩';
+  String get contactsWithAnOlderLinkupWill => '⁧پرانی LinkUp والے کانٹیکٹس اپ ڈیٹ کرنے تک قریب سے کنکٹ نہیں ہوں گے۔ انٹرنیٹ کے ذریعے میسجز پھر بھی کام کرتے ہیں۔⁩';
 
   @override
   String get continueRecording => '⁧ریکارڈنگ جاری رکھیں⁩';
@@ -1328,8 +1262,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get copied => '⁧کاپی ہو گیا⁩';
 
   @override
-  String get copiedWhatsappIsNotOnThis =>
-      '⁧کاپی ہو گیا۔ اس فون پر WhatsApp نہیں ہے۔⁩';
+  String get copiedWhatsappIsNotOnThis => '⁧کاپی ہو گیا۔ اس فون پر WhatsApp نہیں ہے۔⁩';
 
   @override
   String get copy => '⁧کاپی کریں⁩';
@@ -1344,8 +1277,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get couldNotAcceptTheNewCode => '⁧نیا کوڈ قبول نہیں ہو سکا⁩';
 
   @override
-  String get couldNotAddThisPersonTry =>
-      '⁧اس شخص کو شامل نہیں کیا جا سکا۔ دوبارہ کوشش کریں۔⁩';
+  String get couldNotAddThisPersonTry => '⁧اس شخص کو شامل نہیں کیا جا سکا۔ دوبارہ کوشش کریں۔⁩';
 
   @override
   String couldNotAddTryAgain(Object? r) {
@@ -1358,8 +1290,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get couldNotConnectToLinkupMake =>
-      '⁧LinkUp سے کنکٹ نہیں ہو سکا۔ یقینی بنائیں کہ LinkUp سرور آپ کے پرائیویٹ نیٹ ورک پر دستیاب ہے۔⁩';
+  String get couldNotConnectToLinkupMake => '⁧LinkUp سے کنکٹ نہیں ہو سکا۔ یقینی بنائیں کہ LinkUp سرور آپ کے پرائیویٹ نیٹ ورک پر دستیاب ہے۔⁩';
 
   @override
   String couldNotCreateYourQrCode(Object? error) {
@@ -1367,8 +1298,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get couldNotForwardTryAgain =>
-      '⁧آگے نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔⁩';
+  String get couldNotForwardTryAgain => '⁧آگے نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔⁩';
 
   @override
   String get couldNotGetItNow => '⁧ابھی نہیں مل سکی⁩';
@@ -1377,34 +1307,28 @@ class AppLocalizationsUr extends AppLocalizations {
   String get couldNotMakeANewCode => '⁧نیا کوڈ نہیں بن سکا۔ دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get couldNotOpenNotificationSettingsRight =>
-      '⁧ابھی نوٹیفکیشن سیٹنگز نہیں کھل سکیں۔⁩';
+  String get couldNotOpenNotificationSettingsRight => '⁧ابھی نوٹیفکیشن سیٹنگز نہیں کھل سکیں۔⁩';
 
   @override
-  String get couldNotOpenTheBatteryDialog =>
-      '⁧ابھی بیٹری ڈائیلاگ نہیں کھل سکا — دوبارہ کوشش کریں۔⁩';
+  String get couldNotOpenTheBatteryDialog => '⁧ابھی بیٹری ڈائیلاگ نہیں کھل سکا — دوبارہ کوشش کریں۔⁩';
 
   @override
   String get couldNotOpenTheCameraOr => '⁧کیمرہ یا گیلری نہیں کھل سکی۔⁩';
 
   @override
-  String get couldNotOpenYourPhoneS =>
-      '⁧ابھی آپ کے فون کی سیٹنگز نہیں کھل سکیں۔⁩';
+  String get couldNotOpenYourPhoneS => '⁧ابھی آپ کے فون کی سیٹنگز نہیں کھل سکیں۔⁩';
 
   @override
   String get couldNotPrepareLogs => '⁧لاگز تیار نہیں ہو سکے⁩';
 
   @override
-  String get couldNotReachTheSenderTry =>
-      '⁧بھیجنے والے تک نہیں پہنچ سکے۔ قریب ہونے پر دوبارہ کوشش کریں۔⁩';
+  String get couldNotReachTheSenderTry => '⁧بھیجنے والے تک نہیں پہنچ سکے۔ قریب ہونے پر دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get couldNotReachTheServerTry =>
-      '⁧سرور تک رسائی نہیں ہو سکی۔ دوبارہ کوشش کریں۔⁩';
+  String get couldNotReachTheServerTry => '⁧سرور تک رسائی نہیں ہو سکی۔ دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get couldNotRefreshTheRequestThe =>
-      '⁧درخواست ریفریش نہیں ہو سکی۔ مقامی نیٹ ورک عارضی طور پر دستیاب نہیں ہو سکتا۔⁩';
+  String get couldNotRefreshTheRequestThe => '⁧درخواست ریفریش نہیں ہو سکی۔ مقامی نیٹ ورک عارضی طور پر دستیاب نہیں ہو سکتا۔⁩';
 
   @override
   String couldNotRemove(Object? name) {
@@ -1417,8 +1341,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get couldNotSaveFreeSomeSpace =>
-      '⁧محفوظ نہیں ہو سکا۔ کچھ جگہ خالی کر کے دوبارہ کوشش کریں۔⁩';
+  String get couldNotSaveFreeSomeSpace => '⁧محفوظ نہیں ہو سکا۔ کچھ جگہ خالی کر کے دوبارہ کوشش کریں۔⁩';
 
   @override
   String get couldNotSendTryAgain => '⁧نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں⁩';
@@ -1427,8 +1350,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get couldNotShareLogs => '⁧لاگز شیئر نہیں ہو سکے⁩';
 
   @override
-  String get couldNotStartTryingAgainLater =>
-      '⁧شروع نہیں ہو سکا، بعد میں دوبارہ کوشش ہو گی⁩';
+  String get couldNotStartTryingAgainLater => '⁧شروع نہیں ہو سکا، بعد میں دوبارہ کوشش ہو گی⁩';
 
   @override
   String couldNotUnblock(Object? label) {
@@ -1436,8 +1358,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get couldnTAskToJoinTry =>
-      '⁧شامل ہونے کی درخواست نہیں ہو سکی۔ دوبارہ کوشش کریں۔⁩';
+  String get couldnTAskToJoinTry => '⁧شامل ہونے کی درخواست نہیں ہو سکی۔ دوبارہ کوشش کریں۔⁩';
 
   @override
   String get couldnTBeAdded => '⁧شامل نہیں ہو سکے⁩';
@@ -1446,16 +1367,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get couldnTGetTheAddressBy => '⁧ایڈریس خود سے نہیں مل سکا⁩';
 
   @override
-  String get couldnTLoadYourConversationsPlease =>
-      '⁧آپ کی بات چیت لوڈ نہیں ہو سکی۔ براہِ کرم تھوڑی دیر بعد دوبارہ کوشش کریں۔⁩';
+  String get couldnTLoadYourConversationsPlease => '⁧آپ کی بات چیت لوڈ نہیں ہو سکی۔ براہِ کرم تھوڑی دیر بعد دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get couldnTReachTheServerConversations =>
-      '⁧سرور تک نہیں پہنچ سکے۔ واپس آنے پر بات چیت نظر آئے گی۔⁩';
+  String get couldnTReachTheServerConversations => '⁧سرور تک نہیں پہنچ سکے۔ واپس آنے پر بات چیت نظر آئے گی۔⁩';
 
   @override
-  String get couldnTReachThemTryAgain =>
-      '⁧ان تک نہیں پہنچ سکے — دوبارہ کوشش کریں⁩';
+  String get couldnTReachThemTryAgain => '⁧ان تک نہیں پہنچ سکے — دوبارہ کوشش کریں⁩';
 
   @override
   String get couldnTReadTheLinkupApp => '⁧LinkUp ایپ فائل نہیں پڑھی جا سکی⁩';
@@ -1464,8 +1382,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get couldnTStartTheDownloadPage => '⁧ڈاؤن لوڈ صفحہ شروع نہیں ہو سکا⁩';
 
   @override
-  String get couldnTSyncRightNowShowing =>
-      '⁧ابھی سنک نہیں ہو سکا — آپ کی محفوظ بات چیت دکھائی جا رہی ہے۔⁩';
+  String get couldnTSyncRightNowShowing => '⁧ابھی سنک نہیں ہو سکا — آپ کی محفوظ بات چیت دکھائی جا رہی ہے۔⁩';
 
   @override
   String get couldnTTurnOnWiFi => '⁧وائی فائی آن نہیں ہو سکا⁩';
@@ -1495,8 +1412,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get createGroup => '⁧گروپ بنائیں⁩';
 
   @override
-  String get createUpdateEncryptedKeyBackup =>
-      '⁧انکرپٹڈ کی بیک اپ بنائیں / اپ ڈیٹ کریں⁩';
+  String get createUpdateEncryptedKeyBackup => '⁧انکرپٹڈ کی بیک اپ بنائیں / اپ ڈیٹ کریں⁩';
 
   @override
   String get createYourAccount => '⁧اپنا اکاؤنٹ بنائیں⁩';
@@ -1625,8 +1541,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get deleteForEveryone => '⁧سب کے لیے ڈیلیٹ⁩';
 
   @override
-  String deleteForEveryoneRemovesItFrom(
-      Object? who, Object? phone, Object? vIs) {
+  String deleteForEveryoneRemovesItFrom(Object? who, Object? phone, Object? vIs) {
     return '⁧\"سب کے لیے ڈیلیٹ\" اسے ⁨$who⁩⁨$phone⁩ سے بھی ہٹا دیتا ہے، چاہے ⁨$vIs⁩ ابھی آف لائن ہو (فون کو خبر ملنے پر ہٹ جاتا ہے)۔ صرف آپ کے میسجز کے لیے، 5 منٹ تک پرانے۔ گیلری میں کسی کی محفوظ کی گئی کاپی رہتی ہے۔⁩';
   }
 
@@ -1696,15 +1611,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get descriptionOptional => '⁧تفصیل (اختیاری)⁩';
 
   @override
-  String get developerAndCreatorOfLinkupBuilt =>
-      '⁧LinkUp کے ڈویلپر اور خالق۔ یہ ایپ بنائی تاکہ آپ انٹرنیٹ کے بغیر بھی چیٹ اور کال کر سکیں۔⁩';
+  String get developerAndCreatorOfLinkupBuilt => '⁧LinkUp کے ڈویلپر اور خالق۔ یہ ایپ بنائی تاکہ آپ انٹرنیٹ کے بغیر بھی چیٹ اور کال کر سکیں۔⁩';
 
   @override
   String get devices => '⁧ڈیوائسز⁩';
 
   @override
-  String get devicesSignedInToThisLinkup =>
-      '⁧اس LinkUp اکاؤنٹ میں سائن اِن ڈیوائسز۔⁩';
+  String get devicesSignedInToThisLinkup => '⁧اس LinkUp اکاؤنٹ میں سائن اِن ڈیوائسز۔⁩';
 
   @override
   String get diagnosticCaptureMode => '⁧تشخیصی کیپچر موڈ⁩';
@@ -1713,8 +1626,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get diagnostics => '⁧تشخیص⁩';
 
   @override
-  String get didNotWorkTryingAgainLater =>
-      '⁧کام نہیں ہوا، بعد میں دوبارہ کوشش ہو گی⁩';
+  String get didNotWorkTryingAgainLater => '⁧کام نہیں ہوا، بعد میں دوبارہ کوشش ہو گی⁩';
 
   @override
   String get directLinks => '⁧براہِ راست لنکس⁩';
@@ -1789,8 +1701,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get dragToMove => '⁧جگہ بدلنے کے لیے گھسیٹیں⁩';
 
   @override
-  String get dragToScrollPinchToZoom =>
-      '⁧اسکرول کے لیے گھسیٹیں · زوم کے لیے چٹکی⁩';
+  String get dragToScrollPinchToZoom => '⁧اسکرول کے لیے گھسیٹیں · زوم کے لیے چٹکی⁩';
 
   @override
   String get eachPhoneOnceByHowIt => '⁧ہر فون ایک بار، ابھی جیسے جڑا ہے⁩';
@@ -1819,12 +1730,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get encryptedHistory => '⁧انکرپٹڈ ہسٹری⁩';
 
   @override
-  String get encryptedIdentityBackupAvailable =>
-      '⁧انکرپٹڈ شناختی بیک اپ دستیاب ہے⁩';
+  String get encryptedIdentityBackupAvailable => '⁧انکرپٹڈ شناختی بیک اپ دستیاب ہے⁩';
 
   @override
-  String get encryptedIdentityBackupSavedToThe =>
-      '⁧انکرپٹڈ شناختی بیک اپ LinkUp سرور پر محفوظ ہو گیا⁩';
+  String get encryptedIdentityBackupSavedToThe => '⁧انکرپٹڈ شناختی بیک اپ LinkUp سرور پر محفوظ ہو گیا⁩';
 
   @override
   String get ended => '⁧ختم⁩';
@@ -1843,8 +1752,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get enterThe12DigitCodeFrom =>
-      '⁧ایڈمن سے ملا 12 ہندسوں کا کوڈ درج کریں۔⁩';
+  String get enterThe12DigitCodeFrom => '⁧ایڈمن سے ملا 12 ہندسوں کا کوڈ درج کریں۔⁩';
 
   @override
   String get enterTheCode => '⁧کوڈ لکھیں⁩';
@@ -1864,19 +1772,16 @@ class AppLocalizationsUr extends AppLocalizations {
   String get enterYourPassword => '⁧اپنا پاس ورڈ لکھیں⁩';
 
   @override
-  String get enterYourRecoveryCodeLikeK7qm2 =>
-      '⁧اپنا ریکوری کوڈ درج کریں (جیسے K7QM2-XPA9T-RC4WN-E8D3F)۔⁩';
+  String get enterYourRecoveryCodeLikeK7qm2 => '⁧اپنا ریکوری کوڈ درج کریں (جیسے K7QM2-XPA9T-RC4WN-E8D3F)۔⁩';
 
   @override
   String get enterYourUsername => '⁧اپنا یوزر نیم درج کریں۔⁩';
 
   @override
-  String get enterYourUsernameAndPassword =>
-      '⁧اپنا یوزر نیم اور پاس ورڈ لکھیں۔⁩';
+  String get enterYourUsernameAndPassword => '⁧اپنا یوزر نیم اور پاس ورڈ لکھیں۔⁩';
 
   @override
-  String get enterYourUsernameToRequestAccount =>
-      '⁧اکاؤنٹ کی بحالی کی درخواست کے لیے اپنا یوزر نیم درج کریں۔⁩';
+  String get enterYourUsernameToRequestAccount => '⁧اکاؤنٹ کی بحالی کی درخواست کے لیے اپنا یوزر نیم درج کریں۔⁩';
 
   @override
   String get event => '⁧واقعہ⁩';
@@ -1894,16 +1799,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get everyoneCanSend => '⁧سب بھیج سکتے ہیں⁩';
 
   @override
-  String get everyoneInTheGroupSeesIt =>
-      '⁧گروپ میں سب کو یہ چیٹ کے اوپر نظر آتا ہے۔ ایک وقت میں ایک ہی میسج پِن ہوتا ہے؛ نیا پِن پرانے کی جگہ لے لیتا ہے۔⁩';
+  String get everyoneInTheGroupSeesIt => '⁧گروپ میں سب کو یہ چیٹ کے اوپر نظر آتا ہے۔ ایک وقت میں ایک ہی میسج پِن ہوتا ہے؛ نیا پِن پرانے کی جگہ لے لیتا ہے۔⁩';
 
   @override
-  String get everyoneNearbyIsAlreadyInYour =>
-      '⁧قریب کے سب لوگ پہلے سے آپ کے کانٹیکٹس میں ہیں⁩';
+  String get everyoneNearbyIsAlreadyInYour => '⁧قریب کے سب لوگ پہلے سے آپ کے کانٹیکٹس میں ہیں⁩';
 
   @override
-  String get everyoneOnLinkupIsAlreadyIn =>
-      '⁧LinkUp پر سب پہلے سے آپ کے کانٹیکٹس میں ہیں۔ کسی نئے کو شامل کرنے کے لیے نام تلاش کریں یا QR کوڈ استعمال کریں۔⁩';
+  String get everyoneOnLinkupIsAlreadyIn => '⁧LinkUp پر سب پہلے سے آپ کے کانٹیکٹس میں ہیں۔ کسی نئے کو شامل کرنے کے لیے نام تلاش کریں یا QR کوڈ استعمال کریں۔⁩';
 
   @override
   String get everyonePicks => '⁧ہر کوئی ⁩';
@@ -1969,8 +1871,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get filePartsPassedOn => '⁧آگے پہنچائے گئے فائل کے حصے⁩';
 
   @override
-  String get fileRemovedAfter60DaysThumbnail =>
-      '⁧60 دن بعد فائل ہٹا دی گئی · صرف تھمب نیل⁩';
+  String get fileRemovedAfter60DaysThumbnail => '⁧60 دن بعد فائل ہٹا دی گئی · صرف تھمب نیل⁩';
 
   @override
   String get fileTooBig => '⁧فائل بہت بڑی ہے⁩';
@@ -1985,8 +1886,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get files => '⁧فائلیں⁩';
 
   @override
-  String get filesPeopleSendShowHereWith =>
-      '⁧لوگوں کی بھیجی گئی فائلیں قسم اور سائز کے ساتھ یہاں نظر آتی ہیں۔⁩';
+  String get filesPeopleSendShowHereWith => '⁧لوگوں کی بھیجی گئی فائلیں قسم اور سائز کے ساتھ یہاں نظر آتی ہیں۔⁩';
 
   @override
   String filesReceived(Object? n) {
@@ -2005,19 +1905,16 @@ class AppLocalizationsUr extends AppLocalizations {
   String get filter => '⁧فلٹر⁩';
 
   @override
-  String get findANearbyPersonOrCreate =>
-      '⁧چیٹ شروع کرنے کے لیے کوئی قریبی شخص تلاش کریں یا گروپ بنائیں۔⁩';
+  String get findANearbyPersonOrCreate => '⁧چیٹ شروع کرنے کے لیے کوئی قریبی شخص تلاش کریں یا گروپ بنائیں۔⁩';
 
   @override
   String get findAPerson => '⁧کسی شخص کو تلاش کریں⁩';
 
   @override
-  String get findNearbyFriendsWhenClosed =>
-      '⁧ایپ بند ہو تب بھی قریبی دوست تلاش کریں⁩';
+  String get findNearbyFriendsWhenClosed => '⁧ایپ بند ہو تب بھی قریبی دوست تلاش کریں⁩';
 
   @override
-  String get findNearbyFriendsWhenClosedTurn =>
-      '⁧ایپ بند ہو تب بھی قریبی دوست تلاش کریں - آن کریں⁩';
+  String get findNearbyFriendsWhenClosedTurn => '⁧ایپ بند ہو تب بھی قریبی دوست تلاش کریں - آن کریں⁩';
 
   @override
   String get findPeopleNearby => '⁧قریبی لوگ تلاش کریں⁩';
@@ -2032,12 +1929,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get findServerNow => '⁧ابھی سرور تلاش کریں⁩';
 
   @override
-  String get findingTheMatchingLinkupServer =>
-      '⁧متعلقہ LinkUp سرور تلاش ہو رہا ہے…⁩';
+  String get findingTheMatchingLinkupServer => '⁧متعلقہ LinkUp سرور تلاش ہو رہا ہے…⁩';
 
   @override
-  String get firstOrLetThemScanThe =>
-      '⁧ میں دوست شامل کریں، یا بعد میں انہیں گروپ QR اسکین کرنے دیں۔⁩';
+  String get firstOrLetThemScanThe => '⁧ میں دوست شامل کریں، یا بعد میں انہیں گروپ QR اسکین کرنے دیں۔⁩';
 
   @override
   String get firstPerson => '⁧پہلا شخص⁩';
@@ -2049,8 +1944,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get followAppTheme => '⁧ایپ کی تھیم کے مطابق⁩';
 
   @override
-  String get followTheAccountOrPhoneSetting =>
-      '⁧اکاؤنٹ یا فون کی سیٹنگ کے مطابق⁩';
+  String get followTheAccountOrPhoneSetting => '⁧اکاؤنٹ یا فون کی سیٹنگ کے مطابق⁩';
 
   @override
   String get followThePhoneSLightOr => '⁧فون کے لائٹ یا ڈارک موڈ کے مطابق۔⁩';
@@ -2068,8 +1962,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get forcedOn => '⁧زبردستی آن⁩';
 
   @override
-  String get forgotItUseTheRecoveryCode =>
-      '⁧بھول گئے؟ ریکوری کوڈ استعمال کریں۔⁩';
+  String get forgotItUseTheRecoveryCode => '⁧بھول گئے؟ ریکوری کوڈ استعمال کریں۔⁩';
 
   @override
   String get forgotPassword => '⁧پاس ورڈ بھول گئے⁩';
@@ -2093,27 +1986,22 @@ class AppLocalizationsUr extends AppLocalizations {
   String get freeUpSpaceAutomatically => '⁧خود سے جگہ خالی کریں⁩';
 
   @override
-  String get freeUpSpaceAutomaticallyIsOff =>
-      '⁧خود سے جگہ خالی کریں بند ہے۔ کچھ نہیں ہٹایا۔⁩';
+  String get freeUpSpaceAutomaticallyIsOff => '⁧خود سے جگہ خالی کریں بند ہے۔ کچھ نہیں ہٹایا۔⁩';
 
   @override
   String get fri => '⁧جمعہ⁩';
 
   @override
-  String get friendsOfFriendsScanToJoin =>
-      '⁧دوستوں کے دوست اسکین کر کے شامل ہوں⁩';
+  String get friendsOfFriendsScanToJoin => '⁧دوستوں کے دوست اسکین کر کے شامل ہوں⁩';
 
   @override
-  String get friendsWithoutWiFiCanReach =>
-      '⁧بغیر وائی فائی والے دوست آپ تک پہنچ سکتے ہیں⁩';
+  String get friendsWithoutWiFiCanReach => '⁧بغیر وائی فائی والے دوست آپ تک پہنچ سکتے ہیں⁩';
 
   @override
-  String get fromEveryPhoneAlsoDeletedCopies =>
-      '⁧ہر فون سے، ڈیلیٹ شدہ کاپیاں بھی⁩';
+  String get fromEveryPhoneAlsoDeletedCopies => '⁧ہر فون سے، ڈیلیٹ شدہ کاپیاں بھی⁩';
 
   @override
-  String get fromEveryPhoneOfThisChat =>
-      '⁧اس چیٹ کے ہر فون سے، یوزرز کی ڈیلیٹ کی گئی کاپیاں بھی۔ یہ واپس نہیں ہو سکتا۔⁩';
+  String get fromEveryPhoneOfThisChat => '⁧اس چیٹ کے ہر فون سے، یوزرز کی ڈیلیٹ کی گئی کاپیاں بھی۔ یہ واپس نہیں ہو سکتا۔⁩';
 
   @override
   String get fromPhoto => '⁧تصویر سے⁩';
@@ -2162,15 +2050,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get getFullVideo => '⁧پوری ویڈیو منگوائیں⁩';
 
   @override
-  String get getMessagesAndCallsWhenClosed =>
-      '⁧ایپ بند ہو تب بھی میسجز اور کالز آئیں⁩';
+  String get getMessagesAndCallsWhenClosed => '⁧ایپ بند ہو تب بھی میسجز اور کالز آئیں⁩';
 
   @override
   String get getsItWhenNearbyOrOnline => '⁧قریب یا آن لائن ہونے پر ملے گا⁩';
 
   @override
-  String get getsTheGroupWhenNearbyOr =>
-      '⁧قریب یا آن لائن ہونے پر گروپ ملے گا⁩';
+  String get getsTheGroupWhenNearbyOr => '⁧قریب یا آن لائن ہونے پر گروپ ملے گا⁩';
 
   @override
   String get gettingIt => '⁧لی جا رہی ہے…⁩';
@@ -2197,8 +2083,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get goesOutRightAway => '⁧فوراً بھیج دیا جاتا ہے⁩';
 
   @override
-  String get goneFromEveryPhoneAndThe =>
-      '⁧ہر فون اور سرور سے ختم، یوزرز کی ڈیلیٹ کی گئی کاپیاں بھی۔ یوزرز کو کچھ نظر نہیں آتا۔⁩';
+  String get goneFromEveryPhoneAndThe => '⁧ہر فون اور سرور سے ختم، یوزرز کی ڈیلیٹ کی گئی کاپیاں بھی۔ یوزرز کو کچھ نظر نہیں آتا۔⁩';
 
   @override
   String get good => '⁧اچھا⁩';
@@ -2257,12 +2142,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get groupSettings => '⁧گروپ سیٹنگز⁩';
 
   @override
-  String get groupsAreMadeFromYourFriends =>
-      '⁧گروپس آپ کے دوستوں سے بنتے ہیں۔ پہلے ⁩';
+  String get groupsAreMadeFromYourFriends => '⁧گروپس آپ کے دوستوں سے بنتے ہیں۔ پہلے ⁩';
 
   @override
-  String get halfCanBeReadNowThe =>
-      '⁧آدھی ابھی پڑھی جا سکتی ہے · باقی راستے میں ہے⁩';
+  String get halfCanBeReadNowThe => '⁧آدھی ابھی پڑھی جا سکتی ہے · باقی راستے میں ہے⁩';
 
   @override
   String hasAnOldLinkup(Object? name) {
@@ -2303,12 +2186,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get historicalIdentityKeys => '⁧پرانی شناختی کیز⁩';
 
   @override
-  String get holdToRecordReleaseToSend =>
-      '⁧ریکارڈ کے لیے دبائے رکھیں، بھیجنے کے لیے چھوڑ دیں⁩';
+  String get holdToRecordReleaseToSend => '⁧ریکارڈ کے لیے دبائے رکھیں، بھیجنے کے لیے چھوڑ دیں⁩';
 
   @override
-  String get holdToRecordVoiceNote =>
-      '⁧وائس نوٹ ریکارڈ کرنے کے لیے دبائے رکھیں⁩';
+  String get holdToRecordVoiceNote => '⁧وائس نوٹ ریکارڈ کرنے کے لیے دبائے رکھیں⁩';
 
   @override
   String get host => '⁧ہوسٹ⁩';
@@ -2340,8 +2221,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get iSavedIt => '⁧میں نے محفوظ کر لیا⁩';
 
   @override
-  String identity(Object? platform, Object? status, Object? lastSeenAt,
-      Object? unverified, Object? identityFingerprint) {
+  String identity(Object? platform, Object? status, Object? lastSeenAt, Object? unverified, Object? identityFingerprint) {
     return '⁧⁨$platform⁩ • ⁨$status⁩\n⁨$lastSeenAt⁩\nشناخت: ⁨$unverified⁩⁨$identityFingerprint⁩⁩';
   }
 
@@ -2349,8 +2229,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get identityChanged => '⁧شناخت بدل گئی⁩';
 
   @override
-  String get identityChangedOrRevokedVerifyThis =>
-      '⁧شناخت بدل گئی یا منسوخ ہو گئی — اس یوزر کی دوبارہ تصدیق کریں⁩';
+  String get identityChangedOrRevokedVerifyThis => '⁧شناخت بدل گئی یا منسوخ ہو گئی — اس یوزر کی دوبارہ تصدیق کریں⁩';
 
   @override
   String get identityKeyHistory => '⁧پرانی شناختی کیز⁩';
@@ -2361,19 +2240,16 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get identityKeysAreManagedLocallyAnd =>
-      '⁧شناختی کیز مقامی طور پر رکھی جاتی ہیں اور آپ کے پبلک پروفائل میں نہیں دکھائی جاتیں۔⁩';
+  String get identityKeysAreManagedLocallyAnd => '⁧شناختی کیز مقامی طور پر رکھی جاتی ہیں اور آپ کے پبلک پروفائل میں نہیں دکھائی جاتیں۔⁩';
 
   @override
   String get identitySigning => '⁧شناخت اور دستخط⁩';
 
   @override
-  String get ifOffYouCanTSee =>
-      '⁧بند ہونے پر آپ نہیں دیکھ سکیں گے کہ دوسروں نے آپ کے میسجز کب پڑھے، اور وہ بھی نہیں دیکھ سکیں گے کہ آپ نے ان کے کب پڑھے۔⁩';
+  String get ifOffYouCanTSee => '⁧بند ہونے پر آپ نہیں دیکھ سکیں گے کہ دوسروں نے آپ کے میسجز کب پڑھے، اور وہ بھی نہیں دیکھ سکیں گے کہ آپ نے ان کے کب پڑھے۔⁩';
 
   @override
-  String get ifTheNewPhoneSaysThis =>
-      '⁧اگر نیا فون کہے \"This Wi-Fi has no internet. Stay connected?\" تو Yes / Stay پر ٹیپ کریں۔⁩';
+  String get ifTheNewPhoneSaysThis => '⁧اگر نیا فون کہے \"This Wi-Fi has no internet. Stay connected?\" تو Yes / Stay پر ٹیپ کریں۔⁩';
 
   @override
   String ifYouLoseThisPhoneIt(Object? user) {
@@ -2486,8 +2362,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String isNotOnTheServerYet(
-      Object? notOnServerName, Object? notOnServerName2) {
+  String isNotOnTheServerYet(Object? notOnServerName, Object? notOnServerName2) {
     return '⁧⁨$notOnServerName⁩ ابھی سرور پر نہیں۔ جب ⁨$notOnServerName2⁩ قریب ہوں گے یا سرور پر آئیں گے تو یہ چلا جائے گا۔⁩';
   }
 
@@ -2530,16 +2405,13 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get itGoesToEveryPhoneNearby =>
-      '⁧یہ ہر قریبی فون پر جاتا ہے، اور آن لائن ہونے پر سرور پر۔⁩';
+  String get itGoesToEveryPhoneNearby => '⁧یہ ہر قریبی فون پر جاتا ہے، اور آن لائن ہونے پر سرور پر۔⁩';
 
   @override
-  String get itGoesToHerPhoneBy =>
-      '⁧یہ کارڈ کے ذریعے، کسی بھی لنک سے ان کے فون پر جاتا ہے۔ مکمل ہونے تک زیرِ التوا۔⁩';
+  String get itGoesToHerPhoneBy => '⁧یہ کارڈ کے ذریعے، کسی بھی لنک سے ان کے فون پر جاتا ہے۔ مکمل ہونے تک زیرِ التوا۔⁩';
 
   @override
-  String get itIsRemovedOnlyFromYour =>
-      '⁧یہ صرف آپ کے فون سے ہٹتا ہے۔ گروپ میں یہ موجود رہتا ہے۔⁩';
+  String get itIsRemovedOnlyFromYour => '⁧یہ صرف آپ کے فون سے ہٹتا ہے۔ گروپ میں یہ موجود رہتا ہے۔⁩';
 
   @override
   String itIsRemovedOnlyFromYour2(Object? peerName) {
@@ -2547,19 +2419,16 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get itIsSignedOutAndMust =>
-      '⁧یہ سائن آؤٹ ہو گیا ہے اور اسے دوبارہ سائن اِن کرنا ہو گا۔⁩';
+  String get itIsSignedOutAndMust => '⁧یہ سائن آؤٹ ہو گیا ہے اور اسے دوبارہ سائن اِن کرنا ہو گا۔⁩';
 
   @override
   String get itMustSignInAgain => '⁧اسے دوبارہ سائن اِن کرنا ہو گا۔⁩';
 
   @override
-  String get itSyncsWhenTheServerAnswers =>
-      '⁧سرور کے جواب دینے پر یہ سنک ہو جاتی ہے۔ اوپر آپ کی مقامی کی ٹھیک ہے۔⁩';
+  String get itSyncsWhenTheServerAnswers => '⁧سرور کے جواب دینے پر یہ سنک ہو جاتی ہے۔ اوپر آپ کی مقامی کی ٹھیک ہے۔⁩';
 
   @override
-  String get itWasInstalledInPartsFor =>
-      '⁧یہ حصوں میں انسٹال ہوئی تھی (مثلاً کسی اسٹور سے)۔ کسی ایسے دوست سے کہیں جس نے LinkUp فائل انسٹال کی ہو کہ وہ شیئر کرے۔⁩';
+  String get itWasInstalledInPartsFor => '⁧یہ حصوں میں انسٹال ہوئی تھی (مثلاً کسی اسٹور سے)۔ کسی ایسے دوست سے کہیں جس نے LinkUp فائل انسٹال کی ہو کہ وہ شیئر کرے۔⁩';
 
   @override
   String items(Object? files) {
@@ -2637,12 +2506,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get k7qm2Xpa9tRc4wnE8d3f => '⁧K7QM2-XPA9T-RC4WN-E8D3F⁩';
 
   @override
-  String get keepItPrivateItLetsYou =>
-      '⁧اسے پرائیویٹ رکھیں۔ اس سے آپ نیا پاس ورڈ سیٹ کر سکتے ہیں۔⁩';
+  String get keepItPrivateItLetsYou => '⁧اسے پرائیویٹ رکھیں۔ اس سے آپ نیا پاس ورڈ سیٹ کر سکتے ہیں۔⁩';
 
   @override
-  String get keepKeepRunningInBackgroundOn =>
-      '⁧\"بیک گراؤنڈ میں چلتی رہے\" آن رکھیں (اوپر)⁩';
+  String get keepKeepRunningInBackgroundOn => '⁧\"بیک گراؤنڈ میں چلتی رہے\" آن رکھیں (اوپر)⁩';
 
   @override
   String get keepLinkupRunning => '⁧LinkUp کو چلتا رکھیں⁩';
@@ -2651,8 +2518,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get keepRunningInBackground => '⁧بیک گراؤنڈ میں چلتی رہے⁩';
 
   @override
-  String get keepTheNewPhoneConnectedTo =>
-      '⁧منظوری کے انتظار تک نئے فون کو پرائیویٹ LinkUp نیٹ ورک سے جڑا رکھیں۔⁩';
+  String get keepTheNewPhoneConnectedTo => '⁧منظوری کے انتظار تک نئے فون کو پرائیویٹ LinkUp نیٹ ورک سے جڑا رکھیں۔⁩';
 
   @override
   String get keepThisPrivate => '⁧اسے پرائیویٹ رکھیں⁩';
@@ -2661,12 +2527,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get keepWiFiOnOnBoth => '⁧دونوں فونز پر وائی فائی آن رکھیں⁩';
 
   @override
-  String get keepsLinkupSafeCanHelpYou =>
-      '⁧LinkUp کو محفوظ رکھتے ہیں۔ پاس ورڈ بھولنے پر واپس آنے میں مدد کر سکتے ہیں۔⁩';
+  String get keepsLinkupSafeCanHelpYou => '⁧LinkUp کو محفوظ رکھتے ہیں۔ پاس ورڈ بھولنے پر واپس آنے میں مدد کر سکتے ہیں۔⁩';
 
   @override
-  String get keyRotationChangesTheDevicePublic =>
-      '⁧کی بدلنے سے ڈیوائس کی پبلک شناخت بدل جاتی ہے جو آئندہ انکرپٹڈ ٹریفک کے لیے استعمال ہوتی ہے۔ پچھلی پرائیویٹ کیز صرف اسی ڈیوائس پر رہتی ہیں اور کبھی سرور پر اپ لوڈ نہیں ہوتیں۔ اس لیے نئے فون کو پرانی ڈیوائس کے لیے بنے پرانے انکرپٹڈ ڈیٹا کی ریکوری کے لیے آئندہ کسی کی منتقلی/بیک اپ طریقے کی ضرورت ہو گی۔⁩';
+  String get keyRotationChangesTheDevicePublic => '⁧کی بدلنے سے ڈیوائس کی پبلک شناخت بدل جاتی ہے جو آئندہ انکرپٹڈ ٹریفک کے لیے استعمال ہوتی ہے۔ پچھلی پرائیویٹ کیز صرف اسی ڈیوائس پر رہتی ہیں اور کبھی سرور پر اپ لوڈ نہیں ہوتیں۔ اس لیے نئے فون کو پرانی ڈیوائس کے لیے بنے پرانے انکرپٹڈ ڈیٹا کی ریکوری کے لیے آئندہ کسی کی منتقلی/بیک اپ طریقے کی ضرورت ہو گی۔⁩';
 
   @override
   String get lanAvailable => '⁧LAN دستیاب⁩';
@@ -2772,22 +2636,19 @@ class AppLocalizationsUr extends AppLocalizations {
   String get linkupAccount => '⁧LinkUp اکاؤنٹ⁩';
 
   @override
-  String get linkupCallAndRoutingTransportIs =>
-      '⁧LinkUp کال اور روٹنگ صرف مقامی ہے: LAN، وائی فائی ڈائریکٹ اور ملٹی ہاپ میش۔⁩';
+  String get linkupCallAndRoutingTransportIs => '⁧LinkUp کال اور روٹنگ صرف مقامی ہے: LAN، وائی فائی ڈائریکٹ اور ملٹی ہاپ میش۔⁩';
 
   @override
   String get linkupConnected => '⁧LinkUp کنکٹ ہے⁩';
 
   @override
-  String get linkupCouldNotInitializeSafelyClose =>
-      '⁧LinkUp محفوظ طریقے سے شروع نہیں ہو سکی۔ ایپ بند کر کے دوبارہ کھولیں۔⁩';
+  String get linkupCouldNotInitializeSafelyClose => '⁧LinkUp محفوظ طریقے سے شروع نہیں ہو سکی۔ ایپ بند کر کے دوبارہ کھولیں۔⁩';
 
   @override
   String get linkupCouldNotStart => '⁧LinkUp شروع نہیں ہو سکی⁩';
 
   @override
-  String get linkupCouldnTTurnOnIts =>
-      '⁧LinkUp اپنا وائی فائی آن نہیں کر سکی۔ اگر آپ کا دوست آپ کے ہی وائی فائی پر ہے تو وہ یہ اسکین کر سکتا ہے:⁩';
+  String get linkupCouldnTTurnOnIts => '⁧LinkUp اپنا وائی فائی آن نہیں کر سکی۔ اگر آپ کا دوست آپ کے ہی وائی فائی پر ہے تو وہ یہ اسکین کر سکتا ہے:⁩';
 
   @override
   String linkupIsDownloaded(Object? version) {
@@ -2795,19 +2656,16 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get linkupKeepsNotificationContentSeparateFrom =>
-      '⁧LinkUp نوٹیفکیشن کا مواد آپ کی چیٹ کے مواد سے الگ رکھتی ہے۔⁩';
+  String get linkupKeepsNotificationContentSeparateFrom => '⁧LinkUp نوٹیفکیشن کا مواد آپ کی چیٹ کے مواد سے الگ رکھتی ہے۔⁩';
 
   @override
   String get linkupLogo => '⁧LinkUp لوگو⁩';
 
   @override
-  String get linkupNeedsTheNearbyDevicesPermission =>
-      '⁧LinkUp کو اپنا وائی فائی آن کرنے کے لیے \"Nearby devices\" کی اجازت چاہیے۔ LinkUp کی ایپ سیٹنگز میں اجازت دیں۔⁩';
+  String get linkupNeedsTheNearbyDevicesPermission => '⁧LinkUp کو اپنا وائی فائی آن کرنے کے لیے \"Nearby devices\" کی اجازت چاہیے۔ LinkUp کی ایپ سیٹنگز میں اجازت دیں۔⁩';
 
   @override
-  String get linkupNeedsThisToStayOn =>
-      '⁧LinkUp کو آن رہنے کے لیے یہ ضروری ہے — میسجز اور کالز بیک گراؤنڈ میں آتی رہنی چاہئیں۔⁩';
+  String get linkupNeedsThisToStayOn => '⁧LinkUp کو آن رہنے کے لیے یہ ضروری ہے — میسجز اور کالز بیک گراؤنڈ میں آتی رہنی چاہئیں۔⁩';
 
   @override
   String get linkupNeedsYourOkOnce => '⁧LinkUp کو ایک بار آپ کی اجازت چاہیے⁩';
@@ -2822,12 +2680,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get linkupPhone => '⁧LinkUp فون⁩';
 
   @override
-  String get linkupServerIdentityChangedConnectionWas =>
-      '⁧LinkUp سرور کی شناخت بدل گئی۔ حفاظت کے لیے کنکشن روک دیا گیا۔⁩';
+  String get linkupServerIdentityChangedConnectionWas => '⁧LinkUp سرور کی شناخت بدل گئی۔ حفاظت کے لیے کنکشن روک دیا گیا۔⁩';
 
   @override
-  String get linkupTriesAgainLaterByItself =>
-      '⁧LinkUp بعد میں خود دوبارہ کوشش کرے گی۔⁩';
+  String get linkupTriesAgainLaterByItself => '⁧LinkUp بعد میں خود دوبارہ کوشش کرے گی۔⁩';
 
   @override
   String linkupUpdatedTo(Object? kAppVersion) {
@@ -2860,8 +2716,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get livePlatformTotalsWithTheActivity =>
-      '⁧پلیٹ فارم کے لائیو اعداد اور منتخب وقت کی سرگرمی⁩';
+  String get livePlatformTotalsWithTheActivity => '⁧پلیٹ فارم کے لائیو اعداد اور منتخب وقت کی سرگرمی⁩';
 
   @override
   String get liveSubsystemHealth => '⁧سب سسٹم کی لائیو صحت⁩';
@@ -2894,8 +2749,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get localCallingServiceIsUnavailable => '⁧مقامی کال سروس دستیاب نہیں⁩';
 
   @override
-  String get localCallingServiceUnavailableReconnectAnd =>
-      '⁧مقامی کال سروس دستیاب نہیں — دوبارہ کنکٹ کر کے کوشش کریں⁩';
+  String get localCallingServiceUnavailableReconnectAnd => '⁧مقامی کال سروس دستیاب نہیں — دوبارہ کنکٹ کر کے کوشش کریں⁩';
 
   @override
   String get localIpv4 => '⁧مقامی IPv4⁩';
@@ -2937,8 +2791,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get logInToYourAccount => '⁧اپنے اکاؤنٹ میں لاگ اِن کریں⁩';
 
   @override
-  String get longPressForMessageActions =>
-      '⁧میسج کے ایکشنز کے لیے دیر تک دبائیں⁩';
+  String get longPressForMessageActions => '⁧میسج کے ایکشنز کے لیے دیر تک دبائیں⁩';
 
   @override
   String get lookingForPhonesNearYou => '⁧آپ کے قریب فون تلاش ہو رہے ہیں⁩';
@@ -2996,15 +2849,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get makeYourProfilePrivate => '⁧اپنا پروفائل پرائیویٹ بنائیں؟⁩';
 
   @override
-  String get makingAGroupNeedsOnlineFor =>
-      '⁧گروپ بنانے کے لیے ابھی آن لائن ہونا ضروری ہے۔ آن لائن ہونے پر دوبارہ کوشش کریں۔⁩';
+  String get makingAGroupNeedsOnlineFor => '⁧گروپ بنانے کے لیے ابھی آن لائن ہونا ضروری ہے۔ آن لائن ہونے پر دوبارہ کوشش کریں۔⁩';
 
   @override
   String get manageDevices => '⁧ڈیوائسز کا انتظام⁩';
 
   @override
-  String get manageSoundsVibrationAndImportanceIn =>
-      '⁧آواز، وائبریشن اور اہمیت Android سیٹنگز میں بدلیں۔⁩';
+  String get manageSoundsVibrationAndImportanceIn => '⁧آواز، وائبریشن اور اہمیت Android سیٹنگز میں بدلیں۔⁩';
 
   @override
   String get manageUsers => '⁧یوزرز کا انتظام⁩';
@@ -3118,8 +2969,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get messageNotSent => '⁧میسج نہیں بھیجا گیا⁩';
 
   @override
-  String get messageNotSentTapToResend =>
-      '⁧میسج نہیں بھیجا گیا۔ دوبارہ بھیجنے یا ڈیلیٹ کرنے کے لیے ٹیپ کریں⁩';
+  String get messageNotSentTapToResend => '⁧میسج نہیں بھیجا گیا۔ دوبارہ بھیجنے یا ڈیلیٹ کرنے کے لیے ٹیپ کریں⁩';
 
   @override
   String get messageOneFriend => '⁧ایک دوست کو میسج کریں⁩';
@@ -3144,19 +2994,16 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get messagesAcceptedByTheServerPer =>
-      '⁧ہر وقفے میں سرور نے قبول کیے گئے میسجز⁩';
+  String get messagesAcceptedByTheServerPer => '⁧ہر وقفے میں سرور نے قبول کیے گئے میسجز⁩';
 
   @override
-  String get messagesAndCallsGetWrongTimes =>
-      '⁧میسجز اور کالز کا وقت غلط آتا ہے۔ سرور PC پر: Settings > Time > Set time automatically > Sync now۔⁩';
+  String get messagesAndCallsGetWrongTimes => '⁧میسجز اور کالز کا وقت غلط آتا ہے۔ سرور PC پر: Settings > Time > Set time automatically > Sync now۔⁩';
 
   @override
   String get messagesAndCallsWorkAgain => '⁧میسجز اور کالز دوبارہ کام کریں گی⁩';
 
   @override
-  String get messagesAreSealedForGroupMembers =>
-      '⁧میسجز صرف گروپ ممبرز کے لیے سیل ہیں⁩';
+  String get messagesAreSealedForGroupMembers => '⁧میسجز صرف گروپ ممبرز کے لیے سیل ہیں⁩';
 
   @override
   String get messagesArriveWhenTheAppIs => '⁧ایپ بند ہو تب بھی میسجز آتے ہیں⁩';
@@ -3176,12 +3023,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get messagesToday => '⁧آج کے میسجز⁩';
 
   @override
-  String get messagesWaitUntilItRunsAgain =>
-      '⁧میسجز دوبارہ چلنے تک انتظار کرتے ہیں⁩';
+  String get messagesWaitUntilItRunsAgain => '⁧میسجز دوبارہ چلنے تک انتظار کرتے ہیں⁩';
 
   @override
-  String get microphonePermissionNeededAllowItThen =>
-      '⁧مائیکروفون کی اجازت ضروری ہے — اجازت دیں، پھر دوبارہ اٹھائیں⁩';
+  String get microphonePermissionNeededAllowItThen => '⁧مائیکروفون کی اجازت ضروری ہے — اجازت دیں، پھر دوبارہ اٹھائیں⁩';
 
   @override
   String min(Object? left) {
@@ -3239,16 +3084,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get moreOptions => '⁧مزید آپشنز⁩';
 
   @override
-  String get moveThisAccountToAnotherPhone =>
-      '⁧یہ اکاؤنٹ دوسرے فون پر منتقل کریں⁩';
+  String get moveThisAccountToAnotherPhone => '⁧یہ اکاؤنٹ دوسرے فون پر منتقل کریں⁩';
 
   @override
-  String get moveThisAccountToAnotherPhone2 =>
-      '⁧ایک بار کے QR ٹرانسفر سے یہ اکاؤنٹ دوسرے فون پر منتقل کریں۔⁩';
+  String get moveThisAccountToAnotherPhone2 => '⁧ایک بار کے QR ٹرانسفر سے یہ اکاؤنٹ دوسرے فون پر منتقل کریں۔⁩';
 
   @override
-  String get moveThisLinkupAccountToAnother =>
-      '⁧یہ LinkUp اکاؤنٹ دوسرے فون پر منتقل کریں۔⁩';
+  String get moveThisLinkupAccountToAnother => '⁧یہ LinkUp اکاؤنٹ دوسرے فون پر منتقل کریں۔⁩';
 
   @override
   String get moveToANewPhone => '⁧نئے فون پر منتقل کریں⁩';
@@ -3308,8 +3150,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get myQrCode => '⁧میرا QR کوڈ⁩';
 
   @override
-  String get nameAndPasswordInYourPhone =>
-      '⁧نام اور پاس ورڈ: آپ کے فون کی ہاٹ اسپاٹ سیٹنگز میں⁩';
+  String get nameAndPasswordInYourPhone => '⁧نام اور پاس ورڈ: آپ کے فون کی ہاٹ اسپاٹ سیٹنگز میں⁩';
 
   @override
   String get nameAndPhoto => '⁧نام اور تصویر⁩';
@@ -3327,15 +3168,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get nearby => '⁧قریب⁩';
 
   @override
-  String get nearbyChatsWithOtherLinkupPhones =>
-      '⁧اگر آپ کا فون دونوں کام ایک ساتھ نہ کر سکے تو دوسرے LinkUp فونز سے قریبی چیٹس تھوڑی دیر رک سکتی ہیں۔ شیئرنگ بند کرنے پر خود واپس آ جاتی ہیں۔⁩';
+  String get nearbyChatsWithOtherLinkupPhones => '⁧اگر آپ کا فون دونوں کام ایک ساتھ نہ کر سکے تو دوسرے LinkUp فونز سے قریبی چیٹس تھوڑی دیر رک سکتی ہیں۔ شیئرنگ بند کرنے پر خود واپس آ جاتی ہیں۔⁩';
 
   @override
   String get nearbyDirectLink => '⁧قریب - براہِ راست لنک⁩';
 
   @override
-  String get nearbyGroupsCanHaveUpTo =>
-      '⁧قریبی گروپس میں زیادہ سے زیادہ 32 لوگ ہو سکتے ہیں۔⁩';
+  String get nearbyGroupsCanHaveUpTo => '⁧قریبی گروپس میں زیادہ سے زیادہ 32 لوگ ہو سکتے ہیں۔⁩';
 
   @override
   String get nearbyLinkupUser => '⁧قریبی LinkUp یوزر⁩';
@@ -3364,8 +3203,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get nearbyOnlineOrOffline => '⁧قریب، آن لائن یا آف لائن⁩';
 
   @override
-  String get nearbyPhonesNowServerWhenOnline =>
-      '⁧ابھی قریبی فونز، آن لائن ہونے پر سرور⁩';
+  String get nearbyPhonesNowServerWhenOnline => '⁧ابھی قریبی فونز، آن لائن ہونے پر سرور⁩';
 
   @override
   String get nearbyPhonesSeen => '⁧دیکھے گئے قریبی فون⁩';
@@ -3377,16 +3215,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get nearbyWhileClosedBatteryLow => '⁧بند ہونے پر قریب: بیٹری کم⁩';
 
   @override
-  String get nearbyWhileClosedNeedsLocation =>
-      '⁧بند ہونے پر قریب: لوکیشن ضروری⁩';
+  String get nearbyWhileClosedNeedsLocation => '⁧بند ہونے پر قریب: لوکیشن ضروری⁩';
 
   @override
-  String get nearbyWhileClosedNeedsPermission =>
-      '⁧بند ہونے پر قریب: اجازت ضروری⁩';
+  String get nearbyWhileClosedNeedsPermission => '⁧بند ہونے پر قریب: اجازت ضروری⁩';
 
   @override
-  String get nearbyWhileClosedOffByAdmin =>
-      '⁧بند ہونے پر قریب: ایڈمن نے بند کیا⁩';
+  String get nearbyWhileClosedOffByAdmin => '⁧بند ہونے پر قریب: ایڈمن نے بند کیا⁩';
 
   @override
   String get nearbyWhileClosedOn => '⁧بند ہونے پر قریب: آن⁩';
@@ -3410,8 +3245,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get needsTheServer2 => '⁧سرور ضروری ہے۔⁩';
 
   @override
-  String get needsTheServerItOpensBy =>
-      '⁧سرور ضروری ہے۔ سرور واپس آنے پر یہ خود کھل جائے گا۔⁩';
+  String get needsTheServerItOpensBy => '⁧سرور ضروری ہے۔ سرور واپس آنے پر یہ خود کھل جائے گا۔⁩';
 
   @override
   String get network => '⁧نیٹ ورک⁩';
@@ -3429,8 +3263,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get neverSeen => '⁧کبھی نہیں دیکھا گیا⁩';
 
   @override
-  String get neverShareItLinkupAndThe =>
-      '⁧اسے کبھی شیئر نہ کریں۔ LinkUp اور ایڈمن کبھی یہ نہیں مانگتے۔⁩';
+  String get neverShareItLinkupAndThe => '⁧اسے کبھی شیئر نہ کریں۔ LinkUp اور ایڈمن کبھی یہ نہیں مانگتے۔⁩';
 
   @override
   String get neverShown => '⁧کبھی نہیں دکھایا جاتا⁩';
@@ -3460,8 +3293,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get newHere => '⁧نئے ہیں؟⁩';
 
   @override
-  String get newLinkMadeTheOldOne =>
-      '⁧نیا لنک بن گیا۔ پرانا کام کرنا بند کر دے گا۔⁩';
+  String get newLinkMadeTheOldOne => '⁧نیا لنک بن گیا۔ پرانا کام کرنا بند کر دے گا۔⁩';
 
   @override
   String get newLinkupFoundNearby => '⁧قریب نئی LinkUp ملی⁩';
@@ -3494,8 +3326,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get newNotification => '⁧نیا نوٹیفکیشن⁩';
 
   @override
-  String get newOwnerOfThisPhoneAsk =>
-      '⁧اس فون کے نئے مالک ہیں؟ ایڈمن سے پوچھیں۔⁩';
+  String get newOwnerOfThisPhoneAsk => '⁧اس فون کے نئے مالک ہیں؟ ایڈمن سے پوچھیں۔⁩';
 
   @override
   String get newPassword => '⁧نیا پاس ورڈ⁩';
@@ -3537,8 +3368,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get newer => '⁧نیا⁩';
 
   @override
-  String get newestFirstMergedAcrossUsersDevices =>
-      '⁧نئے پہلے، یوزرز، ڈیوائسز، فائلز، کالز اور آڈٹ سے ملا کر⁩';
+  String get newestFirstMergedAcrossUsersDevices => '⁧نئے پہلے، یوزرز، ڈیوائسز، فائلز، کالز اور آڈٹ سے ملا کر⁩';
 
   @override
   String get next => '⁧آگے⁩';
@@ -3556,8 +3386,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noActivityRecorded => '⁧کوئی سرگرمی ریکارڈ نہیں ہوئی⁩';
 
   @override
-  String get noAddressAtAllYourFriend =>
-      '⁧کوئی ایڈریس نہیں؟ آپ کا دوست وائی فائی سے جڑے (مرحلہ 1)، اس کی وائی فائی تفصیل کھولے، اور Chrome میں \"Gateway\" ایڈریس :8080 کے ساتھ لکھے⁩';
+  String get noAddressAtAllYourFriend => '⁧کوئی ایڈریس نہیں؟ آپ کا دوست وائی فائی سے جڑے (مرحلہ 1)، اس کی وائی فائی تفصیل کھولے، اور Chrome میں \"Gateway\" ایڈریس :8080 کے ساتھ لکھے⁩';
 
   @override
   String get noAnswer => '⁧جواب نہیں ملا⁩';
@@ -3575,8 +3404,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noChatsYet => '⁧ابھی کوئی چیٹ نہیں⁩';
 
   @override
-  String get noConnectionCheckYourNetworkAnd =>
-      '⁧کوئی کنکشن نہیں۔ اپنا نیٹ ورک چیک کر کے دوبارہ کوشش کریں۔⁩';
+  String get noConnectionCheckYourNetworkAnd => '⁧کوئی کنکشن نہیں۔ اپنا نیٹ ورک چیک کر کے دوبارہ کوشش کریں۔⁩';
 
   @override
   String get noContactsYet => '⁧ابھی کوئی کانٹیکٹ نہیں⁩';
@@ -3585,8 +3413,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noConversationsYet => '⁧ابھی کوئی بات چیت نہیں⁩';
 
   @override
-  String get noCriticalSecurityAlertsIn24h =>
-      '⁧24 گھنٹوں میں کوئی سنگین سیکیورٹی الرٹ نہیں⁩';
+  String get noCriticalSecurityAlertsIn24h => '⁧24 گھنٹوں میں کوئی سنگین سیکیورٹی الرٹ نہیں⁩';
 
   @override
   String get noData => '⁧کوئی ڈیٹا نہیں⁩';
@@ -3598,8 +3425,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noDownloadsFor10Minutes => '⁧10 منٹ سے کوئی ڈاؤن لوڈ نہیں۔⁩';
 
   @override
-  String get noEncryptedIdentityBackupOnThe =>
-      '⁧سرور پر کوئی انکرپٹڈ شناختی بیک اپ نہیں⁩';
+  String get noEncryptedIdentityBackupOnThe => '⁧سرور پر کوئی انکرپٹڈ شناختی بیک اپ نہیں⁩';
 
   @override
   String get noFilesYet => '⁧ابھی کوئی فائل نہیں⁩';
@@ -3608,8 +3434,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noFriendFound => '⁧کوئی دوست نہیں ملا⁩';
 
   @override
-  String get noFriendSPhoneCouldCheck =>
-      '⁧ابھی کسی دوست کا فون کوڈ چیک نہیں کر سکا۔ کسی دوست کے فون کے قریب آئیں یا سرور سے کنکٹ کریں۔⁩';
+  String get noFriendSPhoneCouldCheck => '⁧ابھی کسی دوست کا فون کوڈ چیک نہیں کر سکا۔ کسی دوست کے فون کے قریب آئیں یا سرور سے کنکٹ کریں۔⁩';
 
   @override
   String get noFriendsYet => '⁧ابھی کوئی دوست نہیں⁩';
@@ -3624,12 +3449,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noLink => '⁧کوئی لنک نہیں⁩';
 
   @override
-  String get noLinkupServerWasFoundEnter =>
-      '⁧کوئی LinkUp سرور نہیں ملا۔ سرور کا ایڈریس درج کریں اور دوبارہ کوشش کریں۔⁩';
+  String get noLinkupServerWasFoundEnter => '⁧کوئی LinkUp سرور نہیں ملا۔ سرور کا ایڈریس درج کریں اور دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get noMessageHereYouCanOnly =>
-      '⁧یہاں \"میسج\" نہیں: آپ صرف دوستوں سے 1:1 چیٹ کر سکتے ہیں۔ گروپ میں آپ پھر بھی بات کر سکتے ہیں۔⁩';
+  String get noMessageHereYouCanOnly => '⁧یہاں \"میسج\" نہیں: آپ صرف دوستوں سے 1:1 چیٹ کر سکتے ہیں۔ گروپ میں آپ پھر بھی بات کر سکتے ہیں۔⁩';
 
   @override
   String get noMessages => '⁧کوئی میسج نہیں⁩';
@@ -3647,8 +3470,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noMessagesOrCalls => '⁧کوئی میسج یا کال نہیں⁩';
 
   @override
-  String get noMessagesWereExchangedInThis =>
-      '⁧اس وقت میں کوئی میسج نہیں بھیجا گیا۔⁩';
+  String get noMessagesWereExchangedInThis => '⁧اس وقت میں کوئی میسج نہیں بھیجا گیا۔⁩';
 
   @override
   String get noMessagesYetToday => '⁧آج ابھی کوئی میسج نہیں⁩';
@@ -3657,12 +3479,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noMinimum => '⁧کوئی کم از کم نہیں⁩';
 
   @override
-  String get noModuleMatchesThatTermGlobal =>
-      '⁧اس لفظ سے کوئی ماڈیول نہیں ملا۔ یوزرز، ڈیوائسز اور ٹرانسفرز کی تلاش ہر ماڈیول کے اندر دستیاب ہے۔⁩';
+  String get noModuleMatchesThatTermGlobal => '⁧اس لفظ سے کوئی ماڈیول نہیں ملا۔ یوزرز، ڈیوائسز اور ٹرانسفرز کی تلاش ہر ماڈیول کے اندر دستیاب ہے۔⁩';
 
   @override
-  String get noNearbyPhoneCouldShareIt =>
-      '⁧کوئی قریبی فون اسے شیئر نہیں کر سکا⁩';
+  String get noNearbyPhoneCouldShareIt => '⁧کوئی قریبی فون اسے شیئر نہیں کر سکا⁩';
 
   @override
   String get noNewSignIn => '⁧نیا سائن اِن نہیں⁩';
@@ -3694,26 +3514,22 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noOneTimeCodeWasReturned => '⁧کوئی ایک بار کا کوڈ نہیں ملا۔⁩';
 
   @override
-  String get noOneToShowYetSearch =>
-      '⁧ابھی دکھانے کو کوئی نہیں۔ نام تلاش کریں یا QR کوڈ اسکین کریں۔⁩';
+  String get noOneToShowYetSearch => '⁧ابھی دکھانے کو کوئی نہیں۔ نام تلاش کریں یا QR کوڈ اسکین کریں۔⁩';
 
   @override
-  String get noOperationalEventsHaveBeenRecorded =>
-      '⁧اس سرور پر ابھی کوئی آپریشنل واقعہ ریکارڈ نہیں ہوا۔⁩';
+  String get noOperationalEventsHaveBeenRecorded => '⁧اس سرور پر ابھی کوئی آپریشنل واقعہ ریکارڈ نہیں ہوا۔⁩';
 
   @override
   String get noOtherPhonesLinked => '⁧کوئی اور فون جڑا نہیں⁩';
 
   @override
-  String get noOtherRegisteredDevicesAreAvailable =>
-      '⁧کوئی اور رجسٹرڈ ڈیوائس دستیاب نہیں۔⁩';
+  String get noOtherRegisteredDevicesAreAvailable => '⁧کوئی اور رجسٹرڈ ڈیوائس دستیاب نہیں۔⁩';
 
   @override
   String get noOwner => '⁧کوئی اونر نہیں⁩';
 
   @override
-  String get noPendingRecoveryRequest =>
-      '⁧کوئی زیرِ التوا ریکوری درخواست نہیں⁩';
+  String get noPendingRecoveryRequest => '⁧کوئی زیرِ التوا ریکوری درخواست نہیں⁩';
 
   @override
   String get noPeopleFound => '⁧کوئی نہیں ملا⁩';
@@ -3745,8 +3561,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noRequests => '⁧کوئی درخواست نہیں⁩';
 
   @override
-  String get noResponseTrafficRecordedYet =>
-      '⁧ابھی کوئی رسپانس ٹریفک ریکارڈ نہیں ہوئی۔⁩';
+  String get noResponseTrafficRecordedYet => '⁧ابھی کوئی رسپانس ٹریفک ریکارڈ نہیں ہوئی۔⁩';
 
   @override
   String noResultsFor(Object? q) {
@@ -3760,23 +3575,19 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noRule => '⁧کوئی اصول نہیں⁩';
 
   @override
-  String get noServerAFriendSPhone =>
-      '⁧سرور نہیں · قریبی دوست کا فون اسے چیک کرتا ہے⁩';
+  String get noServerAFriendSPhone => '⁧سرور نہیں · قریبی دوست کا فون اسے چیک کرتا ہے⁩';
 
   @override
-  String get noServerRequestsGoByWi =>
-      '⁧سرور نہیں · درخواستیں وائی فائی ڈائریکٹ / میش سے جاتی ہیں⁩';
+  String get noServerRequestsGoByWi => '⁧سرور نہیں · درخواستیں وائی فائی ڈائریکٹ / میش سے جاتی ہیں⁩';
 
   @override
   String get noServerRightNow => '⁧ابھی سرور نہیں⁩';
 
   @override
-  String get noServerSearchingNearbyPhones =>
-      '⁧سرور نہیں - قریبی فون تلاش ہو رہے ہیں⁩';
+  String get noServerSearchingNearbyPhones => '⁧سرور نہیں - قریبی فون تلاش ہو رہے ہیں⁩';
 
   @override
-  String get noServerShowingPeopleSeenNearby =>
-      '⁧سرور نہیں · قریب دیکھے گئے لوگ دکھائے جا رہے ہیں⁩';
+  String get noServerShowingPeopleSeenNearby => '⁧سرور نہیں · قریب دیکھے گئے لوگ دکھائے جا رہے ہیں⁩';
 
   @override
   String get noServerSideKeyHistoryYet => '⁧سرور پر ابھی کوئی پرانی کیز نہیں۔⁩';
@@ -3785,19 +3596,16 @@ class AppLocalizationsUr extends AppLocalizations {
   String get noWarnings => '⁧کوئی وارننگ نہیں⁩';
 
   @override
-  String get noWayToReachRightNow =>
-      '⁧ابھی پہنچنے کا کوئی راستہ نہیں۔ میسجز انتظار کریں گے اور راستہ کھلنے پر جائیں گے۔⁩';
+  String get noWayToReachRightNow => '⁧ابھی پہنچنے کا کوئی راستہ نہیں۔ میسجز انتظار کریں گے اور راستہ کھلنے پر جائیں گے۔⁩';
 
   @override
   String get nobody => '⁧کوئی نہیں⁩';
 
   @override
-  String get nobodyCanFindYouByName =>
-      '⁧نام سے تلاش میں **کوئی آپ کو نہیں ڈھونڈ سکتا**، اور کوئی فون آپ کو دوسروں کو نہیں دکھاتا۔⁩';
+  String get nobodyCanFindYouByName => '⁧نام سے تلاش میں **کوئی آپ کو نہیں ڈھونڈ سکتا**، اور کوئی فون آپ کو دوسروں کو نہیں دکھاتا۔⁩';
 
   @override
-  String get nobodyCanFindYouByName2 =>
-      '⁧نام کی تلاش سے کوئی آپ کو نہیں ڈھونڈ سکتا۔ صرف دوستوں کو آپ کا فون نمبر ملتا ہے۔⁩';
+  String get nobodyCanFindYouByName2 => '⁧نام کی تلاش سے کوئی آپ کو نہیں ڈھونڈ سکتا۔ صرف دوستوں کو آپ کا فون نمبر ملتا ہے۔⁩';
 
   @override
   String get nobodyIsBlockedHere => '⁧یہاں کوئی بلاک نہیں⁩';
@@ -3835,19 +3643,16 @@ class AppLocalizationsUr extends AppLocalizations {
   String get notDownloadedYet => '⁧ابھی ڈاؤن لوڈ نہیں ہوا⁩';
 
   @override
-  String get notFoundItMayHaveBeen =>
-      '⁧نہیں ملا۔ شاید ہٹا دیا گیا یا نام بدل دیا گیا۔⁩';
+  String get notFoundItMayHaveBeen => '⁧نہیں ملا۔ شاید ہٹا دیا گیا یا نام بدل دیا گیا۔⁩';
 
   @override
-  String get notFoundTryAgainWhenYou =>
-      '⁧نہیں ملا۔ آن لائن ہونے پر یا دوستوں کے قریب دوبارہ کوشش کریں۔⁩';
+  String get notFoundTryAgainWhenYou => '⁧نہیں ملا۔ آن لائن ہونے پر یا دوستوں کے قریب دوبارہ کوشش کریں۔⁩';
 
   @override
   String get notHereAskThemToOpen => '⁧یہاں نہیں؟ ان سے کہیں کہ ⁩';
 
   @override
-  String get notHereAskThemToOpen2 =>
-      '⁧یہاں نہیں؟ ان سے کہیں کہ میرا QR کوڈ کھولیں، پھر نیچے QR کوڈ اسکین کریں پر ٹیپ کریں۔⁩';
+  String get notHereAskThemToOpen2 => '⁧یہاں نہیں؟ ان سے کہیں کہ میرا QR کوڈ کھولیں، پھر نیچے QR کوڈ اسکین کریں پر ٹیپ کریں۔⁩';
 
   @override
   String get notInAGroup => '⁧کسی گروپ میں نہیں⁩';
@@ -3867,8 +3672,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get notOnServerYet => '⁧ابھی سرور پر نہیں⁩';
 
   @override
-  String get notReachedIn7DaysTap =>
-      '⁧7 دن میں نہیں پہنچا · دوبارہ کوشش کے لیے ٹیپ کریں⁩';
+  String get notReachedIn7DaysTap => '⁧7 دن میں نہیں پہنچا · دوبارہ کوشش کے لیے ٹیپ کریں⁩';
 
   @override
   String notReachedIn7DaysTap2(Object? name) {
@@ -3882,8 +3686,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get notSeenFor30Days => '⁧30+ دن سے نہیں دیکھا گیا⁩';
 
   @override
-  String get notSentTapToRetry =>
-      '⁧نہیں بھیجا گیا - دوبارہ کوشش کے لیے ٹیپ کریں⁩';
+  String get notSentTapToRetry => '⁧نہیں بھیجا گیا - دوبارہ کوشش کے لیے ٹیپ کریں⁩';
 
   @override
   String get notSentYet => '⁧ابھی نہیں بھیجا گیا⁩';
@@ -3901,15 +3704,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get nothingDoneYet => '⁧ابھی کچھ مکمل نہیں ہوا⁩';
 
   @override
-  String get nothingNeedsALookRightNow =>
-      '⁧ابھی کسی چیز کو دیکھنے کی ضرورت نہیں۔⁩';
+  String get nothingNeedsALookRightNow => '⁧ابھی کسی چیز کو دیکھنے کی ضرورت نہیں۔⁩';
 
   @override
   String get nothingPending => '⁧کچھ زیرِ التوا نہیں⁩';
 
   @override
-  String get nothingRecordedForThisPeriod =>
-      '⁧اس مدت میں کچھ ریکارڈ نہیں ہوا۔⁩';
+  String get nothingRecordedForThisPeriod => '⁧اس مدت میں کچھ ریکارڈ نہیں ہوا۔⁩';
 
   @override
   String get nothingRemoved => '⁧کچھ نہیں ہٹایا⁩';
@@ -3927,16 +3728,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get notifications => '⁧نوٹیفکیشنز⁩';
 
   @override
-  String get notificationsAllowLinkupTurnOnBanners =>
-      '⁧نوٹیفکیشنز: LinkUp کو اجازت دیں، Banners، Lock screen اور Full-screen آن کریں⁩';
+  String get notificationsAllowLinkupTurnOnBanners => '⁧نوٹیفکیشنز: LinkUp کو اجازت دیں، Banners، Lock screen اور Full-screen آن کریں⁩';
 
   @override
-  String get notificationsAreDisabledInAndroidSettings =>
-      '⁧Android سیٹنگز میں نوٹیفکیشنز بند ہیں⁩';
+  String get notificationsAreDisabledInAndroidSettings => '⁧Android سیٹنگز میں نوٹیفکیشنز بند ہیں⁩';
 
   @override
-  String get notificationsOffTapToAllow =>
-      '⁧نوٹیفکیشنز بند - اجازت کے لیے ٹیپ کریں⁩';
+  String get notificationsOffTapToAllow => '⁧نوٹیفکیشنز بند - اجازت کے لیے ٹیپ کریں⁩';
 
   @override
   String get notificationsOn => '⁧نوٹیفکیشنز آن⁩';
@@ -4000,12 +3798,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get offlineAccount => '⁧آف لائن اکاؤنٹ⁩';
 
   @override
-  String get offlineAccountNotOnServerYet =>
-      '⁧آف لائن اکاؤنٹ · ابھی سرور پر نہیں⁩';
+  String get offlineAccountNotOnServerYet => '⁧آف لائن اکاؤنٹ · ابھی سرور پر نہیں⁩';
 
   @override
-  String get offlineAccountsNotSeenFor30 =>
-      '⁧30 دن سے نہ دیکھے گئے آف لائن اکاؤنٹس⁩';
+  String get offlineAccountsNotSeenFor30 => '⁧30 دن سے نہ دیکھے گئے آف لائن اکاؤنٹس⁩';
 
   @override
   String get offlineBlockingIsNotReadyYet => '⁧آف لائن بلاکنگ ابھی تیار نہیں۔⁩';
@@ -4022,8 +3818,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get offlineToolsStillWorkLockedOnes =>
-      '⁧آف لائن ٹولز پھر بھی کام کرتے ہیں۔ لاک ٹولز خود کھل جائیں گے۔⁩';
+  String get offlineToolsStillWorkLockedOnes => '⁧آف لائن ٹولز پھر بھی کام کرتے ہیں۔ لاک ٹولز خود کھل جائیں گے۔⁩';
 
   @override
   String get offlineWorksOnThisPhone => '⁧آف لائن · اس فون پر کام کرتا ہے⁩';
@@ -4044,15 +3839,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get oldLinkup => '⁧پرانی LinkUp⁩';
 
   @override
-  String get oldMessagesStayOnYourPhone =>
-      '⁧پرانے میسجز آپ کے فون پر رہیں گے (صرف پڑھنے کے لیے)۔ آپ بعد میں گروپ ڈیلیٹ کر سکتے ہیں۔⁩';
+  String get oldMessagesStayOnYourPhone => '⁧پرانے میسجز آپ کے فون پر رہیں گے (صرف پڑھنے کے لیے)۔ آپ بعد میں گروپ ڈیلیٹ کر سکتے ہیں۔⁩';
 
   @override
   String get oldVersionUpdateToCall => '⁧پرانا ورژن۔ کال کے لیے اپ ڈیٹ کریں۔⁩';
 
   @override
-  String get oldVersionUpdateToSend =>
-      '⁧پرانا ورژن۔ بھیجنے کے لیے اپ ڈیٹ کریں۔⁩';
+  String get oldVersionUpdateToSend => '⁧پرانا ورژن۔ بھیجنے کے لیے اپ ڈیٹ کریں۔⁩';
 
   @override
   String get older => '⁧پرانا⁩';
@@ -4061,12 +3854,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get olderApps => '⁧پرانی ایپس⁩';
 
   @override
-  String get olderAppsCanOnlyReadChats =>
-      '⁧پرانی ایپس اب سے صرف چیٹس پڑھ سکتی ہیں۔ انہیں اپ ڈیٹ کا بٹن نظر آتا ہے۔⁩';
+  String get olderAppsCanOnlyReadChats => '⁧پرانی ایپس اب سے صرف چیٹس پڑھ سکتی ہیں۔ انہیں اپ ڈیٹ کا بٹن نظر آتا ہے۔⁩';
 
   @override
-  String get olderAppsSeeAYellowUpdate =>
-      '⁧پرانی ایپس کو پیلا \"اپ ڈیٹ\" بینر نظر آتا ہے۔ وہ کام کرتی رہتی ہیں۔⁩';
+  String get olderAppsSeeAYellowUpdate => '⁧پرانی ایپس کو پیلا \"اپ ڈیٹ\" بینر نظر آتا ہے۔ وہ کام کرتی رہتی ہیں۔⁩';
 
   @override
   String olderAppsSeeUpdateNeededIn(Object? days) {
@@ -4092,15 +3883,13 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get onEveryPhoneTheUnblockReaches =>
-      '⁧ہر اس فون پر جہاں ان بلاک پہنچے⁩';
+  String get onEveryPhoneTheUnblockReaches => '⁧ہر اس فون پر جہاں ان بلاک پہنچے⁩';
 
   @override
   String get onLinkup => '⁧ نام کا کوئی نہیں ملا⁩';
 
   @override
-  String get onNearbyLinkupPhonesCanJoin =>
-      '⁧آن — قریبی LinkUp فون جڑ سکتے ہیں⁩';
+  String get onNearbyLinkupPhonesCanJoin => '⁧آن — قریبی LinkUp فون جڑ سکتے ہیں⁩';
 
   @override
   String get onServer => '⁧سرور پر⁩';
@@ -4109,8 +3898,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get onTheNewPhone => '⁧نئے فون پر:⁩';
 
   @override
-  String get onTheNewPhoneChooseTransfer =>
-      '⁧نئے فون پر “پرانے فون سے اکاؤنٹ منتقل کریں” چنیں اور یہ QR کوڈ اسکین کریں۔ دونوں فون ایک ہی بھروسے والے LinkUp نیٹ ورک پر رکھیں۔⁩';
+  String get onTheNewPhoneChooseTransfer => '⁧نئے فون پر “پرانے فون سے اکاؤنٹ منتقل کریں” چنیں اور یہ QR کوڈ اسکین کریں۔ دونوں فون ایک ہی بھروسے والے LinkUp نیٹ ورک پر رکھیں۔⁩';
 
   @override
   String get onTheServer => '⁧سرور پر⁩';
@@ -4119,20 +3907,16 @@ class AppLocalizationsUr extends AppLocalizations {
   String get onTheWebOrInThe => '⁧ویب پر یا ایپ میں⁩';
 
   @override
-  String get onThisPhoneAndroidNeedsLocation =>
-      '⁧اس فون پر LinkUp وائی فائی شروع کرنے کے لیے Android کو لوکیشن آن چاہیے۔ کچھ ٹریک نہیں ہوتا۔⁩';
+  String get onThisPhoneAndroidNeedsLocation => '⁧اس فون پر LinkUp وائی فائی شروع کرنے کے لیے Android کو لوکیشن آن چاہیے۔ کچھ ٹریک نہیں ہوتا۔⁩';
 
   @override
-  String get onWaitingForAFullGroup =>
-      '⁧آن — بھرے ہوئے گروپ یا قریبی ہاٹ اسپاٹ کا انتظار⁩';
+  String get onWaitingForAFullGroup => '⁧آن — بھرے ہوئے گروپ یا قریبی ہاٹ اسپاٹ کا انتظار⁩';
 
   @override
-  String get oneAnswerEachAVoteCan =>
-      '⁧ہر ایک کا ایک جواب۔ ووٹ 3 منٹ تک بدلا جا سکتا ہے، پھر حتمی ہے۔⁩';
+  String get oneAnswerEachAVoteCan => '⁧ہر ایک کا ایک جواب۔ ووٹ 3 منٹ تک بدلا جا سکتا ہے، پھر حتمی ہے۔⁩';
 
   @override
-  String get oneRunAsIfFilesWere =>
-      '⁧ایک بار ایسے چلائیں جیسے فائلیں 11 دن پرانی ہوں⁩';
+  String get oneRunAsIfFilesWere => '⁧ایک بار ایسے چلائیں جیسے فائلیں 11 دن پرانی ہوں⁩';
 
   @override
   String oneTimeCodeFor(Object? them) {
@@ -4174,8 +3958,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get only => '⁧صرف ⁩';
 
   @override
-  String get onlyActionsYourAdminRolePermits =>
-      '⁧صرف وہ ایکشن جن کی آپ کے ایڈمن رول کو اجازت ہے⁩';
+  String get onlyActionsYourAdminRolePermits => '⁧صرف وہ ایکشن جن کی آپ کے ایڈمن رول کو اجازت ہے⁩';
 
   @override
   String get onlyAdmins => '⁧صرف ایڈمنز⁩';
@@ -4187,8 +3970,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get onlyAdminsAnnouncementGroup => '⁧صرف ایڈمنز = اعلانات کا گروپ⁩';
 
   @override
-  String get onlyAdminsCanChangeTheGroup =>
-      '⁧صرف ایڈمنز گروپ کی تصویر بدل سکتے ہیں۔⁩';
+  String get onlyAdminsCanChangeTheGroup => '⁧صرف ایڈمنز گروپ کی تصویر بدل سکتے ہیں۔⁩';
 
   @override
   String get onlyAdminsCanDoThis => '⁧صرف ایڈمنز یہ کر سکتے ہیں۔⁩';
@@ -4197,8 +3979,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get onlyAdminsCanPinMessages => '⁧صرف ایڈمنز میسج پِن کر سکتے ہیں⁩';
 
   @override
-  String get onlyAdminsCanSeeAndChange =>
-      '⁧صرف ایڈمنز انہیں دیکھ اور بدل سکتے ہیں۔⁩';
+  String get onlyAdminsCanSeeAndChange => '⁧صرف ایڈمنز انہیں دیکھ اور بدل سکتے ہیں۔⁩';
 
   @override
   String get onlyAdminsCanSendMessages => '⁧صرف ایڈمنز میسج بھیج سکتے ہیں۔⁩';
@@ -4207,27 +3988,22 @@ class AppLocalizationsUr extends AppLocalizations {
   String get onlyAdminsSend => '⁧صرف ایڈمنز بھیجیں⁩';
 
   @override
-  String get onlyContactsTheAppCanConfirm =>
-      '⁧صرف وہ کانٹیکٹس جن کی ایپ تصدیق کر سکے⁩';
+  String get onlyContactsTheAppCanConfirm => '⁧صرف وہ کانٹیکٹس جن کی ایپ تصدیق کر سکے⁩';
 
   @override
   String get onlyForThisPhone => '⁧صرف اس فون کے لیے؟⁩';
 
   @override
-  String get onlyKindAndSizeNobodyCan =>
-      '⁧صرف قسم اور سائز۔ کوئی فائلیں نہیں کھول سکتا۔⁩';
+  String get onlyKindAndSizeNobodyCan => '⁧صرف قسم اور سائز۔ کوئی فائلیں نہیں کھول سکتا۔⁩';
 
   @override
-  String get onlyNamesAndTimesNobodyCan =>
-      '⁧صرف نام اور وقت۔ کوئی کالز نہیں سن سکتا۔⁩';
+  String get onlyNamesAndTimesNobodyCan => '⁧صرف نام اور وقت۔ کوئی کالز نہیں سن سکتا۔⁩';
 
   @override
-  String get onlyPeopleThisPhoneHasSeen =>
-      '⁧صرف وہ لوگ دکھائے گئے ہیں جنہیں اس فون نے دیکھا ہے۔ دوسروں کو ویب پینل سے بلاک کیا جا سکتا ہے۔⁩';
+  String get onlyPeopleThisPhoneHasSeen => '⁧صرف وہ لوگ دکھائے گئے ہیں جنہیں اس فون نے دیکھا ہے۔ دوسروں کو ویب پینل سے بلاک کیا جا سکتا ہے۔⁩';
 
   @override
-  String get onlyTheOwnerAdminCanBlock =>
-      '⁧صرف اونر ایڈمن یوزرز کو بلاک کر سکتا ہے⁩';
+  String get onlyTheOwnerAdminCanBlock => '⁧صرف اونر ایڈمن یوزرز کو بلاک کر سکتا ہے⁩';
 
   @override
   String get onlyTheOwnerCanChangeThis => '⁧صرف اونر اسے بدل سکتا ہے۔⁩';
@@ -4236,12 +4012,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get onlyThisPhoneOnlineOrOffline => '⁧صرف یہ فون، آن لائن یا آف لائن⁩';
 
   @override
-  String get onlyYouCanChangeThisTurn =>
-      '⁧صرف آپ اسے بدل سکتے ہیں۔ کبھی بھی بند کر دیں۔⁩';
+  String get onlyYouCanChangeThisTurn => '⁧صرف آپ اسے بدل سکتے ہیں۔ کبھی بھی بند کر دیں۔⁩';
 
   @override
-  String get onlyYouShouldSeeYourRecovery =>
-      '⁧آپ کا ریکوری کوڈ صرف آپ کو دیکھنا چاہیے۔⁩';
+  String get onlyYouShouldSeeYourRecovery => '⁧آپ کا ریکوری کوڈ صرف آپ کو دیکھنا چاہیے۔⁩';
 
   @override
   String get onlyYouWillSeeThisName => '⁧یہ نام صرف آپ دیکھیں گے⁩';
@@ -4274,8 +4048,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get openNetworkTopology => '⁧نیٹ ورک ٹوپولوجی کھولیں⁩';
 
   @override
-  String get openRecentsTapTheLinkupIcon =>
-      '⁧Recents کھولیں، LinkUp آئیکن پر ٹیپ کریں، Lock چنیں⁩';
+  String get openRecentsTapTheLinkupIcon => '⁧Recents کھولیں، LinkUp آئیکن پر ٹیپ کریں، Lock چنیں⁩';
 
   @override
   String get openRecovery => '⁧ریکوری کھولیں⁩';
@@ -4287,12 +4060,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get openSettings => '⁧سیٹنگز کھولیں⁩';
 
   @override
-  String get openThisPersonFromPeopleTo =>
-      '⁧بلاک کرنے کے لیے اس شخص کو لوگ سے کھولیں۔⁩';
+  String get openThisPersonFromPeopleTo => '⁧بلاک کرنے کے لیے اس شخص کو لوگ سے کھولیں۔⁩';
 
   @override
-  String get openThisScreenAgainWhenYou =>
-      '⁧آن لائن واپس آنے پر یہ اسکرین دوبارہ کھولیں۔⁩';
+  String get openThisScreenAgainWhenYou => '⁧آن لائن واپس آنے پر یہ اسکرین دوبارہ کھولیں۔⁩';
 
   @override
   String openedChat(Object? admin, Object? pair) {
@@ -4308,16 +4079,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get openedTheInviteLink => '⁧انوائٹ لنک کے ذریعے⁩';
 
   @override
-  String get opensWhatsappChooseMessageYourself =>
-      '⁧WhatsApp کھلتا ہے · \"Message yourself\" چنیں⁩';
+  String get opensWhatsappChooseMessageYourself => '⁧WhatsApp کھلتا ہے · \"Message yourself\" چنیں⁩';
 
   @override
-  String get operationalMetadataFromTheLinkupServer =>
-      '⁧LinkUp سرور سے آپریشنل معلومات۔⁩';
+  String get operationalMetadataFromTheLinkupServer => '⁧LinkUp سرور سے آپریشنل معلومات۔⁩';
 
   @override
-  String get operationalMetadataOnlyPasswordsPrivateKeys =>
-      '⁧صرف آپریشنل معلومات۔ پاس ورڈ، پرائیویٹ کیز، میسجز کا متن، کال آڈیو اور ڈی کرپٹ میڈیا کبھی اس ڈیش بورڈ پر نہیں آتے۔⁩';
+  String get operationalMetadataOnlyPasswordsPrivateKeys => '⁧صرف آپریشنل معلومات۔ پاس ورڈ، پرائیویٹ کیز، میسجز کا متن، کال آڈیو اور ڈی کرپٹ میڈیا کبھی اس ڈیش بورڈ پر نہیں آتے۔⁩';
 
   @override
   String get operations => '⁧آپریشنز⁩';
@@ -4343,8 +4111,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get orTypeIt => '⁧یا لکھیں⁩';
 
   @override
-  String get orWaitUntilAMemberIs =>
-      '⁧، یا کسی ممبر کے ایک بار آن لائن ہونے کا انتظار کریں۔⁩';
+  String get orWaitUntilAMemberIs => '⁧، یا کسی ممبر کے ایک بار آن لائن ہونے کا انتظار کریں۔⁩';
 
   @override
   String get otherBrandTapToPick => '⁧کوئی اور برانڈ؟ چننے کے لیے ٹیپ کریں⁩';
@@ -4360,8 +4127,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get otherPhonesPixelMotorolaNokia =>
-      '⁧دوسرے فون (Pixel، Motorola، Nokia...)⁩';
+  String get otherPhonesPixelMotorolaNokia => '⁧دوسرے فون (Pixel، Motorola، Nokia...)⁩';
 
   @override
   String get outgoing => '⁧جانے والی⁩';
@@ -4370,8 +4136,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get outsideTheDatesPhoneClock => '⁧تاریخوں سے باہر (فون کی گھڑی)⁩';
 
   @override
-  String get overTheInternetThroughTheLinkup =>
-      '⁧انٹرنیٹ پر، LinkUp سرور کے ذریعے۔⁩';
+  String get overTheInternetThroughTheLinkup => '⁧انٹرنیٹ پر، LinkUp سرور کے ذریعے۔⁩';
 
   @override
   String overall(Object? label) {
@@ -4388,8 +4153,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get ownerCanRead => '⁧اونر پڑھ سکتا ہے⁩';
 
   @override
-  String get ownerCanReadEveryOpenIs =>
-      '⁧اونر پڑھ سکتا ہے؛ ہر بار کھولنا محفوظ ہوتا ہے⁩';
+  String get ownerCanReadEveryOpenIs => '⁧اونر پڑھ سکتا ہے؛ ہر بار کھولنا محفوظ ہوتا ہے⁩';
 
   @override
   String get ownerOnly => '⁧صرف اونر⁩';
@@ -4415,15 +4179,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get passwordCopied => '⁧پاس ورڈ کاپی ہو گیا⁩';
 
   @override
-  String get passwordHasACharacterThatIs =>
-      '⁧پاس ورڈ میں ایسا حرف ہے جس کی اجازت نہیں۔⁩';
+  String get passwordHasACharacterThatIs => '⁧پاس ورڈ میں ایسا حرف ہے جس کی اجازت نہیں۔⁩';
 
   @override
   String get passwordIsTooLong => '⁧پاس ورڈ بہت لمبا ہے۔⁩';
 
   @override
-  String get passwordMustBeAtLeast8 =>
-      '⁧پاس ورڈ کم از کم 8 حروف کا ہونا چاہیے۔⁩';
+  String get passwordMustBeAtLeast8 => '⁧پاس ورڈ کم از کم 8 حروف کا ہونا چاہیے۔⁩';
 
   @override
   String passwordOf(Object? username) {
@@ -4463,8 +4225,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get pendingRecoveries => '⁧زیرِ التوا ریکوریز⁩';
 
   @override
-  String get pendingUntilEachPhoneDoesIt =>
-      '⁧ہر فون کے مکمل کرنے تک زیرِ التوا⁩';
+  String get pendingUntilEachPhoneDoesIt => '⁧ہر فون کے مکمل کرنے تک زیرِ التوا⁩';
 
   @override
   String pendingUntilEachPhoneDoesIt2(Object? pendingCount) {
@@ -4488,8 +4249,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get peopleMovingToANewPhone => '⁧نئے فون پر جانے والے لوگ⁩';
 
   @override
-  String get peopleNearYouMustAskFirst =>
-      '⁧آپ کے قریب کے لوگوں کو **پہلے پوچھنا** ہو گا، اور آپ قبول یا مسترد کریں گے۔ **QR کوڈ** سے فوراً شامل ہو جاتا ہے۔⁩';
+  String get peopleNearYouMustAskFirst => '⁧آپ کے قریب کے لوگوں کو **پہلے پوچھنا** ہو گا، اور آپ قبول یا مسترد کریں گے۔ **QR کوڈ** سے فوراً شامل ہو جاتا ہے۔⁩';
 
   @override
   String get peopleNearby => '⁧قریبی لوگ⁩';
@@ -4501,22 +4261,19 @@ class AppLocalizationsUr extends AppLocalizations {
   String get peopleSignedIn => '⁧سائن اِن لوگ⁩';
 
   @override
-  String get peopleWhoAlreadyHaveYouKeep =>
-      '⁧جن کے پاس آپ پہلے سے ہیں **وہ آپ کو رکھیں گے**۔ انہیں آپ کے نام کے ساتھ \"پرائیویٹ\" لیبل نظر آتا ہے۔⁩';
+  String get peopleWhoAlreadyHaveYouKeep => '⁧جن کے پاس آپ پہلے سے ہیں **وہ آپ کو رکھیں گے**۔ انہیں آپ کے نام کے ساتھ \"پرائیویٹ\" لیبل نظر آتا ہے۔⁩';
 
   @override
   String get peopleWithAnAccount => '⁧اکاؤنٹ والے لوگ⁩';
 
   @override
-  String get peopleYouBlockHereAreStopped =>
-      '⁧جنہیں آپ یہاں بلاک کریں گے وہ ہر فون پر رک جائیں گے۔⁩';
+  String get peopleYouBlockHereAreStopped => '⁧جنہیں آپ یہاں بلاک کریں گے وہ ہر فون پر رک جائیں گے۔⁩';
 
   @override
   String get peopleYouCanAdd => '⁧لوگ جنہیں آپ شامل کر سکتے ہیں⁩';
 
   @override
-  String get percentagesAreLiveReadingsTheTick =>
-      '⁧فیصد لائیو ریڈنگز ہیں؛ نشان الرٹ کی حد بتاتا ہے⁩';
+  String get percentagesAreLiveReadingsTheTick => '⁧فیصد لائیو ریڈنگز ہیں؛ نشان الرٹ کی حد بتاتا ہے⁩';
 
   @override
   String get phone => '⁧فون⁩';
@@ -4532,8 +4289,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get phoneMasterPowerSavingLetLinkup =>
-      '⁧Phone Master > Power saving: LinkUp کو بیک گراؤنڈ میں چلنے دیں⁩';
+  String get phoneMasterPowerSavingLetLinkup => '⁧Phone Master > Power saving: LinkUp کو بیک گراؤنڈ میں چلنے دیں⁩';
 
   @override
   String get phoneNumber => '⁧فون نمبر⁩';
@@ -4545,8 +4301,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get phoneRemoved => '⁧فون ہٹا دیا گیا⁩';
 
   @override
-  String get phoneToPhoneNoRouterNeeded =>
-      '⁧فون سے فون، راؤٹر کی ضرورت نہیں۔ میسجز اور کالز سیدھے آپ کے فونز کے درمیان جاتے ہیں۔⁩';
+  String get phoneToPhoneNoRouterNeeded => '⁧فون سے فون، راؤٹر کی ضرورت نہیں۔ میسجز اور کالز سیدھے آپ کے فونز کے درمیان جاتے ہیں۔⁩';
 
   @override
   String get phones => '⁧فون⁩';
@@ -4591,12 +4346,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get phonesThatGotTheRule => '⁧فون جن کو اصول ملا⁩';
 
   @override
-  String get phonesThatHavenTAnsweredYet =>
-      '⁧جن فونز نے ابھی جواب نہیں دیا وہ اب جواب نہیں دیں گے۔⁩';
+  String get phonesThatHavenTAnsweredYet => '⁧جن فونز نے ابھی جواب نہیں دیا وہ اب جواب نہیں دیں گے۔⁩';
 
   @override
-  String get phonesThatHavenTDoneIt =>
-      '⁧جن فونز نے ابھی یہ نہیں کیا وہ اب نہیں کریں گے۔ جنہوں نے کر لیا وہ ویسے ہی رہیں گے۔⁩';
+  String get phonesThatHavenTDoneIt => '⁧جن فونز نے ابھی یہ نہیں کیا وہ اب نہیں کریں گے۔ جنہوں نے کر لیا وہ ویسے ہی رہیں گے۔⁩';
 
   @override
   String get phonesWiFiRulesRecovery => '⁧فون، وائی فائی اصول، ریکوری⁩';
@@ -4611,12 +4364,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get pick => '⁧چنیں⁩';
 
   @override
-  String get pickAUsernameYourFriendsKnow =>
-      '⁧ایسا یوزر نیم چنیں جو آپ کے دوست جانتے ہوں⁩';
+  String get pickAUsernameYourFriendsKnow => '⁧ایسا یوزر نیم چنیں جو آپ کے دوست جانتے ہوں⁩';
 
   @override
-  String get pickAsManyChatsAsYou =>
-      '⁧جتنی چاہیں چیٹس چنیں۔ تصاویر اور ویڈیوز نئی فائلوں کے طور پر دوبارہ بھیجی جاتی ہیں۔⁩';
+  String get pickAsManyChatsAsYou => '⁧جتنی چاہیں چیٹس چنیں۔ تصاویر اور ویڈیوز نئی فائلوں کے طور پر دوبارہ بھیجی جاتی ہیں۔⁩';
 
   @override
   String get pin => '⁧پِن کریں⁩';
@@ -4731,8 +4482,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get profileSaved => '⁧پروفائل محفوظ ہو گیا⁩';
 
   @override
-  String get protectYourAccountWhenThisPhone =>
-      '⁧یہ فون گم ہونے پر اپنا اکاؤنٹ محفوظ رکھیں۔⁩';
+  String get protectYourAccountWhenThisPhone => '⁧یہ فون گم ہونے پر اپنا اکاؤنٹ محفوظ رکھیں۔⁩';
 
   @override
   String publicKey(Object? currentPublicKey) {
@@ -4761,12 +4511,10 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get reachedThePhoneItMustReach =>
-      '⁧فون تک پہنچ گیا - اسے ایک بار سرور تک پہنچنا ہے⁩';
+  String get reachedThePhoneItMustReach => '⁧فون تک پہنچ گیا - اسے ایک بار سرور تک پہنچنا ہے⁩';
 
   @override
-  String get reachedThePhoneItMustReach2 =>
-      '⁧فون تک پہنچ گیا · اسے ایک بار سرور تک پہنچنا ہے⁩';
+  String get reachedThePhoneItMustReach2 => '⁧فون تک پہنچ گیا · اسے ایک بار سرور تک پہنچنا ہے⁩';
 
   @override
   String react(Object? emoji) {
@@ -4785,8 +4533,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get readChatsOnlyUpdateToSend =>
-      '⁧صرف چیٹس پڑھیں۔ میسج اور کال کے لیے اپ ڈیٹ کریں۔⁩';
+  String get readChatsOnlyUpdateToSend => '⁧صرف چیٹس پڑھیں۔ میسج اور کال کے لیے اپ ڈیٹ کریں۔⁩';
 
   @override
   String get readOnlyAtOnce => '⁧فوراً صرف پڑھنا⁩';
@@ -4795,8 +4542,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get readReceipts => '⁧پڑھنے کی رسید⁩';
 
   @override
-  String get readReceiptsAreOffTurnOn =>
-      '⁧پڑھنے کی رسید بند ہے۔ سیٹنگز › پرائیویسی میں آن کریں۔⁩';
+  String get readReceiptsAreOffTurnOn => '⁧پڑھنے کی رسید بند ہے۔ سیٹنگز › پرائیویسی میں آن کریں۔⁩';
 
   @override
   String get ready => '⁧تیار⁩';
@@ -4825,16 +4571,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get recentSecurityEvents => '⁧حالیہ سیکیورٹی واقعات⁩';
 
   @override
-  String get recentsLockLinkupTapItsIcon =>
-      '⁧Recents: LinkUp کو لاک کریں (اس کے آئیکن پر ٹیپ کریں، Lock چنیں)⁩';
+  String get recentsLockLinkupTapItsIcon => '⁧Recents: LinkUp کو لاک کریں (اس کے آئیکن پر ٹیپ کریں، Lock چنیں)⁩';
 
   @override
-  String get recommendedMessagesArriveInstantly =>
-      '⁧تجویز کردہ — میسجز فوراً آتے ہیں⁩';
+  String get recommendedMessagesArriveInstantly => '⁧تجویز کردہ — میسجز فوراً آتے ہیں⁩';
 
   @override
-  String get recommendedWhenReplacingTheOldPhone =>
-      '⁧پرانا فون بدلتے وقت تجویز کردہ۔⁩';
+  String get recommendedWhenReplacingTheOldPhone => '⁧پرانا فون بدلتے وقت تجویز کردہ۔⁩';
 
   @override
   String get reconnecting => '⁧دوبارہ کنکٹ ہو رہا ہے⁩';
@@ -5038,8 +4781,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get removesPhotosVideosAndDocumentsAs =>
-      '⁧تصاویر، ویڈیوز اور ڈاکیومنٹس ایسے ہٹاتا ہے جیسے وہ 11 دن پرانے ہوں اور فون 80% بھرا ہو۔ وائس نوٹس اور نہ بھیجا گیا میڈیا رہتا ہے۔ میسجز چھوٹی تصویر کے ساتھ رہتے ہیں۔⁩';
+  String get removesPhotosVideosAndDocumentsAs => '⁧تصاویر، ویڈیوز اور ڈاکیومنٹس ایسے ہٹاتا ہے جیسے وہ 11 دن پرانے ہوں اور فون 80% بھرا ہو۔ وائس نوٹس اور نہ بھیجا گیا میڈیا رہتا ہے۔ میسجز چھوٹی تصویر کے ساتھ رہتے ہیں۔⁩';
 
   @override
   String get rename => '⁧نام بدلیں⁩';
@@ -5087,8 +4829,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get requestSubmittedAskTheLinkupAdministrator =>
-      '⁧درخواست بھیج دی گئی۔ LinkUp ایڈمن سے کہیں کہ اسے منظور کر کے ریکوری کوڈ دیں۔⁩';
+  String get requestSubmittedAskTheLinkupAdministrator => '⁧درخواست بھیج دی گئی۔ LinkUp ایڈمن سے کہیں کہ اسے منظور کر کے ریکوری کوڈ دیں۔⁩';
 
   @override
   String get requested => '⁧درخواست بھیج دی⁩';
@@ -5110,15 +4851,13 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get requestsWaitHereUntilAPhone =>
-      '⁧درخواستیں یہاں انتظار کرتی ہیں جب تک کوئی فون جواب نہ دے۔ کوئی وقت کی حد نہیں۔⁩';
+  String get requestsWaitHereUntilAPhone => '⁧درخواستیں یہاں انتظار کرتی ہیں جب تک کوئی فون جواب نہ دے۔ کوئی وقت کی حد نہیں۔⁩';
 
   @override
   String get requiredText => '⁧ضروری⁩';
 
   @override
-  String get requiresTheRuntimeMetricsSampler =>
-      '⁧رن ٹائم میٹرکس سیمپلر ضروری ہے⁩';
+  String get requiresTheRuntimeMetricsSampler => '⁧رن ٹائم میٹرکس سیمپلر ضروری ہے⁩';
 
   @override
   String get resend => '⁧دوبارہ بھیجیں⁩';
@@ -5145,19 +4884,16 @@ class AppLocalizationsUr extends AppLocalizations {
   String get resetYourPassword => '⁧اپنا پاس ورڈ ری سیٹ کریں⁩';
 
   @override
-  String get responseBytesServedPerBucket =>
-      '⁧ہر وقفے میں سرور کے بھیجے گئے بائٹس⁩';
+  String get responseBytesServedPerBucket => '⁧ہر وقفے میں سرور کے بھیجے گئے بائٹس⁩';
 
   @override
   String get restoreAccountData => '⁧اکاؤنٹ کا ڈیٹا بحال کریں⁩';
 
   @override
-  String get restoreAccountDataEncryptedKeys =>
-      '⁧اکاؤنٹ کا ڈیٹا + انکرپٹڈ کیز بحال کریں⁩';
+  String get restoreAccountDataEncryptedKeys => '⁧اکاؤنٹ کا ڈیٹا + انکرپٹڈ کیز بحال کریں⁩';
 
   @override
-  String get restoreEncryptedIdentityBackup =>
-      '⁧انکرپٹڈ شناختی بیک اپ بحال کریں⁩';
+  String get restoreEncryptedIdentityBackup => '⁧انکرپٹڈ شناختی بیک اپ بحال کریں⁩';
 
   @override
   String get restoreEncryptedIdentityKeys => '⁧انکرپٹڈ شناختی کیز بحال کریں؟⁩';
@@ -5180,8 +4916,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get resumingYourRecoveryRequest =>
-      '⁧آپ کی ریکوری کی درخواست دوبارہ شروع ہو رہی ہے…⁩';
+  String get resumingYourRecoveryRequest => '⁧آپ کی ریکوری کی درخواست دوبارہ شروع ہو رہی ہے…⁩';
 
   @override
   String get retry => '⁧دوبارہ کوشش⁩';
@@ -5211,8 +4946,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get role => '⁧رول⁩';
 
   @override
-  String get rollupsComputedFromPlatformTablesAnd =>
-      '⁧پلیٹ فارم ٹیبلز اور رن ٹائم سیمپلر سے بنے خلاصے⁩';
+  String get rollupsComputedFromPlatformTablesAnd => '⁧پلیٹ فارم ٹیبلز اور رن ٹائم سیمپلر سے بنے خلاصے⁩';
 
   @override
   String get rotateIdentityKey => '⁧شناختی کی بدلیں⁩';
@@ -5221,8 +4955,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get rotating => '⁧بدل رہا ہے…⁩';
 
   @override
-  String get routerEchoWiFiDirectAnd =>
-      '⁧راؤٹر ایکو، وائی فائی ڈائریکٹ اور میش چیکس⁩';
+  String get routerEchoWiFiDirectAnd => '⁧راؤٹر ایکو، وائی فائی ڈائریکٹ اور میش چیکس⁩';
 
   @override
   String routes(Object? routes) {
@@ -5296,8 +5029,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get saveForEveryone => '⁧سب کے لیے محفوظ کریں⁩';
 
   @override
-  String get saveItNowTheOldOne =>
-      '⁧اسے ابھی محفوظ کریں۔ پرانا اب کام نہیں کرتا۔⁩';
+  String get saveItNowTheOldOne => '⁧اسے ابھی محفوظ کریں۔ پرانا اب کام نہیں کرتا۔⁩';
 
   @override
   String get saveOnWhatsapp => '⁧WhatsApp پر محفوظ کریں⁩';
@@ -5314,8 +5046,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get saveToPhone => '⁧فون میں محفوظ کریں⁩';
 
   @override
-  String get saveYourNewRecoveryCodeNow =>
-      '⁧اپنا نیا ریکوری کوڈ ابھی محفوظ کر لیں۔⁩';
+  String get saveYourNewRecoveryCodeNow => '⁧اپنا نیا ریکوری کوڈ ابھی محفوظ کر لیں۔⁩';
 
   @override
   String get saveYourRecoveryCode => '⁧اپنا ریکوری کوڈ محفوظ کریں⁩';
@@ -5332,12 +5063,10 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get savedItIsSpreadingToNearby =>
-      '⁧محفوظ ہو گیا۔ یہ قریبی فونز تک پھیل رہا ہے۔⁩';
+  String get savedItIsSpreadingToNearby => '⁧محفوظ ہو گیا۔ یہ قریبی فونز تک پھیل رہا ہے۔⁩';
 
   @override
-  String get savedLocallyWillSyncWhenAvailable =>
-      '⁧مقامی طور پر محفوظ؛ دستیاب ہونے پر سنک ہو گی⁩';
+  String get savedLocallyWillSyncWhenAvailable => '⁧مقامی طور پر محفوظ؛ دستیاب ہونے پر سنک ہو گی⁩';
 
   @override
   String get savedOnThisPhone => '⁧اس فون پر محفوظ⁩';
@@ -5372,12 +5101,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get scanSecurityCode => '⁧سیکیورٹی کوڈ اسکین کریں⁩';
 
   @override
-  String get scanTheQrShownOnYour =>
-      '⁧اپنے پرانے فون پر دکھایا گیا QR اسکین کریں۔⁩';
+  String get scanTheQrShownOnYour => '⁧اپنے پرانے فون پر دکھایا گیا QR اسکین کریں۔⁩';
 
   @override
-  String get scanWithTheCameraAppNot =>
-      '⁧کیمرہ ایپ سے اسکین کریں،\nوائی فائی اسکینر سے نہیں⁩';
+  String get scanWithTheCameraAppNot => '⁧کیمرہ ایپ سے اسکین کریں،\nوائی فائی اسکینر سے نہیں⁩';
 
   @override
   String get scannedTheGroupQr => '⁧گروپ QR کے ذریعے⁩';
@@ -5446,8 +5173,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get securityAlerts => '⁧سیکیورٹی الرٹس⁩';
 
   @override
-  String get securityAndOperationalEventsAppearHere =>
-      '⁧سیکیورٹی اور آپریشنل واقعات سرور کے ریکارڈ کرنے پر یہاں نظر آتے ہیں۔⁩';
+  String get securityAndOperationalEventsAppearHere => '⁧سیکیورٹی اور آپریشنل واقعات سرور کے ریکارڈ کرنے پر یہاں نظر آتے ہیں۔⁩';
 
   @override
   String get securityCenter => '⁧سیکیورٹی سینٹر⁩';
@@ -5477,8 +5203,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get seeAndRemovePhonesSignedIn => '⁧سائن اِن فون دیکھیں اور ہٹائیں⁩';
 
   @override
-  String get seeAndUnblockPeopleYouBlocked =>
-      '⁧بلاک کیے گئے لوگوں کو دیکھیں اور ان بلاک کریں⁩';
+  String get seeAndUnblockPeopleYouBlocked => '⁧بلاک کیے گئے لوگوں کو دیکھیں اور ان بلاک کریں⁩';
 
   @override
   String get seen => '⁧دیکھا گیا⁩';
@@ -5542,12 +5267,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get send => '⁧بھیجیں⁩';
 
   @override
-  String get sendAMessageOrShareA =>
-      '⁧اس گروپ میں سب کو میسج بھیجیں یا فائل شیئر کریں۔⁩';
+  String get sendAMessageOrShareA => '⁧اس گروپ میں سب کو میسج بھیجیں یا فائل شیئر کریں۔⁩';
 
   @override
-  String get sendAMessagePhotoOrFile =>
-      '⁧پرائیویٹ چیٹ شروع کرنے کے لیے میسج، تصویر یا فائل بھیجیں۔⁩';
+  String get sendAMessagePhotoOrFile => '⁧پرائیویٹ چیٹ شروع کرنے کے لیے میسج، تصویر یا فائل بھیجیں۔⁩';
 
   @override
   String get sendARequest => '⁧درخواست بھیجیں⁩';
@@ -5598,12 +5321,10 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get sentByWiFiDirectPasses =>
-      '⁧وائی فائی ڈائریکٹ سے بھیجی گئی · فون سے فون تک جاتی ہے\nکوئی وقت کی حد نہیں · بعد میں سرور لاگ میں جاتی ہے⁩';
+  String get sentByWiFiDirectPasses => '⁧وائی فائی ڈائریکٹ سے بھیجی گئی · فون سے فون تک جاتی ہے\nکوئی وقت کی حد نہیں · بعد میں سرور لاگ میں جاتی ہے⁩';
 
   @override
-  String get sentOnlyWhenAllMembersGot =>
-      '⁧✓ = بھیج دیا۔ ✓✓ تب ہی جب تمام ممبرز کو مل گیا ہو۔⁩';
+  String get sentOnlyWhenAllMembersGot => '⁧✓ = بھیج دیا۔ ✓✓ تب ہی جب تمام ممبرز کو مل گیا ہو۔⁩';
 
   @override
   String sentTo(Object? picks) {
@@ -5611,8 +5332,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get sentToAllPhonesPendingUntil =>
-      '⁧تمام فونز کو بھیج دیا · مکمل ہونے تک زیرِ التوا⁩';
+  String get sentToAllPhonesPendingUntil => '⁧تمام فونز کو بھیج دیا · مکمل ہونے تک زیرِ التوا⁩';
 
   @override
   String sentToChats(Object? chats) {
@@ -5646,8 +5366,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get serverConnected => '⁧سرور سے کنکٹ ہے⁩';
 
   @override
-  String get serverConnectedRequestsGoByThe =>
-      '⁧سرور کنکٹ ہے · درخواستیں سرور سے جاتی ہیں⁩';
+  String get serverConnectedRequestsGoByThe => '⁧سرور کنکٹ ہے · درخواستیں سرور سے جاتی ہیں⁩';
 
   @override
   String get serverDisconnected => '⁧سرور سے رابطہ منقطع⁩';
@@ -5661,12 +5380,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get serverHealth => '⁧سرور کی صحت⁩';
 
   @override
-  String get serverHealthDetailsAreOffOn =>
-      '⁧اس سرور پر سرور ہیلتھ کی تفصیل بند ہے۔⁩';
+  String get serverHealthDetailsAreOffOn => '⁧اس سرور پر سرور ہیلتھ کی تفصیل بند ہے۔⁩';
 
   @override
-  String get serverHistoryNotReachableRightNow =>
-      '⁧سرور کی تاریخ ابھی دستیاب نہیں۔⁩';
+  String get serverHistoryNotReachableRightNow => '⁧سرور کی تاریخ ابھی دستیاب نہیں۔⁩';
 
   @override
   String get serverIsBackToolsUnlocked => '⁧سرور واپس آ گیا۔ ٹولز کھل گئے۔⁩';
@@ -5681,12 +5398,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get serverOffYourLinksOnly => '⁧سرور بند - صرف آپ کے لنکس⁩';
 
   @override
-  String get serverOffGroupPhones324 =>
-      '⁧سرور بند - اس گروپ کے فون ابھی معلوم نہیں⁩';
+  String get serverOffGroupPhones324 => '⁧سرور بند - اس گروپ کے فون ابھی معلوم نہیں⁩';
 
   @override
-  String get serverOffPersonPhone324 =>
-      '⁧سرور بند - اس شخص کا فون ابھی معلوم نہیں⁩';
+  String get serverOffPersonPhone324 => '⁧سرور بند - اس شخص کا فون ابھی معلوم نہیں⁩';
 
   @override
   String serverPcClockIsH(Object? h, Object? fast) {
@@ -5708,8 +5423,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get setNewPassword => '⁧نیا پاس ورڈ سیٹ کریں⁩';
 
   @override
-  String get setOnceCannotBeChanged =>
-      '⁧ایک بار سیٹ ہوتا ہے — بدلا نہیں جا سکتا⁩';
+  String get setOnceCannotBeChanged => '⁧ایک بار سیٹ ہوتا ہے — بدلا نہیں جا سکتا⁩';
 
   @override
   String setText(Object? label) {
@@ -5730,16 +5444,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get settings => '⁧سیٹنگز⁩';
 
   @override
-  String get settingsBatteryBackgroundUsageLimitsLinkup =>
-      '⁧Settings > Battery > Background usage limits: LinkUp کو Sleeping یا Deep sleeping apps میں نہیں ہونا چاہیے⁩';
+  String get settingsBatteryBackgroundUsageLimitsLinkup => '⁧Settings > Battery > Background usage limits: LinkUp کو Sleeping یا Deep sleeping apps میں نہیں ہونا چاہیے⁩';
 
   @override
-  String get settingsWiFiTapTheQr =>
-      '⁧Settings → Wi-Fi → QR آئیکن پر ٹیپ کر کے یہ کوڈ اسکین کریں۔⁩';
+  String get settingsWiFiTapTheQr => '⁧Settings → Wi-Fi → QR آئیکن پر ٹیپ کر کے یہ کوڈ اسکین کریں۔⁩';
 
   @override
-  String sha256Created(
-      Object? publicKey, Object? createdAt, Object? retiredAt) {
+  String sha256Created(Object? publicKey, Object? createdAt, Object? retiredAt) {
     return '⁧SHA-256 ⁨$publicKey⁩\nبنائی گئی ⁨$createdAt⁩⁨$retiredAt⁩⁩';
   }
 
@@ -5771,12 +5482,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get shareMyQr => '⁧میرا QR شیئر کریں⁩';
 
   @override
-  String get shareYourLinkupIdentityWithAnother =>
-      '⁧اپنی LinkUp شناخت دوسرے فون کے ساتھ شیئر کریں۔⁩';
+  String get shareYourLinkupIdentityWithAnother => '⁧اپنی LinkUp شناخت دوسرے فون کے ساتھ شیئر کریں۔⁩';
 
   @override
-  String get shareYourSignedPublicProfileThrough =>
-      '⁧اپنا دستخط شدہ پبلک پروفائل LinkUp کے ذریعے شیئر کریں⁩';
+  String get shareYourSignedPublicProfileThrough => '⁧اپنا دستخط شدہ پبلک پروفائل LinkUp کے ذریعے شیئر کریں⁩';
 
   @override
   String get sharingAHotspotTest => '⁧ہاٹ اسپاٹ شیئر ہو رہا ہے (ٹیسٹ)⁩';
@@ -5785,12 +5494,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get sharingStopped => '⁧شیئرنگ رک گئی⁩';
 
   @override
-  String get sharingStopsByItselfAfter10 =>
-      '⁧10 منٹ تک کوئی ڈاؤن لوڈ نہ ہو یا آپ یہ اسکرین چھوڑ دیں تو شیئرنگ خود رک جاتی ہے۔⁩';
+  String get sharingStopsByItselfAfter10 => '⁧10 منٹ تک کوئی ڈاؤن لوڈ نہ ہو یا آپ یہ اسکرین چھوڑ دیں تو شیئرنگ خود رک جاتی ہے۔⁩';
 
   @override
-  String get sharingUsesALotOfBattery =>
-      '⁧شیئرنگ میں بہت بیٹری لگتی ہے۔ پہلے چارجر لگائیں۔⁩';
+  String get sharingUsesALotOfBattery => '⁧شیئرنگ میں بہت بیٹری لگتی ہے۔ پہلے چارجر لگائیں۔⁩';
 
   @override
   String get shortRouteList => '⁧راستوں کی مختصر فہرست⁩';
@@ -5824,8 +5531,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get showPassword => '⁧پاس ورڈ دکھائیں⁩';
 
   @override
-  String get showSenderAndMessagePreview =>
-      '⁧بھیجنے والا اور میسج کی جھلک دکھائیں⁩';
+  String get showSenderAndMessagePreview => '⁧بھیجنے والا اور میسج کی جھلک دکھائیں⁩';
 
   @override
   String get showSenderOnly => '⁧صرف بھیجنے والا دکھائیں⁩';
@@ -5840,8 +5546,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get signInAgain => '⁧دوبارہ سائن اِن کریں⁩';
 
   @override
-  String get signInToTheServerTo =>
-      '⁧گروپ لنکس کھولنے کے لیے سرور میں سائن اِن کریں۔⁩';
+  String get signInToTheServerTo => '⁧گروپ لنکس کھولنے کے لیے سرور میں سائن اِن کریں۔⁩';
 
   @override
   String get signOut => '⁧سائن آؤٹ⁩';
@@ -5883,12 +5588,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get signedOutByAdmin => '⁧ایڈمن نے سائن آؤٹ کیا⁩';
 
   @override
-  String get signedOutByAdminYourChats =>
-      '⁧ایڈمن نے سائن آؤٹ کیا۔ آپ کی چیٹس یہیں ہیں۔ سرور آن ہونے پر دوبارہ لاگ اِن کریں۔⁩';
+  String get signedOutByAdminYourChats => '⁧ایڈمن نے سائن آؤٹ کیا۔ آپ کی چیٹس یہیں ہیں۔ سرور آن ہونے پر دوبارہ لاگ اِن کریں۔⁩';
 
   @override
-  String get signedOutFromTheServerNearby =>
-      '⁧سرور سے سائن آؤٹ ہو گئے۔ قریبی چیٹس پھر بھی کام کرتی ہیں۔ سرور استعمال کرنے کے لیے دوبارہ سائن اِن کریں۔⁩';
+  String get signedOutFromTheServerNearby => '⁧سرور سے سائن آؤٹ ہو گئے۔ قریبی چیٹس پھر بھی کام کرتی ہیں۔ سرور استعمال کرنے کے لیے دوبارہ سائن اِن کریں۔⁩';
 
   @override
   String get signingYouIn => '⁧آپ کو سائن اِن کیا جا رہا ہے…⁩';
@@ -5924,8 +5627,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get someDataCouldNotLoad => '⁧کچھ ڈیٹا لوڈ نہیں ہو سکا⁩';
 
   @override
-  String get someOldPicturesWereLeftOut =>
-      '⁧کاپی چھوٹی رکھنے کے لیے کچھ پرانی تصاویر شامل نہیں کی گئیں۔⁩';
+  String get someOldPicturesWereLeftOut => '⁧کاپی چھوٹی رکھنے کے لیے کچھ پرانی تصاویر شامل نہیں کی گئیں۔⁩';
 
   @override
   String get someone => '⁧کوئی⁩';
@@ -5934,12 +5636,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get somethingWentWrong => '⁧کچھ غلط ہو گیا⁩';
 
   @override
-  String get somethingWentWrongPleaseTryAgain =>
-      '⁧کچھ غلط ہو گیا۔ براہِ کرم دوبارہ کوشش کریں۔⁩';
+  String get somethingWentWrongPleaseTryAgain => '⁧کچھ غلط ہو گیا۔ براہِ کرم دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get somethingWentWrongTryAgain =>
-      '⁧کچھ غلط ہو گیا۔ دوبارہ کوشش کریں۔⁩';
+  String get somethingWentWrongTryAgain => '⁧کچھ غلط ہو گیا۔ دوبارہ کوشش کریں۔⁩';
 
   @override
   String get speakerOff => '⁧اسپیکر بند⁩';
@@ -5960,8 +5660,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get startOver => '⁧شروع سے کریں⁩';
 
   @override
-  String get startRecoveryFromTheLinkupWelcome =>
-      '⁧نئی درخواست بنانے کے لیے LinkUp کی ویلکم اسکرین سے ریکوری شروع کریں۔⁩';
+  String get startRecoveryFromTheLinkupWelcome => '⁧نئی درخواست بنانے کے لیے LinkUp کی ویلکم اسکرین سے ریکوری شروع کریں۔⁩';
 
   @override
   String get startTheConversation => '⁧بات چیت شروع کریں⁩';
@@ -5975,8 +5674,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get startedByItselfYouCanKeep =>
-      '⁧خود شروع ہو گیا۔ آپ LinkUp استعمال کرتے رہ سکتے ہیں۔⁩';
+  String get startedByItselfYouCanKeep => '⁧خود شروع ہو گیا۔ آپ LinkUp استعمال کرتے رہ سکتے ہیں۔⁩';
 
   @override
   String get starting => '⁧شروع ہو رہا ہے⁩';
@@ -5997,8 +5695,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get statusUnknownStale => '⁧حالت نامعلوم / پرانی⁩';
 
   @override
-  String get stayReachableEvenWhenTheApp =>
-      '⁧ایپ بند ہو تب بھی رابطے میں رہیں⁩';
+  String get stayReachableEvenWhenTheApp => '⁧ایپ بند ہو تب بھی رابطے میں رہیں⁩';
 
   @override
   String staysYourFriendANewMessage(Object? name) {
@@ -6020,8 +5717,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get stillHelpsTheMesh => '⁧میش میں پھر بھی مدد کرتا ہے⁩';
 
   @override
-  String get stillReceivingOverWiFiIt =>
-      '⁧ابھی وائی فائی پر آ رہا ہے۔ یہ خود نظر آ جائے گا۔⁩';
+  String get stillReceivingOverWiFiIt => '⁧ابھی وائی فائی پر آ رہا ہے۔ یہ خود نظر آ جائے گا۔⁩';
 
   @override
   String get stop => '⁧بند کریں⁩';
@@ -6054,8 +5750,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get stoppedByAdmin => '⁧ایڈمن نے روک دیا⁩';
 
   @override
-  String get stoppedByAdminUpdateToSend =>
-      '⁧ایڈمن نے روک دیا۔ میسج اور کال کے لیے اپ ڈیٹ کریں۔⁩';
+  String get stoppedByAdminUpdateToSend => '⁧ایڈمن نے روک دیا۔ میسج اور کال کے لیے اپ ڈیٹ کریں۔⁩';
 
   @override
   String get stoppedByYourPhone => '⁧آپ کے فون نے روک دیا⁩';
@@ -6070,8 +5765,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get strong => '⁧مضبوط⁩';
 
   @override
-  String get subsystemStateReportedByTheServer =>
-      '⁧سرور کی بتائی گئی سب سسٹم کی حالت⁩';
+  String get subsystemStateReportedByTheServer => '⁧سرور کی بتائی گئی سب سسٹم کی حالت⁩';
 
   @override
   String get sun => '⁧اتوار⁩';
@@ -6104,8 +5798,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get systemHealth => '⁧سسٹم کی صحت⁩';
 
   @override
-  String get t1AppInfoBatteryChooseUnrestricted =>
-      '⁧1۔ App info > Battery: Unrestricted چنیں⁩';
+  String get t1AppInfoBatteryChooseUnrestricted => '⁧1۔ App info > Battery: Unrestricted چنیں⁩';
 
   @override
   String get t1Day => '⁧1 دن⁩';
@@ -6117,12 +5810,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get t1Min => '⁧1 منٹ⁩';
 
   @override
-  String get t1OpenLinkupOnTheOther =>
-      '⁧1۔ دوسرے فون پر LinkUp کھولیں\n2۔ QR کوڈ اسکین کریں پر ٹیپ کر کے اس کی طرف کریں\n3۔ آپ فوراً شامل ہو جائیں گے⁩';
+  String get t1OpenLinkupOnTheOther => '⁧1۔ دوسرے فون پر LinkUp کھولیں\n2۔ QR کوڈ اسکین کریں پر ٹیپ کر کے اس کی طرف کریں\n3۔ آپ فوراً شامل ہو جائیں گے⁩';
 
   @override
-  String get t1OpenTheRecentsRecentApps =>
-      '⁧1۔ Recents (حالیہ ایپس) اسکرین کھولیں۔\n2۔ کارڈ کے اوپر LinkUp ایپ کے آئیکن پر ٹیپ کریں۔\n3۔ \"Lock\" چنیں۔ کارڈ پر تالا لگا رہتا ہے — سسٹم \"clear all\" میں ایپ کو بند نہیں کرے گا۔⁩';
+  String get t1OpenTheRecentsRecentApps => '⁧1۔ Recents (حالیہ ایپس) اسکرین کھولیں۔\n2۔ کارڈ کے اوپر LinkUp ایپ کے آئیکن پر ٹیپ کریں۔\n3۔ \"Lock\" چنیں۔ کارڈ پر تالا لگا رہتا ہے — سسٹم \"clear all\" میں ایپ کو بند نہیں کرے گا۔⁩';
 
   @override
   String get t1OtherLinkupPhone => '⁧1 اور LinkUp فون⁩';
@@ -6146,8 +5837,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get t24Hours => '⁧24 گھنٹے⁩';
 
   @override
-  String get t2PowerManagerPowerManagementFor =>
-      '⁧2۔ Power manager > Power management for apps > LinkUp: screen-lock cleaning بند کریں⁩';
+  String get t2PowerManagerPowerManagementFor => '⁧2۔ Power manager > Power management for apps > LinkUp: screen-lock cleaning بند کریں⁩';
 
   @override
   String get t30Days => '⁧30 دن⁩';
@@ -6165,12 +5855,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get tapAPersonToSeeMore => '⁧مزید دیکھنے کے لیے کسی شخص پر ٹیپ کریں۔⁩';
 
   @override
-  String get tapAddFriendNextToThe =>
-      '⁧جس فون کو شامل کرنا ہے اس کے ساتھ دوست شامل کریں پر ٹیپ کریں۔⁩';
+  String get tapAddFriendNextToThe => '⁧جس فون کو شامل کرنا ہے اس کے ساتھ دوست شامل کریں پر ٹیپ کریں۔⁩';
 
   @override
-  String get tapAnOptionInTheChat =>
-      '⁧ووٹ دینے کے لیے چیٹ میں کسی آپشن پر ٹیپ کریں؛ ووٹ واپس لینے کے لیے دوبارہ ٹیپ کریں۔ قریب اور آن لائن دونوں میں کام کرتا ہے۔⁩';
+  String get tapAnOptionInTheChat => '⁧ووٹ دینے کے لیے چیٹ میں کسی آپشن پر ٹیپ کریں؛ ووٹ واپس لینے کے لیے دوبارہ ٹیپ کریں۔ قریب اور آن لائن دونوں میں کام کرتا ہے۔⁩';
 
   @override
   String get tapJoinGroupWithQr => '⁧QR سے گروپ میں شامل ہوں پر ٹیپ کریں⁩';
@@ -6191,8 +5879,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get tapTheCameraToChooseA => '⁧تصویر چننے کے لیے کیمرے پر ٹیپ کریں⁩';
 
   @override
-  String get tapTheOneYourFriendCan =>
-      '⁧جو آپ کا دوست کھول سکے اس پر ٹیپ کریں:⁩';
+  String get tapTheOneYourFriendCan => '⁧جو آپ کا دوست کھول سکے اس پر ٹیپ کریں:⁩';
 
   @override
   String get tapToCallBack => '⁧واپس کال کے لیے ٹیپ کریں⁩';
@@ -6215,8 +5902,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get tapYourPhotoInSettingsTo =>
-      '⁧بدلنے کے لیے سیٹنگز میں اپنی تصویر پر ٹیپ کریں۔⁩';
+  String get tapYourPhotoInSettingsTo => '⁧بدلنے کے لیے سیٹنگز میں اپنی تصویر پر ٹیپ کریں۔⁩';
 
   @override
   String get testCleanUpNow => '⁧ٹیسٹ صفائی ابھی کریں⁩';
@@ -6236,8 +5922,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get thatActionIsNotAllowedOn => '⁧اس اکاؤنٹ پر یہ ایکشن اجازت نہیں۔⁩';
 
   @override
-  String get thatAlreadyExistsTryADifferent =>
-      '⁧یہ پہلے سے موجود ہے۔ کوئی اور نام آزمائیں۔⁩';
+  String get thatAlreadyExistsTryADifferent => '⁧یہ پہلے سے موجود ہے۔ کوئی اور نام آزمائیں۔⁩';
 
   @override
   String get thatCodeIsNotRight => '⁧یہ کوڈ درست نہیں۔⁩';
@@ -6249,12 +5934,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get thatPasswordIsNotRight => '⁧یہ پاس ورڈ درست نہیں۔⁩';
 
   @override
-  String get thatTookTooLongPleaseTry =>
-      '⁧بہت دیر لگ گئی۔ براہِ کرم دوبارہ کوشش کریں۔⁩';
+  String get thatTookTooLongPleaseTry => '⁧بہت دیر لگ گئی۔ براہِ کرم دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get thatUsernameAndPasswordDoNot =>
-      '⁧یہ یوزر نیم اور پاس ورڈ میل نہیں کھاتے۔⁩';
+  String get thatUsernameAndPasswordDoNot => '⁧یہ یوزر نیم اور پاس ورڈ میل نہیں کھاتے۔⁩';
 
   @override
   String theAccountHistoryCouldNotBe(Object? error) {
@@ -6279,28 +5962,22 @@ class AppLocalizationsUr extends AppLocalizations {
   String get theAdminHasNotApprovedIt => '⁧ایڈمن نے ابھی منظوری نہیں دی۔⁩';
 
   @override
-  String get theAdministratorApprovedThisDeviceRecovery =>
-      '⁧ایڈمن نے اس ڈیوائس کی ریکوری درخواست منظور کر لی۔⁩';
+  String get theAdministratorApprovedThisDeviceRecovery => '⁧ایڈمن نے اس ڈیوائس کی ریکوری درخواست منظور کر لی۔⁩';
 
   @override
-  String get theAdministratorRejectedThisRecoveryRequest =>
-      '⁧ایڈمن نے ریکوری کی یہ درخواست مسترد کر دی۔⁩';
+  String get theAdministratorRejectedThisRecoveryRequest => '⁧ایڈمن نے ریکوری کی یہ درخواست مسترد کر دی۔⁩';
 
   @override
-  String get theAdministratorRejectedThisRequest =>
-      '⁧ایڈمن نے یہ درخواست مسترد کر دی۔⁩';
+  String get theAdministratorRejectedThisRequest => '⁧ایڈمن نے یہ درخواست مسترد کر دی۔⁩';
 
   @override
-  String get theChatAndAllItsMessages =>
-      '⁧چیٹ اور اس کے تمام میسجز، تصاویر اور فائلیں ⁩';
+  String get theChatAndAllItsMessages => '⁧چیٹ اور اس کے تمام میسجز، تصاویر اور فائلیں ⁩';
 
   @override
-  String get theChatStaysInYourChats =>
-      '⁧چیٹ آپ کی چیٹس کی فہرست میں خالی رہے گی۔⁩';
+  String get theChatStaysInYourChats => '⁧چیٹ آپ کی چیٹس کی فہرست میں خالی رہے گی۔⁩';
 
   @override
-  String get theCodeIsWrongOrToo =>
-      '⁧کوڈ غلط ہے یا پرانا ہو گیا ہے۔ ایڈمن سے نیا کوڈ لیں۔⁩';
+  String get theCodeIsWrongOrToo => '⁧کوڈ غلط ہے یا پرانا ہو گیا ہے۔ ایڈمن سے نیا کوڈ لیں۔⁩';
 
   @override
   String theCodesDonTMatchAsk(Object? v) {
@@ -6316,16 +5993,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get theGroup => '⁧گروپ⁩';
 
   @override
-  String get theGroupPhotoCanBeSet =>
-      '⁧گروپ کی تصویر آن لائن ہونے پر لگائی جا سکتی ہے۔⁩';
+  String get theGroupPhotoCanBeSet => '⁧گروپ کی تصویر آن لائن ہونے پر لگائی جا سکتی ہے۔⁩';
 
   @override
-  String get theLinkWasLostLookingFor =>
-      '⁧لنک ٹوٹ گیا۔ دوبارہ راستہ تلاش ہو رہا ہے۔⁩';
+  String get theLinkWasLostLookingFor => '⁧لنک ٹوٹ گیا۔ دوبارہ راستہ تلاش ہو رہا ہے۔⁩';
 
   @override
-  String get theMessagesStayInTheChat =>
-      '⁧میسجز چیٹ میں ایک چھوٹی تصویر اور \"جگہ بچانے کے لیے ہٹا دیا گیا\" کے ساتھ رہیں گے۔⁩';
+  String get theMessagesStayInTheChat => '⁧میسجز چیٹ میں ایک چھوٹی تصویر اور \"جگہ بچانے کے لیے ہٹا دیا گیا\" کے ساتھ رہیں گے۔⁩';
 
   @override
   String get theOldCodeStopsWorking => '⁧پرانا کوڈ کام کرنا بند کر دے گا⁩';
@@ -6334,8 +6008,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get theOldLinkStopsWorking => '⁧پرانا لنک کام کرنا بند کر دے گا⁩';
 
   @override
-  String get theOldLinkStopsWorkingPeople =>
-      '⁧پرانا لنک کام کرنا بند کر دے گا۔ جن کے پاس ہے وہ اس سے شامل نہیں ہو سکیں گے۔⁩';
+  String get theOldLinkStopsWorkingPeople => '⁧پرانا لنک کام کرنا بند کر دے گا۔ جن کے پاس ہے وہ اس سے شامل نہیں ہو سکیں گے۔⁩';
 
   @override
   String theOtherItemsWereForwarded(Object? first) {
@@ -6346,121 +6019,97 @@ class AppLocalizationsUr extends AppLocalizations {
   String get theOtherMembers => '⁧دوسرے ممبرز ⁩';
 
   @override
-  String get thePhoneCarriesOthersLockedMessages =>
-      '⁧یہ فون دوسروں کے لاک شدہ میسجز آگے پہنچاتا ہے⁩';
+  String get thePhoneCarriesOthersLockedMessages => '⁧یہ فون دوسروں کے لاک شدہ میسجز آگے پہنچاتا ہے⁩';
 
   @override
   String get thePhoneDecides => '⁧فون فیصلہ کرتا ہے⁩';
 
   @override
-  String get theQrBelongsToADifferent =>
-      '⁧یہ QR کسی دوسرے یا غیر دستیاب LinkUp سرور کا ہے۔⁩';
+  String get theQrBelongsToADifferent => '⁧یہ QR کسی دوسرے یا غیر دستیاب LinkUp سرور کا ہے۔⁩';
 
   @override
-  String get theQrShowsHereByItself =>
-      '⁧QR یہاں خود نظر آئے گا۔\n(10 سیکنڈ تک)⁩';
+  String get theQrShowsHereByItself => '⁧QR یہاں خود نظر آئے گا۔\n(10 سیکنڈ تک)⁩';
 
   @override
-  String get theRequestOrItsRecoveryCredential =>
-      '⁧درخواست یا اس کی ریکوری اجازت اب درست نہیں۔⁩';
+  String get theRequestOrItsRecoveryCredential => '⁧درخواست یا اس کی ریکوری اجازت اب درست نہیں۔⁩';
 
   @override
   String get theRestIsOnTheWay => '⁧باقی راستے میں ہے⁩';
 
   @override
-  String get theServerDidNotReturnSubsystem =>
-      '⁧سرور نے اس درخواست کے لیے سب سسٹم ریڈنگز نہیں بھیجیں۔⁩';
+  String get theServerDidNotReturnSubsystem => '⁧سرور نے اس درخواست کے لیے سب سسٹم ریڈنگز نہیں بھیجیں۔⁩';
 
   @override
-  String get theServerDidNotTakeIt =>
-      '⁧سرور نے قبول نہیں کیا (آپ کا ریکوری کوڈ بدل گیا تھا)۔ آن لائن ہونے پر دوبارہ \"پاس ورڈ بھول گئے\" استعمال کریں۔⁩';
+  String get theServerDidNotTakeIt => '⁧سرور نے قبول نہیں کیا (آپ کا ریکوری کوڈ بدل گیا تھا)۔ آن لائن ہونے پر دوبارہ \"پاس ورڈ بھول گئے\" استعمال کریں۔⁩';
 
   @override
-  String get theServerIsHavingTroublePlease =>
-      '⁧سرور میں مسئلہ ہے۔ براہِ کرم تھوڑی دیر بعد دوبارہ کوشش کریں۔⁩';
+  String get theServerIsHavingTroublePlease => '⁧سرور میں مسئلہ ہے۔ براہِ کرم تھوڑی دیر بعد دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get theServerIsUnreachableCheckThat =>
-      '⁧سرور تک رسائی نہیں۔ چیک کریں کہ وہ چل رہا ہے اور یہ فون اسی نیٹ ورک پر ہے۔⁩';
+  String get theServerIsUnreachableCheckThat => '⁧سرور تک رسائی نہیں۔ چیک کریں کہ وہ چل رہا ہے اور یہ فون اسی نیٹ ورک پر ہے۔⁩';
 
   @override
   String get theServerNeedsAPairingCode => '⁧سرور کو پیئرنگ کوڈ چاہیے⁩';
 
   @override
-  String get theServerReturnedAReplyThe =>
-      '⁧سرور نے ایسا جواب دیا جو ایپ سمجھ نہیں سکی۔⁩';
+  String get theServerReturnedAReplyThe => '⁧سرور نے ایسا جواب دیا جو ایپ سمجھ نہیں سکی۔⁩';
 
   @override
-  String get theServerReturnedNoActivityBuckets =>
-      '⁧سرور نے منتخب مدت کی کوئی سرگرمی نہیں بھیجی۔⁩';
+  String get theServerReturnedNoActivityBuckets => '⁧سرور نے منتخب مدت کی کوئی سرگرمی نہیں بھیجی۔⁩';
 
   @override
-  String get theServerSignedThisPhoneOut =>
-      '⁧سرور نے اس فون کو سائن آؤٹ کر دیا۔ دوبارہ سائن اِن کے لیے اپنا پاس ورڈ لکھیں۔ آپ کی چیٹس اس فون پر رہیں گی۔⁩';
+  String get theServerSignedThisPhoneOut => '⁧سرور نے اس فون کو سائن آؤٹ کر دیا۔ دوبارہ سائن اِن کے لیے اپنا پاس ورڈ لکھیں۔ آپ کی چیٹس اس فون پر رہیں گی۔⁩';
 
   @override
-  String get theServerStoresOnlyAnEncrypted =>
-      '⁧سرور صرف انکرپٹڈ بیک اپ رکھتا ہے۔ بیک اپ پاس فریز آپ کی ڈیوائس پر ہی رہتا ہے۔⁩';
+  String get theServerStoresOnlyAnEncrypted => '⁧سرور صرف انکرپٹڈ بیک اپ رکھتا ہے۔ بیک اپ پاس فریز آپ کی ڈیوائس پر ہی رہتا ہے۔⁩';
 
   @override
-  String get theServerTookTooLongTo =>
-      '⁧سرور نے جواب دینے میں بہت دیر لگائی۔ یہ خود دوبارہ کوشش کرتا رہے گا۔⁩';
+  String get theServerTookTooLongTo => '⁧سرور نے جواب دینے میں بہت دیر لگائی۔ یہ خود دوبارہ کوشش کرتا رہے گا۔⁩';
 
   @override
   String get theTwoPasswordsAreNotThe => '⁧دونوں پاس ورڈ ایک جیسے نہیں ہیں۔⁩';
 
   @override
-  String get theirCopyPhotosYouSavedTo =>
-      '⁧ ۔ گیلری میں محفوظ کی گئی تصاویر رہیں گی۔⁩';
+  String get theirCopyPhotosYouSavedTo => '⁧ ۔ گیلری میں محفوظ کی گئی تصاویر رہیں گی۔⁩';
 
   @override
-  String get theirPhoneIsNotKnownYet =>
-      '⁧ان کا فون ابھی معلوم نہیں۔ ان سے کہیں کہ آپ کے قریب LinkUp کھولیں، پھر دوبارہ کوشش کریں۔⁩';
+  String get theirPhoneIsNotKnownYet => '⁧ان کا فون ابھی معلوم نہیں۔ ان سے کہیں کہ آپ کے قریب LinkUp کھولیں، پھر دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get theirPhonesSendTheseMessagesAlso =>
-      '⁧ان کے فون یہ میسجز بھیجتے ہیں (وہ بھی جو انہوں نے ڈیلیٹ کیے)۔ انہیں کچھ نظر نہیں آتا۔⁩';
+  String get theirPhonesSendTheseMessagesAlso => '⁧ان کے فون یہ میسجز بھیجتے ہیں (وہ بھی جو انہوں نے ڈیلیٹ کیے)۔ انہیں کچھ نظر نہیں آتا۔⁩';
 
   @override
   String get thenTap => '⁧ کھولیں، پھر نیچے ⁩';
 
   @override
-  String get theseFilesAreBiggerThan50 =>
-      '⁧یہ فائلیں 50 MB سے بڑی ہیں اور آگے نہیں بھیجی جا سکتیں۔⁩';
+  String get theseFilesAreBiggerThan50 => '⁧یہ فائلیں 50 MB سے بڑی ہیں اور آگے نہیں بھیجی جا سکتیں۔⁩';
 
   @override
-  String get theseFilesAreBiggerThan502 =>
-      '⁧یہ فائلیں 50 MB سے بڑی ہیں، اس لیے شامل نہیں کی گئیں۔⁩';
+  String get theseFilesAreBiggerThan502 => '⁧یہ فائلیں 50 MB سے بڑی ہیں، اس لیے شامل نہیں کی گئیں۔⁩';
 
   @override
-  String get theseTwoAccountsAreOnThe =>
-      '⁧یہ دونوں اکاؤنٹس ایک ہی فون پر ہیں۔⁩';
+  String get theseTwoAccountsAreOnThe => '⁧یہ دونوں اکاؤنٹس ایک ہی فون پر ہیں۔⁩';
 
   @override
   String get they => '⁧وہ⁩';
 
   @override
-  String get theyAreAddedWhenNearbyOr =>
-      '⁧قریب یا آن لائن ہونے پر شامل ہو جائیں گے⁩';
+  String get theyAreAddedWhenNearbyOr => '⁧قریب یا آن لائن ہونے پر شامل ہو جائیں گے⁩';
 
   @override
-  String get theyCanNoLongerMessageOr =>
-      '⁧وہ اب اس فون کو میسج یا پیئر نہیں کر سکتے — آن لائن یا آف لائن۔ یہ اس فون پر فوراً لاگو ہوتا ہے۔⁩';
+  String get theyCanNoLongerMessageOr => '⁧وہ اب اس فون کو میسج یا پیئر نہیں کر سکتے — آن لائن یا آف لائن۔ یہ اس فون پر فوراً لاگو ہوتا ہے۔⁩';
 
   @override
   String get theyCanTMessageOrCall => '⁧وہ آپ کو میسج یا کال نہیں کر سکتے۔⁩';
 
   @override
-  String get thisAccountHasAnEncryptedBackup =>
-      '⁧اس اکاؤنٹ کی شناختی کیز کا انکرپٹڈ بیک اپ ہے۔ میسج ڈی کرپشن کیز بھی بحال کرنے کے لیے بیک اپ پاس فریز لکھیں، یا چھوڑ دیں۔⁩';
+  String get thisAccountHasAnEncryptedBackup => '⁧اس اکاؤنٹ کی شناختی کیز کا انکرپٹڈ بیک اپ ہے۔ میسج ڈی کرپشن کیز بھی بحال کرنے کے لیے بیک اپ پاس فریز لکھیں، یا چھوڑ دیں۔⁩';
 
   @override
-  String get thisAccountHasNoRecoveryCode =>
-      '⁧اس اکاؤنٹ کا اس فون پر ابھی کوئی ریکوری کوڈ نہیں۔⁩';
+  String get thisAccountHasNoRecoveryCode => '⁧اس اکاؤنٹ کا اس فون پر ابھی کوئی ریکوری کوڈ نہیں۔⁩';
 
   @override
-  String get thisAccountIsNotActiveAsk =>
-      '⁧یہ اکاؤنٹ فعال نہیں ہے۔ ایڈمن سے رابطہ کریں۔⁩';
+  String get thisAccountIsNotActiveAsk => '⁧یہ اکاؤنٹ فعال نہیں ہے۔ ایڈمن سے رابطہ کریں۔⁩';
 
   @override
   String get thisAdminSessionEndsNow => '⁧یہ ایڈمن سیشن ابھی ختم ہو گا۔⁩';
@@ -6472,12 +6121,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get thisDevice => '⁧یہ ڈیوائس⁩';
 
   @override
-  String get thisFileIsBiggerThan50 =>
-      '⁧یہ فائل 50 MB سے بڑی ہے اور آگے نہیں بھیجی جا سکتی۔⁩';
+  String get thisFileIsBiggerThan50 => '⁧یہ فائل 50 MB سے بڑی ہے اور آگے نہیں بھیجی جا سکتی۔⁩';
 
   @override
-  String get thisFileIsBiggerThan502 =>
-      '⁧یہ فائل 50 MB سے بڑی ہے، اس لیے شامل نہیں کی گئی۔⁩';
+  String get thisFileIsBiggerThan502 => '⁧یہ فائل 50 MB سے بڑی ہے، اس لیے شامل نہیں کی گئی۔⁩';
 
   @override
   String get thisFileIsNoLongerOn => '⁧یہ فائل اب آپ کے فون پر نہیں⁩';
@@ -6486,15 +6133,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get thisFileIsNoLongerOn2 => '⁧یہ فائل اب آپ کے فون پر نہیں۔⁩';
 
   @override
-  String get thisGroupCodeHasExpiredAsk =>
-      '⁧اس گروپ کوڈ کی میعاد ختم ہو گئی۔ نیا کوڈ مانگیں۔⁩';
+  String get thisGroupCodeHasExpiredAsk => '⁧اس گروپ کوڈ کی میعاد ختم ہو گئی۔ نیا کوڈ مانگیں۔⁩';
 
   @override
   String get thisGroupIsFull100People => '⁧یہ گروپ بھر گیا ہے (100 لوگ)۔⁩';
 
   @override
-  String get thisGroupWorksOnlyNearbyIt =>
-      '⁧یہ گروپ صرف قریب میں کام کرتا ہے (ابھی سرور پر نہیں)، اس لیے لنک کام نہیں کر سکتا۔ استعمال کریں: ⁩';
+  String get thisGroupWorksOnlyNearbyIt => '⁧یہ گروپ صرف قریب میں کام کرتا ہے (ابھی سرور پر نہیں)، اس لیے لنک کام نہیں کر سکتا۔ استعمال کریں: ⁩';
 
   @override
   String get thisHappensByItself => '⁧یہ خود ہو جاتا ہے۔⁩';
@@ -6508,8 +6153,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get thisInviteLinkDoesnTWork => '⁧یہ انوائٹ لنک اب کام نہیں کرتا۔⁩';
 
   @override
-  String get thisInviteLinkDoesnTWork2 =>
-      '⁧یہ انوائٹ لنک اب کام نہیں کرتا۔ نیا مانگیں۔⁩';
+  String get thisInviteLinkDoesnTWork2 => '⁧یہ انوائٹ لنک اب کام نہیں کرتا۔ نیا مانگیں۔⁩';
 
   @override
   String get thisIsNotALinkupGroup => '⁧یہ LinkUp گروپ کوڈ نہیں ہے۔⁩';
@@ -6518,37 +6162,31 @@ class AppLocalizationsUr extends AppLocalizations {
   String get thisIsYou => '⁧یہ آپ ہیں⁩';
 
   @override
-  String get thisLinkupVersionIsStoppedBy =>
-      '⁧یہ LinkUp ورژن ایڈمن نے روک دیا ہے⁩';
+  String get thisLinkupVersionIsStoppedBy => '⁧یہ LinkUp ورژن ایڈمن نے روک دیا ہے⁩';
 
   @override
   String get thisMessageCannotBeResent => '⁧یہ میسج دوبارہ نہیں بھیجا جا سکتا⁩';
 
   @override
-  String get thisNearbyPhoneCannotBeConnected =>
-      '⁧اس قریبی فون سے ابھی کنکٹ نہیں ہو سکتا۔⁩';
+  String get thisNearbyPhoneCannotBeConnected => '⁧اس قریبی فون سے ابھی کنکٹ نہیں ہو سکتا۔⁩';
 
   @override
-  String get thisNeedsTheServerTryAgain =>
-      '⁧اس کے لیے سرور ضروری ہے۔ سرور واپس آنے پر دوبارہ کوشش کریں۔⁩';
+  String get thisNeedsTheServerTryAgain => '⁧اس کے لیے سرور ضروری ہے۔ سرور واپس آنے پر دوبارہ کوشش کریں۔⁩';
 
   @override
   String get thisOne => '⁧یہ والا⁩';
 
   @override
-  String get thisPageChecksTheLocalServer =>
-      '⁧یہ صفحہ ہر چند سیکنڈ بعد مقامی سرور چیک کرتا ہے۔⁩';
+  String get thisPageChecksTheLocalServer => '⁧یہ صفحہ ہر چند سیکنڈ بعد مقامی سرور چیک کرتا ہے۔⁩';
 
   @override
-  String get thisPageIsLockedItOpens =>
-      '⁧یہ صفحہ لاک ہے۔ سرور واپس آنے پر یہ خود دوبارہ کھل جائے گا۔⁩';
+  String get thisPageIsLockedItOpens => '⁧یہ صفحہ لاک ہے۔ سرور واپس آنے پر یہ خود دوبارہ کھل جائے گا۔⁩';
 
   @override
   String get thisPerson => '⁧یہ شخص⁩';
 
   @override
-  String get thisPersonCouldNotBeFound =>
-      '⁧یہ شخص ابھی نہیں مل سکا۔ ان کے قریب جا کر دوبارہ کوشش کریں یا ان کا QR کوڈ اسکین کریں۔⁩';
+  String get thisPersonCouldNotBeFound => '⁧یہ شخص ابھی نہیں مل سکا۔ ان کے قریب جا کر دوبارہ کوشش کریں یا ان کا QR کوڈ اسکین کریں۔⁩';
 
   @override
   String get thisPersonIsNotCurrentlyAvailable => '⁧یہ شخص ابھی دستیاب نہیں۔⁩';
@@ -6560,31 +6198,25 @@ class AppLocalizationsUr extends AppLocalizations {
   String get thisPhone2 => '⁧یہ فون⁩';
 
   @override
-  String get thisPhoneAlreadyHasAnAccount =>
-      '⁧اس فون پر پہلے سے ایک اکاؤنٹ ہے⁩';
+  String get thisPhoneAlreadyHasAnAccount => '⁧اس فون پر پہلے سے ایک اکاؤنٹ ہے⁩';
 
   @override
-  String get thisPhoneBlocksHotspotsMadeBy =>
-      '⁧یہ فون ایپس کے بنائے ہاٹ اسپاٹ روکتا ہے۔⁩';
+  String get thisPhoneBlocksHotspotsMadeBy => '⁧یہ فون ایپس کے بنائے ہاٹ اسپاٹ روکتا ہے۔⁩';
 
   @override
-  String get thisPhoneCanSignInOffline =>
-      '⁧یہ فون آف لائن صرف اسی اکاؤنٹ سے سائن اِن ہو سکتا ہے جو آخری بار اس پر استعمال ہوا۔⁩';
+  String get thisPhoneCanSignInOffline => '⁧یہ فون آف لائن صرف اسی اکاؤنٹ سے سائن اِن ہو سکتا ہے جو آخری بار اس پر استعمال ہوا۔⁩';
 
   @override
-  String get thisPhoneCannotReachThatPhone =>
-      '⁧یہ فون اس فون تک براہِ راست نہیں پہنچ سکتا۔⁩';
+  String get thisPhoneCannotReachThatPhone => '⁧یہ فون اس فون تک براہِ راست نہیں پہنچ سکتا۔⁩';
 
   @override
   String get thisPhoneDoesnTAllowIt => '⁧یہ فون اس کی اجازت نہیں دیتا⁩';
 
   @override
-  String get thisPhoneHasNoCopyOf =>
-      '⁧اس فون پر آپ کے پاس ورڈ کی کاپی نہیں۔ اس فون پر دوبارہ لاگ اِن کریں، پھر کوشش کریں۔⁩';
+  String get thisPhoneHasNoCopyOf => '⁧اس فون پر آپ کے پاس ورڈ کی کاپی نہیں۔ اس فون پر دوبارہ لاگ اِن کریں، پھر کوشش کریں۔⁩';
 
   @override
-  String get thisPhoneHasNoSavedSign =>
-      '⁧اس فون پر ابھی کوئی محفوظ سائن اِن نہیں۔ سرور آن کر کے ایک بار سائن اِن کریں۔⁩';
+  String get thisPhoneHasNoSavedSign => '⁧اس فون پر ابھی کوئی محفوظ سائن اِن نہیں۔ سرور آن کر کے ایک بار سائن اِن کریں۔⁩';
 
   @override
   String thisPhoneIsAlreadyLinkedTo(Object? who) {
@@ -6592,8 +6224,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get thisPhoneIsNotPairedWith =>
-      '⁧یہ فون ابھی سرور سے جُڑا نہیں ہے۔ ایڈمن سے پیئرنگ کوڈ لیں۔⁩';
+  String get thisPhoneIsNotPairedWith => '⁧یہ فون ابھی سرور سے جُڑا نہیں ہے۔ ایڈمن سے پیئرنگ کوڈ لیں۔⁩';
 
   @override
   String thisPhoneJoinedYourAccount(Object? name, Object? tail) {
@@ -6606,8 +6237,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String thisPhoneLinkupBuild2(
-      Object? kAppVersion, Object? kAppBuild, Object? sent) {
+  String thisPhoneLinkupBuild2(Object? kAppVersion, Object? kAppBuild, Object? sent) {
     return '⁧یہ فون: LinkUp ⁨$kAppVersion⁩ (بلڈ ⁨$kAppBuild⁩)⁨$sent⁩⁩';
   }
 
@@ -6623,8 +6253,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get thisPhoneWasRemovedByAdmin =>
-      '⁧ایڈمن نے یہ فون ہٹا دیا۔ آپ کی چیٹس یہیں ہیں۔ سرور آن ہونے پر دوبارہ لاگ اِن کریں۔⁩';
+  String get thisPhoneWasRemovedByAdmin => '⁧ایڈمن نے یہ فون ہٹا دیا۔ آپ کی چیٹس یہیں ہیں۔ سرور آن ہونے پر دوبارہ لاگ اِن کریں۔⁩';
 
   @override
   String get thisPhotoIsNoLongerOn => '⁧یہ تصویر اب آپ کے فون پر نہیں۔⁩';
@@ -6633,39 +6262,31 @@ class AppLocalizationsUr extends AppLocalizations {
   String get thisPhotoIsTooBigTry => '⁧یہ تصویر بہت بڑی ہے۔ کوئی اور آزمائیں۔⁩';
 
   @override
-  String get thisQrContainsAOneTime =>
-      '⁧اس QR میں منتقلی کا ایک بار کا کریڈینشل ہے۔ جو بھی اسے اسکین کرے وہ اکاؤنٹ منتقل کر سکتا ہے، اس لیے یہ اسکرین کسی کو نہ دکھائیں۔⁩';
+  String get thisQrContainsAOneTime => '⁧اس QR میں منتقلی کا ایک بار کا کریڈینشل ہے۔ جو بھی اسے اسکین کرے وہ اکاؤنٹ منتقل کر سکتا ہے، اس لیے یہ اسکرین کسی کو نہ دکھائیں۔⁩';
 
   @override
-  String get thisRecoveryRequestHasAlreadyBeen =>
-      '⁧یہ ریکوری درخواست پہلے ہی مکمل ہو چکی ہے۔⁩';
+  String get thisRecoveryRequestHasAlreadyBeen => '⁧یہ ریکوری درخواست پہلے ہی مکمل ہو چکی ہے۔⁩';
 
   @override
-  String get thisRecoveryRequestHasExpiredStart =>
-      '⁧ریکوری کی یہ درخواست ختم ہو چکی ہے۔ نئی درخواست بھیجیں۔⁩';
+  String get thisRecoveryRequestHasExpiredStart => '⁧ریکوری کی یہ درخواست ختم ہو چکی ہے۔ نئی درخواست بھیجیں۔⁩';
 
   @override
-  String get thisReturnsTheAppToIts =>
-      '⁧یہ ایپ کو سیٹ اپ کی حالت میں واپس لے آتا ہے۔ موجودہ مقامی ڈیٹا ہٹ سکتا ہے۔⁩';
+  String get thisReturnsTheAppToIts => '⁧یہ ایپ کو سیٹ اپ کی حالت میں واپس لے آتا ہے۔ موجودہ مقامی ڈیٹا ہٹ سکتا ہے۔⁩';
 
   @override
-  String get thisServerBuildDoesNotExpose =>
-      '⁧یہ سرور بلڈ رن ٹائم سیمپلر نہیں دکھاتا۔⁩';
+  String get thisServerBuildDoesNotExpose => '⁧یہ سرور بلڈ رن ٹائم سیمپلر نہیں دکھاتا۔⁩';
 
   @override
-  String get thisTransferQrHasExpiredGenerate =>
-      '⁧منتقلی کا یہ QR ختم ہو چکا ہے۔ پرانے فون پر نیا QR بنائیں۔⁩';
+  String get thisTransferQrHasExpiredGenerate => '⁧منتقلی کا یہ QR ختم ہو چکا ہے۔ پرانے فون پر نیا QR بنائیں۔⁩';
 
   @override
-  String get thisUserIdentityIsNotTrusted =>
-      '⁧اس یوزر کی شناخت مقامی کال کے لیے قابلِ اعتماد نہیں⁩';
+  String get thisUserIdentityIsNotTrusted => '⁧اس یوزر کی شناخت مقامی کال کے لیے قابلِ اعتماد نہیں⁩';
 
   @override
   String get thisUserIsBlocked => '⁧یہ یوزر بلاک ہے⁩';
 
   @override
-  String get thisUsesMoreBatterySomePhones =>
-      '⁧اس سے زیادہ بیٹری لگتی ہے۔ کچھ فون وائی فائی پر ہوتے ہوئے اسے نہیں چلا سکتے۔ صرف \"بھرے ہوئے گروپس جوڑیں\" آن والے LinkUp فون اس سے جڑیں گے۔⁩';
+  String get thisUsesMoreBatterySomePhones => '⁧اس سے زیادہ بیٹری لگتی ہے۔ کچھ فون وائی فائی پر ہوتے ہوئے اسے نہیں چلا سکتے۔ صرف \"بھرے ہوئے گروپس جوڑیں\" آن والے LinkUp فون اس سے جڑیں گے۔⁩';
 
   @override
   String get thisVideoIsNoLongerOn => '⁧یہ ویڈیو اب آپ کے فون پر نہیں۔⁩';
@@ -6679,8 +6300,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get thisWiFiBlocksPhonesFrom =>
-      '⁧یہ وائی فائی فونز کو ایک دوسرے کو دیکھنے نہیں دیتا⁩';
+  String get thisWiFiBlocksPhonesFrom => '⁧یہ وائی فائی فونز کو ایک دوسرے کو دیکھنے نہیں دیتا⁩';
 
   @override
   String through(Object? other) {
@@ -6696,8 +6316,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get thu => '⁧جمعرات⁩';
 
   @override
-  String get toStopSomeoneOnEveryPhone =>
-      '⁧کسی کو ہر فون پر روکنے کے لیے \"ایڈمن کے ذریعے بلاک\" استعمال کریں۔⁩';
+  String get toStopSomeoneOnEveryPhone => '⁧کسی کو ہر فون پر روکنے کے لیے \"ایڈمن کے ذریعے بلاک\" استعمال کریں۔⁩';
 
   @override
   String get toTheServer => '⁧سرور تک⁩';
@@ -6717,16 +6336,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get toggleFlash => '⁧فلیش آن/آف⁩';
 
   @override
-  String get tooLateToDeleteForEveryone =>
-      '⁧سب کے لیے ڈیلیٹ کرنے میں بہت دیر ہو گئی⁩';
+  String get tooLateToDeleteForEveryone => '⁧سب کے لیے ڈیلیٹ کرنے میں بہت دیر ہو گئی⁩';
 
   @override
-  String get tooManyAttemptsPleaseWaitA =>
-      '⁧بہت زیادہ کوششیں۔ براہِ کرم تھوڑا انتظار کر کے دوبارہ کوشش کریں۔⁩';
+  String get tooManyAttemptsPleaseWaitA => '⁧بہت زیادہ کوششیں۔ براہِ کرم تھوڑا انتظار کر کے دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get tooManyTriesTryAgainIn =>
-      '⁧بہت زیادہ کوششیں۔ 1 منٹ بعد دوبارہ کوشش کریں۔⁩';
+  String get tooManyTriesTryAgainIn => '⁧بہت زیادہ کوششیں۔ 1 منٹ بعد دوبارہ کوشش کریں۔⁩';
 
   @override
   String get topologyAndTransports => '⁧ٹوپولوجی اور ٹرانسپورٹس⁩';
@@ -6764,8 +6380,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get transport => '⁧ٹرانسپورٹ⁩';
 
   @override
-  String get transportStateReportedByConnectedDevices =>
-      '⁧کنکٹڈ ڈیوائسز کی بتائی گئی ٹرانسپورٹ حالت⁩';
+  String get transportStateReportedByConnectedDevices => '⁧کنکٹڈ ڈیوائسز کی بتائی گئی ٹرانسپورٹ حالت⁩';
 
   @override
   String get trustCompliance => '⁧اعتماد اور تعمیل⁩';
@@ -6804,15 +6419,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get turnCameraOn => '⁧کیمرہ آن کریں⁩';
 
   @override
-  String get turnItOnToFindPhones =>
-      '⁧اپنے قریب فون تلاش کرنے کے لیے اسے آن کریں⁩';
+  String get turnItOnToFindPhones => '⁧اپنے قریب فون تلاش کرنے کے لیے اسے آن کریں⁩';
 
   @override
   String get turnOn => '⁧آن کریں⁩';
 
   @override
-  String get turnOnAutoLaunchSecondaryLaunch =>
-      '⁧Auto-launch، Secondary launch اور Run in background آن کریں⁩';
+  String get turnOnAutoLaunchSecondaryLaunch => '⁧Auto-launch، Secondary launch اور Run in background آن کریں⁩';
 
   @override
   String get turnOnExtraNearbySafety => '⁧قریب کے لیے اضافی حفاظت آن کریں؟⁩';
@@ -6824,12 +6437,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get turnOnWiFi => '⁧وائی فائی آن کریں⁩';
 
   @override
-  String get turnOnWiFiToReach =>
-      '⁧قریبی لوگوں تک پہنچنے کے لیے وائی فائی آن کریں۔⁩';
+  String get turnOnWiFiToReach => '⁧قریبی لوگوں تک پہنچنے کے لیے وائی فائی آن کریں۔⁩';
 
   @override
-  String get turnYourHotspotOffAndTry =>
-      '⁧اپنا ہاٹ اسپاٹ بند کر کے دوبارہ کوشش کریں، یا اپنے دوست کو اپنے ہاٹ اسپاٹ سے جڑنے دیں۔⁩';
+  String get turnYourHotspotOffAndTry => '⁧اپنا ہاٹ اسپاٹ بند کر کے دوبارہ کوشش کریں، یا اپنے دوست کو اپنے ہاٹ اسپاٹ سے جڑنے دیں۔⁩';
 
   @override
   String turnedOnTheirCameraAcceptTo(Object? name) {
@@ -6920,8 +6531,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get unsupported => '⁧سپورٹ نہیں⁩';
 
   @override
-  String until(
-      Object? day, Object? month, Object? hh, Object? mm, Object? ampm) {
+  String until(Object? day, Object? month, Object? hh, Object? mm, Object? ampm) {
     return '⁧⁨$day⁩ ⁨$month⁩، ⁨$hh:$mm $ampm⁩ تک⁩';
   }
 
@@ -6961,24 +6571,19 @@ class AppLocalizationsUr extends AppLocalizations {
   String get use03xxXxxxxxxOr923xx => '⁧03xx xxxxxxx یا +92 3xx xxxxxxx لکھیں⁩';
 
   @override
-  String get useAtLeast10CharactersThis =>
-      '⁧کم از کم 10 حروف استعمال کریں۔ یہ پاس فریز کبھی سرور کو نہیں بھیجا جاتا۔⁩';
+  String get useAtLeast10CharactersThis => '⁧کم از کم 10 حروف استعمال کریں۔ یہ پاس فریز کبھی سرور کو نہیں بھیجا جاتا۔⁩';
 
   @override
-  String get useBlockedOnThisPhoneIt =>
-      '⁧\"اس فون پر بلاک\" استعمال کریں۔ یہ دوسرے فونز تک نہیں پہنچتا۔⁩';
+  String get useBlockedOnThisPhoneIt => '⁧\"اس فون پر بلاک\" استعمال کریں۔ یہ دوسرے فونز تک نہیں پہنچتا۔⁩';
 
   @override
-  String get useItInLinkupLoginForgot =>
-      '⁧اسے LinkUp میں استعمال کریں: لاگ اِن > پاس ورڈ بھول گئے؟⁩';
+  String get useItInLinkupLoginForgot => '⁧اسے LinkUp میں استعمال کریں: لاگ اِن > پاس ورڈ بھول گئے؟⁩';
 
   @override
-  String get useItOnForgotPasswordIf =>
-      '⁧یہ فون گم ہونے پر اسے \"پاس ورڈ بھول گئے؟\" میں استعمال کریں۔ آف لائن بھی کام کرتا ہے۔⁩';
+  String get useItOnForgotPasswordIf => '⁧یہ فون گم ہونے پر اسے \"پاس ورڈ بھول گئے؟\" میں استعمال کریں۔ آف لائن بھی کام کرتا ہے۔⁩';
 
   @override
-  String get useNewRequestToAskThe =>
-      '⁧2 لوگوں یا کسی گروپ کے فونز سے پوچھنے کے لیے نئی درخواست استعمال کریں۔⁩';
+  String get useNewRequestToAskThe => '⁧2 لوگوں یا کسی گروپ کے فونز سے پوچھنے کے لیے نئی درخواست استعمال کریں۔⁩';
 
   @override
   String get useOldPassword => '⁧پرانا پاس ورڈ استعمال کریں⁩';
@@ -6997,8 +6602,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get usedByAnotherAccountSavedOn =>
-      '⁧کوئی اور اکاؤنٹ استعمال کر رہا ہے۔ صرف اس فون پر محفوظ۔⁩';
+  String get usedByAnotherAccountSavedOn => '⁧کوئی اور اکاؤنٹ استعمال کر رہا ہے۔ صرف اس فون پر محفوظ۔⁩';
 
   @override
   String usedLinkupOnThisPhone(Object? username) {
@@ -7009,33 +6613,27 @@ class AppLocalizationsUr extends AppLocalizations {
   String get username => '⁧یوزر نیم⁩';
 
   @override
-  String get usernameMustBe332Characters =>
-      '⁧یوزر نیم 3 سے 32 حروف کا ہو اور اس میں حروف، نمبر، ڈاٹ، ڈیش یا انڈر اسکور ہوں۔⁩';
+  String get usernameMustBe332Characters => '⁧یوزر نیم 3 سے 32 حروف کا ہو اور اس میں حروف، نمبر، ڈاٹ، ڈیش یا انڈر اسکور ہوں۔⁩';
 
   @override
-  String get usernameOrRecoveryCodeIsWrong =>
-      '⁧یوزر نیم یا ریکوری کوڈ غلط ہے۔⁩';
+  String get usernameOrRecoveryCodeIsWrong => '⁧یوزر نیم یا ریکوری کوڈ غلط ہے۔⁩';
 
   @override
   String get users => '⁧یوزرز⁩';
 
   @override
-  String usersBlockedServer(
-      Object? all, Object? blockedCount, Object? offline) {
+  String usersBlockedServer(Object? all, Object? blockedCount, Object? offline) {
     return '⁧⁨$all⁩ یوزرز · ⁨$blockedCount⁩ بلاک · سرور ⁨$offline⁩⁩';
   }
 
   @override
-  String get usesTheCodeSavedOnThis =>
-      '⁧اس فون پر محفوظ کوڈ استعمال ہوتا ہے۔ نیا پاس ورڈ سرور واپس آنے پر وہاں چلا جائے گا۔⁩';
+  String get usesTheCodeSavedOnThis => '⁧اس فون پر محفوظ کوڈ استعمال ہوتا ہے۔ نیا پاس ورڈ سرور واپس آنے پر وہاں چلا جائے گا۔⁩';
 
   @override
-  String get usingNearbyGroupsInstead =>
-      '⁧اس کے بجائے قریبی گروپس استعمال ہو رہے ہیں۔⁩';
+  String get usingNearbyGroupsInstead => '⁧اس کے بجائے قریبی گروپس استعمال ہو رہے ہیں۔⁩';
 
   @override
-  String get verboseLogsForSupportCapturesTurns =>
-      '⁧سپورٹ کے لیے تفصیلی لاگز۔ ایپ ری اسٹارٹ ہونے پر بند ہو جاتا ہے۔⁩';
+  String get verboseLogsForSupportCapturesTurns => '⁧سپورٹ کے لیے تفصیلی لاگز۔ ایپ ری اسٹارٹ ہونے پر بند ہو جاتا ہے۔⁩';
 
   @override
   String get verified => '⁧تصدیق شدہ⁩';
@@ -7054,8 +6652,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get versionNewer => '⁧نیا ورژن⁩';
 
   @override
-  String get veryOldAppsBefore30 =>
-      '⁧بہت پرانی ایپس (3.0.54 سے پہلے) بھی روک دی جاتی ہیں۔⁩';
+  String get veryOldAppsBefore30 => '⁧بہت پرانی ایپس (3.0.54 سے پہلے) بھی روک دی جاتی ہیں۔⁩';
 
   @override
   String via(Object? nextHop, Object? state) {
@@ -7176,8 +6773,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get waitingForARoute => '⁧راستے کا انتظار⁩';
 
   @override
-  String get waitingForAdministratorApproval =>
-      '⁧ایڈمن کی منظوری کا انتظار ہے…⁩';
+  String get waitingForAdministratorApproval => '⁧ایڈمن کی منظوری کا انتظار ہے…⁩';
 
   @override
   String get waitingForApproval => '⁧منظوری کا انتظار⁩';
@@ -7214,12 +6810,10 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get waitingNotNearOrOnlineYet =>
-      '⁧انتظار · ابھی قریب یا آن لائن نہیں⁩';
+  String get waitingNotNearOrOnlineYet => '⁧انتظار · ابھی قریب یا آن لائن نہیں⁩';
 
   @override
-  String get waitingSendsWhenYourFriendIs =>
-      '⁧انتظار۔ دوست کے آن لائن ہونے پر بھیجا جائے گا⁩';
+  String get waitingSendsWhenYourFriendIs => '⁧انتظار۔ دوست کے آن لائن ہونے پر بھیجا جائے گا⁩';
 
   @override
   String get waitingToJoinTheServer => '⁧سرور پر آنے کا انتظار⁩';
@@ -7292,16 +6886,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get whatsappSmsEmail => '⁧WhatsApp، SMS، ای میل…⁩';
 
   @override
-  String get whenSomeoneMovesToANew =>
-      '⁧جب کوئی نئے فون پر جا کر مدد مانگے تو یہاں نظر آتا ہے۔⁩';
+  String get whenSomeoneMovesToANew => '⁧جب کوئی نئے فون پر جا کر مدد مانگے تو یہاں نظر آتا ہے۔⁩';
 
   @override
-  String get whenThePhoneIsMoreThan =>
-      '⁧جب فون 70% سے زیادہ بھر جائے تو 10 دن سے نہ کھولی گئی تصاویر، ویڈیوز اور ڈاکیومنٹس ہٹا دیں۔ وائس نوٹس رہیں گے۔⁩';
+  String get whenThePhoneIsMoreThan => '⁧جب فون 70% سے زیادہ بھر جائے تو 10 دن سے نہ کھولی گئی تصاویر، ویڈیوز اور ڈاکیومنٹس ہٹا دیں۔ وائس نوٹس رہیں گے۔⁩';
 
   @override
-  String get whenThisIsOffLinkupCan =>
-      '⁧یہ بند ہونے پر LinkUp دستیاب مقامی وائی فائی، وائی فائی ڈائریکٹ اور میش راستے خود استعمال کر سکتی ہے۔⁩';
+  String get whenThisIsOffLinkupCan => '⁧یہ بند ہونے پر LinkUp دستیاب مقامی وائی فائی، وائی فائی ڈائریکٹ اور میش راستے خود استعمال کر سکتی ہے۔⁩';
 
   @override
   String get whoCalledWhom => '⁧کس نے کس کو کال کی⁩';
@@ -7343,8 +6934,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get wiFiIsOff => '⁧وائی فائی بند ہے⁩';
 
   @override
-  String get wiFiIsOffOrAndroid =>
-      '⁧وائی فائی بند ہے یا Android نے منع کر دیا۔⁩';
+  String get wiFiIsOffOrAndroid => '⁧وائی فائی بند ہے یا Android نے منع کر دیا۔⁩';
 
   @override
   String get wiFiLinks => '⁧وائی فائی لنکس⁩';
@@ -7359,8 +6949,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get wiFiOff => '⁧وائی فائی بند⁩';
 
   @override
-  String get wiFiOffUsingWiFi =>
-      '⁧وائی فائی بند - وائی فائی ڈائریکٹ استعمال ہو رہا ہے⁩';
+  String get wiFiOffUsingWiFi => '⁧وائی فائی بند - وائی فائی ڈائریکٹ استعمال ہو رہا ہے⁩';
 
   @override
   String get wiFiRadioPolicy => '⁧وائی فائی ریڈیو پالیسی⁩';
@@ -7379,8 +6968,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get wiFiRuleOpenAPerson =>
-      '⁧وائی فائی اصول: یوزرز میں کسی شخص یا ڈیوائسز میں کسی فون کو کھولیں۔⁩';
+  String get wiFiRuleOpenAPerson => '⁧وائی فائی اصول: یوزرز میں کسی شخص یا ڈیوائسز میں کسی فون کو کھولیں۔⁩';
 
   @override
   String get wiFiStaysOff => '⁧وائی فائی بند رہتا ہے⁩';
@@ -7407,8 +6995,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get withoutTheServerThisWorksOnly =>
-      '⁧سرور کے بغیر یہ صرف اس فون کے آخری اکاؤنٹ کے لیے کام کرتا ہے۔⁩';
+  String get withoutTheServerThisWorksOnly => '⁧سرور کے بغیر یہ صرف اس فون کے آخری اکاؤنٹ کے لیے کام کرتا ہے۔⁩';
 
   @override
   String get workingNow => '⁧ابھی کام کر رہا ہے⁩';
@@ -7428,12 +7015,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get wrongPasswordTryAgain => '⁧غلط پاس ورڈ۔ دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get wrongPasswordYourCodeStaysHidden =>
-      '⁧غلط پاس ورڈ۔ آپ کا کوڈ چھپا رہے گا۔⁩';
+  String get wrongPasswordYourCodeStaysHidden => '⁧غلط پاس ورڈ۔ آپ کا کوڈ چھپا رہے گا۔⁩';
 
   @override
-  String get wrongPasswordsAndOtherWarningsShow =>
-      '⁧غلط پاس ورڈ اور دوسری وارننگز یہاں نظر آتی ہیں۔⁩';
+  String get wrongPasswordsAndOtherWarningsShow => '⁧غلط پاس ورڈ اور دوسری وارننگز یہاں نظر آتی ہیں۔⁩';
 
   @override
   String get yellowBannerKeepsWorking => '⁧پیلا بینر، کام کرتی رہتی ہے⁩';
@@ -7466,8 +7051,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get youAlreadyHaveThisChatTheir =>
-      '⁧یہ چیٹ آپ کے پاس پہلے سے ہے۔ ان کا فون ڈیلیٹ کیے گئے میسجز شامل کر دیتا ہے۔⁩';
+  String get youAlreadyHaveThisChatTheir => '⁧یہ چیٹ آپ کے پاس پہلے سے ہے۔ ان کا فون ڈیلیٹ کیے گئے میسجز شامل کر دیتا ہے۔⁩';
 
   @override
   String get youAreNoLongerAnAdmin => '⁧آپ اب ایڈمن نہیں رہے⁩';
@@ -7479,8 +7063,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get youAreNowTheGroupOwner => '⁧آپ اب گروپ کے اونر ہیں⁩';
 
   @override
-  String get youAreOnTheSameWi =>
-      '⁧آپ ایک ہی وائی فائی راؤٹر پر ہیں۔ میسجز اور کالز سیدھے آپ کے فونز کے درمیان جاتے ہیں۔⁩';
+  String get youAreOnTheSameWi => '⁧آپ ایک ہی وائی فائی راؤٹر پر ہیں۔ میسجز اور کالز سیدھے آپ کے فونز کے درمیان جاتے ہیں۔⁩';
 
   @override
   String youAreOnTheServerNow(Object? name, Object? tail) {
@@ -7516,12 +7099,10 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get youBlockedThisPersonUnblockThem =>
-      '⁧آپ نے اس شخص کو بلاک کیا ہے۔ پہلے ان بلاک کریں۔⁩';
+  String get youBlockedThisPersonUnblockThem => '⁧آپ نے اس شخص کو بلاک کیا ہے۔ پہلے ان بلاک کریں۔⁩';
 
   @override
-  String get youCanAddThemAgainLater =>
-      '⁧آپ انہیں بعد میں دوبارہ شامل کر سکتے ہیں۔⁩';
+  String get youCanAddThemAgainLater => '⁧آپ انہیں بعد میں دوبارہ شامل کر سکتے ہیں۔⁩';
 
   @override
   String youCanAddUpToPeople(Object? kNewGroupMax) {
@@ -7534,23 +7115,19 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get youCanMessageAndCallAfter =>
-      '⁧ان کے اپ ڈیٹ کرنے کے بعد آپ میسج اور کال کر سکتے ہیں۔⁩';
+  String get youCanMessageAndCallAfter => '⁧ان کے اپ ڈیٹ کرنے کے بعد آپ میسج اور کال کر سکتے ہیں۔⁩';
 
   @override
-  String get youCanOnlyAddYourFriends =>
-      '⁧آپ صرف اپنے دوستوں کو شامل کر سکتے ہیں۔⁩';
+  String get youCanOnlyAddYourFriends => '⁧آپ صرف اپنے دوستوں کو شامل کر سکتے ہیں۔⁩';
 
   @override
   String get youCanOnlyLook => '⁧آپ صرف دیکھ سکتے ہیں۔⁩';
 
   @override
-  String get youCanReadChatsButCan =>
-      '⁧آپ چیٹس پڑھ سکتے ہیں لیکن بھیج نہیں سکتے۔⁩';
+  String get youCanReadChatsButCan => '⁧آپ چیٹس پڑھ سکتے ہیں لیکن بھیج نہیں سکتے۔⁩';
 
   @override
-  String get youCanReadOldChatsBut =>
-      '⁧آپ پرانی چیٹس پڑھ سکتے ہیں لیکن میسج یا کال نہیں کر سکتے۔⁩';
+  String get youCanReadOldChatsBut => '⁧آپ پرانی چیٹس پڑھ سکتے ہیں لیکن میسج یا کال نہیں کر سکتے۔⁩';
 
   @override
   String youCanReadOldChatsUpdate(Object? newer) {
@@ -7558,8 +7135,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get youCanSendMessagesAndCall =>
-      '⁧آپ دوبارہ میسج اور کال کر سکتے ہیں۔⁩';
+  String get youCanSendMessagesAndCall => '⁧آپ دوبارہ میسج اور کال کر سکتے ہیں۔⁩';
 
   @override
   String get youCanTAddYourself => '⁧آپ خود کو شامل نہیں کر سکتے۔⁩';
@@ -7578,12 +7154,10 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get youCanUnblockThemAnyTime =>
-      '⁧آپ انہیں کبھی بھی ان بلاک کر سکتے ہیں۔⁩';
+  String get youCanUnblockThemAnyTime => '⁧آپ انہیں کبھی بھی ان بلاک کر سکتے ہیں۔⁩';
 
   @override
-  String get youCanWriteNowTheyGet =>
-      '⁧آپ ابھی لکھ سکتے ہیں۔ شامل ہوتے ہی انہیں آپ کے میسجز مل جائیں گے۔⁩';
+  String get youCanWriteNowTheyGet => '⁧آپ ابھی لکھ سکتے ہیں۔ شامل ہوتے ہی انہیں آپ کے میسجز مل جائیں گے۔⁩';
 
   @override
   String youCreatedGroup(Object? name) {
@@ -7594,15 +7168,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get youCreatedThisGroup => '⁧یہ گروپ آپ نے بنایا⁩';
 
   @override
-  String get youHaveNotSavedItYet =>
-      '⁧آپ نے ابھی اسے محفوظ نہیں کیا۔ فون گم ہونے کی صورت کے لیے اسے سنبھال کر رکھیں۔⁩';
+  String get youHaveNotSavedItYet => '⁧آپ نے ابھی اسے محفوظ نہیں کیا۔ فون گم ہونے کی صورت کے لیے اسے سنبھال کر رکھیں۔⁩';
 
   @override
   String get youHavenTBlockedAnyone => '⁧آپ نے کسی کو بلاک نہیں کیا۔⁩';
 
   @override
-  String get youJoinedUsingThisGroupS =>
-      '⁧آپ اس گروپ کے انوائٹ لنک سے شامل ہوئے⁩';
+  String get youJoinedUsingThisGroupS => '⁧آپ اس گروپ کے انوائٹ لنک سے شامل ہوئے⁩';
 
   @override
   String get youLeft => '⁧آپ نے گروپ چھوڑ دیا⁩';
@@ -7625,26 +7197,22 @@ class AppLocalizationsUr extends AppLocalizations {
   String get youReSignedIn => '⁧آپ سائن اِن ہیں⁩';
 
   @override
-  String get youStillGetMessagesAMention =>
-      '⁧آپ کو میسجز پھر بھی ملیں گے۔ آپ کا ذکر (@) پھر بھی اطلاع دے گا۔⁩';
+  String get youStillGetMessagesAMention => '⁧آپ کو میسجز پھر بھی ملیں گے۔ آپ کا ذکر (@) پھر بھی اطلاع دے گا۔⁩';
 
   @override
   String get youVeAddedEveryone => '⁧آپ نے سب کو شامل کر لیا⁩';
 
   @override
-  String get yourAccountExistsOnlyOnThis =>
-      '⁧آپ کا اکاؤنٹ صرف اسی فون پر ہے اور کبھی سرور تک نہیں پہنچا۔ ری سیٹ کرنے سے یہ ہمیشہ کے لیے ڈیلیٹ ہو جائے گا — چیٹس اور اس کا ریکوری کوڈ واپس نہیں مل سکیں گے۔⁩';
+  String get yourAccountExistsOnlyOnThis => '⁧آپ کا اکاؤنٹ صرف اسی فون پر ہے اور کبھی سرور تک نہیں پہنچا۔ ری سیٹ کرنے سے یہ ہمیشہ کے لیے ڈیلیٹ ہو جائے گا — چیٹس اور اس کا ریکوری کوڈ واپس نہیں مل سکیں گے۔⁩';
 
   @override
   String get yourAccountIsActiveAgain => '⁧آپ کا اکاؤنٹ دوبارہ فعال ہے⁩';
 
   @override
-  String get yourAccountIsBlockedByAdmin =>
-      '⁧آپ کا اکاؤنٹ ایڈمن نے بلاک کیا ہے⁩';
+  String get yourAccountIsBlockedByAdmin => '⁧آپ کا اکاؤنٹ ایڈمن نے بلاک کیا ہے⁩';
 
   @override
-  String get yourAccountIsBlockedByAdmin2 =>
-      '⁧آپ کا اکاؤنٹ ایڈمن نے بلاک کیا ہے۔ آپ پرانی چیٹس پڑھ سکتے ہیں لیکن میسج یا کال نہیں کر سکتے۔⁩';
+  String get yourAccountIsBlockedByAdmin2 => '⁧آپ کا اکاؤنٹ ایڈمن نے بلاک کیا ہے۔ آپ پرانی چیٹس پڑھ سکتے ہیں لیکن میسج یا کال نہیں کر سکتے۔⁩';
 
   @override
   String yourAccountIsOnTheServer(Object? tail) {
@@ -7668,23 +7236,19 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get yourAndroidNeedsLocationAllThe =>
-      '⁧اس کے لیے آپ کے Android کو لوکیشن \"ہر وقت\" چاہیے۔ LinkUp کبھی آپ کی جگہ محفوظ نہیں کرتا۔⁩';
+  String get yourAndroidNeedsLocationAllThe => '⁧اس کے لیے آپ کے Android کو لوکیشن \"ہر وقت\" چاہیے۔ LinkUp کبھی آپ کی جگہ محفوظ نہیں کرتا۔⁩';
 
   @override
-  String get yourCameraPreviewTapToFlip =>
-      '⁧آپ کے کیمرے کا پیش منظر۔ کیمرہ بدلنے کے لیے ٹیپ کریں، ہٹانے کے لیے گھسیٹیں۔⁩';
+  String get yourCameraPreviewTapToFlip => '⁧آپ کے کیمرے کا پیش منظر۔ کیمرہ بدلنے کے لیے ٹیپ کریں، ہٹانے کے لیے گھسیٹیں۔⁩';
 
   @override
   String get yourChatWithThemStays => '⁧ان کے ساتھ آپ کی چیٹ **رہے گی**۔⁩';
 
   @override
-  String get yourChatsAndAccountStayOn =>
-      '⁧آپ کی چیٹس اور اکاؤنٹ اس فون پر رہیں گے۔⁩';
+  String get yourChatsAndAccountStayOn => '⁧آپ کی چیٹس اور اکاؤنٹ اس فون پر رہیں گے۔⁩';
 
   @override
-  String get yourChatsAndAccountStayOn2 =>
-      '⁧آپ کی چیٹس اور اکاؤنٹ اس فون پر رہیں گے۔ جب چاہیں اپنے پاس ورڈ یا ریکوری کوڈ سے دوبارہ لاگ اِن کریں۔⁩';
+  String get yourChatsAndAccountStayOn2 => '⁧آپ کی چیٹس اور اکاؤنٹ اس فون پر رہیں گے۔ جب چاہیں اپنے پاس ورڈ یا ریکوری کوڈ سے دوبارہ لاگ اِن کریں۔⁩';
 
   @override
   String get yourChatsStayOnThisPhone => '⁧آپ کی چیٹس اس فون پر رہیں گی۔⁩';
@@ -7701,12 +7265,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get yourContacts => '⁧آپ کے کانٹیکٹس⁩';
 
   @override
-  String get yourConversationsAndContactsAreRestored =>
-      '⁧آپ کی بات چیت اور کانٹیکٹس بحال ہو گئے۔⁩';
+  String get yourConversationsAndContactsAreRestored => '⁧آپ کی بات چیت اور کانٹیکٹس بحال ہو گئے۔⁩';
 
   @override
-  String get yourFriendWillJoinThisWi =>
-      '⁧ایپ ڈاؤن لوڈ کرنے کے لیے آپ کا دوست اس وائی فائی سے جڑے گا۔ کوئی انٹرنیٹ استعمال نہیں ہوتا۔⁩';
+  String get yourFriendWillJoinThisWi => '⁧ایپ ڈاؤن لوڈ کرنے کے لیے آپ کا دوست اس وائی فائی سے جڑے گا۔ کوئی انٹرنیٹ استعمال نہیں ہوتا۔⁩';
 
   @override
   String get yourFriends => '⁧آپ کے دوست⁩';
@@ -7715,8 +7277,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get yourLinkupIsOld => '⁧آپ کی LinkUp پرانی ہے⁩';
 
   @override
-  String yourMessagesHopThroughSThey(
-      Object? phones, Object? who, Object? who2) {
+  String yourMessagesHopThroughSThey(Object? phones, Object? who, Object? who2) {
     return '⁧آپ کے میسجز ⁨$phones⁩ (⁨$who⁩ کا) سے ہو کر جاتے ہیں۔ وہ لاک رہتے ہیں؛ ⁨$who2⁩ انہیں پڑھ نہیں سکتے۔ کالز تھوڑی سست ہو سکتی ہیں۔⁩';
   }
 
@@ -7729,23 +7290,19 @@ class AppLocalizationsUr extends AppLocalizations {
   String get yourNewPasswordIsOnlyOn => '⁧آپ کا نیا پاس ورڈ صرف اس فون پر ہے⁩';
 
   @override
-  String get yourNewPasswordWorksOnThis =>
-      '⁧آپ کا نیا پاس ورڈ اب اس فون پر کام کرتا ہے۔ سرور واپس آنے پر یہ وہاں چلا جائے گا، پھر آپ کو نیا ریکوری کوڈ ملے گا۔⁩';
+  String get yourNewPasswordWorksOnThis => '⁧آپ کا نیا پاس ورڈ اب اس فون پر کام کرتا ہے۔ سرور واپس آنے پر یہ وہاں چلا جائے گا، پھر آپ کو نیا ریکوری کوڈ ملے گا۔⁩';
 
   @override
   String get yourOldCodeNoLongerWorks => '⁧آپ کا پرانا کوڈ اب کام نہیں کرتا۔⁩';
 
   @override
-  String get yourOldCodeStopsWorking =>
-      '⁧آپ کا پرانا کوڈ کام کرنا بند کر دے گا۔⁩';
+  String get yourOldCodeStopsWorking => '⁧آپ کا پرانا کوڈ کام کرنا بند کر دے گا۔⁩';
 
   @override
-  String get yourOldMessagesStayOnThis =>
-      '⁧آپ کے پرانے میسجز اس فون پر رہیں گے⁩';
+  String get yourOldMessagesStayOnThis => '⁧آپ کے پرانے میسجز اس فون پر رہیں گے⁩';
 
   @override
-  String get yourOtherPhonesStaySignedIn =>
-      '⁧آپ کے دوسرے فون سائن اِن رہیں گے۔ اس کے بعد آپ کو نیا ریکوری کوڈ ملے گا۔⁩';
+  String get yourOtherPhonesStaySignedIn => '⁧آپ کے دوسرے فون سائن اِن رہیں گے۔ اس کے بعد آپ کو نیا ریکوری کوڈ ملے گا۔⁩';
 
   @override
   String get yourPhone => '⁧آپ کا فون⁩';
@@ -7756,15 +7313,13 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get yourPhoneHotspotIsAlreadyOn =>
-      '⁧آپ کے فون کا ہاٹ اسپاٹ پہلے سے آن ہے، اس لیے LinkUp اپنا وائی فائی شروع نہیں کر سکتی۔ اپنے دوست کو اپنے ہاٹ اسپاٹ سے جڑنے کو کہیں، پھر اسکین کریں:⁩';
+  String get yourPhoneHotspotIsAlreadyOn => '⁧آپ کے فون کا ہاٹ اسپاٹ پہلے سے آن ہے، اس لیے LinkUp اپنا وائی فائی شروع نہیں کر سکتی۔ اپنے دوست کو اپنے ہاٹ اسپاٹ سے جڑنے کو کہیں، پھر اسکین کریں:⁩';
 
   @override
   String get yourPhoneHotspotIsOn => '⁧آپ کے فون کا ہاٹ اسپاٹ آن ہے⁩';
 
   @override
-  String get yourPhoneNumberStaysOnThis =>
-      '⁧آپ کا فون نمبر صرف اس فون پر رہتا ہے۔⁩';
+  String get yourPhoneNumberStaysOnThis => '⁧آپ کا فون نمبر صرف اس فون پر رہتا ہے۔⁩';
 
   @override
   String yourPhoneNumberWasNotSaved(Object? reason) {
@@ -7789,8 +7344,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get yourProfileIsPublicAgain => '⁧آپ کا پروفائل دوبارہ پبلک ہے⁩';
 
   @override
-  String get yourRecentLinkupCallsWillAppear =>
-      '⁧آپ کی حالیہ LinkUp کالز یہاں نظر آئیں گی۔⁩';
+  String get yourRecentLinkupCallsWillAppear => '⁧آپ کی حالیہ LinkUp کالز یہاں نظر آئیں گی۔⁩';
 
   @override
   String get yourRecoveryCode => '⁧آپ کا ریکوری کوڈ⁩';
@@ -7804,8 +7358,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get yourSessionHasExpiredPleaseLog =>
-      '⁧آپ کا سیشن ختم ہو گیا۔ براہِ کرم دوبارہ لاگ اِن کریں۔⁩';
+  String get yourSessionHasExpiredPleaseLog => '⁧آپ کا سیشن ختم ہو گیا۔ براہِ کرم دوبارہ لاگ اِن کریں۔⁩';
 
   @override
   String get yourUniqueUsername => '⁧آپ کا منفرد یوزر نیم⁩';
@@ -7882,12 +7435,10 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get madeOnAdminPhone304 =>
-      '⁧یہ درخواست ایڈمن فون پر بنائی گئی تھی۔ جواب وہیں کھلے گا۔⁩';
+  String get madeOnAdminPhone304 => '⁧یہ درخواست ایڈمن فون پر بنائی گئی تھی۔ جواب وہیں کھلے گا۔⁩';
 
   @override
-  String get waitingForPhoneOfChat304 =>
-      '⁧اس چیٹ کے کسی فون کا انتظار۔ کوئی وقت کی حد نہیں۔⁩';
+  String get waitingForPhoneOfChat304 => '⁧اس چیٹ کے کسی فون کا انتظار۔ کوئی وقت کی حد نہیں۔⁩';
 
   @override
   String get adminsLower304 => '⁧ایڈمنز⁩';
@@ -7953,15 +7504,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get serverAddressIsNotConfiguredEn304 => '⁧سرور کا ایڈریس سیٹ نہیں۔⁩';
 
   @override
-  String get noAccountMadeOfflineToSendEn304 =>
-      '⁧بھیجنے کے لیے کوئی آف لائن بنا اکاؤنٹ نہیں۔⁩';
+  String get noAccountMadeOfflineToSendEn304 => '⁧بھیجنے کے لیے کوئی آف لائن بنا اکاؤنٹ نہیں۔⁩';
 
   @override
   String get selectedImageNoLongerExistsEn304 => '⁧منتخب تصویر اب موجود نہیں⁩';
 
   @override
-  String get serverReturnedNoRecoveryCodeEn304 =>
-      '⁧سرور نے کوئی ریکوری کوڈ نہیں دیا⁩';
+  String get serverReturnedNoRecoveryCodeEn304 => '⁧سرور نے کوئی ریکوری کوڈ نہیں دیا⁩';
 
   @override
   String get adminIsNotOnForThisEn304 => '⁧اس فون کے لیے ایڈمن آن نہیں۔⁩';
@@ -7973,12 +7522,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get youCanTDoThisOnEn304 => '⁧آپ اپنے اکاؤنٹ پر یہ نہیں کر سکتے۔⁩';
 
   @override
-  String get connectToTheServerOnceToEn304 =>
-      '⁧آف لائن ایڈمن ایکشنز آن کرنے کے لیے ایک بار سرور سے کنکٹ کریں۔⁩';
+  String get connectToTheServerOnceToEn304 => '⁧آف لائن ایڈمن ایکشنز آن کرنے کے لیے ایک بار سرور سے کنکٹ کریں۔⁩';
 
   @override
-  String get finishOrCancelSomeActionsFirstEn304 =>
-      '⁧پہلے کچھ ایکشن مکمل یا منسوخ کریں⁩';
+  String get finishOrCancelSomeActionsFirstEn304 => '⁧پہلے کچھ ایکشن مکمل یا منسوخ کریں⁩';
 
   @override
   String thisPhoneDoesnTKnowSEn304(Object? v0) {
@@ -7986,8 +7533,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get thisActionIsTooBigToEn304 =>
-      '⁧یہ ایکشن بھیجنے کے لیے بہت بڑا ہے۔⁩';
+  String get thisActionIsTooBigToEn304 => '⁧یہ ایکشن بھیجنے کے لیے بہت بڑا ہے۔⁩';
 
   @override
   String get thisActionIsNotPendingEn304 => '⁧یہ ایکشن زیرِ التوا نہیں۔⁩';
@@ -7996,15 +7542,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get thisActionIsNotOnThisEn304 => '⁧یہ ایکشن اس فون پر نہیں۔⁩';
 
   @override
-  String get theseTwoAccountsAreOnTheEn304 =>
-      '⁧یہ دونوں اکاؤنٹس ایک ہی فون پر ہیں - ان کے درمیان کوئی چیٹ نہیں۔⁩';
+  String get theseTwoAccountsAreOnTheEn304 => '⁧یہ دونوں اکاؤنٹس ایک ہی فون پر ہیں - ان کے درمیان کوئی چیٹ نہیں۔⁩';
 
   @override
   String get adminActionsAreNotReadyEn304 => '⁧ایڈمن ایکشنز تیار نہیں۔⁩';
 
   @override
-  String get thisPhoneDoesnTKnowTheirEn304 =>
-      '⁧یہ فون ابھی ان کے فون نہیں جانتا۔⁩';
+  String get thisPhoneDoesnTKnowTheirEn304 => '⁧یہ فون ابھی ان کے فون نہیں جانتا۔⁩';
 
   @override
   String get openTheChatAgainFirstEn304 => '⁧پہلے چیٹ دوبارہ کھولیں۔⁩';
@@ -8013,78 +7557,61 @@ class AppLocalizationsUr extends AppLocalizations {
   String get youCanTBlockYourOwnEn304 => '⁧آپ اپنا اکاؤنٹ بلاک نہیں کر سکتے۔⁩';
 
   @override
-  String get pickThisPhoneSVersionOrEn304 =>
-      '⁧اس فون کا ورژن یا اس سے کم چنیں۔⁩';
+  String get pickThisPhoneSVersionOrEn304 => '⁧اس فون کا ورژن یا اس سے کم چنیں۔⁩';
 
   @override
-  String get connectToTheServerOnceToEn3042 =>
-      '⁧آف لائن ایڈمن آن کرنے کے لیے ایک بار سرور سے کنکٹ کریں۔⁩';
+  String get connectToTheServerOnceToEn3042 => '⁧آف لائن ایڈمن آن کرنے کے لیے ایک بار سرور سے کنکٹ کریں۔⁩';
 
   @override
-  String get onlyTheOwnerAdminCanSetEn304 =>
-      '⁧صرف اونر ایڈمن کم از کم ورژن سیٹ کر سکتا ہے۔⁩';
+  String get onlyTheOwnerAdminCanSetEn304 => '⁧صرف اونر ایڈمن کم از کم ورژن سیٹ کر سکتا ہے۔⁩';
 
   @override
-  String get noLinkupServerIsAvailableOnEn304 =>
-      '⁧مقامی نیٹ ورک پر کوئی LinkUp سرور دستیاب نہیں۔⁩';
+  String get noLinkupServerIsAvailableOnEn304 => '⁧مقامی نیٹ ورک پر کوئی LinkUp سرور دستیاب نہیں۔⁩';
 
   @override
-  String get chooseAUsernameBetween3AndEn304 =>
-      '⁧3 سے 32 حروف کا یوزر نیم چنیں۔⁩';
+  String get chooseAUsernameBetween3AndEn304 => '⁧3 سے 32 حروف کا یوزر نیم چنیں۔⁩';
 
   @override
-  String get linkupServerCouldNotBeVerifiedEn304 =>
-      '⁧LinkUp سرور کی تصدیق نہیں ہو سکی۔⁩';
+  String get linkupServerCouldNotBeVerifiedEn304 => '⁧LinkUp سرور کی تصدیق نہیں ہو سکی۔⁩';
 
   @override
-  String get linkupServerIdentityChangedEn304 =>
-      '⁧LinkUp سرور کی شناخت بدل گئی۔⁩';
+  String get linkupServerIdentityChangedEn304 => '⁧LinkUp سرور کی شناخت بدل گئی۔⁩';
 
   @override
   String get userNotFoundOrUnavailableEn304 => '⁧یوزر نہیں ملا یا دستیاب نہیں⁩';
 
   @override
-  String get contactHasNoActiveDeviceEn304 =>
-      '⁧کانٹیکٹ کی کوئی فعال ڈیوائس نہیں⁩';
+  String get contactHasNoActiveDeviceEn304 => '⁧کانٹیکٹ کی کوئی فعال ڈیوائس نہیں⁩';
 
   @override
-  String get pairAnswerWasNotSentCheckEn304 =>
-      '⁧پیئر کا جواب نہیں بھیجا جا سکا — کنکشن چیک کریں اور ان سے دوبارہ پیئر کرنے کو کہیں۔⁩';
+  String get pairAnswerWasNotSentCheckEn304 => '⁧پیئر کا جواب نہیں بھیجا جا سکا — کنکشن چیک کریں اور ان سے دوبارہ پیئر کرنے کو کہیں۔⁩';
 
   @override
   String get thisRequestHasExpiredEn304 => '⁧اس درخواست کی میعاد ختم ہو گئی۔⁩';
 
   @override
-  String get thisRequestCouldNotBeCheckedEn304 =>
-      '⁧یہ درخواست چیک نہیں ہو سکی۔⁩';
+  String get thisRequestCouldNotBeCheckedEn304 => '⁧یہ درخواست چیک نہیں ہو سکی۔⁩';
 
   @override
-  String get deviceIdentityIsNotReadyYetEn304 =>
-      '⁧ڈیوائس کی شناخت ابھی تیار نہیں⁩';
+  String get deviceIdentityIsNotReadyYetEn304 => '⁧ڈیوائس کی شناخت ابھی تیار نہیں⁩';
 
   @override
-  String get finishSettingUpYourProfileBeforeEn304 =>
-      '⁧پیئرنگ سے پہلے اپنا پروفائل مکمل کریں⁩';
+  String get finishSettingUpYourProfileBeforeEn304 => '⁧پیئرنگ سے پہلے اپنا پروفائل مکمل کریں⁩';
 
   @override
-  String get identityKeysAreNotReadyOnEn304 =>
-      '⁧اس فون پر شناختی کیز تیار نہیں — ایپ ایک بار ری اسٹارٹ کر کے دوبارہ کوشش کریں۔⁩';
+  String get identityKeysAreNotReadyOnEn304 => '⁧اس فون پر شناختی کیز تیار نہیں — ایپ ایک بار ری اسٹارٹ کر کے دوبارہ کوشش کریں۔⁩';
 
   @override
-  String get couldNotSignYourIdentityForEn304 =>
-      '⁧پیئرنگ کے لیے آپ کی شناخت پر دستخط نہیں ہو سکے۔⁩';
+  String get couldNotSignYourIdentityForEn304 => '⁧پیئرنگ کے لیے آپ کی شناخت پر دستخط نہیں ہو سکے۔⁩';
 
   @override
-  String get thisContactIsUnavailableOrBlockedEn304 =>
-      '⁧یہ کانٹیکٹ دستیاب نہیں یا بلاک ہے⁩';
+  String get thisContactIsUnavailableOrBlockedEn304 => '⁧یہ کانٹیکٹ دستیاب نہیں یا بلاک ہے⁩';
 
   @override
-  String get selectedFileIsNoLongerAvailableEn304 =>
-      '⁧منتخب فائل اب دستیاب نہیں⁩';
+  String get selectedFileIsNoLongerAvailableEn304 => '⁧منتخب فائل اب دستیاب نہیں⁩';
 
   @override
-  String get wiFiDirectTransportIsUnavailableEn304 =>
-      '⁧وائی فائی ڈائریکٹ دستیاب نہیں⁩';
+  String get wiFiDirectTransportIsUnavailableEn304 => '⁧وائی فائی ڈائریکٹ دستیاب نہیں⁩';
 
   @override
   String downloadFailedEn304(Object? v0) {
@@ -8092,8 +7619,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get noLocalLanWiFiDirectEn304 =>
-      '⁧کوئی مقامی LAN، وائی فائی ڈائریکٹ یا میش راستہ دستیاب نہیں⁩';
+  String get noLocalLanWiFiDirectEn304 => '⁧کوئی مقامی LAN، وائی فائی ڈائریکٹ یا میش راستہ دستیاب نہیں⁩';
 
   @override
   String get messageBodyIsTooLargeEn304 => '⁧میسج بہت بڑا ہے⁩';
@@ -8102,38 +7628,31 @@ class AppLocalizationsUr extends AppLocalizations {
   String get groupNotFoundEn304 => '⁧گروپ نہیں ملا⁩';
 
   @override
-  String get messageBodyMustBe16kbOrEn304 =>
-      '⁧میسج 16KB یا اس سے کم ہونا چاہیے⁩';
+  String get messageBodyMustBe16kbOrEn304 => '⁧میسج 16KB یا اس سے کم ہونا چاہیے⁩';
 
   @override
   String get messageOrAttachmentRequiredEn304 => '⁧میسج یا اٹیچمنٹ ضروری ہے⁩';
 
   @override
-  String get voiceRecordingCouldNotStartEn304 =>
-      '⁧وائس ریکارڈنگ شروع نہیں ہو سکی⁩';
+  String get voiceRecordingCouldNotStartEn304 => '⁧وائس ریکارڈنگ شروع نہیں ہو سکی⁩';
 
   @override
-  String get voiceRecordingCouldNotBeSavedEn304 =>
-      '⁧وائس ریکارڈنگ محفوظ نہیں ہو سکی⁩';
+  String get voiceRecordingCouldNotBeSavedEn304 => '⁧وائس ریکارڈنگ محفوظ نہیں ہو سکی⁩';
 
   @override
   String get voiceNoteCouldNotBeSavedEn304 => '⁧وائس نوٹ محفوظ نہیں ہو سکا⁩';
 
   @override
-  String get backupPassphraseMustBeAtLeastEn304 =>
-      '⁧بیک اپ پاس فریز کم از کم 10 حروف کا ہو⁩';
+  String get backupPassphraseMustBeAtLeastEn304 => '⁧بیک اپ پاس فریز کم از کم 10 حروف کا ہو⁩';
 
   @override
-  String get noEncryptedIdentityBackupIsAvailableEn304 =>
-      '⁧کوئی انکرپٹڈ شناختی بیک اپ دستیاب نہیں⁩';
+  String get noEncryptedIdentityBackupIsAvailableEn304 => '⁧کوئی انکرپٹڈ شناختی بیک اپ دستیاب نہیں⁩';
 
   @override
-  String get encryptedBackupBelongsToADifferentEn304 =>
-      '⁧انکرپٹڈ بیک اپ کسی اور اکاؤنٹ کا ہے⁩';
+  String get encryptedBackupBelongsToADifferentEn304 => '⁧انکرپٹڈ بیک اپ کسی اور اکاؤنٹ کا ہے⁩';
 
   @override
-  String get thisDeviceIsNotLinkedToEn304 =>
-      '⁧یہ ڈیوائس کسی LinkUp اکاؤنٹ سے جڑی نہیں⁩';
+  String get thisDeviceIsNotLinkedToEn304 => '⁧یہ ڈیوائس کسی LinkUp اکاؤنٹ سے جڑی نہیں⁩';
 
   @override
   String get fileTransferCancelledEn304 => '⁧فائل ٹرانسفر منسوخ ہو گیا⁩';
@@ -8144,8 +7663,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get invalidAdminServerResponseEn304 =>
-      '⁧ایڈمن سرور کا جواب درست نہیں۔⁩';
+  String get invalidAdminServerResponseEn304 => '⁧ایڈمن سرور کا جواب درست نہیں۔⁩';
 
   @override
   String adminRequestFailedEn304(Object? v0) {
@@ -8297,8 +7815,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get restoreDone313 => '⁧مکمل⁩';
 
   @override
-  String get noFriendsNearby313 =>
-      '⁧ابھی کوئی دوست قریب نہیں · کسی دوست کے پاس LinkUp کھولیں⁩';
+  String get noFriendsNearby313 => '⁧ابھی کوئی دوست قریب نہیں · کسی دوست کے پاس LinkUp کھولیں⁩';
 
   @override
   String gotMessagesBack313(Object? count, Object? name) {
@@ -8317,8 +7834,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get ownChat314 => '⁧آپ اس چیٹ میں ہیں۔ یہ پہلے سے آپ کے فون پر ہے۔⁩';
 
   @override
-  String get alreadyAskedText314 =>
-      '⁧اس چیٹ کی ایک درخواست پہلے سے کھلی ہے۔ پہلے اسے کھولیں یا منسوخ کریں۔⁩';
+  String get alreadyAskedText314 => '⁧اس چیٹ کی ایک درخواست پہلے سے کھلی ہے۔ پہلے اسے کھولیں یا منسوخ کریں۔⁩';
 
   @override
   String get alreadyAsked314 => '⁧پہلے ہی مانگی گئی⁩';
@@ -8584,8 +8100,7 @@ class AppLocalizationsUr extends AppLocalizations {
   String get getAllAgain318 => '⁧سب دوبارہ منگوائیں⁩';
 
   @override
-  String get getAllAgainSub318 =>
-      '⁧پوری مدت ان کے فونز سے دوبارہ آتی ہے۔ آہستہ، زیادہ بیٹری۔⁩';
+  String get getAllAgainSub318 => '⁧پوری مدت ان کے فونز سے دوبارہ آتی ہے۔ آہستہ، زیادہ بیٹری۔⁩';
 
   @override
   String viewerKept318(Object? range, Object? got) {
@@ -8673,8 +8188,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get comesByItself320 =>
-      '⁧جیسے ہی ان کا کوئی فون آن لائن یا آپ کے قریب ہو، چیٹ خود آ جائے گی۔ کوئی وقت کی حد نہیں۔⁩';
+  String get comesByItself320 => '⁧جیسے ہی ان کا کوئی فون آن لائن یا آپ کے قریب ہو، چیٹ خود آ جائے گی۔ کوئی وقت کی حد نہیں۔⁩';
 
   @override
   String get youWord320 => '⁧آپ⁩';
@@ -8723,8 +8237,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get loginL01_321 =>
-      '⁧اس وائی فائی پر کسی LinkUp سرور نے جواب نہیں دیا۔ دیکھیں کہ سرور والا کمپیوٹر آن ہے اور یہ فون اسی وائی فائی پر ہے۔⁩';
+  String get loginL01_321 => '⁧اس وائی فائی پر کسی LinkUp سرور نے جواب نہیں دیا۔ دیکھیں کہ سرور والا کمپیوٹر آن ہے اور یہ فون اسی وائی فائی پر ہے۔⁩';
 
   @override
   String loginL02a_321(Object? address) {
@@ -8732,8 +8245,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get loginL02b_321 =>
-      '⁧سرور والا کمپیوٹر جواب نہیں دے رہا۔ دوبارہ کوشش کریں۔⁩';
+  String get loginL02b_321 => '⁧سرور والا کمپیوٹر جواب نہیں دے رہا۔ دوبارہ کوشش کریں۔⁩';
 
   @override
   String loginL02c_321(Object? address) {
@@ -8744,15 +8256,13 @@ class AppLocalizationsUr extends AppLocalizations {
   String get loginL03_321 => '⁧یوزر نیم یا پاس ورڈ غلط ہے۔⁩';
 
   @override
-  String get loginL04_321 =>
-      '⁧بہت زیادہ غلط کوششیں۔ یہ اکاؤنٹ چند منٹ کے لیے بند ہے۔⁩';
+  String get loginL04_321 => '⁧بہت زیادہ غلط کوششیں۔ یہ اکاؤنٹ چند منٹ کے لیے بند ہے۔⁩';
 
   @override
   String get loginL05_321 => '⁧اس فون سے بہت زیادہ کوششیں۔ 1 منٹ انتظار کریں۔⁩';
 
   @override
-  String get loginL06_321 =>
-      '⁧یہ وہ سرور نہیں جسے یہ فون جانتا ہے۔ ایڈمن سے پوچھیں۔⁩';
+  String get loginL06_321 => '⁧یہ وہ سرور نہیں جسے یہ فون جانتا ہے۔ ایڈمن سے پوچھیں۔⁩';
 
   @override
   String get loginL07_321 => '⁧پہلے ایڈمن کو یہ فون جوڑنا ہوگا۔⁩';
@@ -8774,8 +8284,7 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get loginL12_321 =>
-      '⁧سرور مل گیا مگر سائن ان مکمل نہیں ہوا۔ دوبارہ کوشش کریں۔⁩';
+  String get loginL12_321 => '⁧سرور مل گیا مگر سائن ان مکمل نہیں ہوا۔ دوبارہ کوشش کریں۔⁩';
 
   @override
   String loginL13_321(Object? reason) {
@@ -8793,16 +8302,13 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
-  String get offlineNoCopy321 =>
-      '⁧اس فون پر آف لائن کھولنے کے لیے کوئی محفوظ سائن ان نہیں۔⁩';
+  String get offlineNoCopy321 => '⁧اس فون پر آف لائن کھولنے کے لیے کوئی محفوظ سائن ان نہیں۔⁩';
 
   @override
-  String get offlineOtherUser321 =>
-      '⁧آف لائن یہ فون صرف وہی اکاؤنٹ کھولتا ہے جو اس پر آخری بار استعمال ہوا۔⁩';
+  String get offlineOtherUser321 => '⁧آف لائن یہ فون صرف وہی اکاؤنٹ کھولتا ہے جو اس پر آخری بار استعمال ہوا۔⁩';
 
   @override
-  String get offlineBadPassword321 =>
-      '⁧آف لائن، یوزر نیم اور پاس ورڈ اس فون پر محفوظ کاپی سے نہیں ملتے۔⁩';
+  String get offlineBadPassword321 => '⁧آف لائن، یوزر نیم اور پاس ورڈ اس فون پر محفوظ کاپی سے نہیں ملتے۔⁩';
 
   @override
   String get loginStepSearch321 => '⁧سرور تلاش ہو رہا ہے…⁩';
@@ -8890,12 +8396,10 @@ class AppLocalizationsUr extends AppLocalizations {
   String get videos324 => '⁧ویڈیوز⁩';
 
   @override
-  String get videosComeAsAThumbnailOnly324 =>
-      '⁧ویڈیوز صرف تصویر کی صورت میں آئیں گی⁩';
+  String get videosComeAsAThumbnailOnly324 => '⁧ویڈیوز صرف تصویر کی صورت میں آئیں گی⁩';
 
   @override
-  String get sizesAppearWhenThePhoneAnswers324 =>
-      '⁧سائز اُس وقت نظر آئیں گے جب فون جواب دے⁩';
+  String get sizesAppearWhenThePhoneAnswers324 => '⁧سائز اُس وقت نظر آئیں گے جب فون جواب دے⁩';
 
   @override
   String askedAgo324(String ago) {
