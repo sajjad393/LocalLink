@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
 import 'package:locallink/features/admin/data/actions/request_scope_324.dart';
+import 'package:locallink/features/admin/data/actions/waiting_325.dart'; // Bundle 325
 import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/core/network/build_http.dart' show BuildHeaderClient;
 import 'package:locallink/core/services/app_logger.dart';
@@ -597,6 +598,10 @@ class ChatRequestRow221 {
   /// Bundle 318 (K3): opens the kept copy only (a range inside it; no request).
   final bool inside318;
 
+  /// Bundle 325: asked while their phone was away - it waits here and goes by
+  /// itself the moment that phone is reachable.
+  final bool waiting325;
+
   const ChatRequestRow221({
     required this.id,
     required this.action,
@@ -626,6 +631,7 @@ class ChatRequestRow221 {
     this.sinceAt318 = '',
     this.keptUntil318 = '',
     this.inside318 = false,
+    this.waiting325 = false,
   });
 
   /// Bundle 318: the same row with the kept-copy facts of this phone.
@@ -1217,6 +1223,13 @@ class ChatRequests221 {
   Future<List<ChatRequestRow221>> savedRequests321() => _rows321(ask: false);
 
   Future<List<ChatRequestRow221>> _rows321({bool ask = true}) async {
+    // Bundle 325: every card check is also a chance to deliver a Waiting ask
+    // (at most one attempt a minute, see fireWaiting325).
+    if (ask) {
+      try {
+        await fireWaiting325();
+      } catch (_) {}
+    }
     final out = <String, ChatRequestRow221>{};
     final token = ask ? await _token() : null;
     if (token != null && serverOnline()) {
@@ -1234,6 +1247,7 @@ class ChatRequests221 {
     try {
       all = await progressAll?.call();
     } catch (_) {}
+    final waitingIds325 = {for (final w in await waitingAll325()) w.id};
     for (final m in await _saved()) {
       final id = m['id']?.toString() ?? '';
       if (id.isEmpty) continue;
@@ -1257,6 +1271,7 @@ class ChatRequests221 {
         from: m['from']?.toString() ?? '',
         to: m['to']?.toString() ?? '',
         empty: (st?.emptyAll ?? false) || (known?.empty ?? false),
+        waiting325: waitingIds325.contains(id), // Bundle 325
         phones: (st?.phones ?? 0) > 0 ? st!.phones : known?.phones ?? 0,
         reached: (st?.reached ?? 0) > (known?.reached ?? 0) ? st!.reached : known?.reached ?? 0,
         fromName: known?.fromName ?? '',
@@ -1401,16 +1416,22 @@ class ChatRequests221 {
       AppLogger.info('GET_CHAT_FAIL323', detail: 'why=own_devices group=${pick.isGroup}');
       throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314); // Bundle 314 (1)
     }
+    final chatKey325 = RequestScope324.chatKeyOfPick(pick);
     if (who.targets.isEmpty) {
-      // Bundle 323 (P3): the 17 Nov dead end - a group on screen whose phones
-      // this phone never learned. Was a silent StateError with no log line.
+      // Bundle 323 (P3) found the dead end; Bundle 325 ends it. Nothing is
+      // thrown away: the ask is saved on this phone and shows as Waiting.
+      // Bundle 323's words are kept as the row's words (offline, no server).
       final off323 = !serverOnline();
-      AppLogger.info('GET_CHAT_FAIL323',
-          detail: 'why=targets_empty group=${pick.isGroup} server=${!off323} words=${off323 ? 'server_off' : 'unknown'}');
-      // Bundle 323 (P5): with the server off the old sentence was a dead end
-      // that said nothing about why (the phones live in the server's group
-      // list). Say it in the words we already use for an off server.
-      throw StateError(unknownPhonesWords323(group: pick.isGroup, serverOff: off323));
+      return _waitHere325(
+        pick,
+        chatKey: chatKey325,
+        range: range,
+        from: r.from,
+        to: r.to,
+        types: with324?.toList(),
+        words: unknownPhonesWords323(group: pick.isGroup, serverOff: off323),
+        why: 'targets_empty server=${!off323}',
+      );
     }
     final detail = {
       'chat': who.chat,
@@ -1420,16 +1441,33 @@ class ChatRequests221 {
       ...since318,
       if (with324 != null) 'with': with324.toList()..sort(), // Bundle 324
     };
-    final id = await svc.make(
-      action: 'get_chat',
-      targetUserId: '',
-      label: pick.label,
-      targetDevices: who.targets,
-      detail: detail,
-      words: 'Get chat \u00b7 ${r.words}',
-      replyKey: await myBoxKey(),
-      need: 1,
-    );
+    final String id;
+    try {
+      id = await svc.make(
+        action: 'get_chat',
+        targetUserId: '',
+        label: pick.label,
+        targetDevices: who.targets,
+        detail: detail,
+        words: 'Get chat \u00b7 ${r.words}',
+        replyKey: await myBoxKey(),
+        need: 1,
+      );
+    } catch (_) {
+      // Bundle 325: the phones were listed but the card could not be made.
+      // Same rule - the ask waits here instead of being lost.
+      return _waitHere325(
+        pick,
+        chatKey: chatKey325,
+        range: range,
+        from: r.from,
+        to: r.to,
+        types: with324?.toList(),
+        words: unknownPhonesWords323(group: pick.isGroup, serverOff: !serverOnline()),
+        why: 'make_failed',
+      );
+    }
+    await waitingDrop325(chatKey325); // 325: a real send clears its Waiting twin
     await RequestScope324.remember(id,
         chatKey: RequestScope324.chatKeyOfPick(pick), types: with324);
     await _remember(ChatRequestRow221(
@@ -1444,6 +1482,193 @@ class ChatRequests221 {
         offline: true));
     changed307?.call();
     return id;
+  }
+
+  // ------------------------------------------------------- 325: Waiting asks
+
+  /// Bundle 325: where the Waiting asks live (this phone only, no server).
+  static const String waitingKey325 = 'waiting_ask_325';
+  static const int maxWaiting325 = 100;
+
+  /// One attempt a minute at most, however often the card refreshes.
+  static const Duration fireGap325 = Duration(seconds: 60);
+  DateTime? _lastFire325;
+  bool _firing325 = false;
+
+  Future<List<WaitingAsk325>> waitingAll325() async {
+    try {
+      return WaitingAsk325.listFrom(await read(waitingKey325));
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _waitingSave325(List<WaitingAsk325> list) async {
+    try {
+      await write(waitingKey325, WaitingAsk325.encode(list.take(maxWaiting325).toList()));
+    } catch (_) {
+      // No store (tests, first run): the row still shows on this screen.
+    }
+  }
+
+  /// Bundle 325: a real send (or a Stop) clears the Waiting twin of that chat.
+  Future<void> waitingDrop325(String idOrChatKey) async {
+    final all = await waitingAll325();
+    final kept = [
+      for (final w in all)
+        if (w.id != idOrChatKey && w.chatKey != idOrChatKey) w,
+    ];
+    if (kept.length != all.length) await _waitingSave325(kept);
+  }
+
+  ChatPick221? _pickOf325(WaitingAsk325 w) {
+    final p = w.pick;
+    if (p['kind'] == 'group') {
+      final g = p['group_id']?.toString() ?? '';
+      return g.isEmpty ? null : ChatPick221.group(g, label: w.label);
+    }
+    final a = p['user_a']?.toString() ?? '';
+    final b = p['user_b']?.toString() ?? '';
+    return a.isEmpty || b.isEmpty ? null : ChatPick221.direct(a, b, label: w.label);
+  }
+
+  /// Bundle 325: save an ask that could not go out now, and show it as Waiting.
+  /// One per chat (the 324 key), so a second tap opens the same card.
+  Future<String> _waitHere325(
+    ChatPick221 pick, {
+    required String chatKey,
+    required String range,
+    required String from,
+    required String to,
+    required String words,
+    required String why,
+    List<String>? types,
+  }) async {
+    final now = _clock().toUtc();
+    final id = 'w325-${now.millisecondsSinceEpoch}';
+    final all = await waitingAll325()..removeWhere((w) => w.chatKey == chatKey || w.id == id);
+    all.insert(
+      0,
+      WaitingAsk325(
+        id: id,
+        chatKey: chatKey,
+        pick: pick.toServer(),
+        madeAt: now.toIso8601String(),
+        label: pick.label,
+        range: range,
+        from: from,
+        to: to,
+        types: types ?? const [],
+      ),
+    );
+    await _waitingSave325(all);
+    await RequestScope324.remember(id,
+        chatKey: chatKey, types: types == null ? null : types.toSet());
+    await _remember(ChatRequestRow221(
+      id: id,
+      action: 'get_chat',
+      label: pick.label,
+      words: words,
+      madeAt: now.toIso8601String(),
+      from: from,
+      to: to,
+      offline: true,
+      waiting325: true,
+    ));
+    AppLogger.info('GET_CHAT_WAIT325', detail: 'why=$why group=${pick.isGroup}');
+    changed307?.call();
+    return id;
+  }
+
+  Future<void> _forgetSaved325(String id) async {
+    final all = await _saved();
+    final kept = [
+      for (final m in all)
+        if (m['id']?.toString() != id) m,
+    ];
+    if (kept.length != all.length) await write(savedKey, jsonEncode(kept));
+  }
+
+  /// Bundle 325: try every Waiting ask once. Called from the card refresh (so
+  /// on app start and every check while the app is open), never faster than
+  /// [fireGap325]. Returns how many went out.
+  ///
+  /// Nothing here needs a server: it is this phone reaching the other phone.
+  Future<int> fireWaiting325({bool force = false}) async {
+    if (_firing325) return 0;
+    final svc = actions;
+    if (svc == null) return 0;
+    final now = _clock();
+    final last = _lastFire325;
+    if (!force && last != null && now.difference(last) < fireGap325) return 0;
+    final all = await waitingAll325();
+    if (all.isEmpty) return 0;
+    _firing325 = true;
+    _lastFire325 = now;
+    var sent = 0;
+    try {
+      for (final w in all) {
+        final pick = _pickOf325(w);
+        if (pick == null) continue;
+        try {
+          final who = await _resolve(pick);
+          if (who.meIn || who.targets.isEmpty) {
+            await _bumpTry325(w);
+            continue;
+          }
+          final id = await svc.make(
+            action: 'get_chat',
+            targetUserId: '',
+            label: w.label.isNotEmpty ? w.label : pick.label,
+            targetDevices: who.targets,
+            detail: {
+              'chat': who.chat,
+              'from': w.from,
+              'to': w.to,
+              'plus_day': true,
+              if (w.types.isNotEmpty) 'with': [...w.types]..sort(),
+            },
+            words: 'Get chat \u00b7 ${w.range}',
+            replyKey: await myBoxKey(),
+            need: 1,
+          );
+          await RequestScope324.remember(id,
+              chatKey: w.chatKey,
+              types: w.types.isEmpty ? null : w.types.toSet());
+          await _forgetSaved325(w.id);
+          await waitingDrop325(w.id);
+          await _remember(ChatRequestRow221(
+            id: id,
+            action: 'get_chat',
+            label: w.label,
+            words: w.range,
+            madeAt: w.madeAt,
+            chat: who.chat,
+            from: w.from,
+            to: w.to,
+            offline: true,
+          ));
+          await _markMine307(id);
+          sent++;
+          AppLogger.info('GET_CHAT_WAIT325_SENT',
+              detail: 'tries=${w.tries + 1} group=${pick.isGroup}');
+        } catch (_) {
+          await _bumpTry325(w);
+        }
+      }
+    } finally {
+      _firing325 = false;
+      if (sent > 0) changed307?.call();
+    }
+    return sent;
+  }
+
+  Future<void> _bumpTry325(WaitingAsk325 w) async {
+    final all = await waitingAll325();
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].id == w.id) all[i] = all[i].tried();
+    }
+    await _waitingSave325(all);
   }
 
   /// Bundle 324 (6.7): `Get photos` / `Get videos` on a ready row - the same

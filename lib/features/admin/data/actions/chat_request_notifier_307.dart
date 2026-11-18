@@ -259,7 +259,7 @@ class ChatRequestNotifier307 {
               (trip.active || !r.opened)
           ? true
           : switch (st.step) {
-        Step307.sent || Step307.reached || Step307.coming => true,
+        Step307.waiting || Step307.sent || Step307.reached || Step307.coming => true,
         // Ready: until opened / closed; not again after a restart once it buzzed.
         Step307.ready => !r.opened && !r.closed && (_shown.containsKey(r.id) || !buzzed.contains(r.id)),
         // No messages: once, and only for a card that was running here.
@@ -444,6 +444,8 @@ class ChatRequestNotifier307 {
       return '$n \u00b7 ${f.here}/${f.wanted}$more';
     }
     return switch (st.step) {
+      // Bundle 325: a waiting ask says so; it has not left this phone yet.
+      Step307.waiting => '$n \u00b7 ${L.t.waiting325}$more',
       Step307.sent || Step307.reached => '$n \u00b7 ${L.t.waitingShort321}$more',
       Step307.coming => '$n \u00b7 ${st.short}$more',
       Step307.ready when r.newOnly318 && st.upToDate => '$n \u00b7 ${L.t.upToDate318}',

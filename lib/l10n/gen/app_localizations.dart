@@ -15047,6 +15047,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'videos not asked'**
   String get videosNotAsked324;
+
+  /// No description provided for @waiting325.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting'**
+  String get waiting325;
+
+  /// No description provided for @askedAgo325.
+  ///
+  /// In en, this message translates to:
+  /// **'asked {when}'**
+  String askedAgo325(Object? when);
+
+  /// No description provided for @goesWhenNear325.
+  ///
+  /// In en, this message translates to:
+  /// **'goes the moment their phone is near'**
+  String get goesWhenNear325;
 }
 
 class _AppLocalizationsDelegate

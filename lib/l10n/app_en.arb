@@ -6396,5 +6396,15 @@
   "@nRequests324": {"placeholders": {"n": {"type": "int"}}},
   "filesTakeTurns324": "Files take turns, 2 at a time",
   "getPhotos324": "Get photos",
-  "videosNotAsked324": "videos not asked"
+  "videosNotAsked324": "videos not asked",
+  "waiting325": "Waiting",
+  "askedAgo325": "asked {when}",
+  "@askedAgo325": {
+    "placeholders": {
+      "when": {
+        "type": "Object?"
+      }
+    }
+  },
+  "goesWhenNear325": "goes the moment their phone is near"
 }

@@ -53,14 +53,14 @@ class K307 {
 
   /// Fill / text colour of a step.
   Color stepColor(Step307 s) => switch (s) {
-        Step307.sent || Step307.reached => orange,
+        Step307.waiting || Step307.sent || Step307.reached => orange,
         Step307.coming => blue,
         Step307.ready => ok,
         _ => muted,
       };
 
   (Color, Color) chipColors(Step307 s) => switch (s) {
-        Step307.sent || Step307.reached => (orangeSoft, orange),
+        Step307.waiting || Step307.sent || Step307.reached => (orangeSoft, orange),
         Step307.coming => (blueSoft, blueText),
         Step307.ready => (greenSoft, green),
         _ => (mutedSoft, grey),

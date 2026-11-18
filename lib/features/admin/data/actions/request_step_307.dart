@@ -1,6 +1,7 @@
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
 import 'package:locallink/features/admin/data/actions/kept_copy_318.dart';
+import 'package:locallink/features/admin/data/actions/waiting_325.dart'; // Bundle 325
 import 'package:locallink/l10n/l10n.dart';
 
 /// Bundle 307 (TODO_307 B1 / C0): one place that turns a Get chat request
@@ -17,7 +18,9 @@ import 'package:locallink/l10n/l10n.dart';
 ///
 /// [progress] is where the marker rides on the track: start 4, Reached 33,
 /// parts 66 -> 100, Ready 100.
-enum Step307 { sent, reached, coming, ready, empty, cancelled }
+/// Bundle 325: [waiting] = asked while their phone was away; it goes by
+/// itself the moment that phone is reachable.
+enum Step307 { waiting, sent, reached, coming, ready, empty, cancelled }
 
 class RequestStep307 {
   const RequestStep307({
@@ -65,12 +68,16 @@ class RequestStep307 {
   final int count;
 
   String get big => '$bigBefore$highlight$bigAfter';
-  bool get active => step == Step307.sent || step == Step307.reached || step == Step307.coming;
+  bool get active =>
+      step == Step307.waiting ||
+      step == Step307.sent ||
+      step == Step307.reached ||
+      step == Step307.coming;
   bool get finished => !active;
 
   /// The stop (1 = Reached, 2 = Answer, 3 = Ready) the request has passed.
   int get stopsDone => switch (step) {
-        Step307.sent || Step307.cancelled => 0,
+        Step307.waiting || Step307.sent || Step307.cancelled => 0,
         Step307.reached => 1,
         Step307.coming || Step307.empty => 2,
         Step307.ready => 3,
@@ -109,6 +116,28 @@ class RequestStep307 {
         chip: t.noMessages,
         short: '\u2013',
         live: false,
+        count: -1,
+      );
+    }
+    if (r.waiting325) {
+      // Bundle 325: nothing has left this phone yet - say so, and say it will
+      // go by itself. Amber, no buzz, nothing expires.
+      final age = WaitingAsk325.ageMinutes(r.madeAt, DateTime.now());
+      final when = age < 60
+          ? t.minAgo(age)
+          : Kept318.shortWhen(r.madeAt, DateTime.now());
+      return RequestStep307(
+        step: Step307.waiting,
+        progress: startAt,
+        ring: '\u2026',
+        ringFill: 0.05,
+        bigBefore: '',
+        highlight: t.waiting325,
+        bigAfter: '',
+        sub: '${t.askedAgo325(when)} \u00b7 ${t.goesWhenNear325}',
+        chip: t.waiting325,
+        short: t.waiting325,
+        live: true,
         count: -1,
       );
     }

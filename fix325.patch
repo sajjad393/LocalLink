@@ -1,0 +1,956 @@
+diff --git a/lib/core/config/app_build.dart b/lib/core/config/app_build.dart
+index 1ae78ea..5920ce1 100644
+--- a/lib/core/config/app_build.dart
++++ b/lib/core/config/app_build.dart
+@@ -4,8 +4,8 @@
+ // plain `flutter build apk`, so it can't be trusted. These two constants are
+ // kept equal to pubspec.yaml `version:` (a test checks it).
+ 
+-const int kAppBuild = 189;
+-const String kAppVersion = '3.0.118';
++const int kAppBuild = 190;
++const String kAppVersion = '3.0.119';
+ 
+ /// HTTP header + socket header with the build (server version gate).
+ const String kAppBuildHeader = 'X-LinkUp-Build';
+diff --git a/lib/features/admin/data/actions/chat_answer_reader.dart b/lib/features/admin/data/actions/chat_answer_reader.dart
+index 10ca156..483e140 100644
+--- a/lib/features/admin/data/actions/chat_answer_reader.dart
++++ b/lib/features/admin/data/actions/chat_answer_reader.dart
+@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
+ import 'package:http/http.dart' as http;
+ import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
+ import 'package:locallink/features/admin/data/actions/request_scope_324.dart';
++import 'package:locallink/features/admin/data/actions/waiting_325.dart'; // Bundle 325
+ import 'package:locallink/core/utils/phone_label_255.dart';
+ import 'package:locallink/core/network/build_http.dart' show BuildHeaderClient;
+ import 'package:locallink/core/services/app_logger.dart';
+@@ -597,6 +598,10 @@ class ChatRequestRow221 {
+   /// Bundle 318 (K3): opens the kept copy only (a range inside it; no request).
+   final bool inside318;
+ 
++  /// Bundle 325: asked while their phone was away - it waits here and goes by
++  /// itself the moment that phone is reachable.
++  final bool waiting325;
++
+   const ChatRequestRow221({
+     required this.id,
+     required this.action,
+@@ -626,6 +631,7 @@ class ChatRequestRow221 {
+     this.sinceAt318 = '',
+     this.keptUntil318 = '',
+     this.inside318 = false,
++    this.waiting325 = false,
+   });
+ 
+   /// Bundle 318: the same row with the kept-copy facts of this phone.
+@@ -1217,6 +1223,13 @@ class ChatRequests221 {
+   Future<List<ChatRequestRow221>> savedRequests321() => _rows321(ask: false);
+ 
+   Future<List<ChatRequestRow221>> _rows321({bool ask = true}) async {
++    // Bundle 325: every card check is also a chance to deliver a Waiting ask
++    // (at most one attempt a minute, see fireWaiting325).
++    if (ask) {
++      try {
++        await fireWaiting325();
++      } catch (_) {}
++    }
+     final out = <String, ChatRequestRow221>{};
+     final token = ask ? await _token() : null;
+     if (token != null && serverOnline()) {
+@@ -1234,6 +1247,7 @@ class ChatRequests221 {
+     try {
+       all = await progressAll?.call();
+     } catch (_) {}
++    final waitingIds325 = {for (final w in await waitingAll325()) w.id};
+     for (final m in await _saved()) {
+       final id = m['id']?.toString() ?? '';
+       if (id.isEmpty) continue;
+@@ -1257,6 +1271,7 @@ class ChatRequests221 {
+         from: m['from']?.toString() ?? '',
+         to: m['to']?.toString() ?? '',
+         empty: (st?.emptyAll ?? false) || (known?.empty ?? false),
++        waiting325: waitingIds325.contains(id), // Bundle 325
+         phones: (st?.phones ?? 0) > 0 ? st!.phones : known?.phones ?? 0,
+         reached: (st?.reached ?? 0) > (known?.reached ?? 0) ? st!.reached : known?.reached ?? 0,
+         fromName: known?.fromName ?? '',
+@@ -1401,16 +1416,22 @@ class ChatRequests221 {
+       AppLogger.info('GET_CHAT_FAIL323', detail: 'why=own_devices group=${pick.isGroup}');
+       throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314); // Bundle 314 (1)
+     }
++    final chatKey325 = RequestScope324.chatKeyOfPick(pick);
+     if (who.targets.isEmpty) {
+-      // Bundle 323 (P3): the 17 Nov dead end - a group on screen whose phones
+-      // this phone never learned. Was a silent StateError with no log line.
++      // Bundle 323 (P3) found the dead end; Bundle 325 ends it. Nothing is
++      // thrown away: the ask is saved on this phone and shows as Waiting.
++      // Bundle 323's words are kept as the row's words (offline, no server).
+       final off323 = !serverOnline();
+-      AppLogger.info('GET_CHAT_FAIL323',
+-          detail: 'why=targets_empty group=${pick.isGroup} server=${!off323} words=${off323 ? 'server_off' : 'unknown'}');
+-      // Bundle 323 (P5): with the server off the old sentence was a dead end
+-      // that said nothing about why (the phones live in the server's group
+-      // list). Say it in the words we already use for an off server.
+-      throw StateError(unknownPhonesWords323(group: pick.isGroup, serverOff: off323));
++      return _waitHere325(
++        pick,
++        chatKey: chatKey325,
++        range: range,
++        from: r.from,
++        to: r.to,
++        types: with324?.toList(),
++        words: unknownPhonesWords323(group: pick.isGroup, serverOff: off323),
++        why: 'targets_empty server=${!off323}',
++      );
+     }
+     final detail = {
+       'chat': who.chat,
+@@ -1420,16 +1441,33 @@ class ChatRequests221 {
+       ...since318,
+       if (with324 != null) 'with': with324.toList()..sort(), // Bundle 324
+     };
+-    final id = await svc.make(
+-      action: 'get_chat',
+-      targetUserId: '',
+-      label: pick.label,
+-      targetDevices: who.targets,
+-      detail: detail,
+-      words: 'Get chat \u00b7 ${r.words}',
+-      replyKey: await myBoxKey(),
+-      need: 1,
+-    );
++    final String id;
++    try {
++      id = await svc.make(
++        action: 'get_chat',
++        targetUserId: '',
++        label: pick.label,
++        targetDevices: who.targets,
++        detail: detail,
++        words: 'Get chat \u00b7 ${r.words}',
++        replyKey: await myBoxKey(),
++        need: 1,
++      );
++    } catch (_) {
++      // Bundle 325: the phones were listed but the card could not be made.
++      // Same rule - the ask waits here instead of being lost.
++      return _waitHere325(
++        pick,
++        chatKey: chatKey325,
++        range: range,
++        from: r.from,
++        to: r.to,
++        types: with324?.toList(),
++        words: unknownPhonesWords323(group: pick.isGroup, serverOff: !serverOnline()),
++        why: 'make_failed',
++      );
++    }
++    await waitingDrop325(chatKey325); // 325: a real send clears its Waiting twin
+     await RequestScope324.remember(id,
+         chatKey: RequestScope324.chatKeyOfPick(pick), types: with324);
+     await _remember(ChatRequestRow221(
+@@ -1446,6 +1484,193 @@ class ChatRequests221 {
+     return id;
+   }
+ 
++  // ------------------------------------------------------- 325: Waiting asks
++
++  /// Bundle 325: where the Waiting asks live (this phone only, no server).
++  static const String waitingKey325 = 'waiting_ask_325';
++  static const int maxWaiting325 = 100;
++
++  /// One attempt a minute at most, however often the card refreshes.
++  static const Duration fireGap325 = Duration(seconds: 60);
++  DateTime? _lastFire325;
++  bool _firing325 = false;
++
++  Future<List<WaitingAsk325>> waitingAll325() async {
++    try {
++      return WaitingAsk325.listFrom(await read(waitingKey325));
++    } catch (_) {
++      return const [];
++    }
++  }
++
++  Future<void> _waitingSave325(List<WaitingAsk325> list) async {
++    try {
++      await write(waitingKey325, WaitingAsk325.encode(list.take(maxWaiting325).toList()));
++    } catch (_) {
++      // No store (tests, first run): the row still shows on this screen.
++    }
++  }
++
++  /// Bundle 325: a real send (or a Stop) clears the Waiting twin of that chat.
++  Future<void> waitingDrop325(String idOrChatKey) async {
++    final all = await waitingAll325();
++    final kept = [
++      for (final w in all)
++        if (w.id != idOrChatKey && w.chatKey != idOrChatKey) w,
++    ];
++    if (kept.length != all.length) await _waitingSave325(kept);
++  }
++
++  ChatPick221? _pickOf325(WaitingAsk325 w) {
++    final p = w.pick;
++    if (p['kind'] == 'group') {
++      final g = p['group_id']?.toString() ?? '';
++      return g.isEmpty ? null : ChatPick221.group(g, label: w.label);
++    }
++    final a = p['user_a']?.toString() ?? '';
++    final b = p['user_b']?.toString() ?? '';
++    return a.isEmpty || b.isEmpty ? null : ChatPick221.direct(a, b, label: w.label);
++  }
++
++  /// Bundle 325: save an ask that could not go out now, and show it as Waiting.
++  /// One per chat (the 324 key), so a second tap opens the same card.
++  Future<String> _waitHere325(
++    ChatPick221 pick, {
++    required String chatKey,
++    required String range,
++    required String from,
++    required String to,
++    required String words,
++    required String why,
++    List<String>? types,
++  }) async {
++    final now = _clock().toUtc();
++    final id = 'w325-${now.millisecondsSinceEpoch}';
++    final all = await waitingAll325()..removeWhere((w) => w.chatKey == chatKey || w.id == id);
++    all.insert(
++      0,
++      WaitingAsk325(
++        id: id,
++        chatKey: chatKey,
++        pick: pick.toServer(),
++        madeAt: now.toIso8601String(),
++        label: pick.label,
++        range: range,
++        from: from,
++        to: to,
++        types: types ?? const [],
++      ),
++    );
++    await _waitingSave325(all);
++    await RequestScope324.remember(id,
++        chatKey: chatKey, types: types == null ? null : types.toSet());
++    await _remember(ChatRequestRow221(
++      id: id,
++      action: 'get_chat',
++      label: pick.label,
++      words: words,
++      madeAt: now.toIso8601String(),
++      from: from,
++      to: to,
++      offline: true,
++      waiting325: true,
++    ));
++    AppLogger.info('GET_CHAT_WAIT325', detail: 'why=$why group=${pick.isGroup}');
++    changed307?.call();
++    return id;
++  }
++
++  Future<void> _forgetSaved325(String id) async {
++    final all = await _saved();
++    final kept = [
++      for (final m in all)
++        if (m['id']?.toString() != id) m,
++    ];
++    if (kept.length != all.length) await write(savedKey, jsonEncode(kept));
++  }
++
++  /// Bundle 325: try every Waiting ask once. Called from the card refresh (so
++  /// on app start and every check while the app is open), never faster than
++  /// [fireGap325]. Returns how many went out.
++  ///
++  /// Nothing here needs a server: it is this phone reaching the other phone.
++  Future<int> fireWaiting325({bool force = false}) async {
++    if (_firing325) return 0;
++    final svc = actions;
++    if (svc == null) return 0;
++    final now = _clock();
++    final last = _lastFire325;
++    if (!force && last != null && now.difference(last) < fireGap325) return 0;
++    final all = await waitingAll325();
++    if (all.isEmpty) return 0;
++    _firing325 = true;
++    _lastFire325 = now;
++    var sent = 0;
++    try {
++      for (final w in all) {
++        final pick = _pickOf325(w);
++        if (pick == null) continue;
++        try {
++          final who = await _resolve(pick);
++          if (who.meIn || who.targets.isEmpty) {
++            await _bumpTry325(w);
++            continue;
++          }
++          final id = await svc.make(
++            action: 'get_chat',
++            targetUserId: '',
++            label: w.label.isNotEmpty ? w.label : pick.label,
++            targetDevices: who.targets,
++            detail: {
++              'chat': who.chat,
++              'from': w.from,
++              'to': w.to,
++              'plus_day': true,
++              if (w.types.isNotEmpty) 'with': [...w.types]..sort(),
++            },
++            words: 'Get chat \u00b7 ${w.range}',
++            replyKey: await myBoxKey(),
++            need: 1,
++          );
++          await RequestScope324.remember(id,
++              chatKey: w.chatKey,
++              types: w.types.isEmpty ? null : w.types.toSet());
++          await _forgetSaved325(w.id);
++          await waitingDrop325(w.id);
++          await _remember(ChatRequestRow221(
++            id: id,
++            action: 'get_chat',
++            label: w.label,
++            words: w.range,
++            madeAt: w.madeAt,
++            chat: who.chat,
++            from: w.from,
++            to: w.to,
++            offline: true,
++          ));
++          await _markMine307(id);
++          sent++;
++          AppLogger.info('GET_CHAT_WAIT325_SENT',
++              detail: 'tries=${w.tries + 1} group=${pick.isGroup}');
++        } catch (_) {
++          await _bumpTry325(w);
++        }
++      }
++    } finally {
++      _firing325 = false;
++      if (sent > 0) changed307?.call();
++    }
++    return sent;
++  }
++
++  Future<void> _bumpTry325(WaitingAsk325 w) async {
++    final all = await waitingAll325();
++    for (var i = 0; i < all.length; i++) {
++      if (all[i].id == w.id) all[i] = all[i].tried();
++    }
++    await _waitingSave325(all);
++  }
++
+   /// Bundle 324 (6.7): `Get photos` / `Get videos` on a ready row - the same
+   /// request asks for the kinds it skipped. Returns the kinds it now asks
+   /// for (unchanged when there was nothing to add).
+diff --git a/lib/features/admin/data/actions/chat_request_notifier_307.dart b/lib/features/admin/data/actions/chat_request_notifier_307.dart
+index 8499f81..858f35c 100644
+--- a/lib/features/admin/data/actions/chat_request_notifier_307.dart
++++ b/lib/features/admin/data/actions/chat_request_notifier_307.dart
+@@ -259,7 +259,7 @@ class ChatRequestNotifier307 {
+               (trip.active || !r.opened)
+           ? true
+           : switch (st.step) {
+-        Step307.sent || Step307.reached || Step307.coming => true,
++        Step307.waiting || Step307.sent || Step307.reached || Step307.coming => true,
+         // Ready: until opened / closed; not again after a restart once it buzzed.
+         Step307.ready => !r.opened && !r.closed && (_shown.containsKey(r.id) || !buzzed.contains(r.id)),
+         // No messages: once, and only for a card that was running here.
+@@ -444,6 +444,8 @@ class ChatRequestNotifier307 {
+       return '$n \u00b7 ${f.here}/${f.wanted}$more';
+     }
+     return switch (st.step) {
++      // Bundle 325: a waiting ask says so; it has not left this phone yet.
++      Step307.waiting => '$n \u00b7 ${L.t.waiting325}$more',
+       Step307.sent || Step307.reached => '$n \u00b7 ${L.t.waitingShort321}$more',
+       Step307.coming => '$n \u00b7 ${st.short}$more',
+       Step307.ready when r.newOnly318 && st.upToDate => '$n \u00b7 ${L.t.upToDate318}',
+diff --git a/lib/features/admin/data/actions/request_step_307.dart b/lib/features/admin/data/actions/request_step_307.dart
+index 87dfbd0..b4cf4b9 100644
+--- a/lib/features/admin/data/actions/request_step_307.dart
++++ b/lib/features/admin/data/actions/request_step_307.dart
+@@ -1,6 +1,7 @@
+ import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+ import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
+ import 'package:locallink/features/admin/data/actions/kept_copy_318.dart';
++import 'package:locallink/features/admin/data/actions/waiting_325.dart'; // Bundle 325
+ import 'package:locallink/l10n/l10n.dart';
+ 
+ /// Bundle 307 (TODO_307 B1 / C0): one place that turns a Get chat request
+@@ -17,7 +18,9 @@ import 'package:locallink/l10n/l10n.dart';
+ ///
+ /// [progress] is where the marker rides on the track: start 4, Reached 33,
+ /// parts 66 -> 100, Ready 100.
+-enum Step307 { sent, reached, coming, ready, empty, cancelled }
++/// Bundle 325: [waiting] = asked while their phone was away; it goes by
++/// itself the moment that phone is reachable.
++enum Step307 { waiting, sent, reached, coming, ready, empty, cancelled }
+ 
+ class RequestStep307 {
+   const RequestStep307({
+@@ -65,12 +68,16 @@ class RequestStep307 {
+   final int count;
+ 
+   String get big => '$bigBefore$highlight$bigAfter';
+-  bool get active => step == Step307.sent || step == Step307.reached || step == Step307.coming;
++  bool get active =>
++      step == Step307.waiting ||
++      step == Step307.sent ||
++      step == Step307.reached ||
++      step == Step307.coming;
+   bool get finished => !active;
+ 
+   /// The stop (1 = Reached, 2 = Answer, 3 = Ready) the request has passed.
+   int get stopsDone => switch (step) {
+-        Step307.sent || Step307.cancelled => 0,
++        Step307.waiting || Step307.sent || Step307.cancelled => 0,
+         Step307.reached => 1,
+         Step307.coming || Step307.empty => 2,
+         Step307.ready => 3,
+@@ -112,6 +119,28 @@ class RequestStep307 {
+         count: -1,
+       );
+     }
++    if (r.waiting325) {
++      // Bundle 325: nothing has left this phone yet - say so, and say it will
++      // go by itself. Amber, no buzz, nothing expires.
++      final age = WaitingAsk325.ageMinutes(r.madeAt, DateTime.now());
++      final when = age < 60
++          ? t.minAgo(age)
++          : Kept318.shortWhen(r.madeAt, DateTime.now());
++      return RequestStep307(
++        step: Step307.waiting,
++        progress: startAt,
++        ring: '\u2026',
++        ringFill: 0.05,
++        bigBefore: '',
++        highlight: t.waiting325,
++        bigAfter: '',
++        sub: '${t.askedAgo325(when)} \u00b7 ${t.goesWhenNear325}',
++        chip: t.waiting325,
++        short: t.waiting325,
++        live: true,
++        count: -1,
++      );
++    }
+     if (r.cancelled) {
+       return RequestStep307(
+         step: Step307.cancelled,
+diff --git a/lib/features/admin/data/actions/waiting_325.dart b/lib/features/admin/data/actions/waiting_325.dart
+new file mode 100644
+index 0000000..e19045e
+--- /dev/null
++++ b/lib/features/admin/data/actions/waiting_325.dart
+@@ -0,0 +1,126 @@
++import 'dart:convert';
++
++/// Bundle 325: "ask now, deliver later".
++///
++/// An ask made while the other phone is away is saved HERE first, shows as
++/// **Waiting**, and goes by itself the moment this phone can reach that phone
++/// again. Nothing expires - only Stop removes one. No server and no internet
++/// are needed to make one; the phone that made it carries it.
++class WaitingAsk325 {
++  const WaitingAsk325({
++    required this.id,
++    required this.chatKey,
++    required this.pick,
++    required this.madeAt,
++    this.label = '',
++    this.range = 'full',
++    this.from = '',
++    this.to = '',
++    this.types = const [],
++    this.tries = 0,
++  });
++
++  /// Local id `w325-<millis>`. It is this phone's own name for the ask until
++  /// the ask really goes out; then the action id takes over.
++  final String id;
++
++  /// The 324 chat key (`g:<groupId>` / `d:<a|b>`): one Waiting per chat, so a
++  /// second tap opens the Waiting card instead of asking twice (the 18 Nov
++  /// 18:53 duplicate).
++  final String chatKey;
++
++  /// `ChatPick221.toServer()` of the chat that was picked.
++  final Map<String, dynamic> pick;
++
++  /// When it was asked, ISO UTC. The card says "asked 3 h ago" from this.
++  final String madeAt;
++
++  final String label;
++  final String range; // full | dates
++  final String from;
++  final String to;
++
++  /// `voice`, `photo`, `video`, `file`; empty = everything (as 324).
++  final List<String> types;
++
++  /// How many times this phone tried and could not reach them.
++  final int tries;
++
++  WaitingAsk325 tried() => WaitingAsk325(
++        id: id,
++        chatKey: chatKey,
++        pick: pick,
++        madeAt: madeAt,
++        label: label,
++        range: range,
++        from: from,
++        to: to,
++        types: types,
++        tries: tries + 1,
++      );
++
++  Map<String, dynamic> toJson() => {
++        'id': id,
++        'chat_key': chatKey,
++        'pick': pick,
++        'made_at': madeAt,
++        'label': label,
++        'range': range,
++        'from': from,
++        'to': to,
++        'types': types,
++        'tries': tries,
++      };
++
++  static WaitingAsk325? fromJson(Object? x) {
++    if (x is! Map) return null;
++    final id = x['id']?.toString() ?? '';
++    final key = x['chat_key']?.toString() ?? '';
++    final made = x['made_at']?.toString() ?? '';
++    if (id.isEmpty || key.isEmpty || made.isEmpty) return null;
++    return WaitingAsk325(
++      id: id,
++      chatKey: key,
++      pick: x['pick'] is Map ? Map<String, dynamic>.from(x['pick'] as Map) : const {},
++      madeAt: made,
++      label: x['label']?.toString() ?? '',
++      range: x['range']?.toString() ?? 'full',
++      from: x['from']?.toString() ?? '',
++      to: x['to']?.toString() ?? '',
++      types: [
++        for (final t in (x['types'] as List? ?? const []))
++          if ('$t'.isNotEmpty) '$t',
++      ],
++      tries: switch (x['tries']) {
++        final int n => n,
++        final Object n => int.tryParse('$n') ?? 0,
++        _ => 0,
++      },
++    );
++  }
++
++  static List<WaitingAsk325> listFrom(String? raw) {
++    if (raw == null || raw.isEmpty) return const [];
++    try {
++      final d = jsonDecode(raw);
++      return [
++        for (final x in (d is List ? d : const []))
++          if (fromJson(x) case final w?) w,
++      ];
++    } catch (_) {
++      return const [];
++    }
++  }
++
++  static String encode(List<WaitingAsk325> list) =>
++      jsonEncode([for (final w in list) w.toJson()]);
++
++  /// How long ago it was asked, to the minute. Used by the tests and by the
++  /// card; negative (a phone clock behind) reads as 0.
++  static int ageMinutes(String madeAt, DateTime now) {
++    final t = DateTime.tryParse(madeAt);
++    if (t == null) return 0;
++    final m = now.difference(t.toLocal()).inMinutes;
++    return m < 0 ? 0 : m;
++  }
++}
+diff --git a/lib/features/admin/presentation/widgets/conversations_kit307.dart b/lib/features/admin/presentation/widgets/conversations_kit307.dart
+index 4778164..7476162 100644
+--- a/lib/features/admin/presentation/widgets/conversations_kit307.dart
++++ b/lib/features/admin/presentation/widgets/conversations_kit307.dart
+@@ -53,14 +53,14 @@ class K307 {
+ 
+   /// Fill / text colour of a step.
+   Color stepColor(Step307 s) => switch (s) {
+-        Step307.sent || Step307.reached => orange,
++        Step307.waiting || Step307.sent || Step307.reached => orange,
+         Step307.coming => blue,
+         Step307.ready => ok,
+         _ => muted,
+       };
+ 
+   (Color, Color) chipColors(Step307 s) => switch (s) {
+-        Step307.sent || Step307.reached => (orangeSoft, orange),
++        Step307.waiting || Step307.sent || Step307.reached => (orangeSoft, orange),
+         Step307.coming => (blueSoft, blueText),
+         Step307.ready => (greenSoft, green),
+         _ => (mutedSoft, grey),
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+index 3a252e2..0d6d7d4 100644
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -6396,5 +6396,15 @@
+   "@nRequests324": {"placeholders": {"n": {"type": "int"}}},
+   "filesTakeTurns324": "Files take turns, 2 at a time",
+   "getPhotos324": "Get photos",
+-  "videosNotAsked324": "videos not asked"
+-}
+\ No newline at end of file
++  "videosNotAsked324": "videos not asked",
++  "waiting325": "Waiting",
++  "askedAgo325": "asked {when}",
++  "@askedAgo325": {
++    "placeholders": {
++      "when": {
++        "type": "Object?"
++      }
++    }
++  },
++  "goesWhenNear325": "goes the moment their phone is near"
++}
+diff --git a/lib/l10n/app_ur.arb b/lib/l10n/app_ur.arb
+index 7fe929b..35c7d1a 100644
+--- a/lib/l10n/app_ur.arb
++++ b/lib/l10n/app_ur.arb
+@@ -2495,5 +2495,8 @@
+   "@nRequests324": {"placeholders": {"n": {"type": "int"}}},
+   "filesTakeTurns324": "⁧فائلیں باری باری آتی ہیں، ایک وقت میں 2⁩",
+   "getPhotos324": "⁧تصاویر منگوائیں⁩",
+-  "videosNotAsked324": "⁧ویڈیوز نہیں مانگی گئیں⁩"
+-}
+\ No newline at end of file
++  "videosNotAsked324": "⁧ویڈیوز نہیں مانگی گئیں⁩",
++  "waiting325": "⁧زیرِ التوا⁩",
++  "askedAgo325": "⁧⁨{when}⁩ کو پوچھا⁩",
++  "goesWhenNear325": "⁧جیسے ہی اُن کا فون قریب آئے، چلا جائے گا⁩"
++}
+diff --git a/lib/l10n/gen/app_localizations.dart b/lib/l10n/gen/app_localizations.dart
+index 118c9ce..c2a9111 100644
+--- a/lib/l10n/gen/app_localizations.dart
++++ b/lib/l10n/gen/app_localizations.dart
+@@ -15047,6 +15047,23 @@ abstract class AppLocalizations {
+   /// In en, this message translates to:
+   /// **'videos not asked'**
+   String get videosNotAsked324;
++  /// No description provided for @waiting325.
++  ///
++  /// In en, this message translates to:
++  /// **'Waiting'**
++  String get waiting325;
++
++  /// No description provided for @askedAgo325.
++  ///
++  /// In en, this message translates to:
++  /// **'asked {when}'**
++  String askedAgo325(Object? when);
++
++  /// No description provided for @goesWhenNear325.
++  ///
++  /// In en, this message translates to:
++  /// **'goes the moment their phone is near'**
++  String get goesWhenNear325;
+ }
+ 
+ class _AppLocalizationsDelegate
+diff --git a/lib/l10n/gen/app_localizations_en.dart b/lib/l10n/gen/app_localizations_en.dart
+index 7224012..6067b74 100644
+--- a/lib/l10n/gen/app_localizations_en.dart
++++ b/lib/l10n/gen/app_localizations_en.dart
+@@ -8928,4 +8928,15 @@ class AppLocalizationsEn extends AppLocalizations {
+ 
+   @override
+   String get videosNotAsked324 => 'videos not asked';
++
++  @override
++  String get waiting325 => 'Waiting';
++
++  @override
++  String askedAgo325(Object? when) {
++    return 'asked $when';
++  }
++
++  @override
++  String get goesWhenNear325 => 'goes the moment their phone is near';
+ }
+diff --git a/lib/l10n/gen/app_localizations_ur.dart b/lib/l10n/gen/app_localizations_ur.dart
+index ffffebb..8ea871f 100644
+--- a/lib/l10n/gen/app_localizations_ur.dart
++++ b/lib/l10n/gen/app_localizations_ur.dart
+@@ -8960,4 +8960,14 @@ class AppLocalizationsUr extends AppLocalizations {
+ 
+   @override
+   String get videosNotAsked324 => '⁧ویڈیوز نہیں مانگی گئیں⁩';
++  @override
++  String get waiting325 => '⁧زیرِ التوا⁩';
++
++  @override
++  String askedAgo325(Object? when) {
++    return '⁧⁨$when⁩ کو پوچھا⁩';
++  }
++
++  @override
++  String get goesWhenNear325 => '⁧جیسے ہی اُن کا فون قریب آئے، چلا جائے گا⁩';
+ }
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 68c3cd6..ed4b495 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: locallink
+ publish_to: 'none'
+ description: LinkUp offline LAN communication client.
+-version: 3.0.118+189
++version: 3.0.119+190
+ 
+ environment:
+   sdk: '>=3.3.0 <4.0.0'
+diff --git a/test/bundle223_logs_test.dart b/test/bundle223_logs_test.dart
+index f8a2d93..db4e534 100644
+--- a/test/bundle223_logs_test.dart
++++ b/test/bundle223_logs_test.dart
+@@ -29,9 +29,9 @@ void main() {
+   test('223-32 the stamp is made from kAppVersion + kAppBuild = pubspec', () {
+     final pub = File('pubspec.yaml').readAsStringSync();
+     expect(pub, contains('version: $kAppVersion+$kAppBuild'));
+-    expect(kAppVersion, '3.0.118');
+-    expect(kAppBuild, 189);
+-    expect(AppBuild.stamp, 'v3 · 3.0.118+189');
++    expect(kAppVersion, '3.0.119');
++    expect(kAppBuild, 190);
++    expect(AppBuild.stamp, 'v3 · 3.0.119+190');
+     final app = File('lib/app/local_link_app.dart').readAsStringSync();
+     expect(app, contains("AppLogger.info('APP_BUILD_STAMP', detail: AppBuild.stamp);"));
+     expect(app, isNot(contains('3.0.50')));
+diff --git a/test/bundle325_test.dart b/test/bundle325_test.dart
+new file mode 100644
+index 0000000..e1efa26
+--- /dev/null
++++ b/test/bundle325_test.dart
+@@ -0,0 +1,223 @@
++// Bundle 325: "ask now, deliver later".
++//
++// Today, Get chat throws the ask away when this phone cannot reach the other
++// phone ("phones unknown / server off"). 325 saves the ask on this phone, shows
++// it as Waiting, and lets it go by itself the moment that phone is reachable.
++//
++//  * the ask survives a restart (prefs), one per chat (the 324 key);
++//  * the card says Waiting · asked … · goes the moment their phone is near;
++//  * nothing expires - Stop removes it;
++//  * no buzz while Waiting (316/317 rule: one buzz at Ready);
++//  * no server and no internet are needed to make one.
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:locallink/core/config/app_build.dart';
++import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
++import 'package:locallink/features/admin/data/actions/request_step_307.dart';
++import 'package:locallink/features/admin/data/actions/chat_request_notifier_307.dart';
++import 'package:locallink/features/admin/data/actions/waiting_325.dart';
++import 'package:locallink/features/admin/presentation/widgets/conversations_kit307.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++const _readerPath = 'lib/features/admin/data/actions/chat_answer_reader.dart';
++const _stepPath = 'lib/features/admin/data/actions/request_step_307.dart';
++const _notifierPath = 'lib/features/admin/data/actions/chat_request_notifier_307.dart';
++const _kitPath = 'lib/features/admin/presentation/widgets/conversations_kit307.dart';
++
++String _src(String path) => File(path).readAsStringSync();
++
++WaitingAsk325 _ask({
++  String id = 'w325-1000',
++  String chatKey = 'd:u-ali|u-kiran',
++  String madeAt = '2026-11-19T05:00:00.000Z',
++  int tries = 0,
++}) =>
++    WaitingAsk325(
++      id: id,
++      chatKey: chatKey,
++      pick: const {'kind': 'direct', 'user_a': 'u-ali', 'user_b': 'u-kiran'},
++      madeAt: madeAt,
++      label: 'Kiran',
++      range: 'dates',
++      from: '2026-11-01',
++      to: '2026-11-19',
++      types: const ['voice'],
++      tries: tries,
++    );
++
++ChatRequestRow221 _row({bool waiting = false, String madeAt = ''}) => ChatRequestRow221(
++      id: 'w325-1000',
++      action: 'get_chat',
++      label: 'Kiran',
++      words: 'full chat',
++      madeAt: madeAt,
++      waiting325: waiting,
++    );
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  group('325 · the waiting ask (what is saved on this phone)', () {
++    test('325-1 an ask survives the store: write, read back, same facts', () {
++      final list = [_ask(), _ask(id: 'w325-2000', chatKey: 'g:g-1')];
++      final back = WaitingAsk325.listFrom(WaitingAsk325.encode(list));
++      expect(back.length, 2);
++      expect(back.first.id, 'w325-1000');
++      expect(back.first.chatKey, 'd:u-ali|u-kiran');
++      expect(back.first.label, 'Kiran');
++      expect(back.first.range, 'dates');
++      expect(back.first.from, '2026-11-01');
++      expect(back.first.to, '2026-11-19');
++      expect(back.first.types, ['voice']);
++      expect(back.last.chatKey, 'g:g-1');
++    });
++
++    test('325-2 a broken or empty store is an empty list, never a crash', () {
++      expect(WaitingAsk325.listFrom(null), isEmpty);
++      expect(WaitingAsk325.listFrom(''), isEmpty);
++      expect(WaitingAsk325.listFrom('not json'), isEmpty);
++      expect(WaitingAsk325.listFrom('{"a":1}'), isEmpty);
++      expect(WaitingAsk325.listFrom('[{"id":"","chat_key":"x","made_at":"y"}]'), isEmpty);
++    });
++
++    test('325-3 a failed try is counted, the ask itself never changes', () {
++      final t = _ask().tried().tried();
++      expect(t.tries, 2);
++      expect(t.id, _ask().id);
++      expect(t.chatKey, _ask().chatKey);
++      expect(t.madeAt, _ask().madeAt);
++      expect(t.types, _ask().types);
++    });
++
++    test('325-4 the age is honest, and a phone clock behind reads as zero', () {
++      final now = DateTime.parse('2026-11-19T08:00:00.000Z');
++      expect(WaitingAsk325.ageMinutes('2026-11-19T05:00:00.000Z', now), 180);
++      expect(WaitingAsk325.ageMinutes('2026-11-19T07:59:30.000Z', now), 0);
++      expect(WaitingAsk325.ageMinutes('2026-11-19T09:00:00.000Z', now), 0);
++      expect(WaitingAsk325.ageMinutes('not a date', now), 0);
++    });
++  });
++
++  group('325 · the card says Waiting, in words that are true', () {
++    test('325-5 a waiting row is its own step - not "Sent"', () {
++      expect(Step307.values.contains(Step307.waiting), isTrue);
++      final s = RequestStep307.of(_row(waiting: true, madeAt: '2026-11-19T05:00:00.000Z'));
++      expect(s.step, Step307.waiting);
++      expect(s.big, 'Waiting');
++      expect(s.chip, 'Waiting');
++      expect(s.short, 'Waiting');
++      expect(s.live, isTrue); // a live card never goes quiet
++      expect(s.active, isTrue); // the request is still open
++      expect(s.stopsDone, 0); // nothing has left this phone yet
++    });
++
++    test('325-6 the sub line says how long ago and that it will go by itself', () {
++      final s = RequestStep307.of(_row(waiting: true, madeAt: '2026-11-19T05:00:00.000Z'));
++      expect(s.sub, contains('asked'));
++      expect(s.sub, contains('goes the moment their phone is near'));
++    });
++
++    test('325-7 a waiting row never calls itself ready, part-counted or empty', () {
++      final s = RequestStep307.of(_row(waiting: true, madeAt: '2026-11-19T05:00:00.000Z'));
++      expect(s.step, isNot(Step307.ready));
++      expect(s.step, isNot(Step307.coming));
++      expect(s.step, isNot(Step307.empty));
++      expect(s.progress, lessThan(RequestStep307.reachedAt));
++    });
++
++    test('325-8 an ordinary row is untouched by 325', () {
++      final s = RequestStep307.of(_row());
++      expect(s.step, Step307.sent);
++      expect(s.chip, isNot('Waiting'));
++    });
++  });
++
++  group('325 · the words, both languages', () {
++    test('325-9 English: Waiting · asked … · goes the moment their phone is near', () {
++      expect(L.t.waiting325, 'Waiting');
++      expect(L.t.askedAgo325('12 min ago'), 'asked 12 min ago');
++      expect(L.t.goesWhenNear325, contains('near'));
++    });
++
++    test('325-10 Urdu has all three (304 rule: every English text has Urdu words)', () {
++      final en = File('lib/l10n/app_en.arb').readAsStringSync();
++      final ur = File('lib/l10n/app_ur.arb').readAsStringSync();
++      for (final k in ['waiting325', 'askedAgo325', 'goesWhenNear325']) {
++        expect(en, contains('"$k"'), reason: '$k missing in English');
++        expect(ur, contains('"$k"'), reason: '$k missing in Urdu');
++      }
++      // RLI ... PDI around the Urdu as every other Urdu text in this app.
++      expect(ur, contains('\u2067'));
++    });
++  });
++
++  group('325 · the code that makes it work', () {
++    test('325-11 the 17 Nov dead end no longer throws the ask away', () {
++      final src = _src(_readerPath);
++      expect(src, isNot(contains('throw StateError(unknownPhonesWords323')));
++      expect(src, contains('_waitHere325('));
++      expect(src, contains('GET_CHAT_WAIT325'));
++    });
++
++    test('325-12 323 words are kept: the row still explains an off server', () {
++      final src = _src(_readerPath);
++      expect(src, contains('unknownPhonesWords323(group: pick.isGroup'));
++    });
++
++    test('325-13 the ask is saved before it is attempted, and cleared when it goes', () {
++      final src = _src(_readerPath);
++      expect(src, contains("static const String waitingKey325 = 'waiting_ask_325'"));
++      expect(src, contains('waitingDrop325'));
++      expect(src, contains('GET_CHAT_WAIT325_SENT'));
++      // one per chat (324 key), so a second tap cannot ask twice
++      expect(src, contains('removeWhere((w) => w.chatKey == chatKey'));
++      expect(src, contains('fireGap325'));
++    });
++
++    test('325-14 it fires from the normal card check - no new timer', () {
++      final src = _src(_readerPath);
++      expect(src, contains('await fireWaiting325();'));
++      expect(src, contains('if (ask) {'));
++      expect(src, contains('waiting325: waitingIds325.contains(id)'));
++      // and nothing else in the app grew a timer for it
++      expect(_src(_notifierPath), isNot(contains('fireWaiting325')));
++    });
++
++    test('325-15 a waiting card stays on screen and never buzzes', () {
++      final src = _src(_notifierPath);
++      expect(src, contains('Step307.waiting || Step307.sent'));
++      // the one buzz of 317 stays where it was: Ready only
++      expect(src, contains('Step307.ready =>'));
++    });
++
++    test('325-16 amber, like "on its way" - never red', () {
++      final kit = _src(_kitPath);
++      expect(kit, contains('Step307.waiting || Step307.sent || Step307.reached => orange'));
++      // the palette itself is private (K307.of(context)); the source line above
++      // is the contract, and 325-19 compiles the palette and the notifier.
++    });
++
++    test('325-19 the notifier knows the waiting step and still buzzes once, at Ready', () {
++      // importing it here is the compile check; the words are the 317 contract
++      expect(ChatRequestNotifier307.buzzedKey, 'chat_req_ready_buzzed_307');
++      expect(ChatRequestNotifier307.minGap.inSeconds, 1);
++      final src = _src(_notifierPath);
++      expect(src, contains('Step307.waiting || Step307.sent'));
++    });
++
++    test('325-17 the step list is documented in one place', () {
++      final step = _src(_stepPath);
++      expect(step, contains('Step307.waiting'));
++      expect(step, contains('if (r.waiting325)'));
++    });
++  });
++
++  group('325 · version', () {
++    test('325-18 this build is 3.0.119+190', () {
++      expect(kAppVersion, '3.0.119');
++      expect(kAppBuild, 190);
++      expect(AppBuild.stamp, 'v3 · 3.0.119+190');
++    });
++  });
++}
