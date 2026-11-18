@@ -1,0 +1,117 @@
+diff --git a/.github/workflows/app_ci.yml b/.github/workflows/app_ci.yml
+index 47605ac..535d8f6 100644
+--- a/.github/workflows/app_ci.yml
++++ b/.github/workflows/app_ci.yml
+@@ -28,13 +28,29 @@ jobs:
+           flutter-version: 3.47.7
+           channel: stable
+       - run: flutter pub get
++      # 324h: the count is written to the run page. The job log needs a GitHub
++      # sign-in; the step summary does not - so a red run explains itself.
+       - name: Format (report only - the code was never auto-formatted)
+         continue-on-error: true
+-        run: dart format --output=none --set-exit-if-changed lib test > format_report.txt 2>&1 || (tail -5 format_report.txt; exit 1)
++        run: |
++          dart format --output=none --set-exit-if-changed lib test > format_report.txt 2>&1; code=$?
++          tail -5 format_report.txt || true
++          echo "Format (report only, never blocks the build): $(grep -c '^Changed ' format_report.txt || true) files would be reformatted." >> "$GITHUB_STEP_SUMMARY"
++          exit $code
+       - name: Analyze (errors fail, old warnings only warn)
+         run: flutter analyze --no-fatal-infos --no-fatal-warnings
++      # 324h: WHICH test failed is written to the run page too (same reason).
+       - name: Tests + coverage
+-        run: flutter test --coverage --reporter expanded > flutter_test.txt 2>&1; code=$?; tail -40 flutter_test.txt; exit $code
++        run: |
++          flutter test --coverage --reporter expanded > flutter_test.txt 2>&1; code=$?
++          tail -40 flutter_test.txt
++          {
++            echo "### Tests + coverage - exit $code, $(grep -c '\[E\]' flutter_test.txt || true) failing test line(s)"
++            echo '```'
++            awk '/\[E\]/{p=1} p{print; n++} n>=40{exit}' flutter_test.txt
++            echo '```'
++          } >> "$GITHUB_STEP_SUMMARY"
++          exit $code
+       - name: Release HTTP rule, release constants without the flag (R268-1)
+         if: success() || failure()
+         run: flutter test --dart-define=dart.vm.product=true --dart-define=RT268_MODE=release test/security_release_268_test.dart
+diff --git a/lib/core/config/app_build.dart b/lib/core/config/app_build.dart
+index 4279ece..1ae78ea 100644
+--- a/lib/core/config/app_build.dart
++++ b/lib/core/config/app_build.dart
+@@ -4,8 +4,8 @@
+ // plain `flutter build apk`, so it can't be trusted. These two constants are
+ // kept equal to pubspec.yaml `version:` (a test checks it).
+ 
+-const int kAppBuild = 188;
+-const String kAppVersion = '3.0.117';
++const int kAppBuild = 189;
++const String kAppVersion = '3.0.118';
+ 
+ /// HTTP header + socket header with the build (server version gate).
+ const String kAppBuildHeader = 'X-LinkUp-Build';
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 7a85eac..68c3cd6 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: locallink
+ publish_to: 'none'
+ description: LinkUp offline LAN communication client.
+-version: 3.0.117+188
++version: 3.0.118+189
+ 
+ environment:
+   sdk: '>=3.3.0 <4.0.0'
+diff --git a/test/bundle223_logs_test.dart b/test/bundle223_logs_test.dart
+index e141ee6..f8a2d93 100644
+--- a/test/bundle223_logs_test.dart
++++ b/test/bundle223_logs_test.dart
+@@ -29,9 +29,9 @@ void main() {
+   test('223-32 the stamp is made from kAppVersion + kAppBuild = pubspec', () {
+     final pub = File('pubspec.yaml').readAsStringSync();
+     expect(pub, contains('version: $kAppVersion+$kAppBuild'));
+-    expect(kAppVersion, '3.0.117');
+-    expect(kAppBuild, 188);
+-    expect(AppBuild.stamp, 'v3 · 3.0.117+188');
++    expect(kAppVersion, '3.0.118');
++    expect(kAppBuild, 189);
++    expect(AppBuild.stamp, 'v3 · 3.0.118+189');
+     final app = File('lib/app/local_link_app.dart').readAsStringSync();
+     expect(app, contains("AppLogger.info('APP_BUILD_STAMP', detail: AppBuild.stamp);"));
+     expect(app, isNot(contains('3.0.50')));
+diff --git a/test/nearby_190_test.dart b/test/nearby_190_test.dart
+index dd80534..ad86f5d 100644
+--- a/test/nearby_190_test.dart
++++ b/test/nearby_190_test.dart
+@@ -208,11 +208,31 @@ void main() {
+       await tester.pumpWidget(const SizedBox());
+     }
+ 
++    /// Bundle 324h: the first card of this screen is built on the real clock
++    /// (crypto + pairing run through `runAsync`), so a fixed pump length can
++    /// arrive too early - it did on Windows with Flutter 3.47.5 (CI red:
++    /// "Found 0 widgets with text \"Add friend\""). Wait for the card itself,
++    /// up to 90 s; the expectation that follows is unchanged.
++    Future<void> waitForText(
++      WidgetTester tester,
++      String text, {
++      Duration max = const Duration(seconds: 90),
++    }) async {
++      final end = DateTime.now().add(max);
++      while (DateTime.now().isBefore(end)) {
++        if (find.text(text).evaluate().isNotEmpty) return;
++        await tester.runAsync(
++            () => Future<void>.delayed(const Duration(milliseconds: 250)));
++        await tester.pump(const Duration(milliseconds: 250));
++      }
++    }
++
+     testWidgets('no contacts + a stranger with a relay link: card, not '
+         '"everyone added"', (tester) async {
+       final deps = await pump(tester, meshPeers: [
+         {'node_id': 'stranger-000000a1', 'state': 'CONNECTED', 'transport': 'lan'},
+       ], paired: const []);
++      await waitForText(tester, 'Add friend'); // 324h: no fixed pump length
+       expect(find.text('Add friend'), findsOneWidget);
+       expect(find.text('Everyone nearby is already in your contacts'),
+           findsNothing);

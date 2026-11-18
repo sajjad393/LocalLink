@@ -1,0 +1,63 @@
+diff --git a/.github/workflows/app_ci.yml b/.github/workflows/app_ci.yml
+index 535d8f6..7e5ce28 100644
+--- a/.github/workflows/app_ci.yml
++++ b/.github/workflows/app_ci.yml
+@@ -50,6 +50,13 @@ jobs:
+             awk '/\[E\]/{p=1} p{print; n++} n>=40{exit}' flutter_test.txt
+             echo '```'
+           } >> "$GITHUB_STEP_SUMMARY"
++          # 324i: annotations are readable without a GitHub sign-in, so the
++          # failing test names go there too - a red run names itself.
++          tr -d '\r' < flutter_test.txt | grep -E '\[E\]$' \
++            | sed -E 's/^[0-9:]+ \+[0-9]+ -[0-9]+: //; s/ *\[E\]$//' | head -5 > fails.txt || true
++          while IFS= read -r f; do
++            [ -n "$f" ] && echo "::error title=Failing test::$f"
++          done < fails.txt
+           exit $code
+       - name: Release HTTP rule, release constants without the flag (R268-1)
+         if: success() || failure()
+diff --git a/lib/core/config/app_build.dart b/lib/core/config/app_build.dart
+index 1ae78ea..5920ce1 100644
+--- a/lib/core/config/app_build.dart
++++ b/lib/core/config/app_build.dart
+@@ -4,8 +4,8 @@
+ // plain `flutter build apk`, so it can't be trusted. These two constants are
+ // kept equal to pubspec.yaml `version:` (a test checks it).
+ 
+-const int kAppBuild = 189;
+-const String kAppVersion = '3.0.118';
++const int kAppBuild = 190;
++const String kAppVersion = '3.0.119';
+ 
+ /// HTTP header + socket header with the build (server version gate).
+ const String kAppBuildHeader = 'X-LinkUp-Build';
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 68c3cd6..ed4b495 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: locallink
+ publish_to: 'none'
+ description: LinkUp offline LAN communication client.
+-version: 3.0.118+189
++version: 3.0.119+190
+ 
+ environment:
+   sdk: '>=3.3.0 <4.0.0'
+diff --git a/test/bundle223_logs_test.dart b/test/bundle223_logs_test.dart
+index f8a2d93..db4e534 100644
+--- a/test/bundle223_logs_test.dart
++++ b/test/bundle223_logs_test.dart
+@@ -29,9 +29,9 @@ void main() {
+   test('223-32 the stamp is made from kAppVersion + kAppBuild = pubspec', () {
+     final pub = File('pubspec.yaml').readAsStringSync();
+     expect(pub, contains('version: $kAppVersion+$kAppBuild'));
+-    expect(kAppVersion, '3.0.118');
+-    expect(kAppBuild, 189);
+-    expect(AppBuild.stamp, 'v3 · 3.0.118+189');
++    expect(kAppVersion, '3.0.119');
++    expect(kAppBuild, 190);
++    expect(AppBuild.stamp, 'v3 · 3.0.119+190');
+     final app = File('lib/app/local_link_app.dart').readAsStringSync();
+     expect(app, contains("AppLogger.info('APP_BUILD_STAMP', detail: AppBuild.stamp);"));
+     expect(app, isNot(contains('3.0.50')));

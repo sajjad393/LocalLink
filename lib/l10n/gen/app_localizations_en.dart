@@ -9,12 +9,10 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get aConsistentCopyOfTheLinkup =>
-      'A consistent copy of the LinkUp database will be written to the server backup directory.';
+  String get aConsistentCopyOfTheLinkup => 'A consistent copy of the LinkUp database will be written to the server backup directory.';
 
   @override
-  String get aLinkupPhoneHelpingToPass =>
-      'A LinkUp phone helping to pass your messages. It can\'t read them.';
+  String get aLinkupPhoneHelpingToPass => 'A LinkUp phone helping to pass your messages. It can\'t read them.';
 
   @override
   String get aNearbyPhone => 'a nearby phone';
@@ -25,16 +23,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aNewAccountIdentityKeyWill =>
-      'A new account identity key will become active. The previous key is retained on this phone as local key history. Other devices will learn the new public key automatically.';
+  String get aNewAccountIdentityKeyWill => 'A new account identity key will become active. The previous key is retained on this phone as local key history. Other devices will learn the new public key automatically.';
 
   @override
-  String get aNewerLinkupIsNeededPlease =>
-      'A newer LinkUp is needed. Please update.';
+  String get aNewerLinkupIsNeededPlease => 'A newer LinkUp is needed. Please update.';
 
   @override
-  String get aSmallMapOfYourContacts =>
-      'A small map of your contacts at the top of Chats';
+  String get aSmallMapOfYourContacts => 'A small map of your contacts at the top of Chats';
 
   @override
   String aboutFreeSpace(Object? sizeLabel) {
@@ -57,8 +52,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountClosedByAdmin => 'Account closed by admin';
 
   @override
-  String get accountClosedByAdminYouCan =>
-      'Account closed by admin. You can read old chats but can\'t send or call.';
+  String get accountClosedByAdminYouCan => 'Account closed by admin. You can read old chats but can\'t send or call.';
 
   @override
   String get accountDataRestored => 'Account data restored';
@@ -72,15 +66,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountPhonesBackup2 => 'Account, phones, backup';
 
   @override
-  String get accountProfileMetadataDevicesGroupsMessages =>
-      'Account/profile metadata, devices, groups, messages, group messages and call history. File content is not downloaded automatically.';
+  String get accountProfileMetadataDevicesGroupsMessages => 'Account/profile metadata, devices, groups, messages, group messages and call history. File content is not downloaded automatically.';
 
   @override
   String get accountRecoveredOnThisPhone => 'Account recovered on this phone.';
 
   @override
-  String get accountRecoveredPreviousActiveDevicesWere =>
-      'Account recovered. Previous active devices were revoked.';
+  String get accountRecoveredPreviousActiveDevicesWere => 'Account recovered. Previous active devices were revoked.';
 
   @override
   String get accountRecoveredSuccessfully => 'Account recovered successfully.';
@@ -101,15 +93,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountsAndProfiles => 'Accounts and profiles';
 
   @override
-  String get actionsGoToHerPhoneBy =>
-      'Actions go to her phone by card (Pending until done). More actions after she joins the server.';
+  String get actionsGoToHerPhoneBy => 'Actions go to her phone by card (Pending until done). More actions after she joins the server.';
 
   @override
   String get actionsThePhonesDidShowHere => 'Actions the phones did show here.';
 
   @override
-  String get actionsWaitHereUntilEachPhone =>
-      'Actions wait here until each phone does it. There is no time limit.';
+  String get actionsWaitHereUntilEachPhone => 'Actions wait here until each phone does it. There is no time limit.';
 
   @override
   String get active => 'Active';
@@ -130,8 +120,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get add => 'Add';
 
   @override
-  String get addAContactOrDiscoverNearby =>
-      'Add a contact or discover nearby LinkUp phones.';
+  String get addAContactOrDiscoverNearby => 'Add a contact or discover nearby LinkUp phones.';
 
   @override
   String addAsAFriend(Object? displayName) {
@@ -244,8 +233,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get adminActions => 'Admin actions';
 
   @override
-  String get adminActionsAreNotReadyOn =>
-      'Admin actions are not ready on this phone';
+  String get adminActionsAreNotReadyOn => 'Admin actions are not ready on this phone';
 
   @override
   String get adminActionsSaved => 'Admin actions saved';
@@ -266,8 +254,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get adminPolicy => 'admin policy';
 
   @override
-  String get adminSessionExpiredPleaseSignIn =>
-      'Admin session expired. Please sign in again.';
+  String get adminSessionExpiredPleaseSignIn => 'Admin session expired. Please sign in again.';
 
   @override
   String get adminSettings => 'Admin settings';
@@ -279,8 +266,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get adminTools => 'admin tools';
 
   @override
-  String get adminToolsAreNotAvailableRight =>
-      'Admin tools are not available right now';
+  String get adminToolsAreNotAvailableRight => 'Admin tools are not available right now';
 
   @override
   String get adminToolsAreOffOnThis => 'Admin tools are off on this phone.';
@@ -297,8 +283,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get admins => 'Admins';
 
   @override
-  String get adminsApprovePeopleWhoJoinBy =>
-      'Admins approve people who join by QR';
+  String get adminsApprovePeopleWhoJoinBy => 'Admins approve people who join by QR';
 
   @override
   String get adminsDecide => 'Admins decide';
@@ -343,12 +328,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get allMembersAddPeople => 'All members add people';
 
   @override
-  String get allMessagesPhotosAndFilesIn =>
-      'All messages, photos and files in this chat are ';
+  String get allMessagesPhotosAndFilesIn => 'All messages, photos and files in this chat are ';
 
   @override
-  String get allMessagesPhotosAndFilesOf =>
-      'All messages, photos and files of this group are removed from this phone.';
+  String get allMessagesPhotosAndFilesOf => 'All messages, photos and files of this group are removed from this phone.';
 
   @override
   String get allTools => 'all tools';
@@ -357,20 +340,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get allow => 'Allow';
 
   @override
-  String get allowNameSearchesToReturnYour =>
-      'Allow name searches to return your profile';
+  String get allowNameSearchesToReturnYour => 'Allow name searches to return your profile';
 
   @override
-  String get allowNearbyDevicesToReachPeople =>
-      'Allow nearby devices to reach people without internet.';
+  String get allowNearbyDevicesToReachPeople => 'Allow nearby devices to reach people without internet.';
 
   @override
-  String get allowPeopleToFindYouWith =>
-      'Allow people to find you with your phone number';
+  String get allowPeopleToFindYouWith => 'Allow people to find you with your phone number';
 
   @override
-  String get allowTheNearbyDevicesPermissionThen =>
-      'Allow the \"Nearby devices\" permission, then tap Add friend again.';
+  String get allowTheNearbyDevicesPermissionThen => 'Allow the \"Nearby devices\" permission, then tap Add friend again.';
 
   @override
   String get allowed => 'Allowed';
@@ -411,8 +390,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get anAdminMustSayYesThis =>
-      'An admin must say yes. This stays for 24 hours. The group opens in your Chats when it is done.';
+  String get anAdminMustSayYesThis => 'An admin must say yes. This stays for 24 hours. The group opens in your Chats when it is done.';
 
   @override
   String get anAndroidPhone => '•  An Android phone';
@@ -439,23 +417,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get android => 'Android';
 
   @override
-  String get android14FullScreenWhenLocked =>
-      'Android 14+: full screen when locked';
+  String get android14FullScreenWhenLocked => 'Android 14+: full screen when locked';
 
   @override
   String get androidControls => 'Android controls';
 
   @override
-  String get androidTurnedTheLinkupWiFi =>
-      'Android turned the LinkUp Wi-Fi off.';
+  String get androidTurnedTheLinkupWiFi => 'Android turned the LinkUp Wi-Fi off.';
 
   @override
-  String get androidWillAskConnectEachTime =>
-      'Android will ask \"Connect?\" each time this phone joins another group or hotspot. Tap Connect to allow it. Needs Android 10 or newer.';
+  String get androidWillAskConnectEachTime => 'Android will ask \"Connect?\" each time this phone joins another group or hotspot. Tap Connect to allow it. Needs Android 10 or newer.';
 
   @override
-  String get androidWillAskYouToAllow =>
-      'Android will ask you to allow installs from LinkUp. Turn it on, then come back.';
+  String get androidWillAskYouToAllow => 'Android will ask you to allow installs from LinkUp. Turn it on, then come back.';
 
   @override
   String get anotherAccount => 'another account';
@@ -467,43 +441,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get answer => 'Answer';
 
   @override
-  String get answerTheyCanChangeItFor =>
-      ' answer. They can change it for 3 minutes after voting, then it\'s final.';
+  String get answerTheyCanChangeItFor => ' answer. They can change it for 3 minutes after voting, then it\'s final.';
 
   @override
-  String get anyoneCanFindYouByName =>
-      'Anyone can find you by name and see your phone number.';
+  String get anyoneCanFindYouByName => 'Anyone can find you by name and see your phone number.';
 
   @override
-  String get anyoneThisPhoneHasSeenOr =>
-      'Anyone this phone has seen, or nearby';
+  String get anyoneThisPhoneHasSeenOr => 'Anyone this phone has seen, or nearby';
 
   @override
-  String get anyoneWhoScansThisNearA =>
-      'Anyone who scans this near a member can ask to join. It works without internet.\n';
+  String get anyoneWhoScansThisNearA => 'Anyone who scans this near a member can ask to join. It works without internet.\n';
 
   @override
-  String get anyoneWithLinkupWhoOpensThis =>
-      'Anyone with LinkUp who opens this link can ask to join, from anywhere. It needs internet (the server). With \"Approve new members\" on, an admin must say yes.';
+  String get anyoneWithLinkupWhoOpensThis => 'Anyone with LinkUp who opens this link can ask to join, from anywhere. It needs internet (the server). With \"Approve new members\" on, an admin must say yes.';
 
   @override
   String get anyoneWithTheLinkCanAsk => 'Anyone with the link can ask to join';
 
   @override
-  String get anyoneWithThisCodeCanReset =>
-      'Anyone with this code can reset your password. LinkUp will never ask for it.';
+  String get anyoneWithThisCodeCanReset => 'Anyone with this code can reset your password. LinkUp will never ask for it.';
 
   @override
-  String get appInfoBatteryAllowBackgroundActivity =>
-      'App info > Battery: Allow background activity';
+  String get appInfoBatteryAllowBackgroundActivity => 'App info > Battery: Allow background activity';
 
   @override
-  String get appInfoBatterySaverChooseNo =>
-      'App info > Battery saver: choose No restrictions';
+  String get appInfoBatterySaverChooseNo => 'App info > Battery saver: choose No restrictions';
 
   @override
-  String get appLaunchTurnOffManageAutomatically =>
-      'App launch: turn off Manage automatically for LinkUp';
+  String get appLaunchTurnOffManageAutomatically => 'App launch: turn off Manage automatically for LinkUp';
 
   @override
   String get appTooOldToAnswer => 'app too old to answer';
@@ -524,8 +489,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get approved => 'Approved';
 
   @override
-  String get approvedEnterTheRecoveryCodeProvided =>
-      'Approved. Enter the recovery code provided by the administrator.';
+  String get approvedEnterTheRecoveryCodeProvided => 'Approved. Enter the recovery code provided by the administrator.';
 
   @override
   String approvedRecoveryFor(Object? admin, Object? target) {
@@ -533,8 +497,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get appsBefore3054Can =>
-      'Apps before 3.0.54 can\'t read this rule. The server refuses them.';
+  String get appsBefore3054Can => 'Apps before 3.0.54 can\'t read this rule. The server refuses them.';
 
   @override
   String get apr => 'Apr';
@@ -563,8 +526,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get askTheAdminToApproveIt => 'Ask the admin to approve it';
 
   @override
-  String get askThemToOpenTheLink =>
-      'Ask them to open the link again with the newest LinkUp.';
+  String get askThemToOpenTheLink => 'Ask them to open the link again with the newest LinkUp.';
 
   @override
   String get askToJoin => 'Ask to join';
@@ -590,8 +552,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get auditLog2 => 'Audit Log';
 
   @override
-  String get auditedEventsSessionsAndOutstandingRecovery =>
-      'Audited events, sessions and outstanding recovery work';
+  String get auditedEventsSessionsAndOutstandingRecovery => 'Audited events, sessions and outstanding recovery work';
 
   @override
   String get auditor => 'Auditor';
@@ -621,8 +582,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get available => 'Available';
 
   @override
-  String get avoidWiFiDirectAndMesh =>
-      'Avoid Wi-Fi Direct and mesh messaging. LinkUp uses the configured server connection when available; this does not guarantee that the server itself is on the public Internet.';
+  String get avoidWiFiDirectAndMesh => 'Avoid Wi-Fi Direct and mesh messaging. LinkUp uses the configured server connection when available; this does not guarantee that the server itself is on the public Internet.';
 
   @override
   String get back => 'Back';
@@ -634,8 +594,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get backUpNow => 'Back up now';
 
   @override
-  String get backgroundPowerUseAllowLinkup =>
-      'Background power use: allow LinkUp';
+  String get backgroundPowerUseAllowLinkup => 'Background power use: allow LinkUp';
 
   @override
   String get backup => 'Backup';
@@ -675,8 +634,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get batteryPermissionDialogsAreShownOnly =>
-      'Battery-permission dialogs are shown only when you tap a row. Nothing is enabled silently.';
+  String get batteryPermissionDialogsAreShownOnly => 'Battery-permission dialogs are shown only when you tap a row. Nothing is enabled silently.';
 
   @override
   String get becomesTheNewOwner => ' becomes the new owner.';
@@ -685,8 +643,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get below => ' below.';
 
   @override
-  String get biggestFirstTapToOpenHold =>
-      'Biggest first. Tap to open, hold to pick.';
+  String get biggestFirstTapToOpenHold => 'Biggest first. Tap to open, hold to pick.';
 
   @override
   String get block => 'Block';
@@ -898,8 +855,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get callsRingWithAcceptReject => 'Calls ring with Accept / Reject';
 
   @override
-  String get callsShowHereWithNamesAnd =>
-      'Calls show here with names and times.';
+  String get callsShowHereWithNamesAnd => 'Calls show here with names and times.';
 
   @override
   String get callsToday => 'Calls today';
@@ -908,8 +864,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cameByLocalWiFi => 'Came by Local Wi-Fi';
 
   @override
-  String get cameByMeshThroughAFriend =>
-      'Came by Mesh (through a friend\'s phone)';
+  String get cameByMeshThroughAFriend => 'Came by Mesh (through a friend\'s phone)';
 
   @override
   String get cameByWiFiDirect => 'Came by Wi-Fi Direct';
@@ -926,8 +881,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get canHelpIfYouForgetYour =>
-      'Can help if you forget your password, lose a phone, or your Wi-Fi settings need fixing.';
+  String get canHelpIfYouForgetYour => 'Can help if you forget your password, lose a phone, or your Wi-Fi settings need fixing.';
 
   @override
   String get canOnlyLook => 'can only look';
@@ -949,8 +903,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get canTOpenTheLinkNow =>
-      'Can\'t open the link now. Check the internet and try again.';
+  String get canTOpenTheLinkNow => 'Can\'t open the link now. Check the internet and try again.';
 
   @override
   String get canTPlayThisVideo => 'Can\'t play this video';
@@ -1037,8 +990,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get changeSecurityKey => 'Change security key?';
 
   @override
-  String get changeTheRuleOnTheApp =>
-      'Change the rule on the App version page.';
+  String get changeTheRuleOnTheApp => 'Change the rule on the App version page.';
 
   @override
   String changedAdminSettings(Object? admin) {
@@ -1109,8 +1061,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chat => 'Chat';
 
   @override
-  String get chatAndCallEvenWithoutInternet =>
-      'Chat and call, even without internet';
+  String get chatAndCallEvenWithoutInternet => 'Chat and call, even without internet';
 
   @override
   String get chats => 'Chats';
@@ -1125,12 +1076,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get checkAgain => 'Check again';
 
   @override
-  String get checkTheNewPasswordAndTry =>
-      'Check the new password and try again.';
+  String get checkTheNewPasswordAndTry => 'Check the new password and try again.';
 
   @override
-  String get checkedByTheServerForEvery =>
-      'Checked by the server for every admin';
+  String get checkedByTheServerForEvery => 'Checked by the server for every admin';
 
   @override
   String get checking => 'Checking…';
@@ -1142,20 +1091,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get checkingTheServer => 'Checking the server…';
 
   @override
-  String get checksThatLinkupWorksWellCan =>
-      'Checks that LinkUp works well. Can only look, can not change your account.';
+  String get checksThatLinkupWorksWellCan => 'Checks that LinkUp works well. Can only look, can not change your account.';
 
   @override
-  String get chooseAPasswordOfAtLeast =>
-      'Choose a password of at least 8 characters.';
+  String get chooseAPasswordOfAtLeast => 'Choose a password of at least 8 characters.';
 
   @override
-  String get chooseHowLinkupLooksOnThis =>
-      'Choose how LinkUp looks on this phone.';
+  String get chooseHowLinkupLooksOnThis => 'Choose how LinkUp looks on this phone.';
 
   @override
-  String get chooseHowMuchMessageDetailAppears =>
-      'Choose how much message detail appears when your phone is locked.';
+  String get chooseHowMuchMessageDetailAppears => 'Choose how much message detail appears when your phone is locked.';
 
   @override
   String get clear => 'Clear';
@@ -1178,8 +1123,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get closeDeleteThisCopy => 'Close (delete this copy)';
 
   @override
-  String get closeOtherSharingAppsAndTry =>
-      'Close other sharing apps and try again.';
+  String get closeOtherSharingAppsAndTry => 'Close other sharing apps and try again.';
 
   @override
   String get closeSearch => 'Close search';
@@ -1211,12 +1155,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get completed => 'Completed';
 
   @override
-  String get completingSecureAccountRecovery =>
-      'Completing secure account recovery…';
+  String get completingSecureAccountRecovery => 'Completing secure account recovery…';
 
   @override
-  String get completingSecureDeviceTransfer =>
-      'Completing secure device transfer…';
+  String get completingSecureDeviceTransfer => 'Completing secure device transfer…';
 
   @override
   String get confirm => 'Confirm';
@@ -1225,8 +1167,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get confirmItSMe => 'Confirm it\'s me';
 
   @override
-  String get confirmItSYouToKeep =>
-      'Confirm it\'s you to keep using LinkUp on this phone.';
+  String get confirmItSYouToKeep => 'Confirm it\'s you to keep using LinkUp on this phone.';
 
   @override
   String get confirmPassphrase => 'Confirm passphrase';
@@ -1235,16 +1176,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get confirmYourAccount => 'Confirm your account';
 
   @override
-  String get connectToTheServerOnceTo =>
-      'Connect to the server once to turn on offline blocking';
+  String get connectToTheServerOnceTo => 'Connect to the server once to turn on offline blocking';
 
   @override
-  String get connectToTheServerOnceTo2 =>
-      'Connect to the server once to turn on offline blocking.';
+  String get connectToTheServerOnceTo2 => 'Connect to the server once to turn on offline blocking.';
 
   @override
-  String get connectToTheServerToUse =>
-      'Connect to the server to use the old password.';
+  String get connectToTheServerToUse => 'Connect to the server to use the old password.';
 
   @override
   String get connected => 'Connected';
@@ -1306,8 +1244,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get contactsWithAnOlderLinkupWill =>
-      'Contacts with an older LinkUp will not connect nearby until they update. Messages through the internet still work.';
+  String get contactsWithAnOlderLinkupWill => 'Contacts with an older LinkUp will not connect nearby until they update. Messages through the internet still work.';
 
   @override
   String get continueRecording => 'Continue recording';
@@ -1325,8 +1262,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get copied => 'Copied';
 
   @override
-  String get copiedWhatsappIsNotOnThis =>
-      'Copied. WhatsApp is not on this phone.';
+  String get copiedWhatsappIsNotOnThis => 'Copied. WhatsApp is not on this phone.';
 
   @override
   String get copy => 'Copy';
@@ -1341,8 +1277,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get couldNotAcceptTheNewCode => 'Could not accept the new code';
 
   @override
-  String get couldNotAddThisPersonTry =>
-      'Could not add this person. Try again.';
+  String get couldNotAddThisPersonTry => 'Could not add this person. Try again.';
 
   @override
   String couldNotAddTryAgain(Object? r) {
@@ -1355,8 +1290,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get couldNotConnectToLinkupMake =>
-      'Could not connect to LinkUp. Make sure the LinkUp server is available on your private network.';
+  String get couldNotConnectToLinkupMake => 'Could not connect to LinkUp. Make sure the LinkUp server is available on your private network.';
 
   @override
   String couldNotCreateYourQrCode(Object? error) {
@@ -1373,34 +1307,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get couldNotMakeANewCode => 'Could not make a new code. Try again.';
 
   @override
-  String get couldNotOpenNotificationSettingsRight =>
-      'Could not open notification settings right now.';
+  String get couldNotOpenNotificationSettingsRight => 'Could not open notification settings right now.';
 
   @override
-  String get couldNotOpenTheBatteryDialog =>
-      'Could not open the battery dialog right now — try again.';
+  String get couldNotOpenTheBatteryDialog => 'Could not open the battery dialog right now — try again.';
 
   @override
   String get couldNotOpenTheCameraOr => 'Could not open the camera or gallery.';
 
   @override
-  String get couldNotOpenYourPhoneS =>
-      'Could not open your phone’s settings right now.';
+  String get couldNotOpenYourPhoneS => 'Could not open your phone’s settings right now.';
 
   @override
   String get couldNotPrepareLogs => 'Could not prepare logs';
 
   @override
-  String get couldNotReachTheSenderTry =>
-      'Could not reach the sender. Try again when nearby.';
+  String get couldNotReachTheSenderTry => 'Could not reach the sender. Try again when nearby.';
 
   @override
-  String get couldNotReachTheServerTry =>
-      'Could not reach the server. Try again.';
+  String get couldNotReachTheServerTry => 'Could not reach the server. Try again.';
 
   @override
-  String get couldNotRefreshTheRequestThe =>
-      'Could not refresh the request. The local network may be temporarily unavailable.';
+  String get couldNotRefreshTheRequestThe => 'Could not refresh the request. The local network may be temporarily unavailable.';
 
   @override
   String couldNotRemove(Object? name) {
@@ -1413,8 +1341,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get couldNotSaveFreeSomeSpace =>
-      'Could not save. Free some space and try again.';
+  String get couldNotSaveFreeSomeSpace => 'Could not save. Free some space and try again.';
 
   @override
   String get couldNotSendTryAgain => 'Could not send. Try again';
@@ -1423,8 +1350,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get couldNotShareLogs => 'Could not share logs';
 
   @override
-  String get couldNotStartTryingAgainLater =>
-      'Could not start, trying again later';
+  String get couldNotStartTryingAgainLater => 'Could not start, trying again later';
 
   @override
   String couldNotUnblock(Object? label) {
@@ -1441,12 +1367,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get couldnTGetTheAddressBy => 'Couldn\'t get the address by itself';
 
   @override
-  String get couldnTLoadYourConversationsPlease =>
-      'Couldn\'t load your conversations. Please try again in a moment.';
+  String get couldnTLoadYourConversationsPlease => 'Couldn\'t load your conversations. Please try again in a moment.';
 
   @override
-  String get couldnTReachTheServerConversations =>
-      'Couldn\'t reach the server. Conversations will appear when it\'s back.';
+  String get couldnTReachTheServerConversations => 'Couldn\'t reach the server. Conversations will appear when it\'s back.';
 
   @override
   String get couldnTReachThemTryAgain => 'Couldn\'t reach them — try again';
@@ -1458,8 +1382,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get couldnTStartTheDownloadPage => 'Couldn\'t start the download page';
 
   @override
-  String get couldnTSyncRightNowShowing =>
-      'Couldn\'t sync right now — showing your saved conversations.';
+  String get couldnTSyncRightNowShowing => 'Couldn\'t sync right now — showing your saved conversations.';
 
   @override
   String get couldnTTurnOnWiFi => 'Couldn\'t turn on Wi-Fi';
@@ -1489,8 +1412,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get createGroup => 'Create group';
 
   @override
-  String get createUpdateEncryptedKeyBackup =>
-      'Create / update encrypted key backup';
+  String get createUpdateEncryptedKeyBackup => 'Create / update encrypted key backup';
 
   @override
   String get createYourAccount => 'Create your account';
@@ -1619,8 +1541,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deleteForEveryone => 'Delete for everyone';
 
   @override
-  String deleteForEveryoneRemovesItFrom(
-      Object? who, Object? phone, Object? vIs) {
+  String deleteForEveryoneRemovesItFrom(Object? who, Object? phone, Object? vIs) {
     return '\"Delete for everyone\" removes it from $who$phone too, even if $vIs Offline now (it is removed when the phone gets the news). Only for your messages, up to 5 minutes old. A copy someone saved to the Gallery stays.';
   }
 
@@ -1690,15 +1611,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get descriptionOptional => 'Description (optional)';
 
   @override
-  String get developerAndCreatorOfLinkupBuilt =>
-      'Developer and creator of LinkUp. Built this app so you can chat and call, even without internet.';
+  String get developerAndCreatorOfLinkupBuilt => 'Developer and creator of LinkUp. Built this app so you can chat and call, even without internet.';
 
   @override
   String get devices => 'Devices';
 
   @override
-  String get devicesSignedInToThisLinkup =>
-      'Devices signed in to this LinkUp account.';
+  String get devicesSignedInToThisLinkup => 'Devices signed in to this LinkUp account.';
 
   @override
   String get diagnosticCaptureMode => 'Diagnostic capture mode';
@@ -1811,12 +1730,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get encryptedHistory => 'Encrypted history';
 
   @override
-  String get encryptedIdentityBackupAvailable =>
-      'Encrypted identity backup available';
+  String get encryptedIdentityBackupAvailable => 'Encrypted identity backup available';
 
   @override
-  String get encryptedIdentityBackupSavedToThe =>
-      'Encrypted identity backup saved to the LinkUp server';
+  String get encryptedIdentityBackupSavedToThe => 'Encrypted identity backup saved to the LinkUp server';
 
   @override
   String get ended => 'Ended';
@@ -1835,8 +1752,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get enterThe12DigitCodeFrom =>
-      'Enter the 12-digit code from the admin.';
+  String get enterThe12DigitCodeFrom => 'Enter the 12-digit code from the admin.';
 
   @override
   String get enterTheCode => 'Enter the code';
@@ -1856,19 +1772,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get enterYourPassword => 'Enter your password';
 
   @override
-  String get enterYourRecoveryCodeLikeK7qm2 =>
-      'Enter your recovery code (like K7QM2-XPA9T-RC4WN-E8D3F).';
+  String get enterYourRecoveryCodeLikeK7qm2 => 'Enter your recovery code (like K7QM2-XPA9T-RC4WN-E8D3F).';
 
   @override
   String get enterYourUsername => 'Enter your username.';
 
   @override
-  String get enterYourUsernameAndPassword =>
-      'Enter your username and password.';
+  String get enterYourUsernameAndPassword => 'Enter your username and password.';
 
   @override
-  String get enterYourUsernameToRequestAccount =>
-      'Enter your username to request account recovery.';
+  String get enterYourUsernameToRequestAccount => 'Enter your username to request account recovery.';
 
   @override
   String get event => 'Event';
@@ -1886,16 +1799,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get everyoneCanSend => 'Everyone can send';
 
   @override
-  String get everyoneInTheGroupSeesIt =>
-      'Everyone in the group sees it at the top of the chat. Only one message is pinned at a time; a new pin replaces the old one.';
+  String get everyoneInTheGroupSeesIt => 'Everyone in the group sees it at the top of the chat. Only one message is pinned at a time; a new pin replaces the old one.';
 
   @override
-  String get everyoneNearbyIsAlreadyInYour =>
-      'Everyone nearby is already in your contacts';
+  String get everyoneNearbyIsAlreadyInYour => 'Everyone nearby is already in your contacts';
 
   @override
-  String get everyoneOnLinkupIsAlreadyIn =>
-      'Everyone on LinkUp is already in your contacts. To add someone new, search their name or use a QR code.';
+  String get everyoneOnLinkupIsAlreadyIn => 'Everyone on LinkUp is already in your contacts. To add someone new, search their name or use a QR code.';
 
   @override
   String get everyonePicks => 'Everyone picks ';
@@ -1961,8 +1871,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get filePartsPassedOn => 'File parts passed on';
 
   @override
-  String get fileRemovedAfter60DaysThumbnail =>
-      'File removed after 60 days · thumbnail only';
+  String get fileRemovedAfter60DaysThumbnail => 'File removed after 60 days · thumbnail only';
 
   @override
   String get fileTooBig => 'File too big';
@@ -1977,8 +1886,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get files => 'Files';
 
   @override
-  String get filesPeopleSendShowHereWith =>
-      'Files people send show here with kind and size.';
+  String get filesPeopleSendShowHereWith => 'Files people send show here with kind and size.';
 
   @override
   String filesReceived(Object? n) {
@@ -1997,8 +1905,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get filter => 'Filter';
 
   @override
-  String get findANearbyPersonOrCreate =>
-      'Find a nearby person or create a group to start chatting.';
+  String get findANearbyPersonOrCreate => 'Find a nearby person or create a group to start chatting.';
 
   @override
   String get findAPerson => 'Find a person';
@@ -2007,8 +1914,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get findNearbyFriendsWhenClosed => 'Find nearby friends when closed';
 
   @override
-  String get findNearbyFriendsWhenClosedTurn =>
-      'Find nearby friends when closed - Turn on';
+  String get findNearbyFriendsWhenClosedTurn => 'Find nearby friends when closed - Turn on';
 
   @override
   String get findPeopleNearby => 'Find people nearby';
@@ -2023,12 +1929,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get findServerNow => 'Find server now';
 
   @override
-  String get findingTheMatchingLinkupServer =>
-      'Finding the matching LinkUp server…';
+  String get findingTheMatchingLinkupServer => 'Finding the matching LinkUp server…';
 
   @override
-  String get firstOrLetThemScanThe =>
-      ' first, or let them scan the group QR later.';
+  String get firstOrLetThemScanThe => ' first, or let them scan the group QR later.';
 
   @override
   String get firstPerson => 'First person';
@@ -2040,8 +1944,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get followAppTheme => 'Follow app theme';
 
   @override
-  String get followTheAccountOrPhoneSetting =>
-      'Follow the account or phone setting';
+  String get followTheAccountOrPhoneSetting => 'Follow the account or phone setting';
 
   @override
   String get followThePhoneSLightOr => 'Follow the phone’s light or dark mode.';
@@ -2050,8 +1953,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get forEveryPhoneOfThisAccount => 'For every phone of this account';
 
   @override
-  String get forEveryoneOnAllLinkupPhones =>
-      'For everyone, on all LinkUp phones';
+  String get forEveryoneOnAllLinkupPhones => 'For everyone, on all LinkUp phones';
 
   @override
   String get forcedOff => 'Forced OFF';
@@ -2084,8 +1986,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get freeUpSpaceAutomatically => 'Free up space automatically';
 
   @override
-  String get freeUpSpaceAutomaticallyIsOff =>
-      'Free up space automatically is OFF. Nothing removed.';
+  String get freeUpSpaceAutomaticallyIsOff => 'Free up space automatically is OFF. Nothing removed.';
 
   @override
   String get fri => 'Fri';
@@ -2094,16 +1995,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get friendsOfFriendsScanToJoin => 'Friends of friends scan to join';
 
   @override
-  String get friendsWithoutWiFiCanReach =>
-      'Friends without Wi-Fi can reach you';
+  String get friendsWithoutWiFiCanReach => 'Friends without Wi-Fi can reach you';
 
   @override
-  String get fromEveryPhoneAlsoDeletedCopies =>
-      'From every phone, also deleted copies';
+  String get fromEveryPhoneAlsoDeletedCopies => 'From every phone, also deleted copies';
 
   @override
-  String get fromEveryPhoneOfThisChat =>
-      'From every phone of this chat, also copies users deleted. This cannot be undone.';
+  String get fromEveryPhoneOfThisChat => 'From every phone of this chat, also copies users deleted. This cannot be undone.';
 
   @override
   String get fromPhoto => 'From photo';
@@ -2152,8 +2050,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get getFullVideo => 'Get full video';
 
   @override
-  String get getMessagesAndCallsWhenClosed =>
-      'Get messages and calls when closed';
+  String get getMessagesAndCallsWhenClosed => 'Get messages and calls when closed';
 
   @override
   String get getsItWhenNearbyOrOnline => 'gets it when Nearby or Online';
@@ -2174,8 +2071,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get gettingTheDownloadAddress => 'Getting the download address...';
 
   @override
-  String get giveTheAppToANearby =>
-      'Give the app to a nearby phone · no internet';
+  String get giveTheAppToANearby => 'Give the app to a nearby phone · no internet';
 
   @override
   String get giveThemLinkupNoInternet => 'Give them LinkUp · no internet';
@@ -2187,8 +2083,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goesOutRightAway => 'Goes out right away';
 
   @override
-  String get goneFromEveryPhoneAndThe =>
-      'Gone from every phone and the server, also copies users deleted. Users see nothing.';
+  String get goneFromEveryPhoneAndThe => 'Gone from every phone and the server, also copies users deleted. Users see nothing.';
 
   @override
   String get good => 'Good';
@@ -2247,12 +2142,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupSettings => 'Group settings';
 
   @override
-  String get groupsAreMadeFromYourFriends =>
-      'Groups are made from your friends. Add friends in ';
+  String get groupsAreMadeFromYourFriends => 'Groups are made from your friends. Add friends in ';
 
   @override
-  String get halfCanBeReadNowThe =>
-      'Half can be read now · the rest is on the way';
+  String get halfCanBeReadNowThe => 'Half can be read now · the rest is on the way';
 
   @override
   String hasAnOldLinkup(Object? name) {
@@ -2328,8 +2221,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get iSavedIt => 'I saved it';
 
   @override
-  String identity(Object? platform, Object? status, Object? lastSeenAt,
-      Object? unverified, Object? identityFingerprint) {
+  String identity(Object? platform, Object? status, Object? lastSeenAt, Object? unverified, Object? identityFingerprint) {
     return '$platform • $status\n$lastSeenAt\nIdentity: $unverified$identityFingerprint';
   }
 
@@ -2337,8 +2229,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get identityChanged => 'Identity changed';
 
   @override
-  String get identityChangedOrRevokedVerifyThis =>
-      'Identity changed or revoked — verify this user again';
+  String get identityChangedOrRevokedVerifyThis => 'Identity changed or revoked — verify this user again';
 
   @override
   String get identityKeyHistory => 'Identity key history';
@@ -2349,19 +2240,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get identityKeysAreManagedLocallyAnd =>
-      'Identity keys are managed locally and are not shown in your public profile.';
+  String get identityKeysAreManagedLocallyAnd => 'Identity keys are managed locally and are not shown in your public profile.';
 
   @override
   String get identitySigning => 'Identity & signing';
 
   @override
-  String get ifOffYouCanTSee =>
-      'If off, you can\'t see when others read your messages, and they can\'t see when you read theirs.';
+  String get ifOffYouCanTSee => 'If off, you can\'t see when others read your messages, and they can\'t see when you read theirs.';
 
   @override
-  String get ifTheNewPhoneSaysThis =>
-      'If the new phone says \"This Wi-Fi has no internet. Stay connected?\" tap Yes / Stay.';
+  String get ifTheNewPhoneSaysThis => 'If the new phone says \"This Wi-Fi has no internet. Stay connected?\" tap Yes / Stay.';
 
   @override
   String ifYouLoseThisPhoneIt(Object? user) {
@@ -2474,8 +2362,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String isNotOnTheServerYet(
-      Object? notOnServerName, Object? notOnServerName2) {
+  String isNotOnTheServerYet(Object? notOnServerName, Object? notOnServerName2) {
     return '$notOnServerName is not on the server yet. It goes when $notOnServerName2 is nearby or joins the server.';
   }
 
@@ -2518,16 +2405,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get itGoesToEveryPhoneNearby =>
-      'It goes to every phone nearby, and to the server when online.';
+  String get itGoesToEveryPhoneNearby => 'It goes to every phone nearby, and to the server when online.';
 
   @override
-  String get itGoesToHerPhoneBy =>
-      'It goes to her phone by card, over any link. Pending until it is done.';
+  String get itGoesToHerPhoneBy => 'It goes to her phone by card, over any link. Pending until it is done.';
 
   @override
-  String get itIsRemovedOnlyFromYour =>
-      'It is removed only from your phone. The group still has it.';
+  String get itIsRemovedOnlyFromYour => 'It is removed only from your phone. The group still has it.';
 
   @override
   String itIsRemovedOnlyFromYour2(Object? peerName) {
@@ -2541,12 +2425,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get itMustSignInAgain => 'It must sign in again.';
 
   @override
-  String get itSyncsWhenTheServerAnswers =>
-      'It syncs when the server answers. Your local key above is fine.';
+  String get itSyncsWhenTheServerAnswers => 'It syncs when the server answers. Your local key above is fine.';
 
   @override
-  String get itWasInstalledInPartsFor =>
-      'It was installed in parts (for example from a store). Ask a friend who installed the LinkUp file to share it.';
+  String get itWasInstalledInPartsFor => 'It was installed in parts (for example from a store). Ask a friend who installed the LinkUp file to share it.';
 
   @override
   String items(Object? files) {
@@ -2624,12 +2506,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get k7qm2Xpa9tRc4wnE8d3f => 'K7QM2-XPA9T-RC4WN-E8D3F';
 
   @override
-  String get keepItPrivateItLetsYou =>
-      'Keep it private. It lets you set a new password.';
+  String get keepItPrivateItLetsYou => 'Keep it private. It lets you set a new password.';
 
   @override
-  String get keepKeepRunningInBackgroundOn =>
-      'Keep \"Keep running in background\" on (above)';
+  String get keepKeepRunningInBackgroundOn => 'Keep \"Keep running in background\" on (above)';
 
   @override
   String get keepLinkupRunning => 'Keep LinkUp running';
@@ -2638,8 +2518,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get keepRunningInBackground => 'Keep running in background';
 
   @override
-  String get keepTheNewPhoneConnectedTo =>
-      'Keep the new phone connected to the private LinkUp network while waiting for approval.';
+  String get keepTheNewPhoneConnectedTo => 'Keep the new phone connected to the private LinkUp network while waiting for approval.';
 
   @override
   String get keepThisPrivate => 'Keep this private';
@@ -2648,12 +2527,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get keepWiFiOnOnBoth => 'Keep Wi-Fi on, on both phones';
 
   @override
-  String get keepsLinkupSafeCanHelpYou =>
-      'Keeps LinkUp safe. Can help you get back in if you forget your password.';
+  String get keepsLinkupSafeCanHelpYou => 'Keeps LinkUp safe. Can help you get back in if you forget your password.';
 
   @override
-  String get keyRotationChangesTheDevicePublic =>
-      'Key rotation changes the device public identity used for future encrypted traffic. Previous private key versions stay only on this device and are never uploaded to the server. A new phone therefore needs a future encrypted key-migration/backup mechanism to recover historical ciphertext created for an older device identity.';
+  String get keyRotationChangesTheDevicePublic => 'Key rotation changes the device public identity used for future encrypted traffic. Previous private key versions stay only on this device and are never uploaded to the server. A new phone therefore needs a future encrypted key-migration/backup mechanism to recover historical ciphertext created for an older device identity.';
 
   @override
   String get lanAvailable => 'LAN available';
@@ -2759,22 +2636,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get linkupAccount => 'LinkUp account';
 
   @override
-  String get linkupCallAndRoutingTransportIs =>
-      'LinkUp call and routing transport is local-only: LAN, Wi-Fi Direct and multi-hop mesh.';
+  String get linkupCallAndRoutingTransportIs => 'LinkUp call and routing transport is local-only: LAN, Wi-Fi Direct and multi-hop mesh.';
 
   @override
   String get linkupConnected => 'LinkUp connected';
 
   @override
-  String get linkupCouldNotInitializeSafelyClose =>
-      'LinkUp could not initialize safely. Close and reopen the app.';
+  String get linkupCouldNotInitializeSafelyClose => 'LinkUp could not initialize safely. Close and reopen the app.';
 
   @override
   String get linkupCouldNotStart => 'LinkUp could not start';
 
   @override
-  String get linkupCouldnTTurnOnIts =>
-      'LinkUp couldn\'t turn on its own Wi-Fi. If your friend is on the same Wi-Fi as you, they can scan this:';
+  String get linkupCouldnTTurnOnIts => 'LinkUp couldn\'t turn on its own Wi-Fi. If your friend is on the same Wi-Fi as you, they can scan this:';
 
   @override
   String linkupIsDownloaded(Object? version) {
@@ -2782,19 +2656,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get linkupKeepsNotificationContentSeparateFrom =>
-      'LinkUp keeps notification content separate from your chat content.';
+  String get linkupKeepsNotificationContentSeparateFrom => 'LinkUp keeps notification content separate from your chat content.';
 
   @override
   String get linkupLogo => 'LinkUp logo';
 
   @override
-  String get linkupNeedsTheNearbyDevicesPermission =>
-      'LinkUp needs the \"Nearby devices\" permission to turn on its Wi-Fi. Allow it in LinkUp\'s app settings.';
+  String get linkupNeedsTheNearbyDevicesPermission => 'LinkUp needs the \"Nearby devices\" permission to turn on its Wi-Fi. Allow it in LinkUp\'s app settings.';
 
   @override
-  String get linkupNeedsThisToStayOn =>
-      'LinkUp needs this to stay on — messages and calls must keep arriving in the background.';
+  String get linkupNeedsThisToStayOn => 'LinkUp needs this to stay on — messages and calls must keep arriving in the background.';
 
   @override
   String get linkupNeedsYourOkOnce => 'LinkUp needs your OK once';
@@ -2809,12 +2680,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get linkupPhone => 'LinkUp phone';
 
   @override
-  String get linkupServerIdentityChangedConnectionWas =>
-      'LinkUp server identity changed. Connection was blocked for safety.';
+  String get linkupServerIdentityChangedConnectionWas => 'LinkUp server identity changed. Connection was blocked for safety.';
 
   @override
-  String get linkupTriesAgainLaterByItself =>
-      'LinkUp tries again later by itself.';
+  String get linkupTriesAgainLaterByItself => 'LinkUp tries again later by itself.';
 
   @override
   String linkupUpdatedTo(Object? kAppVersion) {
@@ -2847,8 +2716,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get livePlatformTotalsWithTheActivity =>
-      'Live platform totals with the activity recorded in the selected window';
+  String get livePlatformTotalsWithTheActivity => 'Live platform totals with the activity recorded in the selected window';
 
   @override
   String get liveSubsystemHealth => 'Live subsystem health';
@@ -2878,12 +2746,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loadingYourConversations => 'Loading your conversations…';
 
   @override
-  String get localCallingServiceIsUnavailable =>
-      'Local calling service is unavailable';
+  String get localCallingServiceIsUnavailable => 'Local calling service is unavailable';
 
   @override
-  String get localCallingServiceUnavailableReconnectAnd =>
-      'Local calling service unavailable — reconnect and try again';
+  String get localCallingServiceUnavailableReconnectAnd => 'Local calling service unavailable — reconnect and try again';
 
   @override
   String get localIpv4 => 'Local IPv4';
@@ -2983,15 +2849,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get makeYourProfilePrivate => 'Make your profile private?';
 
   @override
-  String get makingAGroupNeedsOnlineFor =>
-      'Making a group needs Online for now. Try again when Online.';
+  String get makingAGroupNeedsOnlineFor => 'Making a group needs Online for now. Try again when Online.';
 
   @override
   String get manageDevices => 'Manage devices';
 
   @override
-  String get manageSoundsVibrationAndImportanceIn =>
-      'Manage sounds, vibration and importance in Android settings.';
+  String get manageSoundsVibrationAndImportanceIn => 'Manage sounds, vibration and importance in Android settings.';
 
   @override
   String get manageUsers => 'Manage users';
@@ -3084,8 +2948,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageActivity => 'Message activity';
 
   @override
-  String get messageAndCallAlertsAreEnabled =>
-      'Message and call alerts are enabled';
+  String get messageAndCallAlertsAreEnabled => 'Message and call alerts are enabled';
 
   @override
   String get messageCopied => 'Message copied';
@@ -3106,8 +2969,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageNotSent => 'Message not sent';
 
   @override
-  String get messageNotSentTapToResend =>
-      'Message not sent. Tap to resend or delete';
+  String get messageNotSentTapToResend => 'Message not sent. Tap to resend or delete';
 
   @override
   String get messageOneFriend => 'Message one friend';
@@ -3132,23 +2994,19 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get messagesAcceptedByTheServerPer =>
-      'Messages accepted by the server per bucket';
+  String get messagesAcceptedByTheServerPer => 'Messages accepted by the server per bucket';
 
   @override
-  String get messagesAndCallsGetWrongTimes =>
-      'Messages and calls get wrong times. On the server PC: Settings > Time > Set time automatically > Sync now.';
+  String get messagesAndCallsGetWrongTimes => 'Messages and calls get wrong times. On the server PC: Settings > Time > Set time automatically > Sync now.';
 
   @override
   String get messagesAndCallsWorkAgain => 'Messages and calls work again';
 
   @override
-  String get messagesAreSealedForGroupMembers =>
-      'Messages are sealed for group members only';
+  String get messagesAreSealedForGroupMembers => 'Messages are sealed for group members only';
 
   @override
-  String get messagesArriveWhenTheAppIs =>
-      'Messages arrive when the app is closed';
+  String get messagesArriveWhenTheAppIs => 'Messages arrive when the app is closed';
 
   @override
   String messagesCopied(Object? withText) {
@@ -3165,12 +3023,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messagesToday => 'Messages today';
 
   @override
-  String get messagesWaitUntilItRunsAgain =>
-      'Messages wait until it runs again';
+  String get messagesWaitUntilItRunsAgain => 'Messages wait until it runs again';
 
   @override
-  String get microphonePermissionNeededAllowItThen =>
-      'Microphone permission needed — allow it, then answer again';
+  String get microphonePermissionNeededAllowItThen => 'Microphone permission needed — allow it, then answer again';
 
   @override
   String min(Object? left) {
@@ -3228,16 +3084,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get moreOptions => 'More options';
 
   @override
-  String get moveThisAccountToAnotherPhone =>
-      'Move this account to another phone';
+  String get moveThisAccountToAnotherPhone => 'Move this account to another phone';
 
   @override
-  String get moveThisAccountToAnotherPhone2 =>
-      'Move this account to another phone with a one-time QR transfer.';
+  String get moveThisAccountToAnotherPhone2 => 'Move this account to another phone with a one-time QR transfer.';
 
   @override
-  String get moveThisLinkupAccountToAnother =>
-      'Move this LinkUp account to another phone.';
+  String get moveThisLinkupAccountToAnother => 'Move this LinkUp account to another phone.';
 
   @override
   String get moveToANewPhone => 'Move to a new phone';
@@ -3297,8 +3150,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get myQrCode => 'My QR code';
 
   @override
-  String get nameAndPasswordInYourPhone =>
-      'Name and password: in your phone\'s hotspot settings';
+  String get nameAndPasswordInYourPhone => 'Name and password: in your phone\'s hotspot settings';
 
   @override
   String get nameAndPhoto => 'Name and photo';
@@ -3316,15 +3168,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nearby => 'Nearby';
 
   @override
-  String get nearbyChatsWithOtherLinkupPhones =>
-      'Nearby chats with other LinkUp phones may pause for a moment if your phone can\'t do both. They come back by themselves when you stop sharing.';
+  String get nearbyChatsWithOtherLinkupPhones => 'Nearby chats with other LinkUp phones may pause for a moment if your phone can\'t do both. They come back by themselves when you stop sharing.';
 
   @override
   String get nearbyDirectLink => 'Nearby - direct link';
 
   @override
-  String get nearbyGroupsCanHaveUpTo =>
-      'Nearby groups can have up to 32 people.';
+  String get nearbyGroupsCanHaveUpTo => 'Nearby groups can have up to 32 people.';
 
   @override
   String get nearbyLinkupUser => 'Nearby LinkUp user';
@@ -3353,8 +3203,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nearbyOnlineOrOffline => 'Nearby, Online or Offline';
 
   @override
-  String get nearbyPhonesNowServerWhenOnline =>
-      'Nearby phones now, server when online';
+  String get nearbyPhonesNowServerWhenOnline => 'Nearby phones now, server when online';
 
   @override
   String get nearbyPhonesSeen => 'Nearby phones seen';
@@ -3366,12 +3215,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nearbyWhileClosedBatteryLow => 'Nearby while closed: Battery low';
 
   @override
-  String get nearbyWhileClosedNeedsLocation =>
-      'Nearby while closed: Needs location';
+  String get nearbyWhileClosedNeedsLocation => 'Nearby while closed: Needs location';
 
   @override
-  String get nearbyWhileClosedNeedsPermission =>
-      'Nearby while closed: Needs permission';
+  String get nearbyWhileClosedNeedsPermission => 'Nearby while closed: Needs permission';
 
   @override
   String get nearbyWhileClosedOffByAdmin => 'Nearby while closed: Off by admin';
@@ -3398,8 +3245,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get needsTheServer2 => 'Needs the server.';
 
   @override
-  String get needsTheServerItOpensBy =>
-      'Needs the server. It opens by itself when the server is back.';
+  String get needsTheServerItOpensBy => 'Needs the server. It opens by itself when the server is back.';
 
   @override
   String get network => 'Network';
@@ -3417,8 +3263,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get neverSeen => 'Never seen';
 
   @override
-  String get neverShareItLinkupAndThe =>
-      'Never share it. LinkUp and the admin never ask for it.';
+  String get neverShareItLinkupAndThe => 'Never share it. LinkUp and the admin never ask for it.';
 
   @override
   String get neverShown => 'Never shown';
@@ -3448,8 +3293,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newHere => 'New here?';
 
   @override
-  String get newLinkMadeTheOldOne =>
-      'New link made. The old one stops working.';
+  String get newLinkMadeTheOldOne => 'New link made. The old one stops working.';
 
   @override
   String get newLinkupFoundNearby => 'New LinkUp found nearby';
@@ -3482,8 +3326,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newNotification => 'New notification';
 
   @override
-  String get newOwnerOfThisPhoneAsk =>
-      'New owner of this phone? Ask the admin.';
+  String get newOwnerOfThisPhoneAsk => 'New owner of this phone? Ask the admin.';
 
   @override
   String get newPassword => 'New password';
@@ -3525,8 +3368,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newer => 'Newer';
 
   @override
-  String get newestFirstMergedAcrossUsersDevices =>
-      'Newest first, merged across users, devices, files, calls and audit sources';
+  String get newestFirstMergedAcrossUsersDevices => 'Newest first, merged across users, devices, files, calls and audit sources';
 
   @override
   String get next => 'Next';
@@ -3544,8 +3386,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noActivityRecorded => 'No activity recorded';
 
   @override
-  String get noAddressAtAllYourFriend =>
-      'No address at all? Your friend joins the Wi-Fi (step 1), opens its Wi-Fi details, and types the \"Gateway\" address in Chrome with :8080';
+  String get noAddressAtAllYourFriend => 'No address at all? Your friend joins the Wi-Fi (step 1), opens its Wi-Fi details, and types the \"Gateway\" address in Chrome with :8080';
 
   @override
   String get noAnswer => 'No answer';
@@ -3563,8 +3404,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noChatsYet => 'No chats yet';
 
   @override
-  String get noConnectionCheckYourNetworkAnd =>
-      'No connection. Check your network and try again.';
+  String get noConnectionCheckYourNetworkAnd => 'No connection. Check your network and try again.';
 
   @override
   String get noContactsYet => 'No contacts yet';
@@ -3573,8 +3413,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noConversationsYet => 'No conversations yet';
 
   @override
-  String get noCriticalSecurityAlertsIn24h =>
-      'No critical security alerts in 24h';
+  String get noCriticalSecurityAlertsIn24h => 'No critical security alerts in 24h';
 
   @override
   String get noData => 'No data';
@@ -3586,8 +3425,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noDownloadsFor10Minutes => 'No downloads for 10 minutes.';
 
   @override
-  String get noEncryptedIdentityBackupOnThe =>
-      'No encrypted identity backup on the server';
+  String get noEncryptedIdentityBackupOnThe => 'No encrypted identity backup on the server';
 
   @override
   String get noFilesYet => 'No files yet';
@@ -3596,8 +3434,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noFriendFound => 'No friend found';
 
   @override
-  String get noFriendSPhoneCouldCheck =>
-      'No friend\'s phone could check the code yet. Come near a friend\'s phone, or connect to the server.';
+  String get noFriendSPhoneCouldCheck => 'No friend\'s phone could check the code yet. Come near a friend\'s phone, or connect to the server.';
 
   @override
   String get noFriendsYet => 'No friends yet';
@@ -3612,12 +3449,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noLink => 'No link';
 
   @override
-  String get noLinkupServerWasFoundEnter =>
-      'No LinkUp server was found. Enter the server address and try again.';
+  String get noLinkupServerWasFoundEnter => 'No LinkUp server was found. Enter the server address and try again.';
 
   @override
-  String get noMessageHereYouCanOnly =>
-      'No \"Message\" here: you can only chat 1:1 with friends. In the group you can still talk.';
+  String get noMessageHereYouCanOnly => 'No \"Message\" here: you can only chat 1:1 with friends. In the group you can still talk.';
 
   @override
   String get noMessages => 'No messages';
@@ -3635,8 +3470,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noMessagesOrCalls => 'No messages or calls';
 
   @override
-  String get noMessagesWereExchangedInThis =>
-      'No messages were exchanged in this window.';
+  String get noMessagesWereExchangedInThis => 'No messages were exchanged in this window.';
 
   @override
   String get noMessagesYetToday => 'No messages yet today';
@@ -3645,8 +3479,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noMinimum => 'No minimum';
 
   @override
-  String get noModuleMatchesThatTermGlobal =>
-      'No module matches that term. Global entity search across users, devices and transfers is available inside each module.';
+  String get noModuleMatchesThatTermGlobal => 'No module matches that term. Global entity search across users, devices and transfers is available inside each module.';
 
   @override
   String get noNearbyPhoneCouldShareIt => 'No nearby phone could share it';
@@ -3681,19 +3514,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noOneTimeCodeWasReturned => 'No one-time code was returned.';
 
   @override
-  String get noOneToShowYetSearch =>
-      'No one to show yet. Search a name or scan a QR code.';
+  String get noOneToShowYetSearch => 'No one to show yet. Search a name or scan a QR code.';
 
   @override
-  String get noOperationalEventsHaveBeenRecorded =>
-      'No operational events have been recorded on this server yet.';
+  String get noOperationalEventsHaveBeenRecorded => 'No operational events have been recorded on this server yet.';
 
   @override
   String get noOtherPhonesLinked => 'No other phones linked';
 
   @override
-  String get noOtherRegisteredDevicesAreAvailable =>
-      'No other registered devices are available.';
+  String get noOtherRegisteredDevicesAreAvailable => 'No other registered devices are available.';
 
   @override
   String get noOwner => 'No owner';
@@ -3731,8 +3561,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noRequests => 'No requests';
 
   @override
-  String get noResponseTrafficRecordedYet =>
-      'No response traffic recorded yet.';
+  String get noResponseTrafficRecordedYet => 'No response traffic recorded yet.';
 
   @override
   String noResultsFor(Object? q) {
@@ -3746,23 +3575,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noRule => 'no rule';
 
   @override
-  String get noServerAFriendSPhone =>
-      'No server · a friend\'s phone nearby checks it';
+  String get noServerAFriendSPhone => 'No server · a friend\'s phone nearby checks it';
 
   @override
-  String get noServerRequestsGoByWi =>
-      'No server · requests go by Wi-Fi Direct / mesh';
+  String get noServerRequestsGoByWi => 'No server · requests go by Wi-Fi Direct / mesh';
 
   @override
   String get noServerRightNow => 'No server right now';
 
   @override
-  String get noServerSearchingNearbyPhones =>
-      'No server - searching nearby phones';
+  String get noServerSearchingNearbyPhones => 'No server - searching nearby phones';
 
   @override
-  String get noServerShowingPeopleSeenNearby =>
-      'No server · showing people seen nearby';
+  String get noServerShowingPeopleSeenNearby => 'No server · showing people seen nearby';
 
   @override
   String get noServerSideKeyHistoryYet => 'No server-side key history yet.';
@@ -3771,19 +3596,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noWarnings => 'No warnings';
 
   @override
-  String get noWayToReachRightNow =>
-      'No way to reach right now. Messages wait and go when a way opens.';
+  String get noWayToReachRightNow => 'No way to reach right now. Messages wait and go when a way opens.';
 
   @override
   String get nobody => 'Nobody';
 
   @override
-  String get nobodyCanFindYouByName =>
-      '**Nobody can find you** by name search, and no phone shows you to others.';
+  String get nobodyCanFindYouByName => '**Nobody can find you** by name search, and no phone shows you to others.';
 
   @override
-  String get nobodyCanFindYouByName2 =>
-      'Nobody can find you by name search. Only friends get your phone number.';
+  String get nobodyCanFindYouByName2 => 'Nobody can find you by name search. Only friends get your phone number.';
 
   @override
   String get nobodyIsBlockedHere => 'Nobody is blocked here';
@@ -3821,19 +3643,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notDownloadedYet => 'Not downloaded yet';
 
   @override
-  String get notFoundItMayHaveBeen =>
-      'Not found. It may have been removed or renamed.';
+  String get notFoundItMayHaveBeen => 'Not found. It may have been removed or renamed.';
 
   @override
-  String get notFoundTryAgainWhenYou =>
-      'Not found. Try again when you\'re online or near friends.';
+  String get notFoundTryAgainWhenYou => 'Not found. Try again when you\'re online or near friends.';
 
   @override
   String get notHereAskThemToOpen => 'Not here? Ask them to open ';
 
   @override
-  String get notHereAskThemToOpen2 =>
-      'Not here? Ask them to open My QR code, then tap Scan QR code below.';
+  String get notHereAskThemToOpen2 => 'Not here? Ask them to open My QR code, then tap Scan QR code below.';
 
   @override
   String get notInAGroup => 'Not in a group';
@@ -3891,8 +3710,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nothingPending => 'Nothing pending';
 
   @override
-  String get nothingRecordedForThisPeriod =>
-      'Nothing recorded for this period.';
+  String get nothingRecordedForThisPeriod => 'Nothing recorded for this period.';
 
   @override
   String get nothingRemoved => 'nothing removed';
@@ -3910,12 +3728,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notifications => 'Notifications';
 
   @override
-  String get notificationsAllowLinkupTurnOnBanners =>
-      'Notifications: allow LinkUp, turn on Banners, Lock screen and Full-screen';
+  String get notificationsAllowLinkupTurnOnBanners => 'Notifications: allow LinkUp, turn on Banners, Lock screen and Full-screen';
 
   @override
-  String get notificationsAreDisabledInAndroidSettings =>
-      'Notifications are disabled in Android settings';
+  String get notificationsAreDisabledInAndroidSettings => 'Notifications are disabled in Android settings';
 
   @override
   String get notificationsOffTapToAllow => 'Notifications off - tap to allow';
@@ -3982,16 +3798,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get offlineAccount => 'Offline account';
 
   @override
-  String get offlineAccountNotOnServerYet =>
-      'Offline account · not on server yet';
+  String get offlineAccountNotOnServerYet => 'Offline account · not on server yet';
 
   @override
-  String get offlineAccountsNotSeenFor30 =>
-      'Offline accounts not seen for 30 days';
+  String get offlineAccountsNotSeenFor30 => 'Offline accounts not seen for 30 days';
 
   @override
-  String get offlineBlockingIsNotReadyYet =>
-      'Offline blocking is not ready yet.';
+  String get offlineBlockingIsNotReadyYet => 'Offline blocking is not ready yet.';
 
   @override
   String get offlineBlockingIsReady => 'Offline blocking is ready';
@@ -4005,8 +3818,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get offlineToolsStillWorkLockedOnes =>
-      'Offline tools still work. Locked ones open by themselves.';
+  String get offlineToolsStillWorkLockedOnes => 'Offline tools still work. Locked ones open by themselves.';
 
   @override
   String get offlineWorksOnThisPhone => 'Offline · works on this phone';
@@ -4027,8 +3839,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get oldLinkup => 'Old LinkUp';
 
   @override
-  String get oldMessagesStayOnYourPhone =>
-      'Old messages stay on your phone (read only). You can delete the group later.';
+  String get oldMessagesStayOnYourPhone => 'Old messages stay on your phone (read only). You can delete the group later.';
 
   @override
   String get oldVersionUpdateToCall => 'Old version. Update to call.';
@@ -4043,12 +3854,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get olderApps => 'Older apps';
 
   @override
-  String get olderAppsCanOnlyReadChats =>
-      'Older apps can only read chats from now. They see an Update button.';
+  String get olderAppsCanOnlyReadChats => 'Older apps can only read chats from now. They see an Update button.';
 
   @override
-  String get olderAppsSeeAYellowUpdate =>
-      'Older apps see a yellow \"Update\" banner. They keep working.';
+  String get olderAppsSeeAYellowUpdate => 'Older apps see a yellow \"Update\" banner. They keep working.';
 
   @override
   String olderAppsSeeUpdateNeededIn(Object? days) {
@@ -4074,15 +3883,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get onEveryPhoneTheUnblockReaches =>
-      'On every phone the unblock reaches';
+  String get onEveryPhoneTheUnblockReaches => 'On every phone the unblock reaches';
 
   @override
   String get onLinkup => ' on LinkUp';
 
   @override
-  String get onNearbyLinkupPhonesCanJoin =>
-      'On — nearby LinkUp phones can join';
+  String get onNearbyLinkupPhonesCanJoin => 'On — nearby LinkUp phones can join';
 
   @override
   String get onServer => 'On server';
@@ -4091,8 +3898,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get onTheNewPhone => 'On the new phone:';
 
   @override
-  String get onTheNewPhoneChooseTransfer =>
-      'On the new phone, choose “Transfer account from old phone” and scan this QR code. Keep both phones on the same trusted LinkUp network.';
+  String get onTheNewPhoneChooseTransfer => 'On the new phone, choose “Transfer account from old phone” and scan this QR code. Keep both phones on the same trusted LinkUp network.';
 
   @override
   String get onTheServer => 'On the server';
@@ -4101,16 +3907,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get onTheWebOrInThe => 'On the web or in the app';
 
   @override
-  String get onThisPhoneAndroidNeedsLocation =>
-      'On this phone Android needs Location on to start a LinkUp Wi-Fi. Nothing is tracked.';
+  String get onThisPhoneAndroidNeedsLocation => 'On this phone Android needs Location on to start a LinkUp Wi-Fi. Nothing is tracked.';
 
   @override
-  String get onWaitingForAFullGroup =>
-      'On — waiting for a full group or a hotspot nearby';
+  String get onWaitingForAFullGroup => 'On — waiting for a full group or a hotspot nearby';
 
   @override
-  String get oneAnswerEachAVoteCan =>
-      'One answer each. A vote can be changed for 3 minutes, then it\'s final.';
+  String get oneAnswerEachAVoteCan => 'One answer each. A vote can be changed for 3 minutes, then it\'s final.';
 
   @override
   String get oneRunAsIfFilesWere => 'One run as if files were 11 days old';
@@ -4155,8 +3958,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get only => 'Only ';
 
   @override
-  String get onlyActionsYourAdminRolePermits =>
-      'Only actions your admin role permits';
+  String get onlyActionsYourAdminRolePermits => 'Only actions your admin role permits';
 
   @override
   String get onlyAdmins => 'Only admins';
@@ -4168,8 +3970,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get onlyAdminsAnnouncementGroup => 'Only admins = announcement group';
 
   @override
-  String get onlyAdminsCanChangeTheGroup =>
-      'Only admins can change the group photo.';
+  String get onlyAdminsCanChangeTheGroup => 'Only admins can change the group photo.';
 
   @override
   String get onlyAdminsCanDoThis => 'Only admins can do this.';
@@ -4178,8 +3979,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get onlyAdminsCanPinMessages => 'Only admins can pin messages';
 
   @override
-  String get onlyAdminsCanSeeAndChange =>
-      'Only admins can see and change these.';
+  String get onlyAdminsCanSeeAndChange => 'Only admins can see and change these.';
 
   @override
   String get onlyAdminsCanSendMessages => 'Only admins can send messages.';
@@ -4188,42 +3988,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get onlyAdminsSend => 'Only admins send';
 
   @override
-  String get onlyContactsTheAppCanConfirm =>
-      'Only contacts the app can confirm';
+  String get onlyContactsTheAppCanConfirm => 'Only contacts the app can confirm';
 
   @override
   String get onlyForThisPhone => 'Only for this phone?';
 
   @override
-  String get onlyKindAndSizeNobodyCan =>
-      'Only kind and size. Nobody can open the files.';
+  String get onlyKindAndSizeNobodyCan => 'Only kind and size. Nobody can open the files.';
 
   @override
-  String get onlyNamesAndTimesNobodyCan =>
-      'Only names and times. Nobody can hear calls.';
+  String get onlyNamesAndTimesNobodyCan => 'Only names and times. Nobody can hear calls.';
 
   @override
-  String get onlyPeopleThisPhoneHasSeen =>
-      'Only people this phone has seen are listed. Others can be blocked from the web panel.';
+  String get onlyPeopleThisPhoneHasSeen => 'Only people this phone has seen are listed. Others can be blocked from the web panel.';
 
   @override
-  String get onlyTheOwnerAdminCanBlock =>
-      'Only the owner admin can block users';
+  String get onlyTheOwnerAdminCanBlock => 'Only the owner admin can block users';
 
   @override
   String get onlyTheOwnerCanChangeThis => 'Only the Owner can change this.';
 
   @override
-  String get onlyThisPhoneOnlineOrOffline =>
-      'Only this phone, online or offline';
+  String get onlyThisPhoneOnlineOrOffline => 'Only this phone, online or offline';
 
   @override
-  String get onlyYouCanChangeThisTurn =>
-      'Only you can change this. Turn it off any time.';
+  String get onlyYouCanChangeThisTurn => 'Only you can change this. Turn it off any time.';
 
   @override
-  String get onlyYouShouldSeeYourRecovery =>
-      'Only you should see your recovery code.';
+  String get onlyYouShouldSeeYourRecovery => 'Only you should see your recovery code.';
 
   @override
   String get onlyYouWillSeeThisName => 'Only you will see this name';
@@ -4256,8 +4048,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get openNetworkTopology => 'Open Network Topology';
 
   @override
-  String get openRecentsTapTheLinkupIcon =>
-      'Open Recents, tap the LinkUp icon, choose Lock';
+  String get openRecentsTapTheLinkupIcon => 'Open Recents, tap the LinkUp icon, choose Lock';
 
   @override
   String get openRecovery => 'Open Recovery';
@@ -4269,12 +4060,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get openSettings => 'Open settings';
 
   @override
-  String get openThisPersonFromPeopleTo =>
-      'Open this person from People to block them.';
+  String get openThisPersonFromPeopleTo => 'Open this person from People to block them.';
 
   @override
-  String get openThisScreenAgainWhenYou =>
-      'Open this screen again when you are back online.';
+  String get openThisScreenAgainWhenYou => 'Open this screen again when you are back online.';
 
   @override
   String openedChat(Object? admin, Object? pair) {
@@ -4290,16 +4079,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get openedTheInviteLink => 'opened the invite link';
 
   @override
-  String get opensWhatsappChooseMessageYourself =>
-      'Opens WhatsApp · choose \"Message yourself\"';
+  String get opensWhatsappChooseMessageYourself => 'Opens WhatsApp · choose \"Message yourself\"';
 
   @override
-  String get operationalMetadataFromTheLinkupServer =>
-      'Operational metadata from the LinkUp server.';
+  String get operationalMetadataFromTheLinkupServer => 'Operational metadata from the LinkUp server.';
 
   @override
-  String get operationalMetadataOnlyPasswordsPrivateKeys =>
-      'Operational metadata only. Passwords, private keys, message bodies, call audio and decrypted media are never exposed to this dashboard.';
+  String get operationalMetadataOnlyPasswordsPrivateKeys => 'Operational metadata only. Passwords, private keys, message bodies, call audio and decrypted media are never exposed to this dashboard.';
 
   @override
   String get operations => 'Operations';
@@ -4341,8 +4127,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get otherPhonesPixelMotorolaNokia =>
-      'Other phones (Pixel, Motorola, Nokia...)';
+  String get otherPhonesPixelMotorolaNokia => 'Other phones (Pixel, Motorola, Nokia...)';
 
   @override
   String get outgoing => 'Outgoing';
@@ -4351,8 +4136,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get outsideTheDatesPhoneClock => 'Outside the dates (phone clock)';
 
   @override
-  String get overTheInternetThroughTheLinkup =>
-      'Over the internet, through the LinkUp server.';
+  String get overTheInternetThroughTheLinkup => 'Over the internet, through the LinkUp server.';
 
   @override
   String overall(Object? label) {
@@ -4395,15 +4179,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get passwordCopied => 'Password copied';
 
   @override
-  String get passwordHasACharacterThatIs =>
-      'Password has a character that is not allowed.';
+  String get passwordHasACharacterThatIs => 'Password has a character that is not allowed.';
 
   @override
   String get passwordIsTooLong => 'Password is too long.';
 
   @override
-  String get passwordMustBeAtLeast8 =>
-      'Password must be at least 8 characters.';
+  String get passwordMustBeAtLeast8 => 'Password must be at least 8 characters.';
 
   @override
   String passwordOf(Object? username) {
@@ -4467,8 +4249,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get peopleMovingToANewPhone => 'People moving to a new phone';
 
   @override
-  String get peopleNearYouMustAskFirst =>
-      'People near you must **ask first**, and you accept or decline. A **QR code** still adds at once.';
+  String get peopleNearYouMustAskFirst => 'People near you must **ask first**, and you accept or decline. A **QR code** still adds at once.';
 
   @override
   String get peopleNearby => 'People nearby';
@@ -4480,22 +4261,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get peopleSignedIn => 'People signed in';
 
   @override
-  String get peopleWhoAlreadyHaveYouKeep =>
-      'People who already have you **keep you**. They see a \"Private\" label next to your name.';
+  String get peopleWhoAlreadyHaveYouKeep => 'People who already have you **keep you**. They see a \"Private\" label next to your name.';
 
   @override
   String get peopleWithAnAccount => 'People with an account';
 
   @override
-  String get peopleYouBlockHereAreStopped =>
-      'People you block here are stopped on every phone.';
+  String get peopleYouBlockHereAreStopped => 'People you block here are stopped on every phone.';
 
   @override
   String get peopleYouCanAdd => 'People you can add';
 
   @override
-  String get percentagesAreLiveReadingsTheTick =>
-      'Percentages are live readings; the tick marks the alert threshold';
+  String get percentagesAreLiveReadingsTheTick => 'Percentages are live readings; the tick marks the alert threshold';
 
   @override
   String get phone => 'Phone';
@@ -4511,8 +4289,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get phoneMasterPowerSavingLetLinkup =>
-      'Phone Master > Power saving: let LinkUp run in background';
+  String get phoneMasterPowerSavingLetLinkup => 'Phone Master > Power saving: let LinkUp run in background';
 
   @override
   String get phoneNumber => 'Phone number';
@@ -4524,8 +4301,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get phoneRemoved => 'Phone removed';
 
   @override
-  String get phoneToPhoneNoRouterNeeded =>
-      'Phone to phone, no router needed. Messages and calls go straight between your phones.';
+  String get phoneToPhoneNoRouterNeeded => 'Phone to phone, no router needed. Messages and calls go straight between your phones.';
 
   @override
   String get phones => 'Phones';
@@ -4564,19 +4340,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get phonesShowHereWhenTheyAre =>
-      'Phones show here when they are linked.';
+  String get phonesShowHereWhenTheyAre => 'Phones show here when they are linked.';
 
   @override
   String get phonesThatGotTheRule => 'phones that got the rule';
 
   @override
-  String get phonesThatHavenTAnsweredYet =>
-      'Phones that haven\'t answered yet won\'t answer.';
+  String get phonesThatHavenTAnsweredYet => 'Phones that haven\'t answered yet won\'t answer.';
 
   @override
-  String get phonesThatHavenTDoneIt =>
-      'Phones that haven\'t done it yet won\'t do it. Phones that did it stay as they are.';
+  String get phonesThatHavenTDoneIt => 'Phones that haven\'t done it yet won\'t do it. Phones that did it stay as they are.';
 
   @override
   String get phonesWiFiRulesRecovery => 'phones, Wi-Fi rules, recovery';
@@ -4591,12 +4364,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pick => 'Pick';
 
   @override
-  String get pickAUsernameYourFriendsKnow =>
-      'Pick a username your friends know';
+  String get pickAUsernameYourFriendsKnow => 'Pick a username your friends know';
 
   @override
-  String get pickAsManyChatsAsYou =>
-      'Pick as many chats as you want. Photos and videos are sent again as new files.';
+  String get pickAsManyChatsAsYou => 'Pick as many chats as you want. Photos and videos are sent again as new files.';
 
   @override
   String get pin => 'Pin';
@@ -4631,8 +4402,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pointAtThisCode => 'Point at this code';
 
   @override
-  String get pointAtThisCodeOrPick =>
-      'Point at this code, or pick this picture';
+  String get pointAtThisCodeOrPick => 'Point at this code, or pick this picture';
 
   @override
   String get pointAtYourFriendSQr => 'Point at your friend\'s QR code';
@@ -4712,8 +4482,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileSaved => 'Profile saved';
 
   @override
-  String get protectYourAccountWhenThisPhone =>
-      'Protect your account when this phone is lost.';
+  String get protectYourAccountWhenThisPhone => 'Protect your account when this phone is lost.';
 
   @override
   String publicKey(Object? currentPublicKey) {
@@ -4742,12 +4511,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get reachedThePhoneItMustReach =>
-      'Reached the phone - it must reach the server once';
+  String get reachedThePhoneItMustReach => 'Reached the phone - it must reach the server once';
 
   @override
-  String get reachedThePhoneItMustReach2 =>
-      'reached the phone · it must reach the server once';
+  String get reachedThePhoneItMustReach2 => 'reached the phone · it must reach the server once';
 
   @override
   String react(Object? emoji) {
@@ -4766,8 +4533,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get readChatsOnlyUpdateToSend =>
-      'Read chats only. Update to send and call.';
+  String get readChatsOnlyUpdateToSend => 'Read chats only. Update to send and call.';
 
   @override
   String get readOnlyAtOnce => 'Read only at once';
@@ -4776,8 +4542,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get readReceipts => 'Read receipts';
 
   @override
-  String get readReceiptsAreOffTurnOn =>
-      'Read receipts are off. Turn on in Settings › Privacy.';
+  String get readReceiptsAreOffTurnOn => 'Read receipts are off. Turn on in Settings › Privacy.';
 
   @override
   String get ready => 'Ready';
@@ -4806,16 +4571,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recentSecurityEvents => 'RECENT SECURITY EVENTS';
 
   @override
-  String get recentsLockLinkupTapItsIcon =>
-      'Recents: lock LinkUp (tap its icon, choose Lock)';
+  String get recentsLockLinkupTapItsIcon => 'Recents: lock LinkUp (tap its icon, choose Lock)';
 
   @override
-  String get recommendedMessagesArriveInstantly =>
-      'Recommended — messages arrive instantly';
+  String get recommendedMessagesArriveInstantly => 'Recommended — messages arrive instantly';
 
   @override
-  String get recommendedWhenReplacingTheOldPhone =>
-      'Recommended when replacing the old phone.';
+  String get recommendedWhenReplacingTheOldPhone => 'Recommended when replacing the old phone.';
 
   @override
   String get reconnecting => 'Reconnecting';
@@ -5019,8 +4781,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get removesPhotosVideosAndDocumentsAs =>
-      'Removes photos, videos and documents as if they were 11 days old and the phone 80% full. Voice notes and unsent media stay. The messages stay with a small picture.';
+  String get removesPhotosVideosAndDocumentsAs => 'Removes photos, videos and documents as if they were 11 days old and the phone 80% full. Voice notes and unsent media stay. The messages stay with a small picture.';
 
   @override
   String get rename => 'Rename';
@@ -5068,8 +4829,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get requestSubmittedAskTheLinkupAdministrator =>
-      'Request submitted. Ask the LinkUp administrator to approve it and provide the recovery code.';
+  String get requestSubmittedAskTheLinkupAdministrator => 'Request submitted. Ask the LinkUp administrator to approve it and provide the recovery code.';
 
   @override
   String get requested => 'Requested';
@@ -5091,15 +4851,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get requestsWaitHereUntilAPhone =>
-      'Requests wait here until a phone answers. There is no time limit.';
+  String get requestsWaitHereUntilAPhone => 'Requests wait here until a phone answers. There is no time limit.';
 
   @override
   String get requiredText => 'Required';
 
   @override
-  String get requiresTheRuntimeMetricsSampler =>
-      'Requires the runtime metrics sampler';
+  String get requiresTheRuntimeMetricsSampler => 'Requires the runtime metrics sampler';
 
   @override
   String get resend => 'Resend';
@@ -5132,12 +4890,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get restoreAccountData => 'Restore account data';
 
   @override
-  String get restoreAccountDataEncryptedKeys =>
-      'Restore account data + encrypted keys';
+  String get restoreAccountDataEncryptedKeys => 'Restore account data + encrypted keys';
 
   @override
-  String get restoreEncryptedIdentityBackup =>
-      'Restore encrypted identity backup';
+  String get restoreEncryptedIdentityBackup => 'Restore encrypted identity backup';
 
   @override
   String get restoreEncryptedIdentityKeys => 'Restore encrypted identity keys?';
@@ -5190,8 +4946,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get role => 'Role';
 
   @override
-  String get rollupsComputedFromPlatformTablesAnd =>
-      'Rollups computed from platform tables and the runtime sampler';
+  String get rollupsComputedFromPlatformTablesAnd => 'Rollups computed from platform tables and the runtime sampler';
 
   @override
   String get rotateIdentityKey => 'Rotate identity key';
@@ -5200,8 +4955,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rotating => 'Rotating…';
 
   @override
-  String get routerEchoWiFiDirectAnd =>
-      'Router echo, Wi-Fi Direct and mesh checks';
+  String get routerEchoWiFiDirectAnd => 'Router echo, Wi-Fi Direct and mesh checks';
 
   @override
   String routes(Object? routes) {
@@ -5309,12 +5063,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get savedItIsSpreadingToNearby =>
-      'Saved. It is spreading to nearby phones.';
+  String get savedItIsSpreadingToNearby => 'Saved. It is spreading to nearby phones.';
 
   @override
-  String get savedLocallyWillSyncWhenAvailable =>
-      'Saved locally; will sync when available';
+  String get savedLocallyWillSyncWhenAvailable => 'Saved locally; will sync when available';
 
   @override
   String get savedOnThisPhone => 'Saved on this phone';
@@ -5352,8 +5104,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get scanTheQrShownOnYour => 'Scan the QR shown on your old phone.';
 
   @override
-  String get scanWithTheCameraAppNot =>
-      'Scan with the camera app,\nnot the Wi-Fi scanner';
+  String get scanWithTheCameraAppNot => 'Scan with the camera app,\nnot the Wi-Fi scanner';
 
   @override
   String get scannedTheGroupQr => 'scanned the group QR';
@@ -5422,8 +5173,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityAlerts => 'Security alerts';
 
   @override
-  String get securityAndOperationalEventsAppearHere =>
-      'Security and operational events appear here as the server records them.';
+  String get securityAndOperationalEventsAppearHere => 'Security and operational events appear here as the server records them.';
 
   @override
   String get securityCenter => 'Security center';
@@ -5453,8 +5203,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get seeAndRemovePhonesSignedIn => 'See and remove phones signed in';
 
   @override
-  String get seeAndUnblockPeopleYouBlocked =>
-      'See and unblock people you blocked';
+  String get seeAndUnblockPeopleYouBlocked => 'See and unblock people you blocked';
 
   @override
   String get seen => 'Seen';
@@ -5518,12 +5267,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get send => 'Send';
 
   @override
-  String get sendAMessageOrShareA =>
-      'Send a message or share a file with everyone in this group.';
+  String get sendAMessageOrShareA => 'Send a message or share a file with everyone in this group.';
 
   @override
-  String get sendAMessagePhotoOrFile =>
-      'Send a message, photo or file to begin chatting privately.';
+  String get sendAMessagePhotoOrFile => 'Send a message, photo or file to begin chatting privately.';
 
   @override
   String get sendARequest => 'Send a request';
@@ -5574,12 +5321,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sentByWiFiDirectPasses =>
-      'Sent by Wi-Fi Direct · passes phone to phone\nNo time limit · goes to the server log later';
+  String get sentByWiFiDirectPasses => 'Sent by Wi-Fi Direct · passes phone to phone\nNo time limit · goes to the server log later';
 
   @override
-  String get sentOnlyWhenAllMembersGot =>
-      '✓ = sent. ✓✓ only when all members got it.';
+  String get sentOnlyWhenAllMembersGot => '✓ = sent. ✓✓ only when all members got it.';
 
   @override
   String sentTo(Object? picks) {
@@ -5587,8 +5332,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sentToAllPhonesPendingUntil =>
-      'Sent to all phones · Pending until it is done';
+  String get sentToAllPhonesPendingUntil => 'Sent to all phones · Pending until it is done';
 
   @override
   String sentToChats(Object? chats) {
@@ -5613,8 +5357,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get server2 => 'Server';
 
   @override
-  String get serverAddressOptionalFallback =>
-      'Server address (optional fallback)';
+  String get serverAddressOptionalFallback => 'Server address (optional fallback)';
 
   @override
   String get serverConfiguration => 'Server configuration';
@@ -5623,8 +5366,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverConnected => 'Server connected';
 
   @override
-  String get serverConnectedRequestsGoByThe =>
-      'Server connected · requests go by the server';
+  String get serverConnectedRequestsGoByThe => 'Server connected · requests go by the server';
 
   @override
   String get serverDisconnected => 'Server disconnected';
@@ -5638,12 +5380,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverHealth => 'Server health';
 
   @override
-  String get serverHealthDetailsAreOffOn =>
-      'Server health details are off on this server.';
+  String get serverHealthDetailsAreOffOn => 'Server health details are off on this server.';
 
   @override
-  String get serverHistoryNotReachableRightNow =>
-      'Server history not reachable right now.';
+  String get serverHistoryNotReachableRightNow => 'Server history not reachable right now.';
 
   @override
   String get serverIsBackToolsUnlocked => 'Server is back. Tools unlocked.';
@@ -5658,12 +5398,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverOffYourLinksOnly => 'Server off - your links only';
 
   @override
-  String get serverOffGroupPhones324 =>
-      'Server off - this group\'s phones are not known yet.';
+  String get serverOffGroupPhones324 => 'Server off - this group\'s phones are not known yet.';
 
   @override
-  String get serverOffPersonPhone324 =>
-      'Server off - this person\'s phone is not known yet.';
+  String get serverOffPersonPhone324 => 'Server off - this person\'s phone is not known yet.';
 
   @override
   String serverPcClockIsH(Object? h, Object? fast) {
@@ -5706,16 +5444,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settings => 'Settings';
 
   @override
-  String get settingsBatteryBackgroundUsageLimitsLinkup =>
-      'Settings > Battery > Background usage limits: LinkUp must not be in Sleeping or Deep sleeping apps';
+  String get settingsBatteryBackgroundUsageLimitsLinkup => 'Settings > Battery > Background usage limits: LinkUp must not be in Sleeping or Deep sleeping apps';
 
   @override
-  String get settingsWiFiTapTheQr =>
-      'Settings → Wi-Fi → tap the QR icon and scan this code.';
+  String get settingsWiFiTapTheQr => 'Settings → Wi-Fi → tap the QR icon and scan this code.';
 
   @override
-  String sha256Created(
-      Object? publicKey, Object? createdAt, Object? retiredAt) {
+  String sha256Created(Object? publicKey, Object? createdAt, Object? retiredAt) {
     return 'SHA-256 $publicKey\nCreated $createdAt$retiredAt';
   }
 
@@ -5747,12 +5482,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shareMyQr => 'Share my QR';
 
   @override
-  String get shareYourLinkupIdentityWithAnother =>
-      'Share your LinkUp identity with another phone.';
+  String get shareYourLinkupIdentityWithAnother => 'Share your LinkUp identity with another phone.';
 
   @override
-  String get shareYourSignedPublicProfileThrough =>
-      'Share your signed public profile through LinkUp';
+  String get shareYourSignedPublicProfileThrough => 'Share your signed public profile through LinkUp';
 
   @override
   String get sharingAHotspotTest => 'Sharing a hotspot (test)';
@@ -5761,19 +5494,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingStopped => 'Sharing stopped';
 
   @override
-  String get sharingStopsByItselfAfter10 =>
-      'Sharing stops by itself after 10 minutes with no download, or when you leave this screen.';
+  String get sharingStopsByItselfAfter10 => 'Sharing stops by itself after 10 minutes with no download, or when you leave this screen.';
 
   @override
-  String get sharingUsesALotOfBattery =>
-      'Sharing uses a lot of battery. Plug in the charger first.';
+  String get sharingUsesALotOfBattery => 'Sharing uses a lot of battery. Plug in the charger first.';
 
   @override
   String get shortRouteList => 'Short route list';
 
   @override
-  String get showAGenericLinkupNotification =>
-      'Show a generic LinkUp notification';
+  String get showAGenericLinkupNotification => 'Show a generic LinkUp notification';
 
   @override
   String get showFullContent => 'Show full content';
@@ -5816,8 +5546,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get signInAgain => 'Sign in again';
 
   @override
-  String get signInToTheServerTo =>
-      'Sign in to the server to open group links.';
+  String get signInToTheServerTo => 'Sign in to the server to open group links.';
 
   @override
   String get signOut => 'Sign out';
@@ -5859,12 +5588,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get signedOutByAdmin => 'Signed out by admin';
 
   @override
-  String get signedOutByAdminYourChats =>
-      'Signed out by admin. Your chats are still here. Log in again when the server is on.';
+  String get signedOutByAdminYourChats => 'Signed out by admin. Your chats are still here. Log in again when the server is on.';
 
   @override
-  String get signedOutFromTheServerNearby =>
-      'Signed out from the server. Nearby chats still work. Sign in again to use the server.';
+  String get signedOutFromTheServerNearby => 'Signed out from the server. Nearby chats still work. Sign in again to use the server.';
 
   @override
   String get signingYouIn => 'Signing you in…';
@@ -5900,8 +5627,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get someDataCouldNotLoad => 'Some data could not load';
 
   @override
-  String get someOldPicturesWereLeftOut =>
-      'Some old pictures were left out to keep the copy small.';
+  String get someOldPicturesWereLeftOut => 'Some old pictures were left out to keep the copy small.';
 
   @override
   String get someone => 'Someone';
@@ -5910,8 +5636,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get somethingWentWrong => 'Something went wrong';
 
   @override
-  String get somethingWentWrongPleaseTryAgain =>
-      'Something went wrong. Please try again.';
+  String get somethingWentWrongPleaseTryAgain => 'Something went wrong. Please try again.';
 
   @override
   String get somethingWentWrongTryAgain => 'Something went wrong. Try again.';
@@ -5935,8 +5660,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get startOver => 'Start over';
 
   @override
-  String get startRecoveryFromTheLinkupWelcome =>
-      'Start recovery from the LinkUp welcome screen to create a new request.';
+  String get startRecoveryFromTheLinkupWelcome => 'Start recovery from the LinkUp welcome screen to create a new request.';
 
   @override
   String get startTheConversation => 'Start the conversation';
@@ -5950,8 +5674,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get startedByItselfYouCanKeep =>
-      'Started by itself. You can keep using LinkUp.';
+  String get startedByItselfYouCanKeep => 'Started by itself. You can keep using LinkUp.';
 
   @override
   String get starting => 'Starting';
@@ -5972,8 +5695,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statusUnknownStale => 'Status unknown / stale';
 
   @override
-  String get stayReachableEvenWhenTheApp =>
-      'Stay reachable even when the app is closed';
+  String get stayReachableEvenWhenTheApp => 'Stay reachable even when the app is closed';
 
   @override
   String staysYourFriendANewMessage(Object? name) {
@@ -5995,8 +5717,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stillHelpsTheMesh => 'Still helps the mesh';
 
   @override
-  String get stillReceivingOverWiFiIt =>
-      'Still receiving over Wi-Fi. It will appear by itself.';
+  String get stillReceivingOverWiFiIt => 'Still receiving over Wi-Fi. It will appear by itself.';
 
   @override
   String get stop => 'Stop';
@@ -6029,8 +5750,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stoppedByAdmin => 'Stopped by admin';
 
   @override
-  String get stoppedByAdminUpdateToSend =>
-      'Stopped by admin. Update to send and call.';
+  String get stoppedByAdminUpdateToSend => 'Stopped by admin. Update to send and call.';
 
   @override
   String get stoppedByYourPhone => 'Stopped by your phone';
@@ -6045,8 +5765,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get strong => 'Strong';
 
   @override
-  String get subsystemStateReportedByTheServer =>
-      'Subsystem state reported by the server';
+  String get subsystemStateReportedByTheServer => 'Subsystem state reported by the server';
 
   @override
   String get sun => 'Sun';
@@ -6079,8 +5798,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get systemHealth => 'System health';
 
   @override
-  String get t1AppInfoBatteryChooseUnrestricted =>
-      '1. App info > Battery: choose Unrestricted';
+  String get t1AppInfoBatteryChooseUnrestricted => '1. App info > Battery: choose Unrestricted';
 
   @override
   String get t1Day => '1 day';
@@ -6092,12 +5810,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get t1Min => '1 min';
 
   @override
-  String get t1OpenLinkupOnTheOther =>
-      '1. Open LinkUp on the other phone\n2. Tap Scan QR code and point at this\n3. You are added instantly';
+  String get t1OpenLinkupOnTheOther => '1. Open LinkUp on the other phone\n2. Tap Scan QR code and point at this\n3. You are added instantly';
 
   @override
-  String get t1OpenTheRecentsRecentApps =>
-      '1. Open the Recents (recent apps) screen.\n2. Tap the LinkUp app icon at the top of its card.\n3. Choose “Lock”. A padlock stays on the card — the system won’t swipe the app away in “clear all”.';
+  String get t1OpenTheRecentsRecentApps => '1. Open the Recents (recent apps) screen.\n2. Tap the LinkUp app icon at the top of its card.\n3. Choose “Lock”. A padlock stays on the card — the system won’t swipe the app away in “clear all”.';
 
   @override
   String get t1OtherLinkupPhone => '1 other LinkUp phone';
@@ -6121,8 +5837,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get t24Hours => '24 hours';
 
   @override
-  String get t2PowerManagerPowerManagementFor =>
-      '2. Power manager > Power management for apps > LinkUp: turn OFF screen-lock cleaning';
+  String get t2PowerManagerPowerManagementFor => '2. Power manager > Power management for apps > LinkUp: turn OFF screen-lock cleaning';
 
   @override
   String get t30Days => '30 days';
@@ -6140,12 +5855,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tapAPersonToSeeMore => 'Tap a person to see more.';
 
   @override
-  String get tapAddFriendNextToThe =>
-      'Tap Add friend next to the phone you want to add.';
+  String get tapAddFriendNextToThe => 'Tap Add friend next to the phone you want to add.';
 
   @override
-  String get tapAnOptionInTheChat =>
-      'Tap an option in the chat to vote; tap it again to take your vote back. Works Nearby and Online.';
+  String get tapAnOptionInTheChat => 'Tap an option in the chat to vote; tap it again to take your vote back. Works Nearby and Online.';
 
   @override
   String get tapJoinGroupWithQr => 'Tap Join group with QR';
@@ -6189,8 +5902,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get tapYourPhotoInSettingsTo =>
-      'Tap your photo in Settings to switch.';
+  String get tapYourPhotoInSettingsTo => 'Tap your photo in Settings to switch.';
 
   @override
   String get testCleanUpNow => 'Test clean-up now';
@@ -6207,12 +5919,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get testers => 'Testers';
 
   @override
-  String get thatActionIsNotAllowedOn =>
-      'That action is not allowed on this account.';
+  String get thatActionIsNotAllowedOn => 'That action is not allowed on this account.';
 
   @override
-  String get thatAlreadyExistsTryADifferent =>
-      'That already exists. Try a different name.';
+  String get thatAlreadyExistsTryADifferent => 'That already exists. Try a different name.';
 
   @override
   String get thatCodeIsNotRight => 'That code is not right.';
@@ -6224,12 +5934,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thatPasswordIsNotRight => 'That password is not right.';
 
   @override
-  String get thatTookTooLongPleaseTry =>
-      'That took too long. Please try again.';
+  String get thatTookTooLongPleaseTry => 'That took too long. Please try again.';
 
   @override
-  String get thatUsernameAndPasswordDoNot =>
-      'That username and password do not match.';
+  String get thatUsernameAndPasswordDoNot => 'That username and password do not match.';
 
   @override
   String theAccountHistoryCouldNotBe(Object? error) {
@@ -6254,28 +5962,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get theAdminHasNotApprovedIt => 'The admin has not approved it yet.';
 
   @override
-  String get theAdministratorApprovedThisDeviceRecovery =>
-      'The administrator approved this device recovery request.';
+  String get theAdministratorApprovedThisDeviceRecovery => 'The administrator approved this device recovery request.';
 
   @override
-  String get theAdministratorRejectedThisRecoveryRequest =>
-      'The administrator rejected this recovery request.';
+  String get theAdministratorRejectedThisRecoveryRequest => 'The administrator rejected this recovery request.';
 
   @override
-  String get theAdministratorRejectedThisRequest =>
-      'The administrator rejected this request.';
+  String get theAdministratorRejectedThisRequest => 'The administrator rejected this request.';
 
   @override
-  String get theChatAndAllItsMessages =>
-      'The chat and all its messages, photos and files are ';
+  String get theChatAndAllItsMessages => 'The chat and all its messages, photos and files are ';
 
   @override
-  String get theChatStaysInYourChats =>
-      'The chat stays in your Chats list, empty.';
+  String get theChatStaysInYourChats => 'The chat stays in your Chats list, empty.';
 
   @override
-  String get theCodeIsWrongOrToo =>
-      'The code is wrong or too old. Ask the admin for a new code.';
+  String get theCodeIsWrongOrToo => 'The code is wrong or too old. Ask the admin for a new code.';
 
   @override
   String theCodesDonTMatchAsk(Object? v) {
@@ -6294,12 +5996,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get theGroupPhotoCanBeSet => 'The group photo can be set when Online.';
 
   @override
-  String get theLinkWasLostLookingFor =>
-      'The link was lost. Looking for a way again.';
+  String get theLinkWasLostLookingFor => 'The link was lost. Looking for a way again.';
 
   @override
-  String get theMessagesStayInTheChat =>
-      'The messages stay in the chat with a small picture and \"Removed to save space\".';
+  String get theMessagesStayInTheChat => 'The messages stay in the chat with a small picture and \"Removed to save space\".';
 
   @override
   String get theOldCodeStopsWorking => 'The old code stops working';
@@ -6308,8 +6008,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get theOldLinkStopsWorking => 'The old link stops working';
 
   @override
-  String get theOldLinkStopsWorkingPeople =>
-      'The old link stops working. People who have it can\'t use it to join.';
+  String get theOldLinkStopsWorkingPeople => 'The old link stops working. People who have it can\'t use it to join.';
 
   @override
   String theOtherItemsWereForwarded(Object? first) {
@@ -6320,95 +6019,76 @@ class AppLocalizationsEn extends AppLocalizations {
   String get theOtherMembers => 'The other members ';
 
   @override
-  String get thePhoneCarriesOthersLockedMessages =>
-      'The phone carries others\' locked messages';
+  String get thePhoneCarriesOthersLockedMessages => 'The phone carries others\' locked messages';
 
   @override
   String get thePhoneDecides => 'The phone decides';
 
   @override
-  String get theQrBelongsToADifferent =>
-      'The QR belongs to a different or unavailable LinkUp server.';
+  String get theQrBelongsToADifferent => 'The QR belongs to a different or unavailable LinkUp server.';
 
   @override
-  String get theQrShowsHereByItself =>
-      'The QR shows here by itself.\n(up to 10 seconds)';
+  String get theQrShowsHereByItself => 'The QR shows here by itself.\n(up to 10 seconds)';
 
   @override
-  String get theRequestOrItsRecoveryCredential =>
-      'The request or its recovery credential is no longer valid.';
+  String get theRequestOrItsRecoveryCredential => 'The request or its recovery credential is no longer valid.';
 
   @override
   String get theRestIsOnTheWay => 'the rest is on the way';
 
   @override
-  String get theServerDidNotReturnSubsystem =>
-      'The server did not return subsystem readings for this request.';
+  String get theServerDidNotReturnSubsystem => 'The server did not return subsystem readings for this request.';
 
   @override
-  String get theServerDidNotTakeIt =>
-      'The server did not take it (your recovery code was changed). Use Forgot password again when online.';
+  String get theServerDidNotTakeIt => 'The server did not take it (your recovery code was changed). Use Forgot password again when online.';
 
   @override
-  String get theServerIsHavingTroublePlease =>
-      'The server is having trouble. Please try again in a moment.';
+  String get theServerIsHavingTroublePlease => 'The server is having trouble. Please try again in a moment.';
 
   @override
-  String get theServerIsUnreachableCheckThat =>
-      'The server is unreachable. Check that it is running and that this phone is on the same network.';
+  String get theServerIsUnreachableCheckThat => 'The server is unreachable. Check that it is running and that this phone is on the same network.';
 
   @override
   String get theServerNeedsAPairingCode => 'The server needs a pairing code';
 
   @override
-  String get theServerReturnedAReplyThe =>
-      'The server returned a reply the app could not understand.';
+  String get theServerReturnedAReplyThe => 'The server returned a reply the app could not understand.';
 
   @override
-  String get theServerReturnedNoActivityBuckets =>
-      'The server returned no activity buckets for the selected range.';
+  String get theServerReturnedNoActivityBuckets => 'The server returned no activity buckets for the selected range.';
 
   @override
-  String get theServerSignedThisPhoneOut =>
-      'The server signed this phone out. Type your password to sign in again. Your chats stay on this phone.';
+  String get theServerSignedThisPhoneOut => 'The server signed this phone out. Type your password to sign in again. Your chats stay on this phone.';
 
   @override
-  String get theServerStoresOnlyAnEncrypted =>
-      'The server stores only an encrypted backup envelope. The backup passphrase stays on your device.';
+  String get theServerStoresOnlyAnEncrypted => 'The server stores only an encrypted backup envelope. The backup passphrase stays on your device.';
 
   @override
-  String get theServerTookTooLongTo =>
-      'The server took too long to respond. It will keep retrying automatically.';
+  String get theServerTookTooLongTo => 'The server took too long to respond. It will keep retrying automatically.';
 
   @override
   String get theTwoPasswordsAreNotThe => 'The two passwords are not the same.';
 
   @override
-  String get theirCopyPhotosYouSavedTo =>
-      ' their copy. Photos you saved to your Gallery stay.';
+  String get theirCopyPhotosYouSavedTo => ' their copy. Photos you saved to your Gallery stay.';
 
   @override
-  String get theirPhoneIsNotKnownYet =>
-      'Their phone is not known yet. Ask them to open LinkUp near you, then try again.';
+  String get theirPhoneIsNotKnownYet => 'Their phone is not known yet. Ask them to open LinkUp near you, then try again.';
 
   @override
-  String get theirPhonesSendTheseMessagesAlso =>
-      'Their phones send these messages (also ones they deleted). They see nothing.';
+  String get theirPhonesSendTheseMessagesAlso => 'Their phones send these messages (also ones they deleted). They see nothing.';
 
   @override
   String get thenTap => ', then tap ';
 
   @override
-  String get theseFilesAreBiggerThan50 =>
-      'These files are bigger than 50 MB and can\'t be forwarded.';
+  String get theseFilesAreBiggerThan50 => 'These files are bigger than 50 MB and can\'t be forwarded.';
 
   @override
-  String get theseFilesAreBiggerThan502 =>
-      'These files are bigger than 50 MB, so they were not added.';
+  String get theseFilesAreBiggerThan502 => 'These files are bigger than 50 MB, so they were not added.';
 
   @override
-  String get theseTwoAccountsAreOnThe =>
-      'These two accounts are on the same phone.';
+  String get theseTwoAccountsAreOnThe => 'These two accounts are on the same phone.';
 
   @override
   String get they => 'They';
@@ -6417,23 +6097,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get theyAreAddedWhenNearbyOr => 'They are added when Nearby or Online';
 
   @override
-  String get theyCanNoLongerMessageOr =>
-      'They can no longer message or pair with this phone — online or offline. This applies right away on this phone.';
+  String get theyCanNoLongerMessageOr => 'They can no longer message or pair with this phone — online or offline. This applies right away on this phone.';
 
   @override
   String get theyCanTMessageOrCall => 'They can\'t message or call you.';
 
   @override
-  String get thisAccountHasAnEncryptedBackup =>
-      'This account has an encrypted backup of its identity keys. Enter the backup passphrase to also restore message decryption keys, or skip it.';
+  String get thisAccountHasAnEncryptedBackup => 'This account has an encrypted backup of its identity keys. Enter the backup passphrase to also restore message decryption keys, or skip it.';
 
   @override
-  String get thisAccountHasNoRecoveryCode =>
-      'This account has no recovery code on this phone yet.';
+  String get thisAccountHasNoRecoveryCode => 'This account has no recovery code on this phone yet.';
 
   @override
-  String get thisAccountIsNotActiveAsk =>
-      'This account is not active. Ask the admin.';
+  String get thisAccountIsNotActiveAsk => 'This account is not active. Ask the admin.';
 
   @override
   String get thisAdminSessionEndsNow => 'This admin session ends now.';
@@ -6445,12 +6121,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thisDevice => 'This device';
 
   @override
-  String get thisFileIsBiggerThan50 =>
-      'This file is bigger than 50 MB and can\'t be forwarded.';
+  String get thisFileIsBiggerThan50 => 'This file is bigger than 50 MB and can\'t be forwarded.';
 
   @override
-  String get thisFileIsBiggerThan502 =>
-      'This file is bigger than 50 MB, so it was not added.';
+  String get thisFileIsBiggerThan502 => 'This file is bigger than 50 MB, so it was not added.';
 
   @override
   String get thisFileIsNoLongerOn => 'This file is no longer on your phone';
@@ -6459,15 +6133,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thisFileIsNoLongerOn2 => 'This file is no longer on your phone.';
 
   @override
-  String get thisGroupCodeHasExpiredAsk =>
-      'This group code has expired. Ask for a new one.';
+  String get thisGroupCodeHasExpiredAsk => 'This group code has expired. Ask for a new one.';
 
   @override
   String get thisGroupIsFull100People => 'This group is full (100 people).';
 
   @override
-  String get thisGroupWorksOnlyNearbyIt =>
-      'This group works only Nearby (it is not on the server yet), so a link can\'t work. Use ';
+  String get thisGroupWorksOnlyNearbyIt => 'This group works only Nearby (it is not on the server yet), so a link can\'t work. Use ';
 
   @override
   String get thisHappensByItself => 'This happens by itself.';
@@ -6478,12 +6150,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get thisInviteLinkDoesnTWork =>
-      'This invite link doesn\'t work any more.';
+  String get thisInviteLinkDoesnTWork => 'This invite link doesn\'t work any more.';
 
   @override
-  String get thisInviteLinkDoesnTWork2 =>
-      'This invite link doesn\'t work any more. Ask for a new one.';
+  String get thisInviteLinkDoesnTWork2 => 'This invite link doesn\'t work any more. Ask for a new one.';
 
   @override
   String get thisIsNotALinkupGroup => 'This is not a LinkUp group code.';
@@ -6492,41 +6162,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thisIsYou => 'This is you';
 
   @override
-  String get thisLinkupVersionIsStoppedBy =>
-      'This LinkUp version is stopped by admin';
+  String get thisLinkupVersionIsStoppedBy => 'This LinkUp version is stopped by admin';
 
   @override
   String get thisMessageCannotBeResent => 'This message cannot be resent';
 
   @override
-  String get thisNearbyPhoneCannotBeConnected =>
-      'This nearby phone cannot be connected right now.';
+  String get thisNearbyPhoneCannotBeConnected => 'This nearby phone cannot be connected right now.';
 
   @override
-  String get thisNeedsTheServerTryAgain =>
-      'This needs the server. Try again when the server is back.';
+  String get thisNeedsTheServerTryAgain => 'This needs the server. Try again when the server is back.';
 
   @override
   String get thisOne => 'This one';
 
   @override
-  String get thisPageChecksTheLocalServer =>
-      'This page checks the local server every few seconds.';
+  String get thisPageChecksTheLocalServer => 'This page checks the local server every few seconds.';
 
   @override
-  String get thisPageIsLockedItOpens =>
-      'This page is locked. It opens again by itself when the server is back.';
+  String get thisPageIsLockedItOpens => 'This page is locked. It opens again by itself when the server is back.';
 
   @override
   String get thisPerson => 'This person';
 
   @override
-  String get thisPersonCouldNotBeFound =>
-      'This person could not be found now. Try again near them or scan their QR code.';
+  String get thisPersonCouldNotBeFound => 'This person could not be found now. Try again near them or scan their QR code.';
 
   @override
-  String get thisPersonIsNotCurrentlyAvailable =>
-      'This person is not currently available.';
+  String get thisPersonIsNotCurrentlyAvailable => 'This person is not currently available.';
 
   @override
   String get thisPhone => 'This phone';
@@ -6535,31 +6198,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thisPhone2 => 'this phone';
 
   @override
-  String get thisPhoneAlreadyHasAnAccount =>
-      'This phone already has an account';
+  String get thisPhoneAlreadyHasAnAccount => 'This phone already has an account';
 
   @override
-  String get thisPhoneBlocksHotspotsMadeBy =>
-      'This phone blocks hotspots made by apps.';
+  String get thisPhoneBlocksHotspotsMadeBy => 'This phone blocks hotspots made by apps.';
 
   @override
-  String get thisPhoneCanSignInOffline =>
-      'This phone can sign in offline only with the last account used on it.';
+  String get thisPhoneCanSignInOffline => 'This phone can sign in offline only with the last account used on it.';
 
   @override
-  String get thisPhoneCannotReachThatPhone =>
-      'This phone cannot reach that phone directly.';
+  String get thisPhoneCannotReachThatPhone => 'This phone cannot reach that phone directly.';
 
   @override
   String get thisPhoneDoesnTAllowIt => 'This phone doesn\'t allow it';
 
   @override
-  String get thisPhoneHasNoCopyOf =>
-      'This phone has no copy of your password. Log in again on this phone, then try.';
+  String get thisPhoneHasNoCopyOf => 'This phone has no copy of your password. Log in again on this phone, then try.';
 
   @override
-  String get thisPhoneHasNoSavedSign =>
-      'This phone has no saved sign-in yet. Turn the server on and sign in once.';
+  String get thisPhoneHasNoSavedSign => 'This phone has no saved sign-in yet. Turn the server on and sign in once.';
 
   @override
   String thisPhoneIsAlreadyLinkedTo(Object? who) {
@@ -6567,8 +6224,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get thisPhoneIsNotPairedWith =>
-      'This phone is not paired with the server yet. Ask the admin for the pairing code.';
+  String get thisPhoneIsNotPairedWith => 'This phone is not paired with the server yet. Ask the admin for the pairing code.';
 
   @override
   String thisPhoneJoinedYourAccount(Object? name, Object? tail) {
@@ -6581,8 +6237,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String thisPhoneLinkupBuild2(
-      Object? kAppVersion, Object? kAppBuild, Object? sent) {
+  String thisPhoneLinkupBuild2(Object? kAppVersion, Object? kAppBuild, Object? sent) {
     return 'This phone: LinkUp $kAppVersion (build $kAppBuild)$sent';
   }
 
@@ -6590,8 +6245,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thisPhoneNearbyNetwork => 'This phone — nearby network';
 
   @override
-  String get thisPhoneReportsOneBuildLower =>
-      'This phone reports one build lower';
+  String get thisPhoneReportsOneBuildLower => 'This phone reports one build lower';
 
   @override
   String thisPhoneStillHasAskThe(Object? username) {
@@ -6599,8 +6253,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get thisPhoneWasRemovedByAdmin =>
-      'This phone was removed by admin. Your chats are still here. Log in again when the server is on.';
+  String get thisPhoneWasRemovedByAdmin => 'This phone was removed by admin. Your chats are still here. Log in again when the server is on.';
 
   @override
   String get thisPhotoIsNoLongerOn => 'This photo is no longer on your phone.';
@@ -6609,39 +6262,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thisPhotoIsTooBigTry => 'This photo is too big. Try another one.';
 
   @override
-  String get thisQrContainsAOneTime =>
-      'This QR contains a one-time transfer credential. Anyone who can scan it may transfer the account, so keep this screen private.';
+  String get thisQrContainsAOneTime => 'This QR contains a one-time transfer credential. Anyone who can scan it may transfer the account, so keep this screen private.';
 
   @override
-  String get thisRecoveryRequestHasAlreadyBeen =>
-      'This recovery request has already been completed.';
+  String get thisRecoveryRequestHasAlreadyBeen => 'This recovery request has already been completed.';
 
   @override
-  String get thisRecoveryRequestHasExpiredStart =>
-      'This recovery request has expired. Start a new request.';
+  String get thisRecoveryRequestHasExpiredStart => 'This recovery request has expired. Start a new request.';
 
   @override
-  String get thisReturnsTheAppToIts =>
-      'This returns the app to its setup state. Existing local data may be removed.';
+  String get thisReturnsTheAppToIts => 'This returns the app to its setup state. Existing local data may be removed.';
 
   @override
-  String get thisServerBuildDoesNotExpose =>
-      'This server build does not expose the runtime sampler.';
+  String get thisServerBuildDoesNotExpose => 'This server build does not expose the runtime sampler.';
 
   @override
-  String get thisTransferQrHasExpiredGenerate =>
-      'This transfer QR has expired. Generate a new QR on the old phone.';
+  String get thisTransferQrHasExpiredGenerate => 'This transfer QR has expired. Generate a new QR on the old phone.';
 
   @override
-  String get thisUserIdentityIsNotTrusted =>
-      'This user identity is not trusted for local calling';
+  String get thisUserIdentityIsNotTrusted => 'This user identity is not trusted for local calling';
 
   @override
   String get thisUserIsBlocked => 'This user is blocked';
 
   @override
-  String get thisUsesMoreBatterySomePhones =>
-      'This uses more battery. Some phones cannot run it while on Wi-Fi. Only LinkUp phones with \"Link full groups\" on will join it.';
+  String get thisUsesMoreBatterySomePhones => 'This uses more battery. Some phones cannot run it while on Wi-Fi. Only LinkUp phones with \"Link full groups\" on will join it.';
 
   @override
   String get thisVideoIsNoLongerOn => 'This video is no longer on your phone.';
@@ -6655,8 +6300,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get thisWiFiBlocksPhonesFrom =>
-      'This Wi-Fi blocks phones from seeing each other';
+  String get thisWiFiBlocksPhonesFrom => 'This Wi-Fi blocks phones from seeing each other';
 
   @override
   String through(Object? other) {
@@ -6672,8 +6316,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thu => 'Thu';
 
   @override
-  String get toStopSomeoneOnEveryPhone =>
-      'To stop someone on every phone, use Blocked by admin.';
+  String get toStopSomeoneOnEveryPhone => 'To stop someone on every phone, use Blocked by admin.';
 
   @override
   String get toTheServer => 'to the server';
@@ -6696,8 +6339,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tooLateToDeleteForEveryone => 'Too late to delete for everyone';
 
   @override
-  String get tooManyAttemptsPleaseWaitA =>
-      'Too many attempts. Please wait a moment and try again.';
+  String get tooManyAttemptsPleaseWaitA => 'Too many attempts. Please wait a moment and try again.';
 
   @override
   String get tooManyTriesTryAgainIn => 'Too many tries. Try again in 1 minute.';
@@ -6738,8 +6380,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get transport => 'Transport';
 
   @override
-  String get transportStateReportedByConnectedDevices =>
-      'Transport state reported by connected devices';
+  String get transportStateReportedByConnectedDevices => 'Transport state reported by connected devices';
 
   @override
   String get trustCompliance => 'Trust & Compliance';
@@ -6784,8 +6425,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get turnOn => 'Turn on';
 
   @override
-  String get turnOnAutoLaunchSecondaryLaunch =>
-      'Turn ON Auto-launch, Secondary launch and Run in background';
+  String get turnOnAutoLaunchSecondaryLaunch => 'Turn ON Auto-launch, Secondary launch and Run in background';
 
   @override
   String get turnOnExtraNearbySafety => 'Turn on extra nearby safety?';
@@ -6800,8 +6440,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get turnOnWiFiToReach => 'Turn on Wi-Fi to reach people nearby.';
 
   @override
-  String get turnYourHotspotOffAndTry =>
-      'Turn your hotspot off and try again, or let your friend join your hotspot.';
+  String get turnYourHotspotOffAndTry => 'Turn your hotspot off and try again, or let your friend join your hotspot.';
 
   @override
   String turnedOnTheirCameraAcceptTo(Object? name) {
@@ -6892,8 +6531,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get unsupported => 'Unsupported';
 
   @override
-  String until(
-      Object? day, Object? month, Object? hh, Object? mm, Object? ampm) {
+  String until(Object? day, Object? month, Object? hh, Object? mm, Object? ampm) {
     return 'Until $day $month, $hh:$mm $ampm';
   }
 
@@ -6933,24 +6571,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get use03xxXxxxxxxOr923xx => 'Use 03xx xxxxxxx or +92 3xx xxxxxxx';
 
   @override
-  String get useAtLeast10CharactersThis =>
-      'Use at least 10 characters. This passphrase is never sent to the server.';
+  String get useAtLeast10CharactersThis => 'Use at least 10 characters. This passphrase is never sent to the server.';
 
   @override
-  String get useBlockedOnThisPhoneIt =>
-      'Use \"Blocked on this phone\". It does not reach other phones.';
+  String get useBlockedOnThisPhoneIt => 'Use \"Blocked on this phone\". It does not reach other phones.';
 
   @override
-  String get useItInLinkupLoginForgot =>
-      'Use it in LinkUp: Login > Forgot password';
+  String get useItInLinkupLoginForgot => 'Use it in LinkUp: Login > Forgot password';
 
   @override
-  String get useItOnForgotPasswordIf =>
-      'Use it on Forgot password if this phone is lost. Works offline.';
+  String get useItOnForgotPasswordIf => 'Use it on Forgot password if this phone is lost. Works offline.';
 
   @override
-  String get useNewRequestToAskThe =>
-      'Use New request to ask the phones of 2 people or a group.';
+  String get useNewRequestToAskThe => 'Use New request to ask the phones of 2 people or a group.';
 
   @override
   String get useOldPassword => 'Use old password';
@@ -6969,8 +6602,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get usedByAnotherAccountSavedOn =>
-      'Used by another account. Saved on this phone only.';
+  String get usedByAnotherAccountSavedOn => 'Used by another account. Saved on this phone only.';
 
   @override
   String usedLinkupOnThisPhone(Object? username) {
@@ -6981,32 +6613,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get username => 'Username';
 
   @override
-  String get usernameMustBe332Characters =>
-      'Username must be 3–32 characters and use letters, numbers, dot, dash, or underscore.';
+  String get usernameMustBe332Characters => 'Username must be 3–32 characters and use letters, numbers, dot, dash, or underscore.';
 
   @override
-  String get usernameOrRecoveryCodeIsWrong =>
-      'Username or recovery code is wrong.';
+  String get usernameOrRecoveryCodeIsWrong => 'Username or recovery code is wrong.';
 
   @override
   String get users => 'Users';
 
   @override
-  String usersBlockedServer(
-      Object? all, Object? blockedCount, Object? offline) {
+  String usersBlockedServer(Object? all, Object? blockedCount, Object? offline) {
     return '$all users · $blockedCount blocked · server $offline';
   }
 
   @override
-  String get usesTheCodeSavedOnThis =>
-      'Uses the code saved on this phone. The new password goes to the server when it is back.';
+  String get usesTheCodeSavedOnThis => 'Uses the code saved on this phone. The new password goes to the server when it is back.';
 
   @override
   String get usingNearbyGroupsInstead => 'Using nearby groups instead.';
 
   @override
-  String get verboseLogsForSupportCapturesTurns =>
-      'Verbose logs for support captures. Turns off when the app restarts.';
+  String get verboseLogsForSupportCapturesTurns => 'Verbose logs for support captures. Turns off when the app restarts.';
 
   @override
   String get verified => 'Verified';
@@ -7025,8 +6652,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get versionNewer => 'Version newer';
 
   @override
-  String get veryOldAppsBefore30 =>
-      'Very old apps (before 3.0.54) are stopped too.';
+  String get veryOldAppsBefore30 => 'Very old apps (before 3.0.54) are stopped too.';
 
   @override
   String via(Object? nextHop, Object? state) {
@@ -7125,8 +6751,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get votes => 'Votes';
 
   @override
-  String get votesCanTBeChangedAfter =>
-      'Votes can\'t be changed after 3 minutes';
+  String get votesCanTBeChangedAfter => 'Votes can\'t be changed after 3 minutes';
 
   @override
   String get waiting => 'Waiting';
@@ -7148,8 +6773,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get waitingForARoute => 'Waiting for a route';
 
   @override
-  String get waitingForAdministratorApproval =>
-      'Waiting for administrator approval…';
+  String get waitingForAdministratorApproval => 'Waiting for administrator approval…';
 
   @override
   String get waitingForApproval => 'Waiting for approval';
@@ -7189,8 +6813,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get waitingNotNearOrOnlineYet => 'Waiting · not near or online yet';
 
   @override
-  String get waitingSendsWhenYourFriendIs =>
-      'Waiting. Sends when your friend is online';
+  String get waitingSendsWhenYourFriendIs => 'Waiting. Sends when your friend is online';
 
   @override
   String get waitingToJoinTheServer => 'Waiting to join the server';
@@ -7263,16 +6886,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get whatsappSmsEmail => 'WhatsApp, SMS, email…';
 
   @override
-  String get whenSomeoneMovesToANew =>
-      'When someone moves to a new phone and asks for help, it shows here.';
+  String get whenSomeoneMovesToANew => 'When someone moves to a new phone and asks for help, it shows here.';
 
   @override
-  String get whenThePhoneIsMoreThan =>
-      'When the phone is more than 70% full, remove photos, videos and documents not opened for 10 days. Voice notes stay.';
+  String get whenThePhoneIsMoreThan => 'When the phone is more than 70% full, remove photos, videos and documents not opened for 10 days. Voice notes stay.';
 
   @override
-  String get whenThisIsOffLinkupCan =>
-      'When this is off, LinkUp can use the available local Wi-Fi, Wi-Fi Direct and mesh paths automatically.';
+  String get whenThisIsOffLinkupCan => 'When this is off, LinkUp can use the available local Wi-Fi, Wi-Fi Direct and mesh paths automatically.';
 
   @override
   String get whoCalledWhom => 'Who called whom';
@@ -7348,8 +6968,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get wiFiRuleOpenAPerson =>
-      'Wi-Fi rule: open a person in Users or a phone in Devices.';
+  String get wiFiRuleOpenAPerson => 'Wi-Fi rule: open a person in Users or a phone in Devices.';
 
   @override
   String get wiFiStaysOff => 'Wi-Fi stays off';
@@ -7376,8 +6995,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get withoutTheServerThisWorksOnly =>
-      'Without the server this works only for the last account on this phone.';
+  String get withoutTheServerThisWorksOnly => 'Without the server this works only for the last account on this phone.';
 
   @override
   String get workingNow => 'Working now';
@@ -7397,12 +7015,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wrongPasswordTryAgain => 'Wrong password. Try again.';
 
   @override
-  String get wrongPasswordYourCodeStaysHidden =>
-      'Wrong password. Your code stays hidden.';
+  String get wrongPasswordYourCodeStaysHidden => 'Wrong password. Your code stays hidden.';
 
   @override
-  String get wrongPasswordsAndOtherWarningsShow =>
-      'Wrong passwords and other warnings show here.';
+  String get wrongPasswordsAndOtherWarningsShow => 'Wrong passwords and other warnings show here.';
 
   @override
   String get yellowBannerKeepsWorking => 'Yellow banner, keeps working';
@@ -7435,8 +7051,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get youAlreadyHaveThisChatTheir =>
-      'You already have this chat. Their phone adds the messages they deleted.';
+  String get youAlreadyHaveThisChatTheir => 'You already have this chat. Their phone adds the messages they deleted.';
 
   @override
   String get youAreNoLongerAnAdmin => 'You are no longer an admin';
@@ -7448,8 +7063,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youAreNowTheGroupOwner => 'You are now the group owner';
 
   @override
-  String get youAreOnTheSameWi =>
-      'You are on the same Wi-Fi router. Messages and calls go straight between your phones.';
+  String get youAreOnTheSameWi => 'You are on the same Wi-Fi router. Messages and calls go straight between your phones.';
 
   @override
   String youAreOnTheServerNow(Object? name, Object? tail) {
@@ -7485,8 +7099,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get youBlockedThisPersonUnblockThem =>
-      'You blocked this person. Unblock them first.';
+  String get youBlockedThisPersonUnblockThem => 'You blocked this person. Unblock them first.';
 
   @override
   String get youCanAddThemAgainLater => 'You can add them again later.';
@@ -7502,8 +7115,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get youCanMessageAndCallAfter =>
-      'You can message and call after they update.';
+  String get youCanMessageAndCallAfter => 'You can message and call after they update.';
 
   @override
   String get youCanOnlyAddYourFriends => 'You can only add your friends.';
@@ -7515,8 +7127,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youCanReadChatsButCan => 'You can read chats but can\'t send.';
 
   @override
-  String get youCanReadOldChatsBut =>
-      'You can read old chats but can\'t send or call.';
+  String get youCanReadOldChatsBut => 'You can read old chats but can\'t send or call.';
 
   @override
   String youCanReadOldChatsUpdate(Object? newer) {
@@ -7524,8 +7135,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get youCanSendMessagesAndCall =>
-      'You can send messages and call again.';
+  String get youCanSendMessagesAndCall => 'You can send messages and call again.';
 
   @override
   String get youCanTAddYourself => 'You can\'t add yourself.';
@@ -7547,8 +7157,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youCanUnblockThemAnyTime => 'You can unblock them any time.';
 
   @override
-  String get youCanWriteNowTheyGet =>
-      'You can write now. They get your messages right after they join.';
+  String get youCanWriteNowTheyGet => 'You can write now. They get your messages right after they join.';
 
   @override
   String youCreatedGroup(Object? name) {
@@ -7559,15 +7168,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youCreatedThisGroup => 'You created this group';
 
   @override
-  String get youHaveNotSavedItYet =>
-      'You have not saved it yet. Keep it safe in case this phone is lost.';
+  String get youHaveNotSavedItYet => 'You have not saved it yet. Keep it safe in case this phone is lost.';
 
   @override
   String get youHavenTBlockedAnyone => 'You haven\'t blocked anyone.';
 
   @override
-  String get youJoinedUsingThisGroupS =>
-      'You joined using this group\'s invite link';
+  String get youJoinedUsingThisGroupS => 'You joined using this group\'s invite link';
 
   @override
   String get youLeft => 'You left';
@@ -7581,8 +7188,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youReAlreadyInThisGroup => 'You\'re already in this group.';
 
   @override
-  String get youReNoLongerAParticipant =>
-      'You\'re no longer a participant in this group.';
+  String get youReNoLongerAParticipant => 'You\'re no longer a participant in this group.';
 
   @override
   String get youReOnTheServerNow => 'You\'re on the server now';
@@ -7591,15 +7197,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youReSignedIn => 'You\'re signed in';
 
   @override
-  String get youStillGetMessagesAMention =>
-      'You still get messages. A mention of you (@) still notifies you.';
+  String get youStillGetMessagesAMention => 'You still get messages. A mention of you (@) still notifies you.';
 
   @override
   String get youVeAddedEveryone => 'You\'ve added everyone';
 
   @override
-  String get yourAccountExistsOnlyOnThis =>
-      'Your account exists ONLY on this phone and has never reached the server. Resetting deletes it permanently — chats, and its recovery code, will be unrecoverable.';
+  String get yourAccountExistsOnlyOnThis => 'Your account exists ONLY on this phone and has never reached the server. Resetting deletes it permanently — chats, and its recovery code, will be unrecoverable.';
 
   @override
   String get yourAccountIsActiveAgain => 'Your account is active again';
@@ -7608,8 +7212,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get yourAccountIsBlockedByAdmin => 'Your account is blocked by admin';
 
   @override
-  String get yourAccountIsBlockedByAdmin2 =>
-      'Your account is blocked by admin. You can read old chats but can\'t send or call.';
+  String get yourAccountIsBlockedByAdmin2 => 'Your account is blocked by admin. You can read old chats but can\'t send or call.';
 
   @override
   String yourAccountIsOnTheServer(Object? tail) {
@@ -7633,23 +7236,19 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get yourAndroidNeedsLocationAllThe =>
-      'Your Android needs Location \"All the time\" for this. LinkUp never saves where you are.';
+  String get yourAndroidNeedsLocationAllThe => 'Your Android needs Location \"All the time\" for this. LinkUp never saves where you are.';
 
   @override
-  String get yourCameraPreviewTapToFlip =>
-      'Your camera preview. Tap to flip camera, drag to move.';
+  String get yourCameraPreviewTapToFlip => 'Your camera preview. Tap to flip camera, drag to move.';
 
   @override
   String get yourChatWithThemStays => 'Your chat with them **stays**.';
 
   @override
-  String get yourChatsAndAccountStayOn =>
-      'Your chats and account stay on this phone.';
+  String get yourChatsAndAccountStayOn => 'Your chats and account stay on this phone.';
 
   @override
-  String get yourChatsAndAccountStayOn2 =>
-      'Your chats and account stay on this phone. Log back in with your password or recovery code whenever you are ready.';
+  String get yourChatsAndAccountStayOn2 => 'Your chats and account stay on this phone. Log back in with your password or recovery code whenever you are ready.';
 
   @override
   String get yourChatsStayOnThisPhone => 'Your chats stay on this phone.';
@@ -7666,12 +7265,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get yourContacts => 'Your contacts';
 
   @override
-  String get yourConversationsAndContactsAreRestored =>
-      'Your conversations and contacts are restored.';
+  String get yourConversationsAndContactsAreRestored => 'Your conversations and contacts are restored.';
 
   @override
-  String get yourFriendWillJoinThisWi =>
-      'Your friend will join this Wi-Fi to download the app. No internet used.';
+  String get yourFriendWillJoinThisWi => 'Your friend will join this Wi-Fi to download the app. No internet used.';
 
   @override
   String get yourFriends => 'Your friends';
@@ -7680,8 +7277,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get yourLinkupIsOld => 'Your LinkUp is old';
 
   @override
-  String yourMessagesHopThroughSThey(
-      Object? phones, Object? who, Object? who2) {
+  String yourMessagesHopThroughSThey(Object? phones, Object? who, Object? who2) {
     return 'Your messages hop through $phones ($who\'s). They stay locked; $who2 can\'t read them. Calls may be a bit slower.';
   }
 
@@ -7691,12 +7287,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get yourNewPasswordIsOnlyOn =>
-      'Your new password is only on this phone';
+  String get yourNewPasswordIsOnlyOn => 'Your new password is only on this phone';
 
   @override
-  String get yourNewPasswordWorksOnThis =>
-      'Your new password works on this phone now. It goes to the server when the server is back, then you get a new recovery code.';
+  String get yourNewPasswordWorksOnThis => 'Your new password works on this phone now. It goes to the server when the server is back, then you get a new recovery code.';
 
   @override
   String get yourOldCodeNoLongerWorks => 'Your old code no longer works.';
@@ -7705,12 +7299,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get yourOldCodeStopsWorking => 'Your old code stops working.';
 
   @override
-  String get yourOldMessagesStayOnThis =>
-      'Your old messages stay on this phone';
+  String get yourOldMessagesStayOnThis => 'Your old messages stay on this phone';
 
   @override
-  String get yourOtherPhonesStaySignedIn =>
-      'Your other phones stay signed in. You get a new recovery code after this.';
+  String get yourOtherPhonesStaySignedIn => 'Your other phones stay signed in. You get a new recovery code after this.';
 
   @override
   String get yourPhone => 'YOUR PHONE';
@@ -7721,15 +7313,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get yourPhoneHotspotIsAlreadyOn =>
-      'Your phone hotspot is already on, so LinkUp can\'t start its own Wi-Fi. Ask your friend to join your hotspot, then scan:';
+  String get yourPhoneHotspotIsAlreadyOn => 'Your phone hotspot is already on, so LinkUp can\'t start its own Wi-Fi. Ask your friend to join your hotspot, then scan:';
 
   @override
   String get yourPhoneHotspotIsOn => 'Your phone hotspot is on';
 
   @override
-  String get yourPhoneNumberStaysOnThis =>
-      'Your phone number stays on this phone only.';
+  String get yourPhoneNumberStaysOnThis => 'Your phone number stays on this phone only.';
 
   @override
   String yourPhoneNumberWasNotSaved(Object? reason) {
@@ -7754,8 +7344,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get yourProfileIsPublicAgain => 'Your profile is public again';
 
   @override
-  String get yourRecentLinkupCallsWillAppear =>
-      'Your recent LinkUp calls will appear here.';
+  String get yourRecentLinkupCallsWillAppear => 'Your recent LinkUp calls will appear here.';
 
   @override
   String get yourRecoveryCode => 'Your recovery code';
@@ -7769,8 +7358,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get yourSessionHasExpiredPleaseLog =>
-      'Your session has expired. Please log in again.';
+  String get yourSessionHasExpiredPleaseLog => 'Your session has expired. Please log in again.';
 
   @override
   String get yourUniqueUsername => 'Your unique username';
@@ -7797,12 +7385,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get phoneLanguage304 => 'Phone language';
 
   @override
-  String get phoneLanguageHint304 =>
-      'Urdu when the phone is set to Urdu, English otherwise';
+  String get phoneLanguageHint304 => 'Urdu when the phone is set to Urdu, English otherwise';
 
   @override
-  String get chooseLanguage304 =>
-      'Choose the language of LinkUp on this phone.';
+  String get chooseLanguage304 => 'Choose the language of LinkUp on this phone.';
 
   @override
   String get no304 => 'No';
@@ -7849,12 +7435,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get madeOnAdminPhone304 =>
-      'This request was made on the admin phone. The answer opens there.';
+  String get madeOnAdminPhone304 => 'This request was made on the admin phone. The answer opens there.';
 
   @override
-  String get waitingForPhoneOfChat304 =>
-      'Waiting for a phone of this chat. There is no time limit.';
+  String get waitingForPhoneOfChat304 => 'Waiting for a phone of this chat. There is no time limit.';
 
   @override
   String get adminsLower304 => 'admins';
@@ -7917,20 +7501,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get replyDocumentEn304 => '📄 Document';
 
   @override
-  String get serverAddressIsNotConfiguredEn304 =>
-      'Server address is not configured.';
+  String get serverAddressIsNotConfiguredEn304 => 'Server address is not configured.';
 
   @override
-  String get noAccountMadeOfflineToSendEn304 =>
-      'No account made offline to send.';
+  String get noAccountMadeOfflineToSendEn304 => 'No account made offline to send.';
 
   @override
-  String get selectedImageNoLongerExistsEn304 =>
-      'Selected image no longer exists';
+  String get selectedImageNoLongerExistsEn304 => 'Selected image no longer exists';
 
   @override
-  String get serverReturnedNoRecoveryCodeEn304 =>
-      'Server returned no recovery code';
+  String get serverReturnedNoRecoveryCodeEn304 => 'Server returned no recovery code';
 
   @override
   String get adminIsNotOnForThisEn304 => 'Admin is not on for this phone.';
@@ -7942,12 +7522,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youCanTDoThisOnEn304 => 'You can\'t do this on your own account.';
 
   @override
-  String get connectToTheServerOnceToEn304 =>
-      'Connect to the server once to turn on offline admin actions.';
+  String get connectToTheServerOnceToEn304 => 'Connect to the server once to turn on offline admin actions.';
 
   @override
-  String get finishOrCancelSomeActionsFirstEn304 =>
-      'Finish or cancel some actions first';
+  String get finishOrCancelSomeActionsFirstEn304 => 'Finish or cancel some actions first';
 
   @override
   String thisPhoneDoesnTKnowSEn304(Object? v0) {
@@ -7964,15 +7542,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get thisActionIsNotOnThisEn304 => 'This action is not on this phone.';
 
   @override
-  String get theseTwoAccountsAreOnTheEn304 =>
-      'These two accounts are on the same phone - there is no chat between them.';
+  String get theseTwoAccountsAreOnTheEn304 => 'These two accounts are on the same phone - there is no chat between them.';
 
   @override
   String get adminActionsAreNotReadyEn304 => 'Admin actions are not ready.';
 
   @override
-  String get thisPhoneDoesnTKnowTheirEn304 =>
-      'This phone doesn\'t know their phones yet.';
+  String get thisPhoneDoesnTKnowTheirEn304 => 'This phone doesn\'t know their phones yet.';
 
   @override
   String get openTheChatAgainFirstEn304 => 'Open the chat again first.';
@@ -7981,32 +7557,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youCanTBlockYourOwnEn304 => 'You can\'t block your own account.';
 
   @override
-  String get pickThisPhoneSVersionOrEn304 =>
-      'Pick this phone\'s version or a lower one.';
+  String get pickThisPhoneSVersionOrEn304 => 'Pick this phone\'s version or a lower one.';
 
   @override
-  String get connectToTheServerOnceToEn3042 =>
-      'Connect to the server once to turn on offline admin.';
+  String get connectToTheServerOnceToEn3042 => 'Connect to the server once to turn on offline admin.';
 
   @override
-  String get onlyTheOwnerAdminCanSetEn304 =>
-      'Only the owner admin can set the minimum version.';
+  String get onlyTheOwnerAdminCanSetEn304 => 'Only the owner admin can set the minimum version.';
 
   @override
-  String get noLinkupServerIsAvailableOnEn304 =>
-      'No LinkUp server is available on the local network.';
+  String get noLinkupServerIsAvailableOnEn304 => 'No LinkUp server is available on the local network.';
 
   @override
-  String get chooseAUsernameBetween3AndEn304 =>
-      'Choose a username between 3 and 32 characters.';
+  String get chooseAUsernameBetween3AndEn304 => 'Choose a username between 3 and 32 characters.';
 
   @override
-  String get linkupServerCouldNotBeVerifiedEn304 =>
-      'LinkUp server could not be verified.';
+  String get linkupServerCouldNotBeVerifiedEn304 => 'LinkUp server could not be verified.';
 
   @override
-  String get linkupServerIdentityChangedEn304 =>
-      'LinkUp server identity changed.';
+  String get linkupServerIdentityChangedEn304 => 'LinkUp server identity changed.';
 
   @override
   String get userNotFoundOrUnavailableEn304 => 'User not found or unavailable';
@@ -8015,43 +7584,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactHasNoActiveDeviceEn304 => 'Contact has no active device';
 
   @override
-  String get pairAnswerWasNotSentCheckEn304 =>
-      'Pair answer was not sent — check the connection and ask them to pair again.';
+  String get pairAnswerWasNotSentCheckEn304 => 'Pair answer was not sent — check the connection and ask them to pair again.';
 
   @override
   String get thisRequestHasExpiredEn304 => 'This request has expired.';
 
   @override
-  String get thisRequestCouldNotBeCheckedEn304 =>
-      'This request could not be checked.';
+  String get thisRequestCouldNotBeCheckedEn304 => 'This request could not be checked.';
 
   @override
-  String get deviceIdentityIsNotReadyYetEn304 =>
-      'Device identity is not ready yet';
+  String get deviceIdentityIsNotReadyYetEn304 => 'Device identity is not ready yet';
 
   @override
-  String get finishSettingUpYourProfileBeforeEn304 =>
-      'Finish setting up your profile before pairing';
+  String get finishSettingUpYourProfileBeforeEn304 => 'Finish setting up your profile before pairing';
 
   @override
-  String get identityKeysAreNotReadyOnEn304 =>
-      'Identity keys are not ready on this phone — restart the app once and try again.';
+  String get identityKeysAreNotReadyOnEn304 => 'Identity keys are not ready on this phone — restart the app once and try again.';
 
   @override
-  String get couldNotSignYourIdentityForEn304 =>
-      'Could not sign your identity for pairing.';
+  String get couldNotSignYourIdentityForEn304 => 'Could not sign your identity for pairing.';
 
   @override
-  String get thisContactIsUnavailableOrBlockedEn304 =>
-      'This contact is unavailable or blocked';
+  String get thisContactIsUnavailableOrBlockedEn304 => 'This contact is unavailable or blocked';
 
   @override
-  String get selectedFileIsNoLongerAvailableEn304 =>
-      'Selected file is no longer available';
+  String get selectedFileIsNoLongerAvailableEn304 => 'Selected file is no longer available';
 
   @override
-  String get wiFiDirectTransportIsUnavailableEn304 =>
-      'Wi-Fi Direct transport is unavailable';
+  String get wiFiDirectTransportIsUnavailableEn304 => 'Wi-Fi Direct transport is unavailable';
 
   @override
   String downloadFailedEn304(Object? v0) {
@@ -8059,8 +7619,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get noLocalLanWiFiDirectEn304 =>
-      'No local LAN, Wi-Fi Direct, or mesh route is available';
+  String get noLocalLanWiFiDirectEn304 => 'No local LAN, Wi-Fi Direct, or mesh route is available';
 
   @override
   String get messageBodyIsTooLargeEn304 => 'Message body is too large';
@@ -8069,39 +7628,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupNotFoundEn304 => 'Group not found';
 
   @override
-  String get messageBodyMustBe16kbOrEn304 =>
-      'Message body must be 16KB or less';
+  String get messageBodyMustBe16kbOrEn304 => 'Message body must be 16KB or less';
 
   @override
-  String get messageOrAttachmentRequiredEn304 =>
-      'Message or attachment required';
+  String get messageOrAttachmentRequiredEn304 => 'Message or attachment required';
 
   @override
-  String get voiceRecordingCouldNotStartEn304 =>
-      'Voice recording could not start';
+  String get voiceRecordingCouldNotStartEn304 => 'Voice recording could not start';
 
   @override
-  String get voiceRecordingCouldNotBeSavedEn304 =>
-      'Voice recording could not be saved';
+  String get voiceRecordingCouldNotBeSavedEn304 => 'Voice recording could not be saved';
 
   @override
   String get voiceNoteCouldNotBeSavedEn304 => 'Voice note could not be saved';
 
   @override
-  String get backupPassphraseMustBeAtLeastEn304 =>
-      'Backup passphrase must be at least 10 characters';
+  String get backupPassphraseMustBeAtLeastEn304 => 'Backup passphrase must be at least 10 characters';
 
   @override
-  String get noEncryptedIdentityBackupIsAvailableEn304 =>
-      'No encrypted identity backup is available';
+  String get noEncryptedIdentityBackupIsAvailableEn304 => 'No encrypted identity backup is available';
 
   @override
-  String get encryptedBackupBelongsToADifferentEn304 =>
-      'Encrypted backup belongs to a different account';
+  String get encryptedBackupBelongsToADifferentEn304 => 'Encrypted backup belongs to a different account';
 
   @override
-  String get thisDeviceIsNotLinkedToEn304 =>
-      'This device is not linked to a LinkUp account';
+  String get thisDeviceIsNotLinkedToEn304 => 'This device is not linked to a LinkUp account';
 
   @override
   String get fileTransferCancelledEn304 => 'File transfer cancelled';
@@ -8112,8 +7663,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get invalidAdminServerResponseEn304 =>
-      'Invalid admin server response.';
+  String get invalidAdminServerResponseEn304 => 'Invalid admin server response.';
 
   @override
   String adminRequestFailedEn304(Object? v0) {
@@ -8246,8 +7796,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get getChatsBack313 => 'Get chats back from friends';
 
   @override
-  String get getChatsBackSub313 =>
-      'Messages and voice notes from friends\' phones';
+  String get getChatsBackSub313 => 'Messages and voice notes from friends\' phones';
 
   @override
   String get waitingFriendsNearby313 => 'Waiting for friends nearby';
@@ -8266,8 +7815,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get restoreDone313 => 'Done';
 
   @override
-  String get noFriendsNearby313 =>
-      'No friends nearby now · open LinkUp near a friend';
+  String get noFriendsNearby313 => 'No friends nearby now · open LinkUp near a friend';
 
   @override
   String gotMessagesBack313(Object? count, Object? name) {
@@ -8286,8 +7834,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ownChat314 => 'You are in this chat. It\'s already on your phone.';
 
   @override
-  String get alreadyAskedText314 =>
-      'This chat already has an open request. Open it or cancel it first.';
+  String get alreadyAskedText314 => 'This chat already has an open request. Open it or cancel it first.';
 
   @override
   String get alreadyAsked314 => 'Already asked';
@@ -8553,8 +8100,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get getAllAgain318 => 'Get all again';
 
   @override
-  String get getAllAgainSub318 =>
-      'The whole range comes again from their phones. Slower, uses more battery.';
+  String get getAllAgainSub318 => 'The whole range comes again from their phones. Slower, uses more battery.';
 
   @override
   String viewerKept318(Object? range, Object? got) {
@@ -8642,8 +8188,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get comesByItself320 =>
-      'The chat comes by itself as soon as one of their phones is online or near you. There\'s no time limit.';
+  String get comesByItself320 => 'The chat comes by itself as soon as one of their phones is online or near you. There\'s no time limit.';
 
   @override
   String get youWord320 => 'You';
@@ -8692,8 +8237,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get loginL01_321 =>
-      'No LinkUp server answered on this Wi-Fi. Check that the server PC is on and this phone is on the same Wi-Fi.';
+  String get loginL01_321 => 'No LinkUp server answered on this Wi-Fi. Check that the server PC is on and this phone is on the same Wi-Fi.';
 
   @override
   String loginL02a_321(Object? address) {
@@ -8712,15 +8256,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginL03_321 => 'Wrong username or password.';
 
   @override
-  String get loginL04_321 =>
-      'Too many wrong tries. This account is locked for a few minutes.';
+  String get loginL04_321 => 'Too many wrong tries. This account is locked for a few minutes.';
 
   @override
   String get loginL05_321 => 'Too many tries from this phone. Wait 1 minute.';
 
   @override
-  String get loginL06_321 =>
-      'This server is not the one this phone knows. Ask the admin.';
+  String get loginL06_321 => 'This server is not the one this phone knows. Ask the admin.';
 
   @override
   String get loginL07_321 => 'This phone must be paired by the admin first.';
@@ -8742,8 +8284,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get loginL12_321 =>
-      'The server was found but did not finish signing in. Try again.';
+  String get loginL12_321 => 'The server was found but did not finish signing in. Try again.';
 
   @override
   String loginL13_321(Object? reason) {
@@ -8761,16 +8302,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get offlineNoCopy321 =>
-      'This phone has no saved sign-in to open offline.';
+  String get offlineNoCopy321 => 'This phone has no saved sign-in to open offline.';
 
   @override
-  String get offlineOtherUser321 =>
-      'Offline, this phone opens only the last account used on it.';
+  String get offlineOtherUser321 => 'Offline, this phone opens only the last account used on it.';
 
   @override
-  String get offlineBadPassword321 =>
-      'Offline, the username and password do not match the copy saved on this phone.';
+  String get offlineBadPassword321 => 'Offline, the username and password do not match the copy saved on this phone.';
 
   @override
   String get loginStepSearch321 => 'Looking for the server…';
@@ -8861,8 +8399,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get videosComeAsAThumbnailOnly324 => 'Videos come as a thumbnail only';
 
   @override
-  String get sizesAppearWhenThePhoneAnswers324 =>
-      'Sizes appear when the phone answers';
+  String get sizesAppearWhenThePhoneAnswers324 => 'Sizes appear when the phone answers';
 
   @override
   String askedAgo324(String ago) {
@@ -8889,8 +8426,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stillComing324 => 'still coming';
 
   @override
-  String get holdingTheLine324 =>
-      'Holding the line — Stop it if you don\'t need it';
+  String get holdingTheLine324 => 'Holding the line — Stop it if you don\'t need it';
 
   @override
   String get installing324 => 'Installing…';
