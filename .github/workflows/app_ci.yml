@@ -28,13 +28,29 @@ jobs:
           flutter-version: 3.47.7
           channel: stable
       - run: flutter pub get
+      # 324h: the count is written to the run page. The job log needs a GitHub
+      # sign-in; the step summary does not - so a red run explains itself.
       - name: Format (report only - the code was never auto-formatted)
         continue-on-error: true
-        run: dart format --output=none --set-exit-if-changed lib test > format_report.txt 2>&1 || (tail -5 format_report.txt; exit 1)
+        run: |
+          dart format --output=none --set-exit-if-changed lib test > format_report.txt 2>&1; code=$?
+          tail -5 format_report.txt || true
+          echo "Format (report only, never blocks the build): $(grep -c '^Changed ' format_report.txt || true) files would be reformatted." >> "$GITHUB_STEP_SUMMARY"
+          exit $code
       - name: Analyze (errors fail, old warnings only warn)
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      # 324h: WHICH test failed is written to the run page too (same reason).
       - name: Tests + coverage
-        run: flutter test --coverage --reporter expanded > flutter_test.txt 2>&1; code=$?; tail -40 flutter_test.txt; exit $code
+        run: |
+          flutter test --coverage --reporter expanded > flutter_test.txt 2>&1; code=$?
+          tail -40 flutter_test.txt
+          {
+            echo "### Tests + coverage - exit $code, $(grep -c '\[E\]' flutter_test.txt || true) failing test line(s)"
+            echo '```'
+            awk '/\[E\]/{p=1} p{print; n++} n>=40{exit}' flutter_test.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
       - name: Release HTTP rule, release constants without the flag (R268-1)
         if: success() || failure()
         run: flutter test --dart-define=dart.vm.product=true --dart-define=RT268_MODE=release test/security_release_268_test.dart

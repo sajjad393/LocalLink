@@ -208,11 +208,31 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     }
 
+    /// Bundle 324h: the first card of this screen is built on the real clock
+    /// (crypto + pairing run through `runAsync`), so a fixed pump length can
+    /// arrive too early - it did on Windows with Flutter 3.47.5 (CI red:
+    /// "Found 0 widgets with text \"Add friend\""). Wait for the card itself,
+    /// up to 90 s; the expectation that follows is unchanged.
+    Future<void> waitForText(
+      WidgetTester tester,
+      String text, {
+      Duration max = const Duration(seconds: 90),
+    }) async {
+      final end = DateTime.now().add(max);
+      while (DateTime.now().isBefore(end)) {
+        if (find.text(text).evaluate().isNotEmpty) return;
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 250)));
+        await tester.pump(const Duration(milliseconds: 250));
+      }
+    }
+
     testWidgets('no contacts + a stranger with a relay link: card, not '
         '"everyone added"', (tester) async {
       final deps = await pump(tester, meshPeers: [
         {'node_id': 'stranger-000000a1', 'state': 'CONNECTED', 'transport': 'lan'},
       ], paired: const []);
+      await waitForText(tester, 'Add friend'); // 324h: no fixed pump length
       expect(find.text('Add friend'), findsOneWidget);
       expect(find.text('Everyone nearby is already in your contacts'),
           findsNothing);
