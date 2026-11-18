@@ -19,6 +19,20 @@ class RequestScope324 {
 
   static const String prefKey = 'request_scope_324';
 
+  /// Bundle 324e: this server says "invalid request body" to a request that
+  /// carries `with` - an older server that does not know the key. Remembered,
+  /// so the next request does not have to fail first - but only for a day, so
+  /// the day the server is updated the phone starts sending `with` again by
+  /// itself (worst case: one 400 that day).
+  static const String nowithPrefKey = 'request_scope_324_nowith';
+  static const Duration nowithFor = Duration(hours: 24);
+  static int _noWithAt = 0;
+
+  static bool get serverNoWith324 {
+    if (_noWithAt <= 0) return false;
+    return DateTime.now().millisecondsSinceEpoch - _noWithAt < nowithFor.inMilliseconds;
+  }
+
   /// Wired in `app_dependencies.dart` (`store.readSetting` / `writeSetting`).
   static Future<String?> Function(String key)? read;
   static Future<void> Function(String key, String value)? write;
@@ -28,11 +42,31 @@ class RequestScope324 {
 
   static bool _loaded = false;
 
+  /// Bundle 324e: stop sending `with` to this server (it refused it once).
+  static Future<void> markServerNoWith324() async {
+    _noWithAt = DateTime.now().millisecondsSinceEpoch;
+    try {
+      await write?.call(nowithPrefKey, '$_noWithAt');
+    } catch (_) {}
+  }
+
+  /// Tests only.
+  static void resetForTest() {
+    _byId.clear();
+    _noWithAt = 0;
+    _loaded = false;
+  }
+
   static Future<void> load() async {
     _byId.clear();
     _loaded = true;
     final r = read;
     if (r == null) return;
+    try {
+      _noWithAt = int.tryParse(await r(nowithPrefKey) ?? '') ?? 0;
+    } catch (_) {
+      _noWithAt = 0;
+    }
     try {
       final raw = await r(prefKey);
       if (raw == null || raw.isEmpty) return;

@@ -1,6 +1,8 @@
 // Bundle 324: one request per chat (offline included), one card / row per
 // chat, "What comes" (the `with` filter in FileQueue317.planOf) and the
 // words of the card (no `0/6`, the `2 requests` note).
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
@@ -190,6 +192,64 @@ void main() {
       final st = RequestStep307.of(_ready324());
       final words = ChatRequestNotifier307.cardTitle321(_ready324(), st, _trip324(here: 6));
       expect(words.endsWith(ChatRequestNotifier307.tick321), isTrue);
+    });
+  });
+
+  group('324e - an old server that does not know `with`', () {
+    test('only a 400 about the body counts as the old server', () {
+      expect(
+          isOldServerNoWith324(const ChatAdminRefused(400, '', 'invalid request body')), isTrue);
+      expect(isOldServerNoWith324(const ChatAdminRefused(400, '', 'bad request')), isTrue);
+      // 409 = already asked / own chat: never retried.
+      expect(
+          isOldServerNoWith324(const ChatAdminRefused(409, '', 'invalid request body')), isFalse);
+      // a 400 about something else is not the `with` key.
+      expect(isOldServerNoWith324(const ChatAdminRefused(400, 'x', 'wrong range')), isFalse);
+      expect(isOldServerNoWith324(const ChatAdminRefused(401, '', 'invalid token')), isFalse);
+    });
+
+    test('the phone remembers it across a restart, and keeps the types', () async {
+      final store = <String, String>{};
+      RequestScope324.resetForTest();
+      RequestScope324.read = (k) async => store[k];
+      RequestScope324.write = (k, v) async => store[k] = v;
+      expect(RequestScope324.serverNoWith324, isFalse);
+
+      await RequestScope324.remember('r324e', chatKey: 'd:a1|b1', types: {'voice'});
+      await RequestScope324.markServerNoWith324();
+      expect(int.tryParse(store[RequestScope324.nowithPrefKey] ?? ''), isNotNull,
+          reason: 'a time stamp, so it can expire by itself');
+
+      // restart the app: the flag comes back, the filter stays on this phone.
+      RequestScope324.resetForTest();
+      expect(RequestScope324.serverNoWith324, isFalse);
+      await RequestScope324.load();
+      expect(RequestScope324.serverNoWith324, isTrue, reason: 'no second 400 for the same server');
+      expect(RequestScope324.typesOf('r324e'), {'voice'},
+          reason: 'the request still only brings voice notes');
+
+      // a day later the phone tries `with` again (the server may be new by then)
+      store[RequestScope324.nowithPrefKey] =
+          '${DateTime.now().millisecondsSinceEpoch - 25 * 3600 * 1000}';
+      RequestScope324.resetForTest();
+      await RequestScope324.load();
+      expect(RequestScope324.serverNoWith324, isFalse, reason: 'self-healing after 24 h');
+
+      RequestScope324.read = null;
+      RequestScope324.write = null;
+      RequestScope324.resetForTest();
+    });
+
+    test('source: the create asks once without `with`, and the refusal is logged', () {
+      final src =
+          File('lib/features/admin/data/actions/chat_answer_reader.dart').readAsStringSync();
+      expect(src, contains('isOldServerNoWith324(e)'));
+      expect(src, contains("body324.remove('with')"));
+      expect(src, contains("'CHAT_REQ324'"));
+      expect(src, contains('!RequestScope324.serverNoWith324'));
+      // 324e: this client is not ApiHttpClient - a refusal here must still leave
+      // one line in the log (the 18 Nov 20:53 toast had nothing to find).
+      expect(src, contains("'CHAT_REQ_POST'"));
     });
   });
 }

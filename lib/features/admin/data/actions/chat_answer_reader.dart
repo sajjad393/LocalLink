@@ -160,6 +160,15 @@ class ChatAdminRefused implements Exception {
   String toString() => message;
 }
 
+/// Bundle 324e: the running server refuses the whole body when it meets a key
+/// it does not know. `with` is the only key 324 added to this body, so a 400
+/// whose words are about the body means "old server", nothing else.
+bool isOldServerNoWith324(ChatAdminRefused e) {
+  if (e.status != 400) return false;
+  final m = e.message.toLowerCase();
+  return m.contains('invalid') || m.contains('bad request') || m.contains('body');
+}
+
 class HttpChatAdminServer implements ChatAdminServer {
   HttpChatAdminServer({required this.baseUrl, http.Client? client})
       : _client = BuildHeaderClient(client ?? http.Client());
@@ -220,10 +229,22 @@ class HttpChatAdminServer implements ChatAdminServer {
       'requests');
 
   @override
-  Future<Map<String, dynamic>> create(String token, Map<String, dynamic> body) async => _map(
-      await _client
-          .post(_uri('/api/v1/admin/chat-requests'), headers: _h(token), body: jsonEncode(body))
-          .timeout(_timeout));
+  Future<Map<String, dynamic>> create(String token, Map<String, dynamic> body) async {
+    final r = await _client
+        .post(_uri('/api/v1/admin/chat-requests'), headers: _h(token), body: jsonEncode(body))
+        .timeout(_timeout);
+    // Bundle 324e: this client is NOT ApiHttpClient, so a refusal here used to
+    // leave no line in the log at all (the 18 Nov 20:53 "invalid request body"
+    // toast had nothing to find). One short line, no personal data.
+    if (r.statusCode < 200 || r.statusCode > 299) {
+      final t = r.body.replaceAll(RegExp(r'\s+'), ' ');
+      final hasWith = body.containsKey('with');
+      AppLogger.info('CHAT_REQ_POST',
+          detail: '-> ${r.statusCode} with=$hasWith '
+              '${t.length > 120 ? t.substring(0, 120) : t}');
+    }
+    return _map(r);
+  }
 
   @override
   Future<ChatAnswerView> answer(String token, String id) async {
@@ -1337,14 +1358,30 @@ class ChatRequests221 {
     }
     final token = await _token();
     if (token != null && serverOnline()) {
-      final res = await server.create(token, {
+      // Bundle 324e: `with` is a hint, and only a hint - this phone already
+      // filters what it shows and what it downloads (RequestScope324). An older
+      // server does not know the key and refuses the WHOLE body ("invalid
+      // request body", 18 Nov 20:53), so ask once without it and remember.
+      final sendWith324 = with324 != null && !RequestScope324.serverNoWith324;
+      final body324 = <String, dynamic>{
         ...pick.toServer(),
         'range': range,
         if (range == 'dates') 'from': r.from,
         if (range == 'dates') 'to': r.to,
         ...since318, // Bundle 318 (K4)
-        if (with324 != null) 'with': with324.toList()..sort(), // Bundle 324
-      });
+        if (sendWith324) 'with': with324.toList()..sort(), // Bundle 324
+      };
+      Map<String, dynamic> res;
+      try {
+        res = await server.create(token, body324);
+      } on ChatAdminRefused catch (e) {
+        if (!(sendWith324 && isOldServerNoWith324(e))) rethrow;
+        AppLogger.info('CHAT_REQ324',
+            detail: 'with=refused status=${e.status} -> retry=without');
+        await RequestScope324.markServerNoWith324();
+        body324.remove('with');
+        res = await server.create(token, body324);
+      }
       final id = res['id']?.toString() ?? '';
       if (id.isNotEmpty) {
         await _markMine307(id);
