@@ -6366,5 +6366,35 @@
         "type": "Object?"
       }
     }
-  }
+  },
+  "whatComes324": "What comes",
+  "text324": "Text",
+  "voiceNotes324": "Voice notes",
+  "photos324": "Photos",
+  "videos324": "Videos",
+  "videosComeAsAThumbnailOnly324": "Videos come as a thumbnail only",
+  "sizesAppearWhenThePhoneAnswers324": "Sizes appear when the phone answers",
+  "askedAgo324": "asked {ago}",
+  "@askedAgo324": {"placeholders": {"ago": {"type": "String"}}},
+  "anHourAgo324": "1 hour ago",
+  "hoursAgo324": "{n} hours ago",
+  "@hoursAgo324": {"placeholders": {"n": {"type": "int"}}},
+  "aDayAgo324": "1 day ago",
+  "daysAgo324": "{n} days ago",
+  "@daysAgo324": {"placeholders": {"n": {"type": "int"}}},
+  "stillComing324": "still coming",
+  "holdingTheLine324": "Holding the line — Stop it if you don't need it",
+  "installing324": "Installing…",
+  "couldNotGetItNow324": "Couldn’t get it now",
+  "tryAgain324": "Try again",
+  "dismiss324": "Dismiss",
+  "youCanLeaveThisScreen324": "You can leave this screen",
+  "gettingUpdatePct324": "Getting the update · {pct}%",
+  "@gettingUpdatePct324": {"placeholders": {"pct": {"type": "String"}}},
+  "theUpdateIsHere324": "The update is here",
+  "nRequests324": "{n} requests",
+  "@nRequests324": {"placeholders": {"n": {"type": "int"}}},
+  "filesTakeTurns324": "Files take turns, 2 at a time",
+  "getPhotos324": "Get photos",
+  "videosNotAsked324": "videos not asked"
 }

@@ -212,11 +212,14 @@ object ChatRequestNotifier307 {
     fun bar321(plan: Plan, pieces: String, kind: String, from: String, at: Int): Bar321 {
         val color = trackerColor(plan)
         val fills = if (plan.files) fills321(pieces) else emptyList()
+        val progress = if (plan.files) progress321(fills, plan.progress) else at.coerceIn(0, 100)
         return Bar321(
-            show = showBar321(plan),
+            // Bundle 324 (C): nothing here yet = no bar. A 0% line was a grey
+            // rail with nothing on it; the title says "waiting" meanwhile.
+            show = showBar321(plan) && !(plan.files && progress <= 0),
             segments = if (plan.files) segments321(fills.size) else listOf(100),
             points = if (plan.files) points321(fills) else POINTS.filter { it < 100 },
-            progress = if (plan.files) progress321(fills, plan.progress) else at.coerceIn(0, 100),
+            progress = progress,
             color = color,
             pointColor = if (plan.files) GREEN else color,
             tracker = tracker321(plan, kind),

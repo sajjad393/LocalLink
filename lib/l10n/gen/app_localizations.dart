@@ -14897,6 +14897,156 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{n} chats'**
   String nChats321(Object? n);
+
+  /// No description provided for @whatComes324.
+  ///
+  /// In en, this message translates to:
+  /// **'What comes'**
+  String get whatComes324;
+
+  /// No description provided for @text324.
+  ///
+  /// In en, this message translates to:
+  /// **'Text'**
+  String get text324;
+
+  /// No description provided for @voiceNotes324.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice notes'**
+  String get voiceNotes324;
+
+  /// No description provided for @photos324.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos'**
+  String get photos324;
+
+  /// No description provided for @videos324.
+  ///
+  /// In en, this message translates to:
+  /// **'Videos'**
+  String get videos324;
+
+  /// No description provided for @videosComeAsAThumbnailOnly324.
+  ///
+  /// In en, this message translates to:
+  /// **'Videos come as a thumbnail only'**
+  String get videosComeAsAThumbnailOnly324;
+
+  /// No description provided for @sizesAppearWhenThePhoneAnswers324.
+  ///
+  /// In en, this message translates to:
+  /// **'Sizes appear when the phone answers'**
+  String get sizesAppearWhenThePhoneAnswers324;
+
+  /// No description provided for @askedAgo324.
+  ///
+  /// In en, this message translates to:
+  /// **'asked {ago}'**
+  String askedAgo324(String ago);
+
+  /// No description provided for @anHourAgo324.
+  ///
+  /// In en, this message translates to:
+  /// **'1 hour ago'**
+  String get anHourAgo324;
+
+  /// No description provided for @hoursAgo324.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} hours ago'**
+  String hoursAgo324(int n);
+
+  /// No description provided for @aDayAgo324.
+  ///
+  /// In en, this message translates to:
+  /// **'1 day ago'**
+  String get aDayAgo324;
+
+  /// No description provided for @daysAgo324.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} days ago'**
+  String daysAgo324(int n);
+
+  /// No description provided for @stillComing324.
+  ///
+  /// In en, this message translates to:
+  /// **'still coming'**
+  String get stillComing324;
+
+  /// No description provided for @holdingTheLine324.
+  ///
+  /// In en, this message translates to:
+  /// **'Holding the line — Stop it if you don\'t need it'**
+  String get holdingTheLine324;
+
+  /// No description provided for @installing324.
+  ///
+  /// In en, this message translates to:
+  /// **'Installing…'**
+  String get installing324;
+
+  /// No description provided for @couldNotGetItNow324.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn’t get it now'**
+  String get couldNotGetItNow324;
+
+  /// No description provided for @tryAgain324.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get tryAgain324;
+
+  /// No description provided for @dismiss324.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get dismiss324;
+
+  /// No description provided for @youCanLeaveThisScreen324.
+  ///
+  /// In en, this message translates to:
+  /// **'You can leave this screen'**
+  String get youCanLeaveThisScreen324;
+
+  /// No description provided for @gettingUpdatePct324.
+  ///
+  /// In en, this message translates to:
+  /// **'Getting the update · {pct}%'**
+  String gettingUpdatePct324(String pct);
+
+  /// No description provided for @theUpdateIsHere324.
+  ///
+  /// In en, this message translates to:
+  /// **'The update is here'**
+  String get theUpdateIsHere324;
+
+  /// No description provided for @nRequests324.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} requests'**
+  String nRequests324(int n);
+
+  /// No description provided for @filesTakeTurns324.
+  ///
+  /// In en, this message translates to:
+  /// **'Files take turns, 2 at a time'**
+  String get filesTakeTurns324;
+
+  /// No description provided for @getPhotos324.
+  ///
+  /// In en, this message translates to:
+  /// **'Get photos'**
+  String get getPhotos324;
+
+  /// No description provided for @videosNotAsked324.
+  ///
+  /// In en, this message translates to:
+  /// **'videos not asked'**
+  String get videosNotAsked324;
 }
 
 class _AppLocalizationsDelegate

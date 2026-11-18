@@ -1,5 +1,6 @@
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/share_app/domain/silent_update_275.dart';
+import 'package:locallink/features/share_app/domain/update_card_324.dart';
 import 'package:locallink/features/share_app/data/app_latest_server_299.dart';
 import 'package:locallink/features/contacts/presentation/widgets/my_links_map_273.dart';
 import 'package:locallink/features/authentication/data/services/offline_publish_ticker_256.dart';
@@ -25,6 +26,7 @@ import 'package:locallink/features/admin/data/actions/admin_action_store.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+import 'package:locallink/features/admin/data/actions/request_scope_324.dart';
 import 'package:locallink/features/admin/data/actions/chat_request_notifier_307.dart'; // Bundle 307
 import 'package:locallink/features/admin/data/actions/file_queue_317.dart'; // Bundle 317
 import 'package:locallink/features/admin/data/actions/kept_copy_318.dart'; // Bundle 318
@@ -1146,6 +1148,11 @@ class AppDependencies {
       writeSetting: store.writeSetting,
     );
     ChatAnswerReader.instance = reader;
+    // Bundle 324: the chat key + the types of every request this phone made
+    // (the offline-proof "one request per chat" and "what comes" filter).
+    RequestScope324.read = store.readSetting;
+    RequestScope324.write = store.writeSetting;
+    unawaited(RequestScope324.load());
     // Bundle 318 (K1): the Owner phone's kept copies (locked DB, 7 days).
     final kept318 = Kept318(store: SqlKeptStore318(() => hide.db));
     Kept318.instance = kept318;
@@ -1490,6 +1497,8 @@ class AppDependencies {
       ),
     );
     SilentUpdate275.instance = silent;
+    // Bundle 324 (324-A): the same update as ONE silent notification.
+    UpdateCard324(silent);
     unawaited(SilentUpdate275.cleanAtStart(read: store.readSetting, write: store.writeSetting)
         .then((updated) {
       if (updated) SilentUpdate275.onUpdated?.call();

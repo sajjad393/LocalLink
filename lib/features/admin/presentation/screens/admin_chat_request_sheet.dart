@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/data/actions/kept_copy_318.dart';
@@ -73,6 +75,13 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
   /// Bundle 318 (K3): the kept copy of the picked chat on this phone.
   KeptCopy318? _kept;
 
+  /// Bundle 324 (6.1): what comes - `voice`, `photo`, `video`. Text is
+  /// always there (it is the chat), documents are never filtered (the
+  /// sheet has no row for them), so unticking everything still brings
+  /// the whole chat minus the big photo / video bytes.
+  static const String withKey324 = 'request_with_324';
+  Set<String> _with324 = {'voice', 'photo', 'video'};
+
   @override
   void initState() {
     super.initState();
@@ -87,6 +96,65 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
       }
       unawaited(_checkOpen());
     }
+    unawaited(_loadWith324());
+  }
+
+  /// Bundle 324: the last choice is remembered (`read/write` like `gateKey`).
+  Future<void> _loadWith324() async {
+    try {
+      final raw = await widget.service.read(withKey324);
+      if (raw == null || raw.isEmpty) return;
+      final d = jsonDecode(raw);
+      if (d is! List) return;
+      final t = {for (final x in d) '$x'}..retainAll(const ['voice', 'photo', 'video']);
+      if (!mounted) return;
+      setState(() => _with324 = t);
+    } catch (_) {}
+  }
+
+  void _toggle324(String kind) {
+    setState(() {
+      if (!_with324.remove(kind)) _with324.add(kind);
+    });
+    final list = _with324.toList()..sort();
+    unawaited(widget.service.write(withKey324, jsonEncode(list)).catchError((_) {}));
+  }
+
+  /// Bundle 324 (6.1): one tick row, the same shape as a range tile.
+  Widget _whatRow324(String key, String label, bool on, {bool locked = false}) {
+    final k = K307.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: ValueKey(key),
+        borderRadius: BorderRadius.circular(14),
+        onTap: locked ? null : () => _toggle324(key.substring('request324_'.length)),
+        child: AnimatedContainer(
+          duration: Motion307.d(context, 180),
+          padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+          decoration: BoxDecoration(
+            color: on ? k.blueSoft : k.card,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: on ? (locked ? k.dash : k.blue) : k.dash, width: on && !locked ? 1.5 : 1),
+          ),
+          child: Row(children: [
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: on ? (locked ? Colors.transparent : k.blue) : Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: on ? (locked ? k.grey : k.blue) : k.dash, width: 1.5),
+              ),
+              child: on ? Icon(Icons.check_rounded, size: 14, color: locked ? k.grey : Colors.white) : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(label, style: k.text(14, FontWeight.w700, on ? k.ink : k.grey, 1.2))),
+            if (locked) Icon(Icons.lock_outline_rounded, size: 15, color: k.grey),
+          ]),
+        ),
+      ),
+    );
   }
 
   ChatPick221? get _pick {
@@ -250,7 +318,8 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
     if (pick == null) return;
     setState(() => _sending = true);
     try {
-      await widget.service.request(pick, range: _ranges[_range], from: _dates?.start, to: _dates?.end);
+      await widget.service.request(pick,
+          range: _ranges[_range], from: _dates?.start, to: _dates?.end, types324: _with324);
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
@@ -418,6 +487,24 @@ class _ChatRequestSheet221State extends State<ChatRequestSheet221> {
       Row(children: [Expanded(child: range(0)), const SizedBox(width: 10), Expanded(child: range(1))]),
       const SizedBox(height: 10),
       Row(children: [Expanded(child: range(2)), const SizedBox(width: 10), Expanded(child: range(3))]),
+      const SizedBox(height: 14),
+      // Bundle 324 (6.1): What comes - names and ticks only, no sizes:
+      // the phone cannot know a chat's sizes before the other phone answers.
+      Text(L.t.whatComes324, style: k.text(14, FontWeight.w700, k.ink, 1.2)),
+      const SizedBox(height: 8),
+      _whatRow324('request324_text', L.t.text324, true, locked: true),
+      const SizedBox(height: 8),
+      _whatRow324('request324_voice', L.t.voiceNotes324, _with324.contains('voice')),
+      const SizedBox(height: 8),
+      _whatRow324('request324_photo', L.t.photos324, _with324.contains('photo')),
+      const SizedBox(height: 8),
+      _whatRow324('request324_video', L.t.videos324, _with324.contains('video')),
+      if (!_with324.contains('video')) ...[
+        const SizedBox(height: 8),
+        Text(L.t.videosComeAsAThumbnailOnly324, style: k.text(12, FontWeight.w600, k.grey, 1.3)),
+      ],
+      const SizedBox(height: 6),
+      Text(L.t.sizesAppearWhenThePhoneAnswers324, style: k.text(12, FontWeight.w400, k.grey, 1.3)),
       const SizedBox(height: 14),
       if (!_group && _samePhone) ...[
         Text(L.t.theseTwoAccountsAreOnThe,

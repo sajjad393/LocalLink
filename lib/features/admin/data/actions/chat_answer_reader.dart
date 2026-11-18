@@ -6,6 +6,8 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart' show SimpleKeyPair;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
+import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
+import 'package:locallink/features/admin/data/actions/request_scope_324.dart';
 import 'package:locallink/core/utils/phone_label_255.dart';
 import 'package:locallink/core/network/build_http.dart' show BuildHeaderClient;
 import 'package:locallink/core/services/app_logger.dart';
@@ -1129,8 +1131,14 @@ class ChatRequests221 {
   /// Bundle 314 (1b): the open (Sent / Reached / Coming) Get chat request
   /// of this chat, or null. Ready, cancelled, empty and done don't block.
   Future<ChatRequestRow221?> openRequestFor314(ChatPick221 pick, {List<ChatRequestRow221>? rows}) async {
+    final mine324 = RequestScope324.chatKeyOfPick(pick);
     for (final r in rows ?? await requests()) {
       if (r.action != 'get_chat' || r.state != 'pending' || r.ready || r.empty || r.closed || r.cancelled) continue;
+      // Bundle 324 (2.4): the offline-proof guard. `_samePeople314` compares
+      // phones, and offline the phone list is empty - that is how the 17 Nov
+      // 18:53 request got through 6 minutes after the 18:47 one. The key the
+      // request was made with is saved next to it, so it always matches.
+      if (mine324.isNotEmpty && RequestScope324.chatKeyOf(r.id) == mine324) return r;
       final p = ChatPick221.fromRef(r.chat);
       if (p == null || p.kind != pick.kind) continue;
       if (pick.isGroup ? p.groupId == pick.groupId : await _samePeople314(p, pick)) return r;
@@ -1304,7 +1312,13 @@ class ChatRequests221 {
 
   /// Get chat. Returns the request id.
   Future<String> request(ChatPick221 pick,
-      {String range = 'full', DateTime? from, DateTime? to, Map<String, dynamic> since318 = const {}}) async {
+      {String range = 'full',
+      DateTime? from,
+      DateTime? to,
+      Map<String, dynamic> since318 = const {},
+      Set<String>? types324}) async {
+    // Bundle 324: what this request may bring (null = everything).
+    final with324 = RequestScope324.typesFrom(types324);
     final r = rangeOf(range, from: from, to: to);
     // Bundle 254 (21.12): two accounts on ONE phone have no chat together.
     if (!pick.isGroup && await samePhone(pick.userA, pick.userB)) {
@@ -1329,10 +1343,13 @@ class ChatRequests221 {
         if (range == 'dates') 'from': r.from,
         if (range == 'dates') 'to': r.to,
         ...since318, // Bundle 318 (K4)
+        if (with324 != null) 'with': with324.toList()..sort(), // Bundle 324
       });
       final id = res['id']?.toString() ?? '';
       if (id.isNotEmpty) {
         await _markMine307(id);
+        await RequestScope324.remember(id,
+            chatKey: RequestScope324.chatKeyOfPick(pick), types: with324);
         changed307?.call();
       }
       return id;
@@ -1358,7 +1375,14 @@ class ChatRequests221 {
       // list). Say it in the words we already use for an off server.
       throw StateError(unknownPhonesWords323(group: pick.isGroup, serverOff: off323));
     }
-    final detail = {'chat': who.chat, 'from': r.from, 'to': r.to, 'plus_day': true, ...since318};
+    final detail = {
+      'chat': who.chat,
+      'from': r.from,
+      'to': r.to,
+      'plus_day': true,
+      ...since318,
+      if (with324 != null) 'with': with324.toList()..sort(), // Bundle 324
+    };
     final id = await svc.make(
       action: 'get_chat',
       targetUserId: '',
@@ -1369,6 +1393,8 @@ class ChatRequests221 {
       replyKey: await myBoxKey(),
       need: 1,
     );
+    await RequestScope324.remember(id,
+        chatKey: RequestScope324.chatKeyOfPick(pick), types: with324);
     await _remember(ChatRequestRow221(
         id: id,
         action: 'get_chat',
@@ -1381,6 +1407,21 @@ class ChatRequests221 {
         offline: true));
     changed307?.call();
     return id;
+  }
+
+  /// Bundle 324 (6.7): `Get photos` / `Get videos` on a ready row - the same
+  /// request asks for the kinds it skipped. Returns the kinds it now asks
+  /// for (unchanged when there was nothing to add).
+  Future<Set<String>> topUp324(String requestId, Set<String> kinds) async {
+    if (requestId.isEmpty || kinds.isEmpty) return const {};
+    final missing = RequestScope324.skipped324(requestId).intersection(kinds);
+    if (missing.isEmpty) return const {};
+    final now = await RequestScope324.add324(requestId, missing);
+    final q = FileQueue317.instance;
+    if (q != null) await q.forgetPlan324(requestId);
+    AppLogger.info('FILE_QUEUE_PLAN', detail: 'topup kinds=${missing.join(",")}');
+    changed307?.call();
+    return now;
   }
 
   Future<List<String>> _mine307() async {

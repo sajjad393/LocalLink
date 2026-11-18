@@ -13,6 +13,8 @@ import 'package:locallink/features/admin/presentation/screens/admin_chat_request
 import 'package:locallink/features/admin/presentation/screens/admin_chat_viewer_screen.dart';
 import 'package:locallink/features/admin/presentation/ui_check/admin_ui_check216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_format216.dart';
+import 'package:locallink/core/widgets/update_banner_324.dart';
+import 'package:locallink/features/admin/data/actions/request_scope_324.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/conversations_kit307.dart';
 import 'package:locallink/features/admin/presentation/widgets/conversations_kit320.dart';
@@ -462,10 +464,30 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
   static String _keyOf320(ChatRequestRow221 r) => chatKey320(ChatPick221.fromRef(r.chat));
 
   /// R2: the requests on their way (Sent / Reached / Coming), furthest first.
-  List<ChatRequestRow221> _now320(List<ChatRequestRow221> requests) => [
-        for (final r in RequestStep307.liveOrder(requests, files: FileQueue317.trips.value))
-          if (RequestStep307.of(r).active && !r.closed && !r.inside318) r,
-      ];
+  /// Bundle 324 (2.1): ONE row per chat - the 17 Nov pair (18:47 / 18:53 on
+  /// the same chat) drew two rows; the furthest-along one is the row and the
+  /// other is counted in its "2 requests" note. Offline included: the key is
+  /// the chat itself, never the phone list.
+  List<ChatRequestRow221> _now320(List<ChatRequestRow221> requests) {
+    final live = [
+      for (final r in RequestStep307.liveOrder(requests, files: FileQueue317.trips.value))
+        if (RequestStep307.of(r).active && !r.closed && !r.inside318) r,
+    ];
+    final byChat = <String, List<ChatRequestRow221>>{};
+    for (final r in live) {
+      final key = _keyOf320(r);
+      (byChat[key.isEmpty ? 'id:${r.id}' : key] ??= <ChatRequestRow221>[]).add(r);
+    }
+    _counts324 = {for (final e in byChat.entries) e.key: e.value.length};
+    return [for (final e in byChat.entries) e.value.first];
+  }
+
+  /// Bundle 324 (2.1): the "2 requests" note of a Now row (1 = no note).
+  Map<String, int> _counts324 = const {};
+  int _count324(ChatRequestRow221 r) {
+    final key = _keyOf320(r);
+    return _counts324[key.isEmpty ? 'id:${r.id}' : key] ?? 1;
+  }
 
   /// R3 / R4: every other chat once - server chats first, then chats this
   /// phone only knows from a request (offline, kept copies).
@@ -594,6 +616,9 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
           ]),
         ));
     return [
+      // Bundle 324 (324-A): the update card is also at the top of
+      // Conversations - the two places the Owner looks.
+      const UpdateBanner324(),
       _pad(Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Container(
@@ -661,6 +686,18 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
 
   /// R2: one Now row: faces, name, ONE status line, a thin bar + "40 of 80
   /// parts" when coming, X = cancel (asks first). Tap = where it is.
+  /// Bundle 324 (6.7): top-up - ``Get photos`` asks the same request for the
+  /// kinds it skipped. No new request, no second card, no second row.
+  Future<void> _topUp324(ChatRequestRow221 r, Set<String> kinds) async {
+    try {
+      await _svc?.topUp324(r.id, kinds);
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      adminSnack216(context, '$error'.replaceFirst('Bad state: ', ''));
+    }
+  }
+
   Widget _nowRow320(BuildContext context, ChatRequestRow221 r) {
     final k = K307.of(context);
     final step = RequestStep307.of(r);
@@ -676,6 +713,10 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
       final age = AdminConversationsScreenAge320.of(r.madeAt);
       words = age.isEmpty ? base : '$base \u00b7 $age';
     }
+    // Bundle 324 (2.1): the chat has more than one request - say it on
+    // its one row instead of drawing a second row.
+    final n324 = _count324(r);
+    final words324 = n324 > 1 ? '$words \u00b7 ${L.t.nRequests324(n324)}' : words;
     return InkWell(
       key: ValueKey('requests221_row_${r.id}'),
       onTap: r.parts > 0 ? () => _open(r) : () => _liveTap(r),
@@ -688,7 +729,7 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(_title(r), style: k.text(16, FontWeight.w700, k.ink, 1.2)),
               const SizedBox(height: 3),
-              StatusLine320(words, coming ? Tone320.blue : Tone320.orange,
+              StatusLine320(words324, coming ? Tone320.blue : Tone320.orange,
                   key: ValueKey('now320_status_${r.id}'), pulse: !coming),
               if (bar) ...[
                 const SizedBox(height: 8),
@@ -749,7 +790,15 @@ class _AdminConversationsScreenState extends State<AdminConversationsScreen> {
         tap = r == null ? null : () => _open(r);
       case Kind320.ready:
         tap = () => _open(r!);
-        right = ActionPill320(L.t.open, Pill320.open, key: ValueKey('chats320_open_${x.id}'), onTap: tap);
+        // Bundle 324 (6.7): the chat came with the types the request asked
+        // for; the ones it skipped are one tap away, on the SAME request.
+        final skipped = RequestScope324.skipped324(r!.id);
+        right = skipped.contains('photo')
+            ? ActionPill320(L.t.getPhotos324, Pill320.tonal,
+                key: ValueKey('chats324_photos_${x.id}'),
+                icon: Icons.image_outlined,
+                onTap: () => _topUp324(r, const {'photo'}))
+            : ActionPill320(L.t.open, Pill320.open, key: ValueKey('chats320_open_${x.id}'), onTap: tap);
       case Kind320.kept:
         tap = () => _open(r!);
         right = ActionPill320(L.t.new320, Pill320.tonal,

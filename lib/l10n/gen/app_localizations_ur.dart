@@ -8873,4 +8873,91 @@ class AppLocalizationsUr extends AppLocalizations {
   String nChats321(Object? n) {
     return '⁧⁨$n⁩ چیٹس⁩';
   }
+
+  @override
+  String get whatComes324 => '⁧کیا کیا آئے⁩';
+
+  @override
+  String get text324 => '⁧متن⁩';
+
+  @override
+  String get voiceNotes324 => '⁧وائس نوٹس⁩';
+
+  @override
+  String get photos324 => '⁧تصاویر⁩';
+
+  @override
+  String get videos324 => '⁧ویڈیوز⁩';
+
+  @override
+  String get videosComeAsAThumbnailOnly324 =>
+      '⁧ویڈیوز صرف تصویر کی صورت میں آئیں گی⁩';
+
+  @override
+  String get sizesAppearWhenThePhoneAnswers324 =>
+      '⁧سائز اُس وقت نظر آئیں گے جب فون جواب دے⁩';
+
+  @override
+  String askedAgo324(String ago) {
+    return '⁧⁨$ago⁩ مانگی گئی⁩';
+  }
+
+  @override
+  String get anHourAgo324 => '⁧1 گھنٹہ پہلے⁩';
+
+  @override
+  String hoursAgo324(int n) {
+    return '⁧⁨$n⁩ گھنٹے پہلے⁩';
+  }
+
+  @override
+  String get aDayAgo324 => '⁧1 دن پہلے⁩';
+
+  @override
+  String daysAgo324(int n) {
+    return '⁧⁨$n⁩ دن پہلے⁩';
+  }
+
+  @override
+  String get stillComing324 => '⁧ابھی آ رہی ہے⁩';
+
+  @override
+  String get holdingTheLine324 => '⁧لائن پر ہے — اگر ضرورت نہیں تو روک دیں⁩';
+
+  @override
+  String get installing324 => '⁧نصب ہو رہا ہے…⁩';
+
+  @override
+  String get couldNotGetItNow324 => '⁧ابھی نہیں مل سکا⁩';
+
+  @override
+  String get tryAgain324 => '⁧دوبارہ کوشش کریں⁩';
+
+  @override
+  String get dismiss324 => '⁧ہٹا دیں⁩';
+
+  @override
+  String get youCanLeaveThisScreen324 => '⁧آپ یہ سکرین چھوڑ سکتے ہیں⁩';
+
+  @override
+  String gettingUpdatePct324(String pct) {
+    return '⁧اپ ڈیٹ آ رہا ہے · ⁨$pct⁩%⁩';
+  }
+
+  @override
+  String get theUpdateIsHere324 => '⁧اپ ڈیٹ آ گیا ہے⁩';
+
+  @override
+  String nRequests324(int n) {
+    return '⁧⁨$n⁩ درخواستیں⁩';
+  }
+
+  @override
+  String get filesTakeTurns324 => '⁧فائلیں باری باری آتی ہیں، ایک وقت میں 2⁩';
+
+  @override
+  String get getPhotos324 => '⁧تصاویر منگوائیں⁩';
+
+  @override
+  String get videosNotAsked324 => '⁧ویڈیوز نہیں مانگی گئیں⁩';
 }

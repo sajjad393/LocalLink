@@ -6,6 +6,7 @@ import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
+import 'package:locallink/features/admin/data/actions/request_scope_324.dart';
 
 /// Bundle 317 (G1): every photo / video / voice note / file of a Get chat
 /// answer comes by itself - no Get button. When a chat request is Ready the
@@ -357,6 +358,18 @@ class FileQueue317 {
     return _plans = out;
   }
 
+  /// Bundle 324 (6.7): the request asked for more (top-up). Its saved plan is
+  /// dropped, so the next tick plans the same chat again with the wider
+  /// `with` - the files already here are not asked twice (the rows exist).
+  Future<void> forgetPlan324(String requestId) async {
+    final plans = await _load();
+    if (plans.remove(requestId) == null) return;
+    _thumbs321.remove(requestId);
+    await _save();
+    AppLogger.info('FILE_QUEUE_PLAN', detail: 'topup reset');
+    unawaited(_tickOnce());
+  }
+
   Future<void> _save() async {
     final plans = await _load();
     if (plans.length > maxPlans) {
@@ -369,9 +382,39 @@ class FileQueue317 {
     await write(planKey, jsonEncode(plans));
   }
 
+  /// Bundle 324 (6.4): the kind a `with` list talks about. The attachment
+  /// `type` is a mime (or empty), so the name decides the rest.
+  static String kind324(String type, String name) {
+    final t = type.toLowerCase();
+    if (t.startsWith('audio/') || ChatAnswerBuilder.isAudio310(t, name)) return 'voice';
+    if (t.startsWith('image/')) return 'photo';
+    if (t.startsWith('video/')) return 'video';
+    final n = name.toLowerCase();
+    const pics = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic'];
+    if (pics.any(n.endsWith)) return 'photo';
+    const vids = ['.mp4', '.mov', '.mkv', '.webm', '.3gp'];
+    if (vids.any(n.endsWith)) return 'video';
+    return 'file';
+  }
+
+  /// Bundle 324 (6.4): the ONE place a request's `with` list is applied.
+  /// Nothing else reads attachment bytes, so a file that is not planned is
+  /// simply never asked for. Thumbnails already travel in the message JSON
+  /// (`chat_answer_builder.dart:275`), so an unasked video still shows one.
+  static bool wants324(Set<String>? with324, String type, String name) {
+    if (with324 == null || with324.isEmpty) return true; // unknown = everything
+    if (with324.length >= 4) return true;
+    final kind = kind324(type, name);
+    // Documents have no row in the sheet, so they are never filtered out:
+    // the choice is about the big photo / video bytes only.
+    if (kind == 'file') return true;
+    return with324.contains(kind);
+  }
+
   /// The plan of a request: one entry per file id, newest message first.
   /// Bundle 318 (K8): a new-only request plans only its new messages.
-  static List<FilePlanItem317> planOf(ChatAnswerView v) {
+  /// Bundle 324 (6.4): only the kinds the request asked for.
+  static List<FilePlanItem317> planOf(ChatAnswerView v, {Set<String>? with324}) {
     final out = <FilePlanItem317>[];
     final seen = <String>{};
     final only = v.newOnly318 ? v.newIds318.toSet() : null;
@@ -384,6 +427,7 @@ class FileQueue317 {
         if (a is! Map) continue;
         final id = a['file_id']?.toString() ?? '';
         if (id.isEmpty || !seen.add(id)) continue;
+        if (!wants324(with324, a['type']?.toString() ?? '', a['name']?.toString() ?? '')) continue;
         final s = a['size'];
         out.add(FilePlanItem317(
           fileId: id,
@@ -449,7 +493,7 @@ class FileQueue317 {
         if (!r.ready || r.closed) continue;
         final v = await open(r);
         if (!v.complete) continue;
-        final items = planOf(v);
+        final items = planOf(v, with324: RequestScope324.typesOf(r.id));
         _thumbs321[r.id] = thumbsOf321(v);
         plan = plans[r.id] = {
           'files': [for (final i in items) i.toJson()],

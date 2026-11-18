@@ -9,6 +9,7 @@ import 'package:locallink/core/widgets/admin_blocked_banner.dart';
 import 'package:locallink/core/diagnostics/ui_hidden_263.dart';
 import 'package:locallink/core/widgets/session_dead_banner_262.dart';
 import 'package:locallink/core/widgets/version_banner.dart';
+import 'package:locallink/core/widgets/update_banner_324.dart';
 import 'package:locallink/features/groups/data/group_mention_book.dart';
 import 'package:locallink/features/groups/data/group_receipts.dart';
 import 'dart:async';
@@ -1378,6 +1379,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SessionDeadBanner262(),
                 // Bundle 213: old app version (yellow / red) + nearby update.
                 const VersionBanner(),
+                // Bundle 324 (324-A, shape B): the update itself - getting %,
+                // ready + Install, installing, failed - as a card on the screen.
+                const UpdateBanner324(),
                 // Bundle 159.1: "Allow nearby devices" / "Turn on Wi-Fi",
                 // only when nearby chat can't work.
                 const NearbyReadyCard(),

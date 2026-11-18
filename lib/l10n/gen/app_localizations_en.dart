@@ -8841,4 +8841,91 @@ class AppLocalizationsEn extends AppLocalizations {
   String nChats321(Object? n) {
     return '$n chats';
   }
+
+  @override
+  String get whatComes324 => 'What comes';
+
+  @override
+  String get text324 => 'Text';
+
+  @override
+  String get voiceNotes324 => 'Voice notes';
+
+  @override
+  String get photos324 => 'Photos';
+
+  @override
+  String get videos324 => 'Videos';
+
+  @override
+  String get videosComeAsAThumbnailOnly324 => 'Videos come as a thumbnail only';
+
+  @override
+  String get sizesAppearWhenThePhoneAnswers324 =>
+      'Sizes appear when the phone answers';
+
+  @override
+  String askedAgo324(String ago) {
+    return 'asked $ago';
+  }
+
+  @override
+  String get anHourAgo324 => '1 hour ago';
+
+  @override
+  String hoursAgo324(int n) {
+    return '$n hours ago';
+  }
+
+  @override
+  String get aDayAgo324 => '1 day ago';
+
+  @override
+  String daysAgo324(int n) {
+    return '$n days ago';
+  }
+
+  @override
+  String get stillComing324 => 'still coming';
+
+  @override
+  String get holdingTheLine324 =>
+      'Holding the line — Stop it if you don\'t need it';
+
+  @override
+  String get installing324 => 'Installing…';
+
+  @override
+  String get couldNotGetItNow324 => 'Couldn’t get it now';
+
+  @override
+  String get tryAgain324 => 'Try again';
+
+  @override
+  String get dismiss324 => 'Dismiss';
+
+  @override
+  String get youCanLeaveThisScreen324 => 'You can leave this screen';
+
+  @override
+  String gettingUpdatePct324(String pct) {
+    return 'Getting the update · $pct%';
+  }
+
+  @override
+  String get theUpdateIsHere324 => 'The update is here';
+
+  @override
+  String nRequests324(int n) {
+    return '$n requests';
+  }
+
+  @override
+  String get filesTakeTurns324 => 'Files take turns, 2 at a time';
+
+  @override
+  String get getPhotos324 => 'Get photos';
+
+  @override
+  String get videosNotAsked324 => 'videos not asked';
 }

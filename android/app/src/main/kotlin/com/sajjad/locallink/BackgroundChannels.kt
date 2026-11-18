@@ -291,6 +291,9 @@ class BackgroundChannels(
                 result.success(null)
             }
             "cancelAllChatRequests" -> { ChatRequestNotifier307.cancelAll(context); result.success(null) }
+            // Bundle 324 (324-A): ONE silent notification for the update.
+            "showUpdate324" -> { UpdateNotice324.show(context, call.arguments as? Map<String, Any?> ?: emptyMap()); result.success(null) }
+            "cancelUpdate324" -> { UpdateNotice324.cancel(context); result.success(null) }
             "showMessage" -> {
                 val notificationId = call.argument<Int>("notification_id") ?: 0
                 val conversationType = call.argument<String>("conversation_type")?.trim().orEmpty()

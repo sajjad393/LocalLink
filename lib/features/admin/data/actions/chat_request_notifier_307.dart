@@ -8,6 +8,7 @@ import 'package:locallink/core/services/app_logger.dart';
 import 'package:locallink/core/services/server_clock_255.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
 import 'package:locallink/features/admin/data/actions/file_queue_317.dart';
+import 'package:locallink/features/admin/data/actions/request_scope_324.dart';
 import 'package:locallink/features/admin/data/actions/request_step_307.dart';
 import 'package:locallink/l10n/l10n.dart';
 
@@ -201,12 +202,50 @@ class ChatRequestNotifier307 {
     }
   }
 
+  /// Bundle 324: the chat key of a request - the saved key first (works with
+  /// the server off), else the chat ref the row carries.
+  @visibleForTesting
+  static String chatKey324(ChatRequestRow221 r) {
+    final saved = RequestScope324.chatKeyOf(r.id);
+    if (saved.isNotEmpty) return saved;
+    final p = ChatPick221.fromRef(r.chat);
+    return p == null ? 'id:${r.id}' : RequestScope324.chatKeyOfPick(p);
+  }
+
+  /// Bundle 324 (2.1): the one row of a chat that gets the card: the one
+  /// already on screen (so a card never jumps), else the furthest along.
+  ChatRequestRow221 _onePerChat324(List<ChatRequestRow221> group) {
+    if (group.length == 1) return group.first;
+    for (final r in group) {
+      if (_shown.containsKey(r.id)) return r;
+    }
+    final live = RequestStep307.liveOrder(group);
+    if (live.isNotEmpty) return live.first;
+    final sorted = [...group]..sort((a, b) => b.madeAt.compareTo(a.madeAt));
+    return sorted.first;
+  }
+
+  /// Bundle 324: how many requests each chat has (the "2 requests" note).
+  Map<String, int> _counts324 = const {};
+
   Future<void> _refreshOnce() async {
     if (!await isOwner()) {
       if (_shown.isNotEmpty) await clearAll();
       return;
     }
-    final rows = [for (final r in await mine()) if (r.action == 'get_chat') r];
+    final all324 = [for (final r in await mine()) if (r.action == 'get_chat') r];
+    // Bundle 324 (2.1/2.2): ONE card per chat. The 17 Nov 18:47/18:53 pair
+    // drew two cards for the same chat; the row the owner sees is the one
+    // furthest along (Ready first), never both.
+    final byChat324 = <String, List<ChatRequestRow221>>{};
+    for (final r in all324) {
+      (byChat324[chatKey324(r)] ??= []).add(r);
+    }
+    final counts324 = {for (final e in byChat324.entries) e.key: e.value.length};
+    final rows = <ChatRequestRow221>[
+      for (final e in byChat324.entries) _onePerChat324(e.value),
+    ];
+    _counts324 = counts324;
     final buzzed = await _buzzedIds();
     final now = _clock();
     final want = <String, (ChatRequestRow221, RequestStep307)>{};
@@ -266,11 +305,12 @@ class ChatRequestNotifier307 {
         final missing = trip.wanted - trip.here;
         AppLogger.info('CHAT_REQ_CARD_307',
             detail: 'cancel reason=stuck30 id=${_short322(id)} here=${trip.here}/${trip.wanted} missing=$missing');
-        await cards.cancel({'request_id': id, ..._summary(want.values.where((w) => w.$2.step != Step307.empty), files)});
+        await cards.cancel({'request_id': id,
+            ..._summary(want.values.where((w) => w.$2.step != Step307.empty), files, counts324)});
       }
     }
     // Gone / cancelled / opened -> remove.
-    final summary = _summary(want.values.where((w) => w.$2.step != Step307.empty), files);
+    final summary = _summary(want.values.where((w) => w.$2.step != Step307.empty), files, counts324);
     for (final id in _shown.keys.toList()) {
       if (want.containsKey(id)) continue;
       _shown.remove(id);
@@ -285,8 +325,9 @@ class ChatRequestNotifier307 {
     for (final MapEntry(key: id, value: (r, st)) in want.entries) {
       final trip = files[id];
       final args = st.step == Step307.ready && trip != null && trip.total > 0 && !trip.stopped
-          ? filesArgs317(r, st, trip, now)
-          : _args(r, st, now);
+          ? filesArgs317(r, st, trip, now,
+              requests324: _counts324[chatKey324(r)] ?? 1)
+          : _args(r, st, now, requests324: _counts324[chatKey324(r)] ?? 1);
       final sig = jsonEncode(args);
       if (_shown[id] == sig) continue;
       final last = _lastPost[id];
@@ -296,7 +337,11 @@ class ChatRequestNotifier307 {
         continue;
       }
       // Bundle 318 (K7): "Up to date" never buzzes (posted once, goes by itself).
-      final buzz = st.step == Step307.ready && !st.upToDate && !buzzed.contains(id);
+      // Bundle 324 (1.3): one buzz per card, and only when everything the
+      // request asked for is here - a card never buzzes twice and never
+      // buzzes for "Ready" while its files are still coming.
+      final filesReady324 = trip == null || trip.total <= 0 || trip.stopped || trip.done;
+      final buzz = st.step == Step307.ready && !st.upToDate && filesReady324 && !buzzed.contains(id);
       final once318 = st.step == Step307.ready && st.upToDate && !buzzed.contains(id);
       _shown[id] = sig;
       _lastPost[id] = now;
@@ -342,13 +387,13 @@ class ChatRequestNotifier307 {
   }
 
   static Map<String, Object?> _summary(Iterable<(ChatRequestRow221, RequestStep307)> live,
-      [Map<String, FileTrip317> files = const {}]) {
+      [Map<String, FileTrip317> files = const {}, Map<String, int>? counts324]) {
     final list = live.toList();
     return {
       'summary_count': list.length,
       // Bundle 321 (N1/N3): "3 chats" + each card's own one line.
       'summary_title': L.t.nChats321(list.length),
-      'summary_lines': [for (final (r, st) in list) cardTitle321(r, st, files[r.id])],
+      'summary_lines': [for (final (r, st) in list) cardTitle321(r, st, files[r.id], counts324?[chatKey324(r)] ?? 1)],
     };
   }
 
@@ -386,18 +431,24 @@ class ChatRequestNotifier307 {
   static const String tick321 = '\u2713';
 
   @visibleForTesting
-  static String cardTitle321(ChatRequestRow221 r, RequestStep307 st, [FileTrip317? f]) {
+  static String cardTitle321(ChatRequestRow221 r, RequestStep307 st, [FileTrip317? f, int requests324 = 1]) {
+    // Bundle 324 (2.1): one card per chat - when the chat has more than one
+    // request the card says so instead of drawing a second card.
+    final more = requests324 > 1 ? ' \u00b7 ${L.t.nRequests324(requests324)}' : '';
     final n = _title(r);
     if (st.step == Step307.ready && f != null && f.total > 0 && !f.stopped) {
-      if (f.done) return f.gone + f.tooBig > 0 ? '$n \u00b7 ${f.here}/${f.total}' : '$n $tick321';
-      return f.waiting ? '$n \u00b7 ${L.t.waitingShort321}' : '$n \u00b7 ${f.here}/${f.wanted}';
+      if (f.done) return f.gone + f.tooBig > 0 ? '$n \u00b7 ${f.here}/${f.total}$more' : '$n $tick321$more';
+      // Bundle 324 (2.6): never `0/6` - nothing is here yet, so it says
+      // "waiting" until the first asked file lands.
+      if (f.waiting || f.here <= 0) return '$n \u00b7 ${L.t.waitingShort321}$more';
+      return '$n \u00b7 ${f.here}/${f.wanted}$more';
     }
     return switch (st.step) {
-      Step307.sent || Step307.reached => '$n \u00b7 ${L.t.waitingShort321}',
-      Step307.coming => '$n \u00b7 ${st.short}',
+      Step307.sent || Step307.reached => '$n \u00b7 ${L.t.waitingShort321}$more',
+      Step307.coming => '$n \u00b7 ${st.short}$more',
       Step307.ready when r.newOnly318 && st.upToDate => '$n \u00b7 ${L.t.upToDate318}',
       Step307.ready when r.newOnly318 && r.newCount318 > 0 => '$n \u00b7 ${L.t.nNew318(r.newCount318)} $tick321',
-      Step307.ready => '$n $tick321',
+      Step307.ready => '$n $tick321$more',
       Step307.empty => '$n \u00b7 ${L.t.noMessages}',
       Step307.cancelled => '$n \u00b7 ${L.t.cancelled}',
     };
@@ -409,14 +460,15 @@ class ChatRequestNotifier307 {
   /// Bundle 317 (G7): the card after "Chat ready" while files come (mock
   /// `trips_mock.html`): Chat ready · files coming / waiting / all here.
   @visibleForTesting
-  static Map<String, Object?> filesArgs317(ChatRequestRow221 r, RequestStep307 st, FileTrip317 f, DateTime now) {
-    final base = _args(r, st, now);
+  static Map<String, Object?> filesArgs317(ChatRequestRow221 r, RequestStep307 st, FileTrip317 f, DateTime now,
+      {int requests324 = 1}) {
+    final base = _args(r, st, now, requests324: requests324);
     final step = f.done ? 'files_done' : (f.waiting ? 'files_wait' : 'files');
     return {
       ...base,
       'step': step,
       'progress': (f.fill * 100).round(),
-      'title': cardTitle321(r, st, f),
+      'title': cardTitle321(r, st, f, requests324),
       'short': f.done ? '' : '${f.here}/${f.wanted}',
       'when': base['when'],
       'rock_until': 0,
@@ -427,14 +479,14 @@ class ChatRequestNotifier307 {
   }
 
   /// The words + numbers of one card (the signature; `buzz` is added later).
-  static Map<String, Object?> _args(ChatRequestRow221 r, RequestStep307 st, DateTime now) {
+  static Map<String, Object?> _args(ChatRequestRow221 r, RequestStep307 st, DateTime now, {int requests324 = 1}) {
     final made = madeOnPhoneClock314(r);
     final waiting = st.step == Step307.sent || st.step == Step307.reached;
     return {
       'request_id': r.id,
       'step': st.step.name,
       'progress': st.progress.round(),
-      'title': cardTitle321(r, st),
+      'title': cardTitle321(r, st, null, requests324),
       'names': namesOf(r),
       'from_name': r.fromName,
       'short': st.short,
