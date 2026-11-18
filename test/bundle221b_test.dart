@@ -139,7 +139,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(server.created, hasLength(1));
-    expect(server.created.first, {'kind': 'direct', 'user_a': 'u-ali', 'user_b': 'u-sara', 'range': '7'});
+    // 324-D: every request says what comes ("What comes"), and a sheet opened
+    // with nothing ticked asks for everything. The old four keys are unchanged.
+    final sent = Map<String, dynamic>.from(server.created.first);
+    final with324 = (sent.remove('with') as List?)?.cast<String>() ?? const <String>[];
+    expect(sent, {'kind': 'direct', 'user_a': 'u-ali', 'user_b': 'u-sara', 'range': '7'});
+    expect(with324.toSet(), {'voice', 'photo', 'video'});
   });
 
   // Bundle 320 (R1/R2): no Requests tab - both requests are rows of the "Now" card.
