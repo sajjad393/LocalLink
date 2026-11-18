@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:locallink/core/config/app_build.dart';
 import 'package:locallink/core/models/device.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/core/services/identity_crypto_service.dart';
@@ -288,7 +289,7 @@ void main() {
   group('Bundle 192 version', () {
     test('pubspec and stamp', () {
       expect(File('pubspec.yaml').readAsStringSync(),
-          contains('version: 3.0.116+187'));
+          contains('version: $kAppVersion+$kAppBuild'));
       expect(File('lib/app/local_link_app.dart').readAsStringSync(),
           contains('AppBuild.stamp')); // Bundle 223 (Q18): made from kAppVersion
     });

@@ -25,6 +25,9 @@ object Words304 {
         "New LinkUp direct and group messages" to "LinkUp کے نئے ذاتی اور گروپ میسجز",
         "LinkUp system" to "LinkUp سسٹم",
         "LinkUp security, pairing, and system updates" to "LinkUp سیکیورٹی، پیئرنگ اور سسٹم اپ ڈیٹس",
+        // Bundle 324: the silent "update coming" notification (UpdateNotice324).
+        "LinkUp update" to "LinkUp اپ ڈیٹ",
+        "The update coming to this phone (silent)" to "یہ اپ ڈیٹ اس فون پر آ رہی ہے (خاموش)",
         "Friends" to "دوست",
         "Someone added you as a friend" to "کسی نے آپ کو دوست بنایا",
         "New notification" to "نیا نوٹیفکیشن",

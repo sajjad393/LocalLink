@@ -64,9 +64,12 @@ ChatRequestRow221 _ready324() => _row324(state: 'done', parts: 3, of: 3);
 
 void main() {
   group('Bundle 324 version', () {
-    test('324 is 3.0.116 build 187', () {
-      expect(kAppVersion, '3.0.116');
-      expect(kAppBuild, 187);
+    test('324 or later - the numbers live in app_build.dart only', () {
+      // 324 itself was 3.0.116+187. The exact numbers are pinned in ONE place
+      // (bundle223_logs_test checks them against pubspec.yaml), so a build that
+      // bumps the version cannot leave this file behind.
+      expect(kAppBuild, greaterThanOrEqualTo(187));
+      expect(kAppVersion, isNotEmpty);
     });
   });
 
