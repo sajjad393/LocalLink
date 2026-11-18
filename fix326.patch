@@ -1,0 +1,843 @@
+diff --git a/lib/app/local_link_app.dart b/lib/app/local_link_app.dart
+index 2c335f4..def403d 100644
+--- a/lib/app/local_link_app.dart
++++ b/lib/app/local_link_app.dart
+@@ -8,6 +8,8 @@ import 'package:locallink/core/widgets/version_banner.dart';
+ import 'package:locallink/features/admin/data/services/version_guard.dart';
+ import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart' show ChatRequests221; // Bundle 307
+ import 'package:locallink/features/admin/data/actions/chat_request_notifier_307.dart'; // Bundle 307
++import 'package:locallink/features/admin/data/actions/consent_326.dart'; // Bundle 326
++import 'package:locallink/features/admin/presentation/widgets/consent_326_dialog.dart'; // Bundle 326
+ import 'package:locallink/features/admin/presentation/screens/admin_chat_viewer_screen.dart'; // Bundle 307
+ import 'package:locallink/features/admin/presentation/theme/admin_ui216.dart' show AdminTheme216Scope; // Bundle 307
+ import 'package:locallink/features/share_app/domain/silent_update_275.dart';
+@@ -82,6 +84,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
+     LanguageBook304.instance.addListener(_onLanguage304);
+     // Bundle 147: mini video player + picture-in-picture for chat videos.
+     ChatVideoHub.instance.attach(navigatorKey: _navigatorKey);
++    // Bundle 326: a file somebody asked for waits for THIS phone's owner.
++    Consent326.asks.addListener(_showConsent326);
++    _showConsent326();
+     // Bundle 148: one live status (Nearby / Online / Offline) for every
+     // screen, judged from what THIS phone receives and over which path.
+     PresenceHub.instance.attach(
+@@ -826,8 +831,34 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
+     }
+   }
+ 
++  // ------------------------------------------------------- 326: consent card
++
++  bool _consentShowing326 = false;
++
++  /// Bundle 326: shows the waiting consent cards one at a time. Nothing is
++  /// decided for the owner; the answer simply waits (325 rule: nothing expires).
++  void _showConsent326() {
++    if (_consentShowing326) return;
++    final pending = Consent326.asks.value;
++    if (pending.isEmpty) return;
++    final nav = _navigatorKey.currentState;
++    final ctx = nav?.context;
++    if (ctx == null) return;
++    final ask = pending.first;
++    _consentShowing326 = true;
++    unawaited(Consent326Dialog.show(ctx, ask).then((decision) async {
++      _consentShowing326 = false;
++      if (decision != null) await Consent326.decide(ask.id, decision);
++      _showConsent326();
++    }).catchError((Object _) {
++      _consentShowing326 = false;
++    }));
++  }
++
+   @override
+   void dispose() {
++    Consent326.asks.removeListener(_showConsent326);
++
+     LanguageBook304.instance.removeListener(_onLanguage304);
+     _pairingDoneSub?.cancel();
+     if (FriendChatOpener.open == _openFriendChat) {
+diff --git a/lib/core/config/app_build.dart b/lib/core/config/app_build.dart
+index 5920ce1..fc47894 100644
+--- a/lib/core/config/app_build.dart
++++ b/lib/core/config/app_build.dart
+@@ -4,8 +4,8 @@
+ // plain `flutter build apk`, so it can't be trusted. These two constants are
+ // kept equal to pubspec.yaml `version:` (a test checks it).
+ 
+-const int kAppBuild = 190;
+-const String kAppVersion = '3.0.119';
++const int kAppBuild = 191;
++const String kAppVersion = '3.0.120';
+ 
+ /// HTTP header + socket header with the build (server version gate).
+ const String kAppBuildHeader = 'X-LinkUp-Build';
+diff --git a/lib/features/admin/data/actions/admin_action_doers.dart b/lib/features/admin/data/actions/admin_action_doers.dart
+index 6525554..606b555 100644
+--- a/lib/features/admin/data/actions/admin_action_doers.dart
++++ b/lib/features/admin/data/actions/admin_action_doers.dart
+@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
+ import 'package:locallink/features/admin/data/actions/admin_action_card.dart';
+ import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
+ import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
++import 'package:locallink/features/admin/data/actions/consent_326.dart'; // Bundle 326
+ import 'package:locallink/features/admin/data/actions/delete_completely_doer.dart';
+ import 'package:locallink/features/admin/data/models/admin_block_record.dart';
+ 
+@@ -107,12 +108,29 @@ class ChatDoer221 {
+           replyKey: card.replyKey,
+           replyTo: replyTo,
+           detail: plain.detail,
++          // Bundle 326: the owner of THIS phone decides before any byte goes
++          // out. Waiting = asked, not answered yet: nothing is thrown away, the
++          // answer is tried again later. No = the other side is told, in grey.
++          beforeFirstSlice: (file) async {
++            final v = await Consent326.verdict(
++              requestId: card.id,
++              label: plain.detail['label']?.toString() ?? '',
++              name: file.name,
++              kind: file.kind,
++              bytes: file.bytes,
++              fileKey: file.fileId,
++            );
++            if (v == Consent326Verdict.no) throw StateError('owner_said_no_326');
++            if (v == Consent326Verdict.waiting) throw StateError('owner_not_asked_326');
++          },
+           onSlice: (slice) async {
+             slices++;
+             await carrier.addOwn(slice, replyTo: replyTo, isFile: true, announce: false);
+           });
+     } on StateError catch (e) {
+       final why = e.message;
++      // Bundle 326: not answered yet -> try later (never a refusal).
++      if (why == 'owner_not_asked_326') rethrow;
+       if (why == 'no_copy_here' || why == 'no_file') rethrow; // another phone answers
+       return 'refused:$why';
+     }
+diff --git a/lib/features/admin/data/actions/chat_answer_builder.dart b/lib/features/admin/data/actions/chat_answer_builder.dart
+index 2cb4586..b75b6e8 100644
+--- a/lib/features/admin/data/actions/chat_answer_builder.dart
++++ b/lib/features/admin/data/actions/chat_answer_builder.dart
+@@ -619,6 +619,9 @@ class ChatAnswerBuilder {
+     required String replyTo,
+     required Map<String, dynamic> detail,
+     Future<void> Function(List<ChatAnswerPart> slice)? onSlice,
++    // Bundle 326: asked once, with the real size, before any byte is handed
++    // out. Throwing here stops the answer and it is tried again later.
++    Future<void> Function(FileConsent326 file)? beforeFirstSlice,
+   }) async {
+     final fileId = detail['file_id']?.toString() ?? '';
+     final att = await source.fileOf(fileId, detail['message_id']?.toString() ?? '');
+@@ -626,6 +629,10 @@ class ChatAnswerBuilder {
+     final bytes = att.goneAt.isNotEmpty ? null : await source.readFile(att);
+     if (bytes == null) throw StateError('file_gone');
+     if (bytes.length > ChatAnswerRules.maxFileBytes) throw StateError('file_too_big');
++    if (beforeFirstSlice != null) {
++      await beforeFirstSlice(FileConsent326(
++          name: att.name, kind: att.type, bytes: bytes.length, fileId: fileId));
++    }
+     if (onSlice != null) {
+       const chunk = ChatAnswerRules.fileChunkBytes;
+       final of = bytes.isEmpty ? 1 : (bytes.length + chunk - 1) ~/ chunk;
+@@ -664,3 +671,18 @@ class ChatAnswerBuilder {
+         actionId: actionId, replyKey: replyKey, plains: plains, replyTo: replyTo, isFile: true);
+   }
+ }
++
++/// Bundle 326: what the owner of this phone is asked before a file goes out.
++class FileConsent326 {
++  const FileConsent326({
++    required this.name,
++    required this.kind,
++    required this.bytes,
++    this.fileId = '',
++  });
++
++  final String name;
++  final String kind;
++  final int bytes;
++  final String fileId;
++}
+diff --git a/lib/features/admin/data/actions/consent_326.dart b/lib/features/admin/data/actions/consent_326.dart
+new file mode 100644
+index 0000000..2dd6258
+--- /dev/null
++++ b/lib/features/admin/data/actions/consent_326.dart
+@@ -0,0 +1,222 @@
++import 'dart:convert';
++
++import 'package:flutter/foundation.dart';
++
++/// Bundle 326: "the answering phone gets a say".
++///
++/// Today the phone that HAS the chat starts pushing a file the moment somebody
++/// asks - the owner finds out afterwards. With 326 the answering phone asks its
++/// owner first ("Ali asks for this file · 61 MB") and only then do the bytes
++/// leave the phone.
++///
++/// Everything here is on this phone: no server, no internet. Nothing expires -
++/// an ask that is never answered simply stays waiting, and Stop removes the
++/// request on the other side as it always did.
++enum Consent326Verdict {
++  /// Go ahead: either it is small enough to not be worth asking about, or the
++  /// owner already said Send (or Wi-Fi only, and we are on Wi-Fi).
++  go,
++
++  /// Asked, not answered yet. The answer waits and is tried again later - it
++  /// is never thrown away.
++  waiting,
++
++  /// The owner said no. The asking phone's card says so, in grey.
++  no,
++}
++
++/// One question waiting for the owner of THIS phone.
++class ConsentAsk326 {
++  const ConsentAsk326({
++    required this.id,
++    required this.requestId,
++    required this.madeAt,
++    this.label = '',
++    this.name = '',
++    this.kind = '',
++    this.bytes = 0,
++  });
++
++  /// `requestId:file` - one question per request and file.
++  final String id;
++  final String requestId;
++
++  /// Who is asking (the chat label), the file, its kind and its size.
++  final String label;
++  final String name;
++  final String kind;
++  final int bytes;
++  final String madeAt;
++
++  Map<String, dynamic> toJson() => {
++        'id': id,
++        'request_id': requestId,
++        'label': label,
++        'name': name,
++        'kind': kind,
++        'bytes': bytes,
++        'made_at': madeAt,
++      };
++
++  static ConsentAsk326? fromJson(Object? x) {
++    if (x is! Map) return null;
++    final id = x['id']?.toString() ?? '';
++    final req = x['request_id']?.toString() ?? '';
++    if (id.isEmpty || req.isEmpty) return null;
++    return ConsentAsk326(
++      id: id,
++      requestId: req,
++      label: x['label']?.toString() ?? '',
++      name: x['name']?.toString() ?? '',
++      kind: x['kind']?.toString() ?? '',
++      bytes: switch (x['bytes']) {
++        final int n => n,
++        final Object n => int.tryParse('$n') ?? 0,
++        _ => 0,
++      },
++      madeAt: x['made_at']?.toString() ?? '',
++    );
++  }
++}
++
++/// The decisions of the owner of this phone, and the questions still waiting.
++abstract final class Consent326 {
++  static const String go = 'go';
++  static const String wifi = 'wifi';
++  static const String no = 'no';
++
++  /// Under this size nobody is asked: a 200 KB photo is not worth a tap.
++  static const int minAskBytes = 5 * 1024 * 1024;
++
++  /// This phone's own store (prefs), wired in `app_dependencies.dart`.
++  static const String storeKey = 'consent_326';
++  static const String asksKey = 'consent_asks_326';
++  static Future<String?> Function(String key)? read;
++  static Future<void> Function(String key, String value)? write;
++
++  /// True while this phone is on Wi-Fi / LAN (the Wi-Fi-only answer).
++  static bool Function()? onWifi;
++
++  /// The questions waiting for the owner, newest last. The app shows them.
++  static final ValueNotifier<List<ConsentAsk326>> asks = ValueNotifier(const []);
++
++  /// requestId -> go | wifi | no
++  static final Map<String, String> _decided = {};
++
++  static bool _loaded = false;
++
++  /// One answer per request while the app runs; the store keeps it anyway.
++  static Future<void> _ensureLoaded() async {
++    if (_loaded) return;
++    _loaded = true;
++    try {
++      final raw = await read?.call(storeKey);
++      if (raw != null && raw.isNotEmpty) {
++        final d = jsonDecode(raw);
++        if (d is Map) {
++          for (final e in d.entries) {
++            final v = e.value?.toString() ?? '';
++            if (v == go || v == wifi || v == no) _decided[e.key.toString()] = v;
++          }
++        }
++      }
++    } catch (_) {
++      // A broken store means "ask again", never "answer for them".
++    }
++    try {
++      final raw = await read?.call(asksKey);
++      if (raw != null && raw.isNotEmpty) {
++        final d = jsonDecode(raw);
++        final list = [
++          for (final x in (d is List ? d : const []))
++            if (ConsentAsk326.fromJson(x) case final a?) a,
++        ];
++        if (list.isNotEmpty) asks.value = list;
++      }
++    } catch (_) {}
++  }
++
++  static Future<void> _save() async {
++    try {
++      await write?.call(storeKey, jsonEncode(_decided));
++      await write?.call(
++          asksKey, jsonEncode([for (final a in asks.value) a.toJson()]));
++    } catch (_) {}
++  }
++
++  /// What to do with an answer of [bytes] for [requestId] - before one byte
++  /// leaves this phone.
++  ///
++  /// * small (under [minAskBytes]) -> go, nobody is asked;
++  /// * the owner already decided -> that decision (Wi-Fi only waits off Wi-Fi);
++  /// * otherwise the question is put in [asks] once and this answer waits.
++  static Future<Consent326Verdict> verdict({
++    required String requestId,
++    required int bytes,
++    String label = '',
++    String name = '',
++    String kind = '',
++    String fileKey = '',
++    DateTime Function()? clock,
++  }) async {
++    if (bytes < minAskBytes) return Consent326Verdict.go;
++    await _ensureLoaded();
++    final d = _decided[requestId];
++    if (d == no) return Consent326Verdict.no;
++    if (d == go) return Consent326Verdict.go;
++    if (d == wifi) {
++      return (onWifi?.call() ?? true)
++          ? Consent326Verdict.go
++          : Consent326Verdict.waiting; // 325 rule: it waits, it never expires
++    }
++    final id = fileKey.isEmpty ? requestId : '$requestId:$fileKey';
++    if (!asks.value.any((a) => a.id == id)) {
++      asks.value = [
++        ...asks.value,
++        ConsentAsk326(
++          id: id,
++          requestId: requestId,
++          label: label,
++          name: name,
++          kind: kind,
++          bytes: bytes,
++          madeAt: (clock ?? DateTime.now)().toUtc().toIso8601String(),
++        ),
++      ];
++      await _save();
++    }
++    return Consent326Verdict.waiting;
++  }
++
++  /// The owner tapped Send / Wi-Fi only / No on [id].
++  static Future<void> decide(String id, String decision) async {
++    await _ensureLoaded();
++    final ask = asks.value.where((a) => a.id == id).firstOrNull;
++    if (ask == null) return;
++    if (decision == go || decision == wifi || decision == no) {
++      _decided[ask.requestId] = decision;
++    }
++    asks.value = [
++      for (final a in asks.value)
++        if (a.id != id) a,
++    ];
++    await _save();
++  }
++
++  /// "61 MB" / "800 KB" - the same shape the rest of the app uses.
++  static String sizeWords(int bytes) {
++    if (bytes >= 1024 * 1024) {
++      final mb = bytes / (1024 * 1024);
++      return '${mb >= 100 ? mb.round() : mb.toStringAsFixed(1)} MB';
++    }
++    if (bytes >= 1024) return '${(bytes / 1024).round()} KB';
++    return '$bytes B';
++  }
++
++  @visibleForTesting
++  static void resetForTest() {
++    _decided.clear();
++    _loaded = false;
++    asks.value = const [];
++  }
++}
+diff --git a/lib/features/admin/presentation/widgets/consent_326_dialog.dart b/lib/features/admin/presentation/widgets/consent_326_dialog.dart
+new file mode 100644
+index 0000000..6e0d1e0
+--- /dev/null
++++ b/lib/features/admin/presentation/widgets/consent_326_dialog.dart
+@@ -0,0 +1,63 @@
++import 'package:flutter/material.dart';
++
++import 'package:locallink/features/admin/data/actions/consent_326.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++/// Bundle 326: what the owner of the answering phone sees before a file leaves
++/// their phone - the name, the size, and three answers.
++///
++/// Send / Wi-Fi only / No. No is not a dead end: the asking phone's card greys
++/// out with "said no" and the request stays until Stop.
++class Consent326Dialog extends StatelessWidget {
++  const Consent326Dialog({super.key, required this.ask});
++
++  final ConsentAsk326 ask;
++
++  /// Shows the card and returns [Consent326.go] / [Consent326.wifi] /
++  /// [Consent326.no]; null when it was closed without an answer.
++  static Future<String?> show(BuildContext context, ConsentAsk326 ask) =>
++      showDialog<String>(
++        context: context,
++        barrierDismissible: false,
++        builder: (_) => Consent326Dialog(ask: ask),
++      );
++
++  @override
++  Widget build(BuildContext context) {
++    final t = L.t;
++    final size = Consent326.sizeWords(ask.bytes);
++    final what = [if (ask.kind.isNotEmpty) ask.kind, size].join(' \u00b7 ');
++    return AlertDialog(
++      title: Text(t.askForFile326),
++      content: Column(
++        mainAxisSize: MainAxisSize.min,
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: [
++          if (ask.name.isNotEmpty)
++            Padding(
++              padding: const EdgeInsets.only(bottom: 6),
++              child: Text(ask.name, maxLines: 2, overflow: TextOverflow.ellipsis),
++            ),
++          Text(what),
++        ],
++      ),
++      actions: [
++        TextButton(
++          key: const ValueKey('consent326_no'),
++          onPressed: () => Navigator.of(context).pop(Consent326.no),
++          child: Text(t.refuse326),
++        ),
++        TextButton(
++          key: const ValueKey('consent326_wifi'),
++          onPressed: () => Navigator.of(context).pop(Consent326.wifi),
++          child: Text(t.wifiOnly326),
++        ),
++        FilledButton(
++          key: const ValueKey('consent326_send'),
++          onPressed: () => Navigator.of(context).pop(Consent326.go),
++          child: Text(t.send326),
++        ),
++      ],
++    );
++  }
++}
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+index 0d6d7d4..ce77a4b 100644
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -6406,5 +6406,9 @@
+       }
+     }
+   },
+-  "goesWhenNear325": "goes the moment their phone is near"
++  "goesWhenNear325": "goes the moment their phone is near",
++  "askForFile326": "Send this file?",
++  "send326": "Send",
++  "wifiOnly326": "Wi-Fi only",
++  "refuse326": "No"
+ }
+diff --git a/lib/l10n/app_ur.arb b/lib/l10n/app_ur.arb
+index 35c7d1a..cac254f 100644
+--- a/lib/l10n/app_ur.arb
++++ b/lib/l10n/app_ur.arb
+@@ -2498,5 +2498,9 @@
+   "videosNotAsked324": "⁧ویڈیوز نہیں مانگی گئیں⁩",
+   "waiting325": "⁧زیرِ التوا⁩",
+   "askedAgo325": "⁧⁨{when}⁩ کو پوچھا⁩",
+-  "goesWhenNear325": "⁧جیسے ہی اُن کا فون قریب آئے، چلا جائے گا⁩"
++  "goesWhenNear325": "⁧جیسے ہی اُن کا فون قریب آئے، چلا جائے گا⁩",
++  "askForFile326": "⁧یہ فائل بھیجیں؟⁩",
++  "send326": "⁧بھیجیں⁩",
++  "wifiOnly326": "⁧صرف وائی فائی پر⁩",
++  "refuse326": "⁧نہیں⁩"
+ }
+diff --git a/lib/l10n/gen/app_localizations.dart b/lib/l10n/gen/app_localizations.dart
+index 192255d..bc36bcb 100644
+--- a/lib/l10n/gen/app_localizations.dart
++++ b/lib/l10n/gen/app_localizations.dart
+@@ -15047,7 +15047,6 @@ abstract class AppLocalizations {
+   /// In en, this message translates to:
+   /// **'videos not asked'**
+   String get videosNotAsked324;
+-
+   /// No description provided for @waiting325.
+   ///
+   /// In en, this message translates to:
+@@ -15065,6 +15064,30 @@ abstract class AppLocalizations {
+   /// In en, this message translates to:
+   /// **'goes the moment their phone is near'**
+   String get goesWhenNear325;
++
++  /// No description provided for @askForFile326.
++  ///
++  /// In en, this message translates to:
++  /// **'Send this file?'**
++  String get askForFile326;
++
++  /// No description provided for @send326.
++  ///
++  /// In en, this message translates to:
++  /// **'Send'**
++  String get send326;
++
++  /// No description provided for @wifiOnly326.
++  ///
++  /// In en, this message translates to:
++  /// **'Wi-Fi only'**
++  String get wifiOnly326;
++
++  /// No description provided for @refuse326.
++  ///
++  /// In en, this message translates to:
++  /// **'No'**
++  String get refuse326;
+ }
+ 
+ class _AppLocalizationsDelegate
+diff --git a/lib/l10n/gen/app_localizations_en.dart b/lib/l10n/gen/app_localizations_en.dart
+index 6067b74..cf24bfb 100644
+--- a/lib/l10n/gen/app_localizations_en.dart
++++ b/lib/l10n/gen/app_localizations_en.dart
+@@ -8939,4 +8939,16 @@ class AppLocalizationsEn extends AppLocalizations {
+ 
+   @override
+   String get goesWhenNear325 => 'goes the moment their phone is near';
++
++  @override
++  String get askForFile326 => 'Send this file?';
++
++  @override
++  String get send326 => 'Send';
++
++  @override
++  String get wifiOnly326 => 'Wi-Fi only';
++
++  @override
++  String get refuse326 => 'No';
+ }
+diff --git a/lib/l10n/gen/app_localizations_ur.dart b/lib/l10n/gen/app_localizations_ur.dart
+index b820ea8..f6e0de8 100644
+--- a/lib/l10n/gen/app_localizations_ur.dart
++++ b/lib/l10n/gen/app_localizations_ur.dart
+@@ -8960,7 +8960,6 @@ class AppLocalizationsUr extends AppLocalizations {
+ 
+   @override
+   String get videosNotAsked324 => '⁧ویڈیوز نہیں مانگی گئیں⁩';
+-
+   @override
+   String get waiting325 => '⁧زیرِ التوا⁩';
+ 
+@@ -8971,4 +8970,16 @@ class AppLocalizationsUr extends AppLocalizations {
+ 
+   @override
+   String get goesWhenNear325 => '⁧جیسے ہی اُن کا فون قریب آئے، چلا جائے گا⁩';
++
++  @override
++  String get askForFile326 => '⁧یہ فائل بھیجیں؟⁩';
++
++  @override
++  String get send326 => '⁧بھیجیں⁩';
++
++  @override
++  String get wifiOnly326 => '⁧صرف وائی فائی پر⁩';
++
++  @override
++  String get refuse326 => '⁧نہیں⁩';
+ }
+diff --git a/pubspec.yaml b/pubspec.yaml
+index ed4b495..c05e814 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: locallink
+ publish_to: 'none'
+ description: LinkUp offline LAN communication client.
+-version: 3.0.119+190
++version: 3.0.120+191
+ 
+ environment:
+   sdk: '>=3.3.0 <4.0.0'
+diff --git a/test/bundle223_logs_test.dart b/test/bundle223_logs_test.dart
+index db4e534..8a1a631 100644
+--- a/test/bundle223_logs_test.dart
++++ b/test/bundle223_logs_test.dart
+@@ -29,9 +29,9 @@ void main() {
+   test('223-32 the stamp is made from kAppVersion + kAppBuild = pubspec', () {
+     final pub = File('pubspec.yaml').readAsStringSync();
+     expect(pub, contains('version: $kAppVersion+$kAppBuild'));
+-    expect(kAppVersion, '3.0.119');
+-    expect(kAppBuild, 190);
+-    expect(AppBuild.stamp, 'v3 · 3.0.119+190');
++    expect(kAppVersion, '3.0.120');
++    expect(kAppBuild, 191);
++    expect(AppBuild.stamp, 'v3 · 3.0.120+191');
+     final app = File('lib/app/local_link_app.dart').readAsStringSync();
+     expect(app, contains("AppLogger.info('APP_BUILD_STAMP', detail: AppBuild.stamp);"));
+     expect(app, isNot(contains('3.0.50')));
+diff --git a/test/bundle325_test.dart b/test/bundle325_test.dart
+index e1efa26..8d48dd2 100644
+--- a/test/bundle325_test.dart
++++ b/test/bundle325_test.dart
+@@ -214,10 +214,11 @@ void main() {
+   });
+ 
+   group('325 · version', () {
+-    test('325-18 this build is 3.0.119+190', () {
+-      expect(kAppVersion, '3.0.119');
+-      expect(kAppBuild, 190);
+-      expect(AppBuild.stamp, 'v3 · 3.0.119+190');
++    test('325-18 the exact numbers live in ONE place (bundle223); this follows them', () {
++      // Bundle 223 pins the literals; every later build updates that one test.
++      expect(AppBuild.stamp, 'v3 · $kAppVersion+$kAppBuild');
++      expect(File('pubspec.yaml').readAsStringSync(),
++          contains('version: $kAppVersion+$kAppBuild'));
+     });
+   });
+ }
+diff --git a/test/bundle326_test.dart b/test/bundle326_test.dart
+new file mode 100644
+index 0000000..0945245
+--- /dev/null
++++ b/test/bundle326_test.dart
+@@ -0,0 +1,208 @@
++// Bundle 326: the answering phone gets a say.
++//
++// The phone that HAS the chat used to start pushing a file the moment somebody
++// asked (admin_action_doers.dart → carrier.addOwn), and its owner found out
++// afterwards. Now that phone asks its owner first - with the real size - and
++// nothing leaves until the answer is Send / Wi-Fi only.
++//
++//  * small files are not worth a tap (under 5 MB: go, nobody is asked);
++//  * the question is asked once per request and file;
++//  * no answer = waiting, and it is never a refusal (325 rule);
++//  * "No" is final for that request and the ask stays on the other side;
++//  * "Wi-Fi only" waits off Wi-Fi and goes on it, nothing expires;
++//  * no server, no internet: all of it happens on this phone.
++import 'dart:io';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:locallink/core/config/app_build.dart';
++import 'package:locallink/features/admin/data/actions/admin_action_doers.dart';
++import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
++import 'package:locallink/features/admin/data/actions/consent_326.dart';
++import 'package:locallink/features/admin/presentation/widgets/consent_326_dialog.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++const _doers = 'lib/features/admin/data/actions/admin_action_doers.dart';
++const _builder = 'lib/features/admin/data/actions/chat_answer_builder.dart';
++const _app = 'lib/app/local_link_app.dart';
++
++String _src(String path) => File(path).readAsStringSync();
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  setUp(() {
++    Consent326.resetForTest();
++    Consent326.read = (_) async => null;
++    Consent326.write = (_, __) async {};
++    Consent326.onWifi = () => true;
++  });
++
++  const mb6 = 6 * 1024 * 1024;
++
++  group('326 · who decides before a byte leaves the phone', () {
++    test('326-1 a small file is not worth a tap: go, nobody is asked', () async {
++      final v = await Consent326.verdict(requestId: 'a1', bytes: 200 * 1024);
++      expect(v, Consent326Verdict.go);
++      expect(Consent326.asks.value, isEmpty);
++    });
++
++    test('326-2 a big file asks once and waits - never a refusal', () async {
++      final v = await Consent326.verdict(
++          requestId: 'a1', bytes: mb6, label: 'Ali', name: 'clip.mp4', kind: 'video', fileKey: 'f1');
++      expect(v, Consent326Verdict.waiting);
++      expect(Consent326.asks.value.length, 1);
++      expect(Consent326.asks.value.first.name, 'clip.mp4');
++      expect(Consent326.asks.value.first.bytes, mb6);
++      // asked again: still one card, still waiting (no nagging)
++      final again = await Consent326.verdict(
++          requestId: 'a1', bytes: mb6, label: 'Ali', name: 'clip.mp4', kind: 'video', fileKey: 'f1');
++      expect(again, Consent326Verdict.waiting);
++      expect(Consent326.asks.value.length, 1);
++    });
++
++    test('326-3 Send: from then on the answer goes out', () async {
++      await Consent326.verdict(requestId: 'a1', bytes: mb6, fileKey: 'f1');
++      await Consent326.decide(Consent326.asks.value.first.id, Consent326.go);
++      expect(Consent326.asks.value, isEmpty);
++      expect(await Consent326.verdict(requestId: 'a1', bytes: mb6), Consent326Verdict.go);
++    });
++
++    test('326-4 No: final for that request, and it is not a silent dead end', () async {
++      await Consent326.verdict(requestId: 'a2', bytes: mb6, fileKey: 'f9');
++      await Consent326.decide(Consent326.asks.value.first.id, Consent326.no);
++      expect(await Consent326.verdict(requestId: 'a2', bytes: mb6), Consent326Verdict.no);
++      expect(Consent326.asks.value, isEmpty); // no second card
++    });
++
++    test('326-5 Wi-Fi only: waits off Wi-Fi, goes on Wi-Fi, expires never', () async {
++      await Consent326.verdict(requestId: 'a3', bytes: mb6, fileKey: 'f1');
++      await Consent326.decide(Consent326.asks.value.first.id, Consent326.wifi);
++
++      Consent326.onWifi = () => false;
++      expect(await Consent326.verdict(requestId: 'a3', bytes: mb6), Consent326Verdict.waiting);
++
++      Consent326.onWifi = () => true;
++      expect(await Consent326.verdict(requestId: 'a3', bytes: mb6), Consent326Verdict.go);
++    });
++
++    test('326-6 the decision survives a restart (this phone store) and a broken store asks again', () async {
++      final store = <String, String>{};
++      Consent326.read = (k) async => store[k];
++      Consent326.write = (k, v) async => store[k] = v;
++      await Consent326.verdict(requestId: 'a4', bytes: mb6, fileKey: 'f1');
++      await Consent326.decide(Consent326.asks.value.first.id, Consent326.go);
++      expect(store[Consent326.storeKey], contains('"a4":"go"'));
++
++      // restart: same store, fresh memory
++      Consent326.resetForTest();
++      Consent326.read = (k) async => store[k];
++      Consent326.write = (k, v) async => store[k] = v;
++      expect(await Consent326.verdict(requestId: 'a4', bytes: mb6), Consent326Verdict.go);
++
++      // broken store: ask again, never decide for them
++      Consent326.resetForTest();
++      Consent326.read = (_) async => '{not json';
++      expect(await Consent326.verdict(requestId: 'a5', bytes: mb6, fileKey: 'f1'), Consent326Verdict.waiting);
++      expect(Consent326.asks.value.length, 1);
++    });
++
++    test('326-7 the size is said in the words the app already uses', () {
++      expect(Consent326.sizeWords(800 * 1024), '800 KB');
++      expect(Consent326.sizeWords(61 * 1024 * 1024), '61.0 MB');
++      expect(Consent326.sizeWords(900), '900 B');
++      expect(Consent326.minAskBytes, 5 * 1024 * 1024);
++    });
++  });
++
++  group('326 · the card the owner sees', () {
++    testWidgets('326-8 three answers, the size on it, and each returns its decision',
++        (tester) async {
++      const ask = ConsentAsk326(
++        id: 'a1:f1',
++        requestId: 'a1',
++        madeAt: '',
++        label: 'Ali',
++        name: 'clip.mp4',
++        kind: 'video',
++        bytes: 6 * 1024 * 1024,
++      );
++      for (final (key, expected) in [
++        ('consent326_send', Consent326.go),
++        ('consent326_wifi', Consent326.wifi),
++        ('consent326_no', Consent326.no),
++      ]) {
++        String? got;
++        await tester.pumpWidget(MaterialApp(
++          home: Builder(
++            builder: (context) => TextButton(
++              onPressed: () async => got = await Consent326Dialog.show(context, ask),
++              child: const Text('open'),
++            ),
++          ),
++        ));
++        await tester.tap(find.text('open'));
++        await tester.pumpAndSettle();
++        expect(find.text('Send this file?'), findsOneWidget);
++        expect(find.textContaining('clip.mp4'), findsOneWidget);
++        expect(find.textContaining('6.0 MB'), findsOneWidget);
++        await tester.tap(find.byKey(ValueKey(key)));
++        await tester.pumpAndSettle();
++        expect(got, expected, reason: key);
++      }
++    });
++
++    test('326-9 the words, English and Urdu', () {
++      expect(L.t.askForFile326, 'Send this file?');
++      expect(L.t.send326, 'Send');
++      expect(L.t.wifiOnly326, 'Wi-Fi only');
++      expect(L.t.refuse326, 'No');
++      final ur = File('lib/l10n/app_ur.arb').readAsStringSync();
++      for (final k in ['askForFile326', 'send326', 'wifiOnly326', 'refuse326']) {
++        expect(ur, contains('"$k"'), reason: '$k missing in Urdu');
++      }
++    });
++  });
++
++  group('326 · where the gate sits in the real code', () {
++    test('326-10 the builder asks with the real size, before any slice', () {
++      final b = _src(_builder);
++      expect(b, contains('beforeFirstSlice'));
++      expect(b, contains('bytes: bytes.length'));
++      // the call is after the file is read and before the first slice is sealed
++      expect(b.indexOf('await beforeFirstSlice('), lessThan(b.indexOf('for (var first = 1;')));
++    });
++
++    test('326-11 the answering phone throws = waits, and says so when the owner refused', () {
++      final d = _src(_doers);
++      expect(d, contains('Consent326.verdict('));
++      expect(d, contains("throw StateError('owner_not_asked_326')"));
++      expect(d, contains("throw StateError('owner_said_no_326')"));
++      // waiting must be a retry, never a refusal the other side can see
++      expect(d, contains("if (why == 'owner_not_asked_326') rethrow;"));
++    });
++
++    test('326-12 the app shows the card itself, one at a time', () {
++      final a = _src(_app);
++      expect(a, contains('Consent326.asks.addListener(_showConsent326)'));
++      expect(a, contains('Consent326Dialog.show('));
++      expect(a, contains('_consentShowing326'));
++      expect(a, contains('Consent326.asks.removeListener(_showConsent326)'));
++    });
++
++    test('326-13 no server anywhere in this: it is this phone asking its owner', () {
++      final c = File('lib/features/admin/data/actions/consent_326.dart').readAsStringSync();
++      expect(c, isNot(contains('http')));
++      expect(c, isNot(contains('Uri.')));
++      expect(c, contains('minAskBytes'));
++    });
++  });
++
++  group('326 · version', () {
++    test('326-14 the exact numbers live in ONE place (bundle223); this follows them', () {
++      expect(AppBuild.stamp, 'v3 · $kAppVersion+$kAppBuild');
++      expect(File('pubspec.yaml').readAsStringSync(),
++          contains('version: $kAppVersion+$kAppBuild'));
++    });
++  });
++}

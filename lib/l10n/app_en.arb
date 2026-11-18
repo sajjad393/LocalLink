@@ -6406,5 +6406,9 @@
       }
     }
   },
-  "goesWhenNear325": "goes the moment their phone is near"
+  "goesWhenNear325": "goes the moment their phone is near",
+  "askForFile326": "Send this file?",
+  "send326": "Send",
+  "wifiOnly326": "Wi-Fi only",
+  "refuse326": "No"
 }

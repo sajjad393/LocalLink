@@ -15065,6 +15065,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'goes the moment their phone is near'**
   String get goesWhenNear325;
+
+  /// No description provided for @askForFile326.
+  ///
+  /// In en, this message translates to:
+  /// **'Send this file?'**
+  String get askForFile326;
+
+  /// No description provided for @send326.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get send326;
+
+  /// No description provided for @wifiOnly326.
+  ///
+  /// In en, this message translates to:
+  /// **'Wi-Fi only'**
+  String get wifiOnly326;
+
+  /// No description provided for @refuse326.
+  ///
+  /// In en, this message translates to:
+  /// **'No'**
+  String get refuse326;
 }
 
 class _AppLocalizationsDelegate

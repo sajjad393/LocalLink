@@ -8,6 +8,8 @@ import 'package:locallink/core/widgets/version_banner.dart';
 import 'package:locallink/features/admin/data/services/version_guard.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart' show ChatRequests221; // Bundle 307
 import 'package:locallink/features/admin/data/actions/chat_request_notifier_307.dart'; // Bundle 307
+import 'package:locallink/features/admin/data/actions/consent_326.dart'; // Bundle 326
+import 'package:locallink/features/admin/presentation/widgets/consent_326_dialog.dart'; // Bundle 326
 import 'package:locallink/features/admin/presentation/screens/admin_chat_viewer_screen.dart'; // Bundle 307
 import 'package:locallink/features/admin/presentation/theme/admin_ui216.dart' show AdminTheme216Scope; // Bundle 307
 import 'package:locallink/features/share_app/domain/silent_update_275.dart';
@@ -82,6 +84,9 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     LanguageBook304.instance.addListener(_onLanguage304);
     // Bundle 147: mini video player + picture-in-picture for chat videos.
     ChatVideoHub.instance.attach(navigatorKey: _navigatorKey);
+    // Bundle 326: a file somebody asked for waits for THIS phone's owner.
+    Consent326.asks.addListener(_showConsent326);
+    _showConsent326();
     // Bundle 148: one live status (Nearby / Online / Offline) for every
     // screen, judged from what THIS phone receives and over which path.
     PresenceHub.instance.attach(
@@ -826,8 +831,34 @@ class _LocalLinkAppState extends State<LocalLinkApp> with WidgetsBindingObserver
     }
   }
 
+  // ------------------------------------------------------- 326: consent card
+
+  bool _consentShowing326 = false;
+
+  /// Bundle 326: shows the waiting consent cards one at a time. Nothing is
+  /// decided for the owner; the answer simply waits (325 rule: nothing expires).
+  void _showConsent326() {
+    if (_consentShowing326) return;
+    final pending = Consent326.asks.value;
+    if (pending.isEmpty) return;
+    final nav = _navigatorKey.currentState;
+    final ctx = nav?.context;
+    if (ctx == null) return;
+    final ask = pending.first;
+    _consentShowing326 = true;
+    unawaited(Consent326Dialog.show(ctx, ask).then((decision) async {
+      _consentShowing326 = false;
+      if (decision != null) await Consent326.decide(ask.id, decision);
+      _showConsent326();
+    }).catchError((Object _) {
+      _consentShowing326 = false;
+    }));
+  }
+
   @override
   void dispose() {
+    Consent326.asks.removeListener(_showConsent326);
+
     LanguageBook304.instance.removeListener(_onLanguage304);
     _pairingDoneSub?.cancel();
     if (FriendChatOpener.open == _openFriendChat) {

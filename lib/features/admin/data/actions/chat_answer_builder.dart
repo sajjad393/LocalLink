@@ -619,6 +619,9 @@ class ChatAnswerBuilder {
     required String replyTo,
     required Map<String, dynamic> detail,
     Future<void> Function(List<ChatAnswerPart> slice)? onSlice,
+    // Bundle 326: asked once, with the real size, before any byte is handed
+    // out. Throwing here stops the answer and it is tried again later.
+    Future<void> Function(FileConsent326 file)? beforeFirstSlice,
   }) async {
     final fileId = detail['file_id']?.toString() ?? '';
     final att = await source.fileOf(fileId, detail['message_id']?.toString() ?? '');
@@ -626,6 +629,10 @@ class ChatAnswerBuilder {
     final bytes = att.goneAt.isNotEmpty ? null : await source.readFile(att);
     if (bytes == null) throw StateError('file_gone');
     if (bytes.length > ChatAnswerRules.maxFileBytes) throw StateError('file_too_big');
+    if (beforeFirstSlice != null) {
+      await beforeFirstSlice(FileConsent326(
+          name: att.name, kind: att.type, bytes: bytes.length, fileId: fileId));
+    }
     if (onSlice != null) {
       const chunk = ChatAnswerRules.fileChunkBytes;
       final of = bytes.isEmpty ? 1 : (bytes.length + chunk - 1) ~/ chunk;
@@ -663,4 +670,19 @@ class ChatAnswerBuilder {
     return seal(
         actionId: actionId, replyKey: replyKey, plains: plains, replyTo: replyTo, isFile: true);
   }
+}
+
+/// Bundle 326: what the owner of this phone is asked before a file goes out.
+class FileConsent326 {
+  const FileConsent326({
+    required this.name,
+    required this.kind,
+    required this.bytes,
+    this.fileId = '',
+  });
+
+  final String name;
+  final String kind;
+  final int bytes;
+  final String fileId;
 }

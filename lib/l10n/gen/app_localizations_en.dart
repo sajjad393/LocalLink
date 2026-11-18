@@ -8939,4 +8939,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get goesWhenNear325 => 'goes the moment their phone is near';
+
+  @override
+  String get askForFile326 => 'Send this file?';
+
+  @override
+  String get send326 => 'Send';
+
+  @override
+  String get wifiOnly326 => 'Wi-Fi only';
+
+  @override
+  String get refuse326 => 'No';
 }

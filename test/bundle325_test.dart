@@ -214,10 +214,11 @@ void main() {
   });
 
   group('325 · version', () {
-    test('325-18 this build is 3.0.119+190', () {
-      expect(kAppVersion, '3.0.119');
-      expect(kAppBuild, 190);
-      expect(AppBuild.stamp, 'v3 · 3.0.119+190');
+    test('325-18 the exact numbers live in ONE place (bundle223); this follows them', () {
+      // Bundle 223 pins the literals; every later build updates that one test.
+      expect(AppBuild.stamp, 'v3 · $kAppVersion+$kAppBuild');
+      expect(File('pubspec.yaml').readAsStringSync(),
+          contains('version: $kAppVersion+$kAppBuild'));
     });
   });
 }

@@ -8971,4 +8971,16 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get goesWhenNear325 => '⁧جیسے ہی اُن کا فون قریب آئے، چلا جائے گا⁩';
+
+  @override
+  String get askForFile326 => '⁧یہ فائل بھیجیں؟⁩';
+
+  @override
+  String get send326 => '⁧بھیجیں⁩';
+
+  @override
+  String get wifiOnly326 => '⁧صرف وائی فائی پر⁩';
+
+  @override
+  String get refuse326 => '⁧نہیں⁩';
 }

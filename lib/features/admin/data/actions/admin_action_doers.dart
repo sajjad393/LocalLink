@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:locallink/features/admin/data/actions/admin_action_card.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
+import 'package:locallink/features/admin/data/actions/consent_326.dart'; // Bundle 326
 import 'package:locallink/features/admin/data/actions/delete_completely_doer.dart';
 import 'package:locallink/features/admin/data/models/admin_block_record.dart';
 
@@ -107,12 +108,29 @@ class ChatDoer221 {
           replyKey: card.replyKey,
           replyTo: replyTo,
           detail: plain.detail,
+          // Bundle 326: the owner of THIS phone decides before any byte goes
+          // out. Waiting = asked, not answered yet: nothing is thrown away, the
+          // answer is tried again later. No = the other side is told, in grey.
+          beforeFirstSlice: (file) async {
+            final v = await Consent326.verdict(
+              requestId: card.id,
+              label: plain.detail['label']?.toString() ?? '',
+              name: file.name,
+              kind: file.kind,
+              bytes: file.bytes,
+              fileKey: file.fileId,
+            );
+            if (v == Consent326Verdict.no) throw StateError('owner_said_no_326');
+            if (v == Consent326Verdict.waiting) throw StateError('owner_not_asked_326');
+          },
           onSlice: (slice) async {
             slices++;
             await carrier.addOwn(slice, replyTo: replyTo, isFile: true, announce: false);
           });
     } on StateError catch (e) {
       final why = e.message;
+      // Bundle 326: not answered yet -> try later (never a refusal).
+      if (why == 'owner_not_asked_326') rethrow;
       if (why == 'no_copy_here' || why == 'no_file') rethrow; // another phone answers
       return 'refused:$why';
     }
