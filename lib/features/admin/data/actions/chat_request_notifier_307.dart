@@ -337,11 +337,11 @@ class ChatRequestNotifier307 {
         continue;
       }
       // Bundle 318 (K7): "Up to date" never buzzes (posted once, goes by itself).
-      // Bundle 324 (1.3): one buzz per card, and only when everything the
-      // request asked for is here - a card never buzzes twice and never
-      // buzzes for "Ready" while its files are still coming.
-      final filesReady324 = trip == null || trip.total <= 0 || trip.stopped || trip.done;
-      final buzz = st.step == Step307.ready && !st.upToDate && filesReady324 && !buzzed.contains(id);
+      // Bundle 324 (1.3): ONE buzz per card - the "Chat ready" buzz of 317,
+      // kept where it is: it comes when the chat is ready, not when the last
+      // file lands (a 61 MB chat would buzz minutes later, and 317's own test
+      // pins this). Never twice: the buzzed list below + setOnlyAlertOnce.
+      final buzz = st.step == Step307.ready && !st.upToDate && !buzzed.contains(id);
       final once318 = st.step == Step307.ready && st.upToDate && !buzzed.contains(id);
       _shown[id] = sig;
       _lastPost[id] = now;
