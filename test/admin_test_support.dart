@@ -1,3 +1,9 @@
+// Bundle 332: this file is a fixtures helper, not a test. `flutter test` (no
+// path) runs every .dart under test/, so it needs a main - an empty one keeps
+// the helper here (many files import it) and the whole run honest.
+
+import 'package:flutter_test/flutter_test.dart';
+
 import 'package:locallink/features/admin/data/services/admin_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_contract.dart';
 
@@ -418,3 +424,6 @@ class FakeAdminRepository implements AdminRepositoryContract {
           {int? dashboardRefreshSeconds, int? securityAlertThreshold}) async =>
       const {};
 }
+
+// Bundle 332 fix: directives first, then main().
+void main() {}

@@ -84,7 +84,7 @@ class Evidence329 {
     final lines = _lines(await _read(key) ?? '');
     if (lines.isEmpty) return '';
     return [
-      '# LocalLink evidence · $domain',
+      '# LinkUp evidence · $domain',
       '# lines: ${lines.length}',
       '# each line carries the hash of the line before it',
       ...lines,

@@ -26,7 +26,9 @@ void main() {
       final s = File('lib/features/admin/data/actions/chat_answer_reader.dart').readAsStringSync();
       expect(s, contains("_uri('/api/v1/admin/conversations'), headers: _h(token)).timeout(listTimeout)"));
       expect(s, contains("_uri('/api/v1/admin/chat-requests'), headers: _h(token)).timeout(listTimeout)"));
-      expect(s, contains("_uri('/api/v1/admin/chat-requests'), headers: _h(token), body: jsonEncode(body))\n          .timeout(_timeout)"));
+      // Bundle 332: assert the code, not the indentation (it drifted once).
+      final flat = s.replaceAll(RegExp(r'\s+'), ' ');
+      expect(flat, contains("_uri('/api/v1/admin/chat-requests'), headers: _h(token), body: jsonEncode(body)) .timeout(_timeout)"));
     });
   });
 
