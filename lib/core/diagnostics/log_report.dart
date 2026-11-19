@@ -153,16 +153,29 @@ class LogReport {
   static String _plural(int n, String one, [String? many]) =>
       '$n ${n == 1 ? one : (many ?? '${one}s')}';
 
-  static ({int errors, int warnings, int calls, int files, int nearby}) summary(
+  /// Bundle 334: how many of the errors came from THIS app, and which events
+  /// shouted loudest. On a real phone the header said "45 errors" while all 45
+  /// were Android/vendor noise (`mali_gralloc`, `MediaCodec`) - the app itself
+  /// was clean. That is worth saying out loud.
+  static ({int errors, int warnings, int calls, int files, int nearby, int appErrors,
+      int systemErrors, String loudest}) summary(
       List<LogEntry> entries) {
     final callIds = <String>{};
     final fileIds = <String>{};
-    var errors = 0, warnings = 0, nearby = 0;
+    var errors = 0, warnings = 0, nearby = 0, systemErrors = 0;
+    final counts = <String, int>{};
     final callRe = RegExp(r'call=([A-Za-z0-9_\-]+)');
     final fileRe = RegExp(r'(?:transfer|message|file)=([A-Za-z0-9_\-]+)');
     for (final e in entries) {
-      if (e.level == 'E') errors++;
+      if (e.level == 'E') {
+        errors++;
+        if (e.area == 'SYSTEM') systemErrors++;
+      }
       if (e.level == 'W') warnings++;
+      if (e.area != 'SYSTEM') {
+        final k = '${e.area}/${e.event}';
+        counts[k] = (counts[k] ?? 0) + 1;
+      }
       switch (e.area) {
         case 'CALLS':
           final m = callRe.firstMatch(e.details);
@@ -174,12 +187,19 @@ class LogReport {
           nearby++;
       }
     }
+    final top = counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final loudest = top.isEmpty
+        ? ''
+        : top.take(3).map((e) => '${e.key} ${e.value}').join(' · ');
     return (
       errors: errors,
       warnings: warnings,
       calls: callIds.length,
       files: fileIds.length,
       nearby: nearby,
+      appErrors: errors - systemErrors,
+      systemErrors: systemErrors,
+      loudest: loudest,
     );
   }
 
@@ -219,9 +239,14 @@ class LogReport {
     b.writeln('Phone     : $phone (Android $android)');
     b.writeln('LinkUp    : $version');
     b.writeln('From - To : ${_date(from)} ${_hm(from)}  ->  ${_date(to)} ${_hm(to)} ($span)');
-    b.writeln('Summary   : ${_plural(s.errors, 'error')}, ${_plural(s.warnings, 'warning')}, '
-        '${_plural(s.calls, 'call')}, ${_plural(s.files, 'file')}, '
-        '${_plural(s.nearby, 'Nearby event')}');
+    b.writeln('Summary   : ${_plural(s.appErrors, 'app error')}, '
+        '${_plural(s.warnings, 'warning')}, ${_plural(s.calls, 'call')}, '
+        '${_plural(s.files, 'file')}, ${_plural(s.nearby, 'Nearby event')}');
+    if (s.systemErrors > 0) {
+      b.writeln('System    : ${_plural(s.systemErrors, 'system error')} '
+          '(Android / vendor, not this app)');
+    }
+    if (s.loudest.isNotEmpty) b.writeln('Loudest   : ${s.loudest}');
     b.writeln('Lines     : ${entries.length}');
     b.writeln('Marks     : ERROR !!   WARN !   (search "!!" for errors)');
     b.writeln(bar);

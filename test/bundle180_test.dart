@@ -149,13 +149,15 @@ void main() {
       expect(text, contains('Phone     : ZTE Blade A73 (Android 13)'));
       expect(text, contains('LinkUp    : 3.0.11+82'));
       expect(text, contains('2026-11-01 13:14  ->  2026-11-01 14:14 (1 h)'));
-      expect(text, contains('Summary   : 1 error, 1 warning, 1 call, 1 file, 1 Nearby event'));
+      expect(text, contains('Summary   : 1 app error, 1 warning, 1 call, 1 file, 1 Nearby event'));
       final lines = text.split('\n');
-      final err = lines.firstWhere((l) => l.contains('WD_CONNECT_FAILED'));
+      // Bundle 334: the header now also names the loudest events, so pick the
+      // table rows by their time - the event name appears in two places now.
+      final err = lines.firstWhere((l) => l.startsWith('14:09:02.774'));
       expect(err, '14:09:02.774  ERROR !!  NEARBY   WD_CONNECT_FAILED       reason=busy');
-      final warn = lines.firstWhere((l) => l.contains('FILE_PAUSED'));
+      final warn = lines.firstWhere((l) => l.startsWith('14:05:40.221'));
       expect(warn, '14:05:40.221  WARN  !   FILES    FILE_PAUSED_FOR_CALL    transfer=9f3e01c2');
-      final info = lines.firstWhere((l) => l.contains('CALL_START'));
+      final info = lines.firstWhere((l) => l.startsWith('14:02:10.005'));
       expect(info.indexOf('call=c1'), err.indexOf('reason=busy'));
       expect(text.contains('-----  2026'), isFalse);
     });
@@ -221,7 +223,7 @@ void main() {
       final c = text.indexOf('WD_GROUP_READY');
       final d = text.indexOf('uncaught_async_error');
       expect(a < b && b < c && c < d, isTrue);
-      expect(text, contains('Summary   : 1 error, 1 warning, 1 call, 0 files, 1 Nearby event'));
+      expect(text, contains('Summary   : 1 app error, 1 warning, 1 call, 0 files, 1 Nearby event'));
       expect(text, contains('Lines     : 4'));
     });
 

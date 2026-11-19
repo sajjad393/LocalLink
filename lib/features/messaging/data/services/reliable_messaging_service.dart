@@ -1375,10 +1375,14 @@ class ReliableMessagingService {
       final items = await LocalStore.timedOp(
           'outbox_read', () => store.outbox(pendingOnly: true));
 
-      AppLogger.info(
-        'MESSAGE_OUTBOX_READ',
-        detail: 'count=${items.length}',
-      );
+      // Bundle 334: 987 of these lines in one hour said count=0. Only a real
+      // queue is worth a line (the waiting summary below covers the rest).
+      if (items.isNotEmpty) {
+        AppLogger.info(
+          'MESSAGE_OUTBOX_READ',
+          detail: 'count=${items.length}',
+        );
+      }
       // Bundle 224 (F2): forget sent / removed messages; one summary line
       // every 10 min while messages wait for a route.
       _quiet224.keepOnly(items.map((e) => e['id'].toString()).toSet());
@@ -2477,6 +2481,11 @@ class ReliableMessagingService {
     // Bundle 224 (G1): 2202 single lines per hour with no reason; now
     // counted per reason in the 10 s summary.
     'mesh_dropped',
+    // Bundle 334: 3,305 lines in one hour on a real phone (about one a second)
+    // just to say the peer is still there. The 10 s summary carries it.
+    'peer_discovered',
+    'peer_lost',
+    'peer_updated',
   };
   final Map<String, int> _hotDirectEventCounts = <String, int>{};
   final Map<String, int> _dropReasonCounts = <String, int>{};
