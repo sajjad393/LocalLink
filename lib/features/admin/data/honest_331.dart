@@ -1,3 +1,4 @@
+import 'package:locallink/core/services/server_clock_255.dart';
 import 'package:locallink/features/admin/data/evidence_329.dart';
 
 /// Bundle 331: honest dates, and what this phone can really do right now.
@@ -83,12 +84,17 @@ class CanDoFacts331 {
     required this.server,
     this.lastRecord = '',
     this.lastAt,
+    this.clockAway,
   });
 
   final int nearby;
   final bool server;
   final String lastRecord;
   final DateTime? lastAt;
+
+  /// Bundle 340: how far the server's own clock is from this phone (null =
+  /// never heard from it). Shown, never corrected - the phone keeps its time.
+  final Duration? clockAway;
 
   /// The facts, as the app can know them right now. Only things this phone can
   /// truly see - no guessing about the internet.
@@ -97,6 +103,7 @@ class CanDoFacts331 {
     bool Function()? serverOnline,
     Future<({int n, String at, String kind, String words, String prev, String hash})?> Function()? last,
     DateTime Function()? clock,
+    Duration? Function()? clockAway,
   }) async {
     var peers = 0;
     try {
@@ -121,6 +128,13 @@ class CanDoFacts331 {
     } catch (_) {
       words = '';
     }
-    return CanDoFacts331(nearby: peers, server: server, lastRecord: words, lastAt: at);
+    Duration? away;
+    try {
+      away = clockAway?.call() ?? ServerClock255.lastOffset;
+    } catch (_) {
+      away = null;
+    }
+    return CanDoFacts331(
+        nearby: peers, server: server, lastRecord: words, lastAt: at, clockAway: away);
   }
 }

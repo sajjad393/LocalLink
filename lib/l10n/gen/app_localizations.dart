@@ -15329,6 +15329,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Nothing is sent until you tap Send.'**
   String get reRegisterNothingSent338;
+
+  /// No description provided for @awayFromThisPhone340.
+  ///
+  /// In en, this message translates to:
+  /// **'away from this phone'**
+  String get awayFromThisPhone340;
+
+  /// No description provided for @serverClockTimesWrong340.
+  ///
+  /// In en, this message translates to:
+  /// **'Times that come from the server may look wrong. Nothing on this phone was changed.'**
+  String get serverClockTimesWrong340;
+
+  /// No description provided for @serverClockCard340.
+  ///
+  /// In en, this message translates to:
+  /// **'The server\'s clock'**
+  String get serverClockCard340;
 }
 
 class _AppLocalizationsDelegate

@@ -9087,4 +9087,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reRegisterNothingSent338 => 'Nothing is sent until you tap Send.';
+
+  @override
+  String get awayFromThisPhone340 => 'away from this phone';
+
+  @override
+  String get serverClockTimesWrong340 =>
+      'Times that come from the server may look wrong. Nothing on this phone was changed.';
+
+  @override
+  String get serverClockCard340 => 'The server\'s clock';
 }

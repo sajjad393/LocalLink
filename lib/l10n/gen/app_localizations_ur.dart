@@ -9120,4 +9120,14 @@ class AppLocalizationsUr extends AppLocalizations {
   @override
   String get reRegisterNothingSent338 =>
       '⁧جب تک آپ بھیجیں نہ دبائیں، کچھ نہیں بھیجا جاتا۔⁩';
+
+  @override
+  String get awayFromThisPhone340 => '⁧اس فون سے دور⁩';
+
+  @override
+  String get serverClockTimesWrong340 =>
+      '⁧سرور سے آنے والے اوقات غلط لگ سکتے ہیں۔ اس فون پر کچھ بدلا نہیں گیا۔⁩';
+
+  @override
+  String get serverClockCard340 => '⁧سرور کی گھڑی⁩';
 }

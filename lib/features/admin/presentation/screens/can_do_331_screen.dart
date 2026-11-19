@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:locallink/core/services/server_clock_255.dart';
 import 'package:locallink/features/admin/data/honest_331.dart';
 import 'package:locallink/l10n/l10n.dart';
 
@@ -68,6 +69,17 @@ class _CanDo331ScreenState extends State<CanDo331Screen> {
                 title: lastWords.isEmpty ? L.t.nothingRecorded331 : lastWords,
                 body: facts.lastRecord.isEmpty ? L.t.evidenceWhat329Short : facts.lastRecord,
                 good: lastWords.isNotEmpty),
+            // Bundle 340: the server's clock was 3 h 16 m out on BOTH phones -
+            // so the odd one out is the server. Say it; never change the phone.
+            if (ServerClock255.worthSaying340(facts.clockAway)) ...[
+              const SizedBox(height: 10),
+              _card(theme,
+                  key: 'can_do_331_clock',
+                  title: '${ServerClock255.amount340(facts.clockAway!)} '
+                      '${L.t.awayFromThisPhone340}',
+                  body: L.t.serverClockTimesWrong340,
+                  good: false),
+            ],
           ],
           const SizedBox(height: 16),
           Text(L.t.honestNote331,
