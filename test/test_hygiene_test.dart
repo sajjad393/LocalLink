@@ -28,7 +28,7 @@ void main() {
   });
 
   test('332-2 the suite still has the bundles we ship', () {
-    final names = files.map((f) => f.path.split('/').last).toSet();
+    final names = files.map((f) => f.path.replaceAll('\\', '/').split('/').last).toSet();
     for (final b in ['bundle327_test.dart', 'bundle328_test.dart', 'bundle329_test.dart',
                      'bundle330_test.dart', 'bundle331_test.dart']) {
       expect(names, contains(b));
