@@ -6411,5 +6411,10 @@
   "send326": "Send",
   "wifiOnly326": "Wi-Fi only",
   "refuse326": "No",
-  "phoneToPhone327": "phone to phone · 0 MB"
+  "phoneToPhone327": "phone to phone · 0 MB",
+  "safetyNumber328": "Safety number",
+  "safetyNumberNotYet328": "Not on this phone yet",
+  "safetyNumberNotYetWhy328": "We do not have this person's keys on this phone yet. Open the app together once on the same Wi-Fi, then come back and compare.",
+  "compareInPerson328": "Read these numbers to each other in person, and check they are the same on both phones. If they match, nobody is standing in the middle.",
+  "safetyNumberWhat328": "The number is made from both phones' keys. It never goes to any server, and you can check it without internet."
 }

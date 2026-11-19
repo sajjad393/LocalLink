@@ -15,6 +15,7 @@ import 'package:locallink/features/admin/data/models/admin_block_record.dart';
 import 'package:locallink/l10n/l10n.dart';
 import 'package:locallink/features/admin/data/services/admin_block_service.dart'
     show AdminSignIn, AdminTrustSaved, ed25519Verify;
+import 'package:locallink/features/directory/data/safety_number_328.dart';
 
 class _Entry {
   _Entry(this.id, this.action);
@@ -78,6 +79,22 @@ class AdminActionService {
         book = book ?? AdminActionBook.instance;
 
   static AdminActionService? instance;
+
+  /// Bundle 328: the safety number for one of my other phones or a contact,
+  /// computed here and never sent anywhere. Both sides contribute their
+  /// **signing** key, so the number a phone shows for a person is the same
+  /// number that person's phone shows for it.
+  Future<String> safetyNumber328(String deviceId) async {
+    if (deviceId.isEmpty) return '';
+    final mine = await signingKey();
+    final theirs = (await store.keysOf(deviceId)).signingKey;
+    if (!SafetyNumber328.canCompare(mine, theirs)) return '';
+    return SafetyNumber328.of(mine, theirs);
+  }
+
+  /// Bundle 328: true when this phone holds the keys needed to compare.
+  Future<bool> canShowSafety328(String deviceId) async =>
+      (await safetyNumber328(deviceId)).isNotEmpty;
 
   /// Bundle 254 (21.11): time of the last Off/Active card done here.
   static const String closedAtKey = 'admin_closed_at';

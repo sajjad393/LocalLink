@@ -8954,4 +8954,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get phoneToPhone327 => 'phone to phone · 0 MB';
+
+  @override
+  String get safetyNumber328 => 'Safety number';
+
+  @override
+  String get safetyNumberNotYet328 => 'Not on this phone yet';
+
+  @override
+  String get safetyNumberNotYetWhy328 =>
+      'We do not have this person\'s keys on this phone yet. Open the app together once on the same Wi-Fi, then come back and compare.';
+
+  @override
+  String get compareInPerson328 =>
+      'Read these numbers to each other in person, and check they are the same on both phones. If they match, nobody is standing in the middle.';
+
+  @override
+  String get safetyNumberWhat328 =>
+      'The number is made from both phones\' keys. It never goes to any server, and you can check it without internet.';
 }

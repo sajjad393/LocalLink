@@ -8986,4 +8986,22 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get phoneToPhone327 => '⁧فون سے فون · 0 MB⁩';
+
+  @override
+  String get safetyNumber328 => '⁧سیفٹی نمبر⁩';
+
+  @override
+  String get safetyNumberNotYet328 => '⁧ابھی اس فون پر نہیں⁩';
+
+  @override
+  String get safetyNumberNotYetWhy328 =>
+      '⁧ہمارے پاس اس شخص کی چابیاں ابھی اس فون پر نہیں ہیں۔ ایک بار ایک ہی وائی فائی پر ساتھ ایپ کھولیں، پھر واپس آ کر موازنہ کریں۔⁩';
+
+  @override
+  String get compareInPerson328 =>
+      '⁧یہ نمبر سامنے بیٹھ کر ایک دوسرے کو پڑھ کر سنائیں اور دیکھیں کہ دونوں فون پر ایک جیسے ہیں۔ اگر مل جائیں تو درمیان میں کوئی نہیں ہے۔⁩';
+
+  @override
+  String get safetyNumberWhat328 =>
+      '⁧یہ نمبر دونوں فون کی چابیوں سے بنتا ہے۔ یہ کسی سرور پر نہیں جاتا اور انٹرنیٹ کے بغیر بھی دیکھا جا سکتا ہے۔⁩';
 }

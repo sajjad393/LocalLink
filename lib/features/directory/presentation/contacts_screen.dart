@@ -35,6 +35,7 @@ import 'package:locallink/features/messaging/domain/messaging_repository_contrac
 import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
 import 'package:locallink/l10n/l10n.dart';
+import 'package:locallink/features/directory/presentation/safety_number_328_screen.dart';
 
 /// Bundle 183 (N3): the People filter (sliders button).
 enum PeopleFilter { all, nearby, online }
@@ -478,6 +479,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
         await _chat(profile);
       case ContactSheetChoice.call:
         await _call(profile);
+      case ContactSheetChoice.safety:
+        // Bundle 328: the safety number of this person.
+        await showSafetyNumber328(context,
+            name: name,
+            username: profile.username,
+            deviceId: profile.deviceId,
+            userId: profile.userId);
       case ContactSheetChoice.remove:
         await runRemoveFlow(context,
             userId: profile.userId,

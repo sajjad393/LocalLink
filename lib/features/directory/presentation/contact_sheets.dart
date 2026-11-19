@@ -280,7 +280,7 @@ List<Widget> _withDividers(BuildContext context, List<Widget> rows) {
 
 // ------------------------------------------------------------ the sheets
 
-enum ContactSheetChoice { message, call, remove, block }
+enum ContactSheetChoice { message, call, safety, remove, block }
 
 /// Screen 2: Message / Voice call / Remove contact / Block <name>.
 Future<ContactSheetChoice?> showContactActionsSheet(
@@ -313,6 +313,13 @@ Future<ContactSheetChoice?> showContactActionsSheet(
               icon: Icons.call_outlined,
               label: L.t.voiceCall,
               onTap: () => Navigator.pop(c, ContactSheetChoice.call),
+            ),
+            // Bundle 328: compare keys in person (no internet needed).
+            ContactSheetAction(
+              key: const Key('contact_sheet_safety328'),
+              icon: Icons.verified_user_outlined,
+              label: L.t.safetyNumber328,
+              onTap: () => Navigator.pop(c, ContactSheetChoice.safety),
             ),
             ContactSheetAction(
               key: const Key('contact_sheet_remove'),

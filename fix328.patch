@@ -1,0 +1,650 @@
+diff --git a/lib/core/config/app_build.dart b/lib/core/config/app_build.dart
+index 6ceb93f..b3251ed 100644
+--- a/lib/core/config/app_build.dart
++++ b/lib/core/config/app_build.dart
+@@ -4,8 +4,8 @@
+ // plain `flutter build apk`, so it can't be trusted. These two constants are
+ // kept equal to pubspec.yaml `version:` (a test checks it).
+ 
+-const int kAppBuild = 192;
+-const String kAppVersion = '3.0.121';
++const int kAppBuild = 193;
++const String kAppVersion = '3.0.122';
+ 
+ /// HTTP header + socket header with the build (server version gate).
+ const String kAppBuildHeader = 'X-LinkUp-Build';
+diff --git a/lib/features/admin/data/actions/admin_action_service.dart b/lib/features/admin/data/actions/admin_action_service.dart
+index 051bd3b..08eb17d 100644
+--- a/lib/features/admin/data/actions/admin_action_service.dart
++++ b/lib/features/admin/data/actions/admin_action_service.dart
+@@ -15,6 +15,7 @@ import 'package:locallink/features/admin/data/models/admin_block_record.dart';
+ import 'package:locallink/l10n/l10n.dart';
+ import 'package:locallink/features/admin/data/services/admin_block_service.dart'
+     show AdminSignIn, AdminTrustSaved, ed25519Verify;
++import 'package:locallink/features/directory/data/safety_number_328.dart';
+ 
+ class _Entry {
+   _Entry(this.id, this.action);
+@@ -79,6 +80,22 @@ class AdminActionService {
+ 
+   static AdminActionService? instance;
+ 
++  /// Bundle 328: the safety number for one of my other phones or a contact,
++  /// computed here and never sent anywhere. Both sides contribute their
++  /// **signing** key, so the number a phone shows for a person is the same
++  /// number that person's phone shows for it.
++  Future<String> safetyNumber328(String deviceId) async {
++    if (deviceId.isEmpty) return '';
++    final mine = await signingKey();
++    final theirs = (await store.keysOf(deviceId)).signingKey;
++    if (!SafetyNumber328.canCompare(mine, theirs)) return '';
++    return SafetyNumber328.of(mine, theirs);
++  }
++
++  /// Bundle 328: true when this phone holds the keys needed to compare.
++  Future<bool> canShowSafety328(String deviceId) async =>
++      (await safetyNumber328(deviceId)).isNotEmpty;
++
+   /// Bundle 254 (21.11): time of the last Off/Active card done here.
+   static const String closedAtKey = 'admin_closed_at';
+ 
+diff --git a/lib/features/directory/data/safety_number_328.dart b/lib/features/directory/data/safety_number_328.dart
+new file mode 100644
+index 0000000..6d87a87
+--- /dev/null
++++ b/lib/features/directory/data/safety_number_328.dart
+@@ -0,0 +1,92 @@
++import 'dart:convert';
++
++import 'package:crypto/crypto.dart';
++
++/// Bundle 328 (phase 328 of the roadmap): the safety number of a contact.
++///
++/// Two people read the same 60 digits on both phones and compare them in
++/// person. If they match, the keys really are each other's - nobody in the
++/// middle. **No server, no internet, no timer:** the number is computed from
++/// the two identity keys the phones already hold.
++///
++/// Rules kept simple on purpose:
++/// * order does not matter - A comparing with B gets the same number as B
++///   comparing with A (the two keys are sorted before hashing);
++/// * the same two keys always give the same number;
++/// * 12 groups of 5 digits, read like a phone number.
++class SafetyNumber328 {
++  /// The domain string: it must never change, or every number people have
++  /// already compared would change with it.
++  static const String domain = 'locallink-safety-328';
++
++  static const int groupCount = 12;
++  static const int digitsPerGroup = 5;
++  static const int totalDigits = groupCount * digitsPerGroup; // 60
++
++  /// The number for two identity keys (any order). Empty when a key is empty.
++  static String of(String keyA, String keyB) {
++    final a = keyA.trim();
++    final b = keyB.trim();
++    if (a.isEmpty || b.isEmpty) return '';
++
++    // Sorted, so both phones hash the very same thing.
++    final first = a.compareTo(b) <= 0 ? a : b;
++    final second = a.compareTo(b) <= 0 ? b : a;
++
++    var digest = sha256.convert(utf8.encode('$domain|$first|$second')).bytes;
++    final bytes = <int>[...digest];
++    var round = 0;
++    // 12 groups need 48 bytes; one sha256 is 32, so chain a second round.
++    while (bytes.length < groupCount * 4 && round < 8) {
++      digest = sha256.convert([...digest, ++round]).bytes;
++      bytes.addAll(digest);
++    }
++
++    final out = StringBuffer();
++    for (var g = 0; g < groupCount; g++) {
++      final i = g * 4;
++      final v = (bytes[i] << 24) | (bytes[i + 1] << 16) | (bytes[i + 2] << 8) | bytes[i + 3];
++      out.write((v % 100000).toString().padLeft(digitsPerGroup, '0'));
++    }
++    return out.toString();
++  }
++
++  /// 12 groups of 5 digits, for showing on the screen.
++  static List<String> groups(String number) {
++    if (number.length != totalDigits) return const [];
++    return [
++      for (var i = 0; i < groupCount; i++)
++        number.substring(i * digitsPerGroup, (i + 1) * digitsPerGroup),
++    ];
++  }
++
++  /// The words the user reads: "12345 67890 ..." in 3 rows of 4 groups.
++  static List<String> rows(String number) {
++    final g = groups(number);
++    if (g.isEmpty) return const [];
++    return [
++      for (var i = 0; i < groupCount; i += 4) g.sublist(i, i + 4).join(' '),
++    ];
++  }
++
++  /// How much of two numbers matches, in percent (100 = identical).
++  /// Used when a person says "mine looks like 34 71 09 ..." - we can say how
++  /// close it is without pretending it is the same.
++  static int matchPercent(String a, String b) {
++    if (a.length != totalDigits || b.length != totalDigits) return 0;
++    var same = 0;
++    for (var i = 0; i < totalDigits; i++) {
++      if (a[i] == b[i]) same++;
++    }
++    return (same * 100 / totalDigits).round();
++  }
++
++  /// True when the string really is a 60 digit number.
++  static bool looksValid(String number) =>
++      number.length == totalDigits && RegExp(r'^[0-9]+$').hasMatch(number);
++
++  /// Where this person cannot be checked yet: an honest sentence, never a fake
++  /// number. (Their keys are not on this phone yet - common when offline.)
++  static bool canCompare(String myKey, String theirKey) =>
++      myKey.trim().isNotEmpty && theirKey.trim().isNotEmpty;
++}
+diff --git a/lib/features/directory/presentation/contact_sheets.dart b/lib/features/directory/presentation/contact_sheets.dart
+index f28d58c..c7f0472 100644
+--- a/lib/features/directory/presentation/contact_sheets.dart
++++ b/lib/features/directory/presentation/contact_sheets.dart
+@@ -280,7 +280,7 @@ List<Widget> _withDividers(BuildContext context, List<Widget> rows) {
+ 
+ // ------------------------------------------------------------ the sheets
+ 
+-enum ContactSheetChoice { message, call, remove, block }
++enum ContactSheetChoice { message, call, safety, remove, block }
+ 
+ /// Screen 2: Message / Voice call / Remove contact / Block <name>.
+ Future<ContactSheetChoice?> showContactActionsSheet(
+@@ -314,6 +314,13 @@ Future<ContactSheetChoice?> showContactActionsSheet(
+               label: L.t.voiceCall,
+               onTap: () => Navigator.pop(c, ContactSheetChoice.call),
+             ),
++            // Bundle 328: compare keys in person (no internet needed).
++            ContactSheetAction(
++              key: const Key('contact_sheet_safety328'),
++              icon: Icons.verified_user_outlined,
++              label: L.t.safetyNumber328,
++              onTap: () => Navigator.pop(c, ContactSheetChoice.safety),
++            ),
+             ContactSheetAction(
+               key: const Key('contact_sheet_remove'),
+               icon: Icons.person_remove_outlined,
+diff --git a/lib/features/directory/presentation/contacts_screen.dart b/lib/features/directory/presentation/contacts_screen.dart
+index 08a5957..c8403e9 100644
+--- a/lib/features/directory/presentation/contacts_screen.dart
++++ b/lib/features/directory/presentation/contacts_screen.dart
+@@ -35,6 +35,7 @@ import 'package:locallink/features/messaging/domain/messaging_repository_contrac
+ import 'package:locallink/features/messaging/presentation/screens/chat_screen.dart';
+ import 'package:locallink/core/notifications/local_link_notification_service.dart';
+ import 'package:locallink/l10n/l10n.dart';
++import 'package:locallink/features/directory/presentation/safety_number_328_screen.dart';
+ 
+ /// Bundle 183 (N3): the People filter (sliders button).
+ enum PeopleFilter { all, nearby, online }
+@@ -478,6 +479,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
+         await _chat(profile);
+       case ContactSheetChoice.call:
+         await _call(profile);
++      case ContactSheetChoice.safety:
++        // Bundle 328: the safety number of this person.
++        await showSafetyNumber328(context,
++            name: name,
++            username: profile.username,
++            deviceId: profile.deviceId,
++            userId: profile.userId);
+       case ContactSheetChoice.remove:
+         await runRemoveFlow(context,
+             userId: profile.userId,
+diff --git a/lib/features/directory/presentation/safety_number_328_screen.dart b/lib/features/directory/presentation/safety_number_328_screen.dart
+new file mode 100644
+index 0000000..b2a7a12
+--- /dev/null
++++ b/lib/features/directory/presentation/safety_number_328_screen.dart
+@@ -0,0 +1,169 @@
++import 'package:flutter/material.dart';
++
++import 'package:locallink/core/services/app_logger.dart';
++import 'package:locallink/features/admin/data/actions/admin_action_service.dart';
++import 'package:locallink/features/directory/data/safety_number_328.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++/// Bundle 328: the safety number of one person, on one screen.
++///
++/// Two people read the same 12 groups of 5 digits on both phones and compare
++/// them **in person**. Matching numbers mean the keys are each other's and
++/// nobody sits in the middle. Works with no internet at all: the number comes
++/// from the two keys this phone already has.
++///
++/// Honest when it cannot: if the person's keys are not on this phone yet, the
++/// screen says so instead of showing a number that means nothing.
++Future<void> showSafetyNumber328(
++  BuildContext context, {
++  required String name,
++  required String username,
++  required String deviceId,
++  String userId = '',
++}) {
++  AppLogger.info('SAFETY_328', detail: 'open device=${deviceId.length > 6 ? deviceId.substring(deviceId.length - 6) : deviceId}');
++  return Navigator.of(context).push<void>(
++    MaterialPageRoute<void>(
++      builder: (_) => SafetyNumberScreen328(
++        name: name,
++        username: username,
++        deviceId: deviceId,
++        userId: userId,
++      ),
++    ),
++  );
++}
++
++class SafetyNumberScreen328 extends StatefulWidget {
++  const SafetyNumberScreen328({
++    super.key,
++    required this.name,
++    this.username = '',
++    required this.deviceId,
++    this.userId = '',
++    this.service,
++  });
++
++  final String name;
++  final String username;
++  final String deviceId;
++  final String userId;
++
++  /// Tests pass a service; the app uses the one live service.
++  final AdminActionService? service;
++
++  @override
++  State<SafetyNumberScreen328> createState() => _SafetyNumberScreen328State();
++}
++
++class _SafetyNumberScreen328State extends State<SafetyNumberScreen328> {
++  String _number = '';
++  bool _loaded = false;
++
++  @override
++  void initState() {
++    super.initState();
++    _load();
++  }
++
++  Future<void> _load() async {
++    var number = '';
++    try {
++      final svc = widget.service ?? AdminActionService.instance;
++      number = await svc?.safetyNumber328(widget.deviceId) ?? '';
++    } catch (_) {
++      number = ''; // never a crash, never a made-up number
++    }
++    if (!mounted) return;
++    setState(() {
++      _number = number;
++      _loaded = true;
++    });
++    AppLogger.info('SAFETY_328', detail: 'shown=${number.isNotEmpty}');
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    final rows = SafetyNumber328.rows(_number);
++    final who = widget.name.isEmpty ? widget.username : widget.name;
++    return Scaffold(
++      key: const Key('safety_number_328_screen'),
++      appBar: AppBar(title: Text(L.t.safetyNumber328)),
++      body: ListView(
++        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
++        children: [
++          Text(who,
++              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
++          if (widget.username.isNotEmpty)
++            Padding(
++              padding: const EdgeInsets.only(top: 2),
++              child: Text('@${widget.username}',
++                  style: theme.textTheme.bodyMedium
++                      ?.copyWith(color: theme.colorScheme.outline)),
++            ),
++          const SizedBox(height: 18),
++          if (!_loaded)
++            const Padding(
++              padding: EdgeInsets.symmetric(vertical: 24),
++              child: Center(child: CircularProgressIndicator()),
++            )
++          else if (rows.isEmpty)
++            Container(
++              key: const Key('safety_number_328_missing'),
++              padding: const EdgeInsets.all(16),
++              decoration: BoxDecoration(
++                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .5),
++                borderRadius: BorderRadius.circular(16),
++              ),
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: [
++                  Text(L.t.safetyNumberNotYet328,
++                      style: theme.textTheme.titleSmall
++                          ?.copyWith(fontWeight: FontWeight.w700)),
++                  const SizedBox(height: 6),
++                  Text(L.t.safetyNumberNotYetWhy328,
++                      style: theme.textTheme.bodyMedium
++                          ?.copyWith(color: theme.colorScheme.outline, height: 1.4)),
++                ],
++              ),
++            )
++          else
++            Container(
++              key: const Key('safety_number_328_digits'),
++              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
++              decoration: BoxDecoration(
++                color: theme.colorScheme.primary.withValues(alpha: .07),
++                borderRadius: BorderRadius.circular(18),
++              ),
++              child: Column(
++                children: [
++                  for (final r in rows)
++                    Padding(
++                      padding: const EdgeInsets.symmetric(vertical: 4),
++                      child: Text(
++                        r,
++                        textDirection: TextDirection.ltr,
++                        style: const TextStyle(
++                          fontSize: 21,
++                          fontWeight: FontWeight.w700,
++                          letterSpacing: 2.2,
++                        ),
++                      ),
++                    ),
++                ],
++              ),
++            ),
++          const SizedBox(height: 18),
++          Text(L.t.compareInPerson328,
++              style: theme.textTheme.bodyMedium?.copyWith(height: 1.45)),
++          const SizedBox(height: 10),
++          Text(L.t.safetyNumberWhat328,
++              style: theme.textTheme.bodySmall
++                  ?.copyWith(color: theme.colorScheme.outline, height: 1.45)),
++        ],
++      ),
++    );
++  }
++}
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+index 66673b3..3ed27cf 100644
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -6411,5 +6411,10 @@
+   "send326": "Send",
+   "wifiOnly326": "Wi-Fi only",
+   "refuse326": "No",
+-  "phoneToPhone327": "phone to phone · 0 MB"
++  "phoneToPhone327": "phone to phone · 0 MB",
++  "safetyNumber328": "Safety number",
++  "safetyNumberNotYet328": "Not on this phone yet",
++  "safetyNumberNotYetWhy328": "We do not have this person's keys on this phone yet. Open the app together once on the same Wi-Fi, then come back and compare.",
++  "compareInPerson328": "Read these numbers to each other in person, and check they are the same on both phones. If they match, nobody is standing in the middle.",
++  "safetyNumberWhat328": "The number is made from both phones' keys. It never goes to any server, and you can check it without internet."
+ }
+diff --git a/lib/l10n/app_ur.arb b/lib/l10n/app_ur.arb
+index cd9d0ab..59f300c 100644
+--- a/lib/l10n/app_ur.arb
++++ b/lib/l10n/app_ur.arb
+@@ -2503,5 +2503,10 @@
+   "send326": "⁧بھیجیں⁩",
+   "wifiOnly326": "⁧صرف وائی فائی پر⁩",
+   "refuse326": "⁧نہیں⁩",
+-  "phoneToPhone327": "⁧فون سے فون · 0 MB⁩"
++  "phoneToPhone327": "⁧فون سے فون · 0 MB⁩",
++  "safetyNumber328": "⁧سیفٹی نمبر⁩",
++  "safetyNumberNotYet328": "⁧ابھی اس فون پر نہیں⁩",
++  "safetyNumberNotYetWhy328": "⁧ہمارے پاس اس شخص کی چابیاں ابھی اس فون پر نہیں ہیں۔ ایک بار ایک ہی وائی فائی پر ساتھ ایپ کھولیں، پھر واپس آ کر موازنہ کریں۔⁩",
++  "compareInPerson328": "⁧یہ نمبر سامنے بیٹھ کر ایک دوسرے کو پڑھ کر سنائیں اور دیکھیں کہ دونوں فون پر ایک جیسے ہیں۔ اگر مل جائیں تو درمیان میں کوئی نہیں ہے۔⁩",
++  "safetyNumberWhat328": "⁧یہ نمبر دونوں فون کی چابیوں سے بنتا ہے۔ یہ کسی سرور پر نہیں جاتا اور انٹرنیٹ کے بغیر بھی دیکھا جا سکتا ہے۔⁩"
+ }
+diff --git a/lib/l10n/gen/app_localizations.dart b/lib/l10n/gen/app_localizations.dart
+index 693d804..f52286a 100644
+--- a/lib/l10n/gen/app_localizations.dart
++++ b/lib/l10n/gen/app_localizations.dart
+@@ -15095,6 +15095,21 @@ abstract class AppLocalizations {
+   /// In en, this message translates to:
+   /// **'phone to phone · 0 MB'**
+   String get phoneToPhone327;
++
++  /// No description provided for @safetyNumber328.
++  String get safetyNumber328;
++
++  /// No description provided for @safetyNumberNotYet328.
++  String get safetyNumberNotYet328;
++
++  /// No description provided for @safetyNumberNotYetWhy328.
++  String get safetyNumberNotYetWhy328;
++
++  /// No description provided for @compareInPerson328.
++  String get compareInPerson328;
++
++  /// No description provided for @safetyNumberWhat328.
++  String get safetyNumberWhat328;
+ }
+ 
+ class _AppLocalizationsDelegate
+diff --git a/lib/l10n/gen/app_localizations_en.dart b/lib/l10n/gen/app_localizations_en.dart
+index 01a90b9..a8d9ed9 100644
+--- a/lib/l10n/gen/app_localizations_en.dart
++++ b/lib/l10n/gen/app_localizations_en.dart
+@@ -8954,4 +8954,19 @@ class AppLocalizationsEn extends AppLocalizations {
+ 
+   @override
+   String get phoneToPhone327 => 'phone to phone · 0 MB';
++
++  @override
++  String get safetyNumber328 => 'Safety number';
++
++  @override
++  String get safetyNumberNotYet328 => 'Not on this phone yet';
++
++  @override
++  String get safetyNumberNotYetWhy328 => 'We do not have this person\'s keys on this phone yet. Open the app together once on the same Wi-Fi, then come back and compare.';
++
++  @override
++  String get compareInPerson328 => 'Read these numbers to each other in person, and check they are the same on both phones. If they match, nobody is standing in the middle.';
++
++  @override
++  String get safetyNumberWhat328 => 'The number is made from both phones\' keys. It never goes to any server, and you can check it without internet.';
+ }
+diff --git a/lib/l10n/gen/app_localizations_ur.dart b/lib/l10n/gen/app_localizations_ur.dart
+index 64a9d70..bec7656 100644
+--- a/lib/l10n/gen/app_localizations_ur.dart
++++ b/lib/l10n/gen/app_localizations_ur.dart
+@@ -8986,4 +8986,19 @@ class AppLocalizationsUr extends AppLocalizations {
+ 
+   @override
+   String get phoneToPhone327 => '⁧فون سے فون · 0 MB⁩';
++
++  @override
++  String get safetyNumber328 => '⁧سیفٹی نمبر⁩';
++
++  @override
++  String get safetyNumberNotYet328 => '⁧ابھی اس فون پر نہیں⁩';
++
++  @override
++  String get safetyNumberNotYetWhy328 => '⁧ہمارے پاس اس شخص کی چابیاں ابھی اس فون پر نہیں ہیں۔ ایک بار ایک ہی وائی فائی پر ساتھ ایپ کھولیں، پھر واپس آ کر موازنہ کریں۔⁩';
++
++  @override
++  String get compareInPerson328 => '⁧یہ نمبر سامنے بیٹھ کر ایک دوسرے کو پڑھ کر سنائیں اور دیکھیں کہ دونوں فون پر ایک جیسے ہیں۔ اگر مل جائیں تو درمیان میں کوئی نہیں ہے۔⁩';
++
++  @override
++  String get safetyNumberWhat328 => '⁧یہ نمبر دونوں فون کی چابیوں سے بنتا ہے۔ یہ کسی سرور پر نہیں جاتا اور انٹرنیٹ کے بغیر بھی دیکھا جا سکتا ہے۔⁩';
+ }
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 41798c0..5ab28c2 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: locallink
+ publish_to: 'none'
+ description: LinkUp offline LAN communication client.
+-version: 3.0.121+192
++version: 3.0.122+193
+ 
+ environment:
+   sdk: '>=3.3.0 <4.0.0'
+diff --git a/test/bundle223_logs_test.dart b/test/bundle223_logs_test.dart
+index 0da949e..140979f 100644
+--- a/test/bundle223_logs_test.dart
++++ b/test/bundle223_logs_test.dart
+@@ -29,9 +29,9 @@ void main() {
+   test('223-32 the stamp is made from kAppVersion + kAppBuild = pubspec', () {
+     final pub = File('pubspec.yaml').readAsStringSync();
+     expect(pub, contains('version: $kAppVersion+$kAppBuild'));
+-    expect(kAppVersion, '3.0.121');
+-    expect(kAppBuild, 192);
+-    expect(AppBuild.stamp, 'v3 · 3.0.121+192');
++    expect(kAppVersion, '3.0.122');
++    expect(kAppBuild, 193);
++    expect(AppBuild.stamp, 'v3 · 3.0.122+193');
+     final app = File('lib/app/local_link_app.dart').readAsStringSync();
+     expect(app, contains("AppLogger.info('APP_BUILD_STAMP', detail: AppBuild.stamp);"));
+     expect(app, isNot(contains('3.0.50')));
+diff --git a/test/bundle328_test.dart b/test/bundle328_test.dart
+new file mode 100644
+index 0000000..568541c
+--- /dev/null
++++ b/test/bundle328_test.dart
+@@ -0,0 +1,132 @@
++// Bundle 328: the safety number of a contact - read it in person, offline.
++//
++// Tests are the pure rules (the number itself) plus the contracts that keep it
++// honest: same number on both phones, no server, no fake number when the keys
++// are not here yet.
++import 'dart:io';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:locallink/core/config/app_build.dart';
++import 'package:locallink/features/directory/data/safety_number_328.dart';
++import 'package:locallink/features/directory/presentation/safety_number_328_screen.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++const _pure = 'lib/features/directory/data/safety_number_328.dart';
++const _screen = 'lib/features/directory/presentation/safety_number_328_screen.dart';
++const _service = 'lib/features/admin/data/actions/admin_action_service.dart';
++
++// two made-up identity keys
++const _me = 'ed25519:ME7Yk2pQ9vLd3sTf8aZx1cVb6nMhj4Rw0KuYl5OgHiE=';
++const _ali = 'ed25519:AL1q8Zr4TbNv0xWc7yPd2sKm5JfLh9Ga3Ue6OiRtQwY=';
++const _sara = 'ed25519:SA3w6Yn1Kp8bVr5tZc2mXd7Lq4jFg9Hn0UeOiAsRtYQ=';
++
++void main() {
++  group('328 · the number itself', () {
++    test('328-1 it is 60 digits in 12 groups of 5', () {
++      final n = SafetyNumber328.of(_me, _ali);
++      expect(n.length, 60);
++      expect(SafetyNumber328.groups(n).length, 12);
++      expect(SafetyNumber328.groups(n).every((g) => g.length == 5), isTrue);
++      expect(SafetyNumber328.looksValid(n), isTrue);
++      expect(RegExp(r'^[0-9]{60}$').hasMatch(n), isTrue);
++    });
++
++    test('328-2 both phones show the SAME number (order does not matter)', () {
++      expect(SafetyNumber328.of(_me, _ali), SafetyNumber328.of(_ali, _me));
++    });
++
++    test('328-3 the same person always gives the same number', () {
++      expect(SafetyNumber328.of(_me, _ali), SafetyNumber328.of(_me, _ali));
++    });
++
++    test('328-4 a different person gives a different number', () {
++      expect(SafetyNumber328.of(_me, _ali), isNot(SafetyNumber328.of(_me, _sara)));
++    });
++
++    test('328-5 a changed key changes the number (that is the whole point)', () {
++      const changed = 'ed25519:AL1q8Zr4TbNv0xWc7yPd2sKm5JfLh9Ga3Ue6OiRtQwZ=';
++      expect(SafetyNumber328.of(_me, _ali), isNot(SafetyNumber328.of(_me, changed)));
++    });
++
++    test('328-6 no key, no number - never a made-up one', () {
++      expect(SafetyNumber328.of('', _ali), '');
++      expect(SafetyNumber328.of(_me, '   '), '');
++      expect(SafetyNumber328.canCompare('', _ali), isFalse);
++      expect(SafetyNumber328.canCompare(_me, _ali), isTrue);
++      expect(SafetyNumber328.rows(''), isEmpty);
++    });
++
++    test('328-7 it reads as 3 rows of 4 groups', () {
++      final rows = SafetyNumber328.rows(SafetyNumber328.of(_me, _ali));
++      expect(rows.length, 3);
++      expect(rows.every((r) => r.split(' ').length == 4), isTrue);
++      expect(rows.join(' ').replaceAll(' ', ''), SafetyNumber328.of(_me, _ali));
++    });
++
++    test('328-8 a person who reads it back can be told how close they are', () {
++      final n = SafetyNumber328.of(_me, _ali);
++      expect(SafetyNumber328.matchPercent(n, n), 100);
++      final wrong = '00000${n.substring(5)}';
++      expect(SafetyNumber328.matchPercent(n, wrong), lessThan(100));
++      expect(SafetyNumber328.matchPercent(n, '123'), 0);
++    });
++  });
++
++  group('328 · the screen and the service', () {
++    test('328-9 the number is made from the signing key on BOTH sides', () {
++      final src = File(_service).readAsStringSync();
++      expect(src, contains('Future<String> safetyNumber328(String deviceId)'));
++      expect(src, contains('final mine = await signingKey();'));
++      expect(src, contains('.signingKey;'));
++      expect(src, contains('SafetyNumber328.of(mine, theirs)'));
++    });
++
++    test('328-10 the screen says the honest thing when the keys are not here', () {
++      final src = File(_screen).readAsStringSync();
++      expect(src, contains('L.t.safetyNumberNotYet328'));
++      expect(src, contains('L.t.compareInPerson328'));
++      expect(src, contains("Key('safety_number_328_digits')"));
++      expect(src, contains("Key('safety_number_328_missing')"));
++    });
++
++    test('328-11 it never touches a server and never expires', () {
++      final src = File(_pure).readAsStringSync();
++      expect(src, isNot(contains('http')));
++      expect(src, isNot(contains('Duration')));
++      expect(src, contains("domain = 'locallink-safety-328'"));
++      expect(File(_service).readAsStringSync(), isNot(contains('server.safetyNumber328')));
++    });
++
++    test('328-12 it is reachable: a row in the contact sheet, handled by People', () {
++      expect(File('lib/features/directory/presentation/contact_sheets.dart').readAsStringSync(),
++          contains("Key('contact_sheet_safety328')"));
++      expect(File('lib/features/directory/presentation/contacts_screen.dart').readAsStringSync(),
++          contains('showSafetyNumber328(context,'));
++    });
++
++    test('328-13 the words exist in both languages', () {
++      expect(L.t.safetyNumber328, 'Safety number');
++      expect(L.t.compareInPerson328, contains('in person'));
++      final ur = File('lib/l10n/app_ur.arb').readAsStringSync();
++      expect(ur, contains('"safetyNumber328"'));
++      expect(ur, contains('"compareInPerson328"'));
++    });
++
++    testWidgets('328-14b the screen opens and is honest with no keys (widget)', (t) async {
++      await t.pumpWidget(const MaterialApp(
++          home: SafetyNumberScreen328(name: 'Ali', username: 'ali', deviceId: 'd-ali')));
++      await t.pumpAndSettle();
++      expect(find.byKey(const Key('safety_number_328_screen')), findsOneWidget);
++      expect(find.text('Ali'), findsOneWidget);
++      // no service in this test -> no keys -> the honest card, never digits
++      expect(find.byKey(const Key('safety_number_328_missing')), findsOneWidget);
++      expect(find.byKey(const Key('safety_number_328_digits')), findsNothing);
++    });
++
++    test('328-14 the pins still live in one place, and this build follows them', () {
++      expect(AppBuild.stamp, 'v3 · $kAppVersion+$kAppBuild');
++      expect(File('pubspec.yaml').readAsStringSync(), contains('version: $kAppVersion+$kAppBuild'));
++    });
++  });
++}

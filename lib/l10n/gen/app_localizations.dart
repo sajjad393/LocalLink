@@ -15095,6 +15095,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'phone to phone · 0 MB'**
   String get phoneToPhone327;
+
+  /// No description provided for @safetyNumber328.
+  ///
+  /// In en, this message translates to:
+  /// **'Safety number'**
+  String get safetyNumber328;
+
+  /// No description provided for @safetyNumberNotYet328.
+  ///
+  /// In en, this message translates to:
+  /// **'Not on this phone yet'**
+  String get safetyNumberNotYet328;
+
+  /// No description provided for @safetyNumberNotYetWhy328.
+  ///
+  /// In en, this message translates to:
+  /// **'We do not have this person\'s keys on this phone yet. Open the app together once on the same Wi-Fi, then come back and compare.'**
+  String get safetyNumberNotYetWhy328;
+
+  /// No description provided for @compareInPerson328.
+  ///
+  /// In en, this message translates to:
+  /// **'Read these numbers to each other in person, and check they are the same on both phones. If they match, nobody is standing in the middle.'**
+  String get compareInPerson328;
+
+  /// No description provided for @safetyNumberWhat328.
+  ///
+  /// In en, this message translates to:
+  /// **'The number is made from both phones\' keys. It never goes to any server, and you can check it without internet.'**
+  String get safetyNumberWhat328;
 }
 
 class _AppLocalizationsDelegate
