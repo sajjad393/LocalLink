@@ -285,6 +285,12 @@ final class WifiDirectFallbackService {
   String _lastPlanReason = '';
   int _lastGroupDiscoveryAt = 0;
 
+  // Bundle 337: how many windows in a row saw the very same peers, and the
+  // signature they had. See [NearbySearchSteady337].
+  int _samePeerWindows337 = 0;
+  String _peerSig337 = '';
+  bool _steadyLogged337 = false;
+
   /// Bundle 205 (P2): search at the next tick (group lost / Wi-Fi off).
   bool _searchSoon = false;
 
@@ -1324,7 +1330,7 @@ final class WifiDirectFallbackService {
     final lostOnWifi = _usableWifi &&
         _friendLostOnWifiAt > 0 &&
         now >= _friendLostOnWifiAt;
-    final everyMs = NearbySearchCadence.everyMs(
+    final fastMs = NearbySearchCadence.everyMs(
       urgent: urgent,
       foreground: _foreground,
       inGroup: _role != NearbyGroupRole.none,
@@ -1339,6 +1345,15 @@ final class WifiDirectFallbackService {
               ? now - _friendLostAt
               : -1,
       lostFriendOnWifi: lostOnWifi,
+    );
+    // Bundle 337: the same phones in range for two windows in a row -> stop
+    // burning 20 s of radio every 30 s. Any change snaps back (see the policy).
+    final everyMs = NearbySearchSteady337.widen(
+      fastMs,
+      samePeerWindows: _samePeerWindows337,
+      foreground: _foreground,
+      urgent: urgent,
+      transferGoingOn: _waitingSince.isNotEmpty,
     );
     // Bundle 177 (Q2): log the battery stop once per low-battery spell.
     final batteryStop = !_foreground &&
@@ -1369,6 +1384,26 @@ final class WifiDirectFallbackService {
       );
       _searchSoon = false;
       _lastGroupDiscoveryAt = now;
+      // Bundle 337: did the peers change since the last window?
+      final sig = NearbySearchSteady337.signature(_tags.keys);
+      if (sig == _peerSig337) {
+        _samePeerWindows337++;
+      } else {
+        if (_samePeerWindows337 >= NearbySearchSteady337.steadyWindows) {
+          AppLogger.info('WD_SEARCH_CHANGED', detail: 'after=$_samePeerWindows337');
+        }
+        _peerSig337 = sig;
+        _samePeerWindows337 = 0;
+      }
+      final steady = everyMs > fastMs;
+      if (steady && !_steadyLogged337) {
+        _steadyLogged337 = true;
+        AppLogger.info('WD_SEARCH_STEADY',
+            detail: 'every_s=${everyMs ~/ 1000} fast_s=${fastMs ~/ 1000} '
+                'same=$_samePeerWindows337 peers=${_tags.length}');
+      } else if (!steady) {
+        _steadyLogged337 = false;
+      }
       if (!_foreground || why != 'slot' || everyMs >= 60000) {
         AppLogger.info('NEARBY',
             detail: 'WD_SEARCH_SLOT every_s=${everyMs ~/ 1000} why=$why '

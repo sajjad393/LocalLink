@@ -219,6 +219,43 @@ abstract final class NearbyWifiCheck {
   }
 }
 
+/// Bundle 337: a search costs 20 s of radio. A real night of logs showed a
+/// window every 30 s while the same three phones were in range and nothing
+/// was moving - about 30 min of radio per hour. When the peer set has not
+/// changed for two windows, the gap widens to [steadyMs] (about 30 windows
+/// an hour instead of 110). ANY change - a new peer, a transfer on its way,
+/// the app in the foreground, the user waiting on something - goes back to
+/// the fast cadence at once. The native side keeps searching on its own when
+/// the peer list changes, so a new phone is still found quickly.
+abstract final class NearbySearchSteady337 {
+  /// How many windows in a row must see the same peers.
+  static const int steadyWindows = 2;
+
+  /// The widened gap: two minutes.
+  static const int steadyMs = 120 * 1000;
+
+  /// The gap to use now. [everyMs] comes from [NearbySearchCadence].
+  static int widen(
+    int everyMs, {
+    required int samePeerWindows,
+    required bool foreground,
+    required bool urgent,
+    required bool transferGoingOn,
+  }) {
+    if (everyMs <= 0) return everyMs; // stopped stays stopped
+    if (foreground || urgent || transferGoingOn) return everyMs;
+    if (samePeerWindows < steadyWindows) return everyMs;
+    return everyMs > steadyMs ? everyMs : steadyMs;
+  }
+
+  /// `PEER_SIG` of the peers we can see: sorted tag ids, so a reordering of
+  /// the same phones is not a change.
+  static String signature(Iterable<String> ids) {
+    final list = ids.toList()..sort();
+    return list.join(',');
+  }
+}
+
 abstract final class NearbySearchCadence {
   // Bundle 200 (A): one search is a 20 s window now (it was cut every ~5 s),
   // so a new one at most every 25 s (urgent) / 30 s (app open, waiting).
