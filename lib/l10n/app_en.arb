@@ -6448,4 +6448,9 @@
   "nothingRecorded331": "Nothing recorded yet",
   "honestNote331": "This screen only shows what the phone can actually see. If it says waiting, nothing is on its way - that is the honest answer, not a spinner."
   ,"nothingToSend336": "nothing to send"
+  ,"notRegistered338": "This phone is not registered with the server"
+  ,"notRegisteredWhy338": "The server holds a different security key for this account, so server features are off on this phone. Messages, calls and files still travel phone to phone."
+  ,"reRegisterPhone338": "Re-register this phone"
+  ,"reRegisterWhat338": "This replaces the key the server holds for your account. The other phone will need to re-register too."
+  ,"reRegisterNothingSent338": "Nothing is sent until you tap Send."
 }

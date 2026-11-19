@@ -5,7 +5,9 @@ import 'package:locallink/features/admin/presentation/widgets/admin_format216.da
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
 import 'package:locallink/l10n/l10n.dart';
+import 'package:locallink/features/admin/data/actions/rebind_338.dart';
 import 'package:locallink/features/admin/presentation/screens/evidence_329_screen.dart';
+import 'package:locallink/features/admin/presentation/widgets/rebind_338_sheet.dart';
 import 'package:locallink/features/admin/presentation/screens/can_do_331_screen.dart';
 
 /// One row on the Security page (page 20).
@@ -120,6 +122,28 @@ class AdminSecurityScreen extends StatelessWidget {
                 A216Tone.orange, Icons.warning_amber_rounded),
             AdminStatTile216('$locked', L.t.locked, A216Tone.grey, Icons.lock_outline_rounded),
           ]),
+          // Bundle 338: the server holds another key for this phone, so every
+          // server feature is off here and nothing ever said so. One honest
+          // row, and a way forward behind a consent card.
+          ValueListenableBuilder<String>(
+            valueListenable: Rebind338.watch,
+            builder: (context, state, _) {
+              if (!Rebind338.needsRow(state)) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: AdminListCard216([
+                  AdminRow216(
+                    key: const ValueKey('a216_rebind_338'),
+                    leading: const AdminToneIcon216(Icons.key_off_outlined, A216Tone.red),
+                    title: L.t.notRegistered338,
+                    subtitle: L.t.notRegisteredWhy338,
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Rebind338Sheet.show(context),
+                  ),
+                ]),
+              );
+            },
+          ),
           // Bundle 329: the phone's own record of what it did.
           AdminListCard216([
             AdminRow216(

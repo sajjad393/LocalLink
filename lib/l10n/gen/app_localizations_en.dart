@@ -9070,4 +9070,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get nothingToSend336 => 'nothing to send';
+
+  @override
+  String get notRegistered338 => 'This phone is not registered with the server';
+
+  @override
+  String get notRegisteredWhy338 =>
+      'The server holds a different security key for this account, so server features are off on this phone. Messages, calls and files still travel phone to phone.';
+
+  @override
+  String get reRegisterPhone338 => 'Re-register this phone';
+
+  @override
+  String get reRegisterWhat338 =>
+      'This replaces the key the server holds for your account. The other phone will need to re-register too.';
+
+  @override
+  String get reRegisterNothingSent338 => 'Nothing is sent until you tap Send.';
 }

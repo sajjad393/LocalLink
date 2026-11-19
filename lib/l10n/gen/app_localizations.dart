@@ -15299,6 +15299,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'nothing to send'**
   String get nothingToSend336;
+
+  /// No description provided for @notRegistered338.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone is not registered with the server'**
+  String get notRegistered338;
+
+  /// No description provided for @notRegisteredWhy338.
+  ///
+  /// In en, this message translates to:
+  /// **'The server holds a different security key for this account, so server features are off on this phone. Messages, calls and files still travel phone to phone.'**
+  String get notRegisteredWhy338;
+
+  /// No description provided for @reRegisterPhone338.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-register this phone'**
+  String get reRegisterPhone338;
+
+  /// No description provided for @reRegisterWhat338.
+  ///
+  /// In en, this message translates to:
+  /// **'This replaces the key the server holds for your account. The other phone will need to re-register too.'**
+  String get reRegisterWhat338;
+
+  /// No description provided for @reRegisterNothingSent338.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is sent until you tap Send.'**
+  String get reRegisterNothingSent338;
 }
 
 class _AppLocalizationsDelegate

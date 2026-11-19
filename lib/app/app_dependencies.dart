@@ -854,6 +854,13 @@ class AppDependencies {
     deviceId: () => store.deviceId,
   );
 
+  /// Bundle 338: the one way a bound key is ever replaced - the owner tapped
+  /// Send on the Security page's consent card.
+  void wireRebind338() {
+    IdentityKeyUpload291.reRegister338 =
+        () => keyUpload291.maybeUpload(reason: 'owner', force: true);
+  }
+
   /// Bundle 213: the admin's minimum app version (works with no internet).
   late final VersionRuleService versionRules;
 
@@ -1935,6 +1942,7 @@ class AppDependencies {
     primeTrustedRoutes();
     await routePolicy.start();
     await directoryRepository.start();
+    wireRebind338(); // Bundle 338
     // Bundle 291 (A-2): the key is ready now; the socket may already be up.
     if (socket.isConnected) {
       unawaited(keyUpload291

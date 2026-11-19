@@ -9102,4 +9102,22 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get nothingToSend336 => '⁧بھیجنے کو کچھ نہیں⁩';
+
+  @override
+  String get notRegistered338 => '⁧یہ فون سرور پر درج نہیں ہے⁩';
+
+  @override
+  String get notRegisteredWhy338 =>
+      '⁧سرور کے پاس اس اکاونٹ کی دوسری سیکیورٹی کنجی ہے، اس لیے اس فون پر سرور کے فیچر بند ہیں۔ پیغام، کال اور فائلیں پھر بھی فون سے فون تک جاتے ہیں۔⁩';
+
+  @override
+  String get reRegisterPhone338 => '⁧یہ فون دوبارہ درج کریں⁩';
+
+  @override
+  String get reRegisterWhat338 =>
+      '⁧یہ اس کنجی کو بدلتی ہے جو سرور آپ کے اکاونٹ کے لیے رکھتا ہے۔ دوسرے فون کو بھی دوبارہ درج کرنا ہوگا۔⁩';
+
+  @override
+  String get reRegisterNothingSent338 =>
+      '⁧جب تک آپ بھیجیں نہ دبائیں، کچھ نہیں بھیجا جاتا۔⁩';
 }
