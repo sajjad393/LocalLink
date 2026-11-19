@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -75,7 +76,10 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
   @override
   void initState() {
     super.initState();
-    _bloc = AdminBloc(widget.repository, adminRole: widget.session.role)..load();
+    // Bundle 339: with no server the burst is skipped and logged, not fired.
+    _bloc = AdminBloc(widget.repository,
+        adminRole: widget.session.role, skipWhy339: ServerReach.instance.skipWhy)
+      ..load();
     AdminLiveHint274.tick.addListener(_onHint274); // Bundle 274 (D-4)
   }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/core/widgets/link_toast.dart';
 import 'package:locallink/core/presence/presence_hub.dart';
 import 'package:locallink/features/storage/presentation/storage_test_button.dart';
@@ -169,7 +170,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   void initState() {
     super.initState();
     _realBloc = AdminBloc(widget.repositoryFactory.create(widget.session.token),
-        adminRole: widget.session.role);
+        adminRole: widget.session.role,
+        // Bundle 339: one gate before the burst (offline = nothing sent).
+        skipWhy339: ServerReach.instance.skipWhy);
     try {
       unawaited(_realBloc.load());
     } catch (_) {/* offline: modules stay locked; bloc emError harmless */}

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:locallink/core/bloc/bloc_utils.dart';
+import 'package:locallink/core/services/app_logger.dart';
+import 'package:locallink/core/services/server_reach.dart';
 import 'package:locallink/features/admin/data/services/admin_offline_users_222.dart';
 import 'package:locallink/features/admin/data/services/admin_service.dart';
 import 'package:locallink/features/admin/domain/admin_repository_contract.dart';
@@ -160,9 +162,36 @@ final class AdminState extends Equatable {
 final class AdminBloc extends Cubit<AdminState> {
   final AdminRepositoryContract repository;
   final String adminRole;
-  AdminBloc(this.repository, {this.adminRole = 'auditor'}) : super(const AdminState());
+
+  /// Bundle 339: the reads one burst makes (16 in [load], 7 in
+  /// [loadDashboard]). Logged once when the burst is skipped.
+  static const int burstReads339 = 16;
+  static const int dashboardReads339 = 7;
+
+  /// Why a server read would be pointless now (null = go). Wired to
+  /// [ServerReach.skipWhy] in the app; a test can pass its own.
+  final String? Function()? skipWhy339;
+
+  AdminBloc(this.repository, {this.adminRole = 'auditor', this.skipWhy339})
+      : super(const AdminState());
+
+  /// Bundle 339: the admin panel used to fire the whole dashboard burst every
+  /// time it opened with no server - 37 `HTTP_REQUEST_FAILED` in one hour,
+  /// none of them able to succeed. One gate, one line, nothing sent.
+  bool _burstBlocked339(String what, int reads) {
+    final why = skipWhy339?.call();
+    if (why == null) return false;
+    AppLogger.info('ADMIN_BURST_SKIPPED',
+        detail: 'why=$why endpoints=$reads burst=$what');
+    return true;
+  }
 
   Future<void> load({String userQuery = ''}) async {
+    if (_burstBlocked339('load', burstReads339)) {
+      // Nothing is sent: keep what is on screen and stop the spinner.
+      emit(state.copyWith(loading: false));
+      return;
+    }
     emit(state.copyWith(loading: true, clearError: true));
     try {
       final results = await Future.wait<dynamic>([
@@ -227,6 +256,10 @@ final class AdminBloc extends Cubit<AdminState> {
   /// Loads what the redesigned dashboard needs. Kept separate from [load] so
   /// the other admin modules are not slowed by dashboard queries.
   Future<void> loadDashboard({String? range}) async {
+    if (_burstBlocked339('dashboard', dashboardReads339)) {
+      emit(state.copyWith(dashboardLoading: false));
+      return;
+    }
     final activeRange = range ?? state.analyticsRange;
     emit(state.copyWith(
       dashboardLoading: true,

@@ -1,7 +1,7 @@
 // Bundle 332: this file is a fixtures helper, not a test. `flutter test` (no
 // path) runs every .dart under test/, so it needs a main - an empty one keeps
-// the helper here (many files import it) and the whole run honest.
-
+// the helper here (many files import it) and the whole run honest. It has to
+// sit after the imports: Dart wants directives first.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:locallink/features/admin/data/services/admin_service.dart';
@@ -425,5 +425,6 @@ class FakeAdminRepository implements AdminRepositoryContract {
       const {};
 }
 
-// Bundle 332 fix: directives first, then main().
+// Bundle 332: the empty entry point (see the note at the top of this file).
+// Bundle 339: moved below the directives - above them it broke every import.
 void main() {}
