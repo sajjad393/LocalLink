@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import 'package:locallink/core/services/app_logger.dart';
+
 /// Bundle 329: export evidence.
 ///
 /// A plain record of what THIS phone did - asks it made, answers it gave, and
@@ -72,7 +74,13 @@ class Evidence329 {
     final rec = _record(n: n, at: _iso(_clock()), kind: kind, words: words, prev: prev);
     lines.add(lineOf(rec));
     final kept = lines.length > keep ? lines.sublist(lines.length - keep) : lines;
-    await _write(key, kept.join('\n'));
+    try {
+      await _write(key, kept.join('\n'));
+      // Bundle 333: a record you cannot see is a record you cannot trust.
+      AppLogger.info('EVIDENCE_329', detail: 'add kind=$kind n=${rec.n} kept=${kept.length}');
+    } catch (e) {
+      AppLogger.warning('EVIDENCE_329_FAIL', detail: 'write kind=$kind why=${e.runtimeType}');
+    }
     return kept.length;
   }
 

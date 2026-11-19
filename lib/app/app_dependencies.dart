@@ -161,6 +161,7 @@ import 'package:locallink/features/messaging/data/read_receipts/read_receipts_se
 import 'package:locallink/features/messaging/data/chat_text_scale.dart';
 import 'package:locallink/features/messaging/data/read_receipts/voice_played_hub.dart';
 import 'package:locallink/l10n/l10n.dart';
+import 'package:locallink/features/admin/data/evidence_329.dart';
 
 /// Owns the long-lived application services used by the Flutter client.
 ///
@@ -185,6 +186,12 @@ class AppDependencies {
         directTransport = SealingPeerTransport(WifiDirectTransportService()),
         wifiDirect = WifiDirectService(),
         crypto = IdentityCryptoService(secureStorage: secureStorage ?? const SecureStorageService()) {
+    // Bundle 333: the evidence record of 329 is stored with the other
+    // settings, so Export evidence still has the lines after a restart.
+    Evidence329.bind(
+      read: (_) => store.readEvidence329(),
+      write: (_, value) => store.writeEvidence329(value),
+    );
     final sealing = directTransport;
     if (sealing is SealingPeerTransport) {
       // Bundle 302 (E): the link layer cuts my blocks + admin blocks only;

@@ -1543,6 +1543,23 @@ class LocalStore {
   Future<void> clearOfflinePublishSecret() =>
       _secureStorage.delete(key: _offlinePublishSecretKey);
 
+  // ------------------------------------------------------- Bundle 333
+  // The evidence record of 329 lives in the settings table: it must survive a
+  // restart like any other setting (before this it lived in a static map and
+  // was lost when the app closed).
+  static const _evidence329Key = 'evidence_329_lines';
+
+  Future<void> writeEvidence329(String lines) => _putSetting(_evidence329Key, lines);
+
+  Future<String?> readEvidence329() async {
+    final rows = await _db.query('settings',
+        columns: ['value'],
+        where: 'key=?',
+        whereArgs: [_evidence329Key],
+        limit: 1);
+    return rows.isEmpty ? null : rows.first['value']?.toString();
+  }
+
   // Bundle 132 (F): one-time notice when an offline account auto-published
   // under a RENAMED username. Home shows it once, then clears it here.
   static const _renamedNoticeKey = 'account_auto_renamed_to';
