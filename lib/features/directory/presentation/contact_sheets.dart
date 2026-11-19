@@ -280,7 +280,7 @@ List<Widget> _withDividers(BuildContext context, List<Widget> rows) {
 
 // ------------------------------------------------------------ the sheets
 
-enum ContactSheetChoice { message, call, safety, remove, block }
+enum ContactSheetChoice { message, call, safety, askQr, remove, block }
 
 /// Screen 2: Message / Voice call / Remove contact / Block <name>.
 Future<ContactSheetChoice?> showContactActionsSheet(
@@ -320,6 +320,13 @@ Future<ContactSheetChoice?> showContactActionsSheet(
               icon: Icons.verified_user_outlined,
               label: L.t.safetyNumber328,
               onTap: () => Navigator.pop(c, ContactSheetChoice.safety),
+            ),
+            // Bundle 330: hand the ask over by QR or link, no Wi-Fi needed.
+            ContactSheetAction(
+              key: const Key('contact_sheet_askqr330'),
+              icon: Icons.qr_code_2_rounded,
+              label: L.t.askByQr330,
+              onTap: () => Navigator.pop(c, ContactSheetChoice.askQr),
             ),
             ContactSheetAction(
               key: const Key('contact_sheet_remove'),

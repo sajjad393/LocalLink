@@ -36,6 +36,9 @@ import 'package:locallink/features/messaging/presentation/screens/chat_screen.da
 import 'package:locallink/core/notifications/local_link_notification_service.dart';
 import 'package:locallink/l10n/l10n.dart';
 import 'package:locallink/features/directory/presentation/safety_number_328_screen.dart';
+import 'package:locallink/features/admin/data/actions/admin_action_service.dart';
+import 'package:locallink/features/directory/data/ask_link_330.dart';
+import 'package:locallink/features/directory/presentation/ask_qr_330_screen.dart';
 
 /// Bundle 183 (N3): the People filter (sliders button).
 enum PeopleFilter { all, nearby, online }
@@ -479,6 +482,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
         await _chat(profile);
       case ContactSheetChoice.call:
         await _call(profile);
+      case ContactSheetChoice.askQr:
+        // Bundle 330: my ask for this person, as a QR / link.
+        final me = profile.deviceId.isNotEmpty
+            ? (AdminActionService.instance?.selfDeviceId() ?? '')
+            : '';
+        final link = AskLink330.of(
+          label: name,
+          kind: 'direct',
+          userA: AdminActionService.instance?.selfUserId() ?? '',
+          userB: profile.userId,
+          from: me,
+        );
+        await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => AskQr330Screen(link: link, label: name, asker: name)));
       case ContactSheetChoice.safety:
         // Bundle 328: the safety number of this person.
         await showSafetyNumber328(context,

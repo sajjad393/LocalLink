@@ -5,6 +5,8 @@ import 'package:locallink/features/admin/presentation/widgets/admin_format216.da
 import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
 import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
 import 'package:locallink/l10n/l10n.dart';
+import 'package:locallink/features/admin/presentation/screens/evidence_329_screen.dart';
+import 'package:locallink/features/admin/presentation/screens/can_do_331_screen.dart';
 
 /// One row on the Security page (page 20).
 class SecurityItem216 {
@@ -117,6 +119,25 @@ class AdminSecurityScreen extends StatelessWidget {
             AdminStatTile216('${items.where((i) => i.level == 'Small').length}', 'Small',
                 A216Tone.orange, Icons.warning_amber_rounded),
             AdminStatTile216('$locked', L.t.locked, A216Tone.grey, Icons.lock_outline_rounded),
+          ]),
+          // Bundle 329: the phone's own record of what it did.
+          AdminListCard216([
+            AdminRow216(
+              key: const ValueKey('a216_can_do_331'),
+              leading: const AdminToneIcon216(Icons.sensors_outlined, A216Tone.grey),
+              title: L.t.whatThisPhoneCanDo331,
+              subtitle: L.t.honestDatesAndLimits331,
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const CanDo331Screen())),
+            ),
+            AdminRow216(
+              key: const ValueKey('a216_evidence_329'),
+              leading: const AdminToneIcon216(Icons.receipt_long_outlined, A216Tone.grey),
+              title: L.t.evidence329,
+              subtitle: L.t.evidenceWhat329Short,
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => const Evidence329Screen())),
+            ),
           ]),
           AdminSection216(L.t.thisWeek),
           if (state.loading && state.securityEvents.isEmpty)

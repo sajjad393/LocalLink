@@ -15090,6 +15090,72 @@ abstract class AppLocalizations {
   /// **'No'**
   String get refuse326;
 
+  /// No description provided for @evidence329.
+  ///
+  /// In en, this message translates to:
+  /// **'Export evidence'**
+  String get evidence329;
+
+  /// No description provided for @evidenceWhat329Short.
+  ///
+  /// In en, this message translates to:
+  /// **'What this phone did, in a file'**
+  String get evidenceWhat329Short;
+
+  /// No description provided for @evidenceWhat329.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone keeps its own record: what it asked for, what it answered, and what you said on each consent card. Each line carries the stamp of the line before it, so if one word is changed the file no longer adds up.'**
+  String get evidenceWhat329;
+
+  /// No description provided for @evidenceNothing329.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing recorded yet'**
+  String get evidenceNothing329;
+
+  /// No description provided for @evidenceCopied329.
+  ///
+  /// In en, this message translates to:
+  /// **'Evidence copied'**
+  String get evidenceCopied329;
+
+  /// No description provided for @evidenceFile329.
+  ///
+  /// In en, this message translates to:
+  /// **'The file'**
+  String get evidenceFile329;
+
+  /// No description provided for @evidenceHonest329.
+  ///
+  /// In en, this message translates to:
+  /// **'This is a record, not a promise: it shows what this phone wrote. It is never uploaded, and it stays on the phone until you copy it out.'**
+  String get evidenceHonest329;
+
+  /// No description provided for @copyEvidence329.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy evidence'**
+  String get copyEvidence329;
+
+  /// No description provided for @checkAgain329.
+  ///
+  /// In en, this message translates to:
+  /// **'Check again'**
+  String get checkAgain329;
+
+  /// No description provided for @evidenceChecksOut329.
+  ///
+  /// In en, this message translates to:
+  /// **'All {n} lines add up'**
+  String evidenceChecksOut329(int n);
+
+  /// No description provided for @evidenceBroken329.
+  ///
+  /// In en, this message translates to:
+  /// **'Line {n} does not add up - the file was changed'**
+  String evidenceBroken329(int n);
+
   /// No description provided for @phoneToPhone327.
   ///
   /// In en, this message translates to:
@@ -15125,6 +15191,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The number is made from both phones\' keys. It never goes to any server, and you can check it without internet.'**
   String get safetyNumberWhat328;
+
+  /// No description provided for @askByQr330.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask by QR or link'**
+  String get askByQr330;
+
+  /// No description provided for @askByQrWhat330.
+  ///
+  /// In en, this message translates to:
+  /// **'Show this to the other person when the two phones are not on the same Wi-Fi. Their phone files the same ask and answers when you are near again.'**
+  String get askByQrWhat330;
+
+  /// No description provided for @askCodeRead330.
+  ///
+  /// In en, this message translates to:
+  /// **'or read these letters to each other'**
+  String get askCodeRead330;
+
+  /// No description provided for @copyAskLink330.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the link'**
+  String get copyAskLink330;
+
+  /// No description provided for @scanTheirAsk330.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan their ask'**
+  String get scanTheirAsk330;
+
+  /// No description provided for @askLinkCopied330.
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied'**
+  String get askLinkCopied330;
+
+  /// No description provided for @notAnAskLink330.
+  ///
+  /// In en, this message translates to:
+  /// **'That is not an ask link'**
+  String get notAnAskLink330;
+
+  /// No description provided for @askTaken330.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask kept - it will be answered when you are near'**
+  String get askTaken330;
+
+  /// No description provided for @askTakeFailed330.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not keep that ask'**
+  String get askTakeFailed330;
+
+  /// No description provided for @askTaking330.
+  ///
+  /// In en, this message translates to:
+  /// **'Keeping it…'**
+  String get askTaking330;
+
+  /// No description provided for @askByQrHonest330.
+  ///
+  /// In en, this message translates to:
+  /// **'The link names a chat, not a session: it never expires, and it is answered phone to phone - nothing is uploaded.'**
+  String get askByQrHonest330;
+
+  /// No description provided for @whatThisPhoneCanDo331.
+  ///
+  /// In en, this message translates to:
+  /// **'What this phone can do'**
+  String get whatThisPhoneCanDo331;
+
+  /// No description provided for @honestDatesAndLimits331.
+  ///
+  /// In en, this message translates to:
+  /// **'Right now, and nothing dressed up'**
+  String get honestDatesAndLimits331;
+
+  /// No description provided for @askZeroMb331.
+  ///
+  /// In en, this message translates to:
+  /// **'The chat comes from the other phone directly: nothing goes to the server.'**
+  String get askZeroMb331;
+
+  /// No description provided for @askHonest331.
+  ///
+  /// In en, this message translates to:
+  /// **'No phone is linked this moment, so an ask waits. It is kept - nothing expires.'**
+  String get askHonest331;
+
+  /// No description provided for @nothingRecorded331.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing recorded yet'**
+  String get nothingRecorded331;
+
+  /// No description provided for @honestNote331.
+  ///
+  /// In en, this message translates to:
+  /// **'This screen only shows what the phone can actually see. If it says waiting, nothing is on its way - that is the honest answer, not a spinner.'**
+  String get honestNote331;
 }
 
 class _AppLocalizationsDelegate

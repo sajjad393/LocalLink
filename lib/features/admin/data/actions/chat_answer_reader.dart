@@ -20,6 +20,7 @@ import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
 import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
 import 'package:locallink/features/admin/data/actions/kept_copy_318.dart';
 import 'package:locallink/l10n/l10n.dart';
+import 'package:locallink/features/admin/data/evidence_329.dart';
 
 /// Bundle 221: what the Owner reads. Online the server opens the parts
 /// (web requests are locked for the server key); a request made on the
@@ -1430,6 +1431,10 @@ class ChatRequests221 {
     }
     final chatKey325 = RequestScope324.chatKeyOfPick(pick);
     final to327 = [...who.mine, ...who.targets]; // Bundle 327: my phones first
+    // Bundle 329: the phone keeps its own record of what it asked for.
+    await Evidence329.instance
+        .add('ask', 'Get chat \u00b7 ${pick.label}'.trim())
+        .catchError((_) => 0);
     if (to327.isEmpty) {
       // Bundle 323 (P3) found the dead end; Bundle 325 ends it. Nothing is
       // thrown away: the ask is saved on this phone and shows as Waiting.

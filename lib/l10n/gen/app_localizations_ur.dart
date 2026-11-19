@@ -8985,6 +8985,45 @@ class AppLocalizationsUr extends AppLocalizations {
   String get refuse326 => '⁧نہیں⁩';
 
   @override
+  String get evidence329 => '⁧ثبوت ایکسپورٹ کریں⁩';
+
+  @override
+  String get evidenceWhat329Short => '⁧اس فون نے کیا کیا، ایک فائل میں⁩';
+
+  @override
+  String get evidenceWhat329 =>
+      '⁧یہ فون اپنا ریکارڈ رکھتا ہے: کیا مانگا، کیا جواب دیا، اور ہر اجازت کارڈ پر آپ نے کیا کہا۔ ہر سطر میں پچھلی سطر کی مہر ہے، اس لیے ایک لفظ بدلنے پر فائل کا حساب نہیں ملتا۔⁩';
+
+  @override
+  String get evidenceNothing329 => '⁧ابھی کچھ ریکارڈ نہیں ہوا⁩';
+
+  @override
+  String get evidenceCopied329 => '⁧ثبوت کاپی ہو گیا⁩';
+
+  @override
+  String get evidenceFile329 => '⁧فائل⁩';
+
+  @override
+  String get evidenceHonest329 =>
+      '⁧یہ ایک ریکارڈ ہے، وعدہ نہیں: یہ دکھاتا ہے کہ اس فون نے کیا لکھا۔ یہ کبھی اپلوڈ نہیں ہوتا اور جب تک آپ کاپی نہ کریں فون پر ہی رہتا ہے۔⁩';
+
+  @override
+  String get copyEvidence329 => '⁧ثبوت کاپی کریں⁩';
+
+  @override
+  String get checkAgain329 => '⁧دوبارہ چیک کریں⁩';
+
+  @override
+  String evidenceChecksOut329(int n) {
+    return '⁧$n سطریں درست ہیں⁩';
+  }
+
+  @override
+  String evidenceBroken329(int n) {
+    return '⁧سطر $n کا حساب نہیں ملتا - فائل بدلی گئی ہے⁩';
+  }
+
+  @override
   String get phoneToPhone327 => '⁧فون سے فون · 0 MB⁩';
 
   @override
@@ -9004,4 +9043,60 @@ class AppLocalizationsUr extends AppLocalizations {
   @override
   String get safetyNumberWhat328 =>
       '⁧یہ نمبر دونوں فون کی چابیوں سے بنتا ہے۔ یہ کسی سرور پر نہیں جاتا اور انٹرنیٹ کے بغیر بھی دیکھا جا سکتا ہے۔⁩';
+
+  @override
+  String get askByQr330 => '⁧کیو آر یا لنک سے مانگیں⁩';
+
+  @override
+  String get askByQrWhat330 =>
+      '⁧جب دونوں فون ایک ہی وائی فائی پر نہ ہوں تو یہ دوسرے شخص کو دکھائیں۔ اُن کا فون یہی درخواست رکھ لے گا اور قریب آنے پر جواب دے دے گا۔⁩';
+
+  @override
+  String get askCodeRead330 => '⁧یا یہ حروف ایک دوسرے کو پڑھ کر سنائیں⁩';
+
+  @override
+  String get copyAskLink330 => '⁧لنک کاپی کریں⁩';
+
+  @override
+  String get scanTheirAsk330 => '⁧اُن کی درخواست اسکین کریں⁩';
+
+  @override
+  String get askLinkCopied330 => '⁧لنک کاپی ہو گیا⁩';
+
+  @override
+  String get notAnAskLink330 => '⁧یہ درخواست کا لنک نہیں ہے⁩';
+
+  @override
+  String get askTaken330 => '⁧درخواست محفوظ ہو گئی - قریب آنے پر جواب ملے گا⁩';
+
+  @override
+  String get askTakeFailed330 => '⁧وہ درخواست محفوظ نہیں ہو سکی⁩';
+
+  @override
+  String get askTaking330 => '⁧محفوظ کر رہے ہیں…⁩';
+
+  @override
+  String get askByQrHonest330 =>
+      '⁧لنک کسی چیٹ کا نام دیتا ہے، کسی سیشن کا نہیں: یہ کبھی ختم نہیں ہوتا اور جواب فون سے فون ملتا ہے - کچھ اپلوڈ نہیں ہوتا۔⁩';
+
+  @override
+  String get whatThisPhoneCanDo331 => '⁧یہ فون کیا کر سکتا ہے⁩';
+
+  @override
+  String get honestDatesAndLimits331 => '⁧اس وقت، بغیر کسی بناوٹ کے⁩';
+
+  @override
+  String get askZeroMb331 =>
+      '⁧چیٹ سیدھی دوسرے فون سے آتی ہے: سرور پر کچھ نہیں جاتا۔⁩';
+
+  @override
+  String get askHonest331 =>
+      '⁧اس وقت کوئی فون جڑا نہیں، اس لیے درخواست انتظار کرتی ہے۔ یہ محفوظ رہتی ہے - کچھ ختم نہیں ہوتا۔⁩';
+
+  @override
+  String get nothingRecorded331 => '⁧ابھی کچھ ریکارڈ نہیں ہوا⁩';
+
+  @override
+  String get honestNote331 =>
+      '⁧یہ اسکرین صرف وہی دکھاتی ہے جو فون واقعی دیکھ سکتا ہے۔ اگر لکھا ہو انتظار، تو کچھ راستے میں نہیں ہے - یہی سچا جواب ہے، گھومتا ہوا نشان نہیں۔⁩';
 }

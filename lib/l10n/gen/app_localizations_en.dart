@@ -8953,6 +8953,45 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refuse326 => 'No';
 
   @override
+  String get evidence329 => 'Export evidence';
+
+  @override
+  String get evidenceWhat329Short => 'What this phone did, in a file';
+
+  @override
+  String get evidenceWhat329 =>
+      'This phone keeps its own record: what it asked for, what it answered, and what you said on each consent card. Each line carries the stamp of the line before it, so if one word is changed the file no longer adds up.';
+
+  @override
+  String get evidenceNothing329 => 'Nothing recorded yet';
+
+  @override
+  String get evidenceCopied329 => 'Evidence copied';
+
+  @override
+  String get evidenceFile329 => 'The file';
+
+  @override
+  String get evidenceHonest329 =>
+      'This is a record, not a promise: it shows what this phone wrote. It is never uploaded, and it stays on the phone until you copy it out.';
+
+  @override
+  String get copyEvidence329 => 'Copy evidence';
+
+  @override
+  String get checkAgain329 => 'Check again';
+
+  @override
+  String evidenceChecksOut329(int n) {
+    return 'All $n lines add up';
+  }
+
+  @override
+  String evidenceBroken329(int n) {
+    return 'Line $n does not add up - the file was changed';
+  }
+
+  @override
   String get phoneToPhone327 => 'phone to phone · 0 MB';
 
   @override
@@ -8972,4 +9011,60 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get safetyNumberWhat328 =>
       'The number is made from both phones\' keys. It never goes to any server, and you can check it without internet.';
+
+  @override
+  String get askByQr330 => 'Ask by QR or link';
+
+  @override
+  String get askByQrWhat330 =>
+      'Show this to the other person when the two phones are not on the same Wi-Fi. Their phone files the same ask and answers when you are near again.';
+
+  @override
+  String get askCodeRead330 => 'or read these letters to each other';
+
+  @override
+  String get copyAskLink330 => 'Copy the link';
+
+  @override
+  String get scanTheirAsk330 => 'Scan their ask';
+
+  @override
+  String get askLinkCopied330 => 'Link copied';
+
+  @override
+  String get notAnAskLink330 => 'That is not an ask link';
+
+  @override
+  String get askTaken330 => 'Ask kept - it will be answered when you are near';
+
+  @override
+  String get askTakeFailed330 => 'Could not keep that ask';
+
+  @override
+  String get askTaking330 => 'Keeping it…';
+
+  @override
+  String get askByQrHonest330 =>
+      'The link names a chat, not a session: it never expires, and it is answered phone to phone - nothing is uploaded.';
+
+  @override
+  String get whatThisPhoneCanDo331 => 'What this phone can do';
+
+  @override
+  String get honestDatesAndLimits331 => 'Right now, and nothing dressed up';
+
+  @override
+  String get askZeroMb331 =>
+      'The chat comes from the other phone directly: nothing goes to the server.';
+
+  @override
+  String get askHonest331 =>
+      'No phone is linked this moment, so an ask waits. It is kept - nothing expires.';
+
+  @override
+  String get nothingRecorded331 => 'Nothing recorded yet';
+
+  @override
+  String get honestNote331 =>
+      'This screen only shows what the phone can actually see. If it says waiting, nothing is on its way - that is the honest answer, not a spinner.';
 }

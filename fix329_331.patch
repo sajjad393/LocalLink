@@ -1,0 +1,2058 @@
+diff --git a/lib/core/config/app_build.dart b/lib/core/config/app_build.dart
+index b3251ed..9db3c0d 100644
+--- a/lib/core/config/app_build.dart
++++ b/lib/core/config/app_build.dart
+@@ -4,8 +4,8 @@
+ // plain `flutter build apk`, so it can't be trusted. These two constants are
+ // kept equal to pubspec.yaml `version:` (a test checks it).
+ 
+-const int kAppBuild = 193;
+-const String kAppVersion = '3.0.122';
++const int kAppBuild = 196;
++const String kAppVersion = '3.0.125';
+ 
+ /// HTTP header + socket header with the build (server version gate).
+ const String kAppBuildHeader = 'X-LinkUp-Build';
+diff --git a/lib/features/admin/data/actions/chat_answer_reader.dart b/lib/features/admin/data/actions/chat_answer_reader.dart
+index bafc361..6cd500a 100644
+--- a/lib/features/admin/data/actions/chat_answer_reader.dart
++++ b/lib/features/admin/data/actions/chat_answer_reader.dart
+@@ -20,6 +20,7 @@ import 'package:locallink/features/admin/data/actions/chat_answer_builder.dart';
+ import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
+ import 'package:locallink/features/admin/data/actions/kept_copy_318.dart';
+ import 'package:locallink/l10n/l10n.dart';
++import 'package:locallink/features/admin/data/evidence_329.dart';
+ 
+ /// Bundle 221: what the Owner reads. Online the server opens the parts
+ /// (web requests are locked for the server key); a request made on the
+@@ -1430,6 +1431,10 @@ class ChatRequests221 {
+     }
+     final chatKey325 = RequestScope324.chatKeyOfPick(pick);
+     final to327 = [...who.mine, ...who.targets]; // Bundle 327: my phones first
++    // Bundle 329: the phone keeps its own record of what it asked for.
++    await Evidence329.instance
++        .add('ask', 'Get chat \u00b7 ${pick.label}'.trim())
++        .catchError((_) => 0);
+     if (to327.isEmpty) {
+       // Bundle 323 (P3) found the dead end; Bundle 325 ends it. Nothing is
+       // thrown away: the ask is saved on this phone and shows as Waiting.
+diff --git a/lib/features/admin/data/evidence_329.dart b/lib/features/admin/data/evidence_329.dart
+new file mode 100644
+index 0000000..d9e2221
+--- /dev/null
++++ b/lib/features/admin/data/evidence_329.dart
+@@ -0,0 +1,195 @@
++import 'dart:convert';
++
++import 'package:crypto/crypto.dart';
++
++/// Bundle 329: export evidence.
++///
++/// A plain record of what THIS phone did - asks it made, answers it gave, and
++/// the owner's answers to the 326 consent cards - written so that any later
++/// edit shows up. Each line carries the hash of the line before it, so if a
++/// single word is changed, [verify] says which line broke.
++///
++/// **No server, no internet, nothing expires.** The file is made on the phone
++/// and leaves it only when the owner copies it out. It is a record, not a
++/// promise: it proves what this phone wrote, nothing more - saying that plainly
++/// is the point.
++class Evidence329 {
++  Evidence329({
++    Future<String?> Function(String key)? read,
++    Future<void> Function(String key, String value)? write,
++    DateTime Function()? clock,
++  })  : _read = read ?? _memoryRead,
++        _write = write ?? _memoryWrite,
++        _clock = clock ?? DateTime.now;
++
++  /// The key the lines are kept under on this phone.
++  static const String key = 'evidence_329';
++
++  /// Never change: it is part of every hash.
++  static const String domain = 'locallink-evidence-329';
++
++  /// How many lines are kept. Old lines drop off the front, newest kept.
++  static const int keep = 500;
++
++  final Future<String?> Function(String key) _read;
++  final Future<void> Function(String key, String value) _write;
++  final DateTime Function() _clock;
++
++  static final Map<String, String> _mem = {};
++  static Future<String?> _memoryRead(String k) async => _mem[k];
++  static Future<void> _memoryWrite(String k, String v) async => _mem[k] = v;
++
++  /// The one used by the app. Tests build their own.
++  static Evidence329 instance = Evidence329();
++
++  /// Point the app's instance at the real phone storage.
++  static void bind({
++    required Future<String?> Function(String key) read,
++    required Future<void> Function(String key, String value) write,
++  }) {
++    instance = Evidence329(read: read, write: write);
++  }
++
++  static void resetForTest() {
++    _mem.clear();
++    instance = Evidence329();
++  }
++
++  /// One line: `{"n":1,"at":"...","kind":"ask","words":"...","prev":"","hash":"..."}`
++  Future<({int n, String at, String kind, String words, String prev, String hash})?>
++      last() async {
++    final lines = _lines(await _read(key) ?? '');
++    if (lines.isEmpty) return null;
++    return _asRecord(lines.last);
++  }
++
++  /// Add one line. Returns the new line count.
++  Future<int> add(String kind, String words) async {
++    final text = await _read(key) ?? '';
++    final lines = _lines(text);
++    final prev = lines.isEmpty ? '' : (_asRecord(lines.last)?.hash ?? '');
++    final n = lines.isEmpty ? 1 : (_asRecord(lines.last)?.n ?? lines.length) + 1;
++    final rec = _record(n: n, at: _iso(_clock()), kind: kind, words: words, prev: prev);
++    lines.add(lineOf(rec));
++    final kept = lines.length > keep ? lines.sublist(lines.length - keep) : lines;
++    await _write(key, kept.join('\n'));
++    return kept.length;
++  }
++
++  /// How many lines this phone holds.
++  Future<int> count() async => _lines(await _read(key) ?? '').length;
++
++  /// The whole file, ready to copy out.
++  Future<String> export() async {
++    final lines = _lines(await _read(key) ?? '');
++    if (lines.isEmpty) return '';
++    return [
++      '# LocalLink evidence · $domain',
++      '# lines: ${lines.length}',
++      '# each line carries the hash of the line before it',
++      ...lines,
++    ].join('\n');
++  }
++
++  /// Check a file (the export, or one the user pasted). Stops at the first line
++  /// that does not add up and says which one - never "looks fine" when it does
++  /// not.
++  static ({bool ok, int lines, int firstBad, String why}) verify(String text) {
++    final rows = _lines(text);
++    if (rows.isEmpty) {
++      return (ok: false, lines: 0, firstBad: 0, why: 'empty');
++    }
++    var prev = '';
++    for (var i = 0; i < rows.length; i++) {
++      final rec = _asRecord(rows[i]);
++      if (rec == null) return (ok: false, lines: i, firstBad: i + 1, why: 'not a line');
++      if (rec.n != i + 1) return (ok: false, lines: i, firstBad: i + 1, why: 'number');
++      if (rec.prev != prev) return (ok: false, lines: i, firstBad: i + 1, why: 'chain');
++      if (rec.hash != _hashOf(rec)) return (ok: false, lines: i, firstBad: i + 1, why: 'changed');
++      prev = rec.hash;
++    }
++    return (ok: true, lines: rows.length, firstBad: 0, why: '');
++  }
++
++  /// Big words for the two things the owner can do with it.
++  static String fileWords(int lines) =>
++      lines == 0 ? 'Nothing recorded yet' : '$lines line${lines == 1 ? '' : 's'} on this phone';
++
++  // ---------------------------------------------------------------- inside
++
++  static List<String> _lines(String text) => text
++      .split('\n')
++      .map((l) => l.trim())
++      .where((l) => l.isNotEmpty && !l.startsWith('#'))
++      .toList();
++
++  static String _iso(DateTime t) => t.toUtc().toIso8601String();
++
++  static ({int n, String at, String kind, String words, String prev, String hash}) _record({
++    required int n,
++    required String at,
++    required String kind,
++    required String words,
++    required String prev,
++  }) {
++    final body = <String, String>{
++      'n': '$n',
++      'at': at,
++      'kind': _clean(kind),
++      'words': _clean(words),
++      'prev': prev,
++    };
++    final hash = _hashBody(body);
++    return (
++      n: n,
++      at: at,
++      kind: body['kind']!,
++      words: body['words']!,
++      prev: prev,
++      hash: hash,
++    );
++  }
++
++  static String _hashBody(Map<String, String> body) => sha256
++      .convert(utf8.encode(
++          '$domain|${body['n']}|${body['at']}|${body['kind']}|${body['words']}|${body['prev']}'))
++      .toString();
++
++  static String _hashOf(({int n, String at, String kind, String words, String prev, String hash}) rec) =>
++      _hashBody({
++        'n': '${rec.n}',
++        'at': rec.at,
++        'kind': rec.kind,
++        'words': rec.words,
++        'prev': rec.prev,
++      });
++
++  /// One line of text per line of the file: newlines inside a word would break
++  /// the file, so they become spaces.
++  static String _clean(String s) => s.replaceAll('\n', ' ').replaceAll('\r', ' ').trim();
++
++  static ({int n, String at, String kind, String words, String prev, String hash})? _asRecord(
++      String line) {
++    if (!line.startsWith('{')) return null;
++    try {
++      final m = jsonDecode(line);
++      if (m is! Map) return null;
++      final n = m['n'];
++      if (n is! num) return null;
++      return (
++        n: n.toInt(),
++        at: m['at']?.toString() ?? '',
++        kind: m['kind']?.toString() ?? '',
++        words: m['words']?.toString() ?? '',
++        prev: m['prev']?.toString() ?? '',
++        hash: m['hash']?.toString() ?? '',
++      );
++    } catch (_) {
++      return null;
++    }
++  }
++
++  /// The line as it is written to the file.
++  static String lineOf(({int n, String at, String kind, String words, String prev, String hash}) r) =>
++      jsonEncode({'n': r.n, 'at': r.at, 'kind': r.kind, 'words': r.words, 'prev': r.prev, 'hash': r.hash});
++}
+diff --git a/lib/features/admin/data/honest_331.dart b/lib/features/admin/data/honest_331.dart
+new file mode 100644
+index 0000000..e77a4d0
+--- /dev/null
++++ b/lib/features/admin/data/honest_331.dart
+@@ -0,0 +1,126 @@
++import 'package:locallink/features/admin/data/evidence_329.dart';
++
++/// Bundle 331: honest dates, and what this phone can really do right now.
++///
++/// Two small things, both about not pretending:
++/// * **dates** - "just now", "12 minutes ago", "today · 18:40", "yesterday",
++///   "3 days ago", then the day itself. No fake precision ("0 days ago"), no
++///   time invented for a phone that never synced.
++/// * **the digest** - where an ask can actually go at this moment: phone to
++///   phone, over the server, or nowhere yet. It says "nowhere yet" instead of
++///   showing a spinner that implies something is on its way.
++class Honest331 {
++  /// A date in words a person would use. [now] and [then] are local times.
++  static ({String words, bool exact}) ago(DateTime now, DateTime then) {
++    final d = now.difference(then);
++    if (d.isNegative) {
++      // a clock that is behind: say so instead of "in -3 minutes"
++      return (words: 'time is off', exact: false);
++    }
++    if (d.inSeconds < 45) return (words: 'just now', exact: false);
++    if (d.inMinutes < 60) {
++      final m = d.inMinutes;
++      return (words: '$m minute${m == 1 ? '' : 's'} ago', exact: false);
++    }
++    final today = DateTime(now.year, now.month, now.day);
++    final that = DateTime(then.year, then.month, then.day);
++    final days = today.difference(that).inDays;
++    final hhmm = _hhmm(then);
++    if (days == 0) return (words: 'today · $hhmm', exact: true);
++    if (days == 1) return (words: 'yesterday · $hhmm', exact: true);
++    if (days < 7) return (words: '$days days ago', exact: false);
++    final sameYear = now.year == then.year;
++    return (words: '${_day(then.month)} ${then.day}${sameYear ? '' : ' ${then.year}'}', exact: true);
++  }
++
++  static String _hhmm(DateTime t) =>
++      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
++
++  static String _day(int month) => const [
++        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
++        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
++      ][(month - 1).clamp(0, 11)];
++}
++
++/// What an ask can do right now, said plainly.
++class CanDo331 {
++  /// How many of my phones are linked at this moment.
++  static String peersWords(int n) {
++    if (n <= 0) return 'no phones nearby';
++    if (n == 1) return '1 phone nearby';
++    return '$n phones nearby';
++  }
++
++  /// Where an ask would go: `lan` (phone to phone), `server`, or `waiting`.
++  static String route({required int nearby, required bool server}) {
++    if (nearby > 0) return 'lan';
++    if (server) return 'server';
++    return 'waiting';
++  }
++
++  /// The sentence for the route, and whether it is good news.
++  static ({String words, bool good}) routeWords({required int nearby, required bool server}) {
++    switch (route(nearby: nearby, server: server)) {
++      case 'lan':
++        return (words: 'phone to phone · 0 MB', good: true);
++      case 'server':
++        return (words: 'over the server · needs internet', good: true);
++      default:
++        return (words: 'waiting - nothing can travel yet', good: false);
++    }
++  }
++
++  /// The honest line about what a phone-to-phone ask costs.
++  static String costWords({required int nearby}) =>
++      nearby > 0 ? 'nothing goes to the server' : 'nothing is sent until a phone is near';
++}
++
++/// The three facts the digest screen needs, gathered in one place so it can be
++/// tested without a phone.
++class CanDoFacts331 {
++  const CanDoFacts331({
++    required this.nearby,
++    required this.server,
++    this.lastRecord = '',
++    this.lastAt,
++  });
++
++  final int nearby;
++  final bool server;
++  final String lastRecord;
++  final DateTime? lastAt;
++
++  /// The facts, as the app can know them right now. Only things this phone can
++  /// truly see - no guessing about the internet.
++  static Future<CanDoFacts331> read({
++    Future<List<String>> Function()? linkedPeers,
++    bool Function()? serverOnline,
++    Future<({int n, String at, String kind, String words, String prev, String hash})?> Function()? last,
++    DateTime Function()? clock,
++  }) async {
++    var peers = 0;
++    try {
++      peers = (await linkedPeers?.call())?.where((p) => p.isNotEmpty).length ?? 0;
++    } catch (_) {
++      peers = 0;
++    }
++    var server = false;
++    try {
++      server = serverOnline?.call() ?? false;
++    } catch (_) {
++      server = false;
++    }
++    var words = '';
++    DateTime? at;
++    try {
++      final l = await (last ?? Evidence329.instance.last)();
++      if (l != null) {
++        words = l.words;
++        at = DateTime.tryParse(l.at)?.toLocal();
++      }
++    } catch (_) {
++      words = '';
++    }
++    return CanDoFacts331(nearby: peers, server: server, lastRecord: words, lastAt: at);
++  }
++}
+diff --git a/lib/features/admin/presentation/screens/admin_security_screen.dart b/lib/features/admin/presentation/screens/admin_security_screen.dart
+index 197ff4e..0418d5f 100644
+--- a/lib/features/admin/presentation/screens/admin_security_screen.dart
++++ b/lib/features/admin/presentation/screens/admin_security_screen.dart
+@@ -5,6 +5,8 @@ import 'package:locallink/features/admin/presentation/widgets/admin_format216.da
+ import 'package:locallink/features/admin/presentation/widgets/admin_kit216.dart';
+ import 'package:locallink/features/admin/presentation/widgets/admin_tool_page216.dart';
+ import 'package:locallink/l10n/l10n.dart';
++import 'package:locallink/features/admin/presentation/screens/evidence_329_screen.dart';
++import 'package:locallink/features/admin/presentation/screens/can_do_331_screen.dart';
+ 
+ /// One row on the Security page (page 20).
+ class SecurityItem216 {
+@@ -118,6 +120,25 @@ class AdminSecurityScreen extends StatelessWidget {
+                 A216Tone.orange, Icons.warning_amber_rounded),
+             AdminStatTile216('$locked', L.t.locked, A216Tone.grey, Icons.lock_outline_rounded),
+           ]),
++          // Bundle 329: the phone's own record of what it did.
++          AdminListCard216([
++            AdminRow216(
++              key: const ValueKey('a216_can_do_331'),
++              leading: const AdminToneIcon216(Icons.sensors_outlined, A216Tone.grey),
++              title: L.t.whatThisPhoneCanDo331,
++              subtitle: L.t.honestDatesAndLimits331,
++              onTap: () => Navigator.of(context).push(
++                  MaterialPageRoute<void>(builder: (_) => const CanDo331Screen())),
++            ),
++            AdminRow216(
++              key: const ValueKey('a216_evidence_329'),
++              leading: const AdminToneIcon216(Icons.receipt_long_outlined, A216Tone.grey),
++              title: L.t.evidence329,
++              subtitle: L.t.evidenceWhat329Short,
++              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
++                  builder: (_) => const Evidence329Screen())),
++            ),
++          ]),
+           AdminSection216(L.t.thisWeek),
+           if (state.loading && state.securityEvents.isEmpty)
+             const AdminLoading216()
+diff --git a/lib/features/admin/presentation/screens/can_do_331_screen.dart b/lib/features/admin/presentation/screens/can_do_331_screen.dart
+new file mode 100644
+index 0000000..bad923f
+--- /dev/null
++++ b/lib/features/admin/presentation/screens/can_do_331_screen.dart
+@@ -0,0 +1,104 @@
++import 'package:flutter/material.dart';
++
++import 'package:locallink/features/admin/data/honest_331.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++/// Bundle 331: what this phone can do right now, and honest dates.
++///
++/// The screen says three true things: how many phones are linked this moment,
++/// where an ask would go (phone to phone, over the server, or nowhere yet), and
++/// when this phone last recorded something - in words a person would use.
++class CanDo331Screen extends StatefulWidget {
++  const CanDo331Screen({super.key, this.facts, this.clock});
++
++  /// Tests pass their own facts; the app reads them from the live services.
++  final CanDoFacts331? facts;
++  final DateTime Function()? clock;
++
++  @override
++  State<CanDo331Screen> createState() => _CanDo331ScreenState();
++}
++
++class _CanDo331ScreenState extends State<CanDo331Screen> {
++  CanDoFacts331? _facts;
++  bool _loading = true;
++
++  @override
++  void initState() {
++    super.initState();
++    _reload();
++  }
++
++  Future<void> _reload() async {
++    final facts = widget.facts ?? await CanDoFacts331.read();
++    if (!mounted) return;
++    setState(() {
++      _facts = facts;
++      _loading = false;
++    });
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    final facts = _facts;
++    final now = (widget.clock ?? DateTime.now)();
++    final route = facts == null ? null : CanDo331.routeWords(nearby: facts.nearby, server: facts.server);
++    final lastWords = facts?.lastAt == null ? '' : Honest331.ago(now, facts!.lastAt!).words;
++    return Scaffold(
++      key: const Key('can_do_331_screen'),
++      appBar: AppBar(title: Text(L.t.whatThisPhoneCanDo331)),
++      body: ListView(
++        padding: const EdgeInsets.fromLTRB(18, 10, 18, 26),
++        children: [
++          if (_loading || facts == null)
++            const Padding(
++              padding: EdgeInsets.symmetric(vertical: 30),
++              child: Center(child: CircularProgressIndicator()),
++            )
++          else ...[
++            _card(theme, key: 'can_do_331_peers', title: CanDo331.peersWords(facts.nearby),
++                body: CanDo331.costWords(nearby: facts.nearby), good: facts.nearby > 0),
++            const SizedBox(height: 10),
++            _card(theme, key: 'can_do_331_route', title: route!.words,
++                body: facts.nearby > 0 ? L.t.askZeroMb331 : L.t.askHonest331, good: route.good),
++            const SizedBox(height: 10),
++            _card(theme,
++                key: 'can_do_331_last',
++                title: lastWords.isEmpty ? L.t.nothingRecorded331 : lastWords,
++                body: facts.lastRecord.isEmpty ? L.t.evidenceWhat329Short : facts.lastRecord,
++                good: lastWords.isNotEmpty),
++          ],
++          const SizedBox(height: 16),
++          Text(L.t.honestNote331,
++              style: theme.textTheme.bodySmall
++                  ?.copyWith(color: theme.colorScheme.outline, height: 1.45)),
++        ],
++      ),
++    );
++  }
++
++  Widget _card(ThemeData theme,
++      {required String key, required String title, required String body, required bool good}) {
++    return Container(
++      key: Key(key),
++      padding: const EdgeInsets.all(16),
++      decoration: BoxDecoration(
++        color: (good ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest)
++            .withValues(alpha: good ? .07 : .45),
++        borderRadius: BorderRadius.circular(16),
++      ),
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: [
++          Text(title,
++              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
++          const SizedBox(height: 4),
++          Text(body,
++              style: theme.textTheme.bodySmall
++                  ?.copyWith(color: theme.colorScheme.outline, height: 1.4)),
++        ],
++      ),
++    );
++  }
++}
+diff --git a/lib/features/admin/presentation/screens/evidence_329_screen.dart b/lib/features/admin/presentation/screens/evidence_329_screen.dart
+new file mode 100644
+index 0000000..5d45783
+--- /dev/null
++++ b/lib/features/admin/presentation/screens/evidence_329_screen.dart
+@@ -0,0 +1,148 @@
++import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
++
++import 'package:locallink/core/services/app_logger.dart';
++import 'package:locallink/core/widgets/link_toast.dart';
++import 'package:locallink/features/admin/data/evidence_329.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++/// Bundle 329: the evidence screen.
++///
++/// Shows what this phone recorded, checks its own file, and copies it out.
++/// Nothing here is uploaded: the record leaves the phone only because the
++/// owner copied it and pasted it somewhere.
++class Evidence329Screen extends StatefulWidget {
++  const Evidence329Screen({super.key, this.evidence});
++
++  /// Tests pass their own; the app uses the live one.
++  final Evidence329? evidence;
++
++  @override
++  State<Evidence329Screen> createState() => _Evidence329ScreenState();
++}
++
++class _Evidence329ScreenState extends State<Evidence329Screen> {
++  Evidence329 get _e => widget.evidence ?? Evidence329.instance;
++
++  int _lines = 0;
++  bool _loaded = false;
++  ({bool ok, int lines, int firstBad, String why})? _check;
++  String _preview = '';
++
++  @override
++  void initState() {
++    super.initState();
++    _load();
++  }
++
++  Future<void> _load() async {
++    final n = await _e.count();
++    final text = await _e.export();
++    if (!mounted) return;
++    setState(() {
++      _lines = n;
++      _preview = text;
++      _loaded = true;
++      _check = text.isEmpty ? null : Evidence329.verify(text);
++    });
++  }
++
++  Future<void> _copy() async {
++    final text = await _e.export();
++    if (text.isEmpty) {
++      if (mounted) {
++        LinkToast.show(context, L.t.evidenceNothing329, kind: LinkToastKind.info);
++      }
++      return;
++    }
++    await Clipboard.setData(ClipboardData(text: text));
++    AppLogger.info('EVIDENCE_329', detail: 'copied lines=$_lines');
++    if (mounted) {
++      LinkToast.show(context, L.t.evidenceCopied329, kind: LinkToastKind.done);
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    final check = _check;
++    return Scaffold(
++      key: const Key('evidence_329_screen'),
++      appBar: AppBar(title: Text(L.t.evidence329)),
++      body: ListView(
++        padding: const EdgeInsets.fromLTRB(18, 10, 18, 26),
++        children: [
++          Text(L.t.evidenceWhat329,
++              style: theme.textTheme.bodyMedium?.copyWith(height: 1.45)),
++          const SizedBox(height: 14),
++          Container(
++            key: const Key('evidence_329_count'),
++            padding: const EdgeInsets.all(16),
++            decoration: BoxDecoration(
++              color: theme.colorScheme.primary.withValues(alpha: .07),
++              borderRadius: BorderRadius.circular(16),
++            ),
++            child: Column(
++              crossAxisAlignment: CrossAxisAlignment.start,
++              children: [
++                Text(
++                  _loaded ? Evidence329.fileWords(_lines) : '…',
++                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
++                ),
++                const SizedBox(height: 4),
++                Text(
++                  _loaded && check != null
++                      ? (check.ok
++                          ? L.t.evidenceChecksOut329(check.lines)
++                          : L.t.evidenceBroken329(check.firstBad))
++                      : L.t.evidenceNothing329,
++                  style: theme.textTheme.bodySmall?.copyWith(
++                    color: check != null && check.ok
++                        ? theme.colorScheme.primary
++                        : theme.colorScheme.outline,
++                    height: 1.4,
++                  ),
++                ),
++              ],
++            ),
++          ),
++          const SizedBox(height: 16),
++          FilledButton.icon(
++            key: const Key('evidence_329_copy'),
++            onPressed: _copy,
++            icon: const Icon(Icons.copy_all_rounded),
++            label: Text(L.t.copyEvidence329),
++          ),
++          const SizedBox(height: 8),
++          OutlinedButton.icon(
++            key: const Key('evidence_329_reload'),
++            onPressed: _load,
++            icon: const Icon(Icons.refresh_rounded),
++            label: Text(L.t.checkAgain329),
++          ),
++          if (_preview.isNotEmpty) ...[
++            const SizedBox(height: 20),
++            Text(L.t.evidenceFile329,
++                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
++            const SizedBox(height: 6),
++            Container(
++              padding: const EdgeInsets.all(12),
++              decoration: BoxDecoration(
++                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .45),
++                borderRadius: BorderRadius.circular(12),
++              ),
++              child: SelectableText(
++                _preview.length > 1400 ? '${_preview.substring(0, 1400)}\n…' : _preview,
++                style: const TextStyle(fontSize: 11.5, height: 1.35),
++              ),
++            ),
++          ],
++          const SizedBox(height: 16),
++          Text(L.t.evidenceHonest329,
++              style: theme.textTheme.bodySmall
++                  ?.copyWith(color: theme.colorScheme.outline, height: 1.45)),
++        ],
++      ),
++    );
++  }
++}
+diff --git a/lib/features/directory/data/ask_link_330.dart b/lib/features/directory/data/ask_link_330.dart
+new file mode 100644
+index 0000000..f1f00c3
+--- /dev/null
++++ b/lib/features/directory/data/ask_link_330.dart
+@@ -0,0 +1,119 @@
++import 'dart:convert';
++
++import 'package:crypto/crypto.dart';
++
++/// Bundle 330: the ask, carried by hand.
++///
++/// When the two phones are not on the same Wi-Fi, no card can travel. So the
++/// ask itself becomes a short link / QR: "Ali asks for this chat". The other
++/// person scans it (or pastes it) and their phone files **the same ask** it
++/// would have filed over the LAN - then it answers whenever the two phones are
++/// near again.
++///
++/// **No server, no internet, nothing expires.** A link made today still means
++/// the same thing next year: it names a chat, not a session.
++class AskLink330 {
++  /// Never change: it is what tells an ask apart from a group link.
++  static const String prefix = 'linkup-ask-v1:';
++
++  /// A short code the two people can also read to each other.
++  static const int codeLength = 6;
++
++  /// Build the link for one ask.
++  ///
++  /// [kind] is `direct` or `group`; [userA]/[userB] are the two user ids of a
++  /// direct chat, [groupId] the group. [from] is the device asking.
++  static String of({
++    required String label,
++    required String kind,
++    String groupId = '',
++    String userA = '',
++    String userB = '',
++    required String from,
++    DateTime? at,
++  }) {
++    final chat = kind == 'group'
++        ? {'kind': 'group', 'group_id': groupId}
++        : {
++            'kind': 'direct',
++            'users': [userA, userB],
++          };
++    final body = {
++      'v': 1,
++      'label': label.trim(),
++      'chat': chat,
++      'from': from.trim(),
++      'at': (at ?? DateTime.now()).toUtc().toIso8601String(),
++    };
++    final payload = base64Url.encode(utf8.encode(jsonEncode(body))).replaceAll('=', '');
++    return '$prefix$payload';
++  }
++
++  /// Read a link (or a QR of it). Returns null for anything that is not one -
++  /// junk is never half-accepted.
++  static ({String label, String kind, String groupId, String userA, String userB, String from, String code})?
++      parse(String text) {
++    var s = text.trim();
++    // a scanner or a chat app can wrap it in quotes or add spaces
++    s = s.replaceAll(RegExp(r'\s+'), '');
++    if (!s.startsWith(prefix)) return null;
++    final payload = s.substring(prefix.length);
++    if (payload.isEmpty) return null;
++    try {
++      final pad = payload.length % 4 == 0 ? '' : '=' * (4 - payload.length % 4);
++      final decoded = utf8.decode(base64Url.decode(payload + pad));
++      final m = jsonDecode(decoded);
++      if (m is! Map) return null;
++      if (m['v'] != 1) return null;
++      final chat = m['chat'];
++      if (chat is! Map) return null;
++      final kind = chat['kind']?.toString() ?? '';
++      final groupId = chat['group_id']?.toString() ?? '';
++      var userA = '';
++      var userB = '';
++      final users = chat['users'];
++      if (users is List && users.isNotEmpty) {
++        userA = users.first?.toString() ?? '';
++        if (users.length > 1) userB = users[1]?.toString() ?? '';
++      }
++      // an ask must name a chat, or there is nothing to ask for
++      final namesChat = kind == 'group' ? groupId.isNotEmpty : (userA.isNotEmpty && userB.isNotEmpty);
++      if (kind != 'group' && kind != 'direct') return null;
++      if (!namesChat) return null;
++      return (
++        label: m['label']?.toString() ?? '',
++        kind: kind,
++        groupId: groupId,
++        userA: userA,
++        userB: userB,
++        from: m['from']?.toString() ?? '',
++        code: codeOf(s),
++      );
++    } catch (_) {
++      return null;
++    }
++  }
++
++  /// The chat as the ask service wants it.
++  static Map<String, dynamic> chatOf(
++      ({String label, String kind, String groupId, String userA, String userB, String from, String code}) ask) {
++    if (ask.kind == 'group') return {'kind': 'group', 'group_id': ask.groupId};
++    return {
++      'kind': 'direct',
++      'users': [ask.userA, ask.userB],
++    };
++  }
++
++  /// Six characters, the same on both phones, to read aloud when a camera is
++  /// not handy: `linkup-ask-v1:…` -> `4F2A91`.
++  static String codeOf(String link) {
++    final s = link.trim().replaceAll(RegExp(r'\s+'), '');
++    if (s.isEmpty) return '';
++    final h = sha256.convert(utf8.encode('linkup-ask-code-330|$s')).toString().toUpperCase();
++    return h.substring(0, codeLength);
++  }
++
++  /// True when this looks like an ask link at all (cheap check for a scanner).
++  static bool looksLike(String text) =>
++      text.trim().replaceAll(RegExp(r'\s+'), '').startsWith(prefix);
++}
+diff --git a/lib/features/directory/presentation/ask_qr_330_screen.dart b/lib/features/directory/presentation/ask_qr_330_screen.dart
+new file mode 100644
+index 0000000..cfdc09e
+--- /dev/null
++++ b/lib/features/directory/presentation/ask_qr_330_screen.dart
+@@ -0,0 +1,207 @@
++import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
++import 'package:mobile_scanner/mobile_scanner.dart';
++import 'package:qr_flutter/qr_flutter.dart';
++
++import 'package:locallink/core/services/app_logger.dart';
++import 'package:locallink/core/services/qr_scan_config_232.dart';
++import 'package:locallink/core/widgets/link_toast.dart';
++import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
++import 'package:locallink/features/directory/data/ask_link_330.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++/// Bundle 330: the ask by hand.
++///
++/// Two jobs on one screen:
++/// * **mine** - the QR and the link for the ask I am making, to be read by the
++///   other person when no card can travel;
++/// * **theirs** - scan (or open) the same thing from the other person and this
++///   phone files that ask itself, then answers when the two are near.
++///
++/// Nothing here touches a server, and a link never expires.
++class AskQr330Screen extends StatefulWidget {
++  const AskQr330Screen({
++    super.key,
++    required this.link,
++    this.label = '',
++    this.asker = '',
++    this.onTake,
++    this.scanner,
++  });
++
++  /// My ask, already built by [AskLink330.of].
++  final String link;
++  final String label;
++
++  /// Who is asking (shown on the taking side).
++  final String asker;
++
++  /// Files the ask on this phone. Tests pass their own; the app uses the
++  /// live chat request service.
++  final Future<String> Function(Map<String, dynamic> chat)? onTake;
++
++  /// Tests: replaces the camera page (returns the scanned text).
++  final Future<String?> Function(BuildContext context)? scanner;
++
++  @override
++  State<AskQr330Screen> createState() => _AskQr330ScreenState();
++}
++
++class _AskQr330ScreenState extends State<AskQr330Screen> {
++  bool _busy = false;
++
++  Future<void> _copyLink() async {
++    await Clipboard.setData(ClipboardData(text: widget.link));
++    if (mounted) {
++      LinkToast.show(context, L.t.askLinkCopied330, kind: LinkToastKind.done);
++    }
++  }
++
++  Future<void> _scan() async {
++    final text = widget.scanner != null
++        ? await widget.scanner!(context)
++        : await Navigator.of(context)
++            .push<String>(MaterialPageRoute<String>(builder: (_) => const _AskScanPage()));
++    if (!mounted || text == null || text.isEmpty) return;
++    await _take(text);
++  }
++
++  /// The other side of the deal: read their ask and file it here.
++  Future<void> _take(String text) async {
++    final ask = AskLink330.parse(text);
++    if (ask == null) {
++      LinkToast.show(context, L.t.notAnAskLink330, kind: LinkToastKind.error);
++      return;
++    }
++    setState(() => _busy = true);
++    try {
++      final take = widget.onTake ?? _fileWithService;
++      final id = await take(AskLink330.chatOf(ask));
++      AppLogger.info('ASK_330', detail: 'took=${id.isNotEmpty}');
++      if (!mounted) return;
++      LinkToast.show(context, L.t.askTaken330, kind: LinkToastKind.done);
++    } catch (_) {
++      if (mounted) {
++        LinkToast.show(context, L.t.askTakeFailed330, kind: LinkToastKind.error);
++      }
++    } finally {
++      if (mounted) setState(() => _busy = false);
++    }
++  }
++
++  /// The real one: the same ask the LAN card would have filed.
++  Future<String> _fileWithService(Map<String, dynamic> chat) async {
++    final svc = ChatRequests221.instance;
++    if (svc == null) throw StateError('admin actions not ready');
++    final pick = ChatPick221.fromRef(chat);
++    if (pick == null) throw StateError('ask names no chat');
++    return svc.request(pick);
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    final code = AskLink330.codeOf(widget.link);
++    return Scaffold(
++      key: const Key('ask_qr_330_screen'),
++      appBar: AppBar(title: Text(L.t.askByQr330)),
++      body: ListView(
++        padding: const EdgeInsets.fromLTRB(20, 12, 20, 26),
++        children: [
++          Text(
++            widget.label.isEmpty ? L.t.askByQrWhat330 : L.t.askByQrWhat330,
++            style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
++          ),
++          const SizedBox(height: 16),
++          Center(
++            child: Container(
++              key: const Key('ask_qr_330_code'),
++              padding: const EdgeInsets.all(14),
++              decoration: BoxDecoration(
++                color: Colors.white,
++                borderRadius: BorderRadius.circular(18),
++              ),
++              child: QrImageView(
++                data: widget.link,
++                version: QrVersions.auto,
++                size: 216,
++                backgroundColor: Colors.white,
++                padding: EdgeInsets.zero,
++              ),
++            ),
++          ),
++          const SizedBox(height: 12),
++          Center(
++            child: Text(
++              code.isEmpty ? '------' : '${code.substring(0, 3)} ${code.substring(3)}',
++              key: const Key('ask_qr_330_words'),
++              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: 4),
++            ),
++          ),
++          const SizedBox(height: 4),
++          Center(
++            child: Text(L.t.askCodeRead330,
++                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline)),
++          ),
++          const SizedBox(height: 18),
++          FilledButton.icon(
++            key: const Key('ask_qr_330_copy'),
++            onPressed: _copyLink,
++            icon: const Icon(Icons.link_rounded),
++            label: Text(L.t.copyAskLink330),
++          ),
++          const SizedBox(height: 8),
++          OutlinedButton.icon(
++            key: const Key('ask_qr_330_scan'),
++            onPressed: _busy ? null : _scan,
++            icon: const Icon(Icons.qr_code_scanner_rounded),
++            label: Text(_busy ? L.t.askTaking330 : L.t.scanTheirAsk330),
++          ),
++          const SizedBox(height: 20),
++          Text(L.t.askByQrHonest330,
++              style: theme.textTheme.bodySmall
++                  ?.copyWith(color: theme.colorScheme.outline, height: 1.45)),
++        ],
++      ),
++    );
++  }
++}
++
++/// The camera page: one QR, then back.
++class _AskScanPage extends StatefulWidget {
++  const _AskScanPage();
++
++  @override
++  State<_AskScanPage> createState() => _AskScanPageState();
++}
++
++class _AskScanPageState extends State<_AskScanPage> {
++  final MobileScannerController _scanner = linkUpQrScannerController();
++  bool _done = false;
++
++  @override
++  void dispose() {
++    _scanner.dispose();
++    super.dispose();
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    return Scaffold(
++      appBar: AppBar(title: Text(L.t.scanTheirAsk330)),
++      body: MobileScanner(
++        controller: _scanner,
++        onDetect: (capture) {
++          if (_done) return;
++          for (final b in capture.barcodes) {
++            final raw = b.rawValue ?? '';
++            if (raw.isEmpty) continue;
++            _done = true;
++            Navigator.pop(context, raw);
++            return;
++          }
++        },
++      ),
++    );
++  }
++}
+diff --git a/lib/features/directory/presentation/contact_sheets.dart b/lib/features/directory/presentation/contact_sheets.dart
+index c7f0472..3a12e66 100644
+--- a/lib/features/directory/presentation/contact_sheets.dart
++++ b/lib/features/directory/presentation/contact_sheets.dart
+@@ -280,7 +280,7 @@ List<Widget> _withDividers(BuildContext context, List<Widget> rows) {
+ 
+ // ------------------------------------------------------------ the sheets
+ 
+-enum ContactSheetChoice { message, call, safety, remove, block }
++enum ContactSheetChoice { message, call, safety, askQr, remove, block }
+ 
+ /// Screen 2: Message / Voice call / Remove contact / Block <name>.
+ Future<ContactSheetChoice?> showContactActionsSheet(
+@@ -321,6 +321,13 @@ Future<ContactSheetChoice?> showContactActionsSheet(
+               label: L.t.safetyNumber328,
+               onTap: () => Navigator.pop(c, ContactSheetChoice.safety),
+             ),
++            // Bundle 330: hand the ask over by QR or link, no Wi-Fi needed.
++            ContactSheetAction(
++              key: const Key('contact_sheet_askqr330'),
++              icon: Icons.qr_code_2_rounded,
++              label: L.t.askByQr330,
++              onTap: () => Navigator.pop(c, ContactSheetChoice.askQr),
++            ),
+             ContactSheetAction(
+               key: const Key('contact_sheet_remove'),
+               icon: Icons.person_remove_outlined,
+diff --git a/lib/features/directory/presentation/contacts_screen.dart b/lib/features/directory/presentation/contacts_screen.dart
+index c8403e9..ca00e1e 100644
+--- a/lib/features/directory/presentation/contacts_screen.dart
++++ b/lib/features/directory/presentation/contacts_screen.dart
+@@ -36,6 +36,9 @@ import 'package:locallink/features/messaging/presentation/screens/chat_screen.da
+ import 'package:locallink/core/notifications/local_link_notification_service.dart';
+ import 'package:locallink/l10n/l10n.dart';
+ import 'package:locallink/features/directory/presentation/safety_number_328_screen.dart';
++import 'package:locallink/features/admin/data/actions/admin_action_service.dart';
++import 'package:locallink/features/directory/data/ask_link_330.dart';
++import 'package:locallink/features/directory/presentation/ask_qr_330_screen.dart';
+ 
+ /// Bundle 183 (N3): the People filter (sliders button).
+ enum PeopleFilter { all, nearby, online }
+@@ -479,6 +482,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
+         await _chat(profile);
+       case ContactSheetChoice.call:
+         await _call(profile);
++      case ContactSheetChoice.askQr:
++        // Bundle 330: my ask for this person, as a QR / link.
++        final me = profile.deviceId.isNotEmpty
++            ? (AdminActionService.instance?.selfDeviceId() ?? '')
++            : '';
++        final link = AskLink330.of(
++          label: name,
++          kind: 'direct',
++          userA: AdminActionService.instance?.selfUserId() ?? '',
++          userB: profile.userId,
++          from: me,
++        );
++        await Navigator.of(context).push(MaterialPageRoute<void>(
++            builder: (_) => AskQr330Screen(link: link, label: name, asker: name)));
+       case ContactSheetChoice.safety:
+         // Bundle 328: the safety number of this person.
+         await showSafetyNumber328(context,
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+index 3ed27cf..dd84d0a 100644
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -6411,10 +6411,40 @@
+   "send326": "Send",
+   "wifiOnly326": "Wi-Fi only",
+   "refuse326": "No",
++  "evidence329": "Export evidence",
++  "evidenceWhat329Short": "What this phone did, in a file",
++  "evidenceWhat329": "This phone keeps its own record: what it asked for, what it answered, and what you said on each consent card. Each line carries the stamp of the line before it, so if one word is changed the file no longer adds up.",
++  "evidenceNothing329": "Nothing recorded yet",
++  "evidenceCopied329": "Evidence copied",
++  "evidenceFile329": "The file",
++  "evidenceHonest329": "This is a record, not a promise: it shows what this phone wrote. It is never uploaded, and it stays on the phone until you copy it out.",
++  "copyEvidence329": "Copy evidence",
++  "checkAgain329": "Check again",
++  "evidenceChecksOut329": "All {n} lines add up",
++  "evidenceBroken329": "Line {n} does not add up - the file was changed",
++  "@evidenceChecksOut329": {"placeholders": {"n": {"type": "int"}}},
++  "@evidenceBroken329": {"placeholders": {"n": {"type": "int"}}},
+   "phoneToPhone327": "phone to phone · 0 MB",
+   "safetyNumber328": "Safety number",
+   "safetyNumberNotYet328": "Not on this phone yet",
+   "safetyNumberNotYetWhy328": "We do not have this person's keys on this phone yet. Open the app together once on the same Wi-Fi, then come back and compare.",
+   "compareInPerson328": "Read these numbers to each other in person, and check they are the same on both phones. If they match, nobody is standing in the middle.",
+-  "safetyNumberWhat328": "The number is made from both phones' keys. It never goes to any server, and you can check it without internet."
++  "safetyNumberWhat328": "The number is made from both phones' keys. It never goes to any server, and you can check it without internet.",
++  "askByQr330": "Ask by QR or link",
++  "askByQrWhat330": "Show this to the other person when the two phones are not on the same Wi-Fi. Their phone files the same ask and answers when you are near again.",
++  "askCodeRead330": "or read these letters to each other",
++  "copyAskLink330": "Copy the link",
++  "scanTheirAsk330": "Scan their ask",
++  "askLinkCopied330": "Link copied",
++  "notAnAskLink330": "That is not an ask link",
++  "askTaken330": "Ask kept - it will be answered when you are near",
++  "askTakeFailed330": "Could not keep that ask",
++  "askTaking330": "Keeping it…",
++  "askByQrHonest330": "The link names a chat, not a session: it never expires, and it is answered phone to phone - nothing is uploaded.",
++  "whatThisPhoneCanDo331": "What this phone can do",
++  "honestDatesAndLimits331": "Right now, and nothing dressed up",
++  "askZeroMb331": "The chat comes from the other phone directly: nothing goes to the server.",
++  "askHonest331": "No phone is linked this moment, so an ask waits. It is kept - nothing expires.",
++  "nothingRecorded331": "Nothing recorded yet",
++  "honestNote331": "This screen only shows what the phone can actually see. If it says waiting, nothing is on its way - that is the honest answer, not a spinner."
+ }
+diff --git a/lib/l10n/app_ur.arb b/lib/l10n/app_ur.arb
+index 59f300c..693c6c1 100644
+--- a/lib/l10n/app_ur.arb
++++ b/lib/l10n/app_ur.arb
+@@ -2503,10 +2503,38 @@
+   "send326": "⁧بھیجیں⁩",
+   "wifiOnly326": "⁧صرف وائی فائی پر⁩",
+   "refuse326": "⁧نہیں⁩",
++  "evidence329": "⁧ثبوت ایکسپورٹ کریں⁩",
++  "evidenceWhat329Short": "⁧اس فون نے کیا کیا، ایک فائل میں⁩",
++  "evidenceWhat329": "⁧یہ فون اپنا ریکارڈ رکھتا ہے: کیا مانگا، کیا جواب دیا، اور ہر اجازت کارڈ پر آپ نے کیا کہا۔ ہر سطر میں پچھلی سطر کی مہر ہے، اس لیے ایک لفظ بدلنے پر فائل کا حساب نہیں ملتا۔⁩",
++  "evidenceNothing329": "⁧ابھی کچھ ریکارڈ نہیں ہوا⁩",
++  "evidenceCopied329": "⁧ثبوت کاپی ہو گیا⁩",
++  "evidenceFile329": "⁧فائل⁩",
++  "evidenceHonest329": "⁧یہ ایک ریکارڈ ہے، وعدہ نہیں: یہ دکھاتا ہے کہ اس فون نے کیا لکھا۔ یہ کبھی اپلوڈ نہیں ہوتا اور جب تک آپ کاپی نہ کریں فون پر ہی رہتا ہے۔⁩",
++  "copyEvidence329": "⁧ثبوت کاپی کریں⁩",
++  "checkAgain329": "⁧دوبارہ چیک کریں⁩",
++  "evidenceChecksOut329": "⁧{n} سطریں درست ہیں⁩",
++  "evidenceBroken329": "⁧سطر {n} کا حساب نہیں ملتا - فائل بدلی گئی ہے⁩",
+   "phoneToPhone327": "⁧فون سے فون · 0 MB⁩",
+   "safetyNumber328": "⁧سیفٹی نمبر⁩",
+   "safetyNumberNotYet328": "⁧ابھی اس فون پر نہیں⁩",
+   "safetyNumberNotYetWhy328": "⁧ہمارے پاس اس شخص کی چابیاں ابھی اس فون پر نہیں ہیں۔ ایک بار ایک ہی وائی فائی پر ساتھ ایپ کھولیں، پھر واپس آ کر موازنہ کریں۔⁩",
+   "compareInPerson328": "⁧یہ نمبر سامنے بیٹھ کر ایک دوسرے کو پڑھ کر سنائیں اور دیکھیں کہ دونوں فون پر ایک جیسے ہیں۔ اگر مل جائیں تو درمیان میں کوئی نہیں ہے۔⁩",
+-  "safetyNumberWhat328": "⁧یہ نمبر دونوں فون کی چابیوں سے بنتا ہے۔ یہ کسی سرور پر نہیں جاتا اور انٹرنیٹ کے بغیر بھی دیکھا جا سکتا ہے۔⁩"
++  "safetyNumberWhat328": "⁧یہ نمبر دونوں فون کی چابیوں سے بنتا ہے۔ یہ کسی سرور پر نہیں جاتا اور انٹرنیٹ کے بغیر بھی دیکھا جا سکتا ہے۔⁩",
++  "askByQr330": "⁧کیو آر یا لنک سے مانگیں⁩",
++  "askByQrWhat330": "⁧جب دونوں فون ایک ہی وائی فائی پر نہ ہوں تو یہ دوسرے شخص کو دکھائیں۔ اُن کا فون یہی درخواست رکھ لے گا اور قریب آنے پر جواب دے دے گا۔⁩",
++  "askCodeRead330": "⁧یا یہ حروف ایک دوسرے کو پڑھ کر سنائیں⁩",
++  "copyAskLink330": "⁧لنک کاپی کریں⁩",
++  "scanTheirAsk330": "⁧اُن کی درخواست اسکین کریں⁩",
++  "askLinkCopied330": "⁧لنک کاپی ہو گیا⁩",
++  "notAnAskLink330": "⁧یہ درخواست کا لنک نہیں ہے⁩",
++  "askTaken330": "⁧درخواست محفوظ ہو گئی - قریب آنے پر جواب ملے گا⁩",
++  "askTakeFailed330": "⁧وہ درخواست محفوظ نہیں ہو سکی⁩",
++  "askTaking330": "⁧محفوظ کر رہے ہیں…⁩",
++  "askByQrHonest330": "⁧لنک کسی چیٹ کا نام دیتا ہے، کسی سیشن کا نہیں: یہ کبھی ختم نہیں ہوتا اور جواب فون سے فون ملتا ہے - کچھ اپلوڈ نہیں ہوتا۔⁩",
++  "whatThisPhoneCanDo331": "⁧یہ فون کیا کر سکتا ہے⁩",
++  "honestDatesAndLimits331": "⁧اس وقت، بغیر کسی بناوٹ کے⁩",
++  "askZeroMb331": "⁧چیٹ سیدھی دوسرے فون سے آتی ہے: سرور پر کچھ نہیں جاتا۔⁩",
++  "askHonest331": "⁧اس وقت کوئی فون جڑا نہیں، اس لیے درخواست انتظار کرتی ہے۔ یہ محفوظ رہتی ہے - کچھ ختم نہیں ہوتا۔⁩",
++  "nothingRecorded331": "⁧ابھی کچھ ریکارڈ نہیں ہوا⁩",
++  "honestNote331": "⁧یہ اسکرین صرف وہی دکھاتی ہے جو فون واقعی دیکھ سکتا ہے۔ اگر لکھا ہو انتظار، تو کچھ راستے میں نہیں ہے - یہی سچا جواب ہے، گھومتا ہوا نشان نہیں۔⁩"
+ }
+diff --git a/lib/l10n/gen/app_localizations.dart b/lib/l10n/gen/app_localizations.dart
+index fc0dbb2..fb13b7e 100644
+--- a/lib/l10n/gen/app_localizations.dart
++++ b/lib/l10n/gen/app_localizations.dart
+@@ -15090,41 +15090,107 @@ abstract class AppLocalizations {
+   /// **'No'**
+   String get refuse326;
+ 
++  /// No description provided for @whatThisPhoneCanDo331.
++  String get whatThisPhoneCanDo331;
++
++  /// No description provided for @honestDatesAndLimits331.
++  String get honestDatesAndLimits331;
++
++  /// No description provided for @askZeroMb331.
++  String get askZeroMb331;
++
++  /// No description provided for @askHonest331.
++  String get askHonest331;
++
++  /// No description provided for @nothingRecorded331.
++  String get nothingRecorded331;
++
++  /// No description provided for @honestNote331.
++  String get honestNote331;
++
++  /// No description provided for @askByQr330.
++  String get askByQr330;
++
++  /// No description provided for @askByQrWhat330.
++  String get askByQrWhat330;
++
++  /// No description provided for @askCodeRead330.
++  String get askCodeRead330;
++
++  /// No description provided for @copyAskLink330.
++  String get copyAskLink330;
++
++  /// No description provided for @scanTheirAsk330.
++  String get scanTheirAsk330;
++
++  /// No description provided for @askLinkCopied330.
++  String get askLinkCopied330;
++
++  /// No description provided for @notAnAskLink330.
++  String get notAnAskLink330;
++
++  /// No description provided for @askTaken330.
++  String get askTaken330;
++
++  /// No description provided for @askTakeFailed330.
++  String get askTakeFailed330;
++
++  /// No description provided for @askTaking330.
++  String get askTaking330;
++
++  /// No description provided for @askByQrHonest330.
++  String get askByQrHonest330;
++
+   /// No description provided for @phoneToPhone327.
+-  ///
+-  /// In en, this message translates to:
+-  /// **'phone to phone · 0 MB'**
+   String get phoneToPhone327;
+ 
+   /// No description provided for @safetyNumber328.
+-  ///
+-  /// In en, this message translates to:
+-  /// **'Safety number'**
+   String get safetyNumber328;
+ 
+   /// No description provided for @safetyNumberNotYet328.
+-  ///
+-  /// In en, this message translates to:
+-  /// **'Not on this phone yet'**
+   String get safetyNumberNotYet328;
+ 
+   /// No description provided for @safetyNumberNotYetWhy328.
+-  ///
+-  /// In en, this message translates to:
+-  /// **'We do not have this person\'s keys on this phone yet. Open the app together once on the same Wi-Fi, then come back and compare.'**
+   String get safetyNumberNotYetWhy328;
+ 
+   /// No description provided for @compareInPerson328.
+-  ///
+-  /// In en, this message translates to:
+-  /// **'Read these numbers to each other in person, and check they are the same on both phones. If they match, nobody is standing in the middle.'**
+   String get compareInPerson328;
+ 
+   /// No description provided for @safetyNumberWhat328.
+-  ///
+-  /// In en, this message translates to:
+-  /// **'The number is made from both phones\' keys. It never goes to any server, and you can check it without internet.'**
+   String get safetyNumberWhat328;
++
++  /// No description provided for @evidence329.
++  String get evidence329;
++
++  /// No description provided for @evidenceWhat329Short.
++  String get evidenceWhat329Short;
++
++  /// No description provided for @evidenceWhat329.
++  String get evidenceWhat329;
++
++  /// No description provided for @evidenceNothing329.
++  String get evidenceNothing329;
++
++  /// No description provided for @evidenceCopied329.
++  String get evidenceCopied329;
++
++  /// No description provided for @evidenceFile329.
++  String get evidenceFile329;
++
++  /// No description provided for @evidenceHonest329.
++  String get evidenceHonest329;
++
++  /// No description provided for @copyEvidence329.
++  String get copyEvidence329;
++
++  /// No description provided for @checkAgain329.
++  String get checkAgain329;
++
++  /// No description provided for @evidenceChecksOut329.
++  String evidenceChecksOut329(int n);
++
++  /// No description provided for @evidenceBroken329.
++  String evidenceBroken329(int n);
+ }
+ 
+ class _AppLocalizationsDelegate
+diff --git a/lib/l10n/gen/app_localizations_en.dart b/lib/l10n/gen/app_localizations_en.dart
+index dcd0232..7a4e07c 100644
+--- a/lib/l10n/gen/app_localizations_en.dart
++++ b/lib/l10n/gen/app_localizations_en.dart
+@@ -8952,6 +8952,57 @@ class AppLocalizationsEn extends AppLocalizations {
+   @override
+   String get refuse326 => 'No';
+ 
++  @override
++  String get whatThisPhoneCanDo331 => 'What this phone can do';
++
++  @override
++  String get honestDatesAndLimits331 => 'Right now, and nothing dressed up';
++
++  @override
++  String get askZeroMb331 => 'The chat comes from the other phone directly: nothing goes to the server.';
++
++  @override
++  String get askHonest331 => 'No phone is linked this moment, so an ask waits. It is kept - nothing expires.';
++
++  @override
++  String get nothingRecorded331 => 'Nothing recorded yet';
++
++  @override
++  String get honestNote331 => 'This screen only shows what the phone can actually see. If it says waiting, nothing is on its way - that is the honest answer, not a spinner.';
++
++  @override
++  String get askByQr330 => 'Ask by QR or link';
++
++  @override
++  String get askByQrWhat330 => 'Show this to the other person when the two phones are not on the same Wi-Fi. Their phone files the same ask and answers when you are near again.';
++
++  @override
++  String get askCodeRead330 => 'or read these letters to each other';
++
++  @override
++  String get copyAskLink330 => 'Copy the link';
++
++  @override
++  String get scanTheirAsk330 => 'Scan their ask';
++
++  @override
++  String get askLinkCopied330 => 'Link copied';
++
++  @override
++  String get notAnAskLink330 => 'That is not an ask link';
++
++  @override
++  String get askTaken330 => 'Ask kept - it will be answered when you are near';
++
++  @override
++  String get askTakeFailed330 => 'Could not keep that ask';
++
++  @override
++  String get askTaking330 => 'Keeping it…';
++
++  @override
++  String get askByQrHonest330 => 'The link names a chat, not a session: it never expires, and it is answered phone to phone - nothing is uploaded.';
++
+   @override
+   String get phoneToPhone327 => 'phone to phone · 0 MB';
+ 
+@@ -8962,14 +9013,44 @@ class AppLocalizationsEn extends AppLocalizations {
+   String get safetyNumberNotYet328 => 'Not on this phone yet';
+ 
+   @override
+-  String get safetyNumberNotYetWhy328 =>
+-      'We do not have this person\'s keys on this phone yet. Open the app together once on the same Wi-Fi, then come back and compare.';
++  String get safetyNumberNotYetWhy328 => 'We do not have this person\'s keys on this phone yet. Open the app together once on the same Wi-Fi, then come back and compare.';
++
++  @override
++  String get compareInPerson328 => 'Read these numbers to each other in person, and check they are the same on both phones. If they match, nobody is standing in the middle.';
++
++  @override
++  String get safetyNumberWhat328 => 'The number is made from both phones\' keys. It never goes to any server, and you can check it without internet.';
++
++  @override
++  String get evidence329 => 'Export evidence';
++
++  @override
++  String get evidenceWhat329Short => 'What this phone did, in a file';
++
++  @override
++  String get evidenceWhat329 => 'This phone keeps its own record: what it asked for, what it answered, and what you said on each consent card. Each line carries the stamp of the line before it, so if one word is changed the file no longer adds up.';
++
++  @override
++  String get evidenceNothing329 => 'Nothing recorded yet';
++
++  @override
++  String get evidenceCopied329 => 'Evidence copied';
++
++  @override
++  String get evidenceFile329 => 'The file';
++
++  @override
++  String get evidenceHonest329 => 'This is a record, not a promise: it shows what this phone wrote. It is never uploaded, and it stays on the phone until you copy it out.';
++
++  @override
++  String get copyEvidence329 => 'Copy evidence';
++
++  @override
++  String get checkAgain329 => 'Check again';
+ 
+   @override
+-  String get compareInPerson328 =>
+-      'Read these numbers to each other in person, and check they are the same on both phones. If they match, nobody is standing in the middle.';
++  String evidenceChecksOut329(int n) => 'All $n lines add up';
+ 
+   @override
+-  String get safetyNumberWhat328 =>
+-      'The number is made from both phones\' keys. It never goes to any server, and you can check it without internet.';
++  String evidenceBroken329(int n) => 'Line $n does not add up - the file was changed';
+ }
+diff --git a/lib/l10n/gen/app_localizations_ur.dart b/lib/l10n/gen/app_localizations_ur.dart
+index b316c65..c15b5ac 100644
+--- a/lib/l10n/gen/app_localizations_ur.dart
++++ b/lib/l10n/gen/app_localizations_ur.dart
+@@ -8984,6 +8984,57 @@ class AppLocalizationsUr extends AppLocalizations {
+   @override
+   String get refuse326 => '⁧نہیں⁩';
+ 
++  @override
++  String get whatThisPhoneCanDo331 => '⁧یہ فون کیا کر سکتا ہے⁩';
++
++  @override
++  String get honestDatesAndLimits331 => '⁧اس وقت، بغیر کسی بناوٹ کے⁩';
++
++  @override
++  String get askZeroMb331 => '⁧چیٹ سیدھی دوسرے فون سے آتی ہے: سرور پر کچھ نہیں جاتا۔⁩';
++
++  @override
++  String get askHonest331 => '⁧اس وقت کوئی فون جڑا نہیں، اس لیے درخواست انتظار کرتی ہے۔ یہ محفوظ رہتی ہے - کچھ ختم نہیں ہوتا۔⁩';
++
++  @override
++  String get nothingRecorded331 => '⁧ابھی کچھ ریکارڈ نہیں ہوا⁩';
++
++  @override
++  String get honestNote331 => '⁧یہ اسکرین صرف وہی دکھاتی ہے جو فون واقعی دیکھ سکتا ہے۔ اگر لکھا ہو انتظار، تو کچھ راستے میں نہیں ہے - یہی سچا جواب ہے، گھومتا ہوا نشان نہیں۔⁩';
++
++  @override
++  String get askByQr330 => '⁧کیو آر یا لنک سے مانگیں⁩';
++
++  @override
++  String get askByQrWhat330 => '⁧جب دونوں فون ایک ہی وائی فائی پر نہ ہوں تو یہ دوسرے شخص کو دکھائیں۔ اُن کا فون یہی درخواست رکھ لے گا اور قریب آنے پر جواب دے دے گا۔⁩';
++
++  @override
++  String get askCodeRead330 => '⁧یا یہ حروف ایک دوسرے کو پڑھ کر سنائیں⁩';
++
++  @override
++  String get copyAskLink330 => '⁧لنک کاپی کریں⁩';
++
++  @override
++  String get scanTheirAsk330 => '⁧اُن کی درخواست اسکین کریں⁩';
++
++  @override
++  String get askLinkCopied330 => '⁧لنک کاپی ہو گیا⁩';
++
++  @override
++  String get notAnAskLink330 => '⁧یہ درخواست کا لنک نہیں ہے⁩';
++
++  @override
++  String get askTaken330 => '⁧درخواست محفوظ ہو گئی - قریب آنے پر جواب ملے گا⁩';
++
++  @override
++  String get askTakeFailed330 => '⁧وہ درخواست محفوظ نہیں ہو سکی⁩';
++
++  @override
++  String get askTaking330 => '⁧محفوظ کر رہے ہیں…⁩';
++
++  @override
++  String get askByQrHonest330 => '⁧لنک کسی چیٹ کا نام دیتا ہے، کسی سیشن کا نہیں: یہ کبھی ختم نہیں ہوتا اور جواب فون سے فون ملتا ہے - کچھ اپلوڈ نہیں ہوتا۔⁩';
++
+   @override
+   String get phoneToPhone327 => '⁧فون سے فون · 0 MB⁩';
+ 
+@@ -8994,14 +9045,44 @@ class AppLocalizationsUr extends AppLocalizations {
+   String get safetyNumberNotYet328 => '⁧ابھی اس فون پر نہیں⁩';
+ 
+   @override
+-  String get safetyNumberNotYetWhy328 =>
+-      '⁧ہمارے پاس اس شخص کی چابیاں ابھی اس فون پر نہیں ہیں۔ ایک بار ایک ہی وائی فائی پر ساتھ ایپ کھولیں، پھر واپس آ کر موازنہ کریں۔⁩';
++  String get safetyNumberNotYetWhy328 => '⁧ہمارے پاس اس شخص کی چابیاں ابھی اس فون پر نہیں ہیں۔ ایک بار ایک ہی وائی فائی پر ساتھ ایپ کھولیں، پھر واپس آ کر موازنہ کریں۔⁩';
++
++  @override
++  String get compareInPerson328 => '⁧یہ نمبر سامنے بیٹھ کر ایک دوسرے کو پڑھ کر سنائیں اور دیکھیں کہ دونوں فون پر ایک جیسے ہیں۔ اگر مل جائیں تو درمیان میں کوئی نہیں ہے۔⁩';
++
++  @override
++  String get safetyNumberWhat328 => '⁧یہ نمبر دونوں فون کی چابیوں سے بنتا ہے۔ یہ کسی سرور پر نہیں جاتا اور انٹرنیٹ کے بغیر بھی دیکھا جا سکتا ہے۔⁩';
++
++  @override
++  String get evidence329 => '⁧ثبوت ایکسپورٹ کریں⁩';
++
++  @override
++  String get evidenceWhat329Short => '⁧اس فون نے کیا کیا، ایک فائل میں⁩';
++
++  @override
++  String get evidenceWhat329 => '⁧یہ فون اپنا ریکارڈ رکھتا ہے: کیا مانگا، کیا جواب دیا، اور ہر اجازت کارڈ پر آپ نے کیا کہا۔ ہر سطر میں پچھلی سطر کی مہر ہے، اس لیے ایک لفظ بدلنے پر فائل کا حساب نہیں ملتا۔⁩';
++
++  @override
++  String get evidenceNothing329 => '⁧ابھی کچھ ریکارڈ نہیں ہوا⁩';
++
++  @override
++  String get evidenceCopied329 => '⁧ثبوت کاپی ہو گیا⁩';
++
++  @override
++  String get evidenceFile329 => '⁧فائل⁩';
++
++  @override
++  String get evidenceHonest329 => '⁧یہ ایک ریکارڈ ہے، وعدہ نہیں: یہ دکھاتا ہے کہ اس فون نے کیا لکھا۔ یہ کبھی اپلوڈ نہیں ہوتا اور جب تک آپ کاپی نہ کریں فون پر ہی رہتا ہے۔⁩';
++
++  @override
++  String get copyEvidence329 => '⁧ثبوت کاپی کریں⁩';
++
++  @override
++  String get checkAgain329 => '⁧دوبارہ چیک کریں⁩';
+ 
+   @override
+-  String get compareInPerson328 =>
+-      '⁧یہ نمبر سامنے بیٹھ کر ایک دوسرے کو پڑھ کر سنائیں اور دیکھیں کہ دونوں فون پر ایک جیسے ہیں۔ اگر مل جائیں تو درمیان میں کوئی نہیں ہے۔⁩';
++  String evidenceChecksOut329(int n) => '⁧$n سطریں درست ہیں⁩';
+ 
+   @override
+-  String get safetyNumberWhat328 =>
+-      '⁧یہ نمبر دونوں فون کی چابیوں سے بنتا ہے۔ یہ کسی سرور پر نہیں جاتا اور انٹرنیٹ کے بغیر بھی دیکھا جا سکتا ہے۔⁩';
++  String evidenceBroken329(int n) => '⁧سطر $n کا حساب نہیں ملتا - فائل بدلی گئی ہے⁩';
+ }
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 5ab28c2..cd5f368 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: locallink
+ publish_to: 'none'
+ description: LinkUp offline LAN communication client.
+-version: 3.0.122+193
++version: 3.0.125+196
+ 
+ environment:
+   sdk: '>=3.3.0 <4.0.0'
+diff --git a/test/bundle223_logs_test.dart b/test/bundle223_logs_test.dart
+index 140979f..9a7036d 100644
+--- a/test/bundle223_logs_test.dart
++++ b/test/bundle223_logs_test.dart
+@@ -29,9 +29,9 @@ void main() {
+   test('223-32 the stamp is made from kAppVersion + kAppBuild = pubspec', () {
+     final pub = File('pubspec.yaml').readAsStringSync();
+     expect(pub, contains('version: $kAppVersion+$kAppBuild'));
+-    expect(kAppVersion, '3.0.122');
+-    expect(kAppBuild, 193);
+-    expect(AppBuild.stamp, 'v3 · 3.0.122+193');
++    expect(kAppVersion, '3.0.125');
++    expect(kAppBuild, 196);
++    expect(AppBuild.stamp, 'v3 · 3.0.125+196');
+     final app = File('lib/app/local_link_app.dart').readAsStringSync();
+     expect(app, contains("AppLogger.info('APP_BUILD_STAMP', detail: AppBuild.stamp);"));
+     expect(app, isNot(contains('3.0.50')));
+diff --git a/test/bundle329_test.dart b/test/bundle329_test.dart
+new file mode 100644
+index 0000000..e7a9501
+--- /dev/null
++++ b/test/bundle329_test.dart
+@@ -0,0 +1,163 @@
++// Bundle 329: export evidence.
++//
++// A record the phone writes for itself: what it asked, what it answered, what
++// the owner said on each consent card - each line carrying the stamp of the
++// line before it, so an edit shows. Nothing is uploaded; the file leaves the
++// phone only when the owner copies it.
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:locallink/core/config/app_build.dart';
++import 'package:locallink/features/admin/data/evidence_329.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++const _src = 'lib/features/admin/data/evidence_329.dart';
++const _screen = 'lib/features/admin/presentation/screens/evidence_329_screen.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  late Map<String, String> disk;
++  Evidence329 ev() => Evidence329(
++        read: (k) async => disk[k],
++        write: (k, v) async => disk[k] = v,
++        clock: () => DateTime.utc(2026, 11, 19, 6, 30),
++      );
++
++  setUp(() {
++    disk = {};
++    Evidence329.resetForTest();
++  });
++
++  group('329 · the record', () {
++    test('329-1 nothing recorded yet is honest about it', () async {
++      final e = ev();
++      expect(await e.count(), 0);
++      expect(await e.export(), '');
++      expect(await e.last(), isNull);
++      expect(Evidence329.fileWords(0), 'Nothing recorded yet');
++    });
++
++    test('329-2 each line is added, numbered and chained', () async {
++      final e = ev();
++      await e.add('ask', 'Get chat · Ali');
++      await e.add('answer', 'sent 61 MB');
++      await e.add('consent', 'owner said send');
++      expect(await e.count(), 3);
++      final text = await e.export();
++      expect(text, contains('Get chat'));
++      expect(text, contains('"n":1'));
++      expect(text, contains('"n":3'));
++      final last = await e.last();
++      expect(last!.n, 3);
++      expect(last.prev, isNotEmpty, reason: 'line 3 carries line 2');
++    });
++
++    test('329-3 the file it writes checks out', () async {
++      final e = ev();
++      await e.add('ask', 'Get chat · Ali');
++      await e.add('answer', 'sent');
++      final v = Evidence329.verify(await e.export());
++      expect(v.ok, isTrue);
++      expect(v.lines, 2);
++      expect(v.firstBad, 0);
++    });
++
++    test('329-4 change one word and it says which line broke', () async {
++      final e = ev();
++      await e.add('ask', 'Get chat · Ali');
++      await e.add('answer', 'sent 61 MB');
++      final good = await e.export();
++      final bad = good.replaceFirst('sent 61 MB', 'sent 1 MB');
++      final v = Evidence329.verify(bad);
++      expect(v.ok, isFalse);
++      expect(v.firstBad, 2);
++      expect(v.why, 'changed');
++    });
++
++    test('329-5 delete a line and the chain breaks', () async {
++      final e = ev();
++      for (var i = 1; i <= 4; i++) {
++        await e.add('ask', 'line $i');
++      }
++      final lines = (await e.export()).split('\n').where((l) => l.startsWith('{')).toList();
++      final cut = [lines[0], lines[2], lines[3]].join('\n');
++      expect(Evidence329.verify(cut).ok, isFalse);
++    });
++
++    test('329-6 reorder two lines and it breaks', () async {
++      final e = ev();
++      await e.add('a', 'one');
++      await e.add('b', 'two');
++      final l = (await e.export()).split('\n').where((x) => x.startsWith('{')).toList();
++      expect(Evidence329.verify([l[1], l[0]].join('\n')).ok, isFalse);
++    });
++
++    test('329-7 an empty or junk file is never "fine"', () {
++      expect(Evidence329.verify('').ok, isFalse);
++      expect(Evidence329.verify('# only a header').ok, isFalse);
++      expect(Evidence329.verify('{not json').ok, isFalse);
++    });
++
++    test('329-8 words with a newline do not break the file', () async {
++      final e = ev();
++      await e.add('ask', 'Ali\nasked\nfor a chat');
++      expect(Evidence329.verify(await e.export()).ok, isTrue);
++    });
++
++    test('329-9 the record keeps the newest lines, it never grows forever', () async {
++      final e = ev();
++      for (var i = 0; i < Evidence329.keep + 12; i++) {
++        await e.add('ask', 'line $i');
++      }
++      expect(await e.count(), Evidence329.keep);
++      final text = await e.export();
++      expect(text, contains('line ${Evidence329.keep + 11}'));
++      expect(text, isNot(contains('"words":"line 0"')));
++    });
++
++    test('329-10 the same line twice is a different hash (time is in it)', () async {
++      var t = DateTime.utc(2026, 11, 19, 6);
++      final e = Evidence329(
++          read: (k) async => disk[k], write: (k, v) async => disk[k] = v, clock: () => t);
++      await e.add('ask', 'same');
++      t = t.add(const Duration(seconds: 1));
++      await e.add('ask', 'same');
++      final l = (await e.export()).split('\n').where((x) => x.startsWith('{')).toList();
++      expect(l[0], isNot(l[1].replaceFirst('"n":2', '"n":1')));
++      expect(Evidence329.verify(l.join('\n')).ok, isTrue);
++    });
++  });
++
++  group('329 · the phone, the screen, the words', () {
++    test('329-11 the app records an ask when one is made', () {
++      expect(File('lib/features/admin/data/actions/chat_answer_reader.dart').readAsStringSync(),
++          contains('Evidence329.instance'));
++    });
++
++    test('329-12 the screen copies it out and never uploads it', () {
++      final src = File(_screen).readAsStringSync();
++      expect(src, contains("Key('evidence_329_copy')"));
++      expect(src, contains('Clipboard.setData'));
++      expect(src, isNot(contains('http')));
++      expect(File(_src).readAsStringSync(), isNot(contains('http')));
++    });
++
++    test('329-13 it is reachable from Security', () {
++      expect(File('lib/features/admin/presentation/screens/admin_security_screen.dart')
++          .readAsStringSync(), contains('a216_evidence_329'));
++    });
++
++    test('329-14 the words exist in both languages', () {
++      expect(L.t.evidence329, 'Export evidence');
++      expect(L.t.evidenceChecksOut329(3), contains('3'));
++      expect(L.t.evidenceBroken329(2), contains('2'));
++      expect(File('lib/l10n/app_ur.arb').readAsStringSync(), contains('"evidence329"'));
++    });
++
++    test('329-15 the pins still live in one place, and this build follows them', () {
++      expect(AppBuild.stamp, 'v3 · $kAppVersion+$kAppBuild');
++      expect(File('pubspec.yaml').readAsStringSync(), contains('version: $kAppVersion+$kAppBuild'));
++    });
++  });
++}
+diff --git a/test/bundle330_test.dart b/test/bundle330_test.dart
+new file mode 100644
+index 0000000..2277411
+--- /dev/null
++++ b/test/bundle330_test.dart
+@@ -0,0 +1,169 @@
++// Bundle 330: the ask, carried by hand - a QR or a link that names a chat.
++//
++// When two phones are not on the same Wi-Fi nothing can travel, so the ask
++// itself travels: the other person scans it (or pastes it) and their phone
++// files the same ask it would have filed over the LAN. Nothing uploaded,
++// nothing expires.
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:locallink/core/config/app_build.dart';
++import 'package:locallink/features/directory/data/ask_link_330.dart';
++import 'package:locallink/features/directory/presentation/ask_qr_330_screen.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++const _pure = 'lib/features/directory/data/ask_link_330.dart';
++const _screen = 'lib/features/directory/presentation/ask_qr_330_screen.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  String direct() => AskLink330.of(
++        label: 'Ali',
++        kind: 'direct',
++        userA: 'u-me',
++        userB: 'u-ali',
++        from: 'd-me',
++        at: DateTime.utc(2026, 11, 19, 7),
++      );
++  String grp() => AskLink330.of(
++        label: 'Old team',
++        kind: 'group',
++        groupId: 'g-1',
++        from: 'd-me',
++        at: DateTime.utc(2026, 11, 19, 7),
++      );
++
++  group('330 · the link', () {
++    test('330-1 a direct ask goes round trip', () {
++      final ask = AskLink330.parse(direct())!;
++      expect(ask.kind, 'direct');
++      expect(ask.userA, 'u-me');
++      expect(ask.userB, 'u-ali');
++      expect(ask.label, 'Ali');
++      expect(ask.from, 'd-me');
++    });
++
++    test('330-2 a group ask too', () {
++      final ask = AskLink330.parse(grp())!;
++      expect(ask.kind, 'group');
++      expect(ask.groupId, 'g-1');
++      expect(AskLink330.chatOf(ask), {'kind': 'group', 'group_id': 'g-1'});
++    });
++
++    test('330-3 the chat it names is the chat the ask service wants', () {
++      final ask = AskLink330.parse(direct())!;
++      final chat = AskLink330.chatOf(ask);
++      expect(chat['kind'], 'direct');
++      expect(chat['users'], ['u-me', 'u-ali']);
++    });
++
++    test('330-4 junk is never half-accepted', () {
++      expect(AskLink330.parse(''), isNull);
++      expect(AskLink330.parse('hello'), isNull);
++      expect(AskLink330.parse('linkup-ask-v1:'), isNull);
++      expect(AskLink330.parse('linkup-ask-v1:notbase64!!'), isNull);
++      expect(AskLink330.parse('https://example.com'), isNull);
++      expect(AskLink330.looksLike('hello'), isFalse);
++      expect(AskLink330.looksLike(direct()), isTrue);
++    });
++
++    test('330-5 a link that names no chat is refused', () {
++      // a hand-made link with an empty chat
++      final bad = AskLink330.parse(
++          'linkup-ask-v1:${base64UrlPad('{"v":1,"label":"x","chat":{"kind":"direct","users":[]}}')}');
++      expect(bad, isNull);
++    });
++
++    test('330-6 spaces and quotes from a chat app do not break it', () {
++      expect(AskLink330.parse('  ${direct()}\n'), isNotNull);
++      expect(AskLink330.parse('"${direct()}"'), isNull, reason: 'quotes are not stripped, that is honest');
++    });
++
++    test('330-7 both people read the same 6 letters', () {
++      final a = AskLink330.codeOf(direct());
++      expect(a.length, 6);
++      expect(a, AskLink330.codeOf(' ${direct()} '));
++      expect(a, isNot(AskLink330.codeOf(grp())));
++      expect(RegExp(r'^[0-9A-F]{6}$').hasMatch(a), isTrue);
++    });
++
++    test('330-8 nothing expires: the link has no deadline in it', () {
++      expect(direct(), isNot(contains('expire')));
++      expect(File(_pure).readAsStringSync(), isNot(contains('Duration')));
++      final old = AskLink330.of(
++          label: 'Ali', kind: 'direct', userA: 'a', userB: 'b', from: 'd',
++          at: DateTime.utc(2020, 1, 1));
++      expect(AskLink330.parse(old), isNotNull, reason: 'a 2020 ask still parses');
++    });
++  });
++
++  group('330 · the screen', () {
++    testWidgets('330-9 it shows the code, the link button and the scan button', (t) async {
++      final link = direct();
++      await t.pumpWidget(MaterialApp(home: AskQr330Screen(link: link, label: 'Ali')));
++      await t.pumpAndSettle();
++      expect(find.byKey(const Key('ask_qr_330_screen')), findsOneWidget);
++      expect(find.byKey(const Key('ask_qr_330_code')), findsOneWidget);
++      expect(find.byKey(const Key('ask_qr_330_words')), findsOneWidget);
++      expect(find.byKey(const Key('ask_qr_330_copy')), findsOneWidget);
++      expect(find.byKey(const Key('ask_qr_330_scan')), findsOneWidget);
++      final code = AskLink330.codeOf(link);
++      expect(find.text('${code.substring(0, 3)} ${code.substring(3)}'), findsOneWidget);
++    });
++
++    testWidgets('330-10 scanning a good ask files it here (widget)', (t) async {
++      Map<String, dynamic>? filed;
++      await t.pumpWidget(MaterialApp(
++        home: AskQr330Screen(
++          link: direct(),
++          scanner: (_) async => grp(),
++          onTake: (chat) async {
++            filed = chat;
++            return 'aa_330';
++          },
++        ),
++      ));
++      await t.pumpAndSettle();
++      await t.tap(find.byKey(const Key('ask_qr_330_scan')));
++      await t.pumpAndSettle();
++      expect(filed, isNotNull, reason: 'the ask was filed on this phone');
++      expect(filed!['group_id'], 'g-1');
++    });
++
++    test('330-11 the app files it through the same service the LAN card uses', () {
++      final src = File(_screen).readAsStringSync();
++      expect(src, contains('ChatRequests221.instance'));
++      expect(src, contains('svc.request(pick)'));
++      expect(src, contains('ChatPick221.fromRef'));
++      expect(src, isNot(contains('http')));
++    });
++
++    test('330-12 it is reachable: a row in the contact sheet, handled by People', () {
++      expect(File('lib/features/directory/presentation/contact_sheets.dart').readAsStringSync(),
++          contains("Key('contact_sheet_askqr330')"));
++      expect(File('lib/features/directory/presentation/contacts_screen.dart').readAsStringSync(),
++          contains('AskQr330Screen('));
++    });
++
++    test('330-13 the words exist in both languages', () {
++      expect(L.t.askByQr330, 'Ask by QR or link');
++      expect(L.t.copyAskLink330, 'Copy the link');
++      expect(File('lib/l10n/app_ur.arb').readAsStringSync(), contains('"askByQr330"'));
++    });
++
++    test('330-14 the pins still live in one place, and this build follows them', () {
++      expect(AppBuild.stamp, 'v3 · $kAppVersion+$kAppBuild');
++      expect(File('pubspec.yaml').readAsStringSync(), contains('version: $kAppVersion+$kAppBuild'));
++    });
++  });
++}
++
++String base64UrlPad(String json) {
++  final b = base64Url.encode(utf8Bytes(json));
++  return b.replaceAll('=', '');
++}
++
++List<int> utf8Bytes(String s) => const Utf8Codec().encode(s);
+diff --git a/test/bundle331_test.dart b/test/bundle331_test.dart
+new file mode 100644
+index 0000000..ad0dbb9
+--- /dev/null
++++ b/test/bundle331_test.dart
+@@ -0,0 +1,158 @@
++// Bundle 331: honest dates, and what this phone can really do right now.
++//
++// No fake precision in dates ("0 days ago"), and no spinner pretending a
++// delivery is on its way when nothing can travel.
++import 'dart:io';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:locallink/core/config/app_build.dart';
++import 'package:locallink/features/admin/data/honest_331.dart';
++import 'package:locallink/features/admin/presentation/screens/can_do_331_screen.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++const _pure = 'lib/features/admin/data/honest_331.dart';
++const _screen = 'lib/features/admin/presentation/screens/can_do_331_screen.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  final now = DateTime(2026, 11, 19, 18, 40);
++
++  group('331 · dates in words a person would use', () {
++    test('331-1 seconds say just now, not "0 minutes"', () {
++      expect(Honest331.ago(now, now.subtract(const Duration(seconds: 5))).words, 'just now');
++      expect(Honest331.ago(now, now).words, 'just now');
++    });
++
++    test('331-2 minutes, singular handled', () {
++      expect(Honest331.ago(now, now.subtract(const Duration(minutes: 1))).words, '1 minute ago');
++      expect(Honest331.ago(now, now.subtract(const Duration(minutes: 12))).words, '12 minutes ago');
++    });
++
++    test('331-3 earlier today shows the clock, and says it is exact', () {
++      final r = Honest331.ago(now, DateTime(2026, 11, 19, 9, 5));
++      expect(r.words, 'today · 09:05');
++      expect(r.exact, isTrue);
++    });
++
++    test('331-4 yesterday, then days, then the day itself', () {
++      expect(Honest331.ago(now, DateTime(2026, 11, 18, 22, 0)).words, 'yesterday · 22:00');
++      expect(Honest331.ago(now, DateTime(2026, 11, 16, 8, 0)).words, '3 days ago');
++      expect(Honest331.ago(now, DateTime(2026, 11, 2, 8, 0)).words, 'Nov 2');
++      expect(Honest331.ago(now, DateTime(2025, 12, 31, 8, 0)).words, 'Dec 31 2025');
++    });
++
++    test('331-5 never "0 days ago" and never a made-up time', () {
++      for (var h = 0; h < 24; h++) {
++        final t = DateTime(2026, 11, 19, h, 30);
++        final w = Honest331.ago(now, t).words;
++        expect(w.contains('0 days'), isFalse);
++        expect(w, isNot(''));
++      }
++    });
++
++    test('331-6 a clock that is behind says so instead of "-3 minutes"', () {
++      final r = Honest331.ago(now, now.add(const Duration(minutes: 3)));
++      expect(r.words, 'time is off');
++      expect(r.exact, isFalse);
++    });
++  });
++
++  group('331 · what it can do', () {
++    test('331-7 phones nearby, said plainly', () {
++      expect(CanDo331.peersWords(0), 'no phones nearby');
++      expect(CanDo331.peersWords(1), '1 phone nearby');
++      expect(CanDo331.peersWords(3), '3 phones nearby');
++    });
++
++    test('331-8 the route: phone to phone first, then the server, then waiting', () {
++      expect(CanDo331.route(nearby: 2, server: true), 'lan');
++      expect(CanDo331.route(nearby: 0, server: true), 'server');
++      expect(CanDo331.route(nearby: 0, server: false), 'waiting');
++    });
++
++    test('331-9 waiting is never dressed up as good news', () {
++      final w = CanDo331.routeWords(nearby: 0, server: false);
++      expect(w.good, isFalse);
++      expect(w.words, contains('waiting'));
++      expect(CanDo331.routeWords(nearby: 1, server: false).words, 'phone to phone · 0 MB');
++      expect(CanDo331.routeWords(nearby: 0, server: true).good, isTrue);
++    });
++
++    test('331-10 the cost line tells the truth both ways', () {
++      expect(CanDo331.costWords(nearby: 2), 'nothing goes to the server');
++      expect(CanDo331.costWords(nearby: 0), 'nothing is sent until a phone is near');
++    });
++
++    test('331-11 the facts are read from the phone, and a broken probe is not a crash', () async {
++      final f = await CanDoFacts331.read(
++        linkedPeers: () async => ['', 'd1', 'd2'],
++        serverOnline: () => true,
++        last: () async => (n: 1, at: '2026-11-19T13:40:00.000Z', kind: 'ask', words: 'Get chat · Ali', prev: '', hash: 'h'),
++      );
++      expect(f.nearby, 2);
++      expect(f.server, isTrue);
++      expect(f.lastRecord, 'Get chat · Ali');
++
++      final bad = await CanDoFacts331.read(
++        linkedPeers: () async => throw StateError('mesh down'),
++        serverOnline: () => throw StateError('no socket'),
++        last: () async => throw StateError('no file'),
++      );
++      expect(bad.nearby, 0);
++      expect(bad.server, isFalse);
++      expect(bad.lastRecord, '');
++    });
++  });
++
++  group('331 · the screen', () {
++    testWidgets('331-12 it shows the three true things', (t) async {
++      await t.pumpWidget(MaterialApp(
++        home: CanDo331Screen(
++          facts: CanDoFacts331(
++              nearby: 2,
++              server: false,
++              lastRecord: 'Get chat · Ali',
++              lastAt: DateTime(2026, 11, 19, 18, 25)),
++          clock: () => now,
++        ),
++      ));
++      await t.pumpAndSettle();
++      expect(find.byKey(const Key('can_do_331_screen')), findsOneWidget);
++      expect(find.text('2 phones nearby'), findsOneWidget);
++      expect(find.text('phone to phone · 0 MB'), findsOneWidget);
++      expect(find.text('15 minutes ago'), findsOneWidget);
++      expect(find.text('Get chat · Ali'), findsOneWidget);
++    });
++
++    testWidgets('331-13 nothing nearby says waiting, not a spinner', (t) async {
++      await t.pumpWidget(MaterialApp(
++        home: CanDo331Screen(
++            facts: const CanDoFacts331(nearby: 0, server: false), clock: () => now),
++      ));
++      await t.pumpAndSettle();
++      expect(find.text('phone to phone · 0 MB'), findsNothing);
++      expect(find.text('waiting - nothing can travel yet'), findsOneWidget);
++      expect(find.byType(CircularProgressIndicator), findsNothing);
++    });
++
++    test('331-14 it is reachable, and the words are in both languages', () {
++      expect(File('lib/features/admin/presentation/screens/admin_security_screen.dart')
++          .readAsStringSync(), contains('a216_can_do_331'));
++      expect(L.t.whatThisPhoneCanDo331, 'What this phone can do');
++      expect(File('lib/l10n/app_ur.arb').readAsStringSync(), contains('"whatThisPhoneCanDo331"'));
++    });
++
++    test('331-15 no server, no timer: this screen only reads', () {
++      expect(File(_pure).readAsStringSync(), isNot(contains('http')));
++      expect(File(_screen).readAsStringSync(), isNot(contains('Timer')));
++      expect(File(_screen).readAsStringSync(), isNot(contains('http')));
++    });
++
++    test('331-16 the pins still live in one place, and this build follows them', () {
++      expect(AppBuild.stamp, 'v3 · $kAppVersion+$kAppBuild');
++      expect(File('pubspec.yaml').readAsStringSync(), contains('version: $kAppVersion+$kAppBuild'));
++    });
++  });
++}
