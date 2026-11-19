@@ -929,16 +929,41 @@ class AdminActionService {
     }
   }
 
+  /// Bundle 336: which way the empty verdict closes. `signed` - this phone
+  /// has an admin key, so a signed cancel card goes out and the carriers
+  /// stop too. `local` - it has none (a relay, or an identity that never
+  /// registered): the card still ends here, and says it did not sign.
+  @visibleForTesting
+  static String emptyCloseMode336({required bool hasSignIn, required bool hasCert}) =>
+      hasSignIn && hasCert ? 'signed' : 'local';
+
   /// Bundle 254 (21.12): every target phone said "no copy of this chat":
   /// the request closes as "No messages" (signed cancel card, so carriers
-  /// stop too). Stays pending when this phone can't sign (no admin key).
+  /// stop too). Since 336 it closes here too when this phone can't sign.
   Future<void> _closeEmpty(_Entry e) async {
+    // Bundle 336: every target phone has answered - that IS the answer, and
+    // the card has to show it. This used to return here when this phone had
+    // no admin key to sign the cancel with (a relay, or F7's unregistered
+    // identity), so the card said "waiting for files" for ever while every
+    // phone had already said no.
+    if (e.extra['empty_all'] == true && !e.pending) return;
+    e.extra['empty_all'] = true;
     final signIn = await adminSignIn?.call();
     final cert = await usableCert();
-    if (signIn == null || cert == null) return;
-    e.extra['empty_all'] = true;
+    final mode = emptyCloseMode336(hasSignIn: signIn != null, hasCert: cert != null);
+    if (mode == 'local' || signIn == null || cert == null) {
+      e.extra['empty_all_local'] = true;
+      e.state = 'cancelled';
+      await _save(e);
+      AppLogger.info('CHAT_REQ_EMPTY_ALL',
+          detail: 'id=${_tail(e.id)} empty_all_local=true'
+              ' why=${signIn == null ? 'no_signin' : 'no_cert'}');
+      _publish();
+      return;
+    }
     await _replaceOld(e, by: signIn.username, cert: cert, newId: '', state: 'cancelled');
-    AppLogger.info('CHAT_REQ_EMPTY_ALL', detail: 'id=${_tail(e.id)}');
+    AppLogger.info('CHAT_REQ_EMPTY_ALL',
+        detail: 'id=${_tail(e.id)} empty_all_local=false');
   }
 
   /// The server key is saved now: check the kept cards again (cancels

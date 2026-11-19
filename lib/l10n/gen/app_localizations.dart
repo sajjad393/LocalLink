@@ -15293,6 +15293,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This screen only shows what the phone can actually see. If it says waiting, nothing is on its way - that is the honest answer, not a spinner.'**
   String get honestNote331;
+
+  /// No description provided for @nothingToSend336.
+  ///
+  /// In en, this message translates to:
+  /// **'nothing to send'**
+  String get nothingToSend336;
 }
 
 class _AppLocalizationsDelegate

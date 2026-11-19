@@ -437,6 +437,8 @@ class ChatRequestNotifier307 {
     final more = requests324 > 1 ? ' \u00b7 ${L.t.nRequests324(requests324)}' : '';
     final n = _title(r);
     if (st.step == Step307.ready && f != null && f.total > 0 && !f.stopped) {
+      // Bundle 336: nothing can come says exactly that.
+      if (f.none336) return '$n \u00b7 ${L.t.nothingToSend336}$more';
       if (f.done) return f.gone + f.tooBig > 0 ? '$n \u00b7 ${f.here}/${f.total}$more' : '$n $tick321$more';
       // Bundle 324 (2.6): never `0/6` - nothing is here yet, so it says
       // "waiting" until the first asked file lands.
@@ -465,7 +467,10 @@ class ChatRequestNotifier307 {
   static Map<String, Object?> filesArgs317(ChatRequestRow221 r, RequestStep307 st, FileTrip317 f, DateTime now,
       {int requests324 = 1}) {
     final base = _args(r, st, now, requests324: requests324);
-    final step = f.done ? 'files_done' : (f.waiting ? 'files_wait' : 'files');
+    // Bundle 336: nothing can come -> its own step, never `0/6`.
+    final step = f.none336
+        ? 'files_none'
+        : (f.done ? 'files_done' : (f.waiting ? 'files_wait' : 'files'));
     return {
       ...base,
       'step': step,
@@ -475,6 +480,7 @@ class ChatRequestNotifier307 {
       'when': base['when'],
       'rock_until': 0,
       'files_swipe': f.waitingLong,
+      'files_none': f.none336,
       'from_name': f.from.isNotEmpty ? f.from : base['from_name'],
       ...f.toArgs(),
     };

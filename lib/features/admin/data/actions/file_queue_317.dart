@@ -136,6 +136,10 @@ class FileTrip317 {
 
   /// Files that can come (not gone, not too big).
   int get wanted => total - gone - tooBig;
+
+  /// Bundle 336: every file is gone or too big - nothing can come. The card
+  /// says so instead of `0/6`, which reads like "still on its way".
+  bool get none336 => total > 0 && wanted <= 0;
   bool get active => !stopped && here < wanted;
   bool get done => total > 0 && !active;
   int get trips {

@@ -9099,4 +9099,7 @@ class AppLocalizationsUr extends AppLocalizations {
   @override
   String get honestNote331 =>
       '⁧یہ اسکرین صرف وہی دکھاتی ہے جو فون واقعی دیکھ سکتا ہے۔ اگر لکھا ہو انتظار، تو کچھ راستے میں نہیں ہے - یہی سچا جواب ہے، گھومتا ہوا نشان نہیں۔⁩';
+
+  @override
+  String get nothingToSend336 => '⁧بھیجنے کو کچھ نہیں⁩';
 }

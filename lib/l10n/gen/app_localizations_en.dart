@@ -9067,4 +9067,7 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get honestNote331 =>
       'This screen only shows what the phone can actually see. If it says waiting, nothing is on its way - that is the honest answer, not a spinner.';
+
+  @override
+  String get nothingToSend336 => 'nothing to send';
 }
