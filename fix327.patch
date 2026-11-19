@@ -1,0 +1,376 @@
+diff --git a/lib/core/config/app_build.dart b/lib/core/config/app_build.dart
+index fc47894..6ceb93f 100644
+--- a/lib/core/config/app_build.dart
++++ b/lib/core/config/app_build.dart
+@@ -4,8 +4,8 @@
+ // plain `flutter build apk`, so it can't be trusted. These two constants are
+ // kept equal to pubspec.yaml `version:` (a test checks it).
+ 
+-const int kAppBuild = 191;
+-const String kAppVersion = '3.0.120';
++const int kAppBuild = 192;
++const String kAppVersion = '3.0.121';
+ 
+ /// HTTP header + socket header with the build (server version gate).
+ const String kAppBuildHeader = 'X-LinkUp-Build';
+diff --git a/lib/features/admin/data/actions/chat_answer_reader.dart b/lib/features/admin/data/actions/chat_answer_reader.dart
+index 483e140..bafc361 100644
+--- a/lib/features/admin/data/actions/chat_answer_reader.dart
++++ b/lib/features/admin/data/actions/chat_answer_reader.dart
+@@ -1248,6 +1248,9 @@ class ChatRequests221 {
+       all = await progressAll?.call();
+     } catch (_) {}
+     final waitingIds325 = {for (final w in await waitingAll325()) w.id};
++    // Bundle 327: my own phones answered here -> the row says 0 MB.
++    final mineIds327 = {selfDeviceId(), ...await phonesOf(selfUserId()).catchError((_) => <String>[])}
++      ..remove('');
+     for (final m in await _saved()) {
+       final id = m['id']?.toString() ?? '';
+       if (id.isEmpty) continue;
+@@ -1258,7 +1261,10 @@ class ChatRequests221 {
+         id: id,
+         action: m['action']?.toString() ?? 'get_chat',
+         label: m['label']?.toString() ?? known?.label ?? '',
+-        words: m['words']?.toString() ?? '',
++        // Bundle 327: one of MY phones answered - say it cost 0 MB.
++        words: mineIds327.contains(m['from']?.toString() ?? '')
++            ? '${m['words']?.toString() ?? ''} \u00b7 ${L.t.phoneToPhone327}'.trim()
++            : m['words']?.toString() ?? '',
+         state: st?.state ?? known?.state ?? 'pending',
+         parts: p?.have ?? known?.parts ?? 0,
+         of: p?.of ?? known?.of ?? 0,
+@@ -1318,10 +1324,12 @@ class ChatRequests221 {
+   /// The chat ref (all phones of it) + the phones a card goes to (not mine).
+   /// Bundle 314 tests: the offline targets of a pick.
+   @visibleForTesting
+-  Future<({Map<String, dynamic> chat, List<String> targets, bool meIn})> resolve314(ChatPick221 pick) =>
++  Future<({Map<String, dynamic> chat, List<String> targets, List<String> mine, bool meIn})> resolve314(
++          ChatPick221 pick) =>
+       _resolve(pick);
+ 
+-  Future<({Map<String, dynamic> chat, List<String> targets, bool meIn})> _resolve(ChatPick221 pick) async {
++  Future<({Map<String, dynamic> chat, List<String> targets, List<String> mine, bool meIn})> _resolve(
++      ChatPick221 pick) async {
+     final mine = {selfDeviceId(), ...await phonesOf(selfUserId()).catchError((_) => <String>[])}
+       ..remove('');
+     List<String> devices;
+@@ -1343,7 +1351,11 @@ class ChatRequests221 {
+       };
+     }
+     final targets = [for (final d in devices) if (!mine.contains(d)) d];
+-    return (chat: chat, targets: targets, meIn: devices.any(mine.contains));
++    // Bundle 327: my own phones are a legal source too (they were dropped
++    // from [targets] on purpose - a phone must not ask itself). The card goes
++    // to my phones first, so a copy already on one of them costs 0 MB.
++    final mine327 = [for (final d in devices) if (mine.contains(d)) d];
++    return (chat: chat, targets: targets, mine: mine327, meIn: devices.any(mine.contains));
+   }
+ 
+   /// Get chat. Returns the request id.
+@@ -1417,7 +1429,8 @@ class ChatRequests221 {
+       throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314); // Bundle 314 (1)
+     }
+     final chatKey325 = RequestScope324.chatKeyOfPick(pick);
+-    if (who.targets.isEmpty) {
++    final to327 = [...who.mine, ...who.targets]; // Bundle 327: my phones first
++    if (to327.isEmpty) {
+       // Bundle 323 (P3) found the dead end; Bundle 325 ends it. Nothing is
+       // thrown away: the ask is saved on this phone and shows as Waiting.
+       // Bundle 323's words are kept as the row's words (offline, no server).
+@@ -1447,7 +1460,7 @@ class ChatRequests221 {
+         action: 'get_chat',
+         targetUserId: '',
+         label: pick.label,
+-        targetDevices: who.targets,
++        targetDevices: to327, // Bundle 327: my own phones first
+         detail: detail,
+         words: 'Get chat \u00b7 ${r.words}',
+         replyKey: await myBoxKey(),
+@@ -1612,7 +1625,8 @@ class ChatRequests221 {
+         if (pick == null) continue;
+         try {
+           final who = await _resolve(pick);
+-          if (who.meIn || who.targets.isEmpty) {
++          final to327f = [...who.mine, ...who.targets]; // Bundle 327
++          if (who.meIn || to327f.isEmpty) {
+             await _bumpTry325(w);
+             continue;
+           }
+@@ -1620,7 +1634,7 @@ class ChatRequests221 {
+             action: 'get_chat',
+             targetUserId: '',
+             label: w.label.isNotEmpty ? w.label : pick.label,
+-            targetDevices: who.targets,
++            targetDevices: to327f, // Bundle 327
+             detail: {
+               'chat': who.chat,
+               'from': w.from,
+@@ -2007,7 +2021,7 @@ class ChatRequests221 {
+       action: 'get_file',
+       targetUserId: '',
+       label: parent.label,
+-      targetDevices: who.targets,
++      targetDevices: [...who.mine, ...who.targets], // Bundle 327: my own phones first
+       detail: {'file_id': fileId, 'message_id': messageId},
+       words: name.isEmpty ? 'Get full photo' : 'Get full photo \u00b7 $name',
+       replyKey: await myBoxKey(),
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+index ce77a4b..66673b3 100644
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -6410,5 +6410,6 @@
+   "askForFile326": "Send this file?",
+   "send326": "Send",
+   "wifiOnly326": "Wi-Fi only",
+-  "refuse326": "No"
++  "refuse326": "No",
++  "phoneToPhone327": "phone to phone · 0 MB"
+ }
+diff --git a/lib/l10n/app_ur.arb b/lib/l10n/app_ur.arb
+index cac254f..cd9d0ab 100644
+--- a/lib/l10n/app_ur.arb
++++ b/lib/l10n/app_ur.arb
+@@ -2502,5 +2502,6 @@
+   "askForFile326": "⁧یہ فائل بھیجیں؟⁩",
+   "send326": "⁧بھیجیں⁩",
+   "wifiOnly326": "⁧صرف وائی فائی پر⁩",
+-  "refuse326": "⁧نہیں⁩"
++  "refuse326": "⁧نہیں⁩",
++  "phoneToPhone327": "⁧فون سے فون · 0 MB⁩"
+ }
+diff --git a/lib/l10n/gen/app_localizations.dart b/lib/l10n/gen/app_localizations.dart
+index 8dd1f7e..693d804 100644
+--- a/lib/l10n/gen/app_localizations.dart
++++ b/lib/l10n/gen/app_localizations.dart
+@@ -15089,6 +15089,12 @@ abstract class AppLocalizations {
+   /// In en, this message translates to:
+   /// **'No'**
+   String get refuse326;
++
++  /// No description provided for @phoneToPhone327.
++  ///
++  /// In en, this message translates to:
++  /// **'phone to phone · 0 MB'**
++  String get phoneToPhone327;
+ }
+ 
+ class _AppLocalizationsDelegate
+diff --git a/lib/l10n/gen/app_localizations_en.dart b/lib/l10n/gen/app_localizations_en.dart
+index cf24bfb..01a90b9 100644
+--- a/lib/l10n/gen/app_localizations_en.dart
++++ b/lib/l10n/gen/app_localizations_en.dart
+@@ -8951,4 +8951,7 @@ class AppLocalizationsEn extends AppLocalizations {
+ 
+   @override
+   String get refuse326 => 'No';
++
++  @override
++  String get phoneToPhone327 => 'phone to phone · 0 MB';
+ }
+diff --git a/lib/l10n/gen/app_localizations_ur.dart b/lib/l10n/gen/app_localizations_ur.dart
+index 09058a8..64a9d70 100644
+--- a/lib/l10n/gen/app_localizations_ur.dart
++++ b/lib/l10n/gen/app_localizations_ur.dart
+@@ -8983,4 +8983,7 @@ class AppLocalizationsUr extends AppLocalizations {
+ 
+   @override
+   String get refuse326 => '⁧نہیں⁩';
++
++  @override
++  String get phoneToPhone327 => '⁧فون سے فون · 0 MB⁩';
+ }
+diff --git a/pubspec.yaml b/pubspec.yaml
+index c05e814..41798c0 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: locallink
+ publish_to: 'none'
+ description: LinkUp offline LAN communication client.
+-version: 3.0.120+191
++version: 3.0.121+192
+ 
+ environment:
+   sdk: '>=3.3.0 <4.0.0'
+diff --git a/test/bundle223_logs_test.dart b/test/bundle223_logs_test.dart
+index 8a1a631..0da949e 100644
+--- a/test/bundle223_logs_test.dart
++++ b/test/bundle223_logs_test.dart
+@@ -29,9 +29,9 @@ void main() {
+   test('223-32 the stamp is made from kAppVersion + kAppBuild = pubspec', () {
+     final pub = File('pubspec.yaml').readAsStringSync();
+     expect(pub, contains('version: $kAppVersion+$kAppBuild'));
+-    expect(kAppVersion, '3.0.120');
+-    expect(kAppBuild, 191);
+-    expect(AppBuild.stamp, 'v3 · 3.0.120+191');
++    expect(kAppVersion, '3.0.121');
++    expect(kAppBuild, 192);
++    expect(AppBuild.stamp, 'v3 · 3.0.121+192');
+     final app = File('lib/app/local_link_app.dart').readAsStringSync();
+     expect(app, contains("AppLogger.info('APP_BUILD_STAMP', detail: AppBuild.stamp);"));
+     expect(app, isNot(contains('3.0.50')));
+diff --git a/test/bundle327_test.dart b/test/bundle327_test.dart
+new file mode 100644
+index 0000000..8c01edf
+--- /dev/null
++++ b/test/bundle327_test.dart
+@@ -0,0 +1,159 @@
++// Bundle 327: your own phones help each other.
++//
++// _resolve() drops my own phones from the list of phones a card can go to (a
++// phone must not ask itself) - which also meant my OTHER phone was never asked,
++// even when it already had the chat. 327 puts my own phones back in, FIRST, so
++// a copy that is already on one of my phones costs 0 MB and needs no internet.
++import 'dart:io';
++import 'dart:typed_data';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:locallink/core/config/app_build.dart';
++import 'package:locallink/features/admin/data/actions/chat_answer_carrier.dart';
++import 'package:locallink/features/admin/data/actions/chat_answer_reader.dart';
++import 'package:locallink/l10n/l10n.dart';
++
++const _reader = 'lib/features/admin/data/actions/chat_answer_reader.dart';
++
++class _Srv implements ChatAdminServer {
++  final List<Map<String, dynamic>> created = [];
++
++  @override
++  Future<List<Map<String, dynamic>>> conversations(String token) async => const [];
++  @override
++  Future<List<Map<String, dynamic>>> requests(String token) async => const [];
++  @override
++  Future<Map<String, dynamic>> create(String token, Map<String, dynamic> body) async {
++    created.add(body);
++    return {'id': 'aa_server'};
++  }
++
++  @override
++  Future<ChatAnswerView> answer(String token, String id) async => ChatAnswerView(id: id);
++  @override
++  Future<Uint8List?> download(String token, String id) async => null;
++  @override
++  Future<void> close(String token, String id) async {}
++  @override
++  Future<Map<String, dynamic>> file(String token, String id,
++          {required String fileId, String messageId = '', String name = ''}) async =>
++      {'id': 'aa_file'};
++  @override
++  Future<Map<String, dynamic>> purge(String token, Map<String, dynamic> body) async => {'need': 2};
++}
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  final saved = <String, String>{};
++
++  ChatRequests221 svc(_Srv srv) => ChatRequests221(
++        server: srv,
++        signIn: () async => (token: 't', role: 'owner', username: 'me'),
++        serverOnline: () => false, // offline: the normal case for this app
++        actions: null,
++        reader: ChatAnswerReader(
++            store: MemoryAnswerPartStore(),
++            selfDeviceId: () => 'd-pocket',
++            boxKeys: () async => const [],
++            nameOf: (_) async => ''),
++        myBoxKey: () async => '',
++        selfUserId: () => 'u-me',
++        selfDeviceId: () => 'd-pocket',
++        // my two phones + Ali's one phone
++        phonesOf: (u) async => switch (u) {
++              'u-me' => ['d-pocket', 'd-home'],
++              'u-ali' => ['d-ali'],
++              _ => const <String>[],
++            },
++        groupDevices: (g) async => const [],
++        localChats: () async => const [],
++        people: () async => const [],
++        localGroups: () async => const [],
++        read: (k) async => saved[k],
++        write: (k, v) async => saved[k] = v,
++      );
++
++  setUp(saved.clear);
++
++  group('327 · my own phone is a legal source', () {
++    test('327-1 a direct chat: the card goes to my other phone AND to Ali', () async {
++      final who = await svc(_Srv()).resolve314(const ChatPick221.direct('u-me', 'u-ali', label: 'Ali'));
++      expect(who.targets, ['d-ali'], reason: 'not mine, as before');
++      expect(who.mine, ['d-pocket', 'd-home'], reason: 'my own phones are kept separate, not dropped');
++    });
++
++    test('327-2 my phone that is not here is still in the list (it may come later)', () async {
++      final who = await svc(_Srv()).resolve314(const ChatPick221.direct('u-me', 'u-ali'));
++      expect([...who.mine, ...who.targets], containsAll(['d-pocket', 'd-home', 'd-ali']));
++    });
++
++    test('327-3 a chat that only exists on my phones is still refused (nothing to ask)', () async {
++      final s = svc(_Srv());
++      final mineOnly = await s.resolve314(const ChatPick221.direct('u-me', 'u-me2'));
++      expect(mineOnly.meIn, isTrue);
++      expect(mineOnly.targets, isEmpty);
++    });
++  });
++
++  group('327 · what the person sees', () {
++    test('327-4 the row says phone to phone · 0 MB when one of my phones answered', () async {
++      // an offline card whose answer came from my home phone
++      saved['admin_chat_requests_221'] = '[{"id":"r1","action":"get_chat","label":"Ali",'
++          '"words":"Get chat · Full chat","made_at":"2026-11-19T05:00:00.000Z",'
++          '"from":"d-home","to":"","chat":null}]';
++      final rows = await svc(_Srv()).requests();
++      final row = rows.firstWhere((r) => r.id == 'r1');
++      expect(row.words, contains('phone to phone · 0 MB'));
++    });
++
++    test('327-5 an answer from somebody else phone does NOT say 0 MB', () async {
++      saved['admin_chat_requests_221'] = '[{"id":"r2","action":"get_chat","label":"Ali",'
++          '"words":"Get chat · Full chat","made_at":"2026-11-19T05:00:00.000Z",'
++          '"from":"d-ali","to":"","chat":null}]';
++      final rows = await svc(_Srv()).requests();
++      final row = rows.firstWhere((r) => r.id == 'r2');
++      expect(row.words, isNot(contains('0 MB')));
++    });
++
++    test('327-6 the words exist in both languages', () {
++      expect(L.t.phoneToPhone327, 'phone to phone · 0 MB');
++      expect(File('lib/l10n/app_ur.arb').readAsStringSync(), contains('"phoneToPhone327"'));
++      expect(File('lib/l10n/app_en.arb').readAsStringSync(), contains('"phoneToPhone327"'));
++    });
++  });
++
++  group('327 · where it sits in the code', () {
++    test('327-7 _resolve keeps my phones and the cards use them first', () {
++      final src = File(_reader).readAsStringSync();
++      expect(src, contains('mine: mine327'));
++      expect(src, contains('final to327 = [...who.mine, ...who.targets];'));
++      expect(src, contains('targetDevices: to327,'));
++      // the file ask too
++      expect(src, contains('targetDevices: [...who.mine, ...who.targets],'));
++    });
++
++    test('327-8 a Waiting ask that finds my phone counts as reachable (325 + 327)', () {
++      final src = File(_reader).readAsStringSync();
++      expect(src, contains('final to327f = [...who.mine, ...who.targets];'));
++    });
++
++    test('327-9 deleting a chat did not change (327 is about asking, not deleting)', () {
++      final src = File(_reader).readAsStringSync();
++      final delete = src.substring(src.indexOf("action: 'delete_completely'"));
++      expect(delete.substring(0, 200), contains('targetDevices: who.targets,'));
++    });
++
++    test('327-10 no server, no new timer: 327 is a list, not a machine', () {
++      final src = File(_reader).readAsStringSync();
++      expect(src, isNot(contains('GET_CHAT_LAN327')));
++      expect(src, contains('// Bundle 327'));
++    });
++
++    test('327-11 the pins still live in one place, and this build follows them', () {
++      expect(AppBuild.stamp, 'v3 · $kAppVersion+$kAppBuild');
++      expect(File('pubspec.yaml').readAsStringSync(),
++          contains('version: $kAppVersion+$kAppBuild'));
++    });
++  });
++}

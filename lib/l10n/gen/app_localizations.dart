@@ -15089,6 +15089,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No'**
   String get refuse326;
+
+  /// No description provided for @phoneToPhone327.
+  ///
+  /// In en, this message translates to:
+  /// **'phone to phone · 0 MB'**
+  String get phoneToPhone327;
 }
 
 class _AppLocalizationsDelegate

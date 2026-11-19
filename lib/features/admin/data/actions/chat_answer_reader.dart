@@ -1248,6 +1248,9 @@ class ChatRequests221 {
       all = await progressAll?.call();
     } catch (_) {}
     final waitingIds325 = {for (final w in await waitingAll325()) w.id};
+    // Bundle 327: my own phones answered here -> the row says 0 MB.
+    final mineIds327 = {selfDeviceId(), ...await phonesOf(selfUserId()).catchError((_) => <String>[])}
+      ..remove('');
     for (final m in await _saved()) {
       final id = m['id']?.toString() ?? '';
       if (id.isEmpty) continue;
@@ -1258,7 +1261,10 @@ class ChatRequests221 {
         id: id,
         action: m['action']?.toString() ?? 'get_chat',
         label: m['label']?.toString() ?? known?.label ?? '',
-        words: m['words']?.toString() ?? '',
+        // Bundle 327: one of MY phones answered - say it cost 0 MB.
+        words: mineIds327.contains(m['from']?.toString() ?? '')
+            ? '${m['words']?.toString() ?? ''} \u00b7 ${L.t.phoneToPhone327}'.trim()
+            : m['words']?.toString() ?? '',
         state: st?.state ?? known?.state ?? 'pending',
         parts: p?.have ?? known?.parts ?? 0,
         of: p?.of ?? known?.of ?? 0,
@@ -1318,10 +1324,12 @@ class ChatRequests221 {
   /// The chat ref (all phones of it) + the phones a card goes to (not mine).
   /// Bundle 314 tests: the offline targets of a pick.
   @visibleForTesting
-  Future<({Map<String, dynamic> chat, List<String> targets, bool meIn})> resolve314(ChatPick221 pick) =>
+  Future<({Map<String, dynamic> chat, List<String> targets, List<String> mine, bool meIn})> resolve314(
+          ChatPick221 pick) =>
       _resolve(pick);
 
-  Future<({Map<String, dynamic> chat, List<String> targets, bool meIn})> _resolve(ChatPick221 pick) async {
+  Future<({Map<String, dynamic> chat, List<String> targets, List<String> mine, bool meIn})> _resolve(
+      ChatPick221 pick) async {
     final mine = {selfDeviceId(), ...await phonesOf(selfUserId()).catchError((_) => <String>[])}
       ..remove('');
     List<String> devices;
@@ -1343,7 +1351,11 @@ class ChatRequests221 {
       };
     }
     final targets = [for (final d in devices) if (!mine.contains(d)) d];
-    return (chat: chat, targets: targets, meIn: devices.any(mine.contains));
+    // Bundle 327: my own phones are a legal source too (they were dropped
+    // from [targets] on purpose - a phone must not ask itself). The card goes
+    // to my phones first, so a copy already on one of them costs 0 MB.
+    final mine327 = [for (final d in devices) if (mine.contains(d)) d];
+    return (chat: chat, targets: targets, mine: mine327, meIn: devices.any(mine.contains));
   }
 
   /// Get chat. Returns the request id.
@@ -1417,7 +1429,8 @@ class ChatRequests221 {
       throw ChatAdminRefused(409, ownChatCode314, L.t.ownChat314); // Bundle 314 (1)
     }
     final chatKey325 = RequestScope324.chatKeyOfPick(pick);
-    if (who.targets.isEmpty) {
+    final to327 = [...who.mine, ...who.targets]; // Bundle 327: my phones first
+    if (to327.isEmpty) {
       // Bundle 323 (P3) found the dead end; Bundle 325 ends it. Nothing is
       // thrown away: the ask is saved on this phone and shows as Waiting.
       // Bundle 323's words are kept as the row's words (offline, no server).
@@ -1447,7 +1460,7 @@ class ChatRequests221 {
         action: 'get_chat',
         targetUserId: '',
         label: pick.label,
-        targetDevices: who.targets,
+        targetDevices: to327, // Bundle 327: my own phones first
         detail: detail,
         words: 'Get chat \u00b7 ${r.words}',
         replyKey: await myBoxKey(),
@@ -1612,7 +1625,8 @@ class ChatRequests221 {
         if (pick == null) continue;
         try {
           final who = await _resolve(pick);
-          if (who.meIn || who.targets.isEmpty) {
+          final to327f = [...who.mine, ...who.targets]; // Bundle 327
+          if (who.meIn || to327f.isEmpty) {
             await _bumpTry325(w);
             continue;
           }
@@ -1620,7 +1634,7 @@ class ChatRequests221 {
             action: 'get_chat',
             targetUserId: '',
             label: w.label.isNotEmpty ? w.label : pick.label,
-            targetDevices: who.targets,
+            targetDevices: to327f, // Bundle 327
             detail: {
               'chat': who.chat,
               'from': w.from,
@@ -2007,7 +2021,7 @@ class ChatRequests221 {
       action: 'get_file',
       targetUserId: '',
       label: parent.label,
-      targetDevices: who.targets,
+      targetDevices: [...who.mine, ...who.targets], // Bundle 327: my own phones first
       detail: {'file_id': fileId, 'message_id': messageId},
       words: name.isEmpty ? 'Get full photo' : 'Get full photo \u00b7 $name',
       replyKey: await myBoxKey(),

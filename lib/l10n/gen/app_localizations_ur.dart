@@ -8983,4 +8983,7 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get refuse326 => '⁧نہیں⁩';
+
+  @override
+  String get phoneToPhone327 => '⁧فون سے فون · 0 MB⁩';
 }

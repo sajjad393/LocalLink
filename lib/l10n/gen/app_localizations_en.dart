@@ -8951,4 +8951,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get refuse326 => 'No';
+
+  @override
+  String get phoneToPhone327 => 'phone to phone · 0 MB';
 }
