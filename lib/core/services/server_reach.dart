@@ -34,6 +34,11 @@ class ServerReach {
   bool _noServerSeen = false;
   final Map<String, String> _logged = <String, String>{};
 
+  /// Build 335: fired when the gate opens again (network or internet back, or
+  /// the server answered after a failure). Owners use it to reset a retry
+  /// ladder instead of waiting out its longest gap. Cleared by its owner.
+  void Function()? onRecovered;
+
   /// Called at every sign-in: starts with an open gate (Q9: no state from
   /// the account before).
   void bind({String? Function()? address, bool Function()? socketUp}) {
@@ -54,7 +59,9 @@ class ServerReach {
   void networkChanged({bool? wifi, bool? internet}) {
     _wifi = wifi;
     _internet = internet;
+    final wasClosed = _downUntil != null;
     if (wifi == true || internet == true) _downUntil = null;
+    if (wasClosed && _downUntil == null) onRecovered?.call(); // Bundle 335
   }
 
   /// A server call failed. A network error closes the gate for [downFor].
@@ -67,7 +74,11 @@ class ServerReach {
   }
 
   /// The server answered.
-  void noteOk() => _downUntil = null;
+  void noteOk() {
+    final wasClosed = _downUntil != null;
+    _downUntil = null;
+    if (wasClosed) onRecovered?.call(); // Bundle 335
+  }
 
   /// Why a call would be skipped now, or null to go ahead.
   String? skipWhy() {

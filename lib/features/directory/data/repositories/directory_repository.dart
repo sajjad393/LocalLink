@@ -168,6 +168,9 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
   Future<void> start() async {
     if (_started) return;
     _started = true;
+    // Bundle 335: the server came back (Wi-Fi / internet / an answer) - the
+    // contacts ladder goes back to 30 s instead of waiting out the 15 min top.
+    ServerReach.instance.onRecovered = _resetContactsLadder335;
     _transportSub = transport.events.listen((event) {
       unawaited(_handleTransportEventSafely(event));
     }, onError: (Object error, StackTrace stackTrace) {
@@ -2237,13 +2240,35 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
   static const int contactsQuickRetries258 = 10;
   static const Duration contactsRetryGap258 = Duration(seconds: 30);
 
+  /// Bundle 335: the gaps between quick retries. A real phone showed 11
+  /// `CONTACTS_SYNC_FAILED` in one hour - 6 s of every 36 s spent on a call
+  /// that could not succeed, all night. The gap now grows while the server
+  /// stays away and [syncServerContacts] snaps it back to 30 s on success.
+  static const List<int> contactsBackoff335 = [30, 120, 300, 900];
+
+  /// The gap before retry number [attempt] (1-based): 30 s, 2 min, 5 min,
+  /// then every 15 min. Never shorter than 30 s, never longer than 15 min.
+  static Duration contactsGap335(int attempt) {
+    final i = (attempt - 1).clamp(0, contactsBackoff335.length - 1);
+    return Duration(seconds: contactsBackoff335[i]);
+  }
+
+  void _resetContactsLadder335() {
+    if (_contactsRetries258 == 0) return;
+    _contactsRetries258 = 0;
+    _contactsRetry258?.cancel();
+    AppLogger.info('CONTACTS_SYNC_BACKOFF_RESET', detail: 'why=server_back');
+  }
+
   void _contactsRetrySoon258() {
     if (!_started || _contactsRetries258 >= contactsQuickRetries258) return;
     if (_contactsRetry258?.isActive ?? false) return;
     _contactsRetries258++;
-    AppLogger.info('CONTACTS_SYNC_RETRY',
-        detail: 'in=${contactsRetryGap258.inSeconds}s try=$_contactsRetries258');
-    _contactsRetry258 = Timer(contactsRetryGap258, () {
+    final gap = contactsGap335(_contactsRetries258);
+    AppLogger.info('CONTACTS_SYNC_BACKOFF',
+        detail: 'in=${gap.inSeconds}s try=$_contactsRetries258'
+            '${gap > contactsRetryGap258 ? ' waiting' : ''}');
+    _contactsRetry258 = Timer(gap, () {
       unawaited(syncServerContacts());
     });
   }
@@ -3561,6 +3586,10 @@ class DirectoryRepository implements DirectoryRepositoryContract, PeopleSource26
   @override
   Future<void> dispose() async {
     _syncTimer?.cancel();
+    // Bundle 335: a stopped repository must not leave a hook behind.
+    if (ServerReach.instance.onRecovered == _resetContactsLadder335) {
+      ServerReach.instance.onRecovered = null;
+    }
     _contactsRetry258?.cancel(); // Bundle 258
     _edgeSync260?.cancel(); // Bundle 260
     _syncTimer = null;
